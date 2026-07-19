@@ -557,6 +557,9 @@ pub(crate) const STATUS_CSS: &str = "\
       background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); \
       border: 1px solid var(--tali-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
     .tali-dev-ctl:hover { border-color: var(--tali-accent, #4c8dff); } \
+    .tali-dev-card { display: block; max-width: 100%; height: auto; border-radius: 6px; \
+      border: 1px solid var(--tali-border, #e0e0e0); } \
+    .tali-dev-card[hidden] { display: none; } \
     .tali-dev-theme svg { width: 14px; height: 14px; } \
     #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
     #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg, #f5f5f5); \
@@ -1682,6 +1685,26 @@ mod protocol_contract {
         assert!(
             STATUS_CSS.contains("data-qmd-cell-source=\"cache\""),
             "STATUS_CSS must style the cached-cell border distinctly from a fresh run"
+        );
+    }
+
+    #[test]
+    fn client_ships_the_card_preview_pane_hitting_the_identity_route() {
+        // DX13: the dev-menu card pane fetches the current page's card from the identity-
+        // keyed route, gated on the site preview's page global. If the route path or the
+        // gate global is renamed on one side, the pane silently 404s / never appears — this
+        // pins the client half against the serve_site `/og-preview` handler + STATUS_CSS.
+        assert!(
+            CLIENT_JS.contains("/og-preview?page="),
+            "client.js must fetch the card from the /og-preview identity route"
+        );
+        assert!(
+            CLIENT_JS.contains("TALIESIN_WS_PATH"),
+            "client.js must gate the card pane on the site-preview page identity"
+        );
+        assert!(
+            STATUS_CSS.contains(".tali-dev-card"),
+            "STATUS_CSS must style the card-preview image"
         );
     }
 

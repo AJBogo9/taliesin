@@ -483,6 +483,37 @@
       panel.append(devRow("Drafts", draftCount), draftList);
     }
 
+    // OG social-card preview (DX13, site preview only): render the current page's branded
+    // 1200×630 card on demand so an author can see what gets shared without a full build.
+    // Gated on the site preview's page identity (window.TALIESIN_WS_PATH carries ?page=<rel>);
+    // absent on single-doc previews + static builds, which have no Site/card concept. The
+    // image loads lazily — only fetched on first reveal, so it costs nothing until asked for.
+    const wsPath = window.TALIESIN_WS_PATH || "";
+    const pageParam = (wsPath.match(/[?&]page=([^&]*)/) || [])[1];
+    if (pageParam) {
+      const cardBtn = document.createElement("button");
+      cardBtn.className = "tali-dev-ctl";
+      cardBtn.type = "button";
+      cardBtn.textContent = "Show OG card";
+      cardBtn.title = "Preview this page's branded 1200×630 social card (the image baked at build for link unfurls)";
+      const cardImg = document.createElement("img");
+      cardImg.className = "tali-dev-card";
+      cardImg.alt = "Social card preview for this page";
+      cardImg.hidden = true;
+      cardBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (cardImg.hidden) {
+          if (!cardImg.getAttribute("src")) cardImg.src = "/og-preview?page=" + pageParam;
+          cardImg.hidden = false;
+          cardBtn.textContent = "Hide OG card";
+        } else {
+          cardImg.hidden = true;
+          cardBtn.textContent = "Show OG card";
+        }
+      });
+      panel.append(cardBtn, cardImg);
+    }
+
     // The dev menu carries its own quick light/dark toggle (wired by the shared theme_head)
     // so the author can flip theme during preview without opening the reader Settings gear.
     // Guarded so we never add a second one.
