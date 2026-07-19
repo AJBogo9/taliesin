@@ -4595,6 +4595,25 @@ fn core_enhance_js_has_our_scripts_not_the_big_libs() {
     );
 }
 
+/// PL10: a `{js}` runtime throw must not leak a raw stack trace to readers of BUILT output.
+/// The error box shows the full stack only in the live preview (client.js defines
+/// `taliOpenPageSource`); built/published pages get a terse themed message. The full error is
+/// always kept in `console.error` for the author.
+#[test]
+fn js_cell_error_hides_the_stack_trace_in_built_output() {
+    let js = TALIESIN_JS;
+    assert!(
+        js.contains("typeof window.taliOpenPageSource === \"function\"")
+            && js.contains("This interactive element couldn't load."),
+        "the {{js}}-cell error box must degrade to a terse message when not in the live preview"
+    );
+    assert!(
+        js.contains("console.error(\"qmd-js cell error:\", e)")
+            && js.contains("String((e && e.stack) || e)"),
+        "the full stack must remain in console.error + the preview branch"
+    );
+}
+
 #[test]
 fn mermaid_and_jslibs_bundles_carry_their_libs() {
     assert!(

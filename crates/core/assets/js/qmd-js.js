@@ -209,7 +209,13 @@
         console.error("qmd-js cell error:", e);
         var pre = document.createElement("pre");
         pre.className = "tali-js-error";
-        pre.textContent = String((e && e.stack) || e);
+        // In the live preview (client.js defines taliOpenPageSource) show the full stack so the
+        // author can debug; in built/published output degrade to a terse themed message so a
+        // reader never sees a raw `TypeError ... at <anonymous>` leak. The full error is always
+        // in console.error above.
+        pre.textContent = (typeof window.taliOpenPageSource === "function")
+          ? String((e && e.stack) || e)
+          : "This interactive element couldn't load.";
         container.replaceChildren(pre);
       } finally {
         // A finished run, whether or not it painted. `data-qmd-ran` is stamped at
