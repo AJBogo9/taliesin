@@ -3,6 +3,7 @@
   "displayName": "Taliesin Companion",
   "description": "Live preview + bidirectional source sync for Taliesin .tmd documents.",
   "version": "0.1.0",
+  "license": "MIT",
   "publisher": "taliesin",
   "private": true,
   "repository": {

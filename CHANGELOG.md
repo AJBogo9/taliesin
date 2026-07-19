@@ -6,6 +6,17 @@ may carry new features and small behavior changes; the load-bearing invariants
 (content-hash block model, click-to-source, single editing surface, HTML-only
 output) are kept stable.
 
+## [Unreleased]
+
+### Changed
+
+- **Relicensed from MIT to AGPL-3.0-only.** The Affero copyleft closes the
+  "SaaS loophole" so a modified network deployment must share its source. As the
+  sole copyright holder, the author reserves the right to offer Taliesin under
+  other terms (a proprietary hosted service or a commercial license); the
+  dependency license policy in `deny.toml` stays permissive-only to keep that
+  option open. The VS Code editor companion under `editor/vscode` remains MIT.
+
 ## [0.2.0] - 2026-06-27
 
 The release-hardening release. Two waves of correctness, accessibility, and

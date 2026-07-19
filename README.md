@@ -1,5 +1,8 @@
 # Taliesin
 
+[![CI](https://github.com/AJBogo9/taliesin/actions/workflows/ci.yml/badge.svg)](https://github.com/AJBogo9/taliesin/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+
 > The native (and only) source extension is `.tmd`; the CLI is `taliesin`
 > (with `tali` as a shorter alias).
 
@@ -143,3 +146,18 @@ The native deck engine, mermaid, and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
 See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
 books, authored in `.tmd` and built with Taliesin itself.
+
+## License
+
+Taliesin is licensed under the **GNU Affero General Public License v3.0**
+([`LICENSE`](LICENSE)), © 2026 Andreas Bogossian. The AGPL closes the "SaaS
+loophole": anyone who runs a modified version as a network service must offer
+their complete corresponding source to that service's users.
+
+As the sole copyright holder, the author is not bound by the AGPL grant and
+reserves the right to offer Taliesin under other terms, including a proprietary
+hosted service or a commercial license.
+
+The VS Code editor companion under [`editor/vscode`](editor/vscode) is a separate
+work licensed under the **MIT License** ([`editor/vscode/LICENSE`](editor/vscode/LICENSE)).
+Vendored third-party assets keep their own licenses; see [`THIRD_PARTY.md`](THIRD_PARTY.md).

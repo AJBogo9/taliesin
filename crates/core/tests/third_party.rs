@@ -1,6 +1,6 @@
 use std::path::Path;
 
-/// taliesin's OWN (MIT) bundled scripts. Everything else in `assets/js/` is a
+/// taliesin's OWN (AGPL-3.0) bundled scripts. Everything else in `assets/js/` is a
 /// vendored third party that MUST be attributed by filename in THIRD_PARTY.md.
 /// Adding a new vendored lib without documenting it fails `vendored_js_is_attributed`.
 // (code-enhance.js is now authored as per-feature fragments under the

@@ -44,6 +44,21 @@ allow = [
 ]
 confidence-threshold = 0.9
 
+# Taliesin's OWN crates are AGPL-3.0 (see the root LICENSE). The global `allow` list
+# above stays permissive-only ON PURPOSE: every *dependency* must be MIT/Apache/BSD/… so
+# the whole work can still be dual-licensed (a hosted service / a proprietary commercial
+# license). A single AGPL/GPL dependency would force the combined work to AGPL and remove
+# that option, so an AGPL dep must still fail review — only our own crates are exempted here.
+[[licenses.exceptions]]
+crate = "taliesin-core"
+allow = ["AGPL-3.0-only"]
+[[licenses.exceptions]]
+crate = "taliesin-server"
+allow = ["AGPL-3.0-only"]
+[[licenses.exceptions]]
+crate = "live-edit-bench"
+allow = ["AGPL-3.0-only"]
+
 # `option-ext` (pulled in transitively by `dirs`, which `jupyter-zmq-client` uses) is
 # MPL-2.0 — weak, *file-level* copyleft: using it as an unmodified dependency imposes no
 # license obligation on Taliesin's own code. Confined to a per-crate exception rather than
