@@ -68,6 +68,13 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "marginnote",
     "fragment",
     "incremental",
+    // Fragment EFFECT modifiers: real styled classes (`deck.css`) that ride alongside
+    // `.fragment` (`::: {.fragment .fade-out}`), so a typo in the effect (`.fade-ot`,
+    // `.hihglight`) is exactly a deck author's fiddly mistake. Anchored here for the
+    // did-you-mean; like `.fragment`/`.incremental` they are deck-authoring modifiers, so
+    // (matching that family) they are NOT offered in the editor vocab (`vocab::DIV_CLASS_NAMES`).
+    "fade-out",
+    "highlight",
     "notes",
     "columns",
     "column",
@@ -312,6 +319,35 @@ mod tests {
                 .into_iter()
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn fragment_effect_modifiers_are_did_you_mean_anchors() {
+        // PL9: `.fade-out`/`.highlight` are real styled fragment effects (`deck.css`), so a
+        // typo in the effect modifier alongside a legit `.fragment` must draw a did-you-mean
+        // instead of silently rendering a plain fragment. Before this, the effect names weren't
+        // known anchors, so `.fade-ot`/`.hihglight` matched nothing and stayed silent.
+        let div = |classes: &[&str]| classes.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+        let w = validate_div_class(&div(&["fragment", "fade-ot"]), 5, None)
+            .expect("a mistyped fragment effect warns");
+        assert_eq!(
+            w.message,
+            "unknown div class `fade-ot` (did you mean `fade-out`?)"
+        );
+        assert!(
+            validate_div_class(&div(&["fragment", "hihglight"]), 5, None)
+                .is_some_and(|w| w.message.contains("did you mean `highlight`?")),
+            "a mistyped `.highlight` effect is caught too"
+        );
+        // The correct effect spellings are legit → silent (known anchors, not typos).
+        assert!(
+            validate_div_class(&div(&["fragment", "fade-out"]), 5, None).is_none(),
+            "the real `.fade-out` effect is silent"
+        );
+        assert!(
+            validate_div_class(&div(&["fragment", "highlight"]), 5, None).is_none(),
+            "the real `.highlight` effect is silent"
         );
     }
 

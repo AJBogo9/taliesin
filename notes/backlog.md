@@ -948,9 +948,6 @@ under-sells machinery that already ships.)
 - **PL7 — Line-highlight: two names, two delimiters, a deck habit silently no-ops.** `code-line-numbers="1|2-3"`
   (pipe, `emit.rs:234`) vs `.step lines="6-8"` split on `,` only (`walkthrough.js:23`); `lines="1|2-3"` in a step
   focuses **zero** lines. Warn on `|` in a step `lines=` (or align the grammars). S · med-high. **VERIFIED.**
-- **PL9 — Deck fragment effects escape validation.** `.fade-out`/`.highlight` are styled (`deck.css:299-336`) but
-  absent from `DIV_FEATURE_CLASSES` (`validate.rs:59-75`), so `.fragment .fade-ot` gets no did-you-mean. Add them
-  + update the `vocab.rs` subset test. Trivial · med. **VERIFIED.**
 - **PL10 — A `{js}` runtime error ships a raw stack trace to readers in *built* output.** `qmd-js.js:212` sets
   `textContent = String(e.stack||e)` (already `console.error`s it at `:209`); a published page shows a reader the
   stack. In the build path degrade to a terse themed notice, keep the console log. S · med. **VERIFIED.**
