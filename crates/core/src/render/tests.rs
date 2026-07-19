@@ -3783,14 +3783,14 @@ fn base_css_aliases_the_conventional_sr_only_class() {
 /// code-bg). The hairline `--tali-border` stays decorative and is deliberately not checked.
 #[test]
 fn border_strong_clears_the_ui_boundary_floor_on_both_surfaces() {
-    // `:root` defines it first in base.css; the sepia block redefines it further down, so slice
-    // from the sepia selector before reading that one.
-    let sepia_block = &BASE_CSS[BASE_CSS
+    // The palette lives in tokens.css (light `:root` first, then sepia) + tokens-dark.css (dark);
+    // slice from the sepia selector before reading that theme's value.
+    let sepia_block = &TOKENS_CSS[TOKENS_CSS
         .find("html[data-theme=\"sepia\"] {")
         .expect("sepia block")..];
     for (theme, css, bg, code_bg) in [
-        ("light", BASE_CSS, "#ffffff", "#f5f5f5"),
-        ("dark", DARK_CSS, "#16181d", "#21242b"),
+        ("light", TOKENS_CSS, "#ffffff", "#f5f5f5"),
+        ("dark", TOKENS_DARK_CSS, "#16181d", "#21242b"),
         ("sepia", sepia_block, "#f4ecd8", "#ece2c8"),
     ] {
         let c = color_after(css, "--tali-border-strong:");
@@ -3861,25 +3861,26 @@ fn dark_search_mark_keeps_body_text_readable() {
 /// paper. Pin that every theme defines its own.
 #[test]
 fn every_theme_defines_its_own_flash_tint() {
-    let sepia = BASE_CSS
+    let sepia = TOKENS_CSS
         .find("html[data-theme=\"sepia\"] {")
         .expect("sepia block");
-    let block = &BASE_CSS[sepia..sepia + BASE_CSS[sepia..].find('}').expect("closing brace")];
+    let block = &TOKENS_CSS[sepia..sepia + TOKENS_CSS[sepia..].find('}').expect("closing brace")];
     assert!(
         block.contains("--tali-flash:"),
         "sepia must define --tali-flash, not inherit the :root blue"
     );
     assert!(
-        DARK_CSS.contains("--tali-flash:"),
+        TOKENS_DARK_CSS.contains("--tali-flash:"),
         "dark must define it too"
     );
 }
 
 /// Deck link text sat at 4.32:1 on the deck's white background, below AA. The deck now shares
-/// the page's accent, which is dark enough to serve as link text unaided.
+/// the page's accent (via tokens.css), which is dark enough to serve as link text unaided.
 #[test]
 fn deck_link_text_meets_wcag_aa() {
-    let c = color_after(super::deck::DECK_CSS, "--deck-accent:");
+    // The deck reads the shared light `--tali-accent` (tokens.css `:root`, first occurrence).
+    let c = color_after(TOKENS_CSS, "--tali-accent:");
     let r = wcag_contrast(c, "#ffffff");
     assert!(r >= 4.5, "light deck accent {c} as link on white = {r:.2}");
 }
@@ -3902,6 +3903,8 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
         ("#e8730c", "the old callout caution orange"),
     ];
     for (sheet, css) in [
+        ("tokens.css", TOKENS_CSS),
+        ("tokens-dark.css", TOKENS_DARK_CSS),
         ("base.css", BASE_CSS),
         ("dark.css", DARK_CSS),
         ("deck.css", super::deck::DECK_CSS),
@@ -3936,12 +3939,12 @@ fn mix_over(fg: &str, pct: f64, bg: &str) -> String {
 /// are compliance.)
 #[test]
 fn callout_family_meets_its_contrast_floors_in_every_theme() {
-    let sepia = &BASE_CSS[BASE_CSS
+    let sepia = &TOKENS_CSS[TOKENS_CSS
         .find("html[data-theme=\"sepia\"] {")
         .expect("sepia block")..];
     for (theme, css, bg, fg) in [
-        ("light", BASE_CSS, "#ffffff", "#1a1a1a"),
-        ("dark", DARK_CSS, "#16181d", "#e6e6e6"),
+        ("light", TOKENS_CSS, "#ffffff", "#1a1a1a"),
+        ("dark", TOKENS_DARK_CSS, "#16181d", "#e6e6e6"),
         ("sepia", sepia, "#f4ecd8", "#5b4636"),
     ] {
         for kind in ["note", "tip", "warning", "important", "caution"] {
@@ -3966,12 +3969,12 @@ fn callout_family_meets_its_contrast_floors_in_every_theme() {
 /// still clearing the 3:1 graphical floor for their left border.
 #[test]
 fn theorem_accents_clear_the_graphical_floor_in_every_theme() {
-    let sepia = &BASE_CSS[BASE_CSS
+    let sepia = &TOKENS_CSS[TOKENS_CSS
         .find("html[data-theme=\"sepia\"] {")
         .expect("sepia block")..];
     for (theme, css, bg) in [
-        ("light", BASE_CSS, "#ffffff"),
-        ("dark", DARK_CSS, "#16181d"),
+        ("light", TOKENS_CSS, "#ffffff"),
+        ("dark", TOKENS_DARK_CSS, "#16181d"),
         ("sepia", sepia, "#f4ecd8"),
     ] {
         for kind in ["plain", "definition", "remark"] {
@@ -4295,13 +4298,13 @@ fn deck_defines_light_bg_text_override() {
         "light-bg text {dark_text} must be dark enough to read on a light slide"
     );
     // B4-20: a contrast-flipped slide forces its own text light/dark, but a code panel
-    // keeps its themed `--deck-code-bg`, so `pre`/`code` ink must be re-pinned to
-    // `--deck-ink` or untokenized code goes invisible on the panel. Pin the rule so a
+    // keeps its themed `--tali-code-bg`, so `pre`/`code` ink must be re-pinned to
+    // `--tali-fg` or untokenized code goes invisible on the panel. Pin the rule so a
     // future refactor can't silently drop it.
     assert!(
         deck_css.contains("section.tali-dark-bg pre")
             && deck_css.contains("section.tali-light-bg code")
-            && deck_css.contains("{ color: var(--deck-ink); }"),
+            && deck_css.contains("{ color: var(--tali-fg); }"),
         "the contrast-flip code-ink override (B4-20) is missing"
     );
 }

@@ -1,23 +1,7 @@
 
-  html[data-theme="dark"] {
-    /* Same accent hue as light + sepia (OKLCH H 272), lifted in lightness and eased in chroma
-       so it does not vibrate on the dark surface. 7.62:1 as link text. */
-    --tali-bg: #16181d; --tali-fg: #e6e6e6; --tali-muted: #9aa0aa; --tali-accent: #9aa8dc;
-    /* Dark is the one theme where the accent is too light to fill behind white text, so it takes
-       a darker fill at the same hue (white on it = 5.59:1). */
-    --tali-accent-fill: #57659d; --tali-on-accent: #ffffff;
-    --tali-link: #9aa8dc; --tali-code-bg: #21242b; --tali-border: #363a44;
-    --tali-border-strong: #6c7079; /* 3.58:1 on the page bg, 3.13:1 on the code surface */
-    --tali-edge-shadow: rgba(255, 255, 255, .14); --tali-flash: rgba(154, 168, 220, .20);
-    /* Callouts: dark never overrode these, so it inherited the light family. Lifted to the dark
-       surface at the same hues + chroma envelope as light. */
-    --tali-callout-note: #92a3d4; --tali-callout-tip: #65bf9f; --tali-callout-warning: #d4aa5a;
-    --tali-callout-important: #dc747d; --tali-callout-caution: #be6f45;
-    /* Theorem accents: the same vocabulary, quieter than the callouts. */
-    --tali-thm-plain: #8b97c4; --tali-thm-definition: #58ac8e; --tali-thm-remark: #9aa0aa;
-    color-scheme: dark; /* native form controls ({js} cell inputs) + scrollbars render dark */
-  }
-  /* (.tali-copy is fully tokenised in base.css now — no dark override needed.) */
+  /* The dark palette tokens live in tokens.css (shared with the deck's `.tali-deck-dark`).
+     This file keeps only what tokens can't express: the recoloured syntax scopes + the
+     diagnostic-box surfaces. (.tali-copy is fully tokenised in base.css now.) */
   /* Callout title tints are derived from --tali-callout-* via color-mix with transparent,
      so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }

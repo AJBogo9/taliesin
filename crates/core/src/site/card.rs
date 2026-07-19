@@ -560,6 +560,39 @@ mod tests {
         assert_eq!(png_dims(&png), (CARD_W, CARD_H));
     }
 
+    /// The OG card is composited at build time (Rust -> PNG), so it can't read the CSS
+    /// tokens at runtime: its colours are the consts above. The card renders on the dark
+    /// brand surface, so drift-lock BG/FG/ACCENT/MUTED/BORDER to the dark palette in
+    /// tokens-dark.css. If a dark token moves, this fails loudly instead of the card
+    /// silently drifting off-brand (the same anti-drift idiom as schema.rs/third_party.rs).
+    #[test]
+    fn card_palette_tracks_the_dark_tokens() {
+        fn token_rgb(name: &str) -> [u8; 3] {
+            let css = crate::render::TOKENS_DARK_CSS;
+            let i = css
+                .find(&format!("{name}:"))
+                .unwrap_or_else(|| panic!("no `{name}:` in tokens-dark.css"));
+            let rest = &css[i + name.len() + 1..];
+            let h = rest.find('#').expect("a hex colour after the token");
+            let hex = &rest[h + 1..h + 7];
+            let ch = |a: usize| u8::from_str_radix(&hex[a..a + 2], 16).unwrap();
+            [ch(0), ch(2), ch(4)]
+        }
+        for (name, konst) in [
+            ("--tali-bg", BG),
+            ("--tali-fg", FG),
+            ("--tali-muted", MUTED),
+            ("--tali-accent", ACCENT),
+            ("--tali-border", BORDER),
+        ] {
+            assert_eq!(
+                token_rgb(name),
+                konst,
+                "card.rs {name} const drifted from tokens-dark.css"
+            );
+        }
+    }
+
     #[test]
     fn render_card_is_deterministic() {
         assert_eq!(render_card(&sample()), render_card(&sample()));

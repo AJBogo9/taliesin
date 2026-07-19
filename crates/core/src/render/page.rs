@@ -181,16 +181,21 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         AssetMode::Inline => {
             let site_css = if p.with_site_css { SITE_CSS } else { "" };
             // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer
-            // never matches: drop it from the main sheet and append CSS-only theming
-            // instead.
-            let dark = if bare { "" } else { DARK_CSS };
+            // never matches: drop the dark token override + dark recolours from the main
+            // sheet and append flattened CSS-only theming instead.
+            let (tokens_dark, dark) = if bare {
+                ("", "")
+            } else {
+                (TOKENS_DARK_CSS, DARK_CSS)
+            };
             let bare_theme = if bare {
                 bare_theme_css(p.theme_default)
             } else {
                 String::new()
             };
-            let style_block =
-                format!("<style>{FONTS_CSS}{BASE_CSS}{dark}{site_css}{bare_theme}</style>");
+            let style_block = format!(
+                "<style>{FONTS_CSS}{TOKENS_CSS}{tokens_dark}{BASE_CSS}{dark}{site_css}{bare_theme}</style>"
+            );
             let katex_block = if p.ship_katex {
                 format!("\n<style>{KATEX_CSS}</style>")
             } else {
@@ -308,13 +313,14 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     )
 }
 
-/// CSS-only theming for `--bare` output (no `[data-theme]` script). `dark.css` is
-/// uniformly `html[data-theme="dark"]`-prefixed, so rewriting that prefix to `:root`
+/// CSS-only theming for `--bare` output (no `[data-theme]` script). The dark layer is
+/// the palette override (`tokens-dark.css`) plus the recoloured scopes/boxes (`dark.css`),
+/// both uniformly `html[data-theme="dark"]`-prefixed, so rewriting that prefix to `:root`
 /// yields a flat dark layer: emitted unconditionally for a forced dark theme, wrapped
 /// in a `prefers-color-scheme: dark` media query for an unforced (`auto`) theme so it
-/// follows the OS. A forced light theme needs nothing (base.css `:root` is light).
+/// follows the OS. A forced light theme needs nothing (tokens.css `:root` is light).
 fn bare_theme_css(default_mode: &str) -> String {
-    let dark = DARK_CSS.replace("html[data-theme=\"dark\"]", ":root");
+    let dark = format!("{TOKENS_DARK_CSS}{DARK_CSS}").replace("html[data-theme=\"dark\"]", ":root");
     match default_mode {
         "dark" => dark,
         "light" => String::new(),

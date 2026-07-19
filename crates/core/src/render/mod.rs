@@ -1143,6 +1143,15 @@ const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.cs
 /// ahead of the base stylesheet so `--tali-font-body` resolves to the loaded face.
 pub(crate) const FONTS_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/fonts-inlined.css"));
 
+/// The owned design tokens (light + sepia palette, fonts, geometry, motion),
+/// `include_str!`'d ahead of BOTH `base.css` (the page) and `deck.css` (the deck) so
+/// the palette is declared exactly once. See `tokens.css`. The dark palette override
+/// is `TOKENS_DARK_CSS` (kept separate so a `--bare` page can flatten just that layer).
+pub(crate) const TOKENS_CSS: &str = include_str!("../../assets/css/tokens.css");
+/// The dark palette override (keyed on `html[data-theme="dark"]` + the deck's
+/// `html.tali-deck-dark`), shared by the page and the deck. See `TOKENS_CSS`.
+pub(crate) const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-dark.css");
+
 /// Base document styling (typography, tables, callouts, references, block
 /// highlight). Emitted by the page builders in `page.rs`/`deck.rs`; KaTeX rides
 /// along when the page has (or, in a live preview, may gain) math.
@@ -1328,10 +1337,10 @@ const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
 const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
 
 /// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
-/// base + dark + site chrome). Exposed so the multi-page build can externalize it into
-/// one content-hashed `_assets/app.<hash>.css` instead of inlining a copy per page.
+/// tokens + base + dark + site chrome). Exposed so the multi-page build can externalize it
+/// into one content-hashed `_assets/app.<hash>.css` instead of inlining a copy per page.
 pub fn shared_site_css() -> String {
-    format!("{FONTS_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
+    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
 }
 
 /// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
