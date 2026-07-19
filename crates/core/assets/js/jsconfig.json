@@ -12,7 +12,6 @@
     "types": [],
     "skipLibCheck": true
   },
-  "//deck.js": "deck.js (the slide engine) is not yet in `include` — its strict-check pass is a tracked follow-up; add it here once clean.",
   "include": [
     "globals.d.ts",
     "../../../../web-client/globals.d.ts",
@@ -32,6 +31,7 @@
     "code-enhance/15-reading-progress.js",
     "code-enhance/16-scroll-a11y.js",
     "code-enhance/17-cite-box.js",
+    "deck.js",
     "qmd-js.js",
     "mermaid.js",
     "scrolly.js",

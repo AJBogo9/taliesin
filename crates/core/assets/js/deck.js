@@ -5,6 +5,20 @@
 // window.TaliesinDeck API (initialize/sync/layout/slide + on/getSlides/getCurrentSlide/
 // registerPlugin) that the preview client and theme extensions bind to.
 (function () {
+  // The deck's single mutable state bag. The navigation/config fields are typed;
+  // the many DOM-ref / handle / mode fields added across init (menu, share, feed,
+  // speaker window, overview, wake-lock, …) are a dynamic bag, so an index
+  // signature keeps them `any` rather than enumerating 40+ optional properties.
+  /**
+   * @type {{
+   *   config: { width: number, height: number, margin: number, center: boolean, hash: boolean, slideNumber: boolean },
+   *   h: number, v: number, frag: number,
+   *   ready: boolean, overview: boolean,
+   *   plugins: any[],
+   *   listeners: Record<string, Array<(...a: any[]) => void>>,
+   *   [k: string]: any
+   * }}
+   */
   var deck = {
     config: {
       width: 960, height: 540, margin: 0.04, // 16:9 default
@@ -17,20 +31,24 @@
     listeners: {},
   };
 
-  function slidesEl() { return document.querySelector('.tali-deck .tali-slides'); }
-  function deckEl() { return document.querySelector('.tali-deck'); }
+  function slidesEl() { return /** @type {HTMLElement | null} */ (document.querySelector('.tali-deck .tali-slides')); }
+  function deckEl() { return /** @type {HTMLElement | null} */ (document.querySelector('.tali-deck')); }
 
   // Top-level horizontal sections (a stack wrapper counts as one).
+  /** @returns {HTMLElement[]} */
   function tops() {
     var s = slidesEl();
-    return s ? Array.prototype.filter.call(s.children, isSection) : [];
+    return s ? /** @type {HTMLElement[]} */ (Array.prototype.filter.call(s.children, isSection)) : [];
   }
+  /** @param {Element} n */
   function isSection(n) { return n.tagName === 'SECTION'; }
   // The vertical slides of a top: a stack's children, else the top itself.
+  /** @param {HTMLElement} top @returns {HTMLElement[]} */
   function vertsOf(top) {
-    var kids = Array.prototype.filter.call(top.children, isSection);
+    var kids = /** @type {HTMLElement[]} */ (Array.prototype.filter.call(top.children, isSection));
     return kids.length ? kids : [top];
   }
+  /** @param {HTMLElement} top */
   function isStack(top) { return vertsOf(top)[0] !== top; }
 
   function currentSlide() {
@@ -44,6 +62,7 @@
   // Flat list of leaf slides (what getSlides returns), for plugins
   // and the slide-number total.
   function allSlides() {
+    /** @type {HTMLElement[]} */
     var out = [];
     tops().forEach(function (top) {
       if (isStack(top)) vertsOf(top).forEach(function (s) { out.push(s); });
@@ -78,6 +97,8 @@
   // Only top-level runs wrap: positionGrid lays a stack's sub-slides straight across
   // from their wrapper regardless, so wrapping a stack row would desync the grid.
   var OVERVIEW_ROW_MAX = 6; // a run longer than this reflows; up to 6 stays a readable line
+  /** @typedef {{ h: number, v: number }} GridCell */
+  /** @param {GridCell[][]} rows @param {GridCell[]} run */
   function pushRun(rows, run) {
     if (deck.overview && run.length > OVERVIEW_ROW_MAX) {
       var cols = Math.ceil(Math.sqrt(run.length));
@@ -86,8 +107,13 @@
       rows.push(run);
     }
   }
+  /** @returns {GridCell[][]} */
   function gridRows() {
-    var T = tops(), rows = [], run = null;
+    var T = tops();
+    /** @type {GridCell[][]} */
+    var rows = [];
+    /** @type {GridCell[] | null} */
+    var run = null;
     for (var h = 0; h < T.length; h++) {
       if (isStack(T[h])) {
         if (run) { pushRun(rows, run); run = null; }
@@ -101,6 +127,7 @@
     return rows.length ? rows : [[{ h: 0, v: 0 }]];
   }
   // The visual (row, col) of a leaf, plus the row grid it came from.
+  /** @param {number} h @param {number} v */
   function posOf(h, v) {
     var rows = gridRows();
     for (var r = 0; r < rows.length; r++)
@@ -120,14 +147,16 @@
     var W = deck.config.width, H = deck.config.height;
     var gut = deck.overview ? ' scale(.9)' : ''; // shrink tiles in overview to open gutters
     var rows = gridRows(), T = tops(), s = slidesEl();
-    var loc = {}, maxCols = 1; // per top index: its row + the column of its first leaf
+    /** @type {Record<number, { row: number, col0: number }>} */
+    var loc = {};
+    var maxCols = 1; // per top index: its row + the column of its first leaf
     rows.forEach(function (rowArr, r) {
       maxCols = Math.max(maxCols, rowArr.length);
       rowArr.forEach(function (cell, c) { if (!(cell.h in loc)) loc[cell.h] = { row: r, col0: c }; });
     });
     if (s) {
-      s.style.setProperty('--tali-cols', maxCols);
-      s.style.setProperty('--tali-rows', rows.length);
+      s.style.setProperty('--tali-cols', String(maxCols));
+      s.style.setProperty('--tali-rows', String(rows.length));
     }
     T.forEach(function (top, h) {
       var L = loc[h] || { row: 0, col0: 0 };
@@ -145,7 +174,7 @@
   // The camera target for the current state: the cell that fills the 16:9 stage
   // (normal), or the free map camera (overview).
   function cameraTarget() {
-    var rev = deckEl();
+    var rev = /** @type {HTMLElement} */ (deckEl());
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     if (deck.overview) {
@@ -158,6 +187,7 @@
   }
   // Apply a camera (one translate+scale on `.tali-slides`, mapping world -> screen so the
   // target lands centred). mode: 'css' = CSS transition, anything else = instant.
+  /** @param {number} cx @param {number} cy @param {number} scale @param {string} mode */
   function applyCam(cx, cy, scale, mode) {
     var s = slidesEl(), rev = deckEl(); if (!s || !rev) return;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
@@ -173,6 +203,7 @@
   // setCamera: snap (animate falsy) or CSS-tween (animate truthy) to the camera target.
   // A pan IS the transition, so every move — a step, a long jump, overview enter/exit —
   // rides the single CSS transform transition on `.tali-cam-anim`; reduced-motion snaps.
+  /** @param {boolean} animate */
   function setCamera(animate) {
     var t = cameraTarget();
     applyCam(t.cx, t.cy, t.scale, (animate && !reducedMotion()) ? 'css' : 'instant');
@@ -180,8 +211,9 @@
   // Snap the camera to a SPECIFIC cell (h,v) instead of the live deck.h/v. Used by an
   // auto-animate settle so a flushed morph frames its own captured target, not wherever
   // navigation has since advanced to (fixes the 3+-chained-morph camera misframe).
+  /** @param {number} h @param {number} v */
   function setCameraToCell(h, v) {
-    var rev = deckEl();
+    var rev = /** @type {HTMLElement} */ (deckEl());
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     var scale = Math.min(sw / W, sh / H);
@@ -245,8 +277,9 @@
   // so the background travels with the slide as the camera pans, and shows per-tile
   // in overview. `.tali-dark-bg` on the section flips its own text light over a dark
   // / image / gradient background. Set once per layout (the attributes are static).
+  /** @param {HTMLElement} sec @returns {HTMLElement} */
   function ensureSlideBg(sec) {
-    var bg = sec.querySelector(':scope > .tali-slide-bg');
+    var bg = /** @type {HTMLElement | null} */ (sec.querySelector(':scope > .tali-slide-bg'));
     if (!bg) {
       bg = document.createElement('div');
       bg.className = 'tali-slide-bg';
@@ -254,6 +287,7 @@
     }
     return bg;
   }
+  /** @param {HTMLElement} sec */
   function paintSlideBg(sec) {
     var color = sec.getAttribute('data-background-color');
     var gradient = sec.getAttribute('data-background-gradient');
@@ -284,7 +318,9 @@
     else if (color) sec.classList.add('tali-light-bg');
   }
   function applyBackgrounds() { allSlides().forEach(paintSlideBg); }
+  /** @type {Record<string, boolean>} */
   var darkColorCache = Object.create(null);
+  /** @param {string} c */
   function isDarkColor(c) {
     // Resolve ANY CSS colour (named like "white"/"lightblue", hex, rgb(), hsl()) to
     // rgb via the browser, so a light named background is no longer mis-assumed dark
@@ -313,21 +349,26 @@
   // the new one (FLIP: measure both, translate the element to its old spot, then
   // animate to identity). Unmatched elements just appear.
   var AA_SEL = 'h1,h2,h3,h4,p,li,pre,blockquote,img,figure';
+  /** @param {Element | null} s */
   function isAutoAnimate(s) { return !!(s && s.hasAttribute && s.hasAttribute('data-auto-animate')); }
+  /** @param {Element} el */
   function aaKey(el) { return el.tagName + '|' + (el.textContent || '').replace(/\s+/g, ' ').trim(); }
   // Measure matched element rects in both slides (both must be laid out, so the
   // incoming slide is briefly force-shown — no paint happens mid-call).
+  /** @param {HTMLElement} from @param {HTMLElement} to */
   function snapshotMatched(from, to) {
     to.style.setProperty('display', 'block', 'important');
+    /** @type {Record<string, HTMLElement[]>} */
     var byKey = {};
-    Array.prototype.forEach.call(from.querySelectorAll(AA_SEL), function (el) {
+    /** @type {NodeListOf<HTMLElement>} */ (from.querySelectorAll(AA_SEL)).forEach(function (el) {
       (byKey[aaKey(el)] || (byKey[aaKey(el)] = [])).push(el);
     });
+    /** @type {Array<{ to: HTMLElement, fr: DOMRect, tr: DOMRect, ff: string, tf: string }>} */
     var snap = [];
-    Array.prototype.forEach.call(to.querySelectorAll(AA_SEL), function (el) {
+    /** @type {NodeListOf<HTMLElement>} */ (to.querySelectorAll(AA_SEL)).forEach(function (el) {
       var list = byKey[aaKey(el)];
       if (list && list.length) {
-        var a = list.shift();
+        var a = /** @type {HTMLElement} */ (list.shift());
         snap.push({
           to: el,
           fr: a.getBoundingClientRect(), tr: el.getBoundingClientRect(),
@@ -338,6 +379,7 @@
     to.style.removeProperty('display');
     return snap;
   }
+  /** @param {Array<{ to: HTMLElement, fr: DOMRect, tr: DOMRect, ff: string, tf: string }>} snap @param {HTMLElement} to */
   function flipTo(snap, to) {
     // reduced-motion: skip the FLIP tween — the target slide is already in its final
     // layout, so returning early lands the same end state with no inline transition.
@@ -364,6 +406,7 @@
   // the camera and overlay `to` on `from`'s cell so the matched elements morph in
   // place; then snap `to` and the camera to `to`'s real cell together — a net-zero
   // screen move, so the reposition is invisible.
+  /** @param {HTMLElement} from @param {HTMLElement} to */
   function autoAnimateTo(from, to) {
     // `to`'s own cell — captured now (deck.h/v were set to `to` by moveTo before
     // renderMove), so the settle frames THIS morph's target even after nav advances past it.
@@ -405,8 +448,10 @@
   // step; a `pre[data-code-lines]` with K `|`-separated segments contributes K-1
   // steps (segment 0 is the slide's base highlight, applied before any step).
   var FRAG_SEL = '.fragment, .incremental > ul > li, .incremental > ol > li';
+  /** @param {Element | null} slide @returns {Array<{ frag?: Element, mm?: Element, code?: Element, seg?: string }>} */
   function fragsOf(slide) {
     if (!slide) return [];
+    /** @type {Array<{ frag?: Element, mm?: Element, code?: Element, seg?: string }>} */
     var steps = [];
     slide.querySelectorAll(FRAG_SEL + ', pre[data-code-lines], .magic-move').forEach(function (node) {
       if (node.classList.contains('magic-move')) {
@@ -445,9 +490,10 @@
     if (deck.frag > steps.length) deck.frag = steps.length;
     // base state: every code block to its segment 0, every fragment hidden
     slide.querySelectorAll('pre[data-code-lines]').forEach(function (pre) {
-      highlightLines(pre, pre.getAttribute('data-code-lines').split('|')[0]);
+      highlightLines(pre, (pre.getAttribute('data-code-lines') || '').split('|')[0]);
     });
     slide.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('tali-frag-visible'); });
+    /** @type {Map<Element, number>} */
     var mmCount = new Map();
     slide.querySelectorAll('.magic-move').forEach(function (d) { mmCount.set(d, 0); });
     // then apply each taken step in order (later code steps overwrite earlier)
@@ -462,32 +508,37 @@
   // Magic-move: show block `target` of a `.magic-move` div. On an in-slide step
   // (deck.animSteps) it morphs from the previous block: matched lines (same text)
   // glide to their new positions, new lines fade in, the old block fades out.
-  function mmBlocks(div) { return Array.prototype.slice.call(div.querySelectorAll(':scope > pre')); }
+  /** @param {Element} div @returns {HTMLElement[]} */
+  function mmBlocks(div) { return /** @type {HTMLElement[]} */ (Array.prototype.slice.call(div.querySelectorAll(':scope > pre'))); }
+  /** @param {Element} l */
   function lineText(l) { return (l.textContent || '').replace(/\s+/g, ' ').trim(); }
+  /** @param {Element} div @param {number} target */
   function setOrMorphMM(div, target) {
     var pres = mmBlocks(div);
     if (!pres.length) return;
     target = Math.max(0, Math.min(target, pres.length - 1));
-    var prev = div.__mm;
+    var prev = /** @type {any} */ (div).__mm;
     // reduced-motion: fall through to the instant show/hide (no line-glide/fade morph).
     if (deck.animSteps && prev != null && prev !== target && !reducedMotion())
       morphMM(div, pres, prev, target);
     else pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === target); });
-    div.__mm = target;
+    /** @type {any} */ (div).__mm = target;
   }
+  /** @param {Element} div @param {HTMLElement[]} pres @param {number} from @param {number} to */
   function morphMM(div, pres, from, to) {
     var blockFrom = pres[from], blockTo = pres[to];
     var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tali-deck-scale')) || 1;
+    /** @type {Record<string, HTMLElement[]>} */
     var byText = {};
-    Array.prototype.forEach.call(blockFrom.querySelectorAll('.tali-hl-ln'), function (l) {
+    /** @type {NodeListOf<HTMLElement>} */ (blockFrom.querySelectorAll('.tali-hl-ln')).forEach(function (l) {
       (byText[lineText(l)] || (byText[lineText(l)] = [])).push(l);
     });
     blockTo.classList.add('tali-mm-active');
     blockFrom.classList.remove('tali-mm-active'); // fades out (CSS opacity transition)
-    Array.prototype.forEach.call(blockTo.querySelectorAll('.tali-hl-ln'), function (lt) {
+    /** @type {NodeListOf<HTMLElement>} */ (blockTo.querySelectorAll('.tali-hl-ln')).forEach(function (lt) {
       var list = byText[lineText(lt)], st = lt.style;
       if (list && list.length) { // matched line: glide from its old position
-        var lf = list.shift(), rf = lf.getBoundingClientRect(), rt = lt.getBoundingClientRect();
+        var lf = /** @type {HTMLElement} */ (list.shift()), rf = lf.getBoundingClientRect(), rt = lt.getBoundingClientRect();
         st.transition = 'none';
         st.transform = 'translate(' + (rf.left - rt.left) / scale + 'px,' + (rf.top - rt.top) / scale + 'px)';
         void lt.offsetWidth;
@@ -503,6 +554,7 @@
   }
   // Highlight the lines named by `spec` ("3-5", "1,4", "all", "") in a code block,
   // washing them in the accent (the rest keep their contrast). "all"/empty clears the focus.
+  /** @param {Element} pre @param {string | null | undefined} spec */
   function highlightLines(pre, spec) {
     var lines = pre.querySelectorAll('.tali-hl-ln');
     spec = (spec || '').trim();
@@ -518,8 +570,9 @@
   // Clamp a range's upper bound to the rendered line count: highlightLines only ever
   // queries on.has(i+1) for i in [0, lines-1], so a line beyond the code could never
   // match — but an unbounded typo range (`10-100000000`) would OOM-freeze the tab.
+  /** @param {string} spec @param {number} max @returns {Set<number>} */
   function parseLineSpec(spec, max) {
-    var on = new Set();
+    var on = /** @type {Set<number>} */ (new Set());
     spec.split(',').forEach(function (part) {
       var m = part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
       if (m) { for (var n = +m[1], hi = Math.min(+m[2], max); n <= hi; n++) on.add(n); }
@@ -553,6 +606,7 @@
   // scales uniformly). Depends only on content vs box, not viewport, so it needn't
   // re-run on resize. Cleared in overview. The base BASE px is the deck font-size.
   var BASE = 40;
+  /** @param {HTMLElement | null} sec */
   function fitSlide(sec) {
     if (!sec || deck.overview || deck.feed) return; // the feed sizes by CSS font-size, not fit
     sec.style.removeProperty('font-size'); // measure at natural size
@@ -575,7 +629,7 @@
   // size lands (re-targeted per slide change from applyClasses). `fitting` guards the
   // loop: fitSlide's own font-size change can nudge an em-sized embed, whose resize
   // would otherwise re-enter — we ignore fires until the frame after our fit settles.
-  var fitRO = null, fitRORAF = null, fitting = false, pendingRefit = false;
+  var fitRO = /** @type {ResizeObserver | null} */ (null), fitRORAF = /** @type {number | null} */ (null), fitting = false, pendingRefit = false;
   function refitCurrent() {
     // A real content resize arriving while our own fit is settling is swallowed by the
     // loop guard (the observer marks it "seen" during the suppressed broadcast), so
@@ -600,14 +654,17 @@
   function observeCurrentMedia() {
     if (deck.mode !== 'normal' || typeof ResizeObserver === 'undefined') return;
     if (!fitRO) fitRO = new ResizeObserver(refitCurrent);
-    fitRO.disconnect();
+    var ro = fitRO; // captured non-null for the obs() closure
+    ro.disconnect();
     var cur = currentSlide();
     if (!cur) return;
     // Direct children catch a content container growing (a late {js} output appended into
     // an auto-height box); descendant media catch a nested <img>/chart loading inside a
     // fixed box. The `fitting` guard absorbs the text reflow our own font-fit provokes.
+    /** @type {Set<Element>} */
     var seen = new Set();
-    function obs(el) { if (el && !seen.has(el)) { seen.add(el); fitRO.observe(el); } }
+    /** @param {Element} el */
+    function obs(el) { if (el && !seen.has(el)) { seen.add(el); ro.observe(el); } }
     for (var i = 0; i < cur.children.length; i++) obs(cur.children[i]);
     cur.querySelectorAll('img, canvas, svg, video, iframe').forEach(obs);
   }
@@ -648,6 +705,7 @@
   }
   // Move to a slide. `showAll` shows all its fragments (a backward step or a
   // jump lands on a complete slide); otherwise they start hidden (forward entry).
+  /** @param {number} h @param {number} v @param {boolean} showAll */
   function moveTo(h, v, showAll) {
     deck.h = h; deck.v = v;
     clampIndices();
@@ -663,6 +721,7 @@
   function left() { prev(); }
   function down() { moveTopic(1); }
   function up() { moveTopic(-1); }
+  /** @param {number} d */
   function moveTopic(d) {
     var p = posOf(deck.h, deck.v), r = p.row + d;
     if (r < 0 || r >= p.rows.length) return;
@@ -706,7 +765,7 @@
     deck.ov = { scale: fit, cx: gw / 2, cy: gh / 2, fit: fit };
   }
   function ovStage() {
-    var rev = deckEl();
+    var rev = /** @type {HTMLElement} */ (deckEl());
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     return { sw: sw, sh: sh, maxScale: Math.min(sw / W, sh / H) };
@@ -723,6 +782,7 @@
   // Zoom the overview to scale `ns`, keeping the stage-point (px,py) fixed under the
   // anchor (px/py are relative to the deck element's top-left). Shared by wheel zoom
   // and touch pinch so both anchor the zoom identically.
+  /** @param {number} px @param {number} py @param {number} ns */
   function zoomOverviewTo(px, py, ns) {
     var st = ovStage(), scale = deck.ov.scale;
     var tx = st.sw / 2 - scale * deck.ov.cx, ty = st.sh / 2 - scale * deck.ov.cy;
@@ -734,6 +794,7 @@
     clampOv();
     setCamera(false);
   }
+  /** @param {WheelEvent} e */
   function onOverviewWheel(e) {
     if (!deck.overview) return;
     if (!deck.ov) fitOverview();
@@ -750,23 +811,25 @@
       setCamera(false);
       return;
     }
-    var rev = deckEl(), r = rev.getBoundingClientRect();
+    var rev = /** @type {HTMLElement} */ (deckEl()), r = rev.getBoundingClientRect();
     var px = e.clientX - r.left, py = e.clientY - r.top;   // cursor in stage coords
     zoomOverviewTo(px, py, deck.ov.scale * Math.exp(-e.deltaY * 0.0015)); // smooth, proportional
   }
-  var ovDrag = null;
+  var ovDrag = /** @type {{ x: number, y: number, cx: number, cy: number, moved: boolean } | null} */ (null);
   // Mouse / pen drag pans the overview map. Touch is owned entirely by the touch
   // handlers (pan + pinch) so a swipe can never both pan here AND fire nav (B6-31).
+  /** @param {PointerEvent} e */
   function onOverviewPointerDown(e) {
     if (!deck.overview || !deck.ov || e.button !== 0 || e.pointerType === 'touch') return;
     ovDrag = { x: e.clientX, y: e.clientY, cx: deck.ov.cx, cy: deck.ov.cy, moved: false };
   }
+  /** @param {PointerEvent} e */
   function onOverviewPointerMove(e) {
     if (!ovDrag) return;
     var dx = e.clientX - ovDrag.x, dy = e.clientY - ovDrag.y;
     if (!ovDrag.moved && dx * dx + dy * dy < 25) return;    // 5px before it counts as a drag
     ovDrag.moved = true;
-    deckEl().classList.add('tali-ov-panning');
+    /** @type {HTMLElement} */ (deckEl()).classList.add('tali-ov-panning');
     deck.ov.cx = ovDrag.cx - dx / deck.ov.scale;
     deck.ov.cy = ovDrag.cy - dy / deck.ov.scale;
     clampOv();
@@ -779,6 +842,7 @@
     if (rev) rev.classList.remove('tali-ov-panning');
   }
   // Pan (if needed) so the highlighted tile stays comfortably on-screen; keep zoom.
+  /** @param {boolean} animate */
   function ensureCurrentTileVisible(animate) {
     if (!deck.overview || !deck.ov) return;
     var st = ovStage(), W = deck.config.width, H = deck.config.height;
@@ -793,6 +857,7 @@
       setCamera(animate);
     }
   }
+  /** @param {boolean} on */
   function setOverview(on) {
     if (on === deck.overview) return;
     var rev = deckEl();
@@ -813,6 +878,7 @@
   }
   // Move the overview highlight one leaf forward/back in deck order, keeping it
   // on-screen as the map pans.
+  /** @param {number} dCol @param {number} dRow */
   function moveHighlight(dCol, dRow) {
     var p = posOf(deck.h, deck.v), rows = p.rows, r = p.row, c = p.col;
     if (dRow) { r = Math.max(0, Math.min(r + dRow, rows.length - 1)); c = Math.min(c, rows[r].length - 1); }
@@ -823,10 +889,12 @@
     ensureCurrentTileVisible(true);
     announce(slideDesc(currentSlide())); // overview highlight moves are keyboard-only; voice them
   }
+  /** @param {MouseEvent} e */
   function onSlidesClick(e) {
     if (!deck.overview) return;
     if (deck.ovDragged) { deck.ovDragged = false; return; } // that was a pan, not a pick
-    var sec = e.target.closest && e.target.closest('.tali-deck .tali-slides section');
+    var t = /** @type {Element | null} */ (e.target);
+    var sec = /** @type {HTMLElement | null} */ (t && t.closest('.tali-deck .tali-slides section'));
     if (!sec) return;
     e.preventDefault();
     var T = tops();
@@ -839,6 +907,7 @@
 
   // Map a grid cell (h,v) back to its leaf <section>. Used by the speaker view's
   // next-slide preview.
+  /** @param {number} h @param {number} v */
   function leafAt(h, v) {
     var top = tops()[h];
     return top ? (isStack(top) ? vertsOf(top)[v] : top) : null;
@@ -849,6 +918,7 @@
   // next slide as static snapshot previews (cloned `<section>`s, see snapshotInto), the
   // slide's speaker notes (`::: {.notes}`), and a timer + clock. Audience and speaker stay
   // in sync via opener<->popup postMessage (works on file://); either can drive.
+  /** @param {string} url @param {string} val */
   function withQmd(url, val) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'qmd=' + val; }
   function deckBaseUrl() { return location.href.split('#')[0].split('?')[0]; }
   // Only accept/sync with windows of our own origin, so a third-party page that
@@ -858,11 +928,13 @@
   // iframe embedding the deck) and must not drive it. When posting, target our
   // origin on http(s) and fall back to '*' on file:// (a "null" targetOrigin throws).
   var onFile = location.protocol === 'file:';
+  /** @param {MessageEvent} e */
   function sameOrigin(e) { return e.origin === location.origin || ((e.origin === '' || e.origin === 'null') && onFile); }
   function targetOrigin() { return (location.origin && location.origin !== 'null') ? location.origin : '*'; }
 
   // Apply a position received from the other window (the speaker or audience).
   // Never re-broadcasts, so there is no echo loop.
+  /** @param {number} h @param {number} v @param {number | null | undefined} frag */
   function applyRemote(h, v, frag) {
     if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
     deck.h = h; deck.v = v;
@@ -879,6 +951,7 @@
     if (deck.speakerWin && !deck.speakerWin.closed) { try { deck.speakerWin.postMessage(msg, t); } catch (e) {} }
     if (window.opener && !window.opener.closed) { try { window.opener.postMessage(msg, t); } catch (e) {} }
   }
+  /** @param {MessageEvent} e */
   function onMessage(e) {
     if (!sameOrigin(e)) return; // ignore cross-origin drivers
     var d = e.data;
@@ -891,6 +964,7 @@
     if (deck.speakerWin && !deck.speakerWin.closed) { deck.speakerWin.focus(); return; }
     deck.speakerWin = window.open(withQmd(deckBaseUrl(), 'speaker'), 'tali-speaker', 'width=1180,height=760');
   }
+  /** @param {number} h @param {number} v */
   function nextIndex(h, v) {
     var T = tops(), top = T[h];
     if (top && isStack(top) && v < vertsOf(top).length - 1) return { h: h, v: v + 1 };
@@ -901,13 +975,15 @@
   // clone (no morph), so a speaker preview shows the slide as it looks at that step. In
   // speaker mode the live sections never run applyFragments (the deck is display:none), so
   // a raw clone sits at base state (nothing revealed) — this replays the steps onto it.
+  /** @param {Element} clone @param {number} n */
   function revealStepsInClone(clone, n) {
     var steps = fragsOf(clone);
     if (n > steps.length) n = steps.length;
     clone.querySelectorAll('pre[data-code-lines]').forEach(function (pre) {
-      highlightLines(pre, pre.getAttribute('data-code-lines').split('|')[0]); // base: segment 0
+      highlightLines(pre, (pre.getAttribute('data-code-lines') || '').split('|')[0]); // base: segment 0
     });
     clone.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('tali-frag-visible'); });
+    /** @type {Map<Element, number>} */
     var mmCount = new Map();
     clone.querySelectorAll('.magic-move').forEach(function (d) { mmCount.set(d, 0); });
     for (var i = 0; i < n; i++) {
@@ -924,6 +1000,7 @@
   // drawing buffer, not the DOM), so a {js}/canvas viz previews blank. Blit each source
   // canvas's pixels onto its clone. (A WebGL canvas without preserveDrawingBuffer copies
   // blank — same as before, no regression; a tainted canvas throws and is left blank.)
+  /** @param {Element} sourceSec @param {Element} clone */
   function copyCanvases(sourceSec, clone) {
     var src = sourceSec.querySelectorAll('canvas'), dst = clone.querySelectorAll('canvas');
     for (var i = 0; i < src.length && i < dst.length; i++) {
@@ -931,7 +1008,8 @@
         var s = src[i], d = dst[i];
         if (!s.width || !s.height) continue;
         d.width = s.width; d.height = s.height;
-        d.getContext('2d').drawImage(s, 0, 0);
+        var ctx = d.getContext('2d');
+        if (ctx) ctx.drawImage(s, 0, 0);
       } catch (e) {}
     }
   }
@@ -943,6 +1021,7 @@
   // window's already-rendered {js}/KaTeX/SVG output, so the preview matches the audience
   // view without re-executing anything. `fragUpto` reveals steps to that count (the
   // current step for the Current pane, one further for the Next pane).
+  /** @param {HTMLElement | null} pane @param {Element | null} sourceSec @param {number} fragUpto */
   function snapshotInto(pane, sourceSec, fragUpto) {
     if (!pane) return;
     pane.textContent = '';
@@ -960,7 +1039,7 @@
     wrap.style.color = bodyCs.color;
     var slides = document.createElement('div');
     slides.className = 'tali-slides';
-    var clone = sourceSec.cloneNode(true);
+    var clone = /** @type {HTMLElement} */ (sourceSec.cloneNode(true));
     clone.classList.remove('tali-stack', 'tali-overview-current');
     clone.style.removeProperty('transform'); // drop the grid-cell placement; sit at inset:0
     clone.removeAttribute('inert');
@@ -1017,7 +1096,7 @@
     // again once late {js}/KaTeX output settles (window load) and whenever the pane resizes.
     updateSpeakerUI();
     window.addEventListener('load', updateSpeakerUI);
-    var spResizeRAF = null;
+    var spResizeRAF = /** @type {number | null} */ (null);
     window.addEventListener('resize', function () {
       if (spResizeRAF) return;
       spResizeRAF = requestAnimationFrame(function () { spResizeRAF = null; updateSpeakerUI(); });
@@ -1025,7 +1104,7 @@
     document.addEventListener('keydown', onKey);
     window.addEventListener('message', onMessage);
     deck.spStart = Date.now();
-    root.querySelector('.sp-reset').addEventListener('click', function () { deck.spStart = Date.now(); updateSpeakerClock(); });
+    /** @type {HTMLElement} */ (root.querySelector('.sp-reset')).addEventListener('click', function () { deck.spStart = Date.now(); updateSpeakerClock(); });
     if (deck.spClock) clearInterval(deck.spClock); // don't stack intervals on re-init
     deck.spClock = setInterval(updateSpeakerClock, 500);
     // Stop the clock when the speaker window is closed / navigated away (a bfcache
@@ -1045,6 +1124,7 @@
     // #/<slide>[/<v>]/<frag>: append the in-slide step index when past step 0 so a deep
     // link restores the exact fragment. A numeric slide includes its `v` when a frag
     // follows (keeping the frag slot unambiguous); a named slide takes `/<frag>`.
+    /** @type {Array<string | number>} */
     var parts = c && c.id ? [c.id] : [deck.h];
     if (deck.feed) {
       // In the feed every slide is fully shown, so the position is just the slide (no
@@ -1092,10 +1172,11 @@
     } else {
       return false; // an unknown non-numeric target: not ours to handle
     }
-    var f = parseInt(fragPart, 10);
+    var f = parseInt(fragPart || '', 10);
     deck.pendingFrag = isNaN(f) ? null : f; // consumed by onHashChange / init
     return true;
   }
+  /** @param {Element | null} el */
   function indexOf(el) {
     var T = tops();
     for (var i = 0; i < T.length; i++) {
@@ -1144,7 +1225,7 @@
     var el = rev.querySelector('.tali-slide-number');
     if (!el) { el = document.createElement('div'); el.className = 'tali-slide-number'; rev.appendChild(el); }
     var all = allSlides();
-    el.textContent = (all.indexOf(currentSlide()) + 1) + ' / ' + all.length;
+    el.textContent = (all.indexOf(/** @type {HTMLElement} */ (currentSlide())) + 1) + ' / ' + all.length;
   }
 
   // a11y: name each leaf slide "Slide N of M" (the server-side <section> already carries
@@ -1168,13 +1249,15 @@
     }
     return live;
   }
+  /** @param {string} msg */
   function announce(msg) { var live = liveRegion(); if (live) live.textContent = msg; }
   // "Slide N of M: title" for a leaf section (empty string if it isn't a known leaf).
+  /** @param {Element | null} sec */
   function slideDesc(sec) {
-    var all = allSlides(), idx = all.indexOf(sec);
+    var all = allSlides(), idx = all.indexOf(/** @type {HTMLElement} */ (sec));
     if (idx < 0) return '';
     var hd = sec && sec.querySelector('h1,h2,h3');
-    var title = hd ? hd.textContent.trim() : '';
+    var title = hd ? (hd.textContent || '').trim() : '';
     return 'Slide ' + (idx + 1) + ' of ' + all.length + (title ? ': ' + title : '');
   }
   function updateSlideLabels() {
@@ -1189,6 +1272,7 @@
   }
 
   // --- keyboard + touch ---------------------------------------------------
+  /** @param {KeyboardEvent} e */
   function onKey(e) {
     // The share panel is a light-dismiss dialog over any mode (incl. the feed): Escape
     // closes it, every other key is swallowed so the deck behind doesn't act on it.
@@ -1257,6 +1341,7 @@
   // body-level element (not a `.tali-deck` child) so it escapes `.tali-deck`'s stacking
   // context and covers ALL chrome — including the preview dev menu at z-9999. Keys
   // are gated in onKey; a tap dismisses it where there's no Esc/B (touch).
+  /** @param {boolean} on */
   function toggleBlackout(on) {
     var rev = deckEl();
     var was = deck.blackout;
@@ -1277,15 +1362,17 @@
     // defensively to lift a curtain that may already be down) (WCAG 4.1.3).
     if (deck.blackout !== was) announce(deck.blackout ? 'Screen blanked' : 'Resumed');
   }
-  var touch = { x: null, y: null, t: 0 };
-  var ovTouch = null; // overview touch-gesture state: 1-finger pan or 2-finger pinch
+  var touch = /** @type {{ x: number | null, y: number | null, t: number }} */ ({ x: null, y: null, t: 0 });
+  var ovTouch = /** @type {any} */ (null); // overview touch-gesture state: 1-finger pan or 2-finger pinch (mode-dependent shape)
+  /** @param {Touch} a @param {Touch} b */
   function touchDist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
   // Seat (or re-seat, when a finger is added/lifted mid-gesture) an overview touch
   // gesture: two fingers pinch-zoom, one finger pans. Carries `moved` across finger
   // changes so a pinch that decays to a one-finger drag still swallows the tap.
+  /** @param {TouchEvent} e */
   function startOverviewTouch(e) {
     if (!deck.ov) fitOverview();
-    var rect = deckEl().getBoundingClientRect(), moved = ovTouch ? ovTouch.moved : false;
+    var rect = /** @type {HTMLElement} */ (deckEl()).getBoundingClientRect(), moved = ovTouch ? ovTouch.moved : false;
     if (e.touches.length >= 2) {
       ovTouch = { mode: 'pinch', dist: touchDist(e.touches[0], e.touches[1]) || 1, scale: deck.ov.scale, rect: rect, moved: moved };
     } else {
@@ -1293,6 +1380,7 @@
       ovTouch = { mode: 'pan', x: t.clientX, y: t.clientY, cx: deck.ov.cx, cy: deck.ov.cy, rect: rect, moved: moved };
     }
   }
+  /** @param {TouchEvent} e */
   function onTouchStart(e) {
     if (deck.feed) return; // native scroll owns the axis in the feed
     if (deck.overview) {
@@ -1307,6 +1395,7 @@
   // In overview, one finger pans the map and two fingers pinch-zoom toward the
   // centroid (reusing the wheel's zoom math). preventDefault keeps the browser off
   // the gesture (deck.overview sets touch-action:none, so this is cancelable).
+  /** @param {TouchEvent} e */
   function onTouchMove(e) {
     if (!deck.overview || !ovTouch) return;
     e.preventDefault();
@@ -1326,6 +1415,7 @@
       setCamera(false);
     }
   }
+  /** @param {TouchEvent} e */
   function onTouchEnd(e) {
     if (deck.feed) return; // native scroll owns the axis in the feed
     if (deck.overview) {
@@ -1334,7 +1424,7 @@
       else ovTouch = null;
       return; // a still tap falls through to onSlidesClick, which picks the tile
     }
-    if (touch.x == null) return;
+    if (touch.x == null || touch.y == null) return;
     var c = e.changedTouches[0];
     var dx = c.clientX - touch.x, dy = c.clientY - touch.y, dt = Date.now() - touch.t;
     touch.x = null;
@@ -1370,15 +1460,17 @@
       if (pres.length) { deck.animSteps = false; setOrMorphMM(div, pres.length - 1); }
     });
   }
+  /** @param {Element | null} sec */
   function feedLeaf(sec) {
     // The observed target maps to a leaf index via indexOf (handles stack children).
     return indexOf(sec);
   }
+  /** @param {IntersectionObserverEntry[]} entries */
   function onFeedIntersect(entries) {
     if (!deck.feed || !deck.feedRatios) return;
     entries.forEach(function (e) { deck.feedRatios.set(e.target, e.isIntersecting ? e.intersectionRatio : 0); });
     var best = null, bestR = -1;
-    deck.feedRatios.forEach(function (r, sec) { if (r > bestR) { bestR = r; best = sec; } });
+    deck.feedRatios.forEach(function (/** @type {number} */ r, /** @type {Element} */ sec) { if (r > bestR) { bestR = r; best = sec; } });
     if (!best || bestR <= 0) return;
     var ix = feedLeaf(best);
     if (ix.h === deck.h && ix.v === deck.v) return;
@@ -1401,11 +1493,13 @@
     });
     allSlides().forEach(function (s) { deck.feedIO.observe(s); });
   }
+  /** @param {Element | null} sec @param {boolean} smooth */
   function scrollToSlide(sec, smooth) {
     if (!sec) return;
     try { sec.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' }); }
     catch (e) { sec.scrollIntoView(); }
   }
+  /** @param {boolean} smooth */
   function scrollToCurrent(smooth) { scrollToSlide(currentSlide(), smooth); }
   // Enter the feed: swap to the CSS font-size layout, drop the camera's inline
   // transforms + fit sizes, reveal everything, and start the observer. Idempotent, so a
@@ -1456,16 +1550,20 @@
   }
 
   // --- events + plugins (deck API) -----------------------------------
+  /** @param {string} evt @param {(...a: any[]) => void} cb */
   function on(evt, cb) { (deck.listeners[evt] = deck.listeners[evt] || []).push(cb); }
+  /** @param {string} evt */
   function fire(evt) {
     var detail = { h: deck.h, v: deck.v, currentSlide: currentSlide() };
     (deck.listeners[evt] || []).forEach(function (cb) { try { cb(detail); } catch (e) {} });
   }
+  /** @param {any} p */
   function initPlugin(p) {
     if (!p || p.__qmdInited || typeof p.init !== 'function') return;
     p.__qmdInited = true;
     try { p.init(facade); } catch (e) {}
   }
+  /** @param {any} p */
   function registerPlugin(p) { if (p) { deck.plugins.push(p); if (deck.ready) initPlugin(p); } }
 
   // --- offline QR encoder (C-ADD-2) ---------------------------------------
@@ -1480,23 +1578,28 @@
     var DATACAP_L = [19, 34, 55, 80, 108, 136, 156, 194, 232, 274];
     var ALIGN = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
     var FORMAT_L = [30660, 29427, 32170, 30877, 26159, 25368, 27713, 26998]; // level L, masks 0..7
+    /** @type {Record<number, number>} */
     var VERSION_INFO = { 7: 31892, 8: 34236, 9: 39577, 10: 42195 };
     var REMAINDER = [0, 7, 7, 7, 7, 7, 0, 0, 0, 0]; // remainder bits, v1..10
     var EXP = new Array(512), LOG = new Array(256);
     (function () { var x = 1; for (var i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; } for (var j = 255; j < 512; j++) EXP[j] = EXP[j - 255]; })();
+    /** @param {number} a @param {number} b */
     function gmul(a, b) { return (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]]; }
+    /** @param {number} n @returns {number[]} */
     function rsGen(n) { // generator poly, high-degree-first, excluding the leading 1
-      var g = [1];
-      for (var i = 0; i < n; i++) { var ng = new Array(g.length + 1).fill(0); for (var j = 0; j < g.length; j++) { ng[j + 1] ^= g[j]; ng[j] ^= gmul(g[j], EXP[i]); } g = ng; }
-      var out = []; for (var k = g.length - 2; k >= 0; k--) out.push(g[k]); return out;
+      var g = /** @type {number[]} */ ([1]);
+      for (var i = 0; i < n; i++) { var ng = /** @type {number[]} */ (new Array(g.length + 1).fill(0)); for (var j = 0; j < g.length; j++) { ng[j + 1] ^= g[j]; ng[j] ^= gmul(g[j], EXP[i]); } g = ng; }
+      var out = /** @type {number[]} */ ([]); for (var k = g.length - 2; k >= 0; k--) out.push(g[k]); return out;
     }
+    /** @param {number[]} data @param {number} n @returns {number[]} */
     function rsEnc(data, n) {
       var gen = rsGen(n), res = data.slice(); for (var z = 0; z < n; z++) res.push(0);
       for (var k = 0; k < data.length; k++) { var coef = res[k]; if (coef !== 0) for (var m = 0; m < n; m++) res[k + m + 1] ^= gmul(coef, gen[m]); }
       return res.slice(data.length);
     }
+    /** @param {string} str @returns {number[]} */
     function utf8(str) {
-      var b = [];
+      var b = /** @type {number[]} */ ([]);
       for (var i = 0; i < str.length; i++) {
         var c = str.charCodeAt(i);
         if (c < 0x80) b.push(c);
@@ -1506,35 +1609,40 @@
       }
       return b;
     }
+    /** @param {string} text */
     function encode(text) {
       var bytes = utf8(text), ver = 0, ccBits = 8;
       for (var v = 1; v <= 10; v++) { ccBits = v < 10 ? 8 : 16; if (4 + ccBits + 8 * bytes.length <= DATACAP_L[v - 1] * 8) { ver = v; break; } }
       if (!ver) throw new Error('QR: data too long');
-      var bits = [];
+      var bits = /** @type {number[]} */ ([]);
+      /** @param {number} val @param {number} len */
       function put(val, len) { for (var i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); }
       put(0x4, 4); put(bytes.length, ccBits);
       for (var i = 0; i < bytes.length; i++) put(bytes[i], 8);
       var cap = DATACAP_L[ver - 1] * 8;
       for (var t = 0; t < 4 && bits.length < cap; t++) bits.push(0);
       var padBits = 8 - (bits.length % 8); for (var pb = 0; pb < padBits; pb++) bits.push(0);
-      var data = [];
+      var data = /** @type {number[]} */ ([]);
       for (var k = 0; k < bits.length; k += 8) { var by = 0; for (var mm = 0; mm < 8; mm++) by = (by << 1) | bits[k + mm]; data.push(by); }
       var padcw = [0xec, 0x11], pi = 0; while (data.length < DATACAP_L[ver - 1]) data.push(padcw[pi++ % 2]);
-      var ec = EC_L[ver - 1], blocks = [], eccs = [], off = 0;
+      var ec = EC_L[ver - 1], blocks = /** @type {number[][]} */ ([]), eccs = /** @type {number[][]} */ ([]), off = 0;
       GROUPS_L[ver - 1].forEach(function (grp) { for (var b = 0; b < grp[0]; b++) { var blk = data.slice(off, off + grp[1]); off += grp[1]; blocks.push(blk); eccs.push(rsEnc(blk, ec)); } });
       var maxData = 0; blocks.forEach(function (b) { if (b.length > maxData) maxData = b.length; });
-      var out = [];
+      var out = /** @type {number[]} */ ([]);
       for (var c = 0; c < maxData; c++) blocks.forEach(function (b) { if (c < b.length) out.push(b[c]); });
       for (var e = 0; e < ec; e++) eccs.forEach(function (b) { out.push(b[e]); });
-      var seq = [];
+      var seq = /** @type {number[]} */ ([]);
       out.forEach(function (by) { for (var i2 = 7; i2 >= 0; i2--) seq.push((by >> i2) & 1); });
       for (var r = 0; r < REMAINDER[ver - 1]; r++) seq.push(0);
       return buildMatrix(ver, seq);
     }
+    /** @param {number} ver @param {number[]} seq */
     function buildMatrix(ver, seq) {
-      var size = ver * 4 + 17, mods = [], fn = [];
+      var size = ver * 4 + 17, mods = /** @type {boolean[][]} */ ([]), fn = /** @type {boolean[][]} */ ([]);
       for (var i = 0; i < size; i++) { mods.push(new Array(size).fill(false)); fn.push(new Array(size).fill(false)); }
+      /** @param {number} r @param {number} c @param {boolean} v */
       function set(r, c, v) { mods[r][c] = v; fn[r][c] = true; }
+      /** @param {number} r @param {number} c */
       function finder(r, c) {
         for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++) {
           var rr = r + dr, cc = c + dc; if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
@@ -1564,19 +1672,22 @@
         }
         upward = !upward;
       }
-      var bestMask = 0, bestPen = Infinity, bestMods = null;
+      var bestMask = 0, bestPen = Infinity, bestMods = /** @type {boolean[][] | null} */ (null);
       for (var mask = 0; mask < 8; mask++) { var m = applyMask(mods, fn, size, mask), pen = penalty(m, size); if (pen < bestPen) { bestPen = pen; bestMask = mask; bestMods = m; } }
-      placeFormat(bestMods, size, FORMAT_L[bestMask]);
-      if (ver >= 7) placeVersion(bestMods, size, VERSION_INFO[ver]);
+      placeFormat(/** @type {boolean[][]} */ (bestMods), size, FORMAT_L[bestMask]);
+      if (ver >= 7) placeVersion(/** @type {boolean[][]} */ (bestMods), size, VERSION_INFO[ver]);
       return { size: size, mods: bestMods };
     }
+    /** @param {boolean[][]} fn @param {number} size */
     function reserveFormat(fn, size) {
       for (var i = 0; i <= 8; i++) if (i !== 6) { fn[8][i] = true; fn[i][8] = true; }
       for (var j = 0; j < 8; j++) { fn[8][size - 1 - j] = true; fn[size - 1 - j][8] = true; }
     }
+    /** @param {boolean[][]} fn @param {number} size */
     function reserveVersion(fn, size) { for (var i = 0; i < 6; i++) for (var j = 0; j < 3; j++) { fn[i][size - 11 + j] = true; fn[size - 11 + j][i] = true; } }
+    /** @param {boolean[][]} src @param {boolean[][]} fn @param {number} size @param {number} mask @returns {boolean[][]} */
     function applyMask(src, fn, size, mask) {
-      var m = [];
+      var m = /** @type {boolean[][]} */ ([]);
       for (var r = 0; r < size; r++) {
         m.push(src[r].slice());
         for (var c = 0; c < size; c++) {
@@ -1595,7 +1706,9 @@
       }
       return m;
     }
+    /** @param {boolean[][]} m @param {number} size @param {number} bits */
     function placeFormat(m, size, bits) {
+      /** @param {number} i */
       function bit(i) { return ((bits >> i) & 1) === 1; }
       for (var c = 0; c <= 5; c++) m[8][c] = bit(14 - c);
       m[8][7] = bit(8); m[8][8] = bit(7); m[7][8] = bit(6);
@@ -1604,13 +1717,16 @@
       for (var j = 0; j <= 6; j++) m[size - 1 - j][8] = bit(14 - j);
       m[size - 8][8] = true;
     }
+    /** @param {boolean[][]} m @param {number} size @param {number} bits */
     function placeVersion(m, size, bits) {
       for (var i = 0; i < 18; i++) { var b = ((bits >> i) & 1) === 1, r = Math.floor(i / 3), c = i % 3; m[r][size - 11 + c] = b; m[size - 11 + c][r] = b; }
     }
+    /** @param {Array<number|boolean>} seq @param {boolean[]} pat @param {number} from */
     function findPat(seq, pat, from) {
       for (var i = from; i <= seq.length - pat.length; i++) { var ok = true; for (var j = 0; j < pat.length; j++) if (!!seq[i + j] !== pat[j]) { ok = false; break; } if (ok) return i; }
       return -1;
     }
+    /** @param {Array<number|boolean>} seq @param {number} size */
     function n3Line(seq, size) {
       var pat = [true, false, true, true, true, false, true], count = 0, idx = findPat(seq, pat, 0);
       while (idx !== -1) {
@@ -1622,10 +1738,11 @@
       }
       return count;
     }
+    /** @param {boolean[][]} m @param {number} size */
     function penalty(m, size) {
       var n1 = 0, n2 = 0, n3 = 0, dark = 0, r, c;
       for (r = 0; r < size; r++) {
-        var rowRun = 1, colRun = 1, col = new Array(size);
+        var rowRun = 1, colRun = 1, col = /** @type {boolean[]} */ (new Array(size));
         for (c = 0; c < size; c++) {
           col[c] = m[c][r]; dark += m[r][c] ? 1 : 0;
           if (c > 0) {
@@ -1646,10 +1763,12 @@
   // Render an encoded QR to a self-contained, theme-independent SVG string (always
   // black-on-white with a 4-module quiet zone, whatever the deck theme — scanners need
   // that contrast). Returns null if the text won't fit a v10-L symbol.
+  /** @param {string} text */
   function qrSvg(text) {
     var q; try { q = qrEncode(text); } catch (e) { return null; }
+    var mods = /** @type {boolean[][]} */ (q.mods); // non-null once encode() returned without throwing
     var n = q.size, qz = 4, dim = n + qz * 2, d = '';
-    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.mods[r][c]) d += 'M' + (c + qz) + ' ' + (r + qz) + 'h1v1h-1z';
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (mods[r][c]) d += 'M' + (c + qz) + ' ' + (r + qz) + 'h1v1h-1z';
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim +
       '" shape-rendering="crispEdges" role="img" aria-label="QR code linking to this view">' +
       '<rect width="' + dim + '" height="' + dim + '" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
@@ -1660,6 +1779,7 @@
   // and so undiscoverable; this surfaces them in a corner menu plus a progress bar +
   // prev/next arrows. Built once in normal mode; auto-hides on idle. Fixed to the
   // viewport (not the scaled .tali-slides), so it doesn't ride the deck transform.
+  /** @param {string} p */
   function svg(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
   var IC = {
     menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
@@ -1670,11 +1790,14 @@
     present: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M10 8l5 3-5 3z"/><path d="M8 21h8"/>'),
     share: svg('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h3v3M20 14v6M14 20h3"/>'),
   };
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  /** @param {any} s */
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return /** @type {Record<string, string>} */ ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  /** @param {string} action @param {string} ico @param {string} label @param {string} [hint] */
   function tool(action, ico, label, hint) {
     return '<button class="tali-menu-item" data-action="' + action + '"><span class="tali-menu-ico">' + ico +
       '</span><span class="tali-menu-label">' + label + '</span>' + (hint ? '<span class="tali-menu-hint">' + hint + '</span>' : '') + '</button>';
   }
+  /** @param {string} k @param {string} d */
   function key(k, d) { return '<div class="tali-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
   var KEYS_HTML =
     key('← →', 'Navigate') + key('↑ ↓', 'Jump topic') + key('Space', 'Next') +
@@ -1697,8 +1820,8 @@
       '<button class="tali-ctl tali-ctl-next" aria-label="Next slide" title="Next (→)">›</button>' +
       '<button class="tali-ctl tali-ctl-menu" aria-label="Menu" title="Menu (m)" aria-haspopup="dialog" aria-expanded="false">' + IC.menu + '</button>';
     rev.appendChild(ctl);
-    ctl.querySelector('.tali-ctl-prev').addEventListener('click', function () { prev(); });
-    ctl.querySelector('.tali-ctl-next').addEventListener('click', function () { next(); });
+    /** @type {HTMLElement} */ (ctl.querySelector('.tali-ctl-prev')).addEventListener('click', function () { prev(); });
+    /** @type {HTMLElement} */ (ctl.querySelector('.tali-ctl-next')).addEventListener('click', function () { next(); });
     deck.menuBtn = ctl.querySelector('.tali-ctl-menu');
     deck.menuBtn.addEventListener('click', function () { toggleMenu(); });
     deck.chrome = { fill: prog.querySelector('.tali-progress-fill'), ctl: ctl };
@@ -1720,6 +1843,7 @@
     // A 3-state Auto/Light/Dark segment (mirrors the page's reader theme control); "Auto" clears
     // the stored key so the deck resumes following the OS. Standalone decks only — an embedded
     // deck follows its host, so `taliDeckEmbedded` suppresses the row.
+    /** @param {string} v @param {string} l */
     var themeOpt = function (v, l) {
       return '<button class="tali-theme-opt" data-theme-choice="' + v + '" aria-pressed="false">' + l + '</button>';
     };
@@ -1755,7 +1879,7 @@
     var all = allSlides(), cur = currentSlide(), html = '';
     for (var i = 0; i < all.length; i++) {
       var hd = all[i].querySelector('h1,h2,h3');
-      var label = hd ? hd.textContent.trim() : ('Slide ' + (i + 1));
+      var label = hd ? (hd.textContent || '').trim() : ('Slide ' + (i + 1));
       html += '<button class="tali-menu-slide' + (all[i] === cur ? ' tali-on' : '') + '" data-i="' + i + '">' +
         '<span class="tali-menu-slide-n">' + (i + 1) + '</span><span class="tali-menu-slide-t">' + esc(label) + '</span></button>';
     }
@@ -1765,6 +1889,7 @@
   }
   function markActiveTools() {
     if (!deck.menu) return;
+    /** @param {string} action @param {any} on */
     var set = function (action, on) {
       var b = deck.menu.querySelector('[data-action="' + action + '"]');
       if (b) b.classList.toggle('tali-on', !!on);
@@ -1783,12 +1908,14 @@
       btns[i].classList.toggle('tali-on', on);
     }
   }
+  /** @param {MouseEvent} e */
   function onMenuClick(e) {
-    var slide = e.target.closest && e.target.closest('.tali-menu-slide');
-    if (slide) { jumpToIndex(parseInt(slide.getAttribute('data-i'), 10)); return; }
-    var opt = e.target.closest && e.target.closest('.tali-theme-opt');
+    var t = /** @type {Element | null} */ (e.target);
+    var slide = t && t.closest('.tali-menu-slide');
+    if (slide) { jumpToIndex(parseInt(slide.getAttribute('data-i') || '', 10)); return; }
+    var opt = t && t.closest('.tali-theme-opt');
     if (opt) { setThemeChoice(opt.getAttribute('data-theme-choice')); return; } // stay open; reflects state
-    var item = e.target.closest && e.target.closest('.tali-menu-item');
+    var item = t && t.closest('.tali-menu-item');
     if (!item) return;
     var a = item.getAttribute('data-action');
     toggleMenu(false);
@@ -1800,6 +1927,7 @@
     else if (a === 'speaker') openSpeaker();
     else if (a === 'fullscreen') toggleFullscreen();
   }
+  /** @param {boolean} [force] */
   function toggleMenu(force) {
     if (!deck.menu) return;
     var open = (force == null) ? deck.menu.hasAttribute('hidden') : force;
@@ -1822,6 +1950,7 @@
       if (focusInMenu && deck.menuBtn) deck.menuBtn.focus();
     }
   }
+  /** @param {number} i */
   function jumpToIndex(i) {
     var all = allSlides(), el = all[i];
     if (!el) return;
@@ -1897,9 +2026,9 @@
     backdrop.setAttribute('hidden', '');
     document.body.appendChild(backdrop);
     backdrop.addEventListener('click', function () { closeShare(); });
-    wrap.querySelector('.tali-share-close').addEventListener('click', function () { closeShare(); });
-    wrap.querySelector('.tali-share-copy').addEventListener('click', copyShare);
-    wrap.querySelector('.tali-share-url').addEventListener('focus', function () { this.select(); });
+    /** @type {HTMLElement} */ (wrap.querySelector('.tali-share-close')).addEventListener('click', function () { closeShare(); });
+    /** @type {HTMLElement} */ (wrap.querySelector('.tali-share-copy')).addEventListener('click', copyShare);
+    /** @type {HTMLElement} */ (wrap.querySelector('.tali-share-url')).addEventListener('focus', /** @this {HTMLInputElement} */ function () { this.select(); });
     deck.share = wrap; deck.shareBackdrop = backdrop;
   }
   function openShare() {
@@ -1936,21 +2065,23 @@
       navigator.clipboard.writeText(input.value).then(done, function () { legacyCopy(input); done(); });
     } else { legacyCopy(input); done(); }
   }
+  /** @param {HTMLInputElement} input */
   function legacyCopy(input) { input.focus(); input.select(); try { document.execCommand('copy'); } catch (e) {} }
   // Apply a theme CHOICE from the segment. 'auto' clears the stored key so the deck resumes
   // following the OS (taliDeckSetTheme handles the persistence); light/dark pin it.
+  /** @param {string | null} choice */
   function setThemeChoice(choice) {
     if (!window.taliDeckSetTheme) return;
-    window.taliDeckSetTheme(choice);
+    window.taliDeckSetTheme(/** @type {string} */ (choice));
     updateThemeSeg();
   }
   function updateChrome() {
     if (!deck.chrome) return;
-    var all = allSlides(), idx = all.indexOf(currentSlide());
+    var all = allSlides(), idx = all.indexOf(/** @type {HTMLElement} */ (currentSlide()));
     var pct = all.length ? (idx + 1) / all.length * 100 : 0;
     deck.chrome.fill.style.width = pct + '%';
   }
-  var idleTimer, coldOpen = true;
+  var idleTimer = /** @type {number | undefined} */ (undefined), coldOpen = true;
   function showChrome() {
     document.documentElement.classList.remove('tali-idle');
     clearTimeout(idleTimer);
@@ -1964,8 +2095,9 @@
   }
 
   // --- lifecycle ----------------------------------------------------------
+  /** @param {any} [opts] */
   function initialize(opts) {
-    if (opts) for (var k in opts) deck.config[k] = opts[k];
+    if (opts) for (var k in opts) (/** @type {any} */ (deck.config))[k] = opts[k];
     if (deck.ready) { sync(); return facade; } // idempotent: client.js may call again
     var rev = deckEl();
     if (!rev || !slidesEl()) return facade;
@@ -2009,7 +2141,7 @@
     // Coalesce a burst of resize events (a drag-resize / rotate fires many) into ONE
     // layout per animation frame — layout re-fits every slide (fitSlide measures each),
     // so running it per-event thrashed the main thread.
-    var resizeRAF = null;
+    var resizeRAF = /** @type {number | null} */ (null);
     window.addEventListener('resize', function () {
       if (resizeRAF) return;
       resizeRAF = requestAnimationFrame(function () {
@@ -2026,7 +2158,7 @@
       rev.addEventListener('touchmove', onTouchMove, { passive: false }); // overview: own pan/pinch
       rev.addEventListener('touchend', onTouchEnd, { passive: true });
       rev.addEventListener('touchcancel', onTouchCancel, { passive: true }); // OS interruption: reset gesture
-      slidesEl().addEventListener('click', onSlidesClick);
+      /** @type {HTMLElement} */ (slidesEl()).addEventListener('click', onSlidesClick);
       rev.addEventListener('wheel', onOverviewWheel, { passive: false }); // overview: zoom the map
       rev.addEventListener('pointerdown', onOverviewPointerDown);         // overview: drag to pan
       window.addEventListener('pointermove', onOverviewPointerMove);
@@ -2047,8 +2179,8 @@
       // Embedded in a same-origin page: follow the host's light/dark toggle live.
       if (window.taliDeckEmbedded && window.taliDeckApplyTheme) {
         try {
-          new MutationObserver(window.taliDeckApplyTheme)
-            .observe(window.top.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+          new MutationObserver(/** @type {any} */ (window.taliDeckApplyTheme))
+            .observe(/** @type {Window} */ (window.top).document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
         } catch (e) {}
       }
       // A deck opens AS a deck: stepped slides on landscape/desktop, the mobile
@@ -2088,10 +2220,10 @@
 
   var facade = {
     initialize: initialize,
-    configure: function (o) { if (o) for (var k in o) deck.config[k] = o[k]; },
+    configure: /** @param {any} o */ function (o) { if (o) for (var k in o) (/** @type {any} */ (deck.config))[k] = o[k]; },
     sync: sync,
     layout: layout,
-    slide: function (h, v) {
+    slide: /** @param {number} h @param {number} v */ function (h, v) {
       // In the feed, "go to slide" scrolls (keeps click-to-source-from-editor working);
       // native snap settles the observer, which then updates the counter + hash.
       if (deck.feed) {
