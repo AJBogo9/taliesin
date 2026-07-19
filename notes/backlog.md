@@ -964,9 +964,6 @@ under-sells machinery that already ships.)
 - **PL14 — `check`'s Environment footer spawns interpreters + prints an always-green block** every run
   (`check.rs:562`, `:581`) on a command documented "does NOT execute code cells", duplicating `doctor`. Print it
   only when a used language is degraded; keep JSON `environment` always-on. S–M · med. **VERIFIED.**
-- **PL15 — Document `new --draft`/`--tour`** (`cli.rs:495`) — absent from both help surfaces (`main.rs:152,348`)
-  though the `init` scaffold advertises `--draft` — and replace the drift-prone one-line `usage:` strings (build's
-  at `build.rs:160` already omits `--format json`) with `subcommand_help(cmd)`. Trivial–S · med. **VERIFIED.**
 - **PL18 — One `--format` error helper** (two wordings/styles across `check`/`map`/`symbols` vs `doctor`/`publish`)
   + resolve the hidden per-command `--out`/`--dir` aliasing. Trivial · low-med. **VERIFIED (cited).**
 

@@ -397,6 +397,16 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
         ],
         "new" => &[
             ("--dir", true, "project root to scaffold into"),
+            (
+                "--draft",
+                false,
+                "mark the scaffold draft: true (held out of the build)",
+            ),
+            (
+                "--tour",
+                false,
+                "deck only: scaffold a guided, self-explaining deck",
+            ),
             ("--json", false, "print a json receipt"),
         ],
         "schema" => &[("--out", true, "output dir")],

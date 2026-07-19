@@ -153,7 +153,7 @@ fn usage() {
     println!("Author");
     println!("  init   [dir]               scaffold a starter site you can preview right away");
     println!("                             (writes _site.yml + index.tmd; default: current dir)");
-    println!("  new <post|page|deck|paper> <slug> [--dir <root>] [--json]");
+    println!("  new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--tour] [--json]");
     println!("                             scaffold one document, correct on its first save");
     println!();
     println!("Preview & build");
@@ -356,7 +356,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin vocab | jq .cellOptions\n"
         }
         "new" => {
-            "taliesin new <post|page|deck|paper> <slug> [--dir <root>] [--json]\n\
+            "taliesin new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--tour] [--json]\n\
              \n\
              Scaffold one document that is correct on its first save: it renders, and\n\
              `taliesin check` passes on it with no diagnostics. A post lands in\n\
@@ -366,10 +366,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
+             \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
+             \x20 --tour         (deck only) scaffold a guided deck: one slide per feature, explained\n\
              \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
              \n\
              Example:\n\
-             \x20 taliesin new paper my-analysis --json\n"
+             \x20 taliesin new post my-first-post --draft\n"
         }
         "symbols" => {
             "taliesin symbols <file.tmd> [--format human|json]\n\
@@ -467,6 +469,13 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
         _ => return None,
     };
     Some(text)
+}
+
+/// The one-line synopsis for `cmd` — the first line of [`subcommand_help`] (`taliesin <cmd> …`),
+/// the single source of truth a subcommand's missing-positional `usage:` error derives from, so
+/// it can't drift from the `--help` block. `None` for a command with no focused help.
+pub(crate) fn command_synopsis(cmd: &str) -> Option<&'static str> {
+    subcommand_help(cmd).and_then(|h| h.lines().next())
 }
 
 #[cfg(test)]
@@ -691,6 +700,23 @@ mod cli_microcopy_tests {
         assert!(
             build_help.contains("--jobs"),
             "build help must document --jobs: {build_help}"
+        );
+        // PL15: `new` help documents `--draft`/`--tour` (the scaffold advertises `--draft`).
+        let new_help = subcommand_help("new").unwrap();
+        assert!(
+            new_help.contains("--draft") && new_help.contains("--tour"),
+            "new help must document --draft + --tour: {new_help}"
+        );
+        // PL15: the missing-positional `usage:` one-liners derive from the `--help` synopsis, so
+        // they can't drift — the derived `new` synopsis carries the new flags, and the `build`
+        // synopsis carries `--format json` (the flag its old hand-written one-liner had dropped).
+        assert!(
+            command_synopsis("new").is_some_and(|s| s.contains("--draft") && s.contains("--tour")),
+            "the derived `new` usage synopsis must carry --draft/--tour"
+        );
+        assert!(
+            command_synopsis("build").is_some_and(|s| s.contains("--format json")),
+            "the derived `build` usage synopsis must carry --format json"
         );
     }
 }

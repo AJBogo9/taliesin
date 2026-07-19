@@ -503,7 +503,11 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         }
     }
     let (Some(kind), Some(slug)) = (positional.first(), positional.get(1)) else {
-        eprintln!("usage: taliesin new <post|page|deck|paper> <slug> [--dir <root>] [--json]");
+        // Derive the synopsis from `new`'s `--help` block so the two can't drift.
+        eprintln!(
+            "usage: {}",
+            crate::command_synopsis("new").unwrap_or("taliesin new <post|page|deck|paper> <slug>")
+        );
         return ExitCode::FAILURE;
     };
     let kind = match NewKind::parse(kind) {

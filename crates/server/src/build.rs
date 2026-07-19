@@ -157,8 +157,13 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     // (the `--jobs` failure was prefixed `error: `; the missing-path one was the usage line).
     let jobs = jobs_result.map_err(|m| format!("error: {m}"))?;
     let path = positionals.first().copied().ok_or_else(|| {
-        "usage: taliesin build <file.tmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
-            .to_string()
+        // Derive the synopsis from `build`'s `--help` block so it can't drift (it once omitted
+        // `--format json`).
+        format!(
+            "usage: {}",
+            crate::command_synopsis("build")
+                .unwrap_or("taliesin build <file.tmd|dir> [out.html] [--out <dir>]")
+        )
     })?;
     // DX11: a format-implying output extension (`build doc.tmd doc.pdf`) is a hard error, not a
     // silent HTML-into-a-.pdf write. Checked here so it is caught for any invocation carrying
