@@ -611,19 +611,25 @@
   img.tali-fig-dark { display: none; }
   html[data-theme="dark"] img.tali-fig-light { display: none; }
   html[data-theme="dark"] img.tali-fig-dark { display: block; }
-  .tali-stderr { border-left-color: var(--tali-callout-warning) !important; background: #fdf6e3 !important; }
-  .tali-error { border-left-color: var(--tali-callout-important) !important; background: #fdecef !important; color: #862033; }
-  /* Sepia code + diagnostics: the light syntax palette and near-white output/error
-     boxes clash with the warm sepia page, so restyle them warm (parallels DARK_CSS).
-     Sepia is a low-contrast reading theme, so these stay muted, not vivid. */
+  /* Exec output + diagnostic boxes derive from the callout family instead of per-theme
+     literals: stderr is the warning surface, the kernel-error box the important surface,
+     each a color-mix of its callout token over the page bg (identical to the matching
+     callout's title tint). Body text clears AA on that tint in every theme (the callout
+     contrast test guarantees it), so they need no per-theme override and the print
+     token-reset reaches them. */
+  .tali-stderr { border-left-color: var(--tali-callout-warning) !important;
+    background: color-mix(in srgb, var(--tali-callout-warning) 13%, var(--tali-bg)) !important; }
+  .tali-error { border-left-color: var(--tali-callout-important) !important;
+    background: color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg)) !important; }
+  /* Sepia syntax scopes: the light syntax palette clashes with the warm sepia page, so
+     restyle the scope colours warm (parallels DARK_CSS). The output/error boxes above are
+     token-derived and need no sepia override. Sepia is low-contrast, so these stay muted. */
   html[data-theme="sepia"] .tali-hl-comment { color: #6c604b; } /* AA (4.8:1) on the sepia code bg */
   html[data-theme="sepia"] .tali-hl-string { color: #3f6a44; }
   html[data-theme="sepia"] .tali-hl-keyword, html[data-theme="sepia"] .tali-hl-storage { color: #9a3b28; }
   html[data-theme="sepia"] .tali-hl-constant, html[data-theme="sepia"] .tali-hl-support { color: #2f5f84; }
   html[data-theme="sepia"] .tali-hl-entity { color: #7d4a86; }
   html[data-theme="sepia"] .tali-hl-variable { color: #9a4a1a; }
-  html[data-theme="sepia"] .tali-stderr { background: #efe4c0 !important; color: #5b4636; }
-  html[data-theme="sepia"] .tali-error { background: #f0dcc8 !important; color: #7a2e22; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
@@ -848,10 +854,9 @@
 
 /* The kernel error box and the `{js}` error box are the same meaning, so they are the same red.
    This used to be Material Design's error red on its own pink: a second vendor red for one idea. */
-.tali-js-error { color: #862033; background: #fdecef; border: 1px solid color-mix(in srgb, var(--tali-callout-important) 45%, transparent); padding: .5em .7em; border-radius: var(--tali-radius-md); overflow: auto; font-size: .85em;
+.tali-js-error { background: color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg)); border: 1px solid color-mix(in srgb, var(--tali-callout-important) 45%, transparent); padding: .5em .7em; border-radius: var(--tali-radius-md); overflow: auto; font-size: .85em;
   /* it's a <pre>, so long stack-trace lines (esp. URLs) would otherwise clip at
      the box edge with no wrap and no scroll-shadow (the background shorthand
      above drops the generic pre rule's shadow). Wrap them so nothing is lost. */
   white-space: pre-wrap; overflow-wrap: anywhere; }
-html[data-theme="sepia"] .tali-js-error { color: #7a2e22; background: #f0dcc8; border-color: #d8b89a; }
 

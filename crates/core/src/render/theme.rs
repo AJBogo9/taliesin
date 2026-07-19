@@ -151,11 +151,12 @@ pub fn theme_head(default_mode: &str) -> String {
   }};
   window.taliGetThemePref = function(){{ return pref(); }};
   window.taliGetThemeChoice = function(){{ return choice(); }};
-  // Paper is white. dark.css recolours the syntax scopes and the diagnostic boxes with
-  // untokenised literals (a dark-mode string is #a5d6ff: 1.6:1 on paper), so the print
-  // stylesheet's token reset cannot reach them. Drop the whole document to the light theme
-  // for the duration of the print job and restore afterwards, the way deck.js already does
-  // for PDF export. `apply()` restores colour-scheme, canvas, and mermaid in one call.
+  // Paper is white. dark.css recolours the syntax scopes with untokenised literals (a
+  // dark-mode string is #a5d6ff: 1.6:1 on paper), so the print stylesheet's token reset
+  // cannot reach them. (The diagnostic boxes are now token-derived, so the reset DOES reach
+  // them; the syntax scopes are what still force the swap.) Drop the whole document to the
+  // light theme for the duration of the print job and restore afterwards, the way deck.js
+  // already does for PDF export. `apply()` restores colour-scheme, canvas, and mermaid.
   try {{
     window.addEventListener("beforeprint", function(){{
       var el = document.documentElement;

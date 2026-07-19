@@ -3988,6 +3988,31 @@ fn theorem_accents_clear_the_graphical_floor_in_every_theme() {
     }
 }
 
+/// The exec output + diagnostic boxes (`.tali-stderr`/`.tali-error`/`.tali-js-error`) derive
+/// their surface from the callout family (a color-mix of the callout token over the page bg,
+/// identical to the matching callout's title tint) instead of per-theme literals. Body text on
+/// that tint clears AA in every theme by the callout-contrast test, so no per-theme override is
+/// needed and the print token-reset reaches them. Pin both halves so a future edit can't silently
+/// re-introduce the ~6 per-theme literals PL12 removed.
+#[test]
+fn diagnostic_boxes_derive_from_callout_tokens_not_per_theme_literals() {
+    assert!(
+        BASE_CSS.contains("color-mix(in srgb, var(--tali-callout-warning) 13%, var(--tali-bg))"),
+        ".tali-stderr must derive its surface from --tali-callout-warning over the bg"
+    );
+    assert!(
+        BASE_CSS.contains("color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg))"),
+        ".tali-error/.tali-js-error must derive their surface from --tali-callout-important"
+    );
+    // No per-theme (dark/sepia) `.tali-stderr`/`.tali-error` override survives.
+    for (name, css) in [("dark.css", DARK_CSS), ("base.css", BASE_CSS)] {
+        assert!(
+            !css.contains("] .tali-stderr {") && !css.contains("] .tali-error {"),
+            "{name} must not re-add a per-theme .tali-stderr/.tali-error override"
+        );
+    }
+}
+
 #[test]
 fn print_and_high_contrast_blocks_outrank_every_theme_block() {
     // `dark.css` is inlined AFTER `base.css` (see page.rs), so a print/contrast override
@@ -4019,9 +4044,10 @@ fn print_and_high_contrast_blocks_outrank_every_theme_block() {
 #[test]
 fn printing_forces_the_light_theme_even_from_dark() {
     // The CSS override above only resets the *tokens*. `dark.css` also recolours the syntax
-    // scopes (`.tali-hl-string` -> #a5d6ff, 1.6:1 on white paper) and the diagnostic boxes,
-    // none of which are tokenised. Swapping `data-theme` to light for the duration of the
-    // print job neutralises all of them at once: the same trick deck.js already uses.
+    // scopes (`.tali-hl-string` -> #a5d6ff, 1.6:1 on white paper), which are NOT tokenised.
+    // Swapping `data-theme` to light for the duration of the print job neutralises them: the
+    // same trick deck.js already uses. (The diagnostic boxes are now token-derived, so the
+    // token reset already reaches those.)
     let head = theme_head("auto");
     assert!(
         head.contains("beforeprint"),

@@ -1,7 +1,9 @@
 
   /* The dark palette tokens live in tokens.css (shared with the deck's `.tali-deck-dark`).
-     This file keeps only what tokens can't express: the recoloured syntax scopes + the
-     diagnostic-box surfaces. (.tali-copy is fully tokenised in base.css now.) */
+     This file keeps only what tokens can't express: the recoloured syntax scopes. The
+     diagnostic boxes (stderr/error/js-error) now derive from the callout tokens over the
+     page bg (base.css), so they no longer need a dark override here. (.tali-copy is fully
+     tokenised in base.css now.) */
   /* Callout title tints are derived from --tali-callout-* via color-mix with transparent,
      so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }
@@ -12,8 +14,3 @@
   html[data-theme="dark"] .tali-hl-constant, html[data-theme="dark"] .tali-hl-support { color: #79c0ff; }
   html[data-theme="dark"] .tali-hl-entity { color: #d2a8ff; }
   html[data-theme="dark"] .tali-hl-variable { color: #ffa657; }
-  /* code-cell output, warnings, and errors: dark equivalents of the light boxes */
-  html[data-theme="dark"] .tali-stderr { background: #2a2415 !important; color: #e8dcc0; }
-  html[data-theme="dark"] .tali-error { background: #2a1820 !important; color: #f2b8c2; }
-  /* a throwing {js} cell's error box: dark equivalent of the light .tali-js-error in base.css */
-  html[data-theme="dark"] .tali-js-error { border-color: #5a2a32; background: #2a1820; color: #f2b8c2; }
