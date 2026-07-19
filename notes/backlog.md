@@ -957,16 +957,19 @@ most of Tier 2 are *surfacing existing capability*, not net-new.
 - **Phantom xref anchors — the two triggers §2 #5 left open** (found by the adversarial review of
   the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing, neither shipping
   in any corpus doc):
-  - **Non-executed, non-render-emitted langs (`{bash}`, `{sql}`, `{julia}`, …).** #5 gated on
-    `include`, but a lang that is neither `exec::kernel_lang` (python|r) nor emitted at render time
-    (mermaid|js) has NO figure/table for *any* value of `include`, so `label: fig-x` on one still
-    registers a phantom and burns a number (verified: `{bash}` + `label: fig-shell` → `id="fig-shell"`
-    count 0 under a confident "Figure 1"). Same bug as #5 on the LANG axis. The clean fix needs the
-    executable-lang set shared into `taliesin-core` (it lives in `crates/server/src/exec.rs`
-    `kernel_lang`, which core can't see); the invariant is `emitted_at_render_time(lang) ||
-    (executes(lang) && include)`. A `render/mod.rs` comment at the `emitted_at_render_time` predicate
-    marks the seam.
-  - **Empty output also phantoms.** `exec.rs` drops output on `inner.trim().is_empty() || !cell.include`,
+  - **Non-executed, non-render-emitted langs (`{bash}`, `{sql}`, `{julia}`, …) — LANDED 2026-07-19.**
+    #5 gated on `include`, but a lang that is neither executed nor emitted at render time had NO
+    figure/table for *any* `include`, yet a `label: fig-x`/`tbl-x` on one still burned a number +
+    registered a phantom (verified: `{bash}` + `label: fig-shell` → real figure shifted to "Figure 2").
+    Fix: a canonical `taliesin_core::render::executes_to_kernel` (python|r) now shared into core; both
+    the figure arm and the table arm gate on `emitted_at_render_time(lang) || (executes_to_kernel(lang)
+    && include)`, so a non-materializing lang keeps its **visible source** (not a numbered float), burns
+    no number, and draws a located `check` warning naming the lang (`{bash}` is not executed…). Server's
+    `exec::kernel_lang` is **drift-locked** to the core set by a test (the "shared, not guessed" the note
+    asked for). Pinned: two render unit tests (figure + table axes, mutation-checked) + the drift-lock;
+    the sibling `include: false` phantom tests (`hidden_cell_xref_targets.rs`) still green. **Do not
+    re-open.**
+  - **Empty output also phantoms** (the still-open twin). `exec.rs` drops output on `inner.trim().is_empty() || !cell.include`,
     so a labelled cell that runs but prints nothing registers an anchor no element carries (verified:
     `label: fig-silent` on a `x = 1+1` cell → dead `@fig-silent`). NOT knowable at render time (it is
     a post-execution fact in the server crate), so unlike #5 it can't be fixed in the render pass;

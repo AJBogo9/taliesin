@@ -1223,6 +1223,25 @@ mod tests {
     use super::*;
     use taliesin_core::render::Cell;
 
+    /// The render pass reserves a `@fig-`/`@tbl-` number only for a lang core believes
+    /// executes (`taliesin_core::render::executes_to_kernel`), while `kernel_lang` is
+    /// what actually runs one. If the two sets ever drift, a `label: fig-*` on a lang
+    /// core thinks executes but the kernel does not (or the reverse) re-opens the
+    /// phantom-anchor bug those two functions exist to prevent. Pin them equal — this
+    /// is the "shared executable set" the render-side comment relies on.
+    #[test]
+    fn kernel_lang_agrees_with_cores_executable_set() {
+        for lang in [
+            "python", "r", "bash", "sql", "julia", "js", "mermaid", "ruby", "",
+        ] {
+            assert_eq!(
+                kernel_lang(lang).is_some(),
+                taliesin_core::render::executes_to_kernel(lang),
+                "kernel_lang and executes_to_kernel disagree on {lang:?}"
+            );
+        }
+    }
+
     fn cell(id: &str) -> CellRef {
         CellRef {
             block_index: 0,

@@ -743,6 +743,81 @@ fn unlabelled_mermaid_stays_a_bare_diagram() {
     );
 }
 
+/// A `{bash}`/`{sql}`/`{julia}`/… cell is neither render-emitted (mermaid/`{js}`) nor
+/// kernel-executed (python/r), so a `label: fig-*` on one can never materialize a
+/// figure. It must NOT burn a figure number or register a phantom anchor that shifts
+/// every later figure down by one — the classic `@fig-x` resolving to a "Figure 1" no
+/// element carries. The cell's source still shows (the author wants to display it), but
+/// as a plain code block, and a located warning names the unreferenceable label.
+#[test]
+fn a_labelled_non_executable_lang_never_phantoms_a_figure_number() {
+    let doc = render_document(
+        "```{bash}\n#| label: fig-shell\n#| fig-cap: \"Shell\"\necho hi\n```\n\n\
+         ![A real one.](r.png){#fig-real}\n\nSee @fig-real.\n",
+    );
+    let body = doc.body_html();
+    // The bash source still shows (visible, not hidden) ...
+    assert!(
+        strip_tags(&body).contains("echo hi"),
+        "the bash source must stay visible: {body}"
+    );
+    // ... but as a plain code block, NOT a numbered figure carrying the phantom anchor.
+    assert!(
+        !body.contains("id=\"fig-shell\""),
+        "no element must carry the phantom `fig-shell` anchor: {body}"
+    );
+    assert!(
+        !body.contains("Figure&nbsp;1: Shell"),
+        "the bash cell must not become a numbered figure: {body}"
+    );
+    // The real figure keeps number 1: the phantom must not have burned it to Figure 2.
+    assert!(
+        body.contains("<a href=\"#fig-real\" class=\"tali-xref\">Figure&nbsp;1</a>"),
+        "the real figure must stay Figure 1, not be shifted by a phantom: {body}"
+    );
+    // A located warning names the unreferenceable label AND the reason (the language).
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("fig-shell") && w.message.contains("bash")),
+        "expected an unreferenceable-label warning naming the language: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+}
+
+/// The same phantom-anchor defect on the TABLE axis: a table only ever materializes
+/// from executed output (a python/r DataFrame), so a `label: tbl-*` on a `{bash}` cell
+/// must not burn a table number or register a phantom `@tbl-` anchor. Here a real
+/// python table (`c.table` is set at render time, so it numbers even without a kernel)
+/// must stay Table 1, not be shifted to Table 2 by the bash cell.
+#[test]
+fn a_labelled_non_executable_lang_never_phantoms_a_table_number() {
+    let doc = render_document(
+        "```{bash}\n#| label: tbl-shell\n#| tbl-cap: \"Shell\"\necho hi\n```\n\n\
+         ```{python}\n#| label: tbl-real\n#| tbl-cap: \"Real\"\ndf\n```\n\nSee @tbl-real.\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        strip_tags(&body).contains("echo hi"),
+        "the bash source must stay visible: {body}"
+    );
+    assert!(
+        !body.contains("id=\"tbl-shell\""),
+        "no element must carry the phantom `tbl-shell` anchor: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#tbl-real\" class=\"tali-xref\">Table&nbsp;1</a>"),
+        "the real table must stay Table 1, not be shifted by a phantom: {body}"
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("tbl-shell") && w.message.contains("bash")),
+        "expected an unreferenceable-label warning naming the language: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn cell_option_lines_are_dropped() {
     let doc = render_document("```{python}\n#| warning: false\nprint(1)\n```\n");

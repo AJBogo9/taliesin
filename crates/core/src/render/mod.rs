@@ -122,6 +122,18 @@ pub fn render_document(src: &str) -> RenderedDoc {
     render_internal(src, None, None, None, None)
 }
 
+/// The languages Taliesin executes against a warm kernel, whose *output block* can
+/// therefore carry a figure/table anchor. This is the canonical set: the render pass
+/// reserves a `@fig-`/`@tbl-` number only for a lang that will actually produce the
+/// float, and `taliesin-server`'s `exec::kernel_lang` (which does the running) is
+/// drift-locked to it by a test. A lang that is neither executed here nor emitted at
+/// render time (mermaid/`{js}`) — `{bash}`, `{sql}`, `{julia}`, … — produces no float,
+/// so labelling one as a figure/table must NOT burn a number or register a phantom
+/// anchor.
+pub fn executes_to_kernel(lang: &str) -> bool {
+    matches!(lang, "python" | "r")
+}
+
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
 /// relative to `base_dir`, mapping each block back to its origin file, and
 /// resolves citations/cross-references against the doc's bibliography.
@@ -577,37 +589,47 @@ fn render_internal_impl(
             match role {
                 CellRole::Figure { anchor, caption } => {
                     // Register from what will EXIST, like the `Listing` arm below — not
-                    // from what the label declares. A python/R figure IS the executor's
-                    // output block, and `include: false` drops that block outright
-                    // (`exec.rs`), so no element will ever carry the anchor, and a number
-                    // spent here would silently shift every later figure down by one.
+                    // from what the label declares. A figure materializes only when it is
+                    // emitted here at render time (mermaid/`{js}`) OR the cell executes
+                    // against a kernel (python/r) with its output kept (`include: true`);
+                    // `include: false` drops that output block outright (`exec.rs`).
                     //
-                    // mermaid/`{js}` figures are emitted right below, at render time, so
-                    // theirs exist whatever `include` says. That is the only reason this
-                    // is keyed on the lang, and it is why the test suite pins BOTH names:
-                    // dropping either from the exemption hides a real figure's anchor.
-                    //
-                    // KNOWN GAP (pre-existing, filed): a lang that is neither emitted here
-                    // nor executed — `{bash}`, `{sql}`, … — has no figure for ANY value of
-                    // `include`, so `label: fig-x` on one still registers a phantom. The
-                    // executable set is `exec::kernel_lang` (python|r) and lives in the
-                    // server crate, which core cannot see; closing it needs that list to
-                    // be shared, not a wider guess here.
+                    // Any OTHER lang — `{bash}`, `{sql}`, `{julia}`, … — is neither
+                    // emitted here nor executed, so it has no figure for ANY value of
+                    // `include`. Registering an anchor + burning a number for one would
+                    // point `@fig-x` at a "Figure N" no element carries and shift every
+                    // later figure down by one. `executes_to_kernel` is the canonical
+                    // executable set (`exec::kernel_lang` is drift-locked to it).
+                    let include = cell.as_ref().is_none_or(|c| c.include);
                     let emitted_at_render_time = matches!(lang.as_str(), "mermaid" | "js");
-                    let never_emitted =
-                        !emitted_at_render_time && cell.as_ref().is_some_and(|c| !c.include);
-                    if never_emitted {
+                    if !(emitted_at_render_time || (executes_to_kernel(&lang) && include)) {
                         if let Some(a) = anchor {
-                            warnings.push(unreferenceable_hidden_label(
-                                "figure",
-                                a,
-                                source_file.clone(),
-                                buf_start,
-                            ));
+                            warnings.push(if include {
+                                unreferenceable_nonexec_label(
+                                    "figure",
+                                    a,
+                                    &lang,
+                                    source_file.clone(),
+                                    buf_start,
+                                )
+                            } else {
+                                unreferenceable_hidden_label(
+                                    "figure",
+                                    a,
+                                    source_file.clone(),
+                                    buf_start,
+                                )
+                            });
                         }
-                        // The block itself stays (hidden): `include: false` still RUNS the
-                        // cell, and the executor only sees cells that reach the block list.
-                        html.push_str(&hidden_cell(&attrs));
+                        // A visible non-executable cell keeps its source (the author wants
+                        // to show the code), just not wrapped as a numbered figure. An
+                        // `include: false` cell still RUNS (if executable) but its output
+                        // is dropped, so hide the source.
+                        if include {
+                            emit(node, &attrs, &mut html);
+                        } else {
+                            html.push_str(&hidden_cell(&attrs));
+                        }
                     } else {
                         fig_count += 1;
                         let fig_num = float_number(chapter, fig_count);
@@ -703,20 +725,13 @@ fn render_internal_impl(
                     // hidden by `echo: false`), like a figure cell.
                     //
                     // A table has no render-time emission path at all — unlike a figure,
-                    // which mermaid/`{js}` can produce here — so `include: false` always
-                    // means no `<table>` and no anchor. Leaving `c.table` unset is what
-                    // keeps `apply_table_captions` from numbering and registering it.
-                    if cell.as_ref().is_some_and(|c| !c.include) {
-                        if let Some(a) = anchor {
-                            warnings.push(unreferenceable_hidden_label(
-                                "table",
-                                a,
-                                source_file.clone(),
-                                buf_start,
-                            ));
-                        }
-                        html.push_str(&hidden_cell(&attrs));
-                    } else {
+                    // which mermaid/`{js}` can produce here — so it materializes ONLY when
+                    // the cell executes (python/r) with its output kept. `include: false`
+                    // or a non-executable lang (`{bash}`, `{sql}`, …) means no `<table>`
+                    // and no anchor; leaving `c.table` unset is what keeps
+                    // `apply_table_captions` from numbering and registering a phantom.
+                    let include = cell.as_ref().is_none_or(|c| c.include);
+                    if executes_to_kernel(&lang) && include {
                         if let Some(c) = cell.as_mut() {
                             c.table = Some(CellTable {
                                 anchor: anchor.clone(),
@@ -729,6 +744,32 @@ fn render_internal_impl(
                             html.push_str(&hidden_cell(&attrs));
                         } else {
                             emit(node, &attrs, &mut html);
+                        }
+                    } else {
+                        if let Some(a) = anchor {
+                            warnings.push(if include {
+                                unreferenceable_nonexec_label(
+                                    "table",
+                                    a,
+                                    &lang,
+                                    source_file.clone(),
+                                    buf_start,
+                                )
+                            } else {
+                                unreferenceable_hidden_label(
+                                    "table",
+                                    a,
+                                    source_file.clone(),
+                                    buf_start,
+                                )
+                            });
+                        }
+                        // A visible non-executable cell keeps its source; an
+                        // `include: false` cell hides it (the executor drops the output).
+                        if include {
+                            emit(node, &attrs, &mut html);
+                        } else {
+                            html.push_str(&hidden_cell(&attrs));
                         }
                     }
                 }
@@ -1732,6 +1773,24 @@ fn unreferenceable_hidden_label(
     Warning::new(format!(
         "{kind} label \u{201c}{anchor}\u{201d} cannot be cross-referenced: `include: false` drops \
          the cell's output, so nothing carries the anchor and `@{anchor}` won't resolve"
+    ))
+    .at(file, line as u32)
+}
+
+/// A labelled figure/table cell whose language Taliesin never runs (`{bash}`, `{sql}`,
+/// `{julia}`, …) can't produce the output the label points at. Unlike the `include:
+/// false` case, the source still shows; the label just cannot resolve, so say why (a
+/// listing label `lst-*` would work, since a listing IS the source).
+fn unreferenceable_nonexec_label(
+    kind: &str,
+    anchor: &str,
+    lang: &str,
+    file: Option<String>,
+    line: usize,
+) -> Warning {
+    Warning::new(format!(
+        "{kind} label \u{201c}{anchor}\u{201d} cannot be cross-referenced: `{{{lang}}}` is not \
+         executed, so it produces no {kind} output and `@{anchor}` won't resolve"
     ))
     .at(file, line as u32)
 }
