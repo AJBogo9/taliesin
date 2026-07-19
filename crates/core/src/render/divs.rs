@@ -301,6 +301,16 @@ pub(crate) fn group_divs(
     }
 
     for (i, fb) in flat.iter().enumerate() {
+        // Skip any spans that already closed before this block (degenerate/empty divs, spans
+        // whose blocks are all consumed) BEFORE opening containing spans. Skipping first is
+        // load-bearing: an empty div at `span_idx` has `close < buf_start` but is not a
+        // containing span, so the open loop would stop on it and never reach the block's own
+        // container — which silently drops the block out of its div (a `.column` after an empty
+        // `.input`, say). Spans are open-sorted, so a still-open ancestor already sits below
+        // `span_idx` on the stack and is never skipped here.
+        while span_idx < spans.len() && spans[span_idx].close < fb.buf_start {
+            span_idx += 1;
+        }
         // Open every span that starts before this block and contains it.
         while span_idx < spans.len()
             && spans[span_idx].open < fb.buf_start
@@ -310,10 +320,6 @@ pub(crate) fn group_divs(
                 span: &spans[span_idx],
                 inner: Vec::new(),
             });
-            span_idx += 1;
-        }
-        // Skip any spans that contain no blocks (degenerate/empty divs).
-        while span_idx < spans.len() && spans[span_idx].close < fb.buf_start {
             span_idx += 1;
         }
 
@@ -415,6 +421,16 @@ fn build_container(
     let data = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
     let concat = |inner: &[Block]| -> String { inner.iter().map(|b| b.html.as_str()).collect() };
 
+    // A `.column width=` is a reveal/Quarto habit the equal-width grid silently ignores — warn.
+    if let Some(w) = super::validate::validate_column_width(
+        &attrs.classes,
+        attrs.get("width"),
+        open_line,
+        file.clone(),
+    ) {
+        warnings.push(w);
+    }
+
     let html = if let Some(kind) = attrs.callout_kind() {
         // Validate the kind against taliesin's callout vocabulary (an unknown kind
         // warns, click-to-source, and still renders with its given class).
@@ -473,15 +489,23 @@ fn build_container(
             "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
     } else if attrs.classes.iter().any(|c| c == "columns") {
-        // Reveal muscle-memory: `::: {.columns}` with `.column` children. Alias it to the native
-        // layout grid so it lays out side-by-side instead of silently stacking (the on-projector
-        // trap, DX5). `ncol` = the count of direct `.column` children (fallback 2); their widths
-        // are ignored (equal columns). A sanctioned alias, so it renders silently, no warning.
-        let ncol = inner
-            .iter()
-            .filter(|b| b.html.trim_start().starts_with("<div class=\"column\""))
-            .count()
-            .max(2);
+        // The dot-consistent canonical column grid (`layout-ncol` is the bare-attr alias):
+        // `::: {.columns}` with `.column` children, reveal muscle-memory. Lay out side-by-side
+        // via the native layout grid instead of silently stacking (the on-projector trap, DX5).
+        // `ncol=` overrides the column count (parity with `layout-ncol`); otherwise it's the
+        // count of direct `.column` children (fallback 2). Widths are equal (a `.column width=`
+        // warns, `validate_column_width`). A sanctioned canonical, so it renders silently.
+        let ncol = attrs
+            .get("ncol")
+            .and_then(|n| n.parse::<u32>().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or_else(|| {
+                inner
+                    .iter()
+                    .filter(|b| b.html.trim_start().starts_with("<div class=\"column\""))
+                    .count()
+                    .max(2) as u32
+            });
         let body = concat(&inner);
         format!(
             "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"

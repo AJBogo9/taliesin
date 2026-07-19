@@ -159,6 +159,28 @@ pub(crate) fn validate_div_class(
     })
 }
 
+/// Validate a `.column` div's `width=` (located, click-to-source). Column widths are ignored:
+/// a `.columns` grid lays its `.column` children out EQUAL-width, so a reveal/Quarto
+/// `::: {.column width="70%"}` habit silently does nothing. Warn and name the equal-width
+/// behaviour + the fixed-count knob. `None` when the div is not a `.column` or carries no
+/// non-empty `width=`. `line` is the 1-based source line of the opening fence.
+pub(crate) fn validate_column_width(
+    classes: &[String],
+    width: Option<&str>,
+    line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    let width = width.map(str::trim).filter(|w| !w.is_empty())?;
+    (classes.iter().any(|c| c == "column")).then(|| {
+        Warning::new(format!(
+            "`.column width=\"{width}\"` is ignored: a `.columns` grid lays its columns out \
+             equal-width. Remove `width=`, or use `::: {{.columns ncol=N}}` (or `{{layout-ncol=N}}`) \
+             for a fixed column count."
+        ))
+        .at(file, line as u32)
+    })
+}
+
 /// Validate a fenced div that turned out EMPTY (no blocks between its `:::` fences). An empty
 /// GENERIC div is harmless (it's dropped), but an empty div that names a real feature — a
 /// `.input` reactive control, a `.callout-*`, a `.panel-tabset`, a theorem, … — is almost
@@ -404,6 +426,23 @@ mod tests {
             validate_div_class(&div(&["fragment", "highlight"]), 5, None).is_none(),
             "the real `.highlight` effect is silent"
         );
+    }
+
+    #[test]
+    fn validate_column_width_warns_only_on_a_column_with_a_width() {
+        let div = |classes: &[&str]| classes.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+        // PL3: a `.column width=` is silently equalized — warn, echoing the width + naming the fix.
+        let w = validate_column_width(&div(&["column"]), Some("70%"), 3, None)
+            .expect("`.column width=` warns");
+        assert!(
+            w.message.contains("width=\"70%\"") && w.message.contains("equal-width"),
+            "echoes the width + names the behaviour: {}",
+            w.message
+        );
+        // Silent: a `.column` with no width, an empty width, or a non-`.column` div with a width.
+        assert!(validate_column_width(&div(&["column"]), None, 3, None).is_none());
+        assert!(validate_column_width(&div(&["column"]), Some("  "), 3, None).is_none());
+        assert!(validate_column_width(&div(&["columns"]), Some("70%"), 3, None).is_none());
     }
 
     #[test]

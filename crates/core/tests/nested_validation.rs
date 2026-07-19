@@ -90,4 +90,22 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         empty.line.is_some() && empty.message.contains("{{< input"),
         "empty-div warning is located + points at the shortcode: {empty:?}"
     );
+
+    // PL3: a `.column width=` (a reveal/Quarto habit) is silently equalized by the grid — it
+    // must warn, located. Two width'd columns → two warnings, both located.
+    let widths = || {
+        doc.warnings
+            .iter()
+            .filter(|w| w.message.contains("equal-width"))
+    };
+    assert_eq!(
+        widths().count(),
+        2,
+        "each `.column width=` warns: {msgs:#?}"
+    );
+    assert!(
+        widths().all(|w| w.line.is_some()),
+        "column-width warnings are located: {:?}",
+        widths().collect::<Vec<_>>()
+    );
 }

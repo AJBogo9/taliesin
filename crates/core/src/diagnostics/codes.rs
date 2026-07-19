@@ -50,6 +50,12 @@ const TABLE: &[(&str, &str, &str)] = &[
     // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
     // which is dropped and renders nothing.
     ("no content between the", "TAL-EMPTY-DIV", WARNING),
+    // A `.column width=` a reveal/Quarto author expects to honour, silently equalized.
+    (
+        "lays its columns out equal-width",
+        "TAL-COLUMN-WIDTH",
+        WARNING,
+    ),
     // Cross-references + links + anchors.
     ("broken cross-reference", "TAL-XREF-UNDEF", ERROR),
     // A DEFINITION no `@ref` can reach: a hidden cell's `label:` (the executor drops the
@@ -202,6 +208,16 @@ const EXPLANATIONS: &[Explanation] = &[
         fix: "Put content between the `:::` fences (the callout body, the tabset's `##` \
               headings, the theorem statement), or, for a reactive input, use the shortcode \
               form `{{< input name=\"k\" … >}}` instead of a div.",
+    },
+    Explanation {
+        code: "TAL-COLUMN-WIDTH",
+        title: "a `.column width=` is ignored",
+        cause: "A `.columns` grid lays its `.column` children out in EQUAL columns, so a \
+                per-column `width=` (a reveal/Quarto habit, e.g. `::: {.column width=\"70%\"}`) \
+                has no effect — the split is silently equalized.",
+        fix: "Remove the `width=` (the columns are equal), or set an explicit column count with \
+              `::: {.columns ncol=N}` or `::: {layout-ncol=N}`. Variable-width columns are not \
+              supported.",
     },
     Explanation {
         code: "TAL-STEP-LINES",

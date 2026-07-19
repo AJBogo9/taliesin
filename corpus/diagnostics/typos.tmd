@@ -29,6 +29,15 @@ step's comma-only parser silently focuses to zero lines.
 ::: {.input name="k"}
 :::
 
+::: {.columns}
+::: {.column width="70%"}
+A reveal/Quarto `width=` a `.columns` grid silently equalizes.
+:::
+::: {.column width="30%"}
+Its sibling.
+:::
+:::
+
 ```{python}
 #| labl: fig-demo
 print("hello from a cell whose option key is misspelled")

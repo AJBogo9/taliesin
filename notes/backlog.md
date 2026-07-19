@@ -936,10 +936,6 @@ under-sells machinery that already ships.)
 
 **Tier 1 — silent holes (do-first: cheap, high-confidence, each closes a silent failure):**
 
-- **PL3 — Unify column layout; stop discarding `.column width=`.** Three spellings (`{layout-ncol=3}` bare
-  attribute, `.columns`, `.column`) at `divs.rs:450-468`, and the arm's own comment admits `.column width=` is
-  "ignored (equal columns)" with no warning. Bless `.columns` canonical + `layout-ncol` alias; honour-or-warn
-  `width=`. S–M · high · [author]. **VERIFIED.**
 - **PL10 — A `{js}` runtime error ships a raw stack trace to readers in *built* output.** `qmd-js.js:212` sets
   `textContent = String(e.stack||e)` (already `console.error`s it at `:209`); a published page shows a reader the
   stack. In the build path degrade to a terse themed notice, keep the console log. S · med. **VERIFIED.**

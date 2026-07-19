@@ -263,6 +263,63 @@ fn columns_div_aliases_to_the_layout_grid() {
 }
 
 #[test]
+fn a_block_after_an_empty_div_stays_inside_its_own_container() {
+    // Regression (group_divs): the "skip degenerate/empty spans" step ran AFTER the "open
+    // containers" step, so a block following an empty div had its own container span skipped
+    // over and escaped the div. Here the callout after an empty `.foo` must still wrap its body.
+    let doc = render_document("::: {.foo}\n:::\n\n::: {.callout-note}\nInside.\n:::\n");
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        h.contains("callout callout-note"),
+        "the div after an empty div is still built as a callout: {h}"
+    );
+    // The body must be INSIDE the callout container, not escaped as a sibling.
+    let body_at = h.find("Inside.").expect("body present");
+    let callout_at = h
+        .find("callout-body")
+        .expect("callout body wrapper present");
+    assert!(
+        callout_at < body_at,
+        "the body stays inside the callout container: {h}"
+    );
+}
+
+#[test]
+fn columns_ncol_overrides_the_child_count() {
+    // PL3: `::: {.columns ncol=3}` gives the canonical dot-form parity with `layout-ncol` —
+    // the count comes from `ncol=`, not the number of `.column` children.
+    let doc = render_document("::: {.columns ncol=3}\n![](a.png)\n\n![](b.png)\n:::\n");
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        h.contains("tali-layout") && h.contains("repeat(3,"),
+        "ncol= sets the count: {h}"
+    );
+}
+
+#[test]
+fn column_width_warns_because_columns_are_equal_width() {
+    // PL3: a reveal/Quarto `::: {.column width="70%"}` is silently equalized. Warn (located)
+    // instead of dropping the width without a word.
+    let doc = render_document(
+        "::: {.columns}\n::: {.column width=\"70%\"}\nL\n:::\n\n::: {.column width=\"30%\"}\nR\n:::\n:::\n",
+    );
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("equal-width"))
+        .expect("a `.column width=` must warn");
+    assert!(w.line.is_some(), "located: {w:?}");
+    assert!(
+        w.message.contains("width=\"70%\""),
+        "echoes the width: {}",
+        w.message
+    );
+    // The grid still renders (purely diagnostic).
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(h.contains("tali-layout"), "still renders the grid: {h}");
+}
+
+#[test]
 fn unterminated_div_renders_content_without_a_container() {
     // A `:::` open with no matching close forms no span: the fence line is
     // blanked and the content renders as ordinary blocks (no crash, no

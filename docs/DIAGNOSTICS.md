@@ -90,6 +90,14 @@ A fenced code block names a language the highlighter does not know, so the block
 
 To fix: Use a recognized language tag, or leave the info string empty for an unhighlighted block.
 
+## TAL-COLUMN-WIDTH
+
+**a `.column width=` is ignored**
+
+A `.columns` grid lays its `.column` children out in EQUAL columns, so a per-column `width=` (a reveal/Quarto habit, e.g. `::: {.column width="70%"}`) has no effect — the split is silently equalized.
+
+To fix: Remove the `width=` (the columns are equal), or set an explicit column count with `::: {.columns ncol=N}` or `::: {layout-ncol=N}`. Variable-width columns are not supported.
+
 ## TAL-DUP-ID
 
 **two headings share an id**
