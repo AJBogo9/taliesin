@@ -54,6 +54,19 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-19, polish audit — PL1–PL20 queued; NOTHING built yet, report-only by request).** A
+feature-*polish* audit ran (4 read-only auditors: CLI/DX · authoring · live view · theming, + online research +
+per-finding source verification). Distinct lens from every prior audit (DX/PMF/machine-facing/vacuous-test/website/
+deck): "can an existing feature be *simplified with the same power*, or is it *implemented unintuitively*?" Findings
+are queued as the **Polish audit batch (§7** of Open work, above Tier 2**)**; full detail + credit +
+grind order in [2026-07-19-polish-audit.md](2026-07-19-polish-audit.md). **No code changed; no SHAs.** Headline
+pattern (do these first): "silent holes in an otherwise fully-diagnosed surface" — PL1 (`check` hides its own
+`--explain`/codes in human output), PL2 (`{{< input >}}` has no `.input` div + colliding CSS that mutes its label),
+PL3 (three column spellings, `.column width=` silently dropped), PL7 (deck `|` line-spec silently no-ops in a
+walkthrough), PL9 (`.fade-out`/`.highlight` escape the div did-you-mean). **Best single first move: PL1 or PL2**
+(both S · high). The top ~15 were read to the line by the orchestrator (marked VERIFIED); still grep the named
+symbol before promising, per this file's law.
+
 **Pick up here (2026-07-18, DX audit — DX1–DX5 + DX10[4/4] + DX11 landed; DX6–DX9/DX12–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
 map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
@@ -903,6 +916,109 @@ Record in [AUDITS.md](AUDITS.md). **Do not re-open.**
 **Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX9/DX13–DX16 (Tier 2)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
+
+### 7. Polish audit batch (2026-07-19)
+
+**Full findings + evidence + credit:** [2026-07-19-polish-audit.md](2026-07-19-polish-audit.md) (4 read-only
+auditors across CLI/DX · authoring · live view · theming, + online research on how mature tools do these, +
+per-finding source verification). **These are audit findings, not priced builds — S/M/L and value are guesses.**
+Per this file's law: grep the named symbol first, trust the *symptom* not the cause/line, measure the running
+product before promising. Type: [surface] expose an existing capability · [craft] CSS/visual · [author] `.tmd`
+surface. Items marked **VERIFIED** were read to the line by the orchestrator; the rest are auditor-cited (still
+grep first). Live browser verification was blocked (chrome-devtools profile held by another instance), so a few
+interaction items (PL13, PL20's deck hint) want a live pass at build time.
+
+**The finding that names the batch:** the tool validates + locates almost everything, yet a handful of features
+offer co-equal spellings with no canonical, or *silently ignore/drop* input its own vocabulary invites. Closing
+those "silent holes in a fully-diagnosed surface" is the highest lever on "feels well-thought-out". (Two more
+patterns: colour is tokenized but geometry/motion aren't and the palette is duplicated 4×; and human output
+under-sells machinery that already ships.)
+
+**Tier 1 — silent holes (do-first: cheap, high-confidence, each closes a silent failure):**
+
+- **PL1 — Surface the code + severity + `--explain` in `check`'s human output.** `format_human`
+  (`check.rs:374-383`) prints only `file:line: message` + a bare `N problem(s)` (`:575`); the stable `TAL-*`
+  code, the severity, and the whole DX6 `--explain` catalog never appear in the output 99% of runs read. Prefix
+  `severity[CODE]`, split the summary `(1 error, 2 warnings)`, print a `--explain <CODE>` footer (rustc-style).
+  Output-only. S · high · [surface]. **VERIFIED.**
+- **PL2 — Make `{{< input >}}` coherent** (two auditors found it independently). It's the one interactive feature
+  that's a shortcode not a `:::` div, so `::: {.input name="k"}` is **silently dropped** (empty div, `divs.rs:295-298`)
+  while the validator's own message calls it `.input` (`validate.rs:202`), a non-existent syntax; and a leftover
+  legacy `.tali-input` CSS block (`base.css:918-925`) overrides the shortcode rule at `:201` and mutes its label.
+  Warn on a dropped known-feature empty div + delete the colliding CSS. S · high. **VERIFIED.**
+- **PL3 — Unify column layout; stop discarding `.column width=`.** Three spellings (`{layout-ncol=3}` bare
+  attribute, `.columns`, `.column`) at `divs.rs:450-468`, and the arm's own comment admits `.column width=` is
+  "ignored (equal columns)" with no warning. Bless `.columns` canonical + `layout-ncol` alias; honour-or-warn
+  `width=`. S–M · high · [author]. **VERIFIED.**
+- **PL7 — Line-highlight: two names, two delimiters, a deck habit silently no-ops.** `code-line-numbers="1|2-3"`
+  (pipe, `emit.rs:234`) vs `.step lines="6-8"` split on `,` only (`walkthrough.js:23`); `lines="1|2-3"` in a step
+  focuses **zero** lines. Warn on `|` in a step `lines=` (or align the grammars). S · med-high. **VERIFIED.**
+- **PL9 — Deck fragment effects escape validation.** `.fade-out`/`.highlight` are styled (`deck.css:299-336`) but
+  absent from `DIV_FEATURE_CLASSES` (`validate.rs:59-75`), so `.fragment .fade-ot` gets no did-you-mean. Add them
+  + update the `vocab.rs` subset test. Trivial · med. **VERIFIED.**
+- **PL10 — A `{js}` runtime error ships a raw stack trace to readers in *built* output.** `qmd-js.js:212` sets
+  `textContent = String(e.stack||e)` (already `console.error`s it at `:209`); a published page shows a reader the
+  stack. In the build path degrade to a terse themed notice, keep the console log. S · med. **VERIFIED.**
+
+**Tier 1b — design-system single-sourcing (one CSS-token pass):**
+
+- **PL4 — Single-source the owned palette; drift-lock the OG card + deck.** The palette is re-typed 4× in 3
+  languages: `base.css:9-13`, `dark.css:5-11`, the parallel `--deck-*` at `deck.css:696-704`, and Rust consts at
+  `card.rs:20-24`. Extract a shared `TOKENS_CSS` const into both bundles (rename `--deck-*` → `--tali-*`), and add
+  a `#[cfg(test)]` drift-lock (à la `schema.rs`/`third_party.rs`) tying `card.rs` to the dark tokens. M · high. **VERIFIED.**
+- **PL11 — Tokenize geometry/motion.** Colour is fully tokenized; 13 `border-radius` literals, 25 `box-shadow`s, 6
+  durations (`.12s` ×23) are not. Add `--tali-radius-sm/md/lg`, `--tali-shadow-sm/md/lg`, `--tali-dur[-slow]`;
+  migrate mechanically (keep 999px pills / 50% circles as specials). M · med · [craft]. **VERIFIED (grep-derived).**
+- **PL12 — Tokenize the exec/error boxes** (`base.css:681-693`, `:931`, `dark.css:32-35`): hardcoded per-theme
+  literals are *why* printing force-swaps the whole doc to light (`theme.rs:144-157`). Derive surfaces via
+  `color-mix` from the callout tokens; drop ~6 override rules + shrink the print swap. S · med. **VERIFIED (cited).**
+- **PL8 — Add `<meta name="theme-color">` (dynamic) + `<meta name="generator">`.** Head (`page.rs:269-271`) has
+  neither; mobile chrome stays white on a dark page. The `BG` map (`theme.rs:103`) can feed a dynamic theme-color;
+  the feed already advertises a generator (`feed.rs:158`). S/trivial · med. **VERIFIED.**
+
+**Tier 2 — CLI/config consistency sweep:**
+
+- **PL5 — Unify `--json` vs `--format json`** across the family (`init`/`new` take the former, six others the
+  latter; no cross-accept, and the did-you-mean doesn't bridge them). Alias `--json`→`--format json` everywhere +
+  add both to each flag-candidate list. S · med-high · [surface]. **VERIFIED (flag lists).**
+- **PL6 — Route kernel failures to `taliesin doctor`.** `exec.rs:328-329` blames the interpreter path; the usual
+  cause is a missing `ipykernel`/`IRkernel` package `doctor` was built to find. Append the `doctor` pointer +
+  soften "fix the interpreter". S · med. **VERIFIED.**
+- **PL14 — `check`'s Environment footer spawns interpreters + prints an always-green block** every run
+  (`check.rs:562`, `:581`) on a command documented "does NOT execute code cells", duplicating `doctor`. Print it
+  only when a used language is degraded; keep JSON `environment` always-on. S–M · med. **VERIFIED.**
+- **PL15 — Document `new --draft`/`--tour`** (`cli.rs:495`) — absent from both help surfaces (`main.rs:152,348`)
+  though the `init` scaffold advertises `--draft` — and replace the drift-prone one-line `usage:` strings (build's
+  at `build.rs:160` already omits `--format json`) with `subcommand_help(cmd)`. Trivial–S · med. **VERIFIED.**
+- **PL16 — Group the 16-command `help` by purpose** (`main.rs:149-208`; Author / Preview & build / Inspect /
+  Editor & agent). Pure formatting. S · med. **VERIFIED.**
+- **PL18 — One `--format` error helper** (two wordings/styles across `check`/`map`/`symbols` vs `doctor`/`publish`)
+  + resolve the hidden per-command `--out`/`--dir` aliasing. Trivial · low-med. **VERIFIED (cited).**
+
+**Tier 2 — authoring/live-view coherence (opportunistic):**
+
+- **PL13 — Deck theme: 3-state Auto/Light/Dark** mirroring the page. A standalone deck's toggle wins in
+  `resolve()` forever with no OS-follow (`deck.rs:165-175`) vs the page's Auto (`14-reader-prefs.js:12`). S · med
+  (embedded decks already follow the host — scope is standalone only). **VERIFIED.** *(live check.)*
+- **PL17 — Theorem title from a leading heading, or warn.** Callouts hoist a leading heading as title
+  (`divs.rs:411-423`); theorems take `title=` only (`:650-656`) — same gesture, two outcomes. S · med. **VERIFIED.**
+- **PL19 — Name `.column-margin` the canonical margin-note** in docs; keep `.sidenote`/`.marginnote`/`.aside` as
+  labelled aliases (four co-equal today, `base.css:655`). Trivial docs · low-med. **VERIFIED.**
+- **PL20 — Deck/reader micro-polish (ship together):** cold-open stepped deck hides all nav after 3 s
+  (`deck.js:1932`, `deck.css:603`) with no first-run hint (delay it / one-time hint); reduced-motion unhonoured on
+  the deck's programmatic slide-jumps (`deck.js:1404`, one-line); key-sheet (`deck.js:1679`) omits Home/End/`0`;
+  the "minor-third scale" comment (`base.css:351`) doesn't match the actual ratios; `og:type` hardcoded `"article"`
+  for standalone builds (`mod.rs:880`). Trivial each · low.
+
+**Design questions (owner ruling first — NOT build-ready):** deck inverts the page serif/sans logic
+(`deck.css:705-711`) — accept+document or unify? · focus mode is welded to OS fullscreen (`03-focus-mode.js:39-45`,
+"the author's ask") — decouple the calm column from fullscreen? · add `//| uses:` alias for the consumer
+`//| input:` (opposite role to `{{< input >}}`)? — weigh vocab sprawl · callout kinds namespaced but theorem kinds
+bare (the family-prefix rule holds for one family) — document or reconsider?
+
+**Suggested order:** PL1 · PL2 · PL3 · PL7 · PL9 (silent-holes, do-first) → PL4 · PL11 · PL12 · PL8 (one
+token pass) → PL5 · PL6 · PL14 · PL15 · PL16 · PL18 (CLI sweep) → PL10/PL13/PL17/PL19/PL20 fold in. PL1 or PL2
+is the best single first move (both S · high, both close a silent failure).
 
 ## Tier 2 — hardening (P3)
 
