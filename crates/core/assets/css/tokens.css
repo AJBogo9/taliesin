@@ -54,6 +54,17 @@
        every control follows; the global rule below applies it via :focus-visible. */
     --tali-focus: 2px solid var(--tali-accent);
     --tali-focus-offset: 2px;
+    /* Geometry + motion scale (PL11): three roundness tiers, three page-elevation shadows
+       (each built on the per-theme --tali-edge-shadow so they adapt automatically), and two
+       motion durations. Single-sources what used to be ~13 ad-hoc border-radius, ~25 hand-
+       written box-shadow, and repeated transition-duration literals. Intentional specials
+       stay literal: 50% circles, 999px pills, em-based inline radii, the deck's dark-overlay
+       shadows, and one-off timings. */
+    --tali-radius-sm: 4px; --tali-radius-md: 8px; --tali-radius-lg: 12px;
+    --tali-shadow-sm: 0 1px 4px var(--tali-edge-shadow);
+    --tali-shadow-md: 0 4px 18px var(--tali-edge-shadow);
+    --tali-shadow-lg: 0 8px 34px var(--tali-edge-shadow);
+    --tali-dur: .12s; --tali-dur-slow: .25s;
   }
 
   /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Settings panel). */

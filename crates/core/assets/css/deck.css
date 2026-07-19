@@ -140,7 +140,7 @@ body { background: transparent; }
    current tile is ringed in the accent colour. Click a tile to zoom into it. */
 .tali-deck.overview .tali-slides > section:not(.tali-stack),
 .tali-deck.overview .tali-slides > section > section {
-  border-radius: 12px;
+  border-radius: var(--tali-radius-lg);
   box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
   outline: 1px solid rgba(127, 127, 127, .25);
   background: rgba(127, 127, 127, .07); /* a faint surface for slides with no background */
@@ -209,7 +209,7 @@ body { background: transparent; }
 .tali-deck .tali-slides .callout {
   border: 1px solid rgba(127, 127, 127, .28);
   border-left-width: 5px;
-  border-radius: 8px;
+  border-radius: var(--tali-radius-md);
   margin: 0.5em 0;
   overflow: hidden;
   text-align: left;
@@ -288,7 +288,7 @@ body { background: transparent; }
 @media (prefers-reduced-motion: no-preference) {
   .tali-deck .fragment,
   .tali-deck .incremental > ul > li,
-  .tali-deck .incremental > ol > li { transition: opacity .25s ease; }
+  .tali-deck .incremental > ol > li { transition: opacity var(--tali-dur-slow) ease; }
 }
 .tali-deck .tali-frag-visible { opacity: 1 !important; visibility: visible !important; }
 /* Overview shows every slide complete, regardless of fragment state. */
@@ -316,7 +316,7 @@ body { background: transparent; }
   visibility: hidden !important;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tali-deck .fragment.fade-out.tali-frag-visible { transition: opacity .25s ease, visibility 0s linear .25s; }
+  .tali-deck .fragment.fade-out.tali-frag-visible { transition: opacity var(--tali-dur-slow) ease, visibility 0s linear var(--tali-dur-slow); }
 }
 /* `.highlight`: the block is marked on its step with the same accent wash the code
    line-stepper uses, NOT a colour swap: the wash sits BEHIND the text, so the ink keeps its
@@ -381,15 +381,15 @@ html.tali-feed .fragment.fade-out.tali-frag-visible {
 .tali-speaker .sp-clock { margin-left: auto; color: #9aa0aa; font-variant-numeric: tabular-nums; }
 .tali-speaker .sp-reset {
   background: #262a32; color: #e6e8ec; border: 1px solid #363b44;
-  border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  border-radius: var(--tali-radius-md); padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer;
 }
 .tali-speaker .sp-reset:hover { background: #2f343d; }
 .tali-speaker .sp-stage { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; min-height: 0; }
 .tali-speaker .sp-pane { display: flex; flex-direction: column; min-height: 0; }
 .tali-speaker .sp-label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin-bottom: 6px; }
 .tali-speaker .sp-frame-cur, .tali-speaker .sp-frame-next {
-  flex: 1; width: 100%; min-height: 0; border-radius: 10px; background: #fff; overflow: hidden; }
-.tali-speaker .sp-notes { background: #1b1e24; border-radius: 10px; padding: 12px 16px; max-height: 26vh; overflow: auto; }
+  flex: 1; width: 100%; min-height: 0; border-radius: var(--tali-radius-md); background: #fff; overflow: hidden; }
+.tali-speaker .sp-notes { background: #1b1e24; border-radius: var(--tali-radius-md); padding: 12px 16px; max-height: 26vh; overflow: auto; }
 .tali-speaker .sp-notes-body { font-size: 19px; line-height: 1.5; }
 .tali-speaker .sp-notes-body :last-child { margin-bottom: 0; }
 .tali-speaker .sp-empty { color: #6b7079; font-style: italic; }
@@ -409,7 +409,7 @@ html.tali-feed .fragment.fade-out.tali-frag-visible {
   background: rgba(20, 22, 27, .78);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
-  border-radius: 6px;
+  border-radius: var(--tali-radius-md);
   pointer-events: none;
 }
 
@@ -590,12 +590,12 @@ html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { backg
    reads on both light and dark decks; arrows + menu auto-hide on idle. */
 .tali-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
   background: rgba(127, 127, 127, .18); pointer-events: none; }
-.tali-progress-fill { height: 100%; width: 0; background: var(--tali-accent); transition: width .25s ease; }
+.tali-progress-fill { height: 100%; width: 0; background: var(--tali-accent); transition: width var(--tali-dur-slow) ease; }
 
 .tali-controls { position: fixed; right: 14px; bottom: 14px; z-index: 61; display: flex; gap: 6px;
-  transition: opacity .25s ease; }
+  transition: opacity var(--tali-dur-slow) ease; }
 .tali-ctl { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
-  padding: 0; border: 0; border-radius: 8px; cursor: pointer; color: #e6e8ec;
+  padding: 0; border: 0; border-radius: var(--tali-radius-md); cursor: pointer; color: #e6e8ec;
   background: rgba(20, 22, 27, .78); font: 600 21px/1 ui-sans-serif, system-ui, sans-serif;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .tali-ctl:hover { background: rgba(20, 22, 27, .96); }
@@ -616,7 +616,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-menu[hidden], .tali-menu-backdrop[hidden] { display: none; }
 .tali-menu { position: fixed; right: 14px; bottom: 58px; z-index: 71; width: 300px; max-height: 78vh;
   overflow-y: auto; box-sizing: border-box; padding: 10px;
-  background: rgba(20, 22, 27, .97); color: #e6e8ec; border: 1px solid #2c313b; border-radius: 12px;
+  background: rgba(20, 22, 27, .97); color: #e6e8ec; border: 1px solid #2c313b; border-radius: var(--tali-radius-lg);
   box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
   font: 14px/1.3 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
@@ -624,7 +624,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-menu-head:first-child { margin-top: 2px; }
 .tali-menu-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .tali-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
-  border: 0; border-radius: 8px; cursor: pointer; text-align: left; background: transparent; color: #e6e8ec; font: inherit; }
+  border: 0; border-radius: var(--tali-radius-md); cursor: pointer; text-align: left; background: transparent; color: #e6e8ec; font: inherit; }
 .tali-menu-item:hover { background: rgba(255, 255, 255, .08); }
 .tali-menu-item.tali-on { background: color-mix(in srgb, var(--tali-accent) 32%, transparent); }
 .tali-menu-ico { display: inline-flex; color: #aeb4bf; }
@@ -635,13 +635,13 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 /* The Auto/Light/Dark theme segment: three equal buttons, the active choice washed in the
    accent (matching `.tali-menu-item.tali-on`). Mirrors the page's reader theme control. */
 .tali-theme-seg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
-.tali-theme-opt { padding: 7px 6px; border: 0; border-radius: 8px; cursor: pointer; text-align: center;
+.tali-theme-opt { padding: 7px 6px; border: 0; border-radius: var(--tali-radius-md); cursor: pointer; text-align: center;
   background: rgba(255, 255, 255, .06); color: #e6e8ec; font: inherit; font-size: 13px; }
 .tali-theme-opt:hover { background: rgba(255, 255, 255, .12); }
 .tali-theme-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--tali-accent) 32%, transparent); color: #fff; }
 .tali-menu-slides { max-height: 30vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .tali-menu-slide { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 10px;
-  border: 0; border-radius: 7px; cursor: pointer; text-align: left; background: transparent; color: #c7ccd6; font: inherit; }
+  border: 0; border-radius: var(--tali-radius-md); cursor: pointer; text-align: left; background: transparent; color: #c7ccd6; font: inherit; }
 .tali-menu-slide:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .tali-menu-slide.tali-on .tali-menu-slide-n { color: var(--tali-accent); }
 .tali-menu-slide.tali-on .tali-menu-slide-t { color: #fff; }
@@ -651,7 +651,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-menu-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 2px 6px 4px; }
 .tali-key { display: flex; align-items: center; gap: 7px; color: #aeb4bf; font-size: 12px; }
 .tali-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
-  background: #2a2e36; border: 1px solid #3a3f49; border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
+  background: #2a2e36; border: 1px solid #3a3f49; border-radius: var(--tali-radius-sm); padding: 1px 5px; white-space: nowrap; }
 
 /* live-presenting chrome only: hidden in overview (print is handled by @media print). */
 .tali-deck.overview .tali-progress, .tali-deck.overview .tali-controls { display: none !important; }
@@ -665,25 +665,25 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-share { position: fixed; inset: 0; z-index: 73; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .tali-share[hidden], .tali-share-backdrop[hidden] { display: none; }
 .tali-share-card { position: relative; box-sizing: border-box; width: min(320px, 90vw);
-  background: rgba(20, 22, 27, .98); color: #e6e8ec; border: 1px solid #2c313b; border-radius: 16px;
+  background: rgba(20, 22, 27, .98); color: #e6e8ec; border: 1px solid #2c313b; border-radius: var(--tali-radius-lg);
   padding: 20px; box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
   font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center;
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .tali-share-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; display: inline-flex;
-  align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: #aeb4bf; cursor: pointer; }
+  align-items: center; justify-content: center; border: 0; border-radius: var(--tali-radius-md); background: transparent; color: #aeb4bf; cursor: pointer; }
 .tali-share-close:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 .tali-share-close svg { width: 18px; height: 18px; }
 .tali-share-head { font-weight: 600; margin: 2px 0 14px; }
-.tali-share-qr { background: #fff; border-radius: 10px; padding: 12px; margin: 0 auto 14px; width: min(224px, 66vw); }
+.tali-share-qr { background: #fff; border-radius: var(--tali-radius-md); padding: 12px; margin: 0 auto 14px; width: min(224px, 66vw); }
 .tali-share-qr[hidden] { display: none; }
 .tali-share-qr svg { display: block; width: 100%; height: auto; }
 .tali-share-note { color: #c7ccd6; font-size: 13px; margin: 4px 0 14px; }
 .tali-share-note[hidden] { display: none; }
 .tali-share-row { display: flex; gap: 6px; }
-.tali-share-url { flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 10px; border-radius: 8px;
+.tali-share-url { flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 10px; border-radius: var(--tali-radius-md);
   border: 1px solid #2c313b; background: rgba(255, 255, 255, .05); color: #e6e8ec;
   font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.tali-share-copy { flex: 0 0 auto; padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer;
+.tali-share-copy { flex: 0 0 auto; padding: 8px 14px; border: 0; border-radius: var(--tali-radius-md); cursor: pointer;
   background: #4b57b0; color: #fff; font: inherit; font-weight: 600; }
 .tali-share-copy:hover { filter: brightness(1.1); }
 
@@ -751,7 +751,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   display: block;
   width: 2.2em;
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--tali-radius-sm);
   background: var(--tali-accent);
   margin: .4em auto .1em;
 }
@@ -783,7 +783,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   display: block;
   width: 2em;
   height: 3px;
-  border-radius: 2px;
+  border-radius: var(--tali-radius-sm);
   background: var(--tali-accent);
   margin: .4em auto 0;
 }
@@ -831,7 +831,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-deck .tali-copy {
   position: absolute; top: .4em; right: .4em; padding: .1em .4em;
   font: 600 .5em var(--deck-font); color: var(--tali-muted);
-  background: #fff; border: 1px solid var(--tali-border); border-radius: 5px; cursor: pointer;
+  background: #fff; border: 1px solid var(--tali-border); border-radius: var(--tali-radius-sm); cursor: pointer;
 }
 .tali-deck .tali-copy.tali-copied { color: var(--tali-callout-tip); border-color: var(--tali-callout-tip); }
 .tali-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
@@ -897,7 +897,7 @@ html.tali-alt [data-block-id] { cursor: pointer; }
    the page-side `--tali-focus` token (deck chrome lives on its own dark surface, so it
    uses the deck accent). Mouse clicks don't show it (:focus-visible). */
 .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible {
-  outline: 2px solid var(--tali-accent); outline-offset: 2px; border-radius: 6px;
+  outline: 2px solid var(--tali-accent); outline-offset: 2px; border-radius: var(--tali-radius-md);
 }
 
 /* High-contrast / forced-colors (Windows High Contrast): keep the focus ring, control
