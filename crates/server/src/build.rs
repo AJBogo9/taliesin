@@ -258,7 +258,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // In `--strict` mode, a cell that crashed (its traceback is baked into the HTML)
     // or any located warning fails the build instead of shipping a broken page with
     // exit 0. Without `--strict` the warnings were already logged; we still write.
-    let strict_fail = strict && problems > 0;
 
     // Structured diagnostics to stdout (the human log stays on stderr, so the JSON stream
     // pipes cleanly). The page is still written — `--format json` only changes the
@@ -268,8 +267,8 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     }
 
     if let Some(dir) = out_dir {
-        let code = build_dir(&html, base, Path::new(dir), started);
-        return strict_exit(code, strict_fail, problems);
+        let wrote = build_dir(&html, base, Path::new(dir), started);
+        return finalize_build(wrote, strict, problems);
     }
     let out: PathBuf = out_html
         .map(PathBuf::from)
@@ -282,7 +281,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
             log::built(&format!("{}{}", out.display(), elapsed_note(started)));
-            strict_exit(ExitCode::SUCCESS, strict_fail, problems)
+            finalize_build(true, strict, problems)
         }
         Err(e) => {
             log::error(&format!("cannot write {}: {e}", out.display()));
@@ -314,21 +313,43 @@ fn elapsed_note(started: std::time::Instant) -> String {
     }
 }
 
-/// Turn a successful build into a failure when `--strict` saw problems (the page is
-/// still written, but CI gets a non-zero exit). A pre-existing non-success `code`
-/// (a write/create error) is returned unchanged.
-fn strict_exit(code: ExitCode, strict_fail: bool, problems: usize) -> ExitCode {
-    if strict_fail {
+/// Final exit for a single-doc build. `--strict` turns problems into a failure (the page
+/// is still written, but CI gets a non-zero exit); otherwise a non-strict build that
+/// shipped with problems prints a closing tally so the silent degradation is visible
+/// (DX12). `wrote` is false only on a write/create error, which already failed and
+/// reported itself, so neither summary applies.
+fn finalize_build(wrote: bool, strict: bool, problems: usize) -> ExitCode {
+    if !wrote {
+        return ExitCode::FAILURE;
+    }
+    if strict && problems > 0 {
         warn_strict(problems);
         return ExitCode::FAILURE;
     }
-    code
+    warn_nonstrict_problems(problems);
+    ExitCode::SUCCESS
 }
 
 /// Log the `--strict` failure summary (shared by the single-doc and site build paths).
 fn warn_strict(problems: usize) {
     log::error(&format!(
         "--strict: {problems} problem{} (cell error or located warning); failing the build",
+        if problems == 1 { "" } else { "s" }
+    ));
+}
+
+/// The non-strict closing tally (DX12): a `build` without `--strict` still writes even
+/// when it hit problems (a missing image, a dead link, a broken cross-ref), and its exit
+/// is 0 — so the per-warning lines have already scrolled past by the time it prints
+/// `built …`. Restate the count and point at the flag that would have failed CI, instead
+/// of a wordless green exit. A no-op when the build was clean. Shared by the single-doc
+/// and site build paths.
+fn warn_nonstrict_problems(problems: usize) {
+    if problems == 0 {
+        return;
+    }
+    log::warn(&format!(
+        "built with {problems} problem{} (run with --strict to fail the build)",
         if problems == 1 { "" } else { "s" }
     ));
 }
@@ -642,16 +663,19 @@ fn build_page_executing(
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
 /// `href=` value pointing to an existing file under `base`) to the same relative
 /// path under `dir`, leaving the HTML's paths untouched so the folder is portable.
-fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -> ExitCode {
+/// Returns whether the page was written (the caller finalizes the exit code, so a
+/// non-strict problem tally / a `--strict` failure decide it uniformly with the
+/// single-file path).
+fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -> bool {
     if let Err(e) = std::fs::create_dir_all(dir) {
         log::error(&format!("cannot create {}: {e}", dir.display()));
-        return ExitCode::FAILURE;
+        return false;
     }
     let copied = copy_local_assets(html, base, dir);
     let index = dir.join("index.html");
     if let Err(e) = std::fs::write(&index, html) {
         log::error(&format!("cannot write {}: {e}", index.display()));
-        return ExitCode::FAILURE;
+        return false;
     }
     log::built(&format!(
         "{}  ·  {copied} asset{}{}",
@@ -659,7 +683,7 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
         if copied == 1 { "" } else { "s" },
         elapsed_note(started)
     ));
-    ExitCode::SUCCESS
+    true
 }
 
 /// Copy each referenced local asset (a relative `src=`/`href=` under `base`) to
@@ -1745,10 +1769,14 @@ async fn build_site_async(
         elapsed_note(started),
     ));
     // In `--strict` mode a problem (crashed cell / located warning / broken ref)
-    // fails the build after writing it, so CI catches a broken site.
+    // fails the build after writing it, so CI catches a broken site. Without `--strict`
+    // the site still ships, but a closing tally (DX12) makes the shipped problems visible
+    // rather than a wordless green exit after pages of scrolled-past warnings.
     let strict_fail = strict && problems > 0;
     if strict_fail {
         warn_strict(problems);
+    } else {
+        warn_nonstrict_problems(problems);
     }
     SiteBuildOutcome {
         ok: !strict_fail,

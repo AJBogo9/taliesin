@@ -100,9 +100,10 @@ write the script to its XDG-aware dir; pure `install_plan`, unit + e2e verified)
 gating) is DONE** — two default-off gate flags: `--errors-only` (drop warnings from output + exit decision)
 and `--require-kernel` (fail if a used language's kernel isn't runnable); pure gate helpers + CLI exit-code
 integration tests; `--min-severity` folded into `--errors-only` (only two severities today). **DX6 + DX8 +
-DX7 + DX18 landed locally, NOT yet pushed** (ask me / push when asked; verify with `git log --oneline
-origin/main..main`). Next up per the suggested order: DX12 (build exit-0 warning summary — cheap), then
-DX17 / DX19. Most remaining items are *surfacing an existing capability*.
+DX7 + DX18 + DX12 landed locally** (push when asked; verify with `git log --oneline origin/main..main`).
+Next up per the suggested order: DX19 (CSV→figure recipes in `vocab`/AGENTS.md — M, surface), then DX17
+(headless executed-output visibility — L, net-new, has a fork [optional headless `{js}` eval] and overlaps
+ROADMAP, so brainstorm first). Most remaining items are *surfacing an existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -841,9 +842,16 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
 (columns side-by-side, notes hidden). Spec/plan under
 `docs/superpowers/specs|plans/2026-07-18-dx10-teaching-scaffolds*` + `…dx10-followup-deck-tour*`, record in
 [AUDITS.md](AUDITS.md).
-- **DX12 — Default `build` shouldn't ship broken output at exit 0**: print `⚠ built with N problems — run
-  --strict to fail` + a `rebuilding…` save-start line for symmetry with `update N blocks`. S · [surface] ·
-  ✍️🎓 (`build.rs:218` exits 0 with a missing image/dead link).
+**DX12 — LANDED 2026-07-19** (the non-strict silent-failure trap). A default `build` (no `--strict`)
+still ships when it hits problems (missing image / dead link / broken xref) and exits 0; the per-problem
+`warn` lines scroll past above `built`, so the degradation is invisible. Now a shared
+`warn_nonstrict_problems` prints one closing line — `built with N problem(s) (run with --strict to fail
+the build)` — after `built`, on both build paths, a no-op when clean. The audit's `rebuilding…`
+save-start line was dropped (`build` is one-shot; the `· 412ms` suffix already answers "was that slow";
+a start line would be noise on every instant build). `build.rs` only (`finalize_build` +
+`warn_nonstrict_problems` + `build_dir: ExitCode→bool`). End-to-end-pinned in `strict_robustness.rs`
+(single-doc broken-xref + site malformed-config); det-log parity confirmed. Record in
+[AUDITS.md](AUDITS.md). **Do not re-open.**
 - **DX13 — Social-card preview pane** in the dev menu (render the branded 1200×630 OG card for the current
   page). M · [surface] · ✍️ cards only bake at build today.
 - **DX14 — Interactive `new`/`init` wizard** (arrow-key kind picker, `-y` to skip) + a `site`/`book` kind.
@@ -880,7 +888,7 @@ than a knob whose only non-default value is "error"); note if a third severity e
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ (all landed) → DX12 / DX17 / DX19
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ (all landed) → DX19 / DX17
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

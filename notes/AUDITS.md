@@ -327,6 +327,31 @@ default / needs-a-used-language / interpreter-vs-pkg) + CLI exit-code integratio
 help` drift gate green with the two new flags + full `cargo test -p taliesin-server` (259 unit + integration)
 + clippy `-D warnings` clean. **Next: DX12 (build exit-0 warning summary — cheap), then DX17 / DX19.**
 
+**DX12 LANDED 2026-07-19** (the non-strict silent-failure trap). **The gap:** ✍️🎓 a default `build`
+(no `--strict`) still ships when it hits problems — a missing image, a dead link, a broken cross-ref —
+and exits 0 with no closing signal. The per-problem `warn` lines already scrolled past above the `built`
+line, so the last thing on screen is a green success and the exit code agrees; the degradation is
+invisible unless you re-read the whole log. `--strict` already prints a failure tally, but nobody runs a
+first build with it. **The fix:** a shared `warn_nonstrict_problems(problems)` prints one closing line —
+`built with N problem(s) (run with --strict to fail the build)` — after the `built` line, on BOTH build
+paths, a no-op when the build was clean. Single-doc: the two success exits now route through
+`finalize_build(wrote, strict, problems)` (replacing `strict_exit`; `build_dir` returns `bool` so a
+create/write error skips both summaries — it already failed and reported itself). Site: the existing
+`strict_fail` branch gains an `else` arm. **Scope call:** the audit's second half (a `rebuilding…`
+save-start line "for symmetry with `update N blocks`") was dropped — `build` is one-shot, not a watch
+loop, and the elapsed-time suffix (`· 412ms`) already answers "was that slow"; a start line would fire on
+every instant build as pure noise, against the perfect-default lens. The load-bearing win is the tally.
+**Surface:** `build.rs` only (`finalize_build` + `warn_nonstrict_problems` + `build_dir: ExitCode→bool` +
+the site path's `else`). **Verification:** two end-to-end tests in `strict_robustness.rs`
+(`nonstrict_build_summarizes_problems`: a broken `@fig-nope` xref — a kernel-free located warning —
+writes at exit 0 and prints `1 problem` + `--strict`; `nonstrict_site_build_summarizes_problems`: a
+malformed `_site.yml` degrades the site but ships green with the same tally); full `strict_robustness`
+(15) + `parallel_build_determinism` (5, the tally is emitted once after the deterministic replay so
+`--jobs N` logs stay byte-identical) + `publish` + `build_jobs` + `embed_site_build` + `stale_sweep` +
+`taliesin-core` green; manually confirmed the ordering (per-warning lines → `built` → tally, exit 0) and
+that a clean build prints no extra line. **Next: DX17 (headless executed-output visibility — L, forked,
+overlaps ROADMAP; brainstorm first) / DX19 (CSV→figure recipes in vocab/AGENTS.md — M).**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)

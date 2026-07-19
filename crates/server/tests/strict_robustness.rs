@@ -254,6 +254,67 @@ fn build_into_pdf_is_rejected() {
 }
 
 #[test]
+fn nonstrict_build_summarizes_problems() {
+    // DX12: without `--strict`, a single-doc build with a problem (here a broken
+    // cross-reference: a located warning that needs no kernel) still writes the page
+    // and exits 0 — but the per-warning lines have already scrolled past. It must print
+    // a closing tally naming the count + the flag that would have failed it, so the
+    // silent degradation isn't shipped with a green, wordless exit.
+    let dir = tmp_dir("nonstrict-summary");
+    let doc = dir.join("doc.tmd");
+    fs::write(&doc, "---\ntitle: Doc\n---\n\nSee @fig-nope for details.\n").unwrap();
+    let res = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .output()
+        .expect("lenient build");
+    let err = String::from_utf8_lossy(&res.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        res.status.success(),
+        "a non-strict build with problems still writes (exit 0): {err}"
+    );
+    // The per-warning line proves the problem was detected...
+    assert!(
+        err.contains("broken cross-reference"),
+        "the broken cross-ref is reported: {err}"
+    );
+    // ...and DX12 adds the closing tally naming the count + `--strict`.
+    assert!(
+        err.contains("1 problem") && err.contains("--strict"),
+        "a non-strict build names its problem count + --strict: {err}"
+    );
+}
+
+#[test]
+fn nonstrict_site_build_summarizes_problems() {
+    // DX12, site path: a malformed `_site.yml` degrades the whole site to defaults (a
+    // real problem), but a non-strict build ships it green. It must print the same
+    // closing tally as the single-doc path, pointing at `--strict`.
+    let dir = tmp_dir("nonstrict-site-summary");
+    fs::write(dir.join("_site.yml"), "title: \"unterminated\nfoo: bar\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+    let out = dir.join("_site");
+    let res = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .expect("lenient site build");
+    let err = String::from_utf8_lossy(&res.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        res.status.success(),
+        "a non-strict site build with a degraded config still ships (exit 0): {err}"
+    );
+    assert!(
+        err.contains("problem") && err.contains("--strict"),
+        "a non-strict site build names its problem count + --strict: {err}"
+    );
+}
+
+#[test]
 fn check_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("checkflag");
     let doc = dir.join("post.tmd");
