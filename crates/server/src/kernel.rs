@@ -273,6 +273,20 @@ impl KernelSpec {
                     "-f".into(),
                     conn.display().to_string(),
                     "--quiet".into(),
+                    // Reap this kernel if taliesin dies ungracefully (SIGKILL / crash
+                    // / closed terminal), where our `Drop` never runs and the kernel
+                    // would otherwise orphan — measured: it reparents to a subreaper
+                    // (not init) and leaks its /tmp connection dir. ipykernel's
+                    // `ParentPollerUnix` polls its parent pid and self-exits once it
+                    // changes. It needs our REAL pid, not `1`: ipykernel 7 disables the
+                    // poller for `parent_handle == 1` (the old `ppid == init` check is
+                    // subreaper-fragile), and our pid arms the robust "ppid changed"
+                    // path. Built in the parent before spawn, so `process::id()` is the
+                    // kernel's ppid-to-be. Warm-pool kernels reap by a different route
+                    // (the forkserver helper, `warm_pool.rs`) and never see this argv.
+                    // NOT `PR_SET_PDEATHSIG`: that fires on a parent *thread* exit,
+                    // which a tokio worker can do mid-session, killing a live kernel.
+                    format!("--IPKernelApp.parent_handle={}", std::process::id()),
                 ]
             },
             preambles: &[OJS_DEFINE_PREAMBLE, MPL_THEME_PREAMBLE],
@@ -1360,5 +1374,171 @@ mod tests {
         );
         assert!(kept.exists(), "disarm must NOT remove the connection dir");
         let _ = std::fs::remove_dir_all(&kept);
+    }
+
+    #[test]
+    fn cold_python_kernel_argv_arms_parent_death_reaping() {
+        // A cold-started kernel is a direct child of taliesin, so on an *ungraceful*
+        // death (SIGKILL / crash / closed terminal) our `Drop` never runs and the
+        // kernel orphans. We arm ipykernel's `ParentPollerUnix` by passing our REAL
+        // pid as `--IPKernelApp.parent_handle` (the argv is built in-parent, before
+        // spawn, so `process::id()` is the kernel's ppid-to-be).
+        let py = KernelSpec::python(Path::new("python3"));
+        let args = (py.argv)(Path::new("/tmp/tali-kernel-x/connection.json"));
+        let want = format!("--IPKernelApp.parent_handle={}", std::process::id());
+        assert!(
+            args.iter().any(|a| a == &want),
+            "python cold-kernel argv must arm parent-death reaping ({want}); got {args:?}"
+        );
+        // `parent_handle=1` is a NO-OP in ipykernel 7 (the old `ppid==init` mode is
+        // subreaper-fragile and explicitly disabled); guard against it creeping back.
+        assert!(
+            !args.iter().any(|a| a == "--IPKernelApp.parent_handle=1"),
+            "parent_handle=1 is disabled in ipykernel 7; pass the real pid"
+        );
+
+        // R/IRkernel has no `ParentPollerUnix` equivalent, so its argv must NOT carry
+        // the ipykernel-only flag (it would be an unknown option to R).
+        let r = KernelSpec::r(Path::new("R"));
+        let rargs = (r.argv)(Path::new("/tmp/tali-kernel-y/connection.json"));
+        assert!(
+            !rargs.iter().any(|a| a.contains("parent_handle")),
+            "R kernel argv must not carry the ipykernel-only parent_handle flag; got {rargs:?}"
+        );
+    }
+
+    /// End-to-end proof that a cold kernel self-reaps when taliesin dies ungracefully.
+    ///
+    /// Runs in two modes. CHILD mode (env set) plays "taliesin": it cold-starts a real
+    /// kernel, records its pid + conn dir, then blocks forever so ONLY an outside
+    /// SIGKILL can end it (never `Drop`). PARENT mode re-spawns this binary in child
+    /// mode, SIGKILLs it, and asserts the orphaned kernel self-terminated — which only
+    /// happens because the argv armed `ParentPollerUnix` (mutation: drop the flag or
+    /// set it to `1` and the kernel survives, failing this test). Reproduced without
+    /// the fix: the orphan reparents to a *subreaper* (not init), so the poller must
+    /// key off "ppid changed", which the real-pid `parent_handle` arms.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn cold_kernel_self_reaps_on_ungraceful_parent_death() {
+        const CHILD_ENV: &str = "TALIESIN_COLD_REAP_CHILD";
+
+        // ---- CHILD ("fake taliesin") mode ----
+        if let Ok(pidfile) = std::env::var(CHILD_ENV) {
+            let py = PathBuf::from(
+                std::env::var_os("TALIESIN_PYTHON").expect("child mode requires TALIESIN_PYTHON"),
+            );
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let k = Kernel::start(&KernelSpec::python(&py), None)
+                    .await
+                    .expect("cold kernel should start in child mode");
+                let pid = k.proc.pid().expect("an owned kernel has a pid");
+                let dir = k.conn_dir.clone();
+                std::fs::write(&pidfile, format!("{pid}\n{}", dir.display()))
+                    .expect("write pidfile");
+                // Hold the kernel alive but NEVER drop it: block until the parent
+                // SIGKILLs us. `Drop` would reap gracefully and mask the poller.
+                std::mem::forget(k);
+                loop {
+                    std::thread::sleep(Duration::from_secs(3600));
+                }
+            });
+            unreachable!("child mode blocks until SIGKILLed");
+        }
+
+        // ---- PARENT mode ----
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the cold-kernel \
+                 reaping test would silently skip."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to test cold-kernel reaping.");
+            return;
+        }
+
+        let pidfile =
+            std::env::temp_dir().join(format!("tali-coldreap-{}.pid", uuid::Uuid::new_v4()));
+        let _ = std::fs::remove_file(&pidfile);
+
+        let mut child =
+            std::process::Command::new(std::env::current_exe().expect("current test binary path"))
+                // A plain (non-`--exact`) filter matching this test's unique name, so the
+                // re-spawned harness runs exactly this one test in child mode.
+                .arg("cold_kernel_self_reaps_on_ungraceful_parent_death")
+                .env(CHILD_ENV, &pidfile)
+                .spawn()
+                .expect("re-spawn the test binary in child mode");
+        let child_pid = child.id();
+
+        // Wait (up to ~30s: cold start + ZMQ handshake, generous under load) for the
+        // child to report the live kernel's pid + conn dir.
+        let mut reported = None;
+        for _ in 0..300 {
+            if let Ok(s) = std::fs::read_to_string(&pidfile) {
+                let mut lines = s.lines();
+                if let (Some(p), Some(d)) = (lines.next(), lines.next())
+                    && let Ok(pid) = p.trim().parse::<u32>()
+                {
+                    reported = Some((pid, PathBuf::from(d.trim())));
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        let Some((kernel_pid, conn_dir)) = reported else {
+            unsafe { libc::kill(child_pid as libc::pid_t, libc::SIGKILL) };
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&pidfile);
+            panic!("child never reported a live kernel pid (Kernel::start failed?)");
+        };
+
+        assert!(
+            pid_is_live(kernel_pid),
+            "kernel {kernel_pid} should be alive before we kill its parent"
+        );
+
+        // Ungraceful death of the parent ("taliesin"): SIGKILL, so no `Drop` runs and
+        // the kernel is orphaned to a subreaper.
+        unsafe { libc::kill(child_pid as libc::pid_t, libc::SIGKILL) };
+        let _ = child.wait();
+
+        // The orphan must self-terminate via `ParentPollerUnix` (its ppid changed).
+        // Poll interval is 1s; allow generous slack for load.
+        let mut reaped = false;
+        for _ in 0..120 {
+            if !pid_is_live(kernel_pid) {
+                reaped = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        // Tidy up regardless (the forgotten Kernel's dir leaked with the child's death).
+        let _ = std::fs::remove_dir_all(&conn_dir);
+        let _ = std::fs::remove_file(&pidfile);
+        if !reaped {
+            unsafe { libc::kill(kernel_pid as libc::pid_t, libc::SIGKILL) };
+        }
+        assert!(
+            reaped,
+            "an orphaned cold kernel must self-reap on ungraceful taliesin death; \
+             pid {kernel_pid} survived"
+        );
+    }
+
+    /// A pid is "live" iff /proc/<pid>/stat exists and its state is not Zombie — a
+    /// self-exited orphan lingers as a `Z` entry until its subreaper reaps it, and that
+    /// must read as dead (a bare `kill(pid, 0)` is fooled by the corpse in the table).
+    #[cfg(target_os = "linux")]
+    fn pid_is_live(pid: u32) -> bool {
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+            return false;
+        };
+        let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r.trim_start()) else {
+            return false;
+        };
+        rest.split_whitespace().next().unwrap_or("") != "Z"
     }
 }
