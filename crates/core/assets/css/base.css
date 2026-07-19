@@ -913,19 +913,6 @@
     h2, h3, h4 { break-after: avoid; }
   }
 
-/* Interactive `{js}`-cell inputs (the `//| viewof:` controls). A native, minimal
-   control style replacing the inputs the Observable runtime used to provide. */
-.tali-input {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  margin: 0.4rem 0;
-  font-size: 0.9rem;
-  color: var(--tali-muted);
-}
-.tali-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--tali-accent); }
-.tali-input input[type="checkbox"], .tali-input input[type="radio"] { accent-color: var(--tali-accent); }
-.tali-input select { color: var(--tali-fg); background: var(--tali-bg); border: 1px solid var(--tali-border-strong); border-radius: 4px; padding: 0.1em 0.3em; }
 /* The kernel error box and the `{js}` error box are the same meaning, so they are the same red.
    This used to be Material Design's error red on its own pink: a second vendor red for one idea. */
 .tali-js-error { color: #862033; background: #fdecef; border: 1px solid color-mix(in srgb, var(--tali-callout-important) 45%, transparent); padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em;

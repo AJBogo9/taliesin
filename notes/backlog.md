@@ -936,11 +936,6 @@ under-sells machinery that already ships.)
 
 **Tier 1 — silent holes (do-first: cheap, high-confidence, each closes a silent failure):**
 
-- **PL2 — Make `{{< input >}}` coherent** (two auditors found it independently). It's the one interactive feature
-  that's a shortcode not a `:::` div, so `::: {.input name="k"}` is **silently dropped** (empty div, `divs.rs:295-298`)
-  while the validator's own message calls it `.input` (`validate.rs:202`), a non-existent syntax; and a leftover
-  legacy `.tali-input` CSS block (`base.css:918-925`) overrides the shortcode rule at `:201` and mutes its label.
-  Warn on a dropped known-feature empty div + delete the colliding CSS. S · high. **VERIFIED.**
 - **PL3 — Unify column layout; stop discarding `.column width=`.** Three spellings (`{layout-ncol=3}` bare
   attribute, `.columns`, `.column`) at `divs.rs:450-468`, and the arm's own comment admits `.column width=` is
   "ignored (equal columns)" with no warning. Bless `.columns` canonical + `layout-ncol` alias; honour-or-warn

@@ -78,4 +78,16 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         step.line.is_some(),
         "step-lines warning should be located: {step:?}"
     );
+
+    // PL2: an empty `::: {.input name="k"}` div (reaching for a div instead of the shortcode)
+    // renders nothing and is dropped — it must warn, located, pointing at the shortcode.
+    let empty = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("empty `.input`"))
+        .expect("an empty `.input` feature div must warn");
+    assert!(
+        empty.line.is_some() && empty.message.contains("{{< input"),
+        "empty-div warning is located + points at the shortcode: {empty:?}"
+    );
 }

@@ -280,6 +280,26 @@ pub(crate) fn group_divs(
             None => result.push(b),
         };
 
+    // An empty div that names a real feature (a `.input` control, a `.callout-*`, a
+    // `.panel-tabset`, a theorem, …) is silently dropped below (the "skip degenerate spans"
+    // step) and renders nothing — the exact `::: {.input name="k"}` trap. Warn (located) before
+    // dropping it. Position-independent (a span is empty when no flat block falls between its
+    // fences), so a trailing or standalone empty feature div is caught too; a plain/custom
+    // empty div stays silent (`validate_empty_feature_div` returns `None`).
+    for span in spans {
+        let has_content = flat
+            .iter()
+            .any(|fb| fb.buf_start > span.open && fb.buf_start < span.close);
+        if has_content {
+            continue;
+        }
+        let (file, line) = map_origin(origins, span.open);
+        let attrs = parse_attrs(&span.attrs);
+        if let Some(w) = super::validate::validate_empty_feature_div(&attrs.classes, line, file) {
+            warnings.push(w);
+        }
+    }
+
     for (i, fb) in flat.iter().enumerate() {
         // Open every span that starts before this block and contains it.
         while span_idx < spans.len()

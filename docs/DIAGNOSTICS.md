@@ -98,6 +98,14 @@ Two headings produce the same slug id, so an in-page link or `@sec-` reference t
 
 To fix: Give one heading an explicit distinct id (`## Title {#unique-id}`), or reword it so the auto-generated slugs differ.
 
+## TAL-EMPTY-DIV
+
+**an empty feature div renders nothing**
+
+A `:::` fenced div names a real feature (a `.input` reactive control, a `.callout-…`, a `.panel-tabset`, a theorem, …) but has no content between its fences, so it is dropped and renders nothing. The most common case is reaching for `::: {.input name="k"}` as a div — the reactive input control is a shortcode, not a fenced div.
+
+To fix: Put content between the `:::` fences (the callout body, the tabset's `##` headings, the theorem statement), or, for a reactive input, use the shortcode form `{{< input name="k" … >}}` instead of a div.
+
 ## TAL-FM-FORMAT
 
 **an unknown `format:` value**

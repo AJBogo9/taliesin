@@ -26,6 +26,9 @@ This scroll step's `lines=` uses the deck `code-line-numbers=` `|` step separato
 step's comma-only parser silently focuses to zero lines.
 :::
 
+::: {.input name="k"}
+:::
+
 ```{python}
 #| labl: fig-demo
 print("hello from a cell whose option key is misspelled")

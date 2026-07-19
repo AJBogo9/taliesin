@@ -159,6 +159,39 @@ pub(crate) fn validate_div_class(
     })
 }
 
+/// Validate a fenced div that turned out EMPTY (no blocks between its `:::` fences). An empty
+/// GENERIC div is harmless (it's dropped), but an empty div that names a real feature — a
+/// `.input` reactive control, a `.callout-*`, a `.panel-tabset`, a theorem, … — is almost
+/// always a mistake: the feature renders nothing, silently. Warn (located, click-to-source),
+/// with a pointed hint for `.input` (whose real form is the `{{< input >}}` shortcode, not a
+/// div — the exact confusion this closes). `None` when the empty div carries no known feature
+/// class, so a genuinely-empty custom/plain div stays silent (open vocabulary). `line` is the
+/// 1-based source line of the opening fence.
+pub(crate) fn validate_empty_feature_div(
+    classes: &[String],
+    line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    let feature = classes.iter().find(|c| {
+        let c = c.as_str();
+        c == "input"
+            || c.starts_with("callout-")
+            || DIV_FEATURE_CLASSES.contains(&c)
+            || THEOREM_KINDS.contains(&c)
+    })?;
+    let hint = if feature == "input" {
+        " — the reactive input control is the `{{< input name=\"…\" >}}` shortcode, not a `:::` div"
+    } else {
+        ""
+    };
+    Some(
+        Warning::new(format!(
+            "empty `.{feature}` block: no content between the `:::` fences, so it renders nothing{hint}"
+        ))
+        .at(file, line as u32),
+    )
+}
+
 /// Validate a `.step lines=` value (located, click-to-source). The `|` is the STEP separator
 /// of a deck/listing `code-line-numbers="1|2-3"` spec, but a `.step` is already one step, so
 /// its own `lines=` is parsed as comma-separated ranges only (`walkthrough.js`/`scrolly.js`).
@@ -371,6 +404,32 @@ mod tests {
             validate_div_class(&div(&["fragment", "highlight"]), 5, None).is_none(),
             "the real `.highlight` effect is silent"
         );
+    }
+
+    #[test]
+    fn validate_empty_feature_div_warns_by_class_and_points_input_at_the_shortcode() {
+        let div = |classes: &[&str]| classes.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+        // PL2: an empty `.input` div is the reach-for-a-div-instead-of-the-shortcode trap; warn
+        // and point at the shortcode.
+        let w = validate_empty_feature_div(&div(&["input"]), 4, Some("d.tmd".into()))
+            .expect("empty .input warns");
+        assert!(
+            w.message.contains("empty `.input`") && w.message.contains("{{< input"),
+            "names the class + points at the shortcode: {}",
+            w.message
+        );
+        assert_eq!(w.line, Some(4));
+        // Other feature classes warn generically (callout/tabset/theorem), no shortcode hint.
+        for c in ["callout-note", "panel-tabset", "theorem", "scrolly"] {
+            let w = validate_empty_feature_div(&div(&[c]), 1, None)
+                .unwrap_or_else(|| panic!("empty .{c} should warn"));
+            assert!(
+                w.message.contains(&format!("empty `.{c}`")) && !w.message.contains("{{< input")
+            );
+        }
+        // A plain/custom empty div (no known feature class) stays silent — open vocabulary.
+        assert!(validate_empty_feature_div(&div(&["my-widget"]), 1, None).is_none());
+        assert!(validate_empty_feature_div(&div(&[]), 1, None).is_none());
     }
 
     #[test]

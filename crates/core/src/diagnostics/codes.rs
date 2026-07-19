@@ -47,6 +47,9 @@ const TABLE: &[(&str, &str, &str)] = &[
     // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
     // which a step's own comma-only parser silently focuses to zero lines.
     ("step separator", "TAL-STEP-LINES", WARNING),
+    // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
+    // which is dropped and renders nothing.
+    ("no content between the", "TAL-EMPTY-DIV", WARNING),
     // Cross-references + links + anchors.
     ("broken cross-reference", "TAL-XREF-UNDEF", ERROR),
     // A DEFINITION no `@ref` can reach: a hidden cell's `label:` (the executor drops the
@@ -187,6 +190,18 @@ const EXPLANATIONS: &[Explanation] = &[
                 recognize, so it has no effect on how the cell runs or renders.",
         fix: "Correct the option to a known one (the message suggests the nearest, e.g. \
               `labl` -> `label`), or remove it. See the cell-options reference.",
+    },
+    Explanation {
+        code: "TAL-EMPTY-DIV",
+        title: "an empty feature div renders nothing",
+        cause: "A `:::` fenced div names a real feature (a `.input` reactive control, a \
+                `.callout-…`, a `.panel-tabset`, a theorem, …) but has no content between its \
+                fences, so it is dropped and renders nothing. The most common case is reaching \
+                for `::: {.input name=\"k\"}` as a div — the reactive input control is a \
+                shortcode, not a fenced div.",
+        fix: "Put content between the `:::` fences (the callout body, the tabset's `##` \
+              headings, the theorem statement), or, for a reactive input, use the shortcode \
+              form `{{< input name=\"k\" … >}}` instead of a div.",
     },
     Explanation {
         code: "TAL-STEP-LINES",
