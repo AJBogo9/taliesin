@@ -913,7 +913,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("tali-faked-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let script = dir.join("fake_forkserver.py");
-        std::fs::write(&script, format!("#!{}\n{body}", py.display())).unwrap();
+        // Route the shebang through `/usr/bin/env` so it works whether `py` is an
+        // absolute path (local dev) or a bare name like `python` (CI's TALIESIN_PYTHON):
+        // the kernel does not PATH-resolve a shebang interpreter, but `env` does, and it
+        // execs an absolute path just as happily. A bare-name shebang is exec'd directly
+        // by `ForkserverDaemon::boot` and fails with ENOENT.
+        std::fs::write(&script, format!("#!/usr/bin/env {}\n{body}", py.display())).unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
