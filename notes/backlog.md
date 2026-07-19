@@ -967,8 +967,6 @@ under-sells machinery that already ships.)
 - **PL15 — Document `new --draft`/`--tour`** (`cli.rs:495`) — absent from both help surfaces (`main.rs:152,348`)
   though the `init` scaffold advertises `--draft` — and replace the drift-prone one-line `usage:` strings (build's
   at `build.rs:160` already omits `--format json`) with `subcommand_help(cmd)`. Trivial–S · med. **VERIFIED.**
-- **PL16 — Group the 16-command `help` by purpose** (`main.rs:149-208`; Author / Preview & build / Inspect /
-  Editor & agent). Pure formatting. S · med. **VERIFIED.**
 - **PL18 — One `--format` error helper** (two wordings/styles across `check`/`map`/`symbols` vs `doctor`/`publish`)
   + resolve the hidden per-command `--out`/`--dir` aliasing. Trivial · low-med. **VERIFIED (cited).**
 

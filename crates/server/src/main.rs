@@ -146,11 +146,17 @@ fn usage() {
     println!("  taliesin <command> <file.tmd | dir> [args]");
     println!("  (a directory argument is a multi-page SITE project: an _site.yml + .tmd pages)");
     println!();
+    // Grouped by purpose (git/cargo/gh style; clig.dev): the everyday three sit apart from the
+    // ten an author rarely types. Flush-left section headers keep each command line unindented.
     println!("COMMANDS:");
+    println!();
+    println!("Author");
     println!("  init   [dir]               scaffold a starter site you can preview right away");
     println!("                             (writes _site.yml + index.tmd; default: current dir)");
     println!("  new <post|page|deck|paper> <slug> [--dir <root>] [--json]");
     println!("                             scaffold one document, correct on its first save");
+    println!();
+    println!("Preview & build");
     println!("  preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
     println!("                             a dir previews the whole SITE with nav + hot reload;");
@@ -176,22 +182,8 @@ fn usage() {
     println!("                             build a site/book + deploy it to Cloudflare Pages");
     println!("                             behind a shared passcode (strict by default);");
     println!("                             --public deploys un-gated; --dry-run skips the deploy");
-    println!("  render <file.tmd>          render a full HTML page to stdout");
-    println!("                             (static; does NOT execute code cells)");
-    println!("  read   <file.tmd>          project the document to plain text (agent-readable;");
-    println!("                             static, does NOT execute code cells)");
-    println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
-    println!(
-        "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
-    );
-    println!(
-        "  vocab                      emit editor autocomplete vocabulary as JSON (companion)"
-    );
-    println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
-    println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
-    println!(
-        "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
-    );
+    println!();
+    println!("Inspect");
     println!(
         "  check <file|dir> [--format human|json] [--errors-only] [--require-kernel] [--explain <CODE>]"
     );
@@ -201,10 +193,29 @@ fn usage() {
     );
     println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
     println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
+    println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
+    println!("  read   <file.tmd>          project the document to plain text (agent-readable;");
+    println!("                             static, does NOT execute code cells)");
+    println!("  render <file.tmd>          render a full HTML page to stdout");
+    println!("                             (static; does NOT execute code cells)");
+    println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
+    println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
+    println!();
+    println!("Editor & agent");
+    println!(
+        "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
+    );
+    println!(
+        "  vocab                      emit editor autocomplete vocabulary as JSON (companion)"
+    );
+    println!(
+        "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
+    );
     println!("  completions <shell> [--install]  print (or --install) a shell completion script");
     println!(
         "                             (subcommand + flag + .tmd-aware path completion; --install writes it for you)"
     );
+    println!();
     println!("  help, --version            show this help / the version");
     println!();
     print!("{ENV_HELP}");
