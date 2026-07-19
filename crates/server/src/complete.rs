@@ -386,6 +386,7 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--bare", false, "emit zero-JS, CSS-only single-doc HTML"),
             ("--jobs", true, "cap parallel page renders"),
             ("--format", true, "machine output format (json)"),
+            ("--json", false, "shorthand for --format json"),
         ],
         "publish" => &[
             ("--project-name", true, "Cloudflare Pages project name"),
@@ -394,6 +395,7 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--no-strict", false, "do not fail on located warnings"),
             ("--dry-run", false, "build but skip the deploy"),
             ("--format", true, "machine output format (json)"),
+            ("--json", false, "shorthand for --format json"),
         ],
         "new" => &[
             ("--dir", true, "project root to scaffold into"),
@@ -408,12 +410,20 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 "deck only: scaffold a guided, self-explaining deck",
             ),
             ("--json", false, "print a json receipt"),
+            ("--format", true, "human | json (alias for --json)"),
         ],
         "schema" => &[("--out", true, "output dir")],
-        "symbols" => &[("--format", true, "human | json")],
-        "map" => &[("--format", true, "human | json")],
+        "symbols" => &[
+            ("--format", true, "human | json"),
+            ("--json", false, "shorthand for --format json"),
+        ],
+        "map" => &[
+            ("--format", true, "human | json"),
+            ("--json", false, "shorthand for --format json"),
+        ],
         "check" => &[
             ("--format", true, "human | json"),
+            ("--json", false, "shorthand for --format json"),
             ("--explain", true, "explain a diagnostic code (TAL-...)"),
             (
                 "--errors-only",

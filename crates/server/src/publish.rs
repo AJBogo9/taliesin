@@ -34,6 +34,7 @@ const PUBLISH_FLAGS: &[&str] = &[
     "--public",
     "--dry-run",
     "--format",
+    "--json",
 ];
 
 /// Parsed `publish` argv (pure; no I/O), so the positional/flag rules are unit-testable.
@@ -70,6 +71,8 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
                     ));
                 }
             },
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => format = "json",
             "--project-name" => match it.next().map(|s| s.as_str()) {
                 Some(v) if !v.starts_with("--") => project_name = Some(v),
                 _ => {
@@ -421,6 +424,28 @@ mod tests {
     #[test]
     fn missing_path_is_an_error() {
         assert!(parse_publish_args(&argv(&["--dry-run"])).is_err());
+    }
+
+    /// PL5: `--json` is the clig.dev shorthand for `--format json`, so neither spelling
+    /// dead-ends on a machine-output command.
+    #[test]
+    fn json_is_an_alias_for_format_json() {
+        assert_eq!(
+            parse_publish_args(&argv(&["book", "--json"]))
+                .unwrap()
+                .format,
+            "json"
+        );
+        assert_eq!(
+            parse_publish_args(&argv(&["book", "--format", "json"]))
+                .unwrap()
+                .format,
+            "json"
+        );
+        assert_eq!(
+            parse_publish_args(&argv(&["book"])).unwrap().format,
+            "human"
+        );
     }
 
     #[test]

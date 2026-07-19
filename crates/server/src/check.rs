@@ -502,7 +502,13 @@ fn explain_output(code: Option<&str>, format: &str) -> Result<String, String> {
 }
 
 /// Every long flag `check` accepts (drives the unknown-flag did-you-mean).
-const CHECK_FLAGS: &[&str] = &["--format", "--explain", "--errors-only", "--require-kernel"];
+const CHECK_FLAGS: &[&str] = &[
+    "--format",
+    "--json",
+    "--explain",
+    "--errors-only",
+    "--require-kernel",
+];
 
 /// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
@@ -525,6 +531,8 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                     format = v;
                 }
             }
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => format = "json",
             "--errors-only" => errors_only = true,
             "--require-kernel" => require_kernel = true,
             // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next

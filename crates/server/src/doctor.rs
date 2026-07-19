@@ -167,7 +167,7 @@ fn overall_ok(checks: &[Check]) -> bool {
     !checks.iter().any(|c| c.status == Status::Error)
 }
 
-const DOCTOR_FLAGS: &[&str] = &["--format"];
+const DOCTOR_FLAGS: &[&str] = &["--format", "--json"];
 
 fn colored() -> bool {
     std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
@@ -242,6 +242,8 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             },
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => json = true,
             s if s.starts_with("--") => {
                 crate::log::error(&crate::serve::unknown_flag_error(s, DOCTOR_FLAGS));
                 return ExitCode::FAILURE;

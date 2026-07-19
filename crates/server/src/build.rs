@@ -62,7 +62,9 @@ struct BuildArgs<'a> {
 
 /// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
 /// only short alias; it's not in this set (suggestions are between long flags).
-const BUILD_FLAGS: &[&str] = &["--out", "--dir", "--jobs", "--strict", "--bare", "--format"];
+const BUILD_FLAGS: &[&str] = &[
+    "--out", "--dir", "--jobs", "--strict", "--bare", "--format", "--json",
+];
 
 /// Output-path extensions that name a format Taliesin does not produce (DX11). `build`
 /// writes HTML; a second positional ending in one of these means the author expected format
@@ -124,6 +126,9 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
                     ));
                 }
             },
+            // `--json`: clig.dev shorthand for `--format json`, accepted on every
+            // machine-output command so neither spelling dead-ends.
+            "--json" => format = "json",
             // `--out <dir>` needs a real value. A missing one (end of args, or a flag
             // follows) is a hard error rather than silently leaving out_dir None and
             // writing `<stem>.html` to an unexpected place.

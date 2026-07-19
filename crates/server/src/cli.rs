@@ -34,7 +34,7 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
 /// Every long flag `init` accepts (drives the unknown-flag did-you-mean).
-const INIT_FLAGS: &[&str] = &["--json"];
+const INIT_FLAGS: &[&str] = &["--json", "--format"];
 
 /// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
 /// the current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent
@@ -42,9 +42,23 @@ const INIT_FLAGS: &[&str] = &["--json"];
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     let mut dir_arg: Option<&str> = None;
     let mut json = false;
-    for a in &args[2..] {
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--json" => json = true,
+            // `--format json` / `--format human`: accept the long spelling too (json is the
+            // shorthand), so `init --format json` doesn't dead-end.
+            "--format" => match it.next().map(|s| s.as_str()) {
+                Some("json") => json = true,
+                Some("human") => json = false,
+                other => {
+                    log::error(&format!(
+                        "--format expects human or json (got {})",
+                        other.unwrap_or("nothing")
+                    ));
+                    return ExitCode::FAILURE;
+                }
+            },
             s if s.starts_with("--") => {
                 log::error(&serve::unknown_flag_error(s, INIT_FLAGS));
                 return ExitCode::FAILURE;
@@ -491,6 +505,19 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             // `--json` prints `{kind, slug, created, preview}` (pure JSON to stdout), so an
             // agent knows exactly what it made and where. Suppresses the human hints.
             "--json" => json = true,
+            // `--format json` / `--format human`: accept the long spelling too (json is the
+            // shorthand), so `new --format json` doesn't dead-end.
+            "--format" => match it.next().map(|s| s.as_str()) {
+                Some("json") => json = true,
+                Some("human") => json = false,
+                other => {
+                    log::error(&format!(
+                        "--format expects human or json (got {})",
+                        other.unwrap_or("nothing")
+                    ));
+                    return ExitCode::FAILURE;
+                }
+            },
             // `--draft` marks the scaffold `draft: true` (held out of the published build).
             "--draft" => opts.draft = true,
             // `--tour` scaffolds a guided deck (deck-only; rejected below on other kinds).
@@ -565,7 +592,7 @@ fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
 }
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json", "--draft", "--tour"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft", "--tour"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).

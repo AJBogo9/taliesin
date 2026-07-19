@@ -484,7 +484,7 @@ fn map_human(m: &ProjectMap) -> String {
 }
 
 /// Every long flag `map` accepts (drives the unknown-flag did-you-mean).
-const MAP_FLAGS: &[&str] = &["--format"];
+const MAP_FLAGS: &[&str] = &["--format", "--json"];
 
 /// `taliesin map <dir> [--format human|json]`: the whole-project outline in one read-only
 /// call (pages in order, nav, mounts, the cross-reference graph, embedded decks). Reuses
@@ -501,6 +501,8 @@ pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
                     format = v;
                 }
             }
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => format = "json",
             s if s.starts_with("--") => {
                 log::error(&crate::serve::unknown_flag_error(s, MAP_FLAGS));
                 return ExitCode::FAILURE;
@@ -548,7 +550,7 @@ pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
 }
 
 /// Every long flag `symbols` accepts (drives the unknown-flag did-you-mean).
-const SYMBOLS_FLAGS: &[&str] = &["--format"];
+const SYMBOLS_FLAGS: &[&str] = &["--format", "--json"];
 
 /// `taliesin symbols <file.tmd> [--format human|json]`: list the document's
 /// cross-reference targets, for an editor's `@`-completion.
@@ -568,6 +570,8 @@ pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
                     format = v;
                 }
             }
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => format = "json",
             s if s.starts_with("--") => {
                 log::error(&crate::serve::unknown_flag_error(s, SYMBOLS_FLAGS));
                 return ExitCode::FAILURE;
