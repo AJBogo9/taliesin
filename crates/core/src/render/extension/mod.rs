@@ -17,6 +17,11 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
     }
     let mut out = String::with_capacity(src.len());
     let mut in_code = false;
+    // Deduplicates `{{< input >}}` control ids across the document, so two controls that
+    // bind the same reactive name get distinct DOM ids (`qin-rate`, `qin-rate-1`). Threaded
+    // here (not per line) because the id must be name-based, not line-based — see
+    // `input_shortcode`.
+    let mut input_ids: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     for (i, line) in src.lines().enumerate() {
         if i > 0 {
             out.push('\n');
@@ -28,7 +33,7 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
         } else if in_code {
             out.push_str(line); // literal inside a code block (it's an example)
         } else {
-            out.push_str(&expand_in_line(line, i + 1, &mut warnings));
+            out.push_str(&expand_in_line(line, i + 1, &mut warnings, &mut input_ids));
         }
     }
     if src.ends_with('\n') {
@@ -42,7 +47,12 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
 /// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a
 /// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.tmd >}}` ``)
 /// stays literal — mirroring how fenced blocks are skipped in `expand_shortcodes`.
-fn expand_in_line(line: &str, line_no: usize, warnings: &mut Vec<Warning>) -> String {
+fn expand_in_line(
+    line: &str,
+    line_no: usize,
+    warnings: &mut Vec<Warning>,
+    input_ids: &mut std::collections::HashMap<String, u32>,
+) -> String {
     if !line.contains("{{<") {
         return line.to_string();
     }
@@ -75,7 +85,7 @@ fn expand_in_line(line: &str, line_no: usize, warnings: &mut Vec<Warning>) -> St
             // so it is expanded here.
             if inner.split_whitespace().next() == Some("input") {
                 let toks = tokenize_args(inner);
-                out.push_str(&input_shortcode(&toks[1..], line_no, warnings));
+                out.push_str(&input_shortcode(&toks[1..], line_no, warnings, input_ids));
                 i = end + 3;
                 continue;
             }
@@ -213,7 +223,12 @@ fn shortcode_named(args: &[String], key: &str) -> Option<String> {
 /// unknown type with a did-you-mean, select without options) via `validate_input`. Raw-HTML,
 /// passed through — the block model assigns it an id/sourcepos like any HTML block. Read-only:
 /// reader interaction with the rendered view, never a source write.
-fn input_shortcode(args: &[String], line_no: usize, warnings: &mut Vec<Warning>) -> String {
+fn input_shortcode(
+    args: &[String],
+    line_no: usize,
+    warnings: &mut Vec<Warning>,
+    input_ids: &mut std::collections::HashMap<String, u32>,
+) -> String {
     let name = shortcode_named(args, "name").unwrap_or_default();
     let kind = shortcode_named(args, "type").unwrap_or_else(|| "slider".to_string());
     let label = shortcode_named(args, "label").unwrap_or_else(|| name.clone());
@@ -228,7 +243,18 @@ fn input_shortcode(args: &[String], line_no: usize, warnings: &mut Vec<Warning>)
     ) {
         warnings.push(w);
     }
-    let ctrl_id = format!("qin-{line_no}");
+    // Derive the control's DOM id from its reactive name, not the source line, so the
+    // block's content-hash `data-block-id` stays stable when an edit above shifts the line.
+    // A line-based id (the old `qin-<line>`) re-hashes the block on any shift, forcing a live
+    // re-render that discards the control's DOM/JS state (and, in a deck, defeats the
+    // section-signature re-mount that keeps untouched slides alive). Deduped so two controls
+    // binding the same name still get unique ids; an anonymous control (no name, hence no
+    // reactive identity to preserve) keeps the line-based fallback.
+    let ctrl_id = if name.is_empty() {
+        format!("qin-{line_no}")
+    } else {
+        dedup_with_suffix(format!("qin-{}", slugify(&name)), input_ids)
+    };
     let name_a = escape_attr(&name);
     let num_attr = |k: &str| {
         shortcode_named(args, k)

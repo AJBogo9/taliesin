@@ -2722,6 +2722,56 @@ fn input_slider_shortcode_emits_reactive_control() {
     assert!(h.contains(">k</label>"), "label: {h}");
 }
 
+/// The `data-block-id` of a `tali-input` block, extracted from rendered `body_html`.
+fn tali_input_block_id(h: &str) -> String {
+    let key = "class=\"tali-input\" data-block-id=\"";
+    let i = h.find(key).expect("a tali-input block") + key.len();
+    h[i..].split('"').next().unwrap().to_string()
+}
+
+#[test]
+fn input_control_id_is_position_independent() {
+    let p = std::path::Path::new(".");
+    let input = "{{< input name=\"rate\" type=\"slider\" min=\"0\" max=\"20\" value=\"8\" >}}\n";
+    let top = render_document_with_includes(input, p).body_html();
+    let shifted =
+        render_document_with_includes(&format!("A leading paragraph.\n\n{input}"), p).body_html();
+    // The control id is derived from the reactive name, not the source line, so it is the
+    // same whether the input sits at the top or is shifted down by an edit above.
+    assert!(
+        top.contains("id=\"qin-rate\""),
+        "name-based control id at top: {top}"
+    );
+    assert!(
+        shifted.contains("id=\"qin-rate\""),
+        "name-based control id when shifted: {shifted}"
+    );
+    // Therefore the input block's content-hash `data-block-id` is stable across the shift —
+    // the invariant a live deck re-mount / incremental diff relies on to keep control state.
+    assert_eq!(
+        tali_input_block_id(&top),
+        tali_input_block_id(&shifted),
+        "the input block's data-block-id must be position-independent"
+    );
+}
+
+#[test]
+fn duplicate_input_names_get_deduped_control_ids() {
+    let p = std::path::Path::new(".");
+    let h = render_document_with_includes(
+        "{{< input name=\"rate\" type=\"slider\" >}}\n\n{{< input name=\"rate\" type=\"slider\" >}}\n",
+        p,
+    )
+    .body_html();
+    // Two controls can bind the same reactive name (e.g. the same control on two slides);
+    // their DOM ids must still be unique, so the second dedups with a `-N` suffix.
+    assert!(h.contains("id=\"qin-rate\""), "first control id: {h}");
+    assert!(
+        h.contains("id=\"qin-rate-1\""),
+        "second deduped control id: {h}"
+    );
+}
+
 #[test]
 fn input_shortcode_other_types_emit_their_native_control() {
     let p = std::path::Path::new(".");
