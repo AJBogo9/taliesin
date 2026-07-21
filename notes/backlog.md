@@ -66,50 +66,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
    trap stays out). *Gating: L, net-new; own spec/plan when picked up. Design (Phase 2):*
    [2026-07-21-dx17-headless-executed-output-design.md](../docs/superpowers/specs/2026-07-21-dx17-headless-executed-output-design.md).
 
-#### Editor DevX / language-server initiative
-
-The daily-authoring counterpart to the machine-facing work, and the direct answer to Quarto 2's
-headline pitch (*"a new Markdown parser for real-time errors, autocompletion, project-wide YAML
-validation"*). Taliesin already has the parser (comrak + block model) and a deep validator suite in
-Rust (`check.rs` + `taliesin_core::diagnostics`); the gap is that the VS Code companion surfaces it
-**on-save and lossily**, not live and rich. Aligned with the **single-editing-surface** invariant: the
-editor is the *only* authoring surface, so this is where authoring quality lives (the collaborative /
-visual-editor half of Quarto 2 is out of scope — it needs multiple write paths). Full audit:
-[2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md). Each item pins via the extension
-`node:test` harness (`editor/vscode/src/test/`) + the `corpus/diagnostics/` Rust pins. Ordered by value;
-pull the top open one.
-
-  (E1 severity/code/docs_url + quick-fix, E2 on-type diagnostics, E3 column-accurate diagnostics, E4
-  hover, E5 outline + go-to-definition, E6 front-matter value completion have all shipped — see "Already
-  shipped" below. E7's **diagnostics slice has now shipped** too; the remaining E7 capabilities are
-  additive on that harness, below.)
-
-- **E7. `taliesin lsp` server — capability follow-ups** *(shipped so far: the stdio harness + live
-  diagnostics + go-to-definition + document outline + hover + completion + quick-fix code actions,
-  2026-07-22; specs
-  [diagnostics-slice](../docs/superpowers/specs/2026-07-21-e7-lsp-diagnostics-slice-design.md) +
-  [go-to-definition](../docs/superpowers/specs/2026-07-21-e7-lsp-goto-definition.md) +
-  [hover](../docs/superpowers/specs/2026-07-21-e7-lsp-hover.md) +
-  [completion](../docs/superpowers/specs/2026-07-22-e7-lsp-completion.md) +
-  [code-actions](../docs/superpowers/specs/2026-07-22-e7-lsp-code-actions.md)).*
-  `taliesin lsp` (in `crates/server/src/lsp.rs` + `lsp_nav.rs` + `lsp_outline.rs` + `lsp_complete.rs`,
-  `lsp-server`/`lsp-types`) advertises `textDocumentSync: FULL` + `definitionProvider` +
-  `documentSymbolProvider` + `hoverProvider` + `completionProvider` + `codeActionProvider`, holds a
-  `HashMap<Url,String>` document store, publishes live unsaved-buffer diagnostics (via
-  `check::buffer_diagnostics`), answers `textDocument/definition` for `@xref`/`[@cite]`/`{{< include >}}`
-  (via `lsp_nav::{classify_target, definition_site, bib_entry_site, frontmatter_bib_paths}`),
-  `textDocument/documentSymbol` (the heading outline, via `lsp_outline::outline`), `textDocument/hover`
-  (xref label+number from a live-buffer render's `RenderedDoc::xref_numbers` + `vocab` labels, front-matter
-  key docs from `vocab`, `[@cite]` -> brace-balanced `.bib` entry via `lsp_nav::bib_entry_text`),
-  `textDocument/completion` across the 7 cursor contexts (front-matter key/value, cell option, div class,
-  xref, cite, shortcode path; via `lsp_complete::detect_context` + `vocab` + `render_buffer`), and
-  `textDocument/codeAction` (a one-click quick-fix for any diagnostic carrying a precise `data.replacement`
-  — the "did you mean" fix `check::Diagnostic::to_lsp` attaches when the squiggle is column-accurate).
-  **Remaining, additive on the same server** (the logic still lives only in the VS Code companion's
-  TypeScript and must be ported to Rust to become editor-agnostic): **rename** (rename an xref anchor +
-  its `@`-references across the doc). Migrating the VS Code companion itself to a `vscode-languageclient`
-  is a separate, later item. *S–M, additive.*
-
 ### B. Medium impact
 
 2. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
@@ -331,8 +287,9 @@ claim that one of these is "missing"):
 
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); only
   **DX16** and **DX17(b)** (headless `{js}`) remain (above).
-- **Editor DevX (VS Code companion) E1-E6 shipped 2026-07-21** (audit
-  [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md); only E7 `taliesin lsp` remains, above;
+- **Editor DevX (VS Code companion) E1-E6 shipped 2026-07-21; E7 (`taliesin lsp`) shipped 2026-07-22 —
+  the whole initiative is complete** (audit
+  [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md);
   spec/plan `docs/superpowers/specs|plans/2026-07-21-editor-devx-e3-e5.*`):
   E1 rich diagnostics + did-you-mean quick-fix; **E2** on-type diagnostics (`taliesin check --stdin`
   lints the piped buffer, not the saved file, skipping the interpreter probe; debounced
@@ -349,6 +306,17 @@ claim that one of these is "missing"):
   via `bibEntryOffset`; buffer+filesystem, no backend; `outline.test.ts`/`definition.test.ts`); **E6**
   front-matter value completion (`vocab` `frontmatterValues` for `format`/`theme` + a `frontmatter-value`
   `detectContext` case).
+- **E7 `taliesin lsp` (editor-agnostic language server over stdio) shipped 2026-07-22, all capabilities**
+  (`crates/server/src/lsp.rs` + `lsp_nav.rs` + `lsp_outline.rs` + `lsp_complete.rs`, `lsp-server`/`lsp-types`;
+  specs `docs/superpowers/specs/2026-07-2{1,2}-e7-lsp-*.md`). `textDocumentSync: FULL` + a `HashMap<Url,String>`
+  store; **live diagnostics** (`check::buffer_diagnostics` → `to_lsp`); **definition** (`@xref`/`[@cite]`/`{{<
+  include >}}` via `lsp_nav`); **documentSymbol** (heading outline via `lsp_outline::outline`); **hover** (xref
+  label+number from a live-buffer render's `xref_numbers`, key docs + `.bib` entry via `bib_entry_text`);
+  **completion** (7 cursor contexts via `lsp_complete::detect_context` + `vocab` + `render_buffer`);
+  **codeAction** (one-click quick-fix from a diagnostic's precise `data.replacement`); **rename** + prepare
+  (`lsp_nav::{anchor_at, anchor_occurrences}` rewrite an xref anchor's definition + all `@`-refs in one
+  `WorkspaceEdit`, gated to `is_xref_anchor` ids). Porting the companion itself to `vscode-languageclient` is
+  a separate, still-open, later item (not scoped here).
 - **DX17(a) headless executed-output (python/r) shipped 2026-07-21:** `taliesin read --run` executes
   python/r via build's exec path and projects `[figure fig-x: produced, alt "…"]` / `[output: …]` /
   `[cell error: …]` (+ `--format json` per-cell). Core `classify_exec_output`; pinned by
