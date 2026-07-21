@@ -14,8 +14,8 @@ use lsp_types::{
 use std::process::ExitCode;
 
 /// Advertised capabilities: full-text document sync (whole buffer on every change, which
-/// maps 1:1 onto `check`'s whole-buffer linting) plus go-to-definition. Hover / completion
-/// / outline land as later follow-ups on this same server.
+/// maps 1:1 onto `check`'s whole-buffer linting), go-to-definition, and document symbols
+/// (the heading outline). Hover / completion land as later follow-ups on this same server.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -26,6 +26,7 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             },
         )),
         definition_provider: Some(OneOf::Left(true)),
+        document_symbol_provider: Some(OneOf::Left(true)),
         ..Default::default()
     }
 }
@@ -126,12 +127,22 @@ fn handle_request(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use lsp_types::request::{GotoDefinition, Request as _};
+    use lsp_types::request::{DocumentSymbolRequest, GotoDefinition, Request as _};
     let response = if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(resolve_definition(docs, &params))?),
+            error: None,
+        }
+    } else if req.method == DocumentSymbolRequest::METHOD {
+        let params: lsp_types::DocumentSymbolParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(document_symbols(
+                docs,
+                &params.text_document.uri,
+            ))?),
             error: None,
         }
     } else {
@@ -207,6 +218,62 @@ fn resolve_definition(
             Target::FrontmatterKey { .. } | Target::None => return None,
         };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
+}
+
+/// The heading outline for `uri` as nested LSP document symbols, or `None` when the buffer
+/// is unknown.
+fn document_symbols(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    uri: &lsp_types::Url,
+) -> Option<lsp_types::DocumentSymbolResponse> {
+    let text = docs.get(uri)?;
+    let lines: Vec<&str> = text.split('\n').collect();
+    let symbols = crate::lsp_outline::outline(text)
+        .iter()
+        .map(|n| to_document_symbol(n, &lines))
+        .collect();
+    Some(lsp_types::DocumentSymbolResponse::Nested(symbols))
+}
+
+/// Convert one outline node (and its children) to an LSP `DocumentSymbol`. `range` spans the
+/// whole section; `selection_range` is the heading line (contained in `range`). Mirrors the
+/// companion's `outline-provider.ts` mapping.
+fn to_document_symbol(
+    node: &crate::lsp_outline::OutlineNode,
+    lines: &[&str],
+) -> lsp_types::DocumentSymbol {
+    use lsp_types::{Position, Range, SymbolKind};
+    let last = lines.len().saturating_sub(1);
+    let start = node.start_line.min(last);
+    let end = node.end_line.max(node.start_line).min(last);
+    let line_len = |i: usize| lines.get(i).map_or(0, |l| l.chars().count()) as u32;
+    let name = if node.title.is_empty() {
+        "(untitled)".to_string()
+    } else {
+        node.title.clone()
+    };
+    #[allow(deprecated)] // `deprecated` is a required (deprecated) field of DocumentSymbol.
+    lsp_types::DocumentSymbol {
+        name,
+        detail: None,
+        kind: SymbolKind::STRING,
+        tags: None,
+        deprecated: None,
+        range: Range::new(
+            Position::new(start as u32, 0),
+            Position::new(end as u32, line_len(end)),
+        ),
+        selection_range: Range::new(
+            Position::new(start as u32, 0),
+            Position::new(start as u32, line_len(start)),
+        ),
+        children: Some(
+            node.children
+                .iter()
+                .map(|c| to_document_symbol(c, lines))
+                .collect(),
+        ),
+    }
 }
 
 /// Lint `text` as the document at `uri` and publish the result.
@@ -607,5 +674,49 @@ mod tests {
         shutdown(&client);
         thread.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn document_symbol_returns_the_nested_heading_tree() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-outline.tmd").unwrap();
+        let text = "# Top\n\ntext\n\n## Sub A\n\n## Sub B\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(9),
+                method: lsp_types::request::DocumentSymbolRequest::METHOD.to_owned(),
+                params: serde_json::to_value(lsp_types::DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(9));
+        // The server emits Nested symbols (a plain array of DocumentSymbol).
+        let syms: Vec<lsp_types::DocumentSymbol> =
+            serde_json::from_value(resp.result.expect("a documentSymbol result")).unwrap();
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "Top");
+        assert_eq!(
+            syms[0].selection_range.start,
+            lsp_types::Position::new(0, 0)
+        );
+        let kids = syms[0].children.as_ref().expect("Top has children");
+        assert_eq!(
+            kids.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["Sub A", "Sub B"]
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
     }
 }
