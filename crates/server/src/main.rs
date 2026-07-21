@@ -47,7 +47,7 @@ fn main() -> ExitCode {
     }
     match args.get(1).map(String::as_str) {
         Some("render") => query::cmd_render(args.get(2)),
-        Some("read") => query::cmd_read(args.get(2)),
+        Some("read") => query::cmd_read(&args),
         Some("build") => {
             runtime_dirs::sweep_stale_runtime_dirs();
             build::cmd_build(&args)

@@ -81,57 +81,267 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
 /// static like `render`/`symbols`: it never starts a kernel, so `{python}`/`{r}` cells
 /// project as their source with no executed output (warned, like `render`). A VIEW, not an
 /// output format.
-pub(crate) fn cmd_read(path: Option<&String>) -> ExitCode {
+const READ_FLAGS: &[&str] = &["--run", "--format", "--json"];
+
+pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
+    let mut path: Option<&str> = None;
+    let mut run = false;
+    let mut format = "human";
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--run" => run = true,
+            "--format" => {
+                if let Some(v) = it.next() {
+                    format = v;
+                }
+            }
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => format = "json",
+            s if s.starts_with("--") => {
+                log::error(&crate::serve::unknown_flag_error(s, READ_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s => {
+                if path.is_none() {
+                    path = Some(s);
+                }
+            }
+        }
+    }
     let Some(path) = path else {
-        eprintln!("usage: taliesin read <file.tmd>");
+        eprintln!("usage: taliesin read <file.tmd> [--run] [--format human|json]");
         return ExitCode::FAILURE;
     };
+    if format != "human" && format != "json" {
+        log::error(&crate::serve::bad_format_error(Some(format)));
+        return ExitCode::FAILURE;
+    }
     if let Some(msg) = directory_rejection(path, "read projects a single .tmd file") {
         log::error(&msg);
         return ExitCode::FAILURE;
     }
-    match std::fs::read_to_string(path) {
-        Ok(src) => {
-            let p = Path::new(path);
-            let base = p.parent().unwrap_or_else(|| Path::new("."));
-            let text = crate::serve::guarded(|| {
-                let doc =
-                    taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
-                // Parse-only, like `render`: kernel cells (python/r) project as source with
-                // no output. Warn so an empty output isn't mistaken for a projection bug.
-                let kernel_cells = doc
-                    .blocks
-                    .iter()
-                    .filter(|b| {
-                        b.cell
-                            .as_ref()
-                            .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
-                    })
-                    .count();
-                if kernel_cells > 0 {
-                    log::warn(&format!(
-                        "read does not execute code cells ({kernel_cells} kernel cell{} projected \
-                         as source; outputs will be absent). Use `build` or `preview` to run them.",
-                        if kernel_cells == 1 { "" } else { "s" }
-                    ));
-                }
-                doc.body_text()
-            });
-            match text {
-                Ok(text) => {
-                    print!("{text}");
-                    ExitCode::SUCCESS
-                }
-                Err(panic) => {
-                    log::error(&format!("read panicked on {path}: {panic}"));
-                    ExitCode::FAILURE
-                }
-            }
-        }
+    let src = match std::fs::read_to_string(path) {
+        Ok(s) => s,
         Err(e) => {
             log::error(&format!("cannot read {path}: {e}"));
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
         }
+    };
+    let p = Path::new(path);
+    let base = p.parent().unwrap_or_else(|| Path::new("."));
+
+    // The parse-only render is panic-guarded exactly as before.
+    let mut doc = match crate::serve::guarded(|| {
+        taliesin_core::render_document_with_includes_rooted(&src, base, Some(base))
+    }) {
+        Ok(d) => d,
+        Err(panic) => {
+            log::error(&format!("read panicked on {path}: {panic}"));
+            return ExitCode::FAILURE;
+        }
+    };
+
+    // `--run` executes python/r (reusing build's exec path); `--run` under TALIESIN_NO_EXEC
+    // never touches a kernel, so for the report it counts as "not executed".
+    let executed = run && std::env::var_os("TALIESIN_NO_EXEC").is_none();
+    if run {
+        let blocks = std::mem::take(&mut doc.blocks);
+        doc.blocks = run_cells(blocks, base, p);
+    } else {
+        // Parse-only: kernel cells (python/r) project as source. Warn so an empty output
+        // isn't mistaken for a projection bug.
+        let kernel_cells = count_kernel_cells(&doc.blocks);
+        if kernel_cells > 0 {
+            log::warn(&format!(
+                "read does not execute code cells ({kernel_cells} kernel cell{} projected \
+                 as source; outputs will be absent). Use `read --run`, `build`, or `preview`.",
+                if kernel_cells == 1 { "" } else { "s" }
+            ));
+        }
+    }
+
+    if format == "json" {
+        print!("{}", read_json(path, &doc, executed));
+    } else {
+        print!("{}", doc.body_text());
+    }
+    ExitCode::SUCCESS
+}
+
+fn count_kernel_cells(blocks: &[taliesin_core::Block]) -> usize {
+    blocks
+        .iter()
+        .filter(|b| {
+            b.cell
+                .as_ref()
+                .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
+        })
+        .count()
+}
+
+/// Execute a single doc's cells, mirroring build's single-file exec (no HTML assembly).
+/// Takes owned blocks and returns them with output blocks spliced in.
+fn run_cells(
+    blocks: Vec<taliesin_core::Block>,
+    base: &Path,
+    doc_path: &Path,
+) -> Vec<taliesin_core::Block> {
+    let stem = doc_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("doc");
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            log::error(&format!("cannot start async runtime: {e}"));
+            return blocks;
+        }
+    };
+    rt.block_on(async {
+        let mut ex = crate::exec::Executor::with_freeze(crate::freeze::page_path(
+            &base.join("_freeze"),
+            stem,
+        ))
+        .in_dir(base);
+        ex.set_interpreters(
+            crate::interpreter::resolve_python(None, base),
+            crate::interpreter::resolve_r(None, base),
+        );
+        let out = ex.run(blocks).await;
+        if let Some(d) = ex.diagnostic() {
+            log::warn(&d);
+        }
+        out
+    })
+}
+
+#[derive(serde::Serialize)]
+struct ReadDoc<'a> {
+    path: &'a str,
+    executed: bool,
+    cells: Vec<CellResult>,
+    text: String,
+}
+
+#[derive(serde::Serialize)]
+struct CellResult {
+    id: String,
+    lang: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+    produced: bool,
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fig_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Serialize the per-cell executed-output summary for `read --format json`. An output block
+/// (when a cell produced one) immediately follows its cell, so we attach the next
+/// `tali-output` block to the last-seen executable cell.
+fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> String {
+    use taliesin_core::ExecOutput;
+    let mut cells = Vec::new();
+    let mut pending: Option<(String, String)> = None; // (cell block id, lang)
+    for b in &doc.blocks {
+        if let Some(c) = &b.cell {
+            if let Some((id, lang)) = pending.take() {
+                cells.push(empty_or_not_run(id, lang, executed));
+            }
+            if matches!(c.lang.as_str(), "python" | "r") {
+                pending = Some((b.id.clone(), c.lang.clone()));
+            }
+            continue;
+        }
+        if let (Some((id, lang)), Some(kind)) = (
+            pending.as_ref(),
+            taliesin_core::classify_exec_output(&b.html),
+        ) {
+            let (id, lang) = (id.clone(), lang.clone());
+            pending = None;
+            cells.push(match kind {
+                ExecOutput::Figure { fig_id, alt } => CellResult {
+                    id,
+                    lang,
+                    label: fig_id.clone(),
+                    produced: true,
+                    kind: "figure",
+                    fig_id,
+                    alt,
+                    error: None,
+                },
+                ExecOutput::Table { tbl_id } => CellResult {
+                    id,
+                    lang,
+                    label: tbl_id,
+                    produced: true,
+                    kind: "table",
+                    fig_id: None,
+                    alt: None,
+                    error: None,
+                },
+                ExecOutput::Stream(_) => CellResult {
+                    id,
+                    lang,
+                    label: None,
+                    produced: true,
+                    kind: "stream",
+                    fig_id: None,
+                    alt: None,
+                    error: None,
+                },
+                ExecOutput::Rich => CellResult {
+                    id,
+                    lang,
+                    label: None,
+                    produced: true,
+                    kind: "rich",
+                    fig_id: None,
+                    alt: None,
+                    error: None,
+                },
+                ExecOutput::Error(msg) => CellResult {
+                    id,
+                    lang,
+                    label: None,
+                    produced: false,
+                    kind: "error",
+                    fig_id: None,
+                    alt: None,
+                    error: Some(msg),
+                },
+            });
+        }
+    }
+    if let Some((id, lang)) = pending.take() {
+        cells.push(empty_or_not_run(id, lang, executed));
+    }
+    let out = ReadDoc {
+        path,
+        executed,
+        cells,
+        text: doc.body_text(),
+    };
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_string())
+    )
+}
+
+fn empty_or_not_run(id: String, lang: String, executed: bool) -> CellResult {
+    CellResult {
+        id,
+        lang,
+        label: None,
+        produced: false,
+        kind: if executed { "empty" } else { "not-run" },
+        fig_id: None,
+        alt: None,
+        error: None,
     }
 }
 
