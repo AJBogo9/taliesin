@@ -1001,7 +1001,10 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     "tali-stream"
                 };
-                s.push_str(&format!("<pre class=\"{class}\">{}</pre>", esc(text)));
+                s.push_str(&format!(
+                    "<pre class=\"{class}\">{}</pre>",
+                    esc(&strip_ansi(text))
+                ));
             }
             Output::Rich(html) => s.push_str(html),
             Output::Error {
@@ -1169,6 +1172,28 @@ mod tests {
         assert!(tb.contains("line 1"), "ansi not stripped: {tb}");
         assert!(!tb.contains("\u{1b}["), "raw ANSI leaked: {tb}");
         assert!(tb.contains("a &lt; b"), "traceback not escaped: {tb}");
+    }
+
+    // Regression: R's `message()`/`warning()` (and Python `rich`/coloured output)
+    // write ANSI SGR codes to a *stream*, not just to a traceback. The error path
+    // already strips them; the stream path must match, or the codes leak into the
+    // page as visible `[31m…[0m` garbage (the ESC char is invisible, its argument
+    // bytes are not).
+    #[test]
+    fn render_outputs_strips_ansi_from_streams() {
+        let out = render_outputs(&[Output::Stream {
+            stderr: true,
+            text: "\u{1b}[31mWarning:\u{1b}[0m in f(): a < b\n".into(),
+        }]);
+        assert!(
+            out.contains("Warning: in f(): a &lt; b"),
+            "text preserved: {out}"
+        );
+        assert!(!out.contains('\u{1b}'), "raw ESC leaked: {out}");
+        assert!(
+            !out.contains("[31m") && !out.contains("[0m"),
+            "ANSI SGR code leaked as visible text: {out}"
+        );
     }
 
     // Runs only when TALIESIN_PYTHON points at a python with ipykernel; without

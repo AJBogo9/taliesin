@@ -67,45 +67,21 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### B. Medium impact
 
-2. **AI-native packaging + guardrails** (detail:
-   [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md); anchors verified). Agent-facing
-   robustness that compounds with DX17:
-   - **`taliesin map --format json`** (M): one-call project outline (pages/nav/drafts/xref-graph/mounts)
-     for agent planning; mirror `cmd_symbols` (`query.rs:232`), reuse `Site::discover`. Pin:
-     `tests/map_cli.rs` over `corpus/demo-book`.
-   - **Correct-by-construction scaffolds + `--json` on `new`/`init`** (S-M): a citation-wired `paper`
-     kind (`bibliography:` + `[@key]` + shipped `references.bib`) and machine-readable create output;
-     seam `cli.rs:178` `new_files()`. Pin: byte-pin `corpus/scaffold/posts/my-paper/` via `cli.rs:658`.
-   - **Sharpen `check` as the LLM-mistake catcher** (L, sliced): the default-on placeholder-alt nudge
-     (`a11y.rs:284` + `helpers::tag_attr`). *(The opt-in numeric-claim-without-citation hint and the
-     `check --online` DOI check were both declined, see "Decided against".)* Pin:
-     `corpus/diagnostics/llm-mistakes.tmd`.
-   - **`build`/`publish` structured errors (`--format json`)** (M): retain the already-computed
-     `page_static_diagnostics` as structured `Diagnostic`s instead of logging+dropping; coupled edit
-     across `build.rs` + `publish.rs` (`run_site_build:868`). Pin: `tests/structured_build_errors.rs`.
-   - **Taliesin Claude Code skill/plugin** (S-M): a distributable `taliesin` skill (loop + dialect crib
-     + source-not-preview rule) driving the CLI, pinned against the live binary
-     (`tests/skill_freshness.rs`) so it can't rot.
-
-3. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
+2. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
    with real speaker value. Today the Share QR only encodes `localhost:PORT` and `build` yields a file
    the user must self-host, so: one-command deck publish? Plus a presenter laser/spotlight + auto-advance
    (reveal.js reflexes). Also thread `footer:`/`logo:` through both deck-page builders (no corpus deck
    needs one yet).
 
-4. **Decouple focus mode from OS fullscreen** *(needs an owner ruling)*: focus mode is welded to OS
+3. **Decouple focus mode from OS fullscreen** *(needs an owner ruling)*: focus mode is welded to OS
    fullscreen (`03-focus-mode.js:39-45`, "the author's ask"). Split the calm reading column from
    fullscreen?
 
-5. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
+4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
    deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
    fit-on-show refactor first).
 
-6. **R stream/stderr leaks raw ANSI into HTML** (`kernel.rs` `Output::Stream` emits `esc(text)` with no
-   `strip_ansi`): visible escape-code garbage in R cell output. *Gating: exec/kernel do-not-touch,
-   careful.*
-
-7. **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B). `site/xref.rs` +
+5. **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B). `site/xref.rs` +
    `site/mod.rs` push `"duplicate cross-reference label X defined on multiple pages"` onto a
    **`Vec<String>`** channel that carries no location, half-reproducing the Quarto flaw the tool
    critiques. This is **not just a channel type change**: a cross-page duplicate has **two or more
@@ -114,21 +90,21 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### C. Low / hardening (P3)
 
-8. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
+6. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
    against the offline invariant first (it implies a network check).*
 
-9. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
+7. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
     hardcoded English const table is `cite/render.rs:15-21`, and `lang` appears **zero** times in that
     file, so there is no localization seam yet. `lang:` correctly sets `<html lang>`; the "promise" of
     translated labels was never real. **No corpus doc demands it.**
 
-10. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
+8. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
     logic (`deck.css:705-711`), accept+document or unify? · add a `//| uses:` alias for the consumer
     `//| input:` (weigh vocab sprawl)? · callout kinds are namespaced but theorem kinds are bare,
     document or reconsider? · a Vite user pressing `r/o/u/c/q` or `h` gets silence now that interactivity
     moved to the browser dev menu, so one banner line pointing at the `◇` menu.
 
-11. **Reliability / test-infra long tail** (P3, dev-facing):
+9. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
@@ -270,6 +246,15 @@ claim that one of these is "missing"):
   done, C6 was never a gap.
 - **Machine-facing audit** M1, M2, M3-M5, M6b shipped; **M6a is frozen**, M2's hanging-interpreter
   sibling + the M4 stand-in flake remain (gated, above).
+- **AI-native packaging + guardrails** (the former Medium #2) fully shipped: `taliesin map --format json`
+  (`map_cli.rs`), the citation-wired `paper` scaffold + `--json` on `new`/`init` (`corpus/scaffold/`),
+  `build`/`publish` `--format json` (`structured_build_errors.rs`), the default-on placeholder-alt nudge
+  (`diagnostics/a11y.rs::placeholder_alt_message`), and the distributable Claude Code skill
+  (`editor/claude-code/skills/taliesin`, drift-locked by `skill_freshness.rs`).
+- **R/Python stream ANSI leak fixed 2026-07-21** (the former #6): `render_outputs`' `Output::Stream` arm
+  now `strip_ansi`s before escaping, matching the error arm, so R `message()`/`warning()` (and Python
+  coloured stderr) no longer leak `[31m…[0m` into the page (`kernel.rs`; pinned by
+  `render_outputs_strips_ansi_from_streams`, verified end-to-end against a real R kernel).
 - **Live defects** §2 #1 Part A, #2, #4-#10 shipped; only Part B (P3) + #3 i18n (low) remain (above).
 - **Reduction/modularity** Phase 2 + T1 + R2 (scanner unification) shipped; the codebase is already lean.
 - **Ungraceful-death reaping** warm-pool forkserver + cold-Python kernel + stale-`/tmp` sweep shipped;
