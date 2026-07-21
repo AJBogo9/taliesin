@@ -79,23 +79,17 @@ visual-editor half of Quarto 2 is out of scope — it needs multiple write paths
 `node:test` harness (`editor/vscode/src/test/`) + the `corpus/diagnostics/` Rust pins. Ordered by value;
 pull the top open one.
 
-  (E1 severity/code/docs_url + quick-fix, E2 on-type diagnostics, E4 hover, E6 front-matter value
-  completion have all shipped — see "Already shipped" below. E3, E5, E7 remain, ordered by value.)
+  (E1 severity/code/docs_url + quick-fix, E2 on-type diagnostics, E3 column-accurate diagnostics, E4
+  hover, E5 outline + go-to-definition, E6 front-matter value completion have all shipped — see "Already
+  shipped" below. Only E7 remains.)
 
-- **E3. Column-accurate diagnostic ranges.** Whole-line squiggles today because the check JSON carries no
-  column. Add a column to the diagnostic emit (`Warning`/`Diagnostic`) and map squiggles to the token.
-  Unblocks a precise quick-fix span (drops E1's edit-distance heuristic in `check.ts`'s `suggestionSpan`).
-  *M, net-new; touches the `diagnostics` warning type — the `Warning` struct carries only `line`, so a
-  `col` field must thread through every `.at(file, line)` call site + each validator.*
-- **E5. Document outline + go-to-definition.** `taliesin symbols` exists but isn't wired to a
-  `DocumentSymbolProvider` (outline/breadcrumbs) or `DefinitionProvider` (`@fig-x` → figure, `{{< include
-  x.tmd >}}` → file, `[@key]` → `.bib` entry). *M, extension-only.*
 - **E7. `taliesin lsp` server** *(strategic; own spec/brainstorm first).* An LSP-over-stdio subcommand
   holds the parsed doc warm, gets `didChange` with full buffer text (solves E2's on-type + unsaved-buffer
   in one move), and unifies diagnostics + hover + definition + symbols + completion + rename behind one
   protocol that works in any LSP editor. Wiring existing Rust engine parts, not a rebuild; would
-  consolidate the standalone on-type/hover/completion providers (E2/E4/E6, shipped) + E5 behind one
-  protocol. The `check --stdin` buffer seam E2 added is directly reusable by `didChange`. *L, net-new;
+  consolidate the standalone on-type/hover/completion/outline/definition providers (E2/E3/E4/E5/E6,
+  shipped) behind one protocol. The `check --stdin` buffer seam E2 added is directly reusable by
+  `didChange`. *L, net-new;
   spec under `docs/superpowers/specs/` before implementing.*
 
 ### B. Medium impact
@@ -319,14 +313,24 @@ claim that one of these is "missing"):
 
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); only
   **DX16** and **DX17(b)** (headless `{js}`) remain (above).
-- **Editor DevX (VS Code companion) E1/E2/E4/E6 shipped 2026-07-21** (audit
-  [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md); E3/E5/E7 remain, above):
+- **Editor DevX (VS Code companion) E1-E6 shipped 2026-07-21** (audit
+  [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md); only E7 `taliesin lsp` remains, above;
+  spec/plan `docs/superpowers/specs|plans/2026-07-21-editor-devx-e3-e5.*`):
   E1 rich diagnostics + did-you-mean quick-fix; **E2** on-type diagnostics (`taliesin check --stdin`
   lints the piped buffer, not the saved file, skipping the interpreter probe; debounced
   `onDidChangeTextDocument`; pin `stdin_buffer_is_linted_instead_of_the_on_disk_file` + `debounce.ts`
-  node:tests); **E4** `HoverProvider` resolving `@xref`→label / front-matter key→doc / `[@key]`→BibTeX
-  entry (pure `hover.ts` + shared `backend.ts`); **E6** front-matter value completion (`vocab`
-  `frontmatterValues` for `format`/`theme` + a `frontmatter-value` `detectContext` case).
+  node:tests); **E3** column-accurate diagnostics (a `[col,end_col)` span on `Warning`/`Diagnostic`,
+  serialized `skip_if_none` so un-columned JSON stays byte-identical; front-matter key typos get the span
+  via `block_key_span`/`nested_key_span`, xref stays whole-line — it is HTML-derived, block-line only; the
+  squiggle covers the token and the quick-fix uses `fixSpan` (exact span, no edit-distance guess); pins
+  `frontmatter::tests::unknown_*_column_span`, `check_json_front_matter_typo_carries_a_column_span`,
+  `check.test.ts` `fixSpan`); **E4** `HoverProvider` resolving `@xref`→label / front-matter key→doc /
+  `[@key]`→BibTeX entry (pure `hover.ts` + shared `backend.ts`); **E5** document outline
+  (`DocumentSymbolProvider` over a pure `outline.ts` heading scan) + go-to-definition
+  (`DefinitionProvider`: `{{< include >}}`→file, `@xref`→same-doc def via `definitionSite`, `[@key]`→`.bib`
+  via `bibEntryOffset`; buffer+filesystem, no backend; `outline.test.ts`/`definition.test.ts`); **E6**
+  front-matter value completion (`vocab` `frontmatterValues` for `format`/`theme` + a `frontmatter-value`
+  `detectContext` case).
 - **DX17(a) headless executed-output (python/r) shipped 2026-07-21:** `taliesin read --run` executes
   python/r via build's exec path and projects `[figure fig-x: produced, alt "…"]` / `[output: …]` /
   `[cell error: …]` (+ `--format json` per-cell). Core `classify_exec_output`; pinned by
