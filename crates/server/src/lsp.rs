@@ -8,13 +8,14 @@
 
 use lsp_server::{Connection, Message};
 use lsp_types::{
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    OneOf, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
-/// The one advertised capability: full-text document sync (whole buffer on every
-/// change), which maps 1:1 onto `check`'s whole-buffer linting. No provider
-/// capabilities yet (hover/completion/definition land as follow-ups).
+/// Advertised capabilities: full-text document sync (whole buffer on every change, which
+/// maps 1:1 onto `check`'s whole-buffer linting) plus go-to-definition. Hover / completion
+/// / outline land as later follow-ups on this same server.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -24,6 +25,7 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
                 ..Default::default()
             },
         )),
+        definition_provider: Some(OneOf::Left(true)),
         ..Default::default()
     }
 }
@@ -68,6 +70,7 @@ fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + 
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
+                handle_request(connection, &docs, req)?;
             }
             Message::Notification(notif) => handle_notification(connection, &mut docs, notif)?,
             Message::Response(_) => {}
@@ -116,6 +119,96 @@ fn handle_notification(
     Ok(())
 }
 
+/// Answer a request from the open-buffer store. Only `textDocument/definition` is handled;
+/// any other request gets a `MethodNotFound` reply so the client never hangs waiting.
+fn handle_request(
+    connection: &Connection,
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    req: lsp_server::Request,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use lsp_types::request::{GotoDefinition, Request as _};
+    let response = if req.method == GotoDefinition::METHOD {
+        let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_definition(docs, &params))?),
+            error: None,
+        }
+    } else {
+        lsp_server::Response {
+            id: req.id,
+            result: None,
+            error: Some(lsp_server::ResponseError {
+                // JSON-RPC MethodNotFound.
+                code: -32601,
+                message: format!("unhandled request: {}", req.method),
+                data: None,
+            }),
+        }
+    };
+    connection.sender.send(Message::Response(response))?;
+    Ok(())
+}
+
+/// Resolve go-to-definition for the token under the cursor, or `None` when it points
+/// nowhere resolvable (an undefined xref, a cross-file ref, a missing include/bib).
+fn resolve_definition(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::GotoDefinitionParams,
+) -> Option<lsp_types::GotoDefinitionResponse> {
+    use crate::lsp_nav::Target;
+    use lsp_types::{Location, Position, Range, Url};
+
+    let uri = &params.text_document_position_params.text_document.uri;
+    let pos = params.text_document_position_params.position;
+    let text = docs.get(uri)?;
+    let point = |line: u32, col: u32, end: u32| {
+        Range::new(Position::new(line, col), Position::new(line, end))
+    };
+
+    let location =
+        match crate::lsp_nav::classify_target(text, pos.line as usize, pos.character as usize) {
+            // `{{< include x.tmd >}}` → the file (position 0:0), when it exists on disk.
+            Target::Include { path, .. } => {
+                let dir = uri.to_file_path().ok()?;
+                let abs = dir.parent()?.join(&path);
+                if !abs.exists() {
+                    return None;
+                }
+                Location::new(Url::from_file_path(&abs).ok()?, point(0, 0, 0))
+            }
+            // `@fig-x` → its definition in this document (cross-file refs get nothing).
+            Target::Xref { id, .. } => {
+                let (line, col) = crate::lsp_nav::definition_site(text, &id)?;
+                Location::new(
+                    uri.clone(),
+                    point(line, col, col + id.chars().count() as u32),
+                )
+            }
+            // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
+            Target::Cite { key, .. } => {
+                let dir = uri.to_file_path().ok()?;
+                let dir = dir.parent()?;
+                let mut hit = None;
+                for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
+                    let abs = dir.join(&rel);
+                    if let Ok(bib) = std::fs::read_to_string(&abs)
+                        && let Some((line, col)) = crate::lsp_nav::bib_entry_site(&bib, &key)
+                    {
+                        hit = Some(Location::new(
+                            Url::from_file_path(&abs).ok()?,
+                            point(line, col, col),
+                        ));
+                        break;
+                    }
+                }
+                hit?
+            }
+            Target::FrontmatterKey { .. } | Target::None => return None,
+        };
+    Some(lsp_types::GotoDefinitionResponse::Scalar(location))
+}
+
 /// Lint `text` as the document at `uri` and publish the result.
 fn publish(
     connection: &Connection,
@@ -162,6 +255,7 @@ mod tests {
     use lsp_types::notification::{
         DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, PublishDiagnostics,
     };
+    use lsp_types::request::Request as _;
     use lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
         PublishDiagnosticsParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
@@ -249,6 +343,29 @@ mod tests {
                 .unwrap(),
             }))
             .unwrap();
+    }
+
+    fn goto_params(uri: &Url, line: u32, character: u32) -> lsp_types::GotoDefinitionParams {
+        lsp_types::GotoDefinitionParams {
+            text_document_position_params: lsp_types::TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: lsp_types::Position::new(line, character),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        }
+    }
+
+    // Block (bounded) for the response with `id`, skipping any stray publishDiagnostics
+    // notifications that arrive first.
+    fn recv_response(client: &Connection, id: RequestId) -> Response {
+        loop {
+            match client.receiver.recv_timeout(Duration::from_secs(10)) {
+                Ok(Message::Response(r)) if r.id == id => return r,
+                Ok(Message::Notification(_)) => continue,
+                other => panic!("expected response {id:?}, got {other:?}"),
+            }
+        }
     }
 
     // Drive a full initialize → shutdown → exit handshake against an in-process server.
@@ -406,5 +523,89 @@ mod tests {
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn goto_definition_resolves_a_same_doc_xref() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-def.tmd").unwrap();
+        let text = "# Title {#fig-1}\n\nSee @fig-1 for details.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client); // didOpen diagnostics
+
+        // Definition at the `@fig-1` reference (line 2, char 5) → the `{#fig-1}` on line 0.
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(5),
+                method: lsp_types::request::GotoDefinition::METHOD.to_owned(),
+                params: serde_json::to_value(goto_params(&uri, 2, 5)).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(5));
+        let result: lsp_types::GotoDefinitionResponse =
+            serde_json::from_value(resp.result.expect("a definition result")).unwrap();
+        match result {
+            lsp_types::GotoDefinitionResponse::Scalar(loc) => {
+                assert_eq!(loc.uri, uri);
+                assert_eq!(loc.range.start, lsp_types::Position::new(0, 10));
+            }
+            other => panic!("expected a scalar location, got {other:?}"),
+        }
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn goto_definition_resolves_a_citation_into_the_bib() {
+        // Write a doc + its .bib to a temp dir so the server can resolve across files.
+        let dir = std::env::temp_dir().join(format!("tali-lsp-cite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{smith2020,\n  title = {A Study}\n}\n",
+        )
+        .unwrap();
+        let doc = dir.join("paper.tmd");
+        let text =
+            "---\nbibliography: refs.bib\n---\n\nAs shown in [@smith2020], the result holds.\n"
+                .to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // `[@smith2020]` sits on line 4; the key starts at char 14, so char 15 is inside it.
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(7),
+                method: lsp_types::request::GotoDefinition::METHOD.to_owned(),
+                params: serde_json::to_value(goto_params(&uri, 4, 15)).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(7));
+        let result: lsp_types::GotoDefinitionResponse =
+            serde_json::from_value(resp.result.expect("a definition result")).unwrap();
+        match result {
+            lsp_types::GotoDefinitionResponse::Scalar(loc) => {
+                assert_eq!(loc.uri, Url::from_file_path(dir.join("refs.bib")).unwrap());
+                assert_eq!(loc.range.start, lsp_types::Position::new(0, 0));
+            }
+            other => panic!("expected a scalar location into the .bib, got {other:?}"),
+        }
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
