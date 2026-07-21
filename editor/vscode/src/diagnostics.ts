@@ -3,6 +3,11 @@ import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { parseCheckJson, toDiagnostics, suggestionSpan } from "./check";
 import { isSourceFile } from "./paths";
+import { createDebouncer } from "./debounce";
+
+// How long to wait after the last keystroke before re-linting the buffer (E2 on-type). Long
+// enough to coalesce a burst of typing into one `check --stdin`, short enough to feel live.
+const ONTYPE_DEBOUNCE_MS = 300;
 
 // The replacement string of a diagnostic's "did you mean `X`" fix, keyed by the diagnostic
 // object VS Code hands back in the CodeAction context (same instance we set on the
@@ -20,15 +25,32 @@ function severityOf(severity: string | undefined): vscode.DiagnosticSeverity {
 // Run `taliesin check --format json <file>` and collect stdout. Never rejects: a spawn
 // failure resolves to { spawnError }, and a non-zero exit (expected when findings exist)
 // is ignored, we parse stdout regardless of exit code.
-function spawnCheck(binary: string, file: string): Promise<{ stdout: string; spawnError?: string }> {
+//
+// When `source` is given, lint that buffer via `--stdin` instead of the file on disk (E2
+// on-type: the buffer holds unsaved edits). `file` is still passed so `check` resolves the
+// base dir + reports the location from it; the on-disk file is never read in that mode.
+function spawnCheck(
+  binary: string,
+  file: string,
+  source?: string
+): Promise<{ stdout: string; spawnError?: string }> {
   return new Promise((resolve) => {
     let stdout = "";
-    const child = spawn(binary, ["check", file, "--format", "json"], {
-      cwd: path.dirname(file),
-    });
+    // Inline `["check", …]` literals (not a computed args array) so the manifest gate can
+    // statically verify every spawned subcommand against main.rs's COMMANDS.
+    const cwd = { cwd: path.dirname(file) };
+    const child =
+      source === undefined
+        ? spawn(binary, ["check", file, "--format", "json"], cwd)
+        : spawn(binary, ["check", file, "--stdin", "--format", "json"], cwd);
     child.on("error", (e) => resolve({ stdout: "", spawnError: e.message }));
     child.stdout?.on("data", (b) => (stdout += b.toString()));
     child.on("close", () => resolve({ stdout }));
+    if (source !== undefined) {
+      // Feed the unsaved buffer on stdin, then close it so `check` sees EOF and runs.
+      child.stdin?.on("error", () => {}); // swallow EPIPE if the child died before we wrote
+      child.stdin?.end(source);
+    }
   });
 }
 
@@ -79,13 +101,16 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
   const binaryPath = () =>
     vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 
-  async function refresh(doc: vscode.TextDocument): Promise<void> {
+  // `source` (E2 on-type) lints the live buffer via `check --stdin`; when omitted (open/save)
+  // `check` reads the saved file from disk. Both feed the same collection through the shared
+  // per-URI stale-result guard, so a fast on-type run can't clobber a newer save (or vice versa).
+  async function refresh(doc: vscode.TextDocument, source?: string): Promise<void> {
     if (doc.languageId !== "taliesin" || !isSourceFile(doc.fileName)) return;
     const key = doc.uri.toString();
     const token = (runToken.get(key) ?? 0) + 1;
     runToken.set(key, token);
 
-    const result = await spawnCheck(binaryPath(), doc.fileName);
+    const result = await spawnCheck(binaryPath(), doc.fileName, source);
     if (runToken.get(key) !== token) return; // a newer save superseded this run
 
     if (result.spawnError) {
@@ -118,10 +143,28 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
     collection.set(doc.uri, diags);
   }
 
+  // On-type refresh, debounced per URI so a burst of keystrokes runs one `check --stdin`.
+  const onType = createDebouncer(ONTYPE_DEBOUNCE_MS);
+  context.subscriptions.push({ dispose: () => onType.cancelAll() });
+
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((doc) => refresh(doc)),
-    vscode.workspace.onDidSaveTextDocument((doc) => refresh(doc)),
-    vscode.workspace.onDidCloseTextDocument((doc) => collection.delete(doc.uri)),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      // A save reflects the buffer on disk, so re-lint the file (with the environment probe)
+      // and drop any pending on-type run to avoid a redundant back-to-back check.
+      onType.cancel(doc.uri.toString());
+      refresh(doc);
+    }),
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      const doc = e.document;
+      if (doc.languageId !== "taliesin" || !isSourceFile(doc.fileName)) return;
+      // Capture the buffer text now; lint it after the typing pause.
+      onType.schedule(doc.uri.toString(), () => refresh(doc, doc.getText()));
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      onType.cancel(doc.uri.toString());
+      collection.delete(doc.uri);
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration("taliesin.path")) return;
       warnedMissingBinary = false;

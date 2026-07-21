@@ -145,15 +145,24 @@ pub(crate) fn page_static_diagnostics(
 fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let src = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    collect_file_diagnostics_from_src(path, &src)
+}
+
+/// Lint an already-in-hand source buffer as if it were the file at `path` — the seam
+/// `--stdin` uses to lint an editor buffer (unsaved edits) instead of the last-saved file.
+/// `path` supplies the base dir (relative includes/assets/links) + the reported location;
+/// the file on disk is never read. `collect_file_diagnostics` is just this with the buffer
+/// read from disk first.
+fn collect_file_diagnostics_from_src(path: &Path, src: &str) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
+    let doc = taliesin_core::render_document_with_includes_rooted(src, base, Some(base));
     let path_str = path.display().to_string();
     let xref = taliesin_core::cite::validate_xrefs(&doc.blocks);
-    let statics = page_static_diagnostics(&src, &doc.blocks, base, doc.format, Scope::Standalone);
+    let statics = page_static_diagnostics(src, &doc.blocks, base, doc.format, Scope::Standalone);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
-    if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
+    if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
         out.push(Diagnostic::new(path_str.clone(), Some(line), message));
     }
     out.extend(
@@ -508,7 +517,31 @@ const CHECK_FLAGS: &[&str] = &[
     "--explain",
     "--errors-only",
     "--require-kernel",
+    "--stdin",
 ];
+
+/// Lint an editor buffer read from stdin as if it were the file at `target` (`--stdin`).
+/// `target` is used only for the base dir (relative includes/assets/links) + the reported
+/// location; the on-disk file is never read, so unsaved edits are linted (the on-type
+/// path). A directory has no single buffer, so `--stdin` + a directory is rejected.
+fn collect_stdin_diagnostics(target: &Path) -> Result<Vec<Diagnostic>, String> {
+    if target.is_dir() {
+        return Err(format!(
+            "--stdin lints one file's buffer; {} is a directory",
+            target.display()
+        ));
+    }
+    let src =
+        std::io::read_to_string(std::io::stdin()).map_err(|e| format!("cannot read stdin: {e}"))?;
+    crate::serve::guarded(|| collect_file_diagnostics_from_src(target, &src))
+        .map_err(|panic| {
+            format!(
+                "render panicked on stdin buffer for {}: {panic}",
+                target.display()
+            )
+        })
+        .and_then(|r| r)
+}
 
 /// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
@@ -523,6 +556,8 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     // promotes a missing kernel for a used language from informational to a failure.
     let mut errors_only = false;
     let mut require_kernel = false;
+    // `--stdin`: lint the editor buffer piped on stdin, not the last-saved file (E2 on-type).
+    let mut stdin = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -535,6 +570,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             "--json" => format = "json",
             "--errors-only" => errors_only = true,
             "--require-kernel" => require_kernel = true,
+            "--stdin" => stdin = true,
             // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next
             // token as the code only when it isn't itself a flag, so `--explain --format json`
             // is the index in JSON (code = None), not "code = `--format`".
@@ -591,9 +627,14 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
-    let collected = crate::serve::guarded(|| collect_diagnostics(target))
-        .map_err(|panic| format!("render panicked on {path}: {panic}"))
-        .and_then(|r| r);
+    let collected = if stdin {
+        // The buffer path is already guarded inside collect_stdin_diagnostics.
+        collect_stdin_diagnostics(target)
+    } else {
+        crate::serve::guarded(|| collect_diagnostics(target))
+            .map_err(|panic| format!("render panicked on {path}: {panic}"))
+            .and_then(|r| r)
+    };
     let diags = match collected {
         Ok(d) => d,
         // Honour `--format json` on the error path too: a human stderr line would
@@ -613,7 +654,11 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     // `--require-kernel` gates on it. A default human `check` is a static linter ("does NOT
     // execute code cells"), so it skips the spawn on every keystroke/CI run and leaves the
     // environment audit to `taliesin doctor` (which the always-green footer only duplicated).
-    let environment = if format == "json" || require_kernel {
+    // `--stdin` (the on-type buffer path) skips the interpreter probe: it SPAWNS python3/R,
+    // which must not run on every keystroke, and the environment audit is `doctor`'s job, not
+    // a live linter's. The JSON still carries `environment: []`, so a consumer parses it
+    // identically. A saved-file `check --format json` keeps the probe (agents want it).
+    let environment = if !stdin && (format == "json" || require_kernel) {
         collect_environment(target)
     } else {
         Vec::new()
@@ -825,6 +870,29 @@ mod tests {
                 .count(),
             1,
             "the broken-xref diagnostic must appear exactly once, not be duplicated: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stdin_buffer_is_linted_instead_of_the_on_disk_file() {
+        // E2: `check --stdin` lints the editor buffer piped on stdin, not the last-saved
+        // file, so real-time on-type diagnostics see unsaved edits. The disk file is CLEAN
+        // (no typo); the buffer carries the `titel:` typo. The diagnostic must come from the
+        // buffer, and it must still locate to the real file path (for click-to-source) and
+        // resolve the base dir from it (so relative includes/assets still work).
+        let dir = tmp("check-stdin");
+        let f = dir.join("doc.tmd");
+        fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
+        let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";
+        let diags = collect_file_diagnostics_from_src(&f, buffer).expect("ok");
+        assert!(
+            diags.iter().any(|d| d.message.contains("titel")),
+            "the buffer's front-matter typo must be linted, not the clean disk file: {diags:?}"
+        );
+        assert!(
+            diags.iter().all(|d| d.file.contains("doc.tmd")),
+            "buffer diagnostics still locate to the real file path: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
     }

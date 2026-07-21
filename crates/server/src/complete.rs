@@ -441,6 +441,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 false,
                 "also fail if a used language's kernel isn't ready",
             ),
+            (
+                "--stdin",
+                false,
+                "lint the buffer piped on stdin (unsaved edits)",
+            ),
         ],
         "completions" => &[(
             "--install",

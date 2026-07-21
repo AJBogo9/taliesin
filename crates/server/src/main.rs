@@ -273,7 +273,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
         }
         "check" => {
             "taliesin check <file.tmd | dir> [--format human|json] [--errors-only]\n\
-             \x20                            [--require-kernel] [--explain <CODE>]\n\
+             \x20                            [--require-kernel] [--stdin] [--explain <CODE>]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
              are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
@@ -285,6 +285,10 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --errors-only    report + gate on errors only; warnings no longer fail\n\
              \x20 --require-kernel also fail if a used language's Jupyter kernel isn't ready\n\
              \x20                  (interpreter + ipykernel/IRkernel); off by default\n\
+             \x20 --stdin          lint the buffer piped on stdin as if it were <file.tmd>,\n\
+             \x20                  not the last-saved file (unsaved edits; the editor on-type\n\
+             \x20                  path). The path gives the base dir + reported location;\n\
+             \x20                  the interpreter probe is skipped (environment: []).\n\
              \x20 --explain <CODE> expand a diagnostic code (e.g. TAL-XREF-UNREF) into its\n\
              \x20                  cause + canonical fix, rustc-style; bare lists every code.\n\
              \x20                  Honours --format json. Needs no file.\n\
@@ -292,6 +296,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example:\n\
              \x20 taliesin check . --format json | jq\n\
              \x20 taliesin check src/ --errors-only --require-kernel\n\
+             \x20 taliesin check post.tmd --stdin --format json < buffer.tmd\n\
              \x20 taliesin check --explain TAL-FM-KEY\n"
         }
         "render" => {
