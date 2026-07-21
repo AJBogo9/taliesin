@@ -18,6 +18,7 @@ mod interpreter;
 mod kernel;
 mod log;
 mod lsp;
+mod lsp_nav;
 mod mcp;
 mod minify;
 mod preview_diag;
