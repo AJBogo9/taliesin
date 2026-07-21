@@ -8,14 +8,14 @@
 
 use lsp_server::{Connection, Message};
 use lsp_types::{
-    CompletionOptions, HoverProviderCapability, OneOf, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    CodeActionProviderCapability, CompletionOptions, HoverProviderCapability, OneOf,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
 /// Advertised capabilities: full-text document sync (whole buffer on every change, which maps
 /// 1:1 onto `check`'s whole-buffer linting), go-to-definition, document symbols (the heading
-/// outline), hover, and completion. Rename lands as a later follow-up on this server.
+/// outline), hover, completion, and quick-fix code actions. Rename lands as a later follow-up.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -39,6 +39,7 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             ),
             ..Default::default()
         }),
+        code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         ..Default::default()
     }
 }
@@ -140,7 +141,8 @@ fn handle_request(
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        Completion, DocumentSymbolRequest, GotoDefinition, HoverRequest, Request as _,
+        CodeActionRequest, Completion, DocumentSymbolRequest, GotoDefinition, HoverRequest,
+        Request as _,
     };
     let response = if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
@@ -154,6 +156,13 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(resolve_completion(docs, &params))?),
+            error: None,
+        }
+    } else if req.method == CodeActionRequest::METHOD {
+        let params: lsp_types::CodeActionParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_code_actions(&params))?),
             error: None,
         }
     } else if req.method == HoverRequest::METHOD {
@@ -313,6 +322,48 @@ fn resolve_hover(
         }
         Target::Include { .. } | Target::None => None,
     }
+}
+
+/// Build quick-fix code actions from the diagnostics the client echoed back. For each that
+/// carries a `data.replacement` — a precise "did you mean" fix `to_lsp` attaches only when the
+/// diagnostic's `range` is exactly the mis-typed token — emit a `QuickFix` that replaces that
+/// range with the correction. Read-only w.r.t. the preview; the edit flows through the editor.
+fn resolve_code_actions(
+    params: &lsp_types::CodeActionParams,
+) -> Option<lsp_types::CodeActionResponse> {
+    use lsp_types::{CodeAction, CodeActionKind, CodeActionOrCommand, TextEdit, WorkspaceEdit};
+    let uri = &params.text_document.uri;
+    let mut actions = Vec::new();
+    for diag in &params.context.diagnostics {
+        let Some(replacement) = diag
+            .data
+            .as_ref()
+            .and_then(|d| d.get("replacement"))
+            .and_then(|r| r.as_str())
+        else {
+            continue;
+        };
+        let mut changes = std::collections::HashMap::new();
+        changes.insert(
+            uri.clone(),
+            vec![TextEdit {
+                range: diag.range,
+                new_text: replacement.to_string(),
+            }],
+        );
+        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+            title: format!("Change to `{replacement}`"),
+            kind: Some(CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diag.clone()]),
+            edit: Some(WorkspaceEdit {
+                changes: Some(changes),
+                ..Default::default()
+            }),
+            is_preferred: Some(true),
+            ..Default::default()
+        }));
+    }
+    Some(actions)
 }
 
 /// Resolve completion at the cursor: route to the vocabulary that applies (front-matter key /
@@ -1341,5 +1392,70 @@ mod tests {
         shutdown(&client);
         thread.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn code_action_offers_a_quick_fix_for_a_frontmatter_typo() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-fix.tmd").unwrap();
+        let text = "---\ntittle: Hi\n---\n\nBody.\n".to_string();
+        did_open(&client, &uri, text);
+        let published = recv_publish(&client);
+        // The front-matter typo diagnostic carries its "did you mean `title`" fix on `data`.
+        let diag = published
+            .diagnostics
+            .iter()
+            .find(|d| d.data.is_some())
+            .expect("a diagnostic carrying a quick-fix")
+            .clone();
+
+        // Ask for code actions over that diagnostic's range, echoing it in the context (as a
+        // real client does).
+        let params = lsp_types::CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: diag.range,
+            context: lsp_types::CodeActionContext {
+                diagnostics: vec![diag.clone()],
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(31),
+                method: lsp_types::request::CodeActionRequest::METHOD.to_owned(),
+                params: serde_json::to_value(params).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(31));
+        let actions: lsp_types::CodeActionResponse =
+            serde_json::from_value(resp.result.expect("a code action result")).unwrap();
+        assert_eq!(actions.len(), 1, "one quick-fix expected, got {actions:?}");
+        match &actions[0] {
+            lsp_types::CodeActionOrCommand::CodeAction(a) => {
+                assert_eq!(a.title, "Change to `title`");
+                assert_eq!(a.kind, Some(lsp_types::CodeActionKind::QUICKFIX));
+                assert_eq!(a.is_preferred, Some(true));
+                let edits = a
+                    .edit
+                    .as_ref()
+                    .and_then(|e| e.changes.as_ref())
+                    .and_then(|c| c.get(&uri))
+                    .expect("an edit for this document");
+                assert_eq!(edits.len(), 1);
+                assert_eq!(edits[0].new_text, "title");
+                assert_eq!(edits[0].range, diag.range);
+            }
+            other => panic!("expected a CodeAction, got {other:?}"),
+        }
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
     }
 }
