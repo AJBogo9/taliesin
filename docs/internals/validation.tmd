@@ -159,9 +159,11 @@ language server at them:
 title: My site
 ```
 
-This is the in-scope on-ramp to editor autocomplete: there is **no Taliesin language
-server to build or install**, just two schema files and the YAML support the editor
-already has. The authoring side is covered in the [Configuration
+This is the in-scope on-ramp to editor **autocomplete**: schema-driven front-matter
+completion needs **no Taliesin-specific language server**, just two schema files and the
+YAML support the editor already has. (Live **diagnostics** are a separate story:
+`taliesin lsp`, [below](#taliesin-lsp-live-diagnostics-in-any-editor), streams them to any
+LSP editor.) The authoring side is covered in the [Configuration
 reference](../guide/reference/configuration.html); the config validator's role in a
 multi-page project is in [the multi-page subsystem](sites.tmd).
 
@@ -204,3 +206,38 @@ single-doc `check` can't do because only the page registry knows each `.tmd`'s r
 output URL. A directory that has a `_quarto.yml` but no `_site.yml` gets the generic
 "no `_site.yml`" diagnostic (no special migration breadcrumb). Using `check` in
 practice is covered in the guide's [CLI reference](../guide/reference/cli.html).
+
+## `taliesin lsp`: live diagnostics in any editor
+
+`check` is the batch gate; `taliesin lsp` is the same validators, live. It runs an
+offline **Language Server Protocol** server over stdio, so any LSP editor (Neovim,
+Helix, Zed, VS Code) gets `.tmd` diagnostics **as you type**, on the unsaved buffer,
+before you save or render. It is parse-only: **no kernel, no code execution**, and
+**read-only** (the single-editing-surface invariant holds, the server never writes to
+your source).
+
+The server reuses the exact seam the CLI uses. `check --stdin` already lints an editor
+buffer via `check::buffer_diagnostics`, a thin wrapper over the in-memory
+`collect_file_diagnostics_from_src`; the LSP server calls the same function on every
+edit, then projects each `check::Diagnostic` to an LSP one with `Diagnostic::to_lsp`
+(1-based line/column → 0-based range; a precise `[col, end_col)` span when the validator
+located a token, else the whole line; `severity`, the stable `TAL-*` `code`, and a
+`codeDescription` link to the diagnostics catalog). So the squiggles are byte-for-byte
+the same findings `check` and the render path emit, one source of truth.
+
+```{mermaid}
+%%| fig-cap: "One buffer-linting seam feeds the CLI gate, the on-type companion path, and the LSP server."
+flowchart LR
+  seam["check::buffer_diagnostics<br/>(in-memory render + validators)"]
+  seam --> cli["taliesin check --stdin"]
+  seam --> lsp["taliesin lsp<br/>(didOpen / didChange → publishDiagnostics)"]
+  lsp --> ed["Neovim · Helix · Zed · VS Code"]
+```
+
+The protocol surface is deliberately one capability: `textDocumentSync` is **full-text**
+(the whole buffer arrives on every change, matching the whole-buffer lint), and the
+server advertises nothing else yet. It tracks open documents by URI, admits only
+`languageId: taliesin`, and clears a document's squiggles on `didClose`. Editor wiring is
+one line, e.g. Neovim `vim.lsp.start({ cmd = { "taliesin", "lsp" } })`. Hover,
+go-to-definition, completion, and outline are additive capabilities that will layer onto
+this same server; today they live in the VS Code companion's own providers.

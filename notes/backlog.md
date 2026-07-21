@@ -81,16 +81,20 @@ pull the top open one.
 
   (E1 severity/code/docs_url + quick-fix, E2 on-type diagnostics, E3 column-accurate diagnostics, E4
   hover, E5 outline + go-to-definition, E6 front-matter value completion have all shipped — see "Already
-  shipped" below. Only E7 remains.)
+  shipped" below. E7's **diagnostics slice has now shipped** too; the remaining E7 capabilities are
+  additive on that harness, below.)
 
-- **E7. `taliesin lsp` server** *(strategic; own spec/brainstorm first).* An LSP-over-stdio subcommand
-  holds the parsed doc warm, gets `didChange` with full buffer text (solves E2's on-type + unsaved-buffer
-  in one move), and unifies diagnostics + hover + definition + symbols + completion + rename behind one
-  protocol that works in any LSP editor. Wiring existing Rust engine parts, not a rebuild; would
-  consolidate the standalone on-type/hover/completion/outline/definition providers (E2/E3/E4/E5/E6,
-  shipped) behind one protocol. The `check --stdin` buffer seam E2 added is directly reusable by
-  `didChange`. *L, net-new;
-  spec under `docs/superpowers/specs/` before implementing.*
+- **E7. `taliesin lsp` server — capability follow-ups** *(the stdio harness + live diagnostics shipped
+  2026-07-21; spec [2026-07-21-e7-lsp-diagnostics-slice-design.md](../docs/superpowers/specs/2026-07-21-e7-lsp-diagnostics-slice-design.md),
+  plan [2026-07-21-e7-lsp-diagnostics-slice.md](../docs/superpowers/plans/2026-07-21-e7-lsp-diagnostics-slice.md)).*
+  `taliesin lsp` (in `crates/server/src/lsp.rs`, `lsp-server`/`lsp-types`) now advertises `textDocumentSync:
+  FULL` and publishes live, unsaved-buffer diagnostics to any LSP editor via the shared
+  `check::buffer_diagnostics` seam. **Remaining, each additive on the same server** (the logic still lives
+  only in the VS Code companion's TypeScript providers and must be ported to Rust to become editor-agnostic):
+  hover token-classification (`hover.ts` `classifyHover`), go-to-definition (`definitionSite`/`bibEntryOffset`),
+  completion (already Rust-backed via `vocab`/`symbols` — mostly wiring), document outline (`outline.ts`),
+  rename, and quick-fix code-actions (the `suggestion` field already rides the diagnostic). Migrating the VS
+  Code companion itself to a `vscode-languageclient` is a separate, later item. *Each: S–M, additive.*
 
 ### B. Medium impact
 
