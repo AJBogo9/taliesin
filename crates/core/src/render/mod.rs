@@ -91,6 +91,9 @@ mod text;
 // The search index's text extraction, shared with the `read`/TOC/slug path above rather
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
 pub(crate) use text::indexable_text;
+// The executed-output classifier is public: `taliesin read`'s `--format json` (server crate)
+// classifies output blocks the same way the text projection does.
+pub use text::{ExecOutput, classify_exec_output};
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) use theme::theme_head;

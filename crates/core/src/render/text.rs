@@ -43,6 +43,36 @@ fn project_block(b: &Block) -> String {
 
     let html = b.html.trim_start();
 
+    // An executed cell's output block (DX17): report what it produced, so a headless agent
+    // can tell its figure/table baked, its cell printed, or its cell errored. Must precede
+    // the figure/visible arms below (a produced figure's `<figure>` is nested in the
+    // `tali-output` div and would otherwise project as plain "Figure N: …" text).
+    if let Some(kind) = classify_exec_output(html) {
+        return match kind {
+            ExecOutput::Figure {
+                fig_id: Some(id),
+                alt: Some(a),
+            } => format!("[figure {id}: produced, alt \"{a}\"]"),
+            ExecOutput::Figure {
+                fig_id: Some(id),
+                alt: None,
+            } => format!("[figure {id}: produced]"),
+            ExecOutput::Figure {
+                fig_id: None,
+                alt: Some(a),
+            } => format!("[figure: produced (image), alt \"{a}\"]"),
+            ExecOutput::Figure {
+                fig_id: None,
+                alt: None,
+            } => "[figure: produced (image)]".to_string(),
+            ExecOutput::Table { tbl_id: Some(id) } => format!("[table {id}: produced]"),
+            ExecOutput::Table { tbl_id: None } => "[table: produced]".to_string(),
+            ExecOutput::Stream(s) => format!("[output: {s}]"),
+            ExecOutput::Error(s) => format!("[cell error: {s}]"),
+            ExecOutput::Rich => "[output: produced]".to_string(),
+        };
+    }
+
     // Heading: keep the level as `#`s.
     if let Some(level) = block_heading_level(html) {
         return format!("{} {}", "#".repeat(level as usize), visible(html));
@@ -215,6 +245,95 @@ fn first_attr(html: &str, attr: &str) -> Option<String> {
     Some(unescape_html(rest[..end].trim()))
 }
 
+/// The kind of output an executed code cell produced, classified from its rendered
+/// `tali-output` block. Shared by the text projection ([`project_block`]) and `read`'s
+/// `--format json`. Reads only the rendered HTML — it never reaches back into exec.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecOutput {
+    /// A produced image/plot. `fig_id`/`alt` are set for a labelled figure cell
+    /// (`#| label: fig-x` + `#| fig-cap:`); an unlabelled plot has both `None`.
+    Figure {
+        fig_id: Option<String>,
+        alt: Option<String>,
+    },
+    Table {
+        tbl_id: Option<String>,
+    },
+    /// stdout/stderr or plain text output (first non-empty line, trimmed).
+    Stream(String),
+    /// A cell error: the summary line (`EName: evalue`).
+    Error(String),
+    /// Any other rich output (e.g. an unlabelled HTML `<div>` widget).
+    Rich,
+}
+
+/// Classify an executed output block's HTML (`output_block` in `crates/server/src/exec.rs`
+/// emits `<div class="tali-output" …>{inner}</div>`). `None` if it is not such a block.
+pub fn classify_exec_output(output_html: &str) -> Option<ExecOutput> {
+    let at = output_html.find("class=\"tali-output\"")?;
+    let start = output_html[at..].find('>')? + at + 1;
+    let inner = output_html[start..]
+        .strip_suffix("</div>")
+        .unwrap_or(&output_html[start..])
+        .trim_start();
+
+    if inner.starts_with("<figure") {
+        return Some(ExecOutput::Figure {
+            fig_id: first_attr(inner, "id"),
+            alt: figcaption_caption(inner),
+        });
+    }
+    if inner.starts_with("<img") || inner.starts_with("<svg") {
+        // An unlabelled plot is still "a figure produced" to the agent; the generic
+        // alt="output" carries no caption.
+        let alt = first_attr(inner, "alt").filter(|a| a != "output");
+        return Some(ExecOutput::Figure { fig_id: None, alt });
+    }
+    // A table cell (`table_wrap`) or a rich DataFrame table, possibly `<div>`-wrapped.
+    // Error/stream outputs are `<pre>` with escaped text, so they never match a raw `<table`.
+    if let Some(tpos) = inner.find("<table") {
+        return Some(ExecOutput::Table {
+            tbl_id: first_attr(&inner[tpos..], "id"),
+        });
+    }
+    if inner.contains("class=\"tali-error\"") {
+        return Some(ExecOutput::Error(error_summary(inner)));
+    }
+    if inner.contains("class=\"tali-stream") {
+        let text = visible(inner);
+        let first = text
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("")
+            .trim();
+        return Some(ExecOutput::Stream(first.to_string()));
+    }
+    Some(ExecOutput::Rich)
+}
+
+/// The caption of a `figure_wrap` figcaption (the text after "Figure&nbsp;N: "), or `None`
+/// for a bare "Figure N" (an unlabelled figure).
+fn figcaption_caption(figure_html: &str) -> Option<String> {
+    let start = figure_html.find("<figcaption>")? + "<figcaption>".len();
+    let end = figure_html[start..].find("</figcaption>")? + start;
+    let text = decode(&figure_html[start..end]);
+    let (_, cap) = text.split_once(':')?;
+    let cap = cap.trim();
+    (!cap.is_empty()).then(|| cap.to_string())
+}
+
+/// The summary line of a baked `tali-error` pre: the last non-empty line of the decoded
+/// text, which for a no-traceback error and a traceback alike is `EName: evalue`.
+fn error_summary(html: &str) -> String {
+    visible(html)
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,5 +381,91 @@ mod tests {
             "callout kind + title labelled:\n{out}"
         );
         assert!(out.contains("Be careful."), "callout body kept:\n{out}");
+    }
+
+    // --- DX17: executed-output classification + projection ---
+
+    #[test]
+    fn classify_exec_output_none_for_non_output() {
+        assert!(classify_exec_output("<p>hello</p>").is_none());
+    }
+
+    #[test]
+    fn classify_exec_output_labelled_figure() {
+        let html = "<div class=\"tali-output\" data-block-id=\"b-out\" data-sourcepos=\"5:1-7:3\">\
+            <figure id=\"fig-hist\" class=\"tali-figure tali-figure-center\">\
+            <img alt=\"output\" src=\"data:image/png;base64,AAA\">\
+            <figcaption>Figure&nbsp;2: A histogram of scores</figcaption></figure></div>";
+        match classify_exec_output(html) {
+            Some(ExecOutput::Figure { fig_id, alt }) => {
+                assert_eq!(fig_id.as_deref(), Some("fig-hist"));
+                assert_eq!(alt.as_deref(), Some("A histogram of scores"));
+            }
+            other => panic!("expected Figure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_exec_output_unlabelled_image_is_a_figure() {
+        let html = "<div class=\"tali-output\" data-block-id=\"b-out\" data-sourcepos=\"5:1-7:3\">\
+            <img alt=\"output\" src=\"data:image/png;base64,AAA\"></div>";
+        match classify_exec_output(html) {
+            Some(ExecOutput::Figure { fig_id, alt }) => {
+                assert!(fig_id.is_none());
+                assert!(
+                    alt.is_none(),
+                    "generic alt=\"output\" must not surface as a caption"
+                );
+            }
+            other => panic!("expected Figure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_exec_output_table_error_stream() {
+        let tbl = "<div class=\"tali-output\" data-block-id=\"b\" data-sourcepos=\"1:1-1:1\">\
+            <table id=\"tbl-a\"><caption>Table&nbsp;1: Counts</caption><tr><td>1</td></tr></table></div>";
+        assert!(matches!(classify_exec_output(tbl),
+            Some(ExecOutput::Table { tbl_id }) if tbl_id.as_deref() == Some("tbl-a")));
+
+        let err = "<div class=\"tali-output\" data-block-id=\"b\" data-sourcepos=\"1:1-1:1\">\
+            <pre class=\"tali-error\">Traceback\nValueError: bad value</pre></div>";
+        assert!(matches!(classify_exec_output(err),
+            Some(ExecOutput::Error(s)) if s == "ValueError: bad value"));
+
+        let out = "<div class=\"tali-output\" data-block-id=\"b\" data-sourcepos=\"1:1-1:1\">\
+            <pre class=\"tali-stream\">hello world\nsecond line</pre></div>";
+        assert!(matches!(classify_exec_output(out),
+            Some(ExecOutput::Stream(s)) if s == "hello world"));
+    }
+
+    #[test]
+    fn project_block_renders_executed_outputs() {
+        let fig = Block {
+            id: "b-out".into(),
+            sourcepos: "5:1-7:3".into(),
+            source_file: None,
+            html: "<div class=\"tali-output\" data-block-id=\"b-out\" data-sourcepos=\"5:1-7:3\">\
+                <figure id=\"fig-hist\" class=\"tali-figure tali-figure-center\">\
+                <img alt=\"output\" src=\"data:image/png;base64,AAA\">\
+                <figcaption>Figure&nbsp;2: A histogram</figcaption></figure></div>"
+                .into(),
+            cell: None,
+        };
+        assert_eq!(
+            project_block(&fig),
+            "[figure fig-hist: produced, alt \"A histogram\"]"
+        );
+
+        let err = Block {
+            id: "b2-out".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: "<div class=\"tali-output\" data-block-id=\"b2-out\" data-sourcepos=\"1:1-1:1\">\
+                <pre class=\"tali-error\">ValueError: bad value</pre></div>"
+                .into(),
+            cell: None,
+        };
+        assert_eq!(project_block(&err), "[cell error: ValueError: bad value]");
     }
 }
