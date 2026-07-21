@@ -8,10 +8,24 @@
 // the bare array is still accepted so an older `taliesin` on PATH keeps surfacing squiggles.
 // Non-zero exit is expected when findings exist, so callers parse stdout regardless of exit code.
 
+// A structured "did you mean `X`" fix the CLI lifted from the message (`suggestion` in the
+// JSON). `replacement` is the corrected value; the bad token is located on the line by
+// `suggestionSpan`, since a whole-line diagnostic carries no column.
+export interface Suggestion {
+  replacement: string;
+}
+
 export interface CheckDiag {
   file: string;
   line: number | null;
   message: string;
+  // Agent-grade fields the CLI emits under `--format json` (crates/server/src/check.rs).
+  // All optional: an older `taliesin` emits only {file,line,message}, and we must not
+  // invent them, so the wiring falls back to a whole-line warning.
+  severity?: string; // "error" | "warning"
+  code?: string; // stable TAL-* code
+  docsUrl?: string; // catalog anchor; the wire field is snake_case `docs_url`
+  suggestion?: Suggestion;
 }
 
 export type CheckOutput =
@@ -41,13 +55,24 @@ export function parseCheckJson(stdout: string): CheckOutput {
       ? (value as any).diagnostics
       : null;
   if (rawDiags) {
-    const diags = rawDiags
-      .filter((d): d is CheckDiag => !!d && typeof (d as any).message === "string")
-      .map((d) => ({
-        file: typeof d.file === "string" ? d.file : "",
-        line: typeof d.line === "number" ? d.line : null,
-        message: d.message,
-      }));
+    const diags: CheckDiag[] = rawDiags
+      .filter((d) => !!d && typeof d.message === "string")
+      .map((d) => {
+        const diag: CheckDiag = {
+          file: typeof d.file === "string" ? d.file : "",
+          line: typeof d.line === "number" ? d.line : null,
+          message: d.message,
+        };
+        // Carry the agent-grade fields when present; each is validated so a malformed
+        // one (e.g. a non-string replacement) is dropped, not surfaced as junk.
+        if (typeof d.severity === "string") diag.severity = d.severity;
+        if (typeof d.code === "string") diag.code = d.code;
+        if (typeof d.docs_url === "string") diag.docsUrl = d.docs_url;
+        if (d.suggestion && typeof d.suggestion.replacement === "string") {
+          diag.suggestion = { replacement: d.suggestion.replacement };
+        }
+        return diag;
+      });
     return { kind: "diags", diags };
   }
   return { kind: "error", error: `check produced unexpected output: ${text.slice(0, 200)}` };
@@ -59,17 +84,79 @@ export function parseCheckJson(stdout: string): CheckOutput {
 export interface DiagShape {
   line0: number; // 0-based, clamped to [0, lineCount - 1]
   message: string;
+  // Passed through from CheckDiag when present; absent keys are omitted (never set to
+  // `undefined`) so a legacy diagnostic round-trips to the bare {line0,message} shape.
+  severity?: string;
+  code?: string;
+  docsUrl?: string;
+  suggestion?: Suggestion;
 }
 
 export function toDiagnostics(out: CheckOutput, lineCount: number): DiagShape[] {
   const lastLine = Math.max(0, lineCount - 1);
   const clamp = (line0: number) => Math.max(0, Math.min(line0, lastLine));
   if (out.kind === "error") {
-    return [{ line0: 0, message: out.error }];
+    // A check failure (unreadable file, render panic) is a real error, not a warning.
+    return [{ line0: 0, message: out.error, severity: "error" }];
   }
-  return out.diags.map((d) => ({
+  return out.diags.map((d) => {
     // comrak lines are 1-based; a null line is a document-level finding -> line 1 -> line0 0.
-    line0: clamp((d.line ?? 1) - 1),
-    message: d.message,
-  }));
+    const shape: DiagShape = { line0: clamp((d.line ?? 1) - 1), message: d.message };
+    if (d.severity !== undefined) shape.severity = d.severity;
+    if (d.code !== undefined) shape.code = d.code;
+    if (d.docsUrl !== undefined) shape.docsUrl = d.docsUrl;
+    if (d.suggestion !== undefined) shape.suggestion = d.suggestion;
+    return shape;
+  });
+}
+
+// Levenshtein edit distance between two short strings (a line token vs. the suggested
+// replacement). Iterative two-row DP; inputs are single words, so this stays cheap.
+function editDistance(a: string, b: string): number {
+  const n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  let cur = new Array<number>(n + 1);
+  for (let i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+
+// A "did you mean" hint is generated at edit distance <= 2, so that is the window in which
+// a token on the line is a plausible match for the suggested replacement.
+const MAX_SUGGESTION_DISTANCE = 2;
+
+// The [start, end) span on `lineText` of the token a "did you mean `replacement`" fix
+// should overwrite: the single token nearest `replacement` by edit distance (1..=2), or
+// null when there is no unique close token (nothing close, or a tie — in which case we
+// offer no fix rather than guess wrong). Pure + vscode-free, so it stays in the fast
+// node:test loop; the caller turns the span into a WorkspaceEdit. This locates the bad
+// token because a whole-line diagnostic carries no column (see DiagShape).
+export function suggestionSpan(
+  lineText: string,
+  replacement: string
+): { start: number; end: number } | null {
+  // A token: `@`/word char, then word chars or hyphens — matches `treme`, `@fig-reslts`.
+  const re = /[@\w][\w-]*/g;
+  let best: { start: number; end: number; dist: number } | null = null;
+  let tie = false;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(lineText)) !== null) {
+    const token = m[0];
+    if (token === replacement) continue; // already correct: nothing to replace
+    const dist = editDistance(token, replacement);
+    if (dist < 1 || dist > MAX_SUGGESTION_DISTANCE) continue;
+    if (!best || dist < best.dist) {
+      best = { start: m.index, end: m.index + token.length, dist };
+      tie = false;
+    } else if (dist === best.dist) {
+      tie = true;
+    }
+  }
+  return best && !tie ? { start: best.start, end: best.end } : null;
 }

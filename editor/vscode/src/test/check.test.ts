@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { parseCheckJson, toDiagnostics } from "../check";
+import { parseCheckJson, toDiagnostics, suggestionSpan } from "../check";
 
 test("parseCheckJson reads the diagnostics array (legacy bare-array shape)", () => {
   const out = parseCheckJson('[{"file":"a.tmd","line":3,"message":"unknown key `titel`"}]');
@@ -84,11 +84,123 @@ test("toDiagnostics clamps a null line and an over-long line to the document", (
   ]);
 });
 
-test("toDiagnostics renders the {error} envelope as one document-level diagnostic", () => {
+test("toDiagnostics renders the {error} envelope as one document-level error", () => {
+  // A check failure (unreadable file, render panic) is a real error, not a yellow warning.
   const shapes = toDiagnostics({ kind: "error", error: "cannot read x" }, 3);
-  assert.deepEqual(shapes, [{ line0: 0, message: "cannot read x" }]);
+  assert.deepEqual(shapes, [{ line0: 0, message: "cannot read x", severity: "error" }]);
 });
 
 test("toDiagnostics on empty diags is empty", () => {
   assert.deepEqual(toDiagnostics({ kind: "diags", diags: [] }, 3), []);
+});
+
+// --- rich diagnostic fields (severity / code / docs_url / suggestion) ---
+
+test("parseCheckJson reads severity, code, docs_url and suggestion from the object shape", () => {
+  const out = parseCheckJson(
+    JSON.stringify({
+      diagnostics: [
+        {
+          file: "a.tmd",
+          line: 3,
+          message: "unknown front-matter key `treme` (did you mean `theme`?)",
+          severity: "warning",
+          code: "TAL-FM-KEY",
+          docs_url: "https://example/DIAGNOSTICS.md#tal-fm-key",
+          suggestion: { replacement: "theme" },
+        },
+      ],
+    })
+  );
+  assert.equal(out.kind, "diags");
+  const d = (out as any).diags[0];
+  assert.equal(d.severity, "warning");
+  assert.equal(d.code, "TAL-FM-KEY");
+  // The snake_case `docs_url` wire field is exposed as camelCase `docsUrl`.
+  assert.equal(d.docsUrl, "https://example/DIAGNOSTICS.md#tal-fm-key");
+  assert.deepEqual(d.suggestion, { replacement: "theme" });
+});
+
+test("parseCheckJson leaves the rich fields undefined for a legacy diagnostic", () => {
+  // An older `taliesin` emits only {file,line,message}; the extra fields must stay absent
+  // (not be invented), so the whole-warning fallback still applies.
+  const out = parseCheckJson('[{"file":"a.tmd","line":1,"message":"m"}]');
+  const d = (out as any).diags[0];
+  assert.equal(d.severity, undefined);
+  assert.equal(d.code, undefined);
+  assert.equal(d.docsUrl, undefined);
+  assert.equal(d.suggestion, undefined);
+});
+
+test("parseCheckJson ignores a malformed suggestion (no string replacement)", () => {
+  const out = parseCheckJson(
+    JSON.stringify({ diagnostics: [{ file: "a.tmd", line: 1, message: "m", suggestion: { replacement: 7 } }] })
+  );
+  assert.equal((out as any).diags[0].suggestion, undefined);
+});
+
+test("toDiagnostics carries severity, code, docsUrl and suggestion through", () => {
+  const shapes = toDiagnostics(
+    {
+      kind: "diags",
+      diags: [
+        {
+          file: "a.tmd",
+          line: 2,
+          message: "m",
+          severity: "error",
+          code: "TAL-XREF-UNDEF",
+          docsUrl: "https://x#tal-xref-undef",
+          suggestion: { replacement: "@fig-y" },
+        },
+      ],
+    },
+    10
+  );
+  assert.deepEqual(shapes, [
+    {
+      line0: 1,
+      message: "m",
+      severity: "error",
+      code: "TAL-XREF-UNDEF",
+      docsUrl: "https://x#tal-xref-undef",
+      suggestion: { replacement: "@fig-y" },
+    },
+  ]);
+});
+
+test("toDiagnostics omits absent rich fields (no undefined-valued keys)", () => {
+  // A legacy diagnostic must round-trip to the bare {line0,message} shape so nothing
+  // downstream sees a spurious `severity: undefined`.
+  const shapes = toDiagnostics(
+    { kind: "diags", diags: [{ file: "a.tmd", line: 1, message: "m" }] },
+    3
+  );
+  assert.deepEqual(shapes, [{ line0: 0, message: "m" }]);
+});
+
+// --- suggestionSpan: the token a "did you mean `X`" quick-fix should replace ---
+
+test("suggestionSpan finds a one-edit typo token and returns its span", () => {
+  assert.deepEqual(suggestionSpan("treme: dark", "theme"), { start: 0, end: 5 });
+});
+
+test("suggestionSpan finds an @-prefixed xref typo", () => {
+  const line = "See @fig-reslts for details.";
+  const span = suggestionSpan(line, "@fig-results");
+  assert.ok(span);
+  assert.equal(line.slice(span!.start, span!.end), "@fig-reslts");
+});
+
+test("suggestionSpan returns null when no token is close to the replacement", () => {
+  assert.equal(suggestionSpan("wholly unrelated prose", "theme"), null);
+});
+
+test("suggestionSpan returns null when the closest token already equals the replacement", () => {
+  assert.equal(suggestionSpan("theme: dark", "theme"), null);
+});
+
+test("suggestionSpan returns null when two tokens tie as the closest match", () => {
+  // Both `treme` and `thyme` are one edit from `theme`: ambiguous, so offer no fix.
+  assert.equal(suggestionSpan("treme thyme", "theme"), null);
 });
