@@ -8,14 +8,15 @@
 
 use lsp_server::{Connection, Message};
 use lsp_types::{
-    CodeActionProviderCapability, CompletionOptions, HoverProviderCapability, OneOf,
+    CodeActionProviderCapability, CompletionOptions, HoverProviderCapability, OneOf, RenameOptions,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
 /// Advertised capabilities: full-text document sync (whole buffer on every change, which maps
 /// 1:1 onto `check`'s whole-buffer linting), go-to-definition, document symbols (the heading
-/// outline), hover, completion, and quick-fix code actions. Rename lands as a later follow-up.
+/// outline), hover, completion, quick-fix code actions, and rename (with prepare) of a
+/// cross-reference anchor + its references. This is the full E7 intelligence surface.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -40,6 +41,12 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             ..Default::default()
         }),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+        rename_provider: Some(OneOf::Right(RenameOptions {
+            // `prepareRename` gates renaming to a cross-reference anchor, so the editor shows
+            // "cannot rename here" on anything else.
+            prepare_provider: Some(true),
+            work_done_progress_options: Default::default(),
+        })),
         ..Default::default()
     }
 }
@@ -142,7 +149,7 @@ fn handle_request(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
         CodeActionRequest, Completion, DocumentSymbolRequest, GotoDefinition, HoverRequest,
-        Request as _,
+        PrepareRenameRequest, Rename, Request as _,
     };
     let response = if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
@@ -180,6 +187,20 @@ fn handle_request(
                 docs,
                 &params.text_document.uri,
             ))?),
+            error: None,
+        }
+    } else if req.method == PrepareRenameRequest::METHOD {
+        let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_prepare_rename(docs, &params))?),
+            error: None,
+        }
+    } else if req.method == Rename::METHOD {
+        let params: lsp_types::RenameParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_rename(docs, &params))?),
             error: None,
         }
     } else {
@@ -364,6 +385,60 @@ fn resolve_code_actions(
         }));
     }
     Some(actions)
+}
+
+/// `textDocument/prepareRename`: if the cursor is on a cross-reference anchor (an `@id`
+/// reference, or a `{#id}` / `#| label: id` definition), return the id's range so the editor
+/// opens its rename box pre-filled with the id. `None` — which the client surfaces as "cannot
+/// rename here" — for anything else. Read-only w.r.t. the preview.
+fn resolve_prepare_rename(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::TextDocumentPositionParams,
+) -> Option<lsp_types::PrepareRenameResponse> {
+    use lsp_types::{Position, PrepareRenameResponse, Range};
+    let text = docs.get(&params.text_document.uri)?;
+    let pos = params.position;
+    let (_, start, end) =
+        crate::lsp_nav::anchor_at(text, pos.line as usize, pos.character as usize)?;
+    Some(PrepareRenameResponse::Range(Range::new(
+        Position::new(pos.line, start as u32),
+        Position::new(pos.line, end as u32),
+    )))
+}
+
+/// `textDocument/rename`: rename the cross-reference anchor under the cursor — its definition
+/// (`{#id}` / `#| label: id`) and every `@id` reference in this document — to `new_name`, as one
+/// `WorkspaceEdit`. `None` when the cursor is on no anchor or `new_name` is empty. The edit flows
+/// through the editor (the legitimate editing surface), never the preview.
+fn resolve_rename(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::RenameParams,
+) -> Option<lsp_types::WorkspaceEdit> {
+    use lsp_types::{Position, Range, TextEdit, WorkspaceEdit};
+    let uri = &params.text_document_position.text_document.uri;
+    let pos = params.text_document_position.position;
+    let new_name = params.new_name.trim();
+    if new_name.is_empty() {
+        return None;
+    }
+    let text = docs.get(uri)?;
+    let (id, _, _) = crate::lsp_nav::anchor_at(text, pos.line as usize, pos.character as usize)?;
+    let edits: Vec<TextEdit> = crate::lsp_nav::anchor_occurrences(text, &id)
+        .into_iter()
+        .map(|(line, start, end)| TextEdit {
+            range: Range::new(Position::new(line, start), Position::new(line, end)),
+            new_text: new_name.to_string(),
+        })
+        .collect();
+    if edits.is_empty() {
+        return None;
+    }
+    let mut changes = std::collections::HashMap::new();
+    changes.insert(uri.clone(), edits);
+    Some(WorkspaceEdit {
+        changes: Some(changes),
+        ..Default::default()
+    })
 }
 
 /// Resolve completion at the cursor: route to the vocabulary that applies (front-matter key /
@@ -904,6 +979,59 @@ mod tests {
             lsp_types::CompletionResponse::Array(items) => items,
             lsp_types::CompletionResponse::List(l) => l.items,
         }
+    }
+
+    // Send a prepareRename request and return its response (None when the server answered null).
+    fn prepare_rename_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+    ) -> Option<lsp_types::PrepareRenameResponse> {
+        let params = lsp_types::TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            position: lsp_types::Position::new(line, character),
+        };
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::PrepareRenameRequest::METHOD.to_owned(),
+                params: serde_json::to_value(params).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(client, RequestId::from(id));
+        serde_json::from_value(resp.result.expect("a prepareRename result")).unwrap()
+    }
+
+    // Send a rename request and return its WorkspaceEdit (None when the server answered null).
+    fn rename_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+        new_name: &str,
+    ) -> Option<lsp_types::WorkspaceEdit> {
+        let params = lsp_types::RenameParams {
+            text_document_position: lsp_types::TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: lsp_types::Position::new(line, character),
+            },
+            new_name: new_name.to_owned(),
+            work_done_progress_params: Default::default(),
+        };
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::Rename::METHOD.to_owned(),
+                params: serde_json::to_value(params).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(client, RequestId::from(id));
+        serde_json::from_value(resp.result.expect("a rename result")).unwrap()
     }
 
     // Pull the Markdown string out of a hover's contents.
@@ -1454,6 +1582,64 @@ mod tests {
             }
             other => panic!("expected a CodeAction, got {other:?}"),
         }
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn rename_rewrites_an_anchor_definition_and_all_its_references() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-rename.tmd").unwrap();
+        // Definition `{#fig-scree}` on line 0; two `@fig-scree` references on line 2.
+        let text = "![p](i.png){#fig-scree}\n\nSee @fig-scree and @fig-scree.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // prepareRename on the first reference (line 2, char 6) → the id-only range [5, 14).
+        match prepare_rename_at(&client, &uri, 40, 2, 6).expect("an anchor is renameable here") {
+            lsp_types::PrepareRenameResponse::Range(r) => {
+                assert_eq!(r.start, lsp_types::Position::new(2, 5));
+                assert_eq!(r.end, lsp_types::Position::new(2, 14));
+            }
+            other => panic!("expected a plain Range, got {other:?}"),
+        }
+        // A position on prose is not renameable.
+        assert!(
+            prepare_rename_at(&client, &uri, 41, 2, 0).is_none(),
+            "prose should not be renameable"
+        );
+
+        // rename to `fig-plot` → the definition + both references, all rewritten.
+        let edit = rename_at(&client, &uri, 42, 2, 6, "fig-plot").expect("a rename edit");
+        let edits = edit
+            .changes
+            .as_ref()
+            .and_then(|c| c.get(&uri))
+            .expect("edits for this document");
+        assert_eq!(edits.len(), 3, "definition + two references, got {edits:?}");
+        assert!(
+            edits.iter().all(|e| e.new_text == "fig-plot"),
+            "every edit inserts the new id"
+        );
+        let ranges: Vec<(u32, u32, u32)> = edits
+            .iter()
+            .map(|e| {
+                (
+                    e.range.start.line,
+                    e.range.start.character,
+                    e.range.end.character,
+                )
+            })
+            .collect();
+        assert_eq!(
+            ranges,
+            vec![(0, 13, 22), (2, 5, 14), (2, 20, 29)],
+            "the definition span then both reference spans"
+        );
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
