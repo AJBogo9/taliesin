@@ -289,6 +289,96 @@ pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
     None
 }
 
+/// Whether the id token starting at char offset `i` in `chars` sits in a rename SITE — a
+/// cross-reference *reference* (`@id`, the `@` a real xref sigil: not preceded by a word char,
+/// `@`, or `[`, so a `[@key]` citation is excluded) or a *definition* (`#id` attribute, or
+/// `label: id` cell label). This is `definition_site`'s `prefix_ok` test plus the reference
+/// form, factored out so the rename set can't disagree with go-to-definition on what an anchor
+/// is. `i` is assumed to start a bounded xref-id token (the caller checks the trailing boundary).
+fn is_anchor_site(chars: &[char], i: usize) -> bool {
+    if i == 0 {
+        return false; // an anchor always carries a `@`/`#`/`label:` sigil before it
+    }
+    match chars[i - 1] {
+        '@' => {
+            i == 1 || {
+                let p = chars[i - 2];
+                !is_word(p) && p != '@' && p != '['
+            }
+        }
+        '#' => true,
+        c if is_ws(c) => {
+            let mut j = i;
+            while j > 0 && is_ws(chars[j - 1]) {
+                j -= 1;
+            }
+            j >= 6 && chars[j - 6..j].iter().collect::<String>() == "label:"
+        }
+        _ => false,
+    }
+}
+
+/// Every site in `text` where cross-reference anchor `id` appears as a whole xref-id token in a
+/// rename site — its definition (`{#id}` / `#| label: id`) and all `@id` references — each a
+/// 0-based `(line, start_col, end_col)` covering **exactly the id** (never the `@`/`#` sigil).
+/// The set a rename rewrites; includes the definition so renaming keeps references resolving.
+pub(crate) fn anchor_occurrences(text: &str, id: &str) -> Vec<(u32, u32, u32)> {
+    let chars: Vec<char> = text.chars().collect();
+    let idc: Vec<char> = id.chars().collect();
+    let (n, m) = (chars.len(), idc.len());
+    let mut out = Vec::new();
+    if m == 0 {
+        return out;
+    }
+    let mut i = 0;
+    while i + m <= n {
+        let bounded = i + m >= n || !is_xref_id_char(chars[i + m]);
+        if bounded && chars[i..i + m] == idc[..] && is_anchor_site(&chars, i) {
+            let (line, col) = offset_to_line_col(&chars, i);
+            out.push((line, col, col + m as u32));
+            i += m;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// The cross-reference anchor id under the cursor and its 0-based `[start, end)` char span on
+/// `line`, whether the cursor is on an `@id` *reference* or a `{#id}` / `label: id`
+/// *definition*. The span covers the id only (never the `@`/`#`), so a rename's placeholder and
+/// its edits agree. `None` when the token is not a known xref anchor (a plain heading id, a
+/// citation key, prose). Underlies `prepareRename` and `rename`.
+pub(crate) fn anchor_at(
+    text: &str,
+    line: usize,
+    character: usize,
+) -> Option<(String, usize, usize)> {
+    // Reference form: reuse the shared classifier (it also covers a cursor sitting on the `@`).
+    if let Target::Xref { id, start, end } = classify_target(text, line, character)
+        && taliesin_core::cite::is_xref_anchor(&id)
+    {
+        return Some((id, start + 1, end)); // drop the leading `@`
+    }
+    // Definition form: the maximal xref-id run under the cursor whose sigil marks a `#`/`label:`.
+    let lines: Vec<&str> = text.split('\n').collect();
+    let lt: Vec<char> = lines.get(line).copied().unwrap_or("").chars().collect();
+    let n = lt.len();
+    let mut s = character.min(n);
+    while s > 0 && is_xref_id_char(lt[s - 1]) {
+        s -= 1;
+    }
+    let mut e = s;
+    while e < n && is_xref_id_char(lt[e]) {
+        e += 1;
+    }
+    if e == s || !covers(s, e, character) || !is_anchor_site(&lt, s) {
+        return None;
+    }
+    let id: String = lt[s..e].iter().collect();
+    taliesin_core::cite::is_xref_anchor(&id).then_some((id, s, e))
+}
+
 /// The char offset of the BibTeX entry header `@type{key,` for `key` in `chars`, or None
 /// when absent. Shared by `bib_entry_site` (offset → line/col) and `bib_entry_text`
 /// (offset → brace-balanced entry text) so the two can't drift.
@@ -497,6 +587,50 @@ mod tests {
         assert_eq!(definition_site("nothing", "fig-1"), None);
         // A longer id must not match on a prefix.
         assert_eq!(definition_site("{#fig-10}", "fig-1"), None);
+    }
+
+    #[test]
+    fn anchor_at_finds_a_reference_and_a_definition() {
+        // `![p](i.png){#fig-scree}` — `#` at 12, id `fig-scree` at [13, 22); line 2 has the ref.
+        let text = "![p](i.png){#fig-scree}\n\nSee @fig-scree.\n";
+        // Cursor inside the `@fig-scree` reference (line 2, char 6): id-only span [5, 14).
+        assert_eq!(
+            anchor_at(text, 2, 6),
+            Some(("fig-scree".to_string(), 5, 14))
+        );
+        // Cursor inside the `{#fig-scree}` definition (line 0, char 14): id-only span [13, 22).
+        assert_eq!(
+            anchor_at(text, 0, 14),
+            Some(("fig-scree".to_string(), 13, 22))
+        );
+        // A `#| label:` cell-label definition is an anchor site too.
+        assert_eq!(
+            anchor_at("#| label: fig-1\n", 0, 12),
+            Some(("fig-1".to_string(), 10, 15))
+        );
+    }
+
+    #[test]
+    fn anchor_at_rejects_a_cite_key_and_a_plain_heading_id() {
+        // A citation key is not an xref anchor (and its `@` is not a real xref sigil).
+        assert_eq!(anchor_at("[@smith2020] and more", 0, 4), None);
+        // A plain custom heading id has no xref prefix, so it is not renameable here.
+        assert_eq!(anchor_at("## Intro {#intro}\n", 0, 13), None);
+        // Prose is nothing.
+        assert_eq!(anchor_at("just some words", 0, 5), None);
+    }
+
+    #[test]
+    fn anchor_occurrences_covers_definition_and_references_only() {
+        // Definition + two references + one citation (which must be excluded).
+        let text =
+            "![p](i.png){#fig-scree}\n\nSee @fig-scree, again @fig-scree, cite [@fig-scree].\n";
+        let sites = anchor_occurrences(text, "fig-scree");
+        assert_eq!(
+            sites,
+            vec![(0, 13, 22), (2, 5, 14), (2, 23, 32)],
+            "expected the definition and both `@` references, never the `[@…]` citation"
+        );
     }
 
     #[test]
