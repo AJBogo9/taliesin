@@ -5,6 +5,7 @@ import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "./
 import { registerDiagnostics } from "./diagnostics";
 import { registerCompletions } from "./completions";
 import { registerHover } from "./hover-provider";
+import { registerDocumentSymbols } from "./outline-provider";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -13,6 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
   registerDiagnostics(context);
   registerCompletions(context);
   registerHover(context);
+  registerDocumentSymbols(context);
 }
 
 async function openPreview(context: vscode.ExtensionContext) {
