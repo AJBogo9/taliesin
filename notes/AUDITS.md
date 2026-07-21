@@ -43,6 +43,22 @@ Home/End/`0`, `og:type` gating). **Still open in §7** ([backlog.md](backlog.md)
 questions (deck serif/sans, focus-mode↔fullscreen, `//| uses:` alias, theorem-kind namespacing). Full per-item
 findings + evidence + credit in the dated file above.
 
+**A second, wider polish round was audited 2026-07-22** → [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md)
+— an **empirical browser sweep** (chrome-devtools MCP over the tech-blog site, the demo-book, the deck in feed
+**and** stepped modes, and the feature docs, across light/dark/sepia + laptop/narrow) that the 2026-07-19 round
+couldn't run (its chrome profile was blocked), **plus 4 read-only code auditors** (CSS/theming · client JS · CLI +
+diagnostics · emitted-HTML a11y), each briefed with the shipped PL1–PL20 + open backlog so they hunt *new* ground.
+~55 net-new findings (`PA-*`). Dominant pattern: **the design system stopped at `base.css`** — `site.css` (0 token
+uses) and `deck.css` never took the PL4/PL11 colour+geometry+motion tokens, so the chrome around the tokenized
+content is a second, drifting design language. Other clusters: page-scaffold completeness is page-only (deck +
+listing pages skip favicon / `<h1>` / list semantics), one-of-a-kind a11y holes (a single missing
+`aria-live`/focus-trap per surface), reduced-motion honoured in the reader enhancers but not the preview client, and
+residual CLI `--help` drift. Grind order = 5 passes (design-system token PR · scaffold · a11y holes ·
+CLI/diagnostics · reduced-motion+print) in the file. **PA-H1 LANDED 2026-07-22 (`dc58aa9`)** as the first item: the
+standalone deck build shipped no `<link rel="icon">` (a `/favicon.ico` 404 + a blank tab), so it now falls back to
+the same bundled mark a page does (pinned by `deck_offline_build::built_deck_carries_a_favicon`). The rest are queued
+as item 13 in [backlog.md](backlog.md).
+
 **DX1 LANDED 2026-07-18** (the dominant finding). Live static validation now runs on both serve paths:
 a new `crates/server/src/preview_diag.rs` bridge converts the `check`-superset validators
 (`check::page_static_diagnostics`, `Site::validate_cross_page_links`, `Site::warnings`) into

@@ -16,7 +16,8 @@ located diagnostics, CSS hot-swap, Cmd-K search). The editor language intelligen
 go-to-definition, outline, hover, completion, quick-fix code actions, rename) now ships editor-agnostically
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
 shipped"). **Most of the backlog has already shipped** (DX, PMF, polish, machine-facing, corpus-coverage
-and reduction audits are all closed). What is actually open is small; it is ranked below by product impact.
+and reduction audits are all closed; a second **2026-07-22 polish round** — a browser sweep + 4 code auditors —
+reopened a small P3 hardening/a11y tail, item 13). What is actually open is small; it is ranked below by product impact.
 
 ## Standing constraints (read before working)
 
@@ -181,6 +182,25 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       (`diff.rs` `anchor_op`). Client + server ship together, no wire-compat constraint.
     - **Audit long-tail:** a tens-of-MB cell output blocks ZMQ receive before the cap fires
       (`kernel.rs`, do-not-touch).
+
+13. **2026-07-22 polish-audit follow-ups** (P3 hardening + a11y + "feels finished"; detail:
+    [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md) — ~55 `PA-*` findings from an empirical browser
+    sweep + 4 read-only code auditors; [AUDITS.md](AUDITS.md) records the round). **PA-H1 (standalone deck build
+    shipped no favicon → a `/favicon.ico` 404 + blank tab) already landed** 2026-07-22 (`dc58aa9`, pinned by
+    `deck_offline_build::built_deck_carries_a_favicon`). The rest grind as **5 passes**, each a branch → corpus-pin
+    (where behavioral) → browser-verify: **(a) design-system single-source** — `site.css` (0 token uses) + `deck.css`
+    never took the PL4/PL11 colour+geometry+motion tokens (PA-S1/S2/C2/C3/D1/F1), and the cite-this "Copied!" + deck
+    active buttons **fail WCAG AA in dark** (wrong accent token, white ≈2.3:1; PA-C1). **(b) scaffold completeness**
+    — listing/section pages (`/blog`,`/publications`,`/projects`) emit **no `<h1>`** and start at H2/H3 (SEO +
+    heading-nav; PA-H2, M), dates are `<span>` not `<time>` and a listing is a `<div>` not a list (PA-M1). **(c) a11y
+    announce/focus holes** — one missing `aria-live`/focus-trap/roving-tabindex per surface (lightbox gallery step
+    silent to AT, PA-A2; etc.). **(d) CLI/diagnostics** — the kernel-unavailable error tells headless `build`/`read`/CI
+    to "click Restart kernel" (a button that isn't there; PA-B1, `exec.rs:333`), `check` human diagnostics are
+    uncoloured (PA-B2), residual `--help` drift. **(e) reduced-motion + print** — honoured in the reader enhancers
+    but **not the preview client** (PA-B6/B7), and printed links lose their URL (no `a[href]::after`; PA-P1). *Gating:
+    mostly S/P3; a couple M (PA-H2 listing `<h1>` + heading-level demotion touches snapshots; the token pass). Verify
+    each against source (entries rot) and by mutation. Owner design-Qs (deck copy-button, card whole-`<a>`) parked in
+    the doc, not build-ready.*
 
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
