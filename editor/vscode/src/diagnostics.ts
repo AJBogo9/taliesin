@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { spawn } from "node:child_process";
 import * as path from "node:path";
-import { parseCheckJson, toDiagnostics, suggestionSpan } from "./check";
+import { parseCheckJson, toDiagnostics, fixSpan } from "./check";
 import { isSourceFile } from "./paths";
 import { createDebouncer } from "./debounce";
 
@@ -9,10 +9,14 @@ import { createDebouncer } from "./debounce";
 // enough to coalesce a burst of typing into one `check --stdin`, short enough to feel live.
 const ONTYPE_DEBOUNCE_MS = 300;
 
-// The replacement string of a diagnostic's "did you mean `X`" fix, keyed by the diagnostic
-// object VS Code hands back in the CodeAction context (same instance we set on the
-// collection), so the quick-fix provider can recover it without mutating the diagnostic.
-const suggestionOf = new WeakMap<vscode.Diagnostic, string>();
+// A diagnostic's "did you mean `X`" fix, keyed by the diagnostic object VS Code hands back in
+// the CodeAction context (same instance we set on the collection), so the quick-fix provider
+// can recover it without mutating the diagnostic. `span` is the exact [start,end) to overwrite
+// when the diagnostic carried a column (E3); absent -> the provider locates the token itself.
+const suggestionOf = new WeakMap<
+  vscode.Diagnostic,
+  { replacement: string; span?: { start: number; end: number } }
+>();
 
 // Map the CLI's severity word to a VS Code severity. An older `taliesin` (or an
 // unclassified finding) has no severity; default to Warning, the prior behavior.
@@ -69,20 +73,20 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
         provideCodeActions(document, _range, ctx) {
           const actions: vscode.CodeAction[] = [];
           for (const diag of ctx.diagnostics) {
-            const replacement = suggestionOf.get(diag);
-            if (!replacement) continue;
+            const entry = suggestionOf.get(diag);
+            if (!entry) continue;
             const line = diag.range.start.line;
-            const span = suggestionSpan(document.lineAt(line).text, replacement);
+            const span = fixSpan(entry, document.lineAt(line).text);
             if (!span) continue; // couldn't locate the token unambiguously: offer nothing
             const action = new vscode.CodeAction(
-              `Change to \`${replacement}\``,
+              `Change to \`${entry.replacement}\``,
               vscode.CodeActionKind.QuickFix
             );
             action.edit = new vscode.WorkspaceEdit();
             action.edit.replace(
               document.uri,
               new vscode.Range(line, span.start, line, span.end),
-              replacement
+              entry.replacement
             );
             action.diagnostics = [diag];
             action.isPreferred = true;
@@ -128,7 +132,17 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
     const shapes = toDiagnostics(parseCheckJson(result.stdout), doc.lineCount);
     const diags = shapes.map((s) => {
       const line0 = Math.max(0, Math.min(s.line0, doc.lineCount - 1));
-      const range = doc.lineAt(line0).range; // whole-line squiggle (JSON carries no column)
+      const lineLen = doc.lineAt(line0).text.length;
+      // A precise `[col, endCol)` span (E3) squiggles just the token; else the whole line.
+      const range =
+        s.col !== undefined && s.endCol !== undefined
+          ? new vscode.Range(
+              line0,
+              Math.min(s.col - 1, lineLen),
+              line0,
+              Math.min(s.endCol - 1, lineLen)
+            )
+          : doc.lineAt(line0).range;
       const d = new vscode.Diagnostic(range, s.message, severityOf(s.severity));
       d.source = "taliesin check";
       // Surface the stable TAL-* code, made a clickable link to the catalog when the
@@ -137,7 +151,14 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
         d.code = s.docsUrl ? { value: s.code, target: vscode.Uri.parse(s.docsUrl) } : s.code;
       }
       // Remember an applicable "did you mean" fix so the code-action provider can offer it.
-      if (s.suggestion) suggestionOf.set(d, s.suggestion.replacement);
+      // A column span makes the fix guess-free; without one it falls back to suggestionSpan.
+      if (s.suggestion) {
+        const span =
+          s.col !== undefined && s.endCol !== undefined
+            ? { start: s.col - 1, end: s.endCol - 1 }
+            : undefined;
+        suggestionOf.set(d, { replacement: s.suggestion.replacement, span });
+      }
       return d;
     });
     collection.set(doc.uri, diags);

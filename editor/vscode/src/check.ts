@@ -26,6 +26,11 @@ export interface CheckDiag {
   code?: string; // stable TAL-* code
   docsUrl?: string; // catalog anchor; the wire field is snake_case `docs_url`
   suggestion?: Suggestion;
+  // 1-based `[col, endCol)` character span on `line` (E3). Present only for a diagnostic
+  // whose flagged token was located precisely (front-matter key typos); the wire field for
+  // the end is snake_case `end_col`. Absent -> whole-line squiggle + suggestionSpan fallback.
+  col?: number;
+  endCol?: number;
 }
 
 export type CheckOutput =
@@ -71,6 +76,8 @@ export function parseCheckJson(stdout: string): CheckOutput {
         if (d.suggestion && typeof d.suggestion.replacement === "string") {
           diag.suggestion = { replacement: d.suggestion.replacement };
         }
+        if (typeof d.col === "number") diag.col = d.col;
+        if (typeof d.end_col === "number") diag.endCol = d.end_col;
         return diag;
       });
     return { kind: "diags", diags };
@@ -90,6 +97,10 @@ export interface DiagShape {
   code?: string;
   docsUrl?: string;
   suggestion?: Suggestion;
+  // 1-based `[col, endCol)` span on the line (E3), passed through when present so the wiring
+  // can build a precise `vscode.Range` instead of a whole-line squiggle.
+  col?: number;
+  endCol?: number;
 }
 
 export function toDiagnostics(out: CheckOutput, lineCount: number): DiagShape[] {
@@ -106,8 +117,21 @@ export function toDiagnostics(out: CheckOutput, lineCount: number): DiagShape[] 
     if (d.code !== undefined) shape.code = d.code;
     if (d.docsUrl !== undefined) shape.docsUrl = d.docsUrl;
     if (d.suggestion !== undefined) shape.suggestion = d.suggestion;
+    if (d.col !== undefined) shape.col = d.col;
+    if (d.endCol !== undefined) shape.endCol = d.endCol;
     return shape;
   });
+}
+
+// The [start, end) span a "did you mean" fix should overwrite. When the diagnostic carried an
+// exact column span (E3), use it verbatim — the bad token is located precisely, so no guess.
+// Otherwise fall back to locating the token by edit distance (an older binary, or a diagnostic
+// family that carries no column). Columns are 0-based on the line.
+export function fixSpan(
+  entry: { replacement: string; span?: { start: number; end: number } },
+  lineText: string
+): { start: number; end: number } | null {
+  return entry.span ?? suggestionSpan(lineText, entry.replacement);
 }
 
 // Levenshtein edit distance between two short strings (a line token vs. the suggested

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { parseCheckJson, toDiagnostics, suggestionSpan } from "../check";
+import { parseCheckJson, toDiagnostics, suggestionSpan, fixSpan } from "../check";
 
 test("parseCheckJson reads the diagnostics array (legacy bare-array shape)", () => {
   const out = parseCheckJson('[{"file":"a.tmd","line":3,"message":"unknown key `titel`"}]');
@@ -203,4 +203,47 @@ test("suggestionSpan returns null when the closest token already equals the repl
 test("suggestionSpan returns null when two tokens tie as the closest match", () => {
   // Both `treme` and `thyme` are one edit from `theme`: ambiguous, so offer no fix.
   assert.equal(suggestionSpan("treme thyme", "theme"), null);
+});
+
+test("parseCheckJson reads col/end_col when present", () => {
+  const out = parseCheckJson(
+    JSON.stringify({
+      diagnostics: [
+        { file: "a.tmd", line: 3, message: "unknown key `treme`", col: 1, end_col: 6 },
+      ],
+    })
+  );
+  assert.equal(out.kind, "diags");
+  assert.equal((out as any).diags[0].col, 1);
+  assert.equal((out as any).diags[0].endCol, 6);
+});
+
+test("parseCheckJson ignores a non-numeric col", () => {
+  const out = parseCheckJson(
+    JSON.stringify({ diagnostics: [{ file: "a.tmd", line: 3, message: "x", col: "1" }] })
+  );
+  assert.equal((out as any).diags[0].col, undefined);
+});
+
+test("toDiagnostics carries the column span through", () => {
+  const out = parseCheckJson(
+    JSON.stringify({ diagnostics: [{ file: "a.tmd", line: 3, message: "x", col: 1, end_col: 6 }] })
+  );
+  const shapes = toDiagnostics(out, 10);
+  assert.equal(shapes[0].col, 1);
+  assert.equal(shapes[0].endCol, 6);
+});
+
+test("fixSpan prefers an exact span over the edit-distance guess", () => {
+  assert.deepEqual(fixSpan({ replacement: "theme", span: { start: 0, end: 5 } }, "treme: dark"), {
+    start: 0,
+    end: 5,
+  });
+});
+
+test("fixSpan falls back to suggestionSpan when no span is present", () => {
+  assert.deepEqual(
+    fixSpan({ replacement: "theme" }, "treme: dark"),
+    suggestionSpan("treme: dark", "theme")
+  );
 });
