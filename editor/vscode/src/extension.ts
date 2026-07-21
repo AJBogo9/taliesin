@@ -4,6 +4,7 @@ import { relayHtml } from "./webview";
 import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "./paths";
 import { registerDiagnostics } from "./diagnostics";
 import { registerCompletions } from "./completions";
+import { registerHover } from "./hover-provider";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -11,6 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
   registerDiagnostics(context);
   registerCompletions(context);
+  registerHover(context);
 }
 
 async function openPreview(context: vscode.ExtensionContext) {

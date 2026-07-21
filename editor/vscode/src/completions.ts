@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -7,57 +6,11 @@ import {
   harvestAnchorIds,
   harvestBibKeys,
   frontmatterBibPaths,
-  parseSymbolsJson,
   mergeXrefTargets,
   shortcodePathCandidates,
   XrefSymbol,
 } from "./complete";
-
-interface Named {
-  name: string;
-  description: string;
-}
-interface Vocab {
-  frontmatter: { keys: Named[]; nested: Record<string, Named[]> };
-  cellOptions: Named[];
-  calloutKinds: Named[];
-  theoremKinds: Named[];
-  divClasses: Named[];
-  inputTypes: string[];
-  xrefPrefixes: { prefix: string; label: string }[];
-}
-
-// Spawn `taliesin vocab` and parse its JSON. Rejects on spawn failure or bad JSON.
-function fetchVocab(binary: string): Promise<Vocab> {
-  return new Promise((resolve, reject) => {
-    let stdout = "";
-    const child = spawn(binary, ["vocab"]);
-    child.on("error", (e) => reject(e));
-    child.stdout?.on("data", (b) => (stdout += b.toString()));
-    child.on("close", () => {
-      try {
-        resolve(JSON.parse(stdout) as Vocab);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  });
-}
-
-// Spawn `taliesin symbols <file> --format json` for the document's cross-reference
-// targets. Resolves to `[]` on any failure (no binary, an older binary without the
-// command, a render panic), so @-completion degrades to the buffer scan instead of
-// vanishing. `symbols` is parse-only and never starts a kernel, which is what makes it
-// safe to run from a completion request.
-function fetchSymbols(binary: string, file: string): Promise<XrefSymbol[]> {
-  return new Promise((resolve) => {
-    let stdout = "";
-    const child = spawn(binary, ["symbols", file, "--format", "json"]);
-    child.on("error", () => resolve([]));
-    child.stdout?.on("data", (b) => (stdout += b.toString()));
-    child.on("close", (code) => resolve(code === 0 ? parseSymbolsJson(stdout) : []));
-  });
-}
+import { fetchVocab, fetchSymbols, Vocab } from "./backend";
 
 function item(label: string, detail: string, kind: vscode.CompletionItemKind): vscode.CompletionItem {
   const ci = new vscode.CompletionItem(label, kind);
