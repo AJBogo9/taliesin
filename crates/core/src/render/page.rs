@@ -645,7 +645,7 @@ pub fn favicon_link(href: &str) -> String {
 /// URI — the default favicon when a project configures none.
 const FAVICON_SVG: &str = include_str!("../../../../web-client/favicon.svg");
 
-fn default_favicon() -> String {
+pub(super) fn default_favicon() -> String {
     format!(
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{}\" />",
         base64_encode(FAVICON_SVG.as_bytes())

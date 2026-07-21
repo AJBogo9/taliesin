@@ -21,7 +21,8 @@ pub struct DeckParts<'a> {
     pub title: &'a str,
     /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
     pub lang: &'a str,
-    /// A pre-built `<link rel="icon" …>`, or `""` (a built deck ships none).
+    /// A pre-built `<link rel="icon" …>`. The standalone build passes the bundled
+    /// default mark (like a page), the live/site preview paths their own route.
     pub favicon: &'a str,
     pub theme_default: &'a str,
     /// A custom/extension `theme:` owns its colours (no pre-paint mode script).
@@ -113,10 +114,15 @@ pub(super) fn deck_page_from_doc(
         code_scripts = code_scripts_for(&slides, mode),
         after_body = doc.includes.after_body,
     );
+    // A standalone-built deck gets the same bundled-mark favicon a standalone page
+    // does (page.rs), so a built deck's tab has an icon and never 404s `/favicon.ico`.
+    // The live-preview and site paths set their own favicon on `DeckParts` (a served
+    // route / the site's configured mark) and reach `assemble_deck_page` directly.
+    let favicon = super::page::default_favicon();
     assemble_deck_page(&DeckParts {
         title: &t,
         lang: doc.lang.as_deref().unwrap_or("en"),
-        favicon: "",
+        favicon: &favicon,
         theme_default: &doc.theme_default,
         theme_is_custom: doc.theme_is_custom,
         theme_css: &doc.theme_css,
