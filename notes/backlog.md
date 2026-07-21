@@ -17,7 +17,7 @@ go-to-definition, outline, hover, completion, quick-fix code actions, rename) no
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
 shipped"). **Most of the backlog has already shipped** (DX, PMF, polish, machine-facing, corpus-coverage
 and reduction audits are all closed; a second **2026-07-22 polish round** — a browser sweep + 4 code auditors —
-reopened a small P3 hardening/a11y tail, item 13). What is actually open is small; it is ranked below by product impact.
+reopened a small P3 hardening/a11y tail, item 11). What is actually open is small; it is ranked below by product impact.
 
 ## Standing constraints (read before working)
 
@@ -125,16 +125,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     document or reconsider? · a Vite user pressing `r/o/u/c/q` or `h` gets silence now that interactivity
     moved to the browser dev menu, so one banner line pointing at the `◇` menu.
 
-10. **ASCII-art `generator` comment** (brand/discovery nicety): a leading HTML comment (project name,
-    `taliesin_core::VERSION` from `lib.rs:59`, and a URL) so a developer who opens dev tools or
-    view-source can find the tool. The machine-readable half already ships (`<meta name="generator"
-    content="Taliesin" />`, `page.rs:277`, pinned by `head_meta.rs`); this adds the human-readable banner.
-    One insertion in the shared `assemble_html_page` `format!` (`page.rs:270-295`, placed just inside
-    `<head>` to sidestep the doctype-first-byte rule) covers build and both previews; decks need a
-    symmetric edit (`deck.rs:70-77`, which lacks even the generator meta today). No test churn (head tests
-    use `.contains`). Minimal-config: a default, not a knob. *Gating: S, net-new, low priority.*
-
-11. **Reliability / test-infra long tail** (P3, dev-facing):
+10. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
@@ -169,7 +160,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     - **Audit long-tail:** a tens-of-MB cell output blocks ZMQ receive before the cap fires
       (`kernel.rs`, do-not-touch).
 
-13. **2026-07-22 polish-audit follow-ups** (P3 hardening + a11y + "feels finished"; detail:
+11. **2026-07-22 polish-audit follow-ups** (P3 hardening + a11y + "feels finished"; detail:
     [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md) — ~55 `PA-*` findings from an empirical browser
     sweep + 4 read-only code auditors; [AUDITS.md](AUDITS.md) records the round). **PA-H1 (standalone deck build
     shipped no favicon → a `/favicon.ico` 404 + blank tab) already landed** 2026-07-22 (`dc58aa9`, pinned by

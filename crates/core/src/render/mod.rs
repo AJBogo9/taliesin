@@ -1171,6 +1171,29 @@ pub(crate) const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-d
 /// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 
+/// A human-readable ASCII-art banner emitted as the first thing inside `<head>`. The
+/// machine-readable `<meta name="generator">` already ships; this is its view-source
+/// sibling, so a developer who opens the page (view-source / dev tools) can find the
+/// tool that built it. Kept INSIDE `<head>`, never before the doctype, so the first
+/// byte stays `<!DOCTYPE`. Assembled at compile time (`concat!`) so `VERSION` is baked
+/// in. NB: an HTML comment body must not contain a `--`, so separators stay single-dash.
+pub(crate) const GENERATOR_BANNER: &str = concat!(
+    r##"<!--
+  mmmmmmm        ""#      "                    "
+     #     mmm     #    mmm     mmm    mmm   mmm    m mm
+     #    "   #    #      #    #"  #  #   "    #    #"  #
+     #    m"""#    #      #    #""""   """m    #    #   #
+     #    "mm"#    "mm  mm#mm  "#mm"  "mmm"  mm#mm  #   #
+
+  Taliesin v"##,
+    env!("CARGO_PKG_VERSION"),
+    r##"  -  https://taliesin.dev
+  Rendered from .tmd source, not a batch compiler: a warm, source-mapped,
+  block-modeled live HTML process.  https://github.com/AJBogo9/taliesin
+-->
+"##,
+);
+
 // mermaid (pinned) is loaded as a separate script rather than bundled: the library is
 // large (~2.8 MB) and only needed when a diagram is actually present, so it's lazy-loaded
 // by `mermaid.js` (the self-registering enhancer) the first time a `{mermaid}` block

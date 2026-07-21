@@ -69,10 +69,11 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
     // `theme` comes after the deck's own stylesheet so it overrides it; the css
     // folded into `include-in-header` follows last.
     format!(
-        "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n\
+        "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n{GENERATOR_BANNER}\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n\
          <meta name=\"referrer\" content=\"no-referrer\" />\n\
+         <meta name=\"generator\" content=\"Taliesin\" />\n\
          <title>{title}</title>\n{favicon}{deck_theme}<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
          </head>\n<body>\n{before_body}<div class=\"tali-deck\">\n<div class=\"tali-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
