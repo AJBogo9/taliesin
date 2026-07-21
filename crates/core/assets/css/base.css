@@ -227,11 +227,24 @@
     background: transparent; color: var(--tali-muted); text-decoration: none;
     transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
   .tali-embed-btn:hover { border-color: var(--tali-accent); color: var(--tali-link); }
-  /* `{{< video >}}` — a framed silent screencast (autoplay/muted/loop) + optional caption. */
-  .tali-video { margin: 1.6rem 0; }
+  /* `{{< video >}}` — a framed silent screencast (muted/loop, user-started) + optional
+     caption. Playback is hover/focus/tap-driven (18-media.js), never autoplay (WCAG 2.2.2). */
+  .tali-video { position: relative; margin: 1.6rem 0; }
   .tali-video video { display: block; width: 100%; height: auto; border: 1px solid var(--tali-border);
     border-radius: var(--tali-radius-lg); background: var(--tali-code-bg); box-shadow: var(--tali-shadow-md); }
   .tali-video figcaption { text-align: center; color: var(--tali-muted); font-size: .9rem; margin-top: .6rem; }
+  /* Paused-state play affordance: a soft ▶ badge centred on the frame, signalling the clip
+     is interactive (hover to preview, click to open it enlarged); fades out while playing
+     (`data-playing`, toggled by 18-media.js). Purely decorative + non-interactive. A neutral
+     scrim: video imagery is theme-independent, so no --tali-* token applies. */
+  .tali-video::after {
+    content: "\25B6"; position: absolute; left: 50%; top: 50%;
+    width: 3rem; height: 3rem; box-sizing: border-box; padding-left: .18rem;
+    display: flex; align-items: center; justify-content: center;
+    transform: translate(-50%, -50%); border-radius: 50%;
+    background: rgba(20, 20, 22, .55); color: #fff; font-size: 1.25rem; line-height: 1;
+    pointer-events: none; opacity: 1; transition: opacity var(--tali-dur) ease; }
+  .tali-video[data-playing]::after { opacity: 0; }
   /* `dark=` variant: show the clip that matches the page theme (selectors carry the
      element so they beat the `.tali-video video` base rule). */
   .tali-video video.tali-video-dark { display: none; }

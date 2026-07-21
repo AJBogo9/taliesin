@@ -17,22 +17,27 @@ Two defects on the same delivery surface:
 
 ## Design
 
-### Part (a) — video: user-initiated play, one unified primitive
+### Part (a) — video: user-initiated play across every input mode
 
-Playback is never automatic. One play/pause primitive, driven by three inputs so desktop,
-keyboard, and touch share a single code path (no IntersectionObserver):
+Playback is never automatic. **Correction during implementation:** the initial plan added a
+click/tap *pin* toggle on the inline video, but the pre-existing lightbox (`11-lightbox.js`)
+already intercepts every click on `.tali-video video` at document-capture (`stopPropagation`
++ `openVideo`) to open an enlarged, playing copy. A pin toggle both fought that and was
+redundant — the lightbox *is* the tap-to-play / "watch it properly" affordance. The shipped
+model instead lets the lightbox own click/tap and keeps the inline behavior to preview only:
 
-- **Hover** (pointer): `pointerenter` plays, `pointerleave` pauses — unless *pinned* (below).
-- **Focus** (keyboard): the `<video>` is `tabindex="0"` with an `aria-label`; `focus` plays,
-  `blur` pauses — keyboard parity with hover.
-- **Click / tap / Enter / Space**: toggles a **pinned** play state stored on the `<figure>`.
-  Pinned-playing persists through leave/blur; this is the touch fallback *and* the explicit
-  WCAG pause mechanism. Tap again to pin-pause.
-- **`prefers-reduced-motion: reduce`**: hover/focus never auto-play; only an explicit
-  tap/Enter plays (honors the motion preference, still user-overridable).
+- **Hover** (pointer): `pointerenter` plays a transient inline preview, `pointerleave` pauses.
+- **Keyboard focus**: the `<video>` is `tabindex="0"` with an `aria-label`; `focusin` plays,
+  `focusout` pauses — so a keyboard user can play it inline (parity with hover). Guarded by a
+  shared `pointering` flag so a mouse click's focus churn doesn't flicker the inline clip as
+  the lightbox opens.
+- **Click / tap**: opens the video in the lightbox (enlarged, playing) via the existing
+  capture-phase delegation. This is the **touch play path** and the **explicit** play path;
+  this fragment deliberately binds *no* click/pointerup handler.
+- **`prefers-reduced-motion: reduce`**: hover/focus never auto-play; an explicit click still
+  plays (via the lightbox) — a user-requested motion.
 
-State lives on the `<figure>` (not the `<video>`) so a light/dark **pair** shares one pinned
-state and it carries across a theme switch.
+No pin state is needed. `data-playing` on the `<figure>` drives the paused play-glyph.
 
 Emission / render changes:
 
@@ -84,9 +89,13 @@ registered enhancer (idempotent, re-run on mount). The
 - **Fragment guard**: `code_enhance_bundle_matches_fragments_in_order` includes `18-media.js`.
 - **Corpus invariants**: `cargo test -p taliesin-core` (block-id/sourcepos untouched; video is
   raw-HTML passthrough).
-- **Browser** (chrome-devtools, 3 viewports — mobile ~390, laptop ~1440, portrait ~900):
-  hover plays / leave pauses; tab-focus plays; tap pins; reduced-motion suppresses auto-play;
-  starting one clip pauses the fourier audios and vice versa.
+- **Browser** (headless puppeteer-core — the chrome-devtools MCP profile was held by a
+  parallel session — real page + generated media, 3 viewports mobile ~390 / laptop ~1440 /
+  portrait ~900): no `autoplay` + paused on load; hover plays / leave pauses; keyboard focus
+  plays inline / blur pauses; click opens the lightbox (playing) which pauses the inline clip;
+  audio↔audio and video↔audio single-player; reduced-motion suppresses hover-play but an
+  explicit click still plays via the lightbox. Badge visible when paused, gone when playing.
+  (16/16 assertions green.)
 
 ## Scope / invariants
 

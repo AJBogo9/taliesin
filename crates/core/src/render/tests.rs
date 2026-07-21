@@ -2947,19 +2947,32 @@ An inline example `{{< embed inline.tmd >}}` stays literal.\n\
 }
 
 #[test]
-fn video_shortcode_emits_a_framed_autoplaying_screencast() {
-    // `{{< video clip.mp4 >}}` — a silent, autoplaying, looping screencast authored in
-    // Markdown so a page needs no raw `<video>` HTML. A single source has no light/dark split.
+fn video_shortcode_emits_a_framed_user_started_screencast() {
+    // `{{< video clip.mp4 >}}` — a silent, looping screencast authored in Markdown so a page
+    // needs no raw `<video>` HTML. B7: it is NEVER `autoplay` (a live WCAG 2.2.2 "Pause, Stop,
+    // Hide" failure); playback is user-initiated (hover/focus/tap) by the `18-media.js`
+    // enhancer. The element stays `muted loop playsinline`, carries `preload="metadata"` so
+    // the first frame renders as a still while paused, and is keyboard-reachable (`tabindex`
+    // + an `aria-label`). A single source has no light/dark split.
     let doc = render_document_with_includes("{{< video clip.mp4 >}}\n", std::path::Path::new("."));
     let h = doc.body_html();
     assert!(h.contains("<figure class=\"tali-video\""), "frame: {h}");
     assert!(h.contains("src=\"clip.mp4\""), "source: {h}");
     assert!(
-        h.contains("autoplay")
-            && h.contains("muted")
-            && h.contains("loop")
-            && h.contains("playsinline"),
-        "silent autoplay loop: {h}"
+        !h.contains("autoplay"),
+        "WCAG 2.2.2: no unconditional autoplay — playback is user-initiated: {h}"
+    );
+    assert!(
+        h.contains("muted") && h.contains("loop") && h.contains("playsinline"),
+        "silent muted loop: {h}"
+    );
+    assert!(
+        h.contains("preload=\"metadata\""),
+        "preload metadata so the paused first frame renders as a still: {h}"
+    );
+    assert!(
+        h.contains("tabindex=\"0\"") && h.contains("aria-label="),
+        "keyboard-reachable + labelled: {h}"
     );
     assert!(
         !h.contains("tali-video-light"),
@@ -2995,6 +3008,20 @@ fn video_dark_and_poster_and_caption_args_are_exercised() {
     assert!(
         h.contains("<figcaption>A demo</figcaption>"),
         "caption: {h}"
+    );
+    // B7: the pair is also user-started + keyboard-reachable, and never autoplays. The
+    // caption doubles as the accessible name when present.
+    assert!(
+        !h.contains("autoplay"),
+        "WCAG 2.2.2: no autoplay on the pair: {h}"
+    );
+    assert!(
+        h.contains("preload=\"metadata\"") && h.contains("tabindex=\"0\""),
+        "still-frame preload + keyboard reach on both clips: {h}"
+    );
+    assert!(
+        h.contains("aria-label=\"A demo\""),
+        "the caption names the video: {h}"
     );
 }
 

@@ -189,17 +189,18 @@ pub fn theme_head(default_mode: &str) -> String {
   }};
   // Theme-matched `{{< video >}}` clips: a light/dark pair carries `data-src` (no `src`)
   // so the theme-hidden variant is never fetched. Promote `data-src`->`src` on the
-  // now-VISIBLE variant (downloading it only when it is actually shown) and play it;
-  // pause the hidden one. Runs on load + on every theme change, so switching themes
-  // fetches the other clip lazily instead of both up front.
+  // now-VISIBLE variant (downloading it only when it is actually shown, so `preload`
+  // can render its first frame as a still); pause the hidden one. Playback itself is
+  // user-initiated by the `18-media.js` enhancer (never autoplay — WCAG 2.2.2), which
+  // re-applies the figure's pinned state to the visible clip on this same event. Runs on
+  // load + on every theme change, so switching themes fetches the other clip lazily.
   function syncThemeVideos(){{
     var vids = document.querySelectorAll(".tali-video video");
     for (var i = 0; i < vids.length; i++) {{
       var v = vids[i];
       if (getComputedStyle(v).display === "none") {{ try {{ v.pause(); }} catch(e) {{}} }}
-      else {{
-        if (!v.getAttribute("src") && v.getAttribute("data-src")) v.setAttribute("src", v.getAttribute("data-src"));
-        try {{ var p = v.play(); if (p && p.catch) p.catch(function(){{}}); }} catch(e) {{}}
+      else if (!v.getAttribute("src") && v.getAttribute("data-src")) {{
+        v.setAttribute("src", v.getAttribute("data-src"));
       }}
     }}
   }}

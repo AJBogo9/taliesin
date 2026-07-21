@@ -109,37 +109,23 @@ gating tag: a high-impact item can still be frozen or need a ruling.
    simpler, more explicit sibling). **Not a new output format** (a delivery wrapper around the existing
    HTML). *Gating: S/M, net-new.* Pin: build a book, assert `<book>.zip` exists plus a chrome download link.
 
-7. **Media playback behavior** (P2; a11y + UX; two parts sharing one delivery surface): (a) **video
-   hover-to-play, pause-on-leave**: `{{< video >}}` emits `autoplay muted loop playsinline` with **no
-   `controls` and no pause path** (`render/extension/mod.rs:346`), a live **WCAG 2.2.2 (Pause, Stop,
-   Hide)** failure on the forward-facing site (`site/index.tmd`, `site/features.tmd`). Hover-to-play with
-   pause-on-leave *satisfies* 2.2.2, but the "perfect default" also needs a touch fallback (no hover on
-   mobile, so tap or IntersectionObserver play-when-visible) and `prefers-reduced-motion` meaning no
-   autoplay. Must drop the unconditional `autoplay` (rewrite the pin `tests.rs:2881-2918`) and coexist
-   with `syncThemeVideos` (`theme.rs:190-208`) plus the lightbox (`11-lightbox.js:125-137`). (b) **single
-   active player**: a delegated `play` listener (capture) pausing every other `<audio>`/`<video>` when one
-   starts. Today four raw-HTML `<audio controls>` on `corpus/posts/fourier-transform/index.tmd:86-98` can
-   all play at once, and there is **zero** media-coordination JS. Both parts ship in **two** client
-   surfaces for preview/build parity (`web-client/client.js` plus a bundled `assets/js/` asset). *Gating:
-   M, net-new, mostly client-side.* Pin: a media corpus doc (the fourier post is a ready single-player pin).
-
 ### C. Low / hardening (P3)
 
-8. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
+7. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
    against the offline invariant first (it implies a network check).*
 
-9. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
+8. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
     hardcoded English const table is `cite/render.rs:15-21`, and `lang` appears **zero** times in that
     file, so there is no localization seam yet. `lang:` correctly sets `<html lang>`; the "promise" of
     translated labels was never real. **No corpus doc demands it.**
 
-10. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
+9. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
     logic (`deck.css:705-711`), accept+document or unify? · add a `//| uses:` alias for the consumer
     `//| input:` (weigh vocab sprawl)? · callout kinds are namespaced but theorem kinds are bare,
     document or reconsider? · a Vite user pressing `r/o/u/c/q` or `h` gets silence now that interactivity
     moved to the browser dev menu, so one banner line pointing at the `◇` menu.
 
-11. **ASCII-art `generator` comment** (brand/discovery nicety): a leading HTML comment (project name,
+10. **ASCII-art `generator` comment** (brand/discovery nicety): a leading HTML comment (project name,
     `taliesin_core::VERSION` from `lib.rs:59`, and a URL) so a developer who opens dev tools or
     view-source can find the tool. The machine-readable half already ships (`<meta name="generator"
     content="Taliesin" />`, `page.rs:277`, pinned by `head_meta.rs`); this adds the human-readable banner.
@@ -148,7 +134,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     symmetric edit (`deck.rs:70-77`, which lacks even the generator meta today). No test churn (head tests
     use `.contains`). Minimal-config: a default, not a knob. *Gating: S, net-new, low priority.*
 
-12. **Reliability / test-infra long tail** (P3, dev-facing):
+11. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The

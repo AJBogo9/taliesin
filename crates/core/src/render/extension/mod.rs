@@ -322,9 +322,11 @@ fn input_shortcode(
     )
 }
 
-/// The HTML for a `{{< video >}}`: a framed autoplaying/muted/looping `<video>` (a
-/// silent screencast) with an optional caption. With a `dark` source, both clips are
-/// emitted and CSS shows the one matching `html[data-theme]`. Raw-HTML, passed through.
+/// The HTML for a `{{< video >}}`: a framed muted/looping `<video>` (a silent screencast)
+/// with an optional caption. Playback is **user-initiated** (hover / focus / tap via the
+/// `18-media.js` enhancer), never `autoplay` — an autoplaying loop beside body text is a
+/// WCAG 2.2.2 ("Pause, Stop, Hide") failure. With a `dark` source, both clips are emitted
+/// and CSS shows the one matching `html[data-theme]`. Raw-HTML, passed through.
 fn video_html(
     src: &str,
     dark: Option<&str>,
@@ -334,16 +336,23 @@ fn video_html(
     let poster_attr = poster
         .map(|p| format!(" poster=\"{}\"", escape_attr(p)))
         .unwrap_or_default();
+    // The caption names the video for assistive tech; a caption-less clip is a generic
+    // "Screencast". Escaped since it lands in a double-quoted attribute.
+    let label_attr = format!(
+        " aria-label=\"{}\"",
+        escape_attr(caption.unwrap_or("Screencast"))
+    );
     // A light/dark PAIR ships both clips but only one is ever visible, so the theme-hidden
-    // one must not download. `autoplay` overrides `preload`, so hiding via CSS + `preload`
-    // is not enough (the browser still fetches an autoplay source). Instead the pair carries
-    // `data-src` (no `src`); `syncThemeVideos` (theme.rs) promotes `data-src`→`src` on the
-    // visible variant only, on load + every theme change — so exactly one clip downloads.
-    // A single-source video keeps an eager `src` (works without JS; nothing to save).
+    // one must not download. The pair carries `data-src` (no `src`); `syncThemeVideos`
+    // (theme.rs) promotes `data-src`→`src` on the visible variant only, on load + every
+    // theme change — so exactly one clip downloads. A single-source video keeps an eager
+    // `src` (works without JS; nothing to save). `preload="metadata"` renders the first
+    // frame as a still while paused (no autoplay forces the load anymore). `tabindex="0"`
+    // makes the clip keyboard-reachable so focus can start it (parity with hover).
     let video = |s: &str, class: &str, lazy: bool| {
         let src_attr = if lazy { "data-src" } else { "src" };
         format!(
-            "<video{cls} {src_attr}=\"{}\"{poster_attr} autoplay muted loop playsinline></video>",
+            "<video{cls} {src_attr}=\"{}\"{poster_attr} muted loop playsinline preload=\"metadata\" tabindex=\"0\"{label_attr}></video>",
             escape_attr(s),
             cls = if class.is_empty() {
                 String::new()
