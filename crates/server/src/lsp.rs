@@ -8,14 +8,14 @@
 
 use lsp_server::{Connection, Message};
 use lsp_types::{
-    HoverProviderCapability, OneOf, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions,
+    CompletionOptions, HoverProviderCapability, OneOf, ServerCapabilities,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
-/// Advertised capabilities: full-text document sync (whole buffer on every change, which
-/// maps 1:1 onto `check`'s whole-buffer linting), go-to-definition, document symbols (the
-/// heading outline), and hover. Completion / rename land as later follow-ups on this server.
+/// Advertised capabilities: full-text document sync (whole buffer on every change, which maps
+/// 1:1 onto `check`'s whole-buffer linting), go-to-definition, document symbols (the heading
+/// outline), hover, and completion. Rename lands as a later follow-up on this server.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -28,6 +28,17 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        completion_provider: Some(CompletionOptions {
+            // The chars that open a completable context: `@` (xref/cite), `.` (div class),
+            // `|` (cell option), `-` (xref prefix), `/` (path), `:` (front-matter value).
+            trigger_characters: Some(
+                ["@", ".", "|", "-", "/", ":"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            ),
+            ..Default::default()
+        }),
         ..Default::default()
     }
 }
@@ -128,12 +139,21 @@ fn handle_request(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use lsp_types::request::{DocumentSymbolRequest, GotoDefinition, HoverRequest, Request as _};
+    use lsp_types::request::{
+        Completion, DocumentSymbolRequest, GotoDefinition, HoverRequest, Request as _,
+    };
     let response = if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(resolve_definition(docs, &params))?),
+            error: None,
+        }
+    } else if req.method == Completion::METHOD {
+        let params: lsp_types::CompletionParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_completion(docs, &params))?),
             error: None,
         }
     } else if req.method == HoverRequest::METHOD {
@@ -295,20 +315,247 @@ fn resolve_hover(
     }
 }
 
-/// The rendered cross-reference number for `id` in the live buffer (e.g. `"2"` / `"2.1"`), or
-/// `None` when the buffer defines no such numbered target. Parse-only, the same kernel-free
-/// render `symbols` uses; panic-guarded so a malformed buffer yields no hover, not a crash.
-fn xref_number(uri: &lsp_types::Url, text: &str, id: &str) -> Option<String> {
+/// Resolve completion at the cursor: route to the vocabulary that applies (front-matter key /
+/// value, cell option, div class, xref, cite, shortcode path) and emit its items. `None` when
+/// the cursor is in no completable context. A port of the companion's `completions.ts`,
+/// drawing on the same Rust-authoritative `vocab` + live document scans.
+fn resolve_completion(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::CompletionParams,
+) -> Option<lsp_types::CompletionResponse> {
+    use crate::lsp_complete::{CompletionContext as Ctx, Shortcode};
+    use lsp_types::{
+        CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Position,
+        Range, TextEdit,
+    };
+
+    let uri = &params.text_document_position.text_document.uri;
+    let pos = params.text_document_position.position;
+    let text = docs.get(uri)?;
+
+    // Char-based line prefix (line start → cursor) and document prefix (doc start → cursor).
+    let lines: Vec<&str> = text.split('\n').collect();
+    let line = lines.get(pos.line as usize).copied().unwrap_or("");
+    let line_prefix: String = line.chars().take(pos.character as usize).collect();
+    let mut doc_prefix = String::new();
+    for l in lines.iter().take(pos.line as usize) {
+        doc_prefix.push_str(l);
+        doc_prefix.push('\n');
+    }
+    doc_prefix.push_str(&line_prefix);
+
+    let ctx = crate::lsp_complete::detect_context(&line_prefix, &doc_prefix);
+    if matches!(ctx, Ctx::None) {
+        return None;
+    }
+    let vocab = taliesin_core::vocab::vocab();
+
+    let item = |label: String, detail: String, kind: CompletionItemKind| CompletionItem {
+        label,
+        kind: Some(kind),
+        detail: (!detail.is_empty()).then_some(detail),
+        ..Default::default()
+    };
+    // A vocab `[{name, description}]` array → items of the given kind.
+    let from_named = |v: &serde_json::Value, kind: CompletionItemKind| -> Vec<CompletionItem> {
+        v.as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| {
+                        let name = e["name"].as_str()?;
+                        Some(item(
+                            name.to_string(),
+                            e["description"].as_str().unwrap_or("").to_string(),
+                            kind,
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let items: Vec<CompletionItem> = match ctx {
+        Ctx::None => return None,
+        Ctx::FrontmatterKey { parent } => {
+            let list = match &parent {
+                Some(p) => &vocab["frontmatter"]["nested"][p],
+                None => &vocab["frontmatter"]["keys"],
+            };
+            from_named(list, CompletionItemKind::PROPERTY)
+        }
+        Ctx::FrontmatterValue { key, typed } => {
+            from_named(&vocab["frontmatterValues"][&key], CompletionItemKind::VALUE)
+                .into_iter()
+                .filter(|it| typed.is_empty() || it.label.starts_with(&typed))
+                .collect()
+        }
+        Ctx::CellOption => from_named(&vocab["cellOptions"], CompletionItemKind::PROPERTY),
+        Ctx::DivClass => {
+            let mut out = Vec::new();
+            if let Some(a) = vocab["calloutKinds"].as_array() {
+                for e in a {
+                    if let Some(name) = e["name"].as_str() {
+                        out.push(item(
+                            format!("callout-{name}"),
+                            e["description"].as_str().unwrap_or("").to_string(),
+                            CompletionItemKind::CLASS,
+                        ));
+                    }
+                }
+            }
+            out.extend(from_named(
+                &vocab["theoremKinds"],
+                CompletionItemKind::CLASS,
+            ));
+            out.extend(from_named(&vocab["divClasses"], CompletionItemKind::CLASS));
+            out
+        }
+        Ctx::Xref { typed } => {
+            let mut out = Vec::new();
+            if let Some(a) = vocab["xrefPrefixes"].as_array() {
+                for e in a {
+                    if let (Some(prefix), Some(label)) = (e["prefix"].as_str(), e["label"].as_str())
+                    {
+                        out.push(item(
+                            format!("{prefix}-"),
+                            label.to_string(),
+                            CompletionItemKind::REFERENCE,
+                        ));
+                    }
+                }
+            }
+            for (id, detail) in merged_xref_targets(uri, text, &vocab) {
+                if typed.is_empty() || id.starts_with(&typed) {
+                    out.push(item(id, detail, CompletionItemKind::REFERENCE));
+                }
+            }
+            out
+        }
+        Ctx::Cite => {
+            let dir = uri.to_file_path().ok()?;
+            let dir = dir.parent()?.to_path_buf();
+            let mut keys = std::collections::BTreeSet::new();
+            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
+                if let Ok(bib) = std::fs::read_to_string(dir.join(&rel)) {
+                    for k in crate::lsp_complete::harvest_bib_keys(&bib) {
+                        keys.insert(k);
+                    }
+                }
+            }
+            keys.into_iter()
+                .map(|k| item(k, "citation key".to_string(), CompletionItemKind::REFERENCE))
+                .collect()
+        }
+        Ctx::ShortcodePath { shortcode, typed } => {
+            let doc_dir = uri.to_file_path().ok()?;
+            let doc_dir = doc_dir.parent()?.to_path_buf();
+            let dir_part = match typed.rfind('/') {
+                Some(s) => &typed[..s + 1],
+                None => "",
+            };
+            let entries: Vec<crate::lsp_complete::DirEntry> =
+                std::fs::read_dir(doc_dir.join(dir_part))
+                    .ok()?
+                    .filter_map(|e| e.ok())
+                    .map(|e| crate::lsp_complete::DirEntry {
+                        name: e.file_name().to_string_lossy().into_owned(),
+                        is_dir: e.file_type().map(|t| t.is_dir()).unwrap_or(false),
+                    })
+                    .collect();
+            let file_detail = match shortcode {
+                Shortcode::Embed => "deck / page",
+                Shortcode::Include => "partial",
+            };
+            // Replace the whole typed path (incl. any dir prefix) so descending overwrites
+            // cleanly rather than appending to a half-typed segment.
+            let typed_len = typed.chars().count() as u32;
+            let replace = Range::new(
+                Position::new(pos.line, pos.character.saturating_sub(typed_len)),
+                pos,
+            );
+            crate::lsp_complete::shortcode_path_candidates(&entries, &typed, file_detail)
+                .into_iter()
+                .map(|c| {
+                    let is_dir = c.value.ends_with('/');
+                    CompletionItem {
+                        label: c.value.clone(),
+                        kind: Some(if is_dir {
+                            CompletionItemKind::FOLDER
+                        } else {
+                            CompletionItemKind::FILE
+                        }),
+                        detail: Some(c.detail),
+                        filter_text: Some(c.value.clone()),
+                        text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                            range: replace,
+                            new_text: c.value,
+                        })),
+                        ..Default::default()
+                    }
+                })
+                .collect()
+        }
+    };
+    Some(CompletionResponse::Array(items))
+}
+
+/// Union the two views of a document's cross-reference targets, sorted and deduplicated: the
+/// buffer `{#id}` anchors (a just-typed anchor is completable before it numbers) and the live
+/// render's numbered registry (the `#| label:` cell figures a scan can't see, with their
+/// numbers). `detail` is `"{label} {number}"` when known, else `"cross-reference target"`.
+/// The in-process, staleness-free equivalent of the companion's `mergeXrefTargets`.
+fn merged_xref_targets(
+    uri: &lsp_types::Url,
+    text: &str,
+    vocab: &serde_json::Value,
+) -> Vec<(String, String)> {
+    let mut detail: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for id in crate::lsp_complete::harvest_anchor_ids(text) {
+        detail.insert(id, "cross-reference target".to_string());
+    }
+    if let Some(doc) = render_buffer(uri, text) {
+        let labels: std::collections::HashMap<&str, &str> = vocab["xrefPrefixes"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| Some((e["prefix"].as_str()?, e["label"].as_str()?)))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for (id, number) in &doc.xref_numbers {
+            if !taliesin_core::cite::is_xref_anchor(id) {
+                continue;
+            }
+            let kind = id.split_once('-').map(|(k, _)| k).unwrap_or("");
+            let d = match labels.get(kind) {
+                Some(label) if !number.is_empty() => format!("{label} {number}"),
+                _ => "cross-reference target".to_string(),
+            };
+            detail.insert(id.clone(), d);
+        }
+    }
+    detail.into_iter().collect()
+}
+
+/// Render the live buffer parse-only (no kernel), rooted at the document's directory, the
+/// same render `symbols` uses. Panic-guarded so a malformed buffer yields `None` rather than
+/// crashing the request loop. Shared by hover and completion for xref resolution.
+fn render_buffer(uri: &lsp_types::Url, text: &str) -> Option<taliesin_core::RenderedDoc> {
     let base = uri
         .to_file_path()
         .ok()
         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let doc = crate::serve::guarded(|| {
+    crate::serve::guarded(|| {
         taliesin_core::render_document_with_includes_rooted(text, &base, Some(&base))
     })
-    .ok()?;
-    doc.xref_numbers.get(id).cloned()
+    .ok()
+}
+
+/// The rendered cross-reference number for `id` in the live buffer (e.g. `"2"` / `"2.1"`), or
+/// `None` when the buffer defines no such numbered target.
+fn xref_number(uri: &lsp_types::Url, text: &str, id: &str) -> Option<String> {
+    render_buffer(uri, text)?.xref_numbers.get(id).cloned()
 }
 
 /// The label for `id`'s cross-reference kind (`fig` → `Figure`), from the public vocab
@@ -571,6 +818,41 @@ mod tests {
             .unwrap();
         let resp = recv_response(client, RequestId::from(id));
         serde_json::from_value(resp.result.expect("a hover result (got null)")).unwrap()
+    }
+
+    fn complete_params(uri: &Url, line: u32, character: u32) -> lsp_types::CompletionParams {
+        lsp_types::CompletionParams {
+            text_document_position: lsp_types::TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: lsp_types::Position::new(line, character),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: None,
+        }
+    }
+
+    // Send a completion request and return the item list.
+    fn complete_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+    ) -> Vec<lsp_types::CompletionItem> {
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::Completion::METHOD.to_owned(),
+                params: serde_json::to_value(complete_params(uri, line, character)).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(client, RequestId::from(id));
+        match serde_json::from_value(resp.result.expect("a completion result")).unwrap() {
+            lsp_types::CompletionResponse::Array(items) => items,
+            lsp_types::CompletionResponse::List(l) => l.items,
+        }
     }
 
     // Pull the Markdown string out of a hover's contents.
@@ -965,6 +1247,95 @@ mod tests {
         assert!(
             md.contains("@article{smith2020,") && md.contains("A {Deep} Study"),
             "expected the brace-balanced entry, got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn completion_offers_nested_frontmatter_keys() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-fm.tmd").unwrap();
+        // Line 2 is an indented key position under `execute:`.
+        let text = "---\nexecute:\n  \n---\n\nBody.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        let items = complete_at(&client, &uri, 21, 2, 2);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            labels.contains(&"echo"),
+            "expected an `execute:` child key, got {labels:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn completion_offers_xref_targets_with_labels() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-xref.tmd").unwrap();
+        let text = "![A scree plot](img.png){#fig-scree}\n\nSee @\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Cursor right after the `@` on line 2.
+        let items = complete_at(&client, &uri, 23, 2, 5);
+        let hit = items
+            .iter()
+            .find(|i| i.label == "fig-scree")
+            .expect("the buffer's fig anchor should be offered");
+        assert_eq!(
+            hit.detail.as_deref(),
+            Some("Figure 1"),
+            "expected the rendered label+number as detail"
+        );
+        // The prefix stubs are offered too.
+        assert!(
+            items.iter().any(|i| i.label == "fig-"),
+            "expected the `fig-` stub"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn completion_offers_citation_keys_from_the_bib() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-compcite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{smith2020,\n  title = {A Study}\n}\n@book{jones19,\n}\n",
+        )
+        .unwrap();
+        let doc = dir.join("paper.tmd");
+        let text = "---\nbibliography: refs.bib\n---\n\nSee [@\n".to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Cursor right after `[@` on line 4.
+        let items = complete_at(&client, &uri, 25, 4, 6);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            labels.contains(&"smith2020") && labels.contains(&"jones19"),
+            "expected both citation keys, got {labels:?}"
         );
 
         shutdown(&client);
