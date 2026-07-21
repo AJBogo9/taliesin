@@ -1018,6 +1018,110 @@
     if (q && q.reset) q.reset();
   };
 
+  // A deck's structural edit (add/remove/reorder/retitle a slide, or an inserted
+  // `---`/`. . .`) arrives as a `full_render` carrying the whole slide body. Blowing the
+  // deck away wholesale (`root.innerHTML = …`) would tear down every {js}/WebGL/video/
+  // input state on EVERY slide, including the untouched ones — the one place a shipping
+  // live view still breaks the DOM-state-preservation invariant. Instead, reconcile the
+  // incoming <section>s against the live ones: keep an unchanged slide's live node in
+  // place (preserving its state, refreshing only its click-to-source position), rebuild a
+  // changed/new/title slide, and tear down a removed one. Slides are keyed by their
+  // *content signature* — the in-order join of their descendants' content-hash
+  // `data-block-id`s. That signature is position-independent, so a slide that only shifted
+  // down the file keeps the same signature and is preserved; a within-slide content edit
+  // changes a block id (hence the signature) and is rebuilt. Returns false (caller falls
+  // back to a wholesale swap) when there is nothing recognizable to diff.
+  /** @param {Element} container @param {string} bodyHtml @returns {boolean} */
+  const reconcileDeckSections = (container, bodyHtml) => {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = bodyHtml.trim();
+    /** @type {Element[]} */
+    const incoming = Array.from(tpl.content.children).filter((n) => n.tagName === "SECTION");
+    /** @type {Element[]} */
+    const oldSections = Array.from(container.children).filter((n) => n.tagName === "SECTION");
+    if (!incoming.length || !oldSections.length) return false;
+
+    // The content signature of a section: its descendants' block ids, in order. Empty for
+    // the front-matter title slide (built outside the block model) — such a section is
+    // never reused, so a title/subtitle edit always rebuilds it.
+    /** @param {Element} sec @returns {string} */
+    const signature = (sec) =>
+      Array.from(sec.querySelectorAll("[data-block-id]"))
+        .map((b) => b.getAttribute("data-block-id"))
+        .join("");
+
+    // Copy click-to-source position attrs from an incoming section onto the reused live
+    // one, matched by block id (same semantics as the `set_meta` op, per block within the
+    // section), so Alt-click / reverse cursor-sync stay exact after a line shift.
+    /** @param {Element} live @param {Element} next */
+    const patchSourcepos = (live, next) => {
+      /** @type {Map<string, Element>} */
+      const byId = new Map();
+      next.querySelectorAll("[data-block-id]").forEach((b) => {
+        const id = b.getAttribute("data-block-id");
+        if (id) byId.set(id, b);
+      });
+      live.querySelectorAll("[data-block-id]").forEach((b) => {
+        const id = b.getAttribute("data-block-id");
+        const src = id ? byId.get(id) : undefined;
+        if (!src) return;
+        const sp = src.getAttribute("data-sourcepos");
+        if (sp != null) b.setAttribute("data-sourcepos", sp);
+        const sf = src.getAttribute("data-source-file");
+        if (sf != null) b.setAttribute("data-source-file", sf);
+        else b.removeAttribute("data-source-file");
+      });
+    };
+
+    // Index reusable old sections by signature. A queue per signature consumes duplicate
+    // (content-identical) slides positionally — e.g. a repeated auto-animate title.
+    /** @type {Map<string, Element[]>} */
+    const pool = new Map();
+    for (const sec of oldSections) {
+      const sig = signature(sec);
+      if (!sig) continue; // never reuse an empty-signature (title) section
+      const q = pool.get(sig);
+      if (q) q.push(sec);
+      else pool.set(sig, [sec]);
+    }
+
+    // Build the desired ordered child list, reusing live nodes where a slide is unchanged.
+    /** @type {Element[]} */
+    const next = [];
+    /** @type {Set<Element>} */
+    const reused = new Set();
+    for (const sec of incoming) {
+      const sig = signature(sec);
+      const q = sig ? pool.get(sig) : undefined;
+      const live = q && q.length ? q.shift() : null;
+      if (live) {
+        patchSourcepos(live, sec);
+        reused.add(live);
+        next.push(live);
+      } else {
+        const node = fragment(sec.outerHTML);
+        if (node) next.push(node);
+      }
+    }
+
+    // Tear down the {js}/WebGL cells of every old section we did NOT reuse (per-element,
+    // NOT the global resetJs — that would kill preserved cells), releasing their WebGL
+    // contexts / RAF loops and unregistering their inputs.
+    for (const sec of oldSections) if (!reused.has(sec)) teardownJs(sec);
+
+    // Apply the new order with minimal DOM churn: an unchanged slide never moves (so its
+    // playing video / WebGL context is not detached), only inserted/moved/removed nodes do.
+    keepScroll(() => {
+      let i = 0;
+      for (const node of next) {
+        if (container.children[i] !== node) container.insertBefore(node, container.children[i] || null);
+        i++;
+      }
+      while (container.children.length > next.length) container.lastElementChild?.remove();
+    });
+    return true;
+  };
+
   // Re-attach the deck, rebuild the TOC, and (re)highlight + add copy buttons to
   // code blocks after any DOM change (each is a no-op when not applicable).
   const afterChange = () => {
@@ -1109,13 +1213,22 @@
         if (genKnown) mountedGen = /** @type {number} */ (msg.gen);
         if (msg.boot != null) mountedBoot = msg.boot;
         if (!skipMount) {
-          // Wholesale re-mount (stale SSR / reconnect / structural change): tear down
-          // ALL prior `{js}` cells first (resolving every outstanding `invalidation`)
-          // so their WebGL contexts + RAF loops are released and the qmd-js runtime is
-          // rebuilt fresh, rather than re-pushing duplicate cells onto a never-reset
-          // registry.
-          resetJs();
-          keepScroll(() => { root.innerHTML = msg.body_html; });
+          // For a live deck, reconcile the incoming <section>s against the mounted ones so
+          // only the edited slides re-mount — every untouched slide keeps its {js}/WebGL/
+          // video/input state (the DOM-state-preservation invariant, extended to decks).
+          // Any other case (non-deck, first mount, unrecognizable body) falls back to the
+          // wholesale swap: tear down ALL prior `{js}` cells first (resolving every
+          // outstanding `invalidation`) so their WebGL contexts + RAF loops are released
+          // and the qmd-js runtime is rebuilt fresh, rather than re-pushing duplicate cells
+          // onto a never-reset registry.
+          const reconciled =
+            isDeck &&
+            root.querySelector(":scope > section") &&
+            reconcileDeckSections(root, msg.body_html);
+          if (!reconciled) {
+            resetJs();
+            keepScroll(() => { root.innerHTML = msg.body_html; });
+          }
         }
         scheduleAfterChange();
         setDiagnostics(msg.diagnostics);
