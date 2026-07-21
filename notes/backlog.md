@@ -58,14 +58,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-1. **B3-18: a structural deck edit nukes every live `{js}`/WebGL widget's state.** A structural deck
-   edit re-mounts the *whole* deck; re-mount only the edited `<section>` subtree instead. This is the
-   one place the load-bearing DOM-state-preservation invariant still breaks in a shipping live view.
-   *Gating: deferred on purpose (touches the client's re-mount path, bigger blast radius); brainstorm
-   the subtree re-mount first. Everything else in the deck audit has landed. Detail:*
-   [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md).
-
-2. **DX17: headless executed-output visibility** (an agent's single biggest blind spot: it can't tell
+1. **DX17: headless executed-output visibility** (an agent's single biggest blind spot: it can't tell
    its chart executed). `read`=source, `check`=static, `build`=python/r only, `{js}` is never
    server-run. (a) let `read` project the *built* doc so baked figures surface as
    `[figure fig-x: produced, alt "…"]`; (b) optional headless `{js}` eval. *Gating: L, net-new, forked;
@@ -74,7 +67,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### B. Medium impact
 
-3. **AI-native packaging + guardrails** (detail:
+2. **AI-native packaging + guardrails** (detail:
    [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md); anchors verified). Agent-facing
    robustness that compounds with DX17:
    - **`taliesin map --format json`** (M): one-call project outline (pages/nav/drafts/xref-graph/mounts)
@@ -94,25 +87,25 @@ gating tag: a high-impact item can still be frozen or need a ruling.
      + source-not-preview rule) driving the CLI, pinned against the live binary
      (`tests/skill_freshness.rs`) so it can't rot.
 
-4. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
+3. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
    with real speaker value. Today the Share QR only encodes `localhost:PORT` and `build` yields a file
    the user must self-host, so: one-command deck publish? Plus a presenter laser/spotlight + auto-advance
    (reveal.js reflexes). Also thread `footer:`/`logo:` through both deck-page builders (no corpus deck
    needs one yet).
 
-5. **Decouple focus mode from OS fullscreen** *(needs an owner ruling)*: focus mode is welded to OS
+4. **Decouple focus mode from OS fullscreen** *(needs an owner ruling)*: focus mode is welded to OS
    fullscreen (`03-focus-mode.js:39-45`, "the author's ask"). Split the calm reading column from
    fullscreen?
 
-6. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
+5. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
    deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
    fit-on-show refactor first).
 
-7. **R stream/stderr leaks raw ANSI into HTML** (`kernel.rs` `Output::Stream` emits `esc(text)` with no
+6. **R stream/stderr leaks raw ANSI into HTML** (`kernel.rs` `Output::Stream` emits `esc(text)` with no
    `strip_ansi`): visible escape-code garbage in R cell output. *Gating: exec/kernel do-not-touch,
    careful.*
 
-8. **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B). `site/xref.rs` +
+7. **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B). `site/xref.rs` +
    `site/mod.rs` push `"duplicate cross-reference label X defined on multiple pages"` onto a
    **`Vec<String>`** channel that carries no location, half-reproducing the Quarto flaw the tool
    critiques. This is **not just a channel type change**: a cross-page duplicate has **two or more
@@ -121,21 +114,21 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### C. Low / hardening (P3)
 
-9. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
+8. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
    against the offline invariant first (it implies a network check).*
 
-10. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
+9. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
     hardcoded English const table is `cite/render.rs:15-21`, and `lang` appears **zero** times in that
     file, so there is no localization seam yet. `lang:` correctly sets `<html lang>`; the "promise" of
     translated labels was never real. **No corpus doc demands it.**
 
-11. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
+10. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
     logic (`deck.css:705-711`), accept+document or unify? · add a `//| uses:` alias for the consumer
     `//| input:` (weigh vocab sprawl)? · callout kinds are namespaced but theorem kinds are bare,
     document or reconsider? · a Vite user pressing `r/o/u/c/q` or `h` gets silence now that interactivity
     moved to the browser dev menu, so one banner line pointing at the `◇` menu.
 
-12. **Reliability / test-infra long tail** (P3, dev-facing):
+11. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
@@ -265,6 +258,11 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 claim that one of these is "missing"):
 
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; only **DX16** and **DX17** remain (above).
+- **Deck audit** fully shipped; **B3-18** (the last item) landed 2026-07-21: a structural deck edit now
+  re-mounts only the edited `<section>`s (client-side signature-keyed reconcile in `client.js`), so
+  untouched slides keep their live `{js}`/WebGL/input state. Prerequisite fix: `{{< input >}}` control
+  ids are name-based (`qin-<name>`), not line-based, so an input block's `data-block-id` is
+  position-independent (`render/extension/mod.rs`).
 - **Polish audit batch** PL1-PL20 all shipped (`git log --oneline origin/main | grep PL`).
 - **PMF builds** B1 (reader "Cite this" box), B2 (book landing-page auto-TOC), B4 (deck Marginalia
   identity) shipped. B5 Zenodo DOI is demand-driven (above).
