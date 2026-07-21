@@ -422,6 +422,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--format", true, "human | json"),
             ("--json", false, "shorthand for --format json"),
         ],
+        "read" => &[
+            ("--run", false, "execute cells + report produced output"),
+            ("--format", true, "human | json"),
+            ("--json", false, "shorthand for --format json"),
+        ],
         "check" => &[
             ("--format", true, "human | json"),
             ("--json", false, "shorthand for --format json"),
