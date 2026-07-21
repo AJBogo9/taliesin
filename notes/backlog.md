@@ -79,36 +79,24 @@ visual-editor half of Quarto 2 is out of scope — it needs multiple write paths
 `node:test` harness (`editor/vscode/src/test/`) + the `corpus/diagnostics/` Rust pins. Ordered by value;
 pull the top open one.
 
-- **E1. Surface severity/code/docs_url + quick-fix from `suggestion`** *(the lossy-bridge fix — in
-  progress this session; delete when merged).* `check.ts` `CheckDiag` drops `code`/`severity`/`docs_url`/
-  `suggestion`; `diagnostics.ts` hard-codes `DiagnosticSeverity.Warning` + a whole-line range. Parse the
-  full diagnostic, map real Error/Warning severity, set `Diagnostic.code = {value: TAL-*, target:
-  docs_url}` (Ctrl-click to catalog), and register a `CodeActionProvider` quick-fix from
-  `suggestion.replacement`. Backend already emits all of it. *S, no architecture change.*
-- **E2. On-type diagnostics.** `diagnostics.ts` refreshes only on `onDidOpen`/`onDidSave` — no
-  `onDidChangeTextDocument`; and `check` reads from disk (`read_to_string(path)`), so it can't see unsaved
-  edits. Add a buffer input mode to `check` (`--stdin`/`-`, read source from stdin) + a debounced
-  (~300ms) on-change refresh. This is what actually delivers "real-time error messages." *M, net-new
-  (touches the Rust `check` CLI + the extension).* Pin: a `check --stdin` Rust test + an extension
-  on-change test.
+  (E1 severity/code/docs_url + quick-fix, E2 on-type diagnostics, E4 hover, E6 front-matter value
+  completion have all shipped — see "Already shipped" below. E3, E5, E7 remain, ordered by value.)
+
 - **E3. Column-accurate diagnostic ranges.** Whole-line squiggles today because the check JSON carries no
   column. Add a column to the diagnostic emit (`Warning`/`Diagnostic`) and map squiggles to the token.
-  Unblocks a precise E1 quick-fix span (drops the edit-distance heuristic). *M, net-new; touches the
-  `diagnostics` warning type.*
-- **E4. Hover provider.** No `HoverProvider` today. Hover `@fig-2` → "Figure 2", a front-matter key →
-  its doc, `[@key]` → the reference. Data already in `taliesin vocab` + `taliesin symbols`. *S/M,
-  extension-only.*
+  Unblocks a precise quick-fix span (drops E1's edit-distance heuristic in `check.ts`'s `suggestionSpan`).
+  *M, net-new; touches the `diagnostics` warning type — the `Warning` struct carries only `line`, so a
+  `col` field must thread through every `.at(file, line)` call site + each validator.*
 - **E5. Document outline + go-to-definition.** `taliesin symbols` exists but isn't wired to a
   `DocumentSymbolProvider` (outline/breadcrumbs) or `DefinitionProvider` (`@fig-x` → figure, `{{< include
   x.tmd >}}` → file, `[@key]` → `.bib` entry). *M, extension-only.*
-- **E6. Front-matter value completion.** Completes `format:`/`theme:` the key but not the value;
-  `detectContext` in `complete.ts` has no `frontmatter-value` case. Add value vocab to `taliesin vocab`
-  (`format` → deck/html/book/…, `theme` → theme names) + the context. *S/M.*
 - **E7. `taliesin lsp` server** *(strategic; own spec/brainstorm first).* An LSP-over-stdio subcommand
   holds the parsed doc warm, gets `didChange` with full buffer text (solves E2's on-type + unsaved-buffer
   in one move), and unifies diagnostics + hover + definition + symbols + completion + rename behind one
-  protocol that works in any LSP editor. Wiring existing Rust engine parts, not a rebuild; subsumes
-  E2/E4/E5. *L, net-new; spec under `docs/superpowers/specs/` before implementing.*
+  protocol that works in any LSP editor. Wiring existing Rust engine parts, not a rebuild; would
+  consolidate the standalone on-type/hover/completion providers (E2/E4/E6, shipped) + E5 behind one
+  protocol. The `check --stdin` buffer seam E2 added is directly reusable by `didChange`. *L, net-new;
+  spec under `docs/superpowers/specs/` before implementing.*
 
 ### B. Medium impact
 
@@ -331,6 +319,14 @@ claim that one of these is "missing"):
 
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); only
   **DX16** and **DX17(b)** (headless `{js}`) remain (above).
+- **Editor DevX (VS Code companion) E1/E2/E4/E6 shipped 2026-07-21** (audit
+  [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md); E3/E5/E7 remain, above):
+  E1 rich diagnostics + did-you-mean quick-fix; **E2** on-type diagnostics (`taliesin check --stdin`
+  lints the piped buffer, not the saved file, skipping the interpreter probe; debounced
+  `onDidChangeTextDocument`; pin `stdin_buffer_is_linted_instead_of_the_on_disk_file` + `debounce.ts`
+  node:tests); **E4** `HoverProvider` resolving `@xref`→label / front-matter key→doc / `[@key]`→BibTeX
+  entry (pure `hover.ts` + shared `backend.ts`); **E6** front-matter value completion (`vocab`
+  `frontmatterValues` for `format`/`theme` + a `frontmatter-value` `detectContext` case).
 - **DX17(a) headless executed-output (python/r) shipped 2026-07-21:** `taliesin read --run` executes
   python/r via build's exec path and projects `[figure fig-x: produced, alt "…"]` / `[output: …]` /
   `[cell error: …]` (+ `--format json` per-cell). Core `classify_exec_output`; pinned by
