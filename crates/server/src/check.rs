@@ -68,6 +68,45 @@ impl Diagnostic {
             suggestion,
         }
     }
+
+    /// Project this diagnostic to LSP for the `lsp` server. `lines` is the buffer split
+    /// on `\n` (needed to clamp the line and to bound a whole-line span). Mirrors the
+    /// companion's `check.ts` mapping: 1-based line → 0-based, clamped to the buffer;
+    /// a precise 1-based `[col, end_col)` → 0-based when present, else the whole line.
+    pub(crate) fn to_lsp(&self, lines: &[&str]) -> lsp_types::Diagnostic {
+        use lsp_types::{
+            CodeDescription, DiagnosticSeverity, NumberOrString, Position, Range, Url,
+        };
+        let last = lines.len().saturating_sub(1) as u32;
+        let line0 = self.line.unwrap_or(1).saturating_sub(1).min(last);
+        let range = match (self.col, self.end_col) {
+            (Some(c), Some(e)) => Range::new(
+                Position::new(line0, c.saturating_sub(1)),
+                Position::new(line0, e.saturating_sub(1)),
+            ),
+            _ => {
+                let len = lines.get(line0 as usize).map_or(0, |l| l.chars().count()) as u32;
+                Range::new(Position::new(line0, 0), Position::new(line0, len))
+            }
+        };
+        let severity = Some(match self.severity {
+            "error" => DiagnosticSeverity::ERROR,
+            "warning" => DiagnosticSeverity::WARNING,
+            "info" => DiagnosticSeverity::INFORMATION,
+            _ => DiagnosticSeverity::HINT,
+        });
+        lsp_types::Diagnostic {
+            range,
+            severity,
+            code: Some(NumberOrString::String(self.code.to_string())),
+            code_description: Url::parse(&self.docs_url)
+                .ok()
+                .map(|href| CodeDescription { href }),
+            source: Some("taliesin".to_string()),
+            message: self.message.clone(),
+            ..Default::default()
+        }
+    }
 }
 
 pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
@@ -185,6 +224,18 @@ fn collect_file_diagnostics_from_src(path: &Path, src: &str) -> Result<Vec<Diagn
             .map(|w| diag_from(w, &path_str)),
     );
     Ok(out)
+}
+
+/// Lint an in-memory editor buffer as if it were the file at `path`, returning the
+/// diagnostics directly (the `--stdin` seam, minus the stdin plumbing). Used by the
+/// `lsp` server on every `didOpen`/`didChange`. The buffer path can't fail to render,
+/// but a hypothetical error surfaces as one line-1 diagnostic (parity with the
+/// companion's check-error handling) rather than vanishing.
+pub(crate) fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
+    match collect_file_diagnostics_from_src(path, src) {
+        Ok(diags) => diags,
+        Err(e) => vec![Diagnostic::new(path.display().to_string(), Some(1), e)],
+    }
 }
 
 fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
@@ -755,6 +806,70 @@ fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn buffer_diagnostics_flags_a_front_matter_typo() {
+        // A misspelled front-matter key: the static validator locates it with a column span.
+        let src = "---\ntittle: Hi\n---\n\n# Body\n";
+        let diags = super::buffer_diagnostics(Path::new("buf.tmd"), src);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("tittle") || d.message.contains("title")),
+            "expected a typo diagnostic, got: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn to_lsp_uses_a_precise_span_when_columned() {
+        let d = super::Diagnostic {
+            code: "TAL-FM-KEY",
+            docs_url: "https://example.test/DIAGNOSTICS.md#tal-fm-key".to_string(),
+            severity: "warning",
+            file: "buf.tmd".to_string(),
+            line: Some(2),
+            col: Some(1),
+            end_col: Some(7),
+            message: "unknown key `tittle`".to_string(),
+            suggestion: None,
+        };
+        let lines = ["---", "tittle: Hi", "---"];
+        let lsp = d.to_lsp(&lines);
+        // 1-based line 2 → 0-based 1; 1-based [1,7) → 0-based [0,6).
+        assert_eq!(lsp.range.start, lsp_types::Position::new(1, 0));
+        assert_eq!(lsp.range.end, lsp_types::Position::new(1, 6));
+        assert_eq!(lsp.severity, Some(lsp_types::DiagnosticSeverity::WARNING));
+        assert_eq!(
+            lsp.code,
+            Some(lsp_types::NumberOrString::String("TAL-FM-KEY".to_string()))
+        );
+        assert_eq!(lsp.source.as_deref(), Some("taliesin"));
+        assert_eq!(
+            lsp.code_description.map(|c| c.href.to_string()),
+            Some("https://example.test/DIAGNOSTICS.md#tal-fm-key".to_string())
+        );
+    }
+
+    #[test]
+    fn to_lsp_spans_the_whole_line_when_uncolumned() {
+        let d = super::Diagnostic {
+            code: "TAL-XREF-UNDEF",
+            docs_url: "https://example.test/x".to_string(),
+            severity: "error",
+            file: "buf.tmd".to_string(),
+            line: Some(3),
+            col: None,
+            end_col: None,
+            message: "undefined @fig-x".to_string(),
+            suggestion: None,
+        };
+        let lines = ["a", "bb", "hello world"]; // line 3 (0-based 2) has 11 chars
+        let lsp = d.to_lsp(&lines);
+        assert_eq!(lsp.range.start, lsp_types::Position::new(2, 0));
+        assert_eq!(lsp.range.end, lsp_types::Position::new(2, 11));
+        assert_eq!(lsp.severity, Some(lsp_types::DiagnosticSeverity::ERROR));
+    }
 
     fn tmp(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("tali-check-{}-{name}", std::process::id()));
