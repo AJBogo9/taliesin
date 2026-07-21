@@ -6,6 +6,7 @@ import { registerDiagnostics } from "./diagnostics";
 import { registerCompletions } from "./completions";
 import { registerHover } from "./hover-provider";
 import { registerDocumentSymbols } from "./outline-provider";
+import { registerDefinitions } from "./definition-provider";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -15,6 +16,7 @@ export function activate(context: vscode.ExtensionContext) {
   registerCompletions(context);
   registerHover(context);
   registerDocumentSymbols(context);
+  registerDefinitions(context);
 }
 
 async function openPreview(context: vscode.ExtensionContext) {

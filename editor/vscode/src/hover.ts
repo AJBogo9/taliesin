@@ -13,7 +13,9 @@ export type HoverTarget =
   // `[@key]`. `key` is the citation key; [start,end) spans `@key` (inside the brackets).
   | { kind: "cite"; key: string; start: number; end: number }
   // A YAML front-matter key. `parent` is its nested owner (`execute` for `echo:`) or null.
-  | { kind: "frontmatter-key"; key: string; parent: string | null; start: number; end: number };
+  | { kind: "frontmatter-key"; key: string; parent: string | null; start: number; end: number }
+  // `{{< include PATH >}}` / `{{< embed PATH >}}`. `path` is the target; [start,end) spans it.
+  | { kind: "include"; path: string; start: number; end: number };
 
 // The [start, end) line range of the front-matter body (the key lines between the fences),
 // or null when there is no closed `---` block. Line indices are 0-based over `lines`.
@@ -80,6 +82,18 @@ export function classifyHover(docText: string, line: number, char: number): Hove
     }
   }
 
+  // Include / embed shortcode: `{{< include PATH >}}` — the PATH token (go-to-definition
+  // jumps to the file). Classified before front matter so a shortcode line is never misread.
+  {
+    const re = /\{\{<\s*(?:include|embed)\s+([^\s>]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(lineText)) !== null) {
+      const start = m.index + m[0].length - m[1].length;
+      const end = start + m[1].length;
+      if (covers(start, end, char)) return { kind: "include", path: m[1], start, end };
+    }
+  }
+
   // Front-matter key: inside the `---` body, on the `key` of a `key:` line.
   const body = frontmatterBody(lines);
   if (body && line >= body.start && line < body.end) {
@@ -118,4 +132,29 @@ export function bibEntryFor(bibText: string, key: string): string | null {
     }
   }
   return bibText.slice(entryStart).trim(); // unbalanced .bib: give back what we have
+}
+
+// The 0-based {line, col} where cross-reference id `id` is DEFINED in this document: the first
+// occurrence preceded by `#` (a `{#fig-x}` attribute) or `label:` (a `#| label: fig-x` cell),
+// never `@id` (a reference). null when the id isn't defined here (e.g. it lives in another
+// file) — the caller then offers no definition rather than jump to a guess.
+export function definitionSite(text: string, id: string): { line: number; col: number } | null {
+  const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?:#|label:\\s*)(${esc})(?![\\w-])`, "g");
+  const m = re.exec(text);
+  if (!m) return null;
+  const idOffset = m.index + m[0].length - m[1].length;
+  const before = text.slice(0, idOffset);
+  const line = before.split("\n").length - 1;
+  const col = idOffset - (before.lastIndexOf("\n") + 1);
+  return { line, col };
+}
+
+// The offset of the BibTeX entry `@type{key,` for `key` in `bibText`, or null when absent.
+// Sibling of `bibEntryFor`; the caller converts the offset to a document position.
+export function bibEntryOffset(bibText: string, key: string): number | null {
+  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`@\\w+\\s*\\{\\s*${esc}\\s*,`, "g");
+  const m = re.exec(bibText);
+  return m ? m.index : null;
 }
