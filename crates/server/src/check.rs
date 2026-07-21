@@ -95,6 +95,16 @@ impl Diagnostic {
             "info" => DiagnosticSeverity::INFORMATION,
             _ => DiagnosticSeverity::HINT,
         });
+        // Carry a one-click fix on `data` (the client echoes it back in a codeAction request)
+        // ONLY when a suggestion has a precise column span — then `range` above is exactly the
+        // token to overwrite. Without a column we cannot locate the token unambiguously, so we
+        // attach nothing rather than offer an imprecise fix (mirrors the companion).
+        let data = match (&self.suggestion, self.col, self.end_col) {
+            (Some(s), Some(_), Some(_)) => {
+                Some(serde_json::json!({ "replacement": s.replacement }))
+            }
+            _ => None,
+        };
         lsp_types::Diagnostic {
             range,
             severity,
@@ -104,6 +114,7 @@ impl Diagnostic {
                 .map(|href| CodeDescription { href }),
             source: Some("taliesin".to_string()),
             message: self.message.clone(),
+            data,
             ..Default::default()
         }
     }
@@ -849,6 +860,43 @@ mod tests {
             lsp.code_description.map(|c| c.href.to_string()),
             Some("https://example.test/DIAGNOSTICS.md#tal-fm-key".to_string())
         );
+    }
+
+    #[test]
+    fn to_lsp_carries_a_precise_fix_on_data_but_never_an_imprecise_one() {
+        let base = super::Diagnostic {
+            code: "TAL-FM-KEY",
+            docs_url: "https://example.test/x".to_string(),
+            severity: "warning",
+            file: "buf.tmd".to_string(),
+            line: Some(2),
+            col: Some(1),
+            end_col: Some(7),
+            message: "unknown key `tittle` (did you mean `title`?)".to_string(),
+            suggestion: Some(super::Suggestion {
+                replacement: "title".to_string(),
+            }),
+        };
+        let lines = ["---", "tittle: Hi", "---"];
+        // Columned + suggestion → the fix rides on `data`.
+        let with_span = base.to_lsp(&lines);
+        assert_eq!(
+            with_span.data,
+            Some(serde_json::json!({ "replacement": "title" }))
+        );
+        // Same suggestion but no column → no fix (would be imprecise).
+        let uncolumned = super::Diagnostic {
+            col: None,
+            end_col: None,
+            ..base.clone()
+        };
+        assert_eq!(uncolumned.to_lsp(&lines).data, None);
+        // No suggestion → no fix.
+        let no_sugg = super::Diagnostic {
+            suggestion: None,
+            ..base.clone()
+        };
+        assert_eq!(no_sugg.to_lsp(&lines).data, None);
     }
 
     #[test]
