@@ -16,6 +16,8 @@ taliesin check index.tmd --format json
 
 To *read what you made* without a browser, `taliesin read <file>` projects the rendered document to plain text (headings, resolved "Figure N"/cross-reference numbers, callouts, fenced code, math as TeX) — the agent's substitute for looking at the preview.
 
+Add `--run` to also execute the `{python}`/`{r}` cells and report what each produced (`[figure fig-x: produced, alt "…"]`, `[output: …]`, `[cell error: …]`), so you can confirm a computed figure actually baked without opening a browser; `taliesin read --run <file> --format json` gives the same per-cell result structured.
+
 ## Discover the surface
 
 Three read-only commands describe what Taliesin accepts, so an agent never has to guess:

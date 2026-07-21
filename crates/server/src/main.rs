@@ -202,8 +202,10 @@ fn usage() {
     println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
     println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
     println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
-    println!("  read   <file.tmd>          project the document to plain text (agent-readable;");
-    println!("                             static, does NOT execute code cells)");
+    println!("  read   <file.tmd> [--run]  project the document to plain text (agent-readable;");
+    println!(
+        "                             --run executes cells + reports produced figures/output)"
+    );
     println!("  render <file.tmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");
     println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");

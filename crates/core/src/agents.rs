@@ -111,6 +111,13 @@ pub fn agents_md() -> String {
          numbers, callouts, fenced code, math as TeX) — the agent's substitute for looking \
          at the preview.\n\n",
     );
+    s.push_str(
+        "Add `--run` to also execute the `{python}`/`{r}` cells and report what each \
+         produced (`[figure fig-x: produced, alt \"…\"]`, `[output: …]`, \
+         `[cell error: …]`), so you can confirm a computed figure actually baked without \
+         opening a browser; `taliesin read --run <file> --format json` gives the same \
+         per-cell result structured.\n\n",
+    );
 
     // Pillar 3 — discovery surfaces.
     s.push_str("## Discover the surface\n\n");
