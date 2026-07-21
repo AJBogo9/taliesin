@@ -8,14 +8,14 @@
 
 use lsp_server::{Connection, Message};
 use lsp_types::{
-    OneOf, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions,
+    HoverProviderCapability, OneOf, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
 /// Advertised capabilities: full-text document sync (whole buffer on every change, which
-/// maps 1:1 onto `check`'s whole-buffer linting), go-to-definition, and document symbols
-/// (the heading outline). Hover / completion land as later follow-ups on this same server.
+/// maps 1:1 onto `check`'s whole-buffer linting), go-to-definition, document symbols (the
+/// heading outline), and hover. Completion / rename land as later follow-ups on this server.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -27,6 +27,7 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         )),
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
         ..Default::default()
     }
 }
@@ -127,12 +128,19 @@ fn handle_request(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use lsp_types::request::{DocumentSymbolRequest, GotoDefinition, Request as _};
+    use lsp_types::request::{DocumentSymbolRequest, GotoDefinition, HoverRequest, Request as _};
     let response = if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(resolve_definition(docs, &params))?),
+            error: None,
+        }
+    } else if req.method == HoverRequest::METHOD {
+        let params: lsp_types::HoverParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_hover(docs, &params))?),
             error: None,
         }
     } else if req.method == DocumentSymbolRequest::METHOD {
@@ -218,6 +226,117 @@ fn resolve_definition(
             Target::FrontmatterKey { .. } | Target::None => return None,
         };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
+}
+
+/// Resolve hover for the token under the cursor: an xref's rendered label + number, a
+/// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
+/// resolves to nothing (an unknown xref, an undocumented key, a missing/absent `.bib` entry)
+/// or is not a hoverable kind (an include path is go-to-definition only, mirroring the
+/// companion). Markdown content, ranged to the token so the editor highlights it.
+fn resolve_hover(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::HoverParams,
+) -> Option<lsp_types::Hover> {
+    use crate::lsp_nav::Target;
+    use lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Range};
+
+    let uri = &params.text_document_position_params.text_document.uri;
+    let pos = params.text_document_position_params.position;
+    let text = docs.get(uri)?;
+    let markup = |value: String, start: usize, end: usize| {
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            }),
+            range: Some(Range::new(
+                Position::new(pos.line, start as u32),
+                Position::new(pos.line, end as u32),
+            )),
+        })
+    };
+
+    match crate::lsp_nav::classify_target(text, pos.line as usize, pos.character as usize) {
+        // `@fig-2` → the rendered label + number ("Figure 2"). The label lookup gates it: an
+        // anchor whose prefix names no cross-reference kind gets no hover.
+        Target::Xref { id, start, end } => {
+            let number = xref_number(uri, text, &id)?;
+            let label = xref_label(&id)?;
+            markup(format!("**{label} {number}** — `@{id}`"), start, end)
+        }
+        // A front-matter key → its one-line docs, scoped to a nested parent when there is one.
+        Target::FrontmatterKey {
+            key,
+            parent,
+            start,
+            end,
+        } => {
+            let description = frontmatter_key_doc(parent.as_deref(), &key)?;
+            let scope = match &parent {
+                Some(p) => format!(" (under `{p}:`)"),
+                None => String::new(),
+            };
+            markup(format!("`{key}:`{scope}\n\n{description}"), start, end)
+        }
+        // `[@key]` → the brace-balanced BibTeX entry from the first front-matter `.bib`.
+        Target::Cite { key, start, end } => {
+            let dir = uri.to_file_path().ok()?;
+            let dir = dir.parent()?;
+            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
+                if let Ok(bib) = std::fs::read_to_string(dir.join(&rel))
+                    && let Some(entry) = crate::lsp_nav::bib_entry_text(&bib, &key)
+                {
+                    return markup(format!("```bibtex\n{entry}\n```"), start, end);
+                }
+            }
+            None
+        }
+        Target::Include { .. } | Target::None => None,
+    }
+}
+
+/// The rendered cross-reference number for `id` in the live buffer (e.g. `"2"` / `"2.1"`), or
+/// `None` when the buffer defines no such numbered target. Parse-only, the same kernel-free
+/// render `symbols` uses; panic-guarded so a malformed buffer yields no hover, not a crash.
+fn xref_number(uri: &lsp_types::Url, text: &str, id: &str) -> Option<String> {
+    let base = uri
+        .to_file_path()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let doc = crate::serve::guarded(|| {
+        taliesin_core::render_document_with_includes_rooted(text, &base, Some(&base))
+    })
+    .ok()?;
+    doc.xref_numbers.get(id).cloned()
+}
+
+/// The label for `id`'s cross-reference kind (`fig` → `Figure`), from the public vocab
+/// (built from `cite::XREF_LABELS`), or `None` when the prefix names no cross-reference kind.
+fn xref_label(id: &str) -> Option<String> {
+    let kind = id.split_once('-').map(|(k, _)| k)?;
+    let vocab = taliesin_core::vocab::vocab();
+    vocab["xrefPrefixes"]
+        .as_array()?
+        .iter()
+        .find(|e| e["prefix"].as_str() == Some(kind))
+        .and_then(|e| e["label"].as_str())
+        .map(str::to_string)
+}
+
+/// The one-line documentation for front-matter key `key` (optionally under nested `parent`),
+/// from the public vocab, or `None` when the key is not documented.
+fn frontmatter_key_doc(parent: Option<&str>, key: &str) -> Option<String> {
+    let vocab = taliesin_core::vocab::vocab();
+    let list = match parent {
+        Some(p) => &vocab["frontmatter"]["nested"][p],
+        None => &vocab["frontmatter"]["keys"],
+    };
+    list.as_array()?
+        .iter()
+        .find(|e| e["name"].as_str() == Some(key))
+        .and_then(|e| e["description"].as_str())
+        .map(str::to_string)
 }
 
 /// The heading outline for `uri` as nested LSP document symbols, or `None` when the buffer
@@ -420,6 +539,45 @@ mod tests {
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
+        }
+    }
+
+    fn hover_params(uri: &Url, line: u32, character: u32) -> lsp_types::HoverParams {
+        lsp_types::HoverParams {
+            text_document_position_params: lsp_types::TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: lsp_types::Position::new(line, character),
+            },
+            work_done_progress_params: Default::default(),
+        }
+    }
+
+    // Send a hover request and return its resolved `Hover`, failing if the server answered
+    // with `null` (no hover).
+    fn hover_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+    ) -> lsp_types::Hover {
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::HoverRequest::METHOD.to_owned(),
+                params: serde_json::to_value(hover_params(uri, line, character)).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(client, RequestId::from(id));
+        serde_json::from_value(resp.result.expect("a hover result (got null)")).unwrap()
+    }
+
+    // Pull the Markdown string out of a hover's contents.
+    fn hover_markdown(h: &lsp_types::Hover) -> String {
+        match &h.contents {
+            lsp_types::HoverContents::Markup(m) => m.value.clone(),
+            other => panic!("expected markup hover, got {other:?}"),
         }
     }
 
@@ -718,5 +876,99 @@ mod tests {
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn hover_on_an_xref_shows_the_rendered_label_and_number() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-hover-xref.tmd").unwrap();
+        // A markdown image is a numbered figure (`fig 1`); a heading `{#fig-1}` would not be.
+        let text = "![A scree plot](img.png){#fig-scree}\n\nSee @fig-scree here.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // `@fig-scree` sits on line 2 starting at char 4; char 6 is inside it.
+        let h = hover_at(&client, &uri, 11, 2, 6);
+        let md = hover_markdown(&h);
+        assert!(
+            md.contains("Figure 1"),
+            "expected the rendered label, got {md:?}"
+        );
+        assert!(
+            md.contains("@fig-scree"),
+            "expected the id echoed, got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn hover_on_a_frontmatter_key_shows_its_docs() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-hover-fm.tmd").unwrap();
+        let text = "---\ntitle: Hello\n---\n\nBody.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // The `title` key is on line 1; char 2 is inside the key token.
+        let h = hover_at(&client, &uri, 13, 1, 2);
+        let md = hover_markdown(&h);
+        assert!(
+            md.starts_with("`title:`"),
+            "expected the key header, got {md:?}"
+        );
+        assert!(
+            md.contains("title"),
+            "expected the key's documentation, got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn hover_on_a_citation_shows_the_bib_entry() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-hovcite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{smith2020,\n  title = {A {Deep} Study}\n}\n",
+        )
+        .unwrap();
+        let doc = dir.join("paper.tmd");
+        let text =
+            "---\nbibliography: refs.bib\n---\n\nAs shown in [@smith2020], it holds.\n".to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // `[@smith2020]` on line 4; the key starts at char 14, so char 15 is inside it.
+        let h = hover_at(&client, &uri, 15, 4, 15);
+        let md = hover_markdown(&h);
+        assert!(
+            md.contains("```bibtex"),
+            "expected a bibtex code block, got {md:?}"
+        );
+        assert!(
+            md.contains("@article{smith2020,") && md.contains("A {Deep} Study"),
+            "expected the brace-balanced entry, got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
