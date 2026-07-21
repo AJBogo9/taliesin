@@ -8,13 +8,15 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-21)
+## State (2026-07-22)
 
 v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates with
 DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync,
-located diagnostics, CSS hot-swap, Cmd-K search). **Most of the backlog has already shipped** (DX, PMF,
-polish, machine-facing, corpus-coverage and reduction audits are all closed). What is actually open is
-small; it is ranked below by product impact.
+located diagnostics, CSS hot-swap, Cmd-K search). The editor language intelligence (diagnostics,
+go-to-definition, outline, hover, completion, quick-fix code actions, rename) now ships editor-agnostically
+as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
+shipped"). **Most of the backlog has already shipped** (DX, PMF, polish, machine-facing, corpus-coverage
+and reduction audits are all closed). What is actually open is small; it is ranked below by product impact.
 
 ## Standing constraints (read before working)
 
