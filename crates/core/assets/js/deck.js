@@ -1068,11 +1068,29 @@
     else { if (deck.spNext) deck.spNext.textContent = ''; if (deck.spNextPane) deck.spNextPane.style.visibility = 'hidden'; }
     var notes = c && c.querySelector('.notes');
     if (deck.spNotesBody) deck.spNotesBody.innerHTML = notes ? notes.innerHTML : '<span class="sp-empty">No notes for this slide.</span>';
+    // Per-slide readout: position in the deck + this slide's script estimate (or none).
+    if (deck.spSlideMeta) {
+      var all = allSlides(), idx = c ? all.indexOf(c) + 1 : 0;
+      var secs = c && c.getAttribute('data-script-secs');
+      deck.spSlideMeta.textContent = 'slide ' + idx + ' / ' + all.length + ' · ' +
+        (secs ? '~' + fmtClock(parseInt(secs, 10)) : 'no script');
+    }
+  }
+  // `M:SS` for a duration in seconds (elapsed timer + script estimates).
+  /** @param {number} secs */
+  function fmtClock(secs) { var s = Math.max(0, Math.floor(secs)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+  // The deck's planned narration length: the sum of every slide's `data-script-secs`
+  // (word-count / wpm) estimate, emitted server-side. 0 when no slide carries notes.
+  function plannedSecs() {
+    return allSlides().reduce(function (t, s) {
+      var v = parseInt(s.getAttribute('data-script-secs') || '', 10);
+      return t + (isNaN(v) ? 0 : v);
+    }, 0);
   }
   function updateSpeakerClock() {
     var t = document.querySelector('.tali-speaker .sp-timer');
     var c = document.querySelector('.tali-speaker .sp-clock');
-    if (t) { var s = Math.max(0, Math.floor((Date.now() - deck.spStart) / 1000)); t.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
+    if (t) t.textContent = fmtClock((Date.now() - deck.spStart) / 1000);
     if (c) c.textContent = new Date().toLocaleTimeString();
   }
   function initSpeaker() {
@@ -1081,7 +1099,13 @@
     var root = document.createElement('div');
     root.className = 'tali-speaker';
     root.innerHTML =
-      '<div class="sp-top"><div class="sp-timer">0:00</div><button class="sp-reset">Reset</button><div class="sp-clock"></div></div>' +
+      '<div class="sp-top">' +
+        '<div class="sp-timer">0:00</div><div class="sp-plan"></div><div class="sp-slidemeta"></div>' +
+        '<button class="sp-read" type="button" aria-pressed="false" title="Read view for recording (r)">Read</button>' +
+        '<span class="sp-size"><button class="sp-size-dn" type="button" title="Smaller script">A−</button>' +
+        '<button class="sp-size-up" type="button" title="Larger script">A+</button></span>' +
+        '<button class="sp-reset" type="button">Reset</button><div class="sp-clock"></div>' +
+      '</div>' +
       '<div class="sp-stage">' +
         '<div class="sp-pane"><div class="sp-label">Current</div><div class="sp-frame-cur"></div></div>' +
         '<div class="sp-pane sp-pane-next"><div class="sp-label">Next</div><div class="sp-frame-next"></div></div>' +
@@ -1092,6 +1116,33 @@
     deck.spNext = root.querySelector('.sp-frame-next');
     deck.spNextPane = root.querySelector('.sp-pane-next');
     deck.spNotesBody = root.querySelector('.sp-notes-body');
+    deck.spPlan = root.querySelector('.sp-plan');
+    deck.spSlideMeta = root.querySelector('.sp-slidemeta');
+    // The planned total is fixed for the deck (elapsed ticks against it in the timer).
+    var planned = plannedSecs();
+    if (deck.spPlan) deck.spPlan.textContent = planned > 0 ? '/ ~' + fmtClock(planned) : '';
+    // Read view: the script becomes the large primary surface (previews shrink to a
+    // thumbnail) so the author reads comfortably while recording; `A- / A+` size it.
+    var readBtn = /** @type {HTMLElement} */ (root.querySelector('.sp-read'));
+    function toggleRead() {
+      var on = root.classList.toggle('read');
+      readBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      requestAnimationFrame(updateSpeakerUI); // re-fit the resized thumbnail once laid out
+    }
+    readBtn.addEventListener('click', toggleRead);
+    /** @param {number} d */
+    function bumpSize(d) {
+      var cur = parseInt(getComputedStyle(root).getPropertyValue('--sp-read-size'), 10) || 34;
+      root.style.setProperty('--sp-read-size', Math.max(20, Math.min(72, cur + d)) + 'px');
+    }
+    var dn = root.querySelector('.sp-size-dn'), up = root.querySelector('.sp-size-up');
+    if (dn) dn.addEventListener('click', function () { bumpSize(-4); });
+    if (up) up.addEventListener('click', function () { bumpSize(4); });
+    // `r` toggles the read view (this window has no text inputs; plain `r` is unbound
+    // in onKey, which never preventDefaults it).
+    document.addEventListener('keydown', function (e) {
+      if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) toggleRead();
+    });
     // Panes are snapshot-rendered from this window's own deck copy, so paint them now and
     // again once late {js}/KaTeX output settles (window load) and whenever the pane resizes.
     updateSpeakerUI();

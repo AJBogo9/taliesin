@@ -117,7 +117,9 @@ source is these attributes).
 
 2. **`preview` / `build` console**, one line via the dev-server logger
    (`crates/server/src/log.rs`), e.g.:
-   `deck: ~8:40 estimated across 12 slides (9 scripted)`.
+   `narration ~8:40 across 12 slides (9 scripted)`. The slide count includes the
+   front-matter title slide, so it agrees with the speaker window's "slide X / N"
+   rather than reporting a different total.
 
 ### Honest caveats (surfaced, not hidden)
 

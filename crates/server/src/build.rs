@@ -287,6 +287,11 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
             log::built(&format!("{}{}", out.display(), elapsed_note(started)));
+            // For a deck with speaker notes, report the estimated narration length so a
+            // recording author knows the runtime before pressing record. No-op otherwise.
+            if let Some(d) = taliesin_core::script_summary(&html) {
+                log::deck_duration(d.total_secs, d.scripted, d.slides);
+            }
             finalize_build(true, strict, problems)
         }
         Err(e) => {

@@ -233,6 +233,48 @@ pub fn slides_html(title: Option<&str>, subtitle: Option<&str>, blocks: &[Block]
     out
 }
 
+/// A rendered deck's spoken-script summary, from the per-slide `data-script-secs`
+/// estimates. Produced by [`script_summary`]; a caller (build/preview) shows it as one
+/// console line, e.g. `~8:40 estimated across 12 slides (9 scripted)`.
+pub struct ScriptSummary {
+    /// Estimated seconds to speak every scripted slide's `::: {.notes}`.
+    pub total_secs: u64,
+    /// Content slides carrying a script (`::: {.notes}`).
+    pub scripted: usize,
+    /// Total navigable slides, matching the deck's own count (the front-matter title
+    /// slide plus every content slide), so this agrees with the speaker window's
+    /// "slide X / N" rather than reporting a different N.
+    pub slides: usize,
+}
+
+/// Summarize a rendered deck's spoken-script duration by summing the per-slide
+/// `data-script-secs` estimates that [`slides_html`] emits. `None` when no slide
+/// carries a script (not a deck, or a deck with no `::: {.notes}`), so a caller can
+/// stay silent rather than report an empty estimate.
+pub fn script_summary(html: &str) -> Option<ScriptSummary> {
+    const ATTR: &str = "data-script-secs=\"";
+    // Content slides (`class="tali-slide"`) plus the front-matter title slide
+    // (`class="tali-title-slide …"`), so the count matches the deck's navigable total.
+    let slides = html.matches("class=\"tali-slide\"").count()
+        + html.matches("class=\"tali-title-slide").count();
+    let mut total_secs = 0u64;
+    let mut scripted = 0usize;
+    for (i, _) in html.match_indices(ATTR) {
+        let rest = &html[i + ATTR.len()..];
+        if let Some(end) = rest.find('"')
+            && let Ok(secs) = rest[..end].parse::<u64>()
+        {
+            total_secs += secs;
+            scripted += 1;
+        }
+    }
+    (scripted > 0).then_some(ScriptSummary {
+        total_secs,
+        scripted,
+        slides,
+    })
+}
+
 /// Project a raw block list through the same per-slide transform the deck DOM sees:
 /// drop `. . .` pause markers and `---` breaks (they're consumed by the slide model,
 /// never emitted as DOM blocks), and give every block after a pause (within its slide)
@@ -410,6 +452,12 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     if s.level != 0 {
         out.push_str(&format!(" data-level=\"{}\"", s.level));
     }
+    // Estimated speaking time for this slide's `::: {.notes}` script, so the speaker
+    // window can show planned-vs-elapsed and the build console a deck total. A slide
+    // with no notes carries no attribute (absence is the "no script" signal).
+    if let Some(secs) = script_secs(&s.blocks) {
+        out.push_str(&format!(" data-script-secs=\"{secs}\""));
+    }
     out.push_str(&bg_attrs);
     out.push_str(">\n");
     // `. . .` pause markers: drop the marker block and turn every block
@@ -439,6 +487,32 @@ fn render_section(s: &SlideBuf, out: &mut String) {
         out.push('\n');
     }
     out.push_str("</section>\n");
+}
+
+/// Words per minute assumed for spoken narration: deliberate presentation delivery
+/// with pauses, slower than silent reading (~200-250) or casual speech (~150-160). A
+/// single tuned constant, not a config knob (the estimate is an authoring aid; the
+/// speaker window's planned-vs-elapsed readout is where an author calibrates it).
+const SCRIPT_WPM: f64 = 130.0;
+
+/// Estimated seconds to speak a slide's `::: {.notes}` script, from the notes' word
+/// count at [`SCRIPT_WPM`]. `None` when the slide has no notes, so no attribute is
+/// emitted and the slide is excluded from the deck's "scripted" tally.
+fn script_secs(blocks: &[String]) -> Option<u64> {
+    let words: usize = blocks
+        .iter()
+        .filter(|h| is_notes_block(h))
+        // `strip_tags_separated` inserts a space at every tag boundary, so text from
+        // adjacent paragraphs inside the notes stays word-separated rather than fusing.
+        .map(|h| strip_tags_separated(h).split_whitespace().count())
+        .sum();
+    (words > 0).then(|| (words as f64 / SCRIPT_WPM * 60.0).round() as u64)
+}
+
+/// A `::: {.notes}` speaker-notes block (its own top-level slide block, matching how
+/// the deck CSS hides `.notes` and the speaker window reads it).
+fn is_notes_block(html: &str) -> bool {
+    html.trim_start().starts_with("<div class=\"notes\"")
 }
 
 /// A pause marker: a paragraph whose only text is `. . .`. It is dropped

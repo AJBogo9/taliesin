@@ -394,6 +394,40 @@ html.tali-feed .fragment.fade-out.tali-frag-visible {
 .tali-speaker .sp-notes-body :last-child { margin-bottom: 0; }
 .tali-speaker .sp-empty { color: #6b7079; font-style: italic; }
 
+/* Duration readout in the top bar: the live elapsed timer (.sp-timer) stays the loud
+   number; planned total (.sp-plan) and the current slide's script length (.sp-slidemeta)
+   are dim, so an author recording a narration reads planned-vs-elapsed at a glance. */
+.tali-speaker .sp-plan { color: #9aa0aa; font-variant-numeric: tabular-nums; }
+.tali-speaker .sp-slidemeta { margin-left: 12px; color: #8b919c; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* The Read + size controls form one right-aligned cluster; the clock trails it (its
+   earlier `margin-left:auto` is overridden here so `.sp-read` alone anchors the group). */
+.tali-speaker .sp-read {
+  margin-left: auto; background: #262a32; color: #e6e8ec; border: 1px solid #363b44;
+  border-radius: var(--tali-radius-md); padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.tali-speaker .sp-read:hover { background: #2f343d; }
+.tali-speaker.read .sp-read { background: var(--tali-accent, #3b6ea5); border-color: var(--tali-accent, #3b6ea5); color: #fff; }
+.tali-speaker .sp-size { display: none; gap: 4px; }
+.tali-speaker.read .sp-size { display: inline-flex; }
+.tali-speaker .sp-size button {
+  background: #262a32; color: #e6e8ec; border: 1px solid #363b44; border-radius: var(--tali-radius-md);
+  padding: 4px 9px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.tali-speaker .sp-size button:hover { background: #2f343d; }
+.tali-speaker .sp-clock { margin-left: 12px; }
+
+/* Read view (a recording teleprompter): the script becomes the large primary surface,
+   high in the window so the author's eyes rest near a webcam when recording off-screen;
+   the slide shrinks to a small orientation thumbnail and the "next" preview drops. The
+   grid rows are reordered (notes above the thumbnail) without moving them in the DOM, so
+   block-ids/click-to-source are untouched. `--sp-read-size` (A-/A+) sizes the script. */
+.tali-speaker { --sp-read-size: 34px; }
+.tali-speaker.read { grid-template-rows: auto 1fr auto; }
+.tali-speaker.read .sp-notes { grid-row: 2; max-height: none; min-height: 0; overflow: auto; }
+.tali-speaker.read .sp-notes-body { font-size: var(--sp-read-size); line-height: 1.55; }
+.tali-speaker.read .sp-stage { grid-row: 3; grid-template-columns: 1fr; height: 22vh; }
+.tali-speaker.read .sp-pane-next { display: none; }
+
 /* slideNumber: 'c/t' chip (top-right, clear of the bottom control chrome). The
    same opaque dark-glass surface as the controls (.tali-ctl), so it stays legible
    over ANY per-slide background in either deck theme: a translucent-light chip went

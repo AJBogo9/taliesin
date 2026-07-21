@@ -227,7 +227,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .then(local_ip)
         .flatten()
         .map(|ip| lan_url(&format!("http://{ip}:{port}"), token.as_ref()));
-    let desc = {
+    let (desc, narration) = {
         let d = app.doc.lock();
         let mut parts = vec![match d.format {
             DocFormat::Reveal => "deck",
@@ -236,7 +236,12 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         if d.toc {
             parts.push("toc");
         }
-        parts.join(", ")
+        // A deck's speaker notes are a spoken script; report its estimated length so a
+        // recording author sees the runtime up front (None for a non-deck / no notes).
+        (
+            parts.join(", "),
+            taliesin_core::script_summary(&d.body_html()),
+        )
     };
     crate::log::clear_screen();
     crate::log::banner(taliesin_core::VERSION);
@@ -247,6 +252,9 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         crate::log::warn("--host set, but no LAN address was found");
     }
     crate::log::watching(&app.path.display().to_string(), &desc);
+    if let Some(n) = &narration {
+        crate::log::deck_duration(n.total_secs, n.scripted, n.slides);
+    }
     if let Some(net) = &network {
         print_qr(net);
     }

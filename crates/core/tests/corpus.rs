@@ -333,6 +333,28 @@ fn corpus_deck_pins_every_kept_rich_feature() {
         slides.contains("<div class=\"notes\""),
         "deck corpus must exercise speaker notes"
     );
+    // A slide's notes are a spoken script: its word count / 130 wpm is emitted as a
+    // per-slide `data-script-secs` estimate, which the speaker window shows as
+    // planned-vs-elapsed and the build console sums into a deck duration.
+    assert!(
+        slides.contains("data-script-secs=\""),
+        "deck corpus must exercise a per-slide script-duration estimate"
+    );
+    let script = taliesin_core::script_summary(&slides)
+        .expect("the corpus deck has notes, so it must yield a script summary");
+    assert!(
+        script.scripted >= 1 && script.total_secs > 0,
+        "the script summary must count the scripted slide(s) and a nonzero duration: \
+         scripted={}, total_secs={}",
+        script.scripted,
+        script.total_secs
+    );
+    assert!(
+        script.scripted <= script.slides,
+        "scripted slides ({}) cannot exceed total slides ({})",
+        script.scripted,
+        script.slides
+    );
     // A reactive `{{< input >}}` control + a `{js}` cell that consumes it: the deck's
     // live "what if?" surface, whose state rides the deep-link (C-ADD-3).
     assert!(

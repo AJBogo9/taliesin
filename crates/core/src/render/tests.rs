@@ -1656,6 +1656,75 @@ fn deck_splits_into_title_slide_and_one_section_per_heading() {
 }
 
 #[test]
+fn deck_emits_script_duration_from_speaker_notes() {
+    // A slide's `::: {.notes}` is the spoken script; its word count / 130 wpm is the
+    // estimated speaking time, emitted as `data-script-secs` on the <section> for the
+    // speaker window (planned vs. elapsed) and the build console. 26 words / 130 wpm *
+    // 60 = 12s exactly. A slide without notes carries no estimate at all.
+    let note = "one two three four five six seven eight nine ten eleven twelve \
+                thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty \
+                twentyone twentytwo twentythree twentyfour twentyfive twentysix";
+    let src = format!(
+        "---\nformat: deck\n---\n\n## Scripted\n\nVisible.\n\n::: {{.notes}}\n{note}\n:::\n\n## Silent\n\nNo notes here.\n"
+    );
+    let doc = render_document(&src);
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    assert!(
+        slides.contains("data-script-secs=\"12\""),
+        "scripted slide should carry a 12s estimate (26 words / 130wpm): {slides}"
+    );
+    assert_eq!(
+        slides.matches("data-script-secs").count(),
+        1,
+        "only slides with notes carry an estimate: {slides}"
+    );
+}
+
+#[test]
+fn script_summary_totals_scripted_slide_estimates() {
+    let n26 = "one two three four five six seven eight nine ten eleven twelve thirteen \
+               fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone \
+               twentytwo twentythree twentyfour twentyfive twentysix"; // 26 words -> 12s
+    let n13 = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu"; // 13 words -> 6s
+    let src = format!(
+        "---\nformat: deck\n---\n\n## A\n\n::: {{.notes}}\n{n26}\n:::\n\n## B\n\n::: {{.notes}}\n{n13}\n:::\n\n## C\n\nNo script.\n"
+    );
+    let doc = render_document(&src);
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    let sum = script_summary(&slides).expect("a deck with notes has a summary");
+    assert_eq!(
+        sum.total_secs, 18,
+        "12s + 6s across the two scripted slides"
+    );
+    assert_eq!(sum.scripted, 2, "two of three slides carry notes");
+    assert_eq!(sum.slides, 3, "three content slides, no title slide");
+    // With a front-matter title, its slide counts toward the navigable total (so the
+    // build console agrees with the speaker window's "slide X / N"), but not the script.
+    let titled = render_document(&format!(
+        "---\ntitle: T\nformat: deck\n---\n\n## A\n\n::: {{.notes}}\n{n26}\n:::\n\n## B\n\nNo script.\n"
+    ));
+    let titled_slides = slides_html(
+        titled.title.as_deref(),
+        titled.subtitle.as_deref(),
+        &titled.blocks,
+    );
+    let tsum = script_summary(&titled_slides).unwrap();
+    assert_eq!(tsum.slides, 3, "title slide + two content slides");
+    assert_eq!(
+        tsum.scripted, 1,
+        "only the one slide with notes is scripted"
+    );
+    // A deck with no notes at all yields no summary (nothing to report).
+    let plain = render_document("---\nformat: deck\n---\n\n## Only\n\nHi.\n");
+    let plain_slides = slides_html(
+        plain.title.as_deref(),
+        plain.subtitle.as_deref(),
+        &plain.blocks,
+    );
+    assert!(script_summary(&plain_slides).is_none());
+}
+
+#[test]
 fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
     let doc = render_document("---\nformat: deck\n---\n\nOne.\n\n---\n\nTwo.\n");
     let slides = slides_html(None, None, &doc.blocks);
