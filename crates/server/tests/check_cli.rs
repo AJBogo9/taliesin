@@ -296,3 +296,33 @@ fn json_check_still_carries_the_environment_probe() {
     assert_eq!(env.len(), 1, "one entry for the python cell: {stdout}");
     assert_eq!(env[0]["lang"], "python");
 }
+
+#[test]
+fn check_json_front_matter_typo_carries_a_column_span() {
+    let (_ok, stdout, _e) = run(&[
+        "check",
+        &corpus("diagnostics/typos.tmd"),
+        "--format",
+        "json",
+    ]);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+    let diags = parsed["diagnostics"].as_array().expect("diagnostics array");
+    // The `treme` front-matter key typo squiggles exactly its 5-char key at column 1.
+    let treme = diags
+        .iter()
+        .find(|d| d["message"].as_str().unwrap_or("").contains("`treme`"))
+        .expect("treme diagnostic present");
+    assert_eq!(treme["col"], 1);
+    assert_eq!(treme["end_col"], 6);
+    // An un-columned finding (the broken xref is HTML-derived, block-line only) must NOT
+    // carry the keys, so its JSON stays byte-identical to before E3.
+    let xref = diags
+        .iter()
+        .find(|d| d["code"] == "TAL-XREF-UNDEF")
+        .expect("xref diagnostic present");
+    assert!(xref.get("col").is_none(), "un-columned diag omits col: {xref}");
+    assert!(
+        xref.get("end_col").is_none(),
+        "un-columned diag omits end_col: {xref}"
+    );
+}

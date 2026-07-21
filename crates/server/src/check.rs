@@ -29,6 +29,13 @@ pub(crate) struct Diagnostic {
     severity: &'static str,
     file: String,
     line: Option<u32>,
+    /// 1-based `[col, end_col)` character span on `line`, present only when the underlying
+    /// warning located a precise token (front-matter key typos). Omitted otherwise, so an
+    /// un-columned diagnostic's JSON is byte-identical to before E3.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    col: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end_col: Option<u32>,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     suggestion: Option<Suggestion>,
@@ -55,6 +62,8 @@ impl Diagnostic {
             severity,
             file,
             line,
+            col: None,
+            end_col: None,
             message,
             suggestion,
         }
@@ -62,11 +71,14 @@ impl Diagnostic {
 }
 
 pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
-    Diagnostic::new(
+    let mut d = Diagnostic::new(
         w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
         w.line,
         w.message.clone(),
-    )
+    );
+    d.col = w.col;
+    d.end_col = w.end_col;
+    d
 }
 
 /// Serialize just the diagnostics as `{ "diagnostics": [...] }` — the shape `build`/`publish`
