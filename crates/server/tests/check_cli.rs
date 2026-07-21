@@ -320,7 +320,10 @@ fn check_json_front_matter_typo_carries_a_column_span() {
         .iter()
         .find(|d| d["code"] == "TAL-XREF-UNDEF")
         .expect("xref diagnostic present");
-    assert!(xref.get("col").is_none(), "un-columned diag omits col: {xref}");
+    assert!(
+        xref.get("col").is_none(),
+        "un-columned diag omits col: {xref}"
+    );
     assert!(
         xref.get("end_col").is_none(),
         "un-columned diag omits end_col: {xref}"
