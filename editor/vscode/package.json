@@ -89,6 +89,11 @@
         }
       ]
     },
+    "configurationDefaults": {
+      "[taliesin]": {
+        "editor.wordWrap": "on"
+      }
+    },
     "configuration": {
       "title": "Taliesin",
       "properties": {
