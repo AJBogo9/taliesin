@@ -66,6 +66,50 @@ gating tag: a high-impact item can still be frozen or need a ruling.
    trap stays out). *Gating: L, net-new; own spec/plan when picked up. Design (Phase 2):*
    [2026-07-21-dx17-headless-executed-output-design.md](../docs/superpowers/specs/2026-07-21-dx17-headless-executed-output-design.md).
 
+#### Editor DevX / language-server initiative
+
+The daily-authoring counterpart to the machine-facing work, and the direct answer to Quarto 2's
+headline pitch (*"a new Markdown parser for real-time errors, autocompletion, project-wide YAML
+validation"*). Taliesin already has the parser (comrak + block model) and a deep validator suite in
+Rust (`check.rs` + `taliesin_core::diagnostics`); the gap is that the VS Code companion surfaces it
+**on-save and lossily**, not live and rich. Aligned with the **single-editing-surface** invariant: the
+editor is the *only* authoring surface, so this is where authoring quality lives (the collaborative /
+visual-editor half of Quarto 2 is out of scope — it needs multiple write paths). Full audit:
+[2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md). Each item pins via the extension
+`node:test` harness (`editor/vscode/src/test/`) + the `corpus/diagnostics/` Rust pins. Ordered by value;
+pull the top open one.
+
+- **E1. Surface severity/code/docs_url + quick-fix from `suggestion`** *(the lossy-bridge fix — in
+  progress this session; delete when merged).* `check.ts` `CheckDiag` drops `code`/`severity`/`docs_url`/
+  `suggestion`; `diagnostics.ts` hard-codes `DiagnosticSeverity.Warning` + a whole-line range. Parse the
+  full diagnostic, map real Error/Warning severity, set `Diagnostic.code = {value: TAL-*, target:
+  docs_url}` (Ctrl-click to catalog), and register a `CodeActionProvider` quick-fix from
+  `suggestion.replacement`. Backend already emits all of it. *S, no architecture change.*
+- **E2. On-type diagnostics.** `diagnostics.ts` refreshes only on `onDidOpen`/`onDidSave` — no
+  `onDidChangeTextDocument`; and `check` reads from disk (`read_to_string(path)`), so it can't see unsaved
+  edits. Add a buffer input mode to `check` (`--stdin`/`-`, read source from stdin) + a debounced
+  (~300ms) on-change refresh. This is what actually delivers "real-time error messages." *M, net-new
+  (touches the Rust `check` CLI + the extension).* Pin: a `check --stdin` Rust test + an extension
+  on-change test.
+- **E3. Column-accurate diagnostic ranges.** Whole-line squiggles today because the check JSON carries no
+  column. Add a column to the diagnostic emit (`Warning`/`Diagnostic`) and map squiggles to the token.
+  Unblocks a precise E1 quick-fix span (drops the edit-distance heuristic). *M, net-new; touches the
+  `diagnostics` warning type.*
+- **E4. Hover provider.** No `HoverProvider` today. Hover `@fig-2` → "Figure 2", a front-matter key →
+  its doc, `[@key]` → the reference. Data already in `taliesin vocab` + `taliesin symbols`. *S/M,
+  extension-only.*
+- **E5. Document outline + go-to-definition.** `taliesin symbols` exists but isn't wired to a
+  `DocumentSymbolProvider` (outline/breadcrumbs) or `DefinitionProvider` (`@fig-x` → figure, `{{< include
+  x.tmd >}}` → file, `[@key]` → `.bib` entry). *M, extension-only.*
+- **E6. Front-matter value completion.** Completes `format:`/`theme:` the key but not the value;
+  `detectContext` in `complete.ts` has no `frontmatter-value` case. Add value vocab to `taliesin vocab`
+  (`format` → deck/html/book/…, `theme` → theme names) + the context. *S/M.*
+- **E7. `taliesin lsp` server** *(strategic; own spec/brainstorm first).* An LSP-over-stdio subcommand
+  holds the parsed doc warm, gets `didChange` with full buffer text (solves E2's on-type + unsaved-buffer
+  in one move), and unifies diagnostics + hover + definition + symbols + completion + rename behind one
+  protocol that works in any LSP editor. Wiring existing Rust engine parts, not a rebuild; subsumes
+  E2/E4/E5. *L, net-new; spec under `docs/superpowers/specs/` before implementing.*
+
 ### B. Medium impact
 
 2. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
