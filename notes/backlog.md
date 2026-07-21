@@ -58,12 +58,13 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-1. **DX17: headless executed-output visibility** (an agent's single biggest blind spot: it can't tell
-   its chart executed). `read`=source, `check`=static, `build`=python/r only, `{js}` is never
-   server-run. (a) let `read` project the *built* doc so baked figures surface as
-   `[figure fig-x: produced, alt "…"]`; (b) optional headless `{js}` eval. *Gating: L, net-new, forked;
-   brainstorm before building; overlaps `ROADMAP.md` agent work, check there first. Detail:*
-   [2026-07-18-dx-audit.md](2026-07-18-dx-audit.md).
+1. **DX17(b): headless `{js}` executed-output visibility** (the remaining fork; part (a), python/r via
+   `read --run`, shipped 2026-07-21, see "Already shipped"). `{js}` (Observable Plot, the corpus's own
+   idiom) is still never server-run, so an agent can't headlessly tell a `{js}` chart produced. Plan:
+   a local headless Chrome (`chromiumoxide`) over the built page, gated + optional (degrades to
+   "skipped: chrome unavailable"), observation-only (no reactive re-run, so the CUT `js-kernel-rerun`
+   trap stays out). *Gating: L, net-new; own spec/plan when picked up. Design (Phase 2):*
+   [2026-07-21-dx17-headless-executed-output-design.md](../docs/superpowers/specs/2026-07-21-dx17-headless-executed-output-design.md).
 
 ### B. Medium impact
 
@@ -88,23 +89,63 @@ gating tag: a high-impact item can still be frozen or need a ruling.
    locations** (page A's line and page B's line), so the fix must first decide what to point at (the
    second definition, both, or a per-page list). *Gating: P3, corpus-exercised (nothing ships wrong).*
 
+6. **Reader-facing offline download** *(needs an owner ruling: scope)*: a "download this
+   book/page to read offline" affordance. The built output is *already* 100% self-contained and
+   network-free (framework CSS/JS/fonts/KaTeX inlined or `data:`-URI'd; `_assets/` is root-relative), so
+   this is roughly 90% repackaging and 10% new: a build-time-generated **static** `<book>.zip` (a static
+   link fits the "no server at read time" architecture better than an on-demand `serve_site` route), plus
+   an `<a download>` in the book topbar (`site/chrome.rs` ~218-238). No archive crate is in the tree yet
+   (add `zip`, or a small store/deflate writer); `build_site_async` already holds the page manifest and
+   output tree. *Format settled (owner, 2026-07-21): a **zip*** (a directory is not deliverable via a
+   static `<a download>`, which hands the browser a single file; the `file://` double-click gotcha does
+   not apply because pages already use document-relative asset paths, `asset_href` at `build.rs:1191`;
+   text compresses ~70-85% so it scales with doc size). *Ruling still needed:* whole-site vs per-book vs
+   per-page, and default-on vs opt-in (minimal-config favors always-emit, no knob). On-brand: the
+   reader-offline experience is
+   `FEATURE-IDEAS.md`'s headline opportunity (its #14 framed this as a PWA/service-worker; a zip is the
+   simpler, more explicit sibling). **Not a new output format** (a delivery wrapper around the existing
+   HTML). *Gating: S/M, net-new.* Pin: build a book, assert `<book>.zip` exists plus a chrome download link.
+
+7. **Media playback behavior** (P2; a11y + UX; two parts sharing one delivery surface): (a) **video
+   hover-to-play, pause-on-leave**: `{{< video >}}` emits `autoplay muted loop playsinline` with **no
+   `controls` and no pause path** (`render/extension/mod.rs:346`), a live **WCAG 2.2.2 (Pause, Stop,
+   Hide)** failure on the forward-facing site (`site/index.tmd`, `site/features.tmd`). Hover-to-play with
+   pause-on-leave *satisfies* 2.2.2, but the "perfect default" also needs a touch fallback (no hover on
+   mobile, so tap or IntersectionObserver play-when-visible) and `prefers-reduced-motion` meaning no
+   autoplay. Must drop the unconditional `autoplay` (rewrite the pin `tests.rs:2881-2918`) and coexist
+   with `syncThemeVideos` (`theme.rs:190-208`) plus the lightbox (`11-lightbox.js:125-137`). (b) **single
+   active player**: a delegated `play` listener (capture) pausing every other `<audio>`/`<video>` when one
+   starts. Today four raw-HTML `<audio controls>` on `corpus/posts/fourier-transform/index.tmd:86-98` can
+   all play at once, and there is **zero** media-coordination JS. Both parts ship in **two** client
+   surfaces for preview/build parity (`web-client/client.js` plus a bundled `assets/js/` asset). *Gating:
+   M, net-new, mostly client-side.* Pin: a media corpus doc (the fourier post is a ready single-player pin).
+
 ### C. Low / hardening (P3)
 
-6. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
+8. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
    against the offline invariant first (it implies a network check).*
 
-7. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
+9. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
     hardcoded English const table is `cite/render.rs:15-21`, and `lang` appears **zero** times in that
     file, so there is no localization seam yet. `lang:` correctly sets `<html lang>`; the "promise" of
     translated labels was never real. **No corpus doc demands it.**
 
-8. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
+10. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
     logic (`deck.css:705-711`), accept+document or unify? · add a `//| uses:` alias for the consumer
     `//| input:` (weigh vocab sprawl)? · callout kinds are namespaced but theorem kinds are bare,
     document or reconsider? · a Vite user pressing `r/o/u/c/q` or `h` gets silence now that interactivity
     moved to the browser dev menu, so one banner line pointing at the `◇` menu.
 
-9. **Reliability / test-infra long tail** (P3, dev-facing):
+11. **ASCII-art `generator` comment** (brand/discovery nicety): a leading HTML comment (project name,
+    `taliesin_core::VERSION` from `lib.rs:59`, and a URL) so a developer who opens dev tools or
+    view-source can find the tool. The machine-readable half already ships (`<meta name="generator"
+    content="Taliesin" />`, `page.rs:277`, pinned by `head_meta.rs`); this adds the human-readable banner.
+    One insertion in the shared `assemble_html_page` `format!` (`page.rs:270-295`, placed just inside
+    `<head>` to sidestep the doctype-first-byte rule) covers build and both previews; decks need a
+    symmetric edit (`deck.rs:70-77`, which lacks even the generator meta today). No test churn (head tests
+    use `.contains`). Minimal-config: a default, not a knob. *Gating: S, net-new, low priority.*
+
+12. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
@@ -168,6 +209,17 @@ Per the PMF audit ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md)) the highe
   (`.vscodeignore` misses `.vscode-test/` (1.8 GB), `test-fixtures/`, `scripts/`, `out/test/`,
   `out/e2e/`; no top-level `icon`/`repository`/`license`/`keywords`; `"private": true` blocks publish);
   `symbolCache` only invalidates on save (`completions.ts`, low).
+- **LaTeX hover-preview in the VS Code editor** (Companion Phase 2, a sub-case of the LSP item below):
+  hover `$…$`/`$$…$$` to see a rendered preview. Math is already grammar-recognized
+  (`tmd.injection.tmLanguage.json:15-37`), but the extension has **no HoverProvider** yet
+  (`editor/vscode/src/`). Rendering-reuse is cheap: `math::render(latex, display)` is a pure, memoized
+  function (`math.rs:57`), wrappable in a thin `taliesin math <expr>` subcommand. The **hard part is
+  fidelity**: KaTeX's HTML+CSS will not survive VS Code's Hover sanitizer (no external stylesheet or
+  `@font-face`), and the `katex` crate emits no image/SVG, so a legible offline hover likely needs a
+  rasterization step (new dependency surface), not a reuse of the offline KaTeX path. **Spike first**
+  (does the Hover sanitizer keep enough inline styling to be legible? VS Code's own Markdown extension
+  does math hover, so there is precedent). Build it as a sub-case of the **LSP** item below (write-once
+  for Neovim/Helix/Zed/VS Code), not a bespoke VS Code-only hack. *Gating: M, demand-driven, fidelity risk.*
 - **`.tmd` format-on-save** (open question): a source pretty-printer must preserve `data-sourcepos` line
   stability for click-to-source; brainstorm reflow-vs-risk first.
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto to Taliesin migration +
@@ -233,7 +285,21 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
-- **DX audit batch** DX1-DX15, DX18, DX19 shipped; only **DX16** and **DX17** remain (above).
+- **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); only
+  **DX16** and **DX17(b)** (headless `{js}`) remain (above).
+- **DX17(a) headless executed-output (python/r) shipped 2026-07-21:** `taliesin read --run` executes
+  python/r via build's exec path and projects `[figure fig-x: produced, alt "…"]` / `[output: …]` /
+  `[cell error: …]` (+ `--format json` per-cell). Core `classify_exec_output`; pinned by
+  `corpus/agent/executed-read.tmd` + `read_run.rs`; AGENTS.md onramp documents it. Phase 2 (headless
+  `{js}`) remains as item 1.
+- **Click-to-source into `{{< include >}}`d files already works** (do not re-scope as "build it"): an
+  Alt-click on included content already opens the *included* file at the correct line on both paths
+  (plain-browser `vscode://`, and the VS Code webview via `qmd-goto`), because included blocks carry
+  `data-source-file` from the `includes.rs` per-line source map and labels are kept primary-doc-relative.
+  Pinned by `corpus.rs:161-219` (plus the "every `source_file` must be relative" invariant,
+  `corpus.rs:124-137`) and the companion's `paths.test.ts:45-58`. **Only real gap:** `web-client/` has no
+  JS tests at all, so `openSource()`'s include handling is proven by corpus attributes and inspection, not
+  a JS assertion on the emitted `vscode://` URL or `qmd-goto` payload (a small P3 hardening add if wanted).
 - **Deck audit** fully shipped; **B3-18** (the last item) landed 2026-07-21: a structural deck edit now
   re-mounts only the edited `<section>`s (client-side signature-keyed reconcile in `client.js`), so
   untouched slides keep their live `{js}`/WebGL/input state. Prerequisite fix: `{{< input >}}` control
