@@ -17,6 +17,7 @@ mod interactive;
 mod interpreter;
 mod kernel;
 mod log;
+mod lsp;
 mod mcp;
 mod minify;
 mod preview_diag;
@@ -61,6 +62,7 @@ fn main() -> ExitCode {
         Some("check") => check::cmd_check(&args),
         Some("doctor") => doctor::cmd_doctor(&args),
         Some("mcp") => mcp::cmd_mcp(&args),
+        Some("lsp") => lsp::cmd_lsp(&args),
         Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
@@ -119,6 +121,7 @@ const COMMANDS: &[&str] = &[
     "doctor",
     "map",
     "mcp",
+    "lsp",
     "init",
     "new",
     "serve",
@@ -221,6 +224,7 @@ fn usage() {
     println!(
         "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
     );
+    println!("  lsp                        stdio LSP server: live .tmd diagnostics in any editor");
     println!("  completions <shell> [--install]  print (or --install) a shell completion script");
     println!(
         "                             (subcommand + flag + .tmd-aware path completion; --install writes it for you)"
@@ -326,6 +330,18 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example (in an MCP host's config):\n\
              \x20 { \"command\": \"taliesin\", \"args\": [\"mcp\"] }\n"
+        }
+        "lsp" => {
+            "taliesin lsp\n\
+             \n\
+             Run a local, offline LSP (Language Server Protocol) server over stdio so any\n\
+             LSP editor (Neovim, Helix, Zed, VS Code) gets live .tmd diagnostics as you\n\
+             type — the same validators as `check`, on the unsaved buffer. Parse-only: no\n\
+             kernel, no code execution, read-only (it never edits your source). JSON-RPC on\n\
+             stdout, logs on stderr.\n\
+             \n\
+             Example (Neovim, via nvim-lspconfig or vim.lsp.start):\n\
+             \x20 cmd = { \"taliesin\", \"lsp\" }\n"
         }
         "map" => {
             "taliesin map <dir> [--format human|json]\n\

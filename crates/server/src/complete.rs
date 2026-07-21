@@ -338,6 +338,7 @@ fn command_desc(cmd: &str) -> &'static str {
         "doctor" => "audit the environment for running code cells",
         "map" => "whole-project outline (pages, nav, xref)",
         "mcp" => "stdio MCP server",
+        "lsp" => "stdio LSP server (live diagnostics in any editor)",
         "init" => "scaffold a starter site",
         "new" => "scaffold one document",
         "serve" => "live preview server (alias of preview)",
