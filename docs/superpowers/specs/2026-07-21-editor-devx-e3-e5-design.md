@@ -24,9 +24,16 @@ the preview.
 
 ## Scope decisions (approved 2026-07-21)
 
-- E3 columns cover the **suggestion-bearing (quick-fixable) diagnostics first** (xref-typo
-  and front-matter / `_site.yml`-key-typo families), not a uniform sweep of every validator.
-  The plumbing is additive (`col`/`end_col` default `None`), so other validators opt in later.
+- E3 columns cover the **front-matter key-typo family first** — the most common author typo,
+  and the one place a column is genuinely cheap (the validators already locate the key line in
+  the front-matter *source* via `block_key_line`/`nested_key_line`, so the key token's column is
+  the line's indentation). Not a uniform sweep of every validator. The plumbing is additive
+  (`col`/`end_col` default `None`), so other validators opt in later.
+- **xref-typo columns are explicitly deferred:** `validate_xrefs` scans the *rendered HTML*
+  (`data-qmd-xref` markers) and only has the block's start line, not the `@fig-x` token's source
+  column. Re-deriving it from source is fragile (code-block false matches, first-occurrence
+  ambiguity), so xref diagnostics stay whole-line + the existing `suggestionSpan` quick-fix
+  fallback. `_site.yml` config-key typos are a natural later opt-in via the same span plumbing.
 - E5 outline is **headings only** (figures/tables stay reachable via go-to-definition).
 - E5 xref go-to-definition is **same-document only**; a cross-file xref degrades to "no
   definition" rather than jump to a guessed file.
@@ -81,19 +88,20 @@ so:
 
 ### Which validators get a span (first cut)
 
-The suggestion-bearing families, where the token position is cheap to compute:
+**Front-matter key typos** (`crates/core/src/frontmatter.rs`) — the unknown-top-level-key,
+unknown-nested-key, unsupported-key, and `format:`-sub-key diagnostics, i.e. every diagnostic
+whose flagged token *is a front-matter key*. These already locate the key line via
+`block_key_line`/`nested_key_line`, which scan the front-matter source; extending those helpers
+to also return the key's column is trivial (top-level keys are unindented, so col 1; nested keys
+sit at their indentation, plus an optional `- ` list prefix). Front-matter keys and indentation
+are ASCII, so scalar == byte == UTF-16 column, and the span is exact.
 
-- **xref typos** — `crates/core/src/cite/validate.rs` ("broken cross-reference: @x (did you
-  mean `@y`?)"). The span is the `@id` occurrence in the block text.
-- **front-matter key typos** — the `vocab`/front-matter validation path
-  (`crates/core/src/vocab.rs`, front-matter key checks). The span is the key token (after the
-  line's indentation).
-- **`_site.yml` config key typos** — `crates/core/src/site/config/mod.rs`.
-
-Each is verified case-by-case during implementation: if a family's source position is *not*
-cheaply available, it stays `None` (whole-line, current behavior) rather than forcing a wrong
-column. The deliverable is "every diagnostic that already offers a `suggestion` now carries an
-exact span," a clean, testable boundary.
+Front-matter **value** typos (`format: pdff`) keep pointing at the key line **without** a span
+(whole-line), because their locator reports the key line, not the value token's column; giving
+them a span would squiggle the key, not the bad value. Only the key-*is*-the-token cases get a
+span. `_site.yml` config-key typos are a later opt-in via the same plumbing; xref typos are
+deferred (see Scope decisions). The deliverable is "every front-matter key-typo diagnostic now
+carries an exact span," a clean, testable boundary.
 
 ### Extension consumption
 
@@ -112,10 +120,13 @@ exact span," a clean, testable boundary.
 
 ### E3 tests (TDD)
 
-- **Rust unit / corpus:** a `corpus/diagnostics/` doc with a known xref typo and a front-matter
-  key typo; assert the produced `Diagnostic` carries the expected `col`/`end_col` pointing at
-  the token. Extend `crates/core/tests/xref_didyoumean.rs` and/or `crates/server/tests/check_cli.rs`.
-  Mutation check: zero the span in the validator and watch the pin fail.
+- **Rust unit:** `validate_front_matter` over a known unknown-key typo (top-level and nested)
+  carries the expected `col`/`end_col` on the key token (a `crates/core/src/frontmatter.rs` unit
+  test, near the existing lint tests). Mutation check: return `col = None` from the span helper
+  and watch the pin fail.
+- **Rust CLI:** `crates/server/tests/check_cli.rs` (or `mcp_stdio.rs`) over a corpus doc with a
+  front-matter key typo asserts the JSON carries `col`/`end_col`; a doc with only un-columned
+  findings still serializes byte-identically (no `col` key).
 - **Extension `node:test`** (`editor/vscode/src/test/check.test.ts`): `parseCheckJson` reads
   `col`/`end_col`; `toDiagnostics` preserves a span and clamps a line; a diagnostic with span +
   suggestion resolves its quick-fix from the span, not `suggestionSpan`.
@@ -199,8 +210,8 @@ with the existing hover/completion providers.
 ## Order of work
 
 1. E3 Rust: `Warning` span + `.span()` builder + `Diagnostic` fields + serialization (byte-safe).
-2. E3 Rust: populate the span for the xref-typo + front-matter/config-key-typo families, with
-   corpus/unit pins.
+2. E3 Rust: `block_key_span`/`nested_key_span` + populate the span for the front-matter
+   key-typo diagnostics, with unit + CLI pins.
 3. E3 extension: `check.ts` carry-through + `diagnostics.ts` range + exact-span quick-fix, with
    `check.test.ts` additions.
 4. E5 outline: `outline.ts` + `DocumentSymbolProvider` shell + `outline.test.ts` + registration.
