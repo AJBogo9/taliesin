@@ -36,6 +36,7 @@ author's own projects; provenance is below.
 | `reader/` | Reader experience | read-only reader enhancers: display prefs (theme/sepia/size/width/spacing), reading progress + resume, hover cross-ref cards, anchor copy-links, focus mode, and a read-state right-rail TOC | (purpose-built) |
 | `diagnostics/` | Validator coverage | docs that deliberately trip Taliesin's schema validators (`typos.tmd`) + the opt-in prose linter (`prose.tmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.tmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
 | `bare-draft.tmd` | Bare build (`--bare`) | prose + inline math + a server-highlighted code block + an image + a `{js}` cell + a Mermaid block; pins the `build --bare` contract (zero `<script>`/zero CDN, CSS-only theme, math kept, `{js}` dropped, Mermaid as source) and the Phase-1 enhancer gating | (purpose-built) |
+| `agent/executed-read.tmd` | Headless executed-output (DX17) | a labelled-figure python cell + a printed stream + a deliberately-erroring cell; pins `read --run`'s executed-output projection (`[figure fig-x: produced, alt "…"]` / `[output: …]` / `[cell error: …]`) via `read_run.rs` | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
