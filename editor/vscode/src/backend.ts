@@ -18,6 +18,8 @@ export interface Vocab {
   divClasses: Named[];
   inputTypes: string[];
   xrefPrefixes: { prefix: string; label: string }[];
+  // Suggested values for the front-matter keys with a closed set (`format`, `theme`).
+  frontmatterValues: Record<string, Named[]>;
 }
 
 // Spawn `taliesin vocab` and parse its JSON. Rejects on spawn failure or bad JSON.

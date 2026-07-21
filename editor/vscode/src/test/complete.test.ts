@@ -28,9 +28,38 @@ test("no front-matter completion once the block is closed", () => {
   assert.deepEqual(detectContext("Body ti", doc), { kind: "none" });
 });
 
-test("no front-matter completion at a value position (after the colon)", () => {
+test("a value position is a frontmatter-value context carrying the key", () => {
+  // Vocab-agnostic: `author:` has no closed value set, so the provider yields nothing, but
+  // the context is still frontmatter-value (the provider is the vocab authority, not this).
   const doc = FM_OPEN + "author: ";
-  assert.deepEqual(detectContext("author: ", doc), { kind: "none" });
+  assert.deepEqual(detectContext("author: ", doc), {
+    kind: "frontmatter-value",
+    key: "author",
+    typed: "",
+  });
+});
+
+test("detects a format value being typed", () => {
+  const doc = FM_OPEN + "format: de";
+  assert.deepEqual(detectContext("format: de", doc), {
+    kind: "frontmatter-value",
+    key: "format",
+    typed: "de",
+  });
+});
+
+test("detects a theme value right after the colon", () => {
+  const doc = FM_OPEN + "theme:";
+  assert.deepEqual(detectContext("theme:", doc), {
+    kind: "frontmatter-value",
+    key: "theme",
+    typed: "",
+  });
+});
+
+test("no frontmatter-value once the block is closed", () => {
+  const doc = "---\ntitle: T\n---\n\nformat: prose";
+  assert.deepEqual(detectContext("format: prose", doc), { kind: "none" });
 });
 
 test("detects a cell option after #| inside a code cell", () => {

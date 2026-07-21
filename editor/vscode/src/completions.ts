@@ -70,6 +70,14 @@ export function registerCompletions(context: vscode.ExtensionContext): void {
           const list = ctx.parent ? v.frontmatter.nested[ctx.parent] ?? [] : v.frontmatter.keys;
           return list.map((n) => item(n.name, n.description, K.Property));
         }
+        case "frontmatter-value": {
+          // Only keys with a closed value set (format/theme) get suggestions; anything else
+          // (author:, date:, …) has no vocabulary here, so we stay quiet.
+          const values = v.frontmatterValues[ctx.key] ?? [];
+          return values
+            .filter((n) => ctx.typed === "" || n.name.startsWith(ctx.typed))
+            .map((n) => item(n.name, n.description, K.Value));
+        }
         case "cell-option":
           return v.cellOptions.map((n) => item(n.name, n.description, K.Property));
         case "div-class": {

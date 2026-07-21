@@ -305,6 +305,28 @@
       ]
     }
   },
+  "frontmatterValues": {
+    "format": [
+      {
+        "description": "Standard HTML page (the default).",
+        "name": "html"
+      },
+      {
+        "description": "Slide deck on taliesin's own engine.",
+        "name": "deck"
+      }
+    ],
+    "theme": [
+      {
+        "description": "Built-in dark theme.",
+        "name": "dark"
+      },
+      {
+        "description": "Built-in light theme.",
+        "name": "light"
+      }
+    ]
+  },
   "inputTypes": [
     "slider",
     "range",

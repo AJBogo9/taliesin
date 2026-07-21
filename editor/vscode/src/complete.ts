@@ -6,6 +6,7 @@
 export type CompletionContext =
   | { kind: "none" }
   | { kind: "frontmatter-key"; parent: string | null }
+  | { kind: "frontmatter-value"; key: string; typed: string }
   | { kind: "cell-option" }
   | { kind: "div-class" }
   | { kind: "xref"; typed: string }
@@ -79,9 +80,17 @@ export function detectContext(linePrefix: string, docPrefix: string): Completion
     return { kind: "cell-option" };
   }
 
-  // Front-matter key: inside the `---` block, at a key position (only a partial word so far).
-  if (inFrontmatter(docPrefix) && /^\s*[\w-]*$/.test(linePrefix)) {
-    return { kind: "frontmatter-key", parent: nestedParent(docPrefix) };
+  // Front-matter, inside the `---` block.
+  if (inFrontmatter(docPrefix)) {
+    // Value position: `key:` then the value token being typed. Vocab-agnostic — the provider
+    // offers values only for the keys that have a closed set (format/theme via `taliesin
+    // vocab`), so a valueless key like `author:` simply yields nothing.
+    const val = /^\s*([\w-]+):\s*(\S*)$/.exec(linePrefix);
+    if (val) return { kind: "frontmatter-value", key: val[1], typed: val[2] };
+    // Key position: only a partial word so far (no colon yet).
+    if (/^\s*[\w-]*$/.test(linePrefix)) {
+      return { kind: "frontmatter-key", parent: nestedParent(docPrefix) };
+    }
   }
 
   return { kind: "none" };

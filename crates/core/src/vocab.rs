@@ -211,6 +211,25 @@ fn xref_prefixes() -> Value {
     )
 }
 
+/// Suggested VALUES for the front-matter keys that have a small, useful closed set, as
+/// `key -> [{name, description}]`. This is a completion aid, not a validated gate: an
+/// unrecognized `format:` value just renders as HTML, and a `theme:` may instead name an
+/// extension theme or a CSS file. Sourced from the recognizers so it can't drift from
+/// behaviour: `render::fm_extract::is_reveal_format` (`deck`, else HTML) and
+/// `render::theme::resolve_theme` (the `dark`/`light`/`default` built-ins).
+fn frontmatter_value_vocab() -> Value {
+    json!({
+        "format": [
+            { "name": "html", "description": "Standard HTML page (the default)." },
+            { "name": "deck", "description": "Slide deck on taliesin's own engine." },
+        ],
+        "theme": [
+            { "name": "dark", "description": "Built-in dark theme." },
+            { "name": "light", "description": "Built-in light theme." },
+        ],
+    })
+}
+
 /// Build the vocabulary JSON from the validator's consts.
 pub fn vocab() -> Value {
     use crate::frontmatter::{
@@ -247,6 +266,7 @@ pub fn vocab() -> Value {
         "divClasses": div_classes(),
         "inputTypes": Value::Array(INPUT_TYPES.iter().map(|t| json!(t)).collect()),
         "xrefPrefixes": xref_prefixes(),
+        "frontmatterValues": frontmatter_value_vocab(),
     })
 }
 
@@ -319,6 +339,39 @@ mod tests {
         check_named(&v["calloutKinds"], "calloutKinds");
         check_named(&v["theoremKinds"], "theoremKinds");
         check_named(&v["divClasses"], "divClasses");
+        for key in ["format", "theme"] {
+            check_named(
+                &v["frontmatterValues"][key],
+                &format!("frontmatterValues.{key}"),
+            );
+        }
+    }
+
+    /// The value vocab is a completion aid keyed by front-matter key. Pin its content (not
+    /// just via the golden file, which a bless could empty): `format` must offer both
+    /// recognized names and `theme` both built-ins, mirroring `is_reveal_format` /
+    /// `resolve_theme`. Removing a value fails here.
+    #[test]
+    fn frontmatter_values_offer_format_and_theme() {
+        let v = vocab();
+        let names = |k: &str| {
+            v["frontmatterValues"][k]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|e| e["name"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        let format = names("format");
+        assert!(
+            format.contains(&"html".to_string()) && format.contains(&"deck".to_string()),
+            "format values must offer html + deck: {format:?}"
+        );
+        let theme = names("theme");
+        assert!(
+            theme.contains(&"dark".to_string()) && theme.contains(&"light".to_string()),
+            "theme values must offer dark + light: {theme:?}"
+        );
     }
 
     /// The reverse of `descriptions_present`: every entry in `frontmatter_key_descriptions`
