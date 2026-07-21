@@ -53,12 +53,15 @@ pub(crate) fn run(connection: Connection) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// Read messages until `shutdown`/`exit`. Requests other than shutdown are ignored
-/// (no request capabilities advertised); text-document notifications drive diagnostics.
+/// Read messages until `shutdown`/`exit`. Text-document notifications keep the open-buffer
+/// store current and drive diagnostics; requests (other than shutdown) are answered from
+/// that store.
 fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // URIs we have accepted as taliesin documents. `didChange` carries no languageId, so
-    // we only lint what `didOpen` admitted.
-    let mut tracked: std::collections::HashSet<lsp_types::Url> = std::collections::HashSet::new();
+    // Open taliesin documents, by URI → current buffer text. `didChange` carries no
+    // languageId, so we only track what `didOpen` admitted; a request between edits reads
+    // the buffer text from here.
+    let mut docs: std::collections::HashMap<lsp_types::Url, String> =
+        std::collections::HashMap::new();
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
@@ -66,18 +69,18 @@ fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + 
                     return Ok(());
                 }
             }
-            Message::Notification(notif) => handle_notification(connection, &mut tracked, notif)?,
+            Message::Notification(notif) => handle_notification(connection, &mut docs, notif)?,
             Message::Response(_) => {}
         }
     }
     Ok(())
 }
 
-/// Dispatch a text-document notification: keep the tracked set current and (re)publish
-/// diagnostics for the affected buffer.
+/// Dispatch a text-document notification: keep the open-buffer store current and
+/// (re)publish diagnostics for the affected buffer.
 fn handle_notification(
     connection: &Connection,
-    tracked: &mut std::collections::HashSet<lsp_types::Url>,
+    docs: &mut std::collections::HashMap<lsp_types::Url, String>,
     notif: lsp_server::Notification,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::notification::{
@@ -90,20 +93,24 @@ fn handle_notification(
     if method == DidOpenTextDocument::METHOD {
         let p: DidOpenTextDocumentParams = serde_json::from_value(notif.params)?;
         if p.text_document.language_id == "taliesin" {
-            tracked.insert(p.text_document.uri.clone());
-            publish(connection, &p.text_document.uri, &p.text_document.text)?;
+            let uri = p.text_document.uri;
+            docs.insert(uri.clone(), p.text_document.text);
+            publish(connection, &uri, &docs[&uri])?;
         }
     } else if method == DidChangeTextDocument::METHOD {
         let mut p: DidChangeTextDocumentParams = serde_json::from_value(notif.params)?;
-        if tracked.contains(&p.text_document.uri) {
-            // FULL sync: the last content change holds the entire new buffer.
-            if let Some(change) = p.content_changes.pop() {
-                publish(connection, &p.text_document.uri, &change.text)?;
-            }
+        let uri = p.text_document.uri;
+        // FULL sync: the last content change holds the entire new buffer. Only act on a
+        // document `didOpen` admitted.
+        if docs.contains_key(&uri)
+            && let Some(change) = p.content_changes.pop()
+        {
+            docs.insert(uri.clone(), change.text);
+            publish(connection, &uri, &docs[&uri])?;
         }
     } else if method == DidCloseTextDocument::METHOD {
         let p: DidCloseTextDocumentParams = serde_json::from_value(notif.params)?;
-        tracked.remove(&p.text_document.uri);
+        docs.remove(&p.text_document.uri);
         publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
     }
     Ok(())
