@@ -85,19 +85,21 @@ pull the top open one.
   additive on that harness, below.)
 
 - **E7. `taliesin lsp` server — capability follow-ups** *(shipped so far: the stdio harness + live
-  diagnostics + go-to-definition + document outline, 2026-07-21; specs
+  diagnostics + go-to-definition + document outline + hover, 2026-07-21; specs
   [diagnostics-slice](../docs/superpowers/specs/2026-07-21-e7-lsp-diagnostics-slice-design.md) +
-  [go-to-definition](../docs/superpowers/specs/2026-07-21-e7-lsp-goto-definition.md)).*
+  [go-to-definition](../docs/superpowers/specs/2026-07-21-e7-lsp-goto-definition.md) +
+  [hover](../docs/superpowers/specs/2026-07-21-e7-lsp-hover.md)).*
   `taliesin lsp` (in `crates/server/src/lsp.rs` + `lsp_nav.rs` + `lsp_outline.rs`, `lsp-server`/`lsp-types`)
-  advertises `textDocumentSync: FULL` + `definitionProvider` + `documentSymbolProvider`, holds a
-  `HashMap<Url,String>` document store, publishes live unsaved-buffer diagnostics (via
+  advertises `textDocumentSync: FULL` + `definitionProvider` + `documentSymbolProvider` + `hoverProvider`,
+  holds a `HashMap<Url,String>` document store, publishes live unsaved-buffer diagnostics (via
   `check::buffer_diagnostics`), answers `textDocument/definition` for `@xref`/`[@cite]`/`{{< include >}}`
-  (via `lsp_nav::{classify_target, definition_site, bib_entry_site, frontmatter_bib_paths}`), and
-  `textDocument/documentSymbol` (the heading outline, via `lsp_outline::outline`). **Remaining, each additive
-  on the same server** (the logic still lives only in the VS Code companion's TypeScript and must be ported
-  to Rust to become editor-agnostic): **hover** (reuses `lsp_nav::classify_target`; needs xref label/number
-  from `RenderedDoc::xref_numbers` + `.bib` entry text + vocab key descriptions), **completion** (Rust-backed
-  via `vocab`/`symbols`; port the cursor-context detection from `completions.ts`), **rename**, and
+  (via `lsp_nav::{classify_target, definition_site, bib_entry_site, frontmatter_bib_paths}`),
+  `textDocument/documentSymbol` (the heading outline, via `lsp_outline::outline`), and `textDocument/hover`
+  (xref label+number from a live-buffer render's `RenderedDoc::xref_numbers` + `vocab` labels, front-matter
+  key docs from `vocab`, `[@cite]` -> brace-balanced `.bib` entry via `lsp_nav::bib_entry_text`).
+  **Remaining, each additive on the same server** (the logic still lives only in the VS Code companion's
+  TypeScript and must be ported to Rust to become editor-agnostic): **completion** (Rust-backed via
+  `vocab`/`symbols`; port the cursor-context detection from `completions.ts`), **rename**, and
   **quick-fix code-actions** (the `suggestion` field already rides the diagnostic). Migrating the VS Code
   companion itself to a `vscode-languageclient` is a separate, later item. *Each: S–M, additive.*
 
