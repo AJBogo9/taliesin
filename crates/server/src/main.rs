@@ -18,6 +18,7 @@ mod interpreter;
 mod kernel;
 mod log;
 mod lsp;
+mod lsp_complete;
 mod lsp_nav;
 mod lsp_outline;
 mod mcp;
