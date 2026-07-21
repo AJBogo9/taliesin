@@ -128,10 +128,9 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     let mut out = Vec::new();
     for key in map.keys().filter_map(|k| k.as_str()) {
         if !KNOWN_KEYS.contains(&key) {
-            let line = block_key_line(block, key);
-            out.push(located(
+            out.push(located_span(
                 unknown_key_message("front-matter key", key, KNOWN_KEYS),
-                line,
+                block_key_span(block, key),
             ));
         }
     }
@@ -274,6 +273,15 @@ fn located(message: String, line: Option<u32>) -> Warning {
     }
 }
 
+/// A `Warning` located at a `[col, end_col)` span, from a `(line, col, end_col)` locator.
+/// Used for key-typo diagnostics, whose flagged token IS the front-matter key.
+fn located_span(message: String, span: Option<(u32, u32, u32)>) -> Warning {
+    match span {
+        Some((l, c, e)) => Warning::new(message).at(None, l).span(c, e),
+        None => Warning::new(message),
+    }
+}
+
 /// Validate the immediate children of a single nested mapping block.
 fn validate_nested(
     map: &serde_yaml::Mapping,
@@ -298,8 +306,10 @@ fn validate_child_keys(
 ) {
     for key in m.keys().filter_map(|k| k.as_str()) {
         if !allowed.contains(&key) {
-            let line = nested_key_line(block, parent, key);
-            out.push(located(unknown_key_message(what, key, allowed), line));
+            out.push(located_span(
+                unknown_key_message(what, key, allowed),
+                nested_key_span(block, parent, key),
+            ));
         }
     }
 }
@@ -368,7 +378,7 @@ fn validate_format_subkeys(map: &serde_yaml::Mapping, block: &str, out: &mut Vec
             } else {
                 format!("`format:` sub-key `{key}` is ignored (nothing reads `format:` sub-keys)")
             };
-            out.push(located(msg, nested_key_line(block, "format", key)));
+            out.push(located_span(msg, nested_key_span(block, "format", key)));
         }
     }
 }
@@ -431,13 +441,13 @@ fn validate_unsupported_keys(map: &serde_yaml::Mapping, block: &str, out: &mut V
         if map.get(key).is_none() {
             continue;
         }
-        out.push(located(
+        out.push(located_span(
             format!(
                 "`{key}:` is recognized but not supported, so it has no effect: references \
                  always render in the built-in IEEE style (remove the key, or the citations \
                  will not match the style you asked for)"
             ),
-            block_key_line(block, key),
+            block_key_span(block, key),
         ));
     }
 }
@@ -492,9 +502,17 @@ pub(crate) fn bibliography_line(src: &str) -> Option<u32> {
 /// `pub(crate)` so a `diagnostics` validator can locate a front-matter key on the same
 /// click-to-source channel, rather than keeping a second copy of this offset rule.
 pub(crate) fn block_key_line(block: &str, key: &str) -> Option<u32> {
+    block_key_span(block, key).map(|(l, _, _)| l)
+}
+
+/// `(line, col, end_col)` of a top-level `key:`, all 1-based (see [`block_key_line`] for the
+/// line rule). Top-level keys are unindented, so `col` is 1 and `end_col` is `1 + key.len()`.
+/// Columns are Unicode-scalar counts; a front-matter key is ASCII, so scalar == byte == UTF-16.
+pub(crate) fn block_key_span(block: &str, key: &str) -> Option<(u32, u32, u32)> {
     block.lines().enumerate().find_map(|(i, line)| {
         let t = line.trim_start();
-        (line.len() == t.len() && key_matches(t, key)).then_some(i as u32 + 2)
+        (line.len() == t.len() && key_matches(t, key))
+            .then(|| (i as u32 + 2, 1, 1 + key.chars().count() as u32))
     })
 }
 
@@ -502,6 +520,13 @@ pub(crate) fn block_key_line(block: &str, key: &str) -> Option<u32> {
 /// `parent:` (best-effort). Scans from `parent:` to the next indent-0 key, matching
 /// `key:` at any indent (including a leading `- ` sequence item).
 fn nested_key_line(block: &str, parent: &str, key: &str) -> Option<u32> {
+    nested_key_span(block, parent, key).map(|(l, _, _)| l)
+}
+
+/// `(line, col, end_col)` of a nested child `key` under `parent:`, all 1-based. `col` follows
+/// the line's indentation plus an optional `- ` list prefix. Indentation is ASCII, so the
+/// scalar column equals the byte/UTF-16 column.
+fn nested_key_span(block: &str, parent: &str, key: &str) -> Option<(u32, u32, u32)> {
     let mut in_block = false;
     for (i, line) in block.lines().enumerate() {
         let t = line.trim_start();
@@ -515,9 +540,17 @@ fn nested_key_line(block: &str, parent: &str, key: &str) -> Option<u32> {
         if at_top {
             break; // dedent ends the parent block
         }
-        let body = t.strip_prefix("- ").map(str::trim_start).unwrap_or(t);
+        let indent = line.len() - t.len();
+        let (prefix, body) = match t.strip_prefix("- ") {
+            Some(rest) => (
+                2 + (rest.len() - rest.trim_start().len()),
+                rest.trim_start(),
+            ),
+            None => (0, t),
+        };
         if key_matches(body, key) {
-            return Some(i as u32 + 2);
+            let col = indent as u32 + prefix as u32 + 1;
+            return Some((i as u32 + 2, col, col + key.chars().count() as u32));
         }
     }
     None
@@ -1093,5 +1126,31 @@ mod tests {
     fn yaml_error_none_when_valid_or_absent() {
         assert!(yaml_error("---\ntitle: X\n---\n\nbody\n").is_none());
         assert!(yaml_error("no front matter\n").is_none());
+    }
+
+    #[test]
+    fn unknown_top_level_key_carries_a_column_span() {
+        let src = "---\ntitle: X\ntreme: darkly\n---\n";
+        let w = validate_front_matter(src);
+        let d = w
+            .iter()
+            .find(|w| w.message.contains("`treme`"))
+            .expect("treme flagged");
+        assert_eq!(d.line, Some(3));
+        assert_eq!(d.col, Some(1)); // `treme` starts at column 1
+        assert_eq!(d.end_col, Some(6)); // one past the 5-char key
+    }
+
+    #[test]
+    fn unknown_nested_key_carries_an_indented_column_span() {
+        let src = "---\ntitle: X\nexecute:\n  eccho: false\n---\n";
+        let w = validate_front_matter(src);
+        let d = w
+            .iter()
+            .find(|w| w.message.contains("`eccho`"))
+            .expect("eccho flagged");
+        assert_eq!(d.line, Some(4));
+        assert_eq!(d.col, Some(3)); // 2-space indent -> column 3
+        assert_eq!(d.end_col, Some(8));
     }
 }

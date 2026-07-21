@@ -151,6 +151,10 @@ pub struct Warning {
     pub message: String,
     pub file: Option<String>,
     pub line: Option<u32>,
+    /// 1-based start column (Unicode-scalar count on the line); `None` = whole-line.
+    pub col: Option<u32>,
+    /// 1-based, exclusive end column; set together with `col`.
+    pub end_col: Option<u32>,
 }
 
 impl Warning {
@@ -159,6 +163,8 @@ impl Warning {
             message: message.into(),
             file: None,
             line: None,
+            col: None,
+            end_col: None,
         }
     }
 
@@ -166,6 +172,13 @@ impl Warning {
     pub fn at(mut self, file: Option<String>, line: u32) -> Self {
         self.file = file;
         self.line = Some(line);
+        self
+    }
+
+    /// Attach a `[col, end_col)` character span on the located line (1-based, exclusive end).
+    pub fn span(mut self, col: u32, end_col: u32) -> Self {
+        self.col = Some(col);
+        self.end_col = Some(end_col);
         self
     }
 }
