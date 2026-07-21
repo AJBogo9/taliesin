@@ -289,11 +289,10 @@ pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
     None
 }
 
-/// The 0-based (line, col) of the BibTeX entry header `@type{key,` for `key` in `bib`,
-/// or None when absent.
-pub(crate) fn bib_entry_site(bib: &str, key: &str) -> Option<(u32, u32)> {
-    let chars: Vec<char> = bib.chars().collect();
-    let keyc: Vec<char> = key.chars().collect();
+/// The char offset of the BibTeX entry header `@type{key,` for `key` in `chars`, or None
+/// when absent. Shared by `bib_entry_site` (offset → line/col) and `bib_entry_text`
+/// (offset → brace-balanced entry text) so the two can't drift.
+fn bib_entry_offset(chars: &[char], keyc: &[char]) -> Option<usize> {
     let (n, m) = (chars.len(), keyc.len());
     if m == 0 {
         return None;
@@ -315,13 +314,13 @@ pub(crate) fn bib_entry_site(bib: &str, key: &str) -> Option<(u32, u32)> {
                     while j < n && is_ws(chars[j]) {
                         j += 1;
                     }
-                    if j + m <= n && chars[j..j + m] == keyc[..] {
+                    if j + m <= n && chars[j..j + m] == *keyc {
                         let mut k = j + m;
                         while k < n && is_ws(chars[k]) {
                             k += 1;
                         }
                         if k < n && chars[k] == ',' {
-                            return Some(offset_to_line_col(&chars, i));
+                            return Some(i);
                         }
                     }
                 }
@@ -330,6 +329,46 @@ pub(crate) fn bib_entry_site(bib: &str, key: &str) -> Option<(u32, u32)> {
         i += 1;
     }
     None
+}
+
+/// The 0-based (line, col) of the BibTeX entry header `@type{key,` for `key` in `bib`,
+/// or None when absent.
+pub(crate) fn bib_entry_site(bib: &str, key: &str) -> Option<(u32, u32)> {
+    let chars: Vec<char> = bib.chars().collect();
+    let keyc: Vec<char> = key.chars().collect();
+    let i = bib_entry_offset(&chars, &keyc)?;
+    Some(offset_to_line_col(&chars, i))
+}
+
+/// The raw BibTeX entry (`@type{key, … }`) for `key`, brace-balanced so a `{…}` inside a
+/// field value doesn't cut it short; None when the key is absent. A Rust port of the
+/// companion's `bibEntryFor`, used by the LSP hover to show the citation source.
+pub(crate) fn bib_entry_text(bib: &str, key: &str) -> Option<String> {
+    let chars: Vec<char> = bib.chars().collect();
+    let keyc: Vec<char> = key.chars().collect();
+    let start = bib_entry_offset(&chars, &keyc)?;
+    let brace_open = (start..chars.len()).find(|&i| chars[i] == '{')?;
+    let mut depth = 0usize;
+    for i in brace_open..chars.len() {
+        match chars[i] {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(
+                        chars[start..=i]
+                            .iter()
+                            .collect::<String>()
+                            .trim()
+                            .to_string(),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    // Unbalanced .bib: give back what we have (mirrors `bibEntryFor`).
+    Some(chars[start..].iter().collect::<String>().trim().to_string())
 }
 
 fn strip_quotes(s: &str) -> String {
@@ -471,6 +510,25 @@ mod tests {
             Some((1, 0))
         );
         assert_eq!(bib_entry_site("@article{other,}", "smith2020"), None);
+    }
+
+    #[test]
+    fn bib_entry_text_is_brace_balanced() {
+        // A `{…}` inside a field value must not cut the entry short.
+        assert_eq!(
+            bib_entry_text(
+                "@article{smith2020,\n  title = {A {Deep} Study}\n}\ntrailing",
+                "smith2020"
+            )
+            .as_deref(),
+            Some("@article{smith2020,\n  title = {A {Deep} Study}\n}")
+        );
+        assert_eq!(bib_entry_text("@book{other,\n}", "smith2020"), None);
+        // Unbalanced .bib: return what we have rather than nothing.
+        assert_eq!(
+            bib_entry_text("@misc{k1,\n  note = {open", "k1").as_deref(),
+            Some("@misc{k1,\n  note = {open")
+        );
     }
 
     #[test]
