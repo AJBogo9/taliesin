@@ -166,3 +166,29 @@ Adding one is out of scope for v1; the chrome-devtools MCP scenario above is the
 - Any server-side section-ops protocol.
 - A headless-browser CI test harness.
 - The other open deck-audit items (they have already landed; B3-18 is the last).
+
+## Execution addendum (2026-07-21)
+
+Implementation surfaced a dependency the design missed, so the "no render change" non-goal
+above was **superseded** by an owner-approved scope expansion:
+
+- The `{{< input >}}` control rendered with a **line-based** DOM id (`qin-<line>`), which was
+  baked into the block's content-hash `data-block-id`. So an input block's id was **not**
+  position-independent: any edit above shifted it, changing the section's signature and
+  forcing that slide to rebuild — defeating the reconcile for input-bearing slides (and, more
+  broadly, making an input lose DOM/JS state on any edit-above even in a normal doc, an
+  `Update` where a `SetMeta` was expected). The corpus deck's only stateful slide is exactly
+  such an input slide.
+- Fixed at the source: the control id is now derived from the reactive **name**
+  (`qin-<name>`, deduped; line-based fallback only for an anonymous control), restoring the
+  `data-block-id = content hash` invariant. Commit `fix(render): derive {{< input >}} control
+  id from name, not source line`; pins `input_control_id_is_position_independent` +
+  `duplicate_input_names_get_deduped_control_ids`; `reactive_inputs` snapshot updated.
+
+Verification result (chrome-devtools MCP on `corpus/deck.tmd`): a structural edit now
+preserves the exact live DOM nodes of every untouched slide **including the slider slide**
+(confirmed by a JS-expando that cannot come from server HTML), with `data-sourcepos` patched
+(119→123 across a 4-line insert). Exercised across add-above/add-below/remove/retitle/reorder,
+the vertical stack (rebuilds per the top-level ruling; unrelated slides preserved), the
+auto-animate duplicate-title pair, and viewports down to the ~500px browser floor — console
+clean throughout. Full `cargo test` (`-core` + server) + `tsc` + `clippy` green.
