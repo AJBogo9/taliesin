@@ -14,7 +14,12 @@ Categories: `gap` (in-scope capability missing) · `friction` (works but awkward
 **Wanted:** … **Happened:** … **Repro:** … **Disposition:** …
 -->
 
-_None logged yet (scaffolding stage)._
+_No blocking findings yet._
+
+## Progress log (which surfaces produced findings)
+
+- **Task 1 scaffold** clean: book builds (4 pages), draft `problems.tmd` correctly excluded from `build`.
+- **Task 2, ch1 (probability):** authored cleanly, no findings. `definition` numbers chapter-scoped (Definition 1.1) with no config; `@fig-`/`@def-` in-page refs resolve; `check` clean. A "covered" case.
 
 ## Roll-up (filled at Task 9)
 

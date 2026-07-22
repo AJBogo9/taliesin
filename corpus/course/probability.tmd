@@ -1,3 +1,24 @@
 # Probability refresher {#sec-probability}
 
-Stub, expectations and distributions.
+Every model in this course is a statement about a random variable, and almost every
+question we ask about one reduces to a single operation: taking an average. Before we
+fit anything, it is worth pinning down what that average means and why it behaves so
+well.
+
+A distribution assigns weight to the values a random variable can take. @fig-distributions
+shows three densities we return to throughout the course: a broad prior, a sharp
+likelihood, and the posterior that balances them. Reading a density is a matter of
+asking where its mass sits and how tightly it concentrates.
+
+![Three densities that recur throughout the course: a broad prior, a sharp likelihood, and the posterior between them.](distributions.svg){#fig-distributions}
+
+The single number that summarizes where a density sits is its expectation.
+
+::: {.definition #def-expectation}
+The **expectation** of a random variable $X$ with density $p$ is
+$$ \mathbb{E}[X] = \int x\,p(x)\,\mathrm{d}x, $$
+the weighted average of its values, each value weighted by how probable it is.
+:::
+
+By @def-expectation the expectation is linear, and that one property, applied to a
+likelihood, is what the next chapter turns into an estimator.
