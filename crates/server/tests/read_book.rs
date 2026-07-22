@@ -45,3 +45,41 @@ fn read_of_a_book_chapter_resolves_scoped_and_cross_page_refs() {
         "cross-page refs are no longer bare:\n{stdout}"
     );
 }
+
+#[test]
+fn read_of_a_book_directory_projects_every_chapter() {
+    let (ok, stdout, stderr) = run(&["read", &corpus("course")]);
+    assert!(ok, "`read <dir>` should succeed; stderr: {stderr}");
+    assert!(
+        stdout.contains("===== em.tmd (Chapter 3) ====="),
+        "per-page header with chapter:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Theorem 3.1"),
+        "scoped refs in the whole-book read:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Maximum likelihood"),
+        "the mle chapter is present:\n{stdout}"
+    );
+}
+
+#[test]
+fn read_run_on_a_directory_is_rejected() {
+    let (ok, _out, stderr) = run(&["read", "--run", &corpus("course")]);
+    assert!(!ok, "`read --run` on a directory must fail");
+    assert!(
+        stderr.contains("one page at a time"),
+        "it explains why: {stderr}"
+    );
+}
+
+#[test]
+fn read_of_a_non_site_directory_is_rejected_with_guidance() {
+    let (ok, _out, stderr) = run(&["read", &corpus("reader")]);
+    assert!(!ok, "a bare directory (no _site.yml) must fail");
+    assert!(
+        stderr.contains("no _site.yml"),
+        "it points at map/per-page: {stderr}"
+    );
+}

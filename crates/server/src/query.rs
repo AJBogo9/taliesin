@@ -119,9 +119,10 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
         log::error(&crate::serve::bad_format_error(Some(format)));
         return ExitCode::FAILURE;
     }
-    if let Some(msg) = directory_rejection(path, "read projects a single .tmd file") {
-        log::error(&msg);
-        return ExitCode::FAILURE;
+    // A directory that is a site reads as a whole book; a bare directory keeps the
+    // single-file guidance (inside `cmd_read_dir`).
+    if Path::new(path).is_dir() {
+        return cmd_read_dir(path, format, run);
     }
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -191,6 +192,135 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
         print!("{}", doc.body_text_with_js(&js_lines));
     }
     ExitCode::SUCCESS
+}
+
+/// One page's projection in a whole-directory read.
+struct DirPage {
+    rel: String,
+    title: Option<String>,
+    chapter: Option<u32>,
+    text: String,
+}
+
+/// `taliesin read <dir>`: project a whole book/site to text, page by page in chapter/nav
+/// order, each scoped (chapter numbering + cross-page refs) exactly as a single in-book page
+/// read is. Parse-only (whole-book execution is out of scope); `--run` is rejected with a
+/// pointer to per-page `--run`.
+fn cmd_read_dir(path: &str, format: &str, run: bool) -> ExitCode {
+    let dir = Path::new(path);
+    // Only a discoverable site (an `_site.yml`) reads as a whole book; a bare directory
+    // keeps the single-file guidance and points at `map` for the outline.
+    if !dir.join("_site.yml").is_file() {
+        log::error(&format!(
+            "read projects a .tmd file or a site directory, but {path} has no _site.yml. \
+             For a project outline use `taliesin map {path}`; to read one page use \
+             `taliesin read {path}/<page>.tmd`."
+        ));
+        return ExitCode::FAILURE;
+    }
+    if run {
+        log::error(
+            "read --run executes one page at a time; run it on a single .tmd file. A \
+             whole-directory read is parse-only.",
+        );
+        return ExitCode::FAILURE;
+    }
+    let site = taliesin_core::Site::discover_with(dir, taliesin_core::DraftMode::Include);
+    if site.pages.is_empty() {
+        log::error(&format!("no .tmd pages found under {path}"));
+        return ExitCode::FAILURE;
+    }
+    let mut kernel_cells = 0usize;
+    let pages: Vec<DirPage> = site
+        .pages
+        .iter()
+        .filter_map(|page| {
+            let src = std::fs::read_to_string(&page.input).ok()?;
+            let base = page.input.parent().unwrap_or_else(|| Path::new("."));
+            let doc = crate::serve::guarded(|| {
+                let mut d = taliesin_core::render_document_with_includes_scoped(
+                    &src,
+                    base,
+                    site.chapter_for(page),
+                );
+                site.number_chapter(page, &mut d.blocks);
+                site.resolve_cross_refs(&mut d.blocks, &page.url);
+                d
+            })
+            .ok()?;
+            kernel_cells += count_kernel_cells(&doc.blocks);
+            Some(DirPage {
+                rel: page.rel.clone(),
+                title: page.title.clone(),
+                chapter: site.chapter_for(page),
+                text: doc.body_text(),
+            })
+        })
+        .collect();
+    if kernel_cells > 0 {
+        log::warn(&format!(
+            "read does not execute code cells ({kernel_cells} kernel cell{} across the book \
+             projected as source). Use `build` or `preview` to run them.",
+            if kernel_cells == 1 { "" } else { "s" }
+        ));
+    }
+    if format == "json" {
+        print!("{}", dir_json(path, &pages));
+    } else {
+        print!("{}", dir_human(&pages));
+    }
+    ExitCode::SUCCESS
+}
+
+/// The concatenated human projection: each page under a `===== rel (Chapter N) =====`
+/// header (the `(Chapter N)` clause only for a numbered chapter), blank-line separated.
+fn dir_human(pages: &[DirPage]) -> String {
+    let mut out = String::new();
+    for p in pages {
+        match p.chapter {
+            Some(n) => out.push_str(&format!("===== {} (Chapter {n}) =====\n\n", p.rel)),
+            None => out.push_str(&format!("===== {} =====\n\n", p.rel)),
+        }
+        out.push_str(p.text.trim_end());
+        out.push_str("\n\n");
+    }
+    format!("{}\n", out.trim_end())
+}
+
+#[derive(serde::Serialize)]
+struct ReadDir<'a> {
+    path: &'a str,
+    pages: Vec<DirPageJson<'a>>,
+}
+
+#[derive(serde::Serialize)]
+struct DirPageJson<'a> {
+    path: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chapter: Option<u32>,
+    text: &'a str,
+}
+
+/// The machine form of a whole-directory read: `{path, pages:[{path,title,chapter,text}]}`.
+fn dir_json(path: &str, pages: &[DirPage]) -> String {
+    let out = ReadDir {
+        path,
+        pages: pages
+            .iter()
+            .map(|p| DirPageJson {
+                path: &p.rel,
+                title: p.title.as_deref(),
+                chapter: p.chapter,
+                text: &p.text,
+            })
+            .collect(),
+    };
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_string())
+    )
 }
 
 /// The block ids of every `{js}` cell in the document, in document order.
