@@ -253,14 +253,10 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     `58db11d`, which also ran the kernel path). Both agree render + build are deterministic BY DESIGN and
     reproducible cross-machine (single docs byte-identical across separate processes, 9 site builds
     byte-identical, sorted discovery/listings/hover index, `.zip` fixed-1980 timestamp, content-hash
-    block-ids). **AP8-1 shipped 2026-07-22** (this session, branch `worktree-ap8-1-ipykernel-path-scrub`;
-    see "Already shipped"), leaving one build-ready item:
-    - **DET-1 (S, complementary, this session):** a broader end-to-end guard that builds a representative
-      multi-page site (xrefs + listing + search/hover index) twice in separate processes and asserts
-      byte-identical output, so a future unsorted HashMap/HashSet/`read_dir`-to-output cannot silently regress
-      the reproducibility both rounds confirmed. Wider than AP8-1's single-doc pin. `crates/server/tests/`.
-    *NOTE: this item merges two independently-run AP8 rounds (a concurrent-choice collision); during
-    consolidation, dedupe against the audit session's own backlog edit if it files AP8-1 separately.*
+    block-ids). **AP8-1 + DET-1 both shipped 2026-07-22** (branches
+    `worktree-ap8-1-ipykernel-path-scrub` + `worktree-det1-determinism-guard`; see "Already shipped"):
+    **item 15 is complete.** The executed-cell stderr path scrub (AP8-1) and the end-to-end
+    byte-reproducibility guard (DET-1) both landed, so no build-ready item remains here.
 
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
@@ -489,6 +485,15 @@ claim that one of these is "missing"):
   a kernel-gated end-to-end `crates/server/tests/executed_output_reproducible.rs` (build the same warning doc
   twice under `TALIESIN_NO_CACHE=1` → byte-identical, no `ipykernel_` path); mutation-checked both ways.
   Completes item 15 alongside DET-1.
+- **DET-1 reproducibility guard** (item 15, AP8) **shipped 2026-07-22** (branch
+  `worktree-det1-determinism-guard`, local): `crates/server/tests/build_reproducibility.rs` builds a
+  feature-rich **kernel-free** site (listing + categories + Atom feed, cross-page `@thm-`/`@def-` xrefs,
+  8 hover targets, site `url:` → sitemap + OG cards) twice in **separate processes at separate paths**
+  (⇒ different HashMap seeds *and* `read_dir` order) and asserts **every** emitted file is byte-identical
+  (not just `.html`, unlike `parallel_build_determinism.rs`), plus a non-vacuity test that the guarded
+  aggregates (`search-index.js`/`hover-index.js`/`index.xml`/`sitemap.xml`/`llms.txt`/`og/*.png`) are
+  populated. Mutation-checked: deleting the `entries.sort_by` in `Site::build_hover_index` diverges
+  `hover-index.js` and fails it. Lands alongside AP8-1, completing item 15.
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); **DX16 ruled
   skip** (Decided against); **DX17(b)** (headless `{js}`) **shipped 2026-07-22** — `read --run` drives a
   local headless Chrome (`chromiumoxide` 0.9, `default-features = false` so no fetcher/openssl; tokio
