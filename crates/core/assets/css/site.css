@@ -151,7 +151,7 @@
       color-mix(in oklab, var(--tali-accent) 12%, var(--tali-code-bg))); }
   .tali-listing-default .tali-card-noimg { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
   .tali-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
-  .tali-card-date { font: 600 .72rem var(--tali-font-head); color: var(--tali-muted);
+  .tali-card-date { display: block; font: 600 .72rem var(--tali-font-head); color: var(--tali-muted);
     text-transform: uppercase; letter-spacing: .04em; }
   .tali-card-title { font: 600 1.08rem/1.25 var(--tali-font-head); margin: 0;
     transition: color var(--tali-dur) ease; }

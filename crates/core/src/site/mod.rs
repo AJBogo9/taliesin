@@ -1383,15 +1383,12 @@ impl Site {
             }
             _ => String::new(),
         };
+        // A `<time datetime>` (PA-M1) so the card date stays machine-readable; the class keeps
+        // its styling (the CSS targets `.tali-card-date`, not a `<div>`).
         let date = p
             .date
             .as_deref()
-            .map(|d| {
-                format!(
-                    "<div class=\"tali-card-date\">{}</div>",
-                    esc(&crate::render::humanize_date(d))
-                )
-            })
+            .map(|d| crate::render::time_html(d, "tali-card-date"))
             .unwrap_or_default();
         let title = esc(p.title.as_deref().unwrap_or(&p.rel));
         let desc = p

@@ -94,18 +94,46 @@ fn reading_time_scales_with_word_count() {
 }
 
 #[test]
-fn title_block_style_none_keeps_title_metadata_but_drops_visible_block() {
+fn title_block_style_none_injects_a_hidden_h1_but_no_visible_block() {
     let doc = render_document("---\ntitle: \"Blog\"\ntitle-block-style: none\n---\n\nIntro.\n");
     // Metadata title is preserved (drives `<title>`, OpenGraph, nav)...
     assert_eq!(doc.title.as_deref(), Some("Blog"));
-    // ...but no visible title-block header is emitted, only the body.
+    // ...and no VISIBLE title-block header is emitted...
     assert!(
         !doc.blocks.iter().any(|b| b.id == "qmd-title-block"),
-        "expected no title block, got ids: {:?}",
+        "expected no visible title block, got ids: {:?}",
         doc.blocks.iter().map(|b| &b.id).collect::<Vec<_>>()
     );
-    assert_eq!(doc.blocks.len(), 1);
-    assert!(doc.blocks[0].html.contains("Intro."));
+    // ...but a visually-hidden <h1> now carries the page title so a listing/section page has
+    // one `<h1>` for SEO + heading-nav (PA-H2) instead of opening at an H2/H3 card.
+    let sr = doc
+        .blocks
+        .iter()
+        .find(|b| b.id == "qmd-sr-title")
+        .expect("a hidden <h1> should be injected");
+    assert!(
+        sr.html.contains("<h1 class=\"tali-sr-only\"") && sr.html.contains(">Blog</h1>"),
+        "got: {}",
+        sr.html
+    );
+    assert!(doc.blocks.iter().any(|b| b.html.contains("Intro.")));
+}
+
+#[test]
+fn title_block_style_none_does_not_duplicate_an_existing_h1() {
+    // A `hero:` landing (or any page with its own `# Heading`) already has an `<h1>`, so the
+    // hidden-title injection must stay out — one `<h1>` per page.
+    let doc =
+        render_document("---\ntitle: Home\ntitle-block-style: none\n---\n\n# Welcome\n\nHi.\n");
+    assert!(
+        !doc.blocks.iter().any(|b| b.id == "qmd-sr-title"),
+        "must not inject a second h1 when the body already has one"
+    );
+    assert_eq!(
+        doc.blocks.iter().filter(|b| b.html.contains("<h1")).count(),
+        1,
+        "exactly one <h1> per page"
+    );
 }
 
 #[test]
@@ -118,7 +146,8 @@ fn title_block_includes_subtitle_date_and_description() {
     assert!(h.contains("<p class=\"subtitle\">S</p>"), "got: {h}");
     assert!(h.contains("<p class=\"description\">D</p>"), "got: {h}");
     assert!(
-        h.contains("<span>A</span>") && h.contains("<span>15 May 2026</span>"),
+        h.contains("<span>A</span>")
+            && h.contains("<time datetime=\"2026-05-15\">15 May 2026</time>"),
         "got: {h}"
     );
 }

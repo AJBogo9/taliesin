@@ -348,24 +348,23 @@ fn dates_are_humanized_in_the_title_block_and_cards() {
         .nth(1)
         .and_then(|s| s.split("</div>").next())
         .expect("title meta div");
+    // The date is a `<time datetime>` (PA-M1): the ISO is machine-readable in the attribute,
+    // the humanized form is the visible text — the raw ISO must never be the visible text.
     assert!(
-        meta.contains("14 April 2026"),
-        "humanized post date: {meta}"
+        meta.contains("<time datetime=\"2026-04-14\">14 April 2026</time>"),
+        "post date is a <time> with ISO attr + humanized text: {meta}"
     );
-    assert!(
-        !meta.contains("2026-04-14"),
-        "raw ISO leaked into meta: {meta}"
-    );
-    // Listing cards (fourier 2026-05-15, em 2026-04-14).
+    // Listing cards (fourier 2026-05-15, em 2026-04-14): each a `<time class="tali-card-date">`.
     let blog = site.render_page("blog.tmd").expect("blog");
     assert!(
-        blog.contains(">15 May 2026<"),
-        "fourier card date humanized"
+        blog.contains("<time class=\"tali-card-date\" datetime=\"2026-05-15\">15 May 2026</time>"),
+        "fourier card date is a humanized <time>"
     );
-    assert!(blog.contains(">14 April 2026<"), "em card date humanized");
     assert!(
-        !blog.contains("tali-card-date\">2026-"),
-        "raw ISO leaked into a card date"
+        blog.contains(
+            "<time class=\"tali-card-date\" datetime=\"2026-04-14\">14 April 2026</time>"
+        ),
+        "em card date is a humanized <time>"
     );
 }
 

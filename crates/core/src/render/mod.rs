@@ -905,6 +905,29 @@ fn render_internal_impl(
                 cell: None,
             },
         );
+    } else if format == DocFormat::Html
+        && hide_title_block
+        && let Some(t) = title.as_deref().filter(|t| !t.is_empty())
+        && !blocks.iter().any(|b| b.html.contains("<h1"))
+    {
+        // `title-block-style: none` suppresses the *visible* title, but a listing/section/
+        // landing page still needs one `<h1>` for SEO + heading-nav (PA-H2): without it the
+        // outline opens at an H2/H3 card with no page context. Inject a visually-hidden `<h1>`
+        // — but only when the body carries no `<h1>` of its own, so a `hero:` landing (which
+        // renders its own `<h1>`) never gets a duplicate.
+        let mut h1 = String::from("<h1 class=\"tali-sr-only\" data-block-id=\"qmd-sr-title\">");
+        escape_html(t, &mut h1);
+        h1.push_str("</h1>");
+        blocks.insert(
+            0,
+            Block {
+                id: "qmd-sr-title".to_string(),
+                sourcepos: String::new(),
+                source_file: None,
+                html: h1,
+                cell: None,
+            },
+        );
     }
     let theme_css = resolve_theme(theme.as_deref(), base_dir, include_root, &mut warnings);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
@@ -990,6 +1013,27 @@ pub(crate) fn humanize_date(date: &str) -> String {
     date.to_string()
 }
 
+/// A date rendered as a `<time datetime="…">` element (PA-M1): a machine-readable ISO value
+/// in the attribute, the humanized form as the visible text. A plain calendar date gets a
+/// normalized `YYYY-MM-DD` `datetime`; a value carrying a time (or one we can't parse) is
+/// passed through verbatim. `class` is optional (empty ⇒ no class attribute).
+pub fn time_html(raw: &str, class: &str) -> String {
+    let iso = match crate::frontmatter::calendar_date(raw) {
+        Some((y, m, d)) if !raw.contains('T') => format!("{y:04}-{m:02}-{d:02}"),
+        _ => raw.to_string(),
+    };
+    let cls = if class.is_empty() {
+        String::new()
+    } else {
+        format!(" class=\"{}\"", escape_attr(class))
+    };
+    format!(
+        "<time{cls} datetime=\"{}\">{}</time>",
+        escape_attr(&iso),
+        html_escape(&humanize_date(raw))
+    )
+}
+
 /// Build the visible title-block header from front-matter metadata (title +
 /// optional subtitle/description and an author · date meta line). Returns `None`
 /// without a title. Carries `data-block-id` so it lives in the block model.
@@ -1016,11 +1060,10 @@ fn title_block_html(
     let author_span = author
         .filter(|s| !s.is_empty())
         .map(|s| format!("<span>{}</span>", html_escape(s)));
-    // The date is humanized for display ("2026-04-14" → "14 April 2026"); a value the
-    // author wrote that isn't a plain ISO date is shown verbatim (never mangled).
-    let date_span = date
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("<span>{}</span>", html_escape(&humanize_date(s))));
+    // The date is humanized for display ("2026-04-14" → "14 April 2026") inside a
+    // `<time datetime>` so it stays machine-readable; a value that isn't a plain ISO date is
+    // shown verbatim (never mangled).
+    let date_span = date.filter(|s| !s.is_empty()).map(|s| time_html(s, ""));
     // A subtle reading-time estimate ("N min read"), only when the caller supplies one
     // (a dated post). Rides the same muted meta line as author · date.
     let read_span = read_time
