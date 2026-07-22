@@ -563,7 +563,8 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
             ),
         }
     };
-    let chrome = { app.site.lock().page_chrome(page) };
+    // Live preview: no book archive on disk, so no offline-download link (it would 404).
+    let chrome = { app.site.lock().page_chrome(page, false) };
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);

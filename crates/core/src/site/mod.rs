@@ -436,6 +436,36 @@ impl Site {
             .unwrap_or(if self.is_book() { "_book" } else { "_site" })
     }
 
+    /// The filename of the offline download archive a book build emits at its output root
+    /// (a slug of the book/site title, `book.zip` when there is no usable title). Single
+    /// source of truth: the build names the file this, and the topbar links to it, so they
+    /// can never drift.
+    pub fn archive_name(&self) -> String {
+        let title = self
+            .book
+            .as_ref()
+            .and_then(|b| b.title.as_deref())
+            .or(self.config.title.as_deref())
+            .unwrap_or("");
+        let mut slug = String::new();
+        let mut pending_dash = false;
+        for c in title.chars() {
+            if c.is_ascii_alphanumeric() {
+                if pending_dash && !slug.is_empty() {
+                    slug.push('-');
+                }
+                pending_dash = false;
+                slug.push(c.to_ascii_lowercase());
+            } else {
+                pending_dash = true;
+            }
+        }
+        if slug.is_empty() {
+            slug.push_str("book");
+        }
+        format!("{slug}.zip")
+    }
+
     /// Whether the author supplies their own `404.tmd` (output URL `404.html`). When
     /// true the build must NOT clobber it with the built-in not-found template, and
     /// the page is kept out of the Cmd-K search index (a 404 is navigation chrome, not
@@ -526,7 +556,10 @@ impl Site {
     /// Build the chrome (navbar, footer, post-nav) for a page, with links
     /// resolved relative to that page's depth. Shared by the static build and the
     /// live preview so both render identical navigation.
-    pub fn page_chrome(&self, page: &Page) -> SiteCtx {
+    /// `downloads` emits the book topbar's offline-download link (the `<book>.zip` a build
+    /// writes). Only the static build passes `true`: the archive is a build artifact, so a
+    /// live-preview topbar must not link a file that isn't there.
+    pub fn page_chrome(&self, page: &Page, downloads: bool) -> SiteCtx {
         let depth = page.url.matches('/').count(); // links are relative to the page
         let favicon = match &self.config.favicon {
             Some(f) if !f.is_empty() => format!("{}{}", "../".repeat(depth), f),
@@ -593,7 +626,7 @@ impl Site {
             } else {
                 self.listing_backlink_html(page, depth)
             },
-            book_sidebar: book.then(|| self.sidebar_html(page, depth)),
+            book_sidebar: book.then(|| self.sidebar_html(page, depth, downloads)),
             wide: page.page_layout.as_deref() == Some("full"),
             includes,
             favicon,
@@ -653,7 +686,8 @@ impl Site {
         doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
-        let ctx = self.page_chrome(page);
+        // Inline single-file page build: no `_assets/`, and no book archive alongside it.
+        let ctx = self.page_chrome(page, false);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
         (rewrite_qmd_links(&html), warnings)
@@ -670,7 +704,9 @@ impl Site {
         doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
-        let ctx = self.page_chrome(page);
+        // The multi-page build path: a book emits `<book>.zip` at its output root, so this
+        // is the one place the offline-download link is wired.
+        let ctx = self.page_chrome(page, self.is_book());
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
         (rewrite_qmd_links(&html), warnings)

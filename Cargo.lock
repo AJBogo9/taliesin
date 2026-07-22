@@ -2177,7 +2177,9 @@ name = "taliesin-server"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "crc32fast",
  "dialoguer",
+ "flate2",
  "futures-util",
  "jupyter-protocol",
  "jupyter-zmq-client",

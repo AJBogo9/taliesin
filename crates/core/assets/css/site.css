@@ -59,6 +59,13 @@
   .tali-nav-settings:hover,
   .tali-nav-settings[aria-expanded="true"] { color: var(--tali-fg); background: var(--tali-code-bg); }
   .tali-nav-settings svg { display: block; }
+  /* offline-download link in the book topbar: the same subtle icon-button look as the gear */
+  .tali-book-download { display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; padding: 0; border-radius: var(--tali-radius-md);
+    color: var(--tali-muted); text-decoration: none;
+    transition: color var(--tali-dur) ease, background var(--tali-dur) ease; }
+  .tali-book-download:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
+  .tali-book-download svg { display: block; }
   /* visible search control (navbar + book sidebar) that opens the Cmd-K palette */
   .tali-search-btn { display: inline-flex; align-items: center; gap: .4rem;
     background: var(--tali-code-bg); color: var(--tali-muted);
@@ -332,7 +339,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   .tali-nav-active, .tali-book-active, a[aria-current="page"] {
     text-decoration: underline; text-underline-offset: 3px;
   }
-  .tali-search-btn, .tali-nav-settings, .tali-nav-burger, .tali-book-drawer-btn { border: 1px solid CanvasText; }
+  .tali-search-btn, .tali-nav-settings, .tali-nav-burger, .tali-book-drawer-btn, .tali-book-download { border: 1px solid CanvasText; }
 }
 
 /* Cross-reference backlinks: the quiet "Referenced by" line injected after a target

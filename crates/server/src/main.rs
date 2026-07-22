@@ -33,6 +33,7 @@ mod serve_site;
 #[cfg(test)]
 mod testutil;
 mod warm_pool;
+mod zip;
 
 use std::process::ExitCode;
 

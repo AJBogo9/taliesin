@@ -1805,8 +1805,22 @@ async fn build_site_async(
     // an intentional download — skipping it would leave a dead link on a green build.
     let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
+    // Offline "read this book" download: with every file now on disk (and stale ones swept),
+    // pack the whole book output into `<book>.zip` at its root, so a reader can grab one file
+    // and read it offline. The built tree is already self-contained (framework CSS/JS/fonts
+    // inlined or root-relative), so this is a delivery wrapper, not a new output format; the
+    // topbar links it with a plain `<a download>`, which fits the no-server-at-read-time model.
+    let mut zip_note = String::new();
+    if site.is_book() {
+        let name = site.archive_name();
+        match write_book_archive(&out, &name) {
+            Ok(bytes) => zip_note = format!("  ·  {name} ({} KB)", bytes.div_ceil(1024)),
+            Err(e) => log::warn(&format!("cannot write {name}: {e}")),
+        }
+    }
+
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{seo_note}{}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{seo_note}{zip_note}{}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
@@ -1826,6 +1840,43 @@ async fn build_site_async(
         ok: !strict_fail,
         diagnostics,
     }
+}
+
+/// Pack every file under `out` (except the archive itself) into `out/<name>` as a ZIP, for
+/// the book's offline-download link. Entries are sorted so a rebuild of an unchanged book
+/// produces a byte-identical archive (the directory walk order is filesystem-dependent).
+/// Returns the archive's size in bytes.
+fn write_book_archive(out: &Path, name: &str) -> std::io::Result<u64> {
+    let archive_path = out.join(name);
+    let mut entries: Vec<crate::zip::ZipEntry> = Vec::new();
+    let mut stack = vec![out.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir)? {
+            let path = e?.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            // Never pack the archive into itself (a prior build's copy the stale-sweep
+            // already removed, but be defensive).
+            if path == archive_path {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(out)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            entries.push(crate::zip::ZipEntry {
+                name: rel,
+                data: std::fs::read(&path)?,
+            });
+        }
+    }
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    let bytes = crate::zip::build_zip(&entries);
+    std::fs::write(&archive_path, &bytes)?;
+    Ok(bytes.len() as u64)
 }
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
