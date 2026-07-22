@@ -15,3 +15,13 @@ a chapter, a line-by-line **code walkthrough** of the EM update, and an executab
 the whole authoring surface a course needs, in one project.
 
 [Open the course &rarr;](gallery/course/)
+
+## Tarn: a library documentation site
+
+The docs for a small dataframe library. A numbered **book** split into a Guide and an
+API **Reference**, with **tabbed** install and usage panels (per package-manager and
+per-OS), a line-by-line **code walkthrough** of the core query, version and deprecation
+callouts, and full-text **Cmd-K search** that spans every page: the whole shape of a real
+open-source documentation site.
+
+[Open the docs &rarr;](gallery/tarn/)

@@ -80,6 +80,25 @@ target dropped. The pilot found this for `@thm-`/`@sec-` in a course; seeing it 
 and strengthens the existing backlog item (book-aware `read` with resolved refs). Logged
 here as corroboration, folded into the same backlog entry, not double-counted.
 
+### F-04, single-file `check` false-positives a gallery card's mount link as broken  [friction · P3]
+
+**Wanted:** Edit `site/gallery.tmd` (a card linking to a mounted sub-project at
+`gallery/tarn/`) and have the link recognized as valid, the way it resolves at serve/build
+time.
+**Happened:** the editor companion's *single-file* `check` reports
+`gallery.tmd:17: broken link: ``gallery/course/`` (no such file under the document
+directory)` for each gallery card, because single-file mode has no `_site.yml`/`mounts:`
+context and cannot know the mount exists. The authoritative **whole-site** check is clean:
+`taliesin check site` reports "no problems found", and `build site` succeeds; the shipped
+build is unaffected. It is inherent to single-file checking (which also cannot validate any
+cross-*page* link), and the course pilot's card has the same behavior.
+**Repro:** in an editor running the companion's per-file `check`, open a site page that
+links into a `mounts:` prefix; the link is flagged broken though `check site` passes.
+**Disposition:** backlog (P3). In-scope but low priority: the correct whole-site check
+passes, so this is an editor-DX papercut, not a build defect. Candidate: teach the
+single-file checker to treat an unknown-prefix link that matches a `mounts:` entry of an
+enclosing site as valid, or suppress cross-boundary link errors in single-file mode.
+
 ## Progress log (which surfaces produced findings)
 
 - **Task 1 scaffold** clean: the book builds (6 pages + `search-index.js`), all 24 corpus
@@ -113,6 +132,27 @@ here as corroboration, folded into the same backlog entry, not double-counted.
   guide and the reference** (`quickstart.html` + `api-frame.html` entries) and includes the
   CLI tab's `tarn query sales.csv`. This is the demand-probe's core positive result: the
   tabset × walkthrough × guide→reference-links × cross-book-search *combination* is solid.
+- **Task 6, pin test:** `crates/core/tests/tarn.rs` (5 tests) passes; full core suite green
+  (619 lib + 24 corpus invariants + the 5 new pins, 0 failures); clippy `-D warnings` clean
+  on the test. Pins the tabset lowering (2 tabsets → 2 tablists / 6 panels), the search
+  index spanning guide + reference + tabset content, the guide→reference `.tmd#anchor`
+  rewrite, the chapter-scoped cross-page refs, and the figure-in / heading-out hover index.
+- **Task 7, gallery:** mounted the docs at `/gallery/tarn` (additive `mounts:` entry) + a
+  second `site/gallery.tmd` card; the static build wires the mount with its own `build …
+  --out` step (mirrors the docs books + the course). `check site` clean; `build site` +
+  `build corpus/tarn --out …/gallery/tarn` both succeed, mount artifact offline-complete
+  (`index.html` + `search-index.js`). **Browser-verified (chrome-devtools):** the gallery
+  page shows **both** cards; the mounted book renders with chapter numbering ("1
+  Installation"), a "Referenced by → Quickstart" back-link, and prev/next pagination;
+  **tabsets are interactive** (clicking "conda" swapped the panel to `conda install -c
+  conda-forge tarn`, the two tabsets switch independently); **Cmd-K search spans pages**
+  ("collect" returned highlighted hits from Quickstart, Concepts, and The Frame type, each
+  with a section snippet); **zero console errors**. Verified **dark theme at 390 px mobile**
+  on the concepts page: the hand-authored `dataflow.svg` is legible on dark, "Figure 3.1"
+  numbered, the callout renders, layout responsive. Coverage note: I screenshot-verified
+  default light/desktop + dark/mobile (the risk-bearing combinations, incl. the new SVG
+  asset); I did not exhaustively shoot all three viewports × both themes. Findings: **F-04**
+  (single-file `check` false-positives the card's mount link; `check site` is clean).
 
 ## Roll-up (filled at Task 8)
 - gaps: … · friction: … · interaction-bugs: … · correctly-refused: …
