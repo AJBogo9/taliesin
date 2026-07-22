@@ -55,10 +55,31 @@ struct SiteApp {
     loopback_bound: bool,
 }
 
+impl SiteApp {
+    /// The project a build message / request targets: the root (key `""`) or a mount by
+    /// its prefix. `None` if a stale key names a mount that is no longer present.
+    fn project(&self, key: &ProjectKey) -> Option<&Arc<Project>> {
+        if key.0.is_empty() {
+            Some(&self.root)
+        } else {
+            self.mounts
+                .iter()
+                .find(|m| m.prefix == key.0)
+                .map(|m| &m.project)
+        }
+    }
+}
+
+/// A project's routing + build identity: `""` for the root site, otherwise the mount
+/// prefix (e.g. `gallery/course`). The builder keys each project's [`ExecPool`] by it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+struct ProjectKey(String);
+
 /// A servable project: the root site or a mounted sub-project. Owns the per-project live
 /// state the builder and router act on — the discovered [`Site`], plus the live per-page
 /// block state + broadcast channels, created lazily on first visit.
 struct Project {
+    key: ProjectKey,
     dir: PathBuf,
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
@@ -93,8 +114,8 @@ fn match_mount<'a>(prefixes: &[String], path: &'a str) -> Option<(usize, &'a str
 /// A job for the executor worker: rebuild a page, or restart its kernel first
 /// (the dev-menu "Restart kernel" action) then rebuild.
 enum BuildMsg {
-    Build(String),
-    Restart(String),
+    Build(ProjectKey, String),
+    Restart(ProjectKey, String),
 }
 
 struct PageState {
@@ -191,8 +212,9 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
             );
             let msite = Site::discover_with(&mroot, taliesin_core::DraftMode::Include);
             Some(MountPoint {
-                prefix: m.at,
+                prefix: m.at.clone(),
                 project: Arc::new(Project {
+                    key: ProjectKey(m.at),
                     dir: mroot,
                     site: Mutex::new(msite),
                     pages: Mutex::new(HashMap::new()),
@@ -213,6 +235,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let (build_tx, build_rx) = mpsc::unbounded_channel();
     let app = Arc::new(SiteApp {
         root: Arc::new(Project {
+            key: ProjectKey(String::new()),
             dir: root.clone(),
             site: Mutex::new(site),
             pages: Mutex::new(HashMap::new()),
@@ -522,7 +545,9 @@ fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
             .lock()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
-        let _ = app.build_tx.send(BuildMsg::Build(rel.clone()));
+        let _ = app
+            .build_tx
+            .send(BuildMsg::Build(ProjectKey::default(), rel.clone()));
     }
     site_page_html(app, page)
 }
@@ -805,7 +830,9 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
         (full_render_json(&ps.doc), ps.tx.subscribe(), created)
     };
     if created {
-        let _ = app.build_tx.send(BuildMsg::Build(rel.clone()));
+        let _ = app
+            .build_tx
+            .send(BuildMsg::Build(ProjectKey::default(), rel.clone()));
     }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
@@ -834,7 +861,8 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
                 Some(Ok(Message::Text(t))) => {
                     // The dev menu's "Restart kernel" action restarts this page's kernel.
                     if is_restart_kernel(t.as_str()) {
-                        let _ = app.build_tx.send(BuildMsg::Restart(rel.clone()));
+                        let _ = app.build_tx
+                            .send(BuildMsg::Restart(ProjectKey::default(), rel.clone()));
                     } else {
                         handle_client_msg(t.as_str());
                     }
@@ -895,37 +923,65 @@ fn op_json(op: &BlockOp, generation: u64) -> String {
 
 fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
-        // Boot one process-wide warm pool of Python kernels so the first edit on any
-        // page is near-instant. Owned by this builder task: it lives for the server's
-        // lifetime and is dropped when the build channel closes (server shutdown),
-        // which kills the forkserver daemon + idle kernels. If `TALIESIN_PYTHON` is
-        // unset or the forkserver can't boot, `WarmPool::new` returns an inert pool
-        // and every page cold-starts — no regression.
-        // Resolve the project's interpreters once (from _site.yml python:/r:, a project
-        // .venv, env, or default) against the site root, so every page executor and the
-        // warm pool agree on which interpreter runs. Read the config under the site lock.
-        let (py, r) = {
-            let site = app.root.site.lock();
-            (
-                crate::interpreter::resolve_python(site.config.python.as_deref(), &app.root.dir),
-                crate::interpreter::resolve_r(site.config.r.as_deref(), &app.root.dir),
-            )
-        };
-        let warm_pool = crate::warm_pool::warm_pool_for_preview(&py).await;
-        let mut pool = ExecPool::new(app.root.dir.join("_freeze"), warm_pool, py, r);
+        // One ExecPool per project (root + each mount), so a mounted page executes on its
+        // OWN _freeze + interpreters. `exec_pool.rs` is used verbatim, once per project.
+        // Resolve each project's interpreters from ITS OWN _site.yml/root (python:/r:, a
+        // project .venv, env, or default). Boot a single forkserver warm pool for the root's
+        // Python and share it only with projects whose interpreter matches (a mismatched
+        // mount cold-starts — no forkserver-per-mount). The pools + warm pool are owned by
+        // this task and dropped on channel close (server shutdown), which kills every
+        // forkserver daemon + idle kernel. If `TALIESIN_PYTHON` is unset or the forkserver
+        // can't boot, `warm_pool_for_preview` is inert and every page cold-starts.
+        let mut specs: Vec<(
+            Arc<Project>,
+            crate::interpreter::Resolved,
+            crate::interpreter::Resolved,
+        )> = Vec::new();
+        for project in std::iter::once(&app.root).chain(app.mounts.iter().map(|m| &m.project)) {
+            let (py, r) = {
+                let s = project.site.lock();
+                (
+                    crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir),
+                    crate::interpreter::resolve_r(s.config.r.as_deref(), &project.dir),
+                )
+            };
+            specs.push((project.clone(), py, r));
+        }
+        let root_py = specs[0].1.clone();
+        let warm_pool = crate::warm_pool::warm_pool_for_preview(&root_py).await;
+        let mut pools: HashMap<ProjectKey, ExecPool> = HashMap::new();
+        for (project, py, r) in &specs {
+            let wp = if py.path == root_py.path {
+                warm_pool.clone()
+            } else {
+                None
+            };
+            pools.insert(
+                project.key.clone(),
+                ExecPool::new(project.dir.join("_freeze"), wp, py.clone(), r.clone()),
+            );
+        }
         while let Some(msg) = build_rx.recv().await {
             match msg {
-                BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut pool).await,
-                BuildMsg::Restart(rel) => {
-                    // Drop + respawn this page's kernel, then rebuild (re-executes
-                    // every cell against the fresh kernel).
-                    pool.restart(&rel);
-                    build_page_guarded(&app, &rel, &mut pool).await;
-                    // A fresh kernel means fresh outputs — including any `ojs_define`
-                    // values. Reload the page so the `{js}` cells re-bind to the
-                    // fresh `qmd-define` blobs from a clean module scope.
-                    if let Some(ps) = app.root.pages.lock().get(&rel) {
-                        let _ = ps.tx.send(protocol::reload());
+                BuildMsg::Build(key, rel) => {
+                    let project = app.project(&key).cloned();
+                    if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
+                        build_page_guarded(&project, &rel, pool).await;
+                    }
+                }
+                BuildMsg::Restart(key, rel) => {
+                    // Drop + respawn this page's kernel, then rebuild (re-executes every
+                    // cell against the fresh kernel).
+                    let project = app.project(&key).cloned();
+                    if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
+                        pool.restart(&rel);
+                        build_page_guarded(&project, &rel, pool).await;
+                        // A fresh kernel means fresh outputs — including any `ojs_define`
+                        // values. Reload the page so the `{js}` cells re-bind to the fresh
+                        // `qmd-define` blobs from a clean module scope.
+                        if let Some(ps) = project.pages.lock().get(&rel) {
+                            let _ = ps.tx.send(protocol::reload());
+                        }
                     }
                 }
             }
@@ -937,9 +993,9 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
 /// page can't kill the shared builder task (which would silently stop hot-reload
 /// for *every* page). The panic is logged and surfaced to that page's clients;
 /// the next good save recovers.
-async fn build_page_guarded(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
+async fn build_page_guarded(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
     use futures_util::FutureExt;
-    let outcome = std::panic::AssertUnwindSafe(build_page(app, rel, pool))
+    let outcome = std::panic::AssertUnwindSafe(build_page(project, rel, pool))
         .catch_unwind()
         .await;
     if let Err(payload) = outcome {
@@ -947,7 +1003,7 @@ async fn build_page_guarded(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         crate::log::error(&format!(
             "render panicked on {rel} (preview kept alive): {msg}"
         ));
-        let mut pages = app.root.pages.lock();
+        let mut pages = project.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
             let _ = ps
@@ -959,13 +1015,13 @@ async fn build_page_guarded(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
 
 /// Re-render a page's markdown, run its code cells (on the page's own executor),
 /// then diff against its live blocks and broadcast the changes to its subscribers.
-async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
-    let page = { app.root.site.lock().page(rel).cloned() };
+async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
+    let page = { project.site.lock().page(rel).cloned() };
     let Some(page) = page else {
         return;
     };
     let Ok(src) = std::fs::read_to_string(&page.input) else {
-        let mut pages = app.root.pages.lock();
+        let mut pages = project.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
             let _ = ps.tx.send(protocol::error(&format!(
@@ -976,7 +1032,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         return;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let chapter = app.root.site.lock().chapter_for(&page);
+    let chapter = project.site.lock().chapter_for(&page);
     let mut doc = taliesin_core::render_document_with_includes_scoped(&src, &base, chapter);
 
     let exec = pool.get(rel, &base);
@@ -985,7 +1041,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     // The page's `Sender` is created on first visit (before this build is queued), so
     // it's normally present; if it isn't yet, we just don't stream this pass.
     {
-        let tx = app.root.pages.lock().get(rel).map(|ps| ps.tx.clone());
+        let tx = project.pages.lock().get(rel).map(|ps| ps.tx.clone());
         let sink: crate::exec::ProgressSink = tx.map(|tx| {
             std::sync::Arc::new(move |m: String| {
                 let _ = tx.send(m);
@@ -1008,7 +1064,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     // whole site, so it needs the site lock.
     let mut warnings = doc.warnings.clone();
     let (toc, tab_title) = {
-        let site = app.root.site.lock();
+        let site = project.site.lock();
         site.finish_blocks(&page, &mut doc.blocks, &mut warnings);
         (
             site.page_toc(&page, doc.toc_explicit, &doc.blocks),
@@ -1022,7 +1078,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
     // re-renders the whole site (~27 ms), so scope the site lock tightly.
     {
-        let site = app.root.site.lock();
+        let site = project.site.lock();
         diags.extend(crate::preview_diag::cross_page_diagnostics(&site, rel));
         diags.extend(crate::preview_diag::site_config_diagnostics(&site));
     }
@@ -1034,7 +1090,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         diags.push(d);
     }
 
-    let mut pages = app.root.pages.lock();
+    let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
         doc: PageDoc::default(),
         tx: broadcast::channel(256).0,
@@ -1435,7 +1491,9 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         }
     }
     for rel in to_rebuild {
-        let _ = app.build_tx.send(BuildMsg::Build(rel));
+        let _ = app
+            .build_tx
+            .send(BuildMsg::Build(ProjectKey::default(), rel));
     }
 }
 
