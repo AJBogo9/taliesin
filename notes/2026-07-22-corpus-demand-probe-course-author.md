@@ -64,6 +64,35 @@ next E-step.def m_step(x, resp): ..."), losing the step/code structure.
 **Disposition:** backlog (P3). In-scope polish of the `read` projection for structured
 blocks; HTML renders both correctly, so this is projection-only.
 
+### F-04, a mounted sub-project's code cells do not execute in the host site preview  [gap · P3]
+
+**Wanted:** Previewing the marketing site (`preview site`) and opening the mounted course
+(`/gallery/course/em.html`) should show the `{python}` cell's executed output, matching
+the standalone build/preview of the course, so the live gallery exhibit is faithful.
+**Happened:** Under `preview site` (kernel available, warm-pool booted), the mounted page
+renders the `{python}` cell as **bare source**: no output, no output element, and **no
+"kernel unavailable" notice** (polled ~6s after reload). Mounts are served for navigation
+("mount is preview-only") without a live exec channel, so their cells never run. The
+static `build` of the mount (`build corpus/course --out .../gallery/course`) DOES execute
+the cell (`[1.7 1.3] -> total 3.0`), so the **deployed** gallery is correct; only the live
+**preview** of the mount is degraded.
+**Repro:** `preview <site-with-a-mount-containing-a {python} cell>`; open the mounted page;
+the cell shows source only, silently.
+**Disposition:** backlog (P3). In-scope. The shipped/static gallery is unaffected. Candidate:
+give mounted sub-projects a live exec channel in preview, or at minimum surface an exec/kernel
+state so a mounted computational cell does not look like dead source. Low priority because the
+build artifact is correct.
+
+### Observation (tangential, for the OFF-1 workstream, not a course-persona finding)
+
+Building the marketing site emits OFF-1 offline warnings on each page's own **canonical/OG
+self-URL** (`https://taliesin.dev/<page>.html`), including the new `gallery.tmd`. The URL is
+**not present in the built page** (grep of `gallery.html` finds nothing), so the warning
+appears to fire on canonical/OG metadata rather than a view-time fetch. Every site page
+already gets this; the gallery page merely inherits it. The `esm.sh` three.js warnings on
+`index.tmd` are legitimate (real CDN dep). Flagged for whoever owns OFF-1; not diagnosed
+further here (out of this pilot's scope).
+
 ## Progress log (which surfaces produced findings)
 
 - **Task 1 scaffold** clean: book builds (4 pages), draft `problems.tmd` correctly excluded from `build`.
@@ -72,6 +101,8 @@ blocks; HTML renders both correctly, so this is projection-only.
 - **Task 4, lecture deck:** builds clean as a standalone deck (title slide + 3 content slides, ARIA roles, `. . .` fragment, `.incremental` list, footer). No findings.
 - **Task 5, ch3 (EM):** the heavy HTML stack all WORKS: Theorem 3.1; collapsible `<details>` proof (`.tali-proof-collapse`); `{{< embed lecture.tmd >}}` → iframe + deck built beside the page; `.code-walkthrough` with `data-cw-lines` 2/3/4; `{python}` cell executes with the venv kernel (`[1.7 1.3] -> total 3.0`); all cross-page refs resolve (Theorem 2.1 / Chapter 2 / Definition 1.1). Kernel-unavailable degradation is documented behavior, not a finding. The `read` probe surfaced **F-02** (book-chapter read loses cross-refs/numbering) and **F-03** (read projection of embed + walkthrough is lossy).
 - **Task 6, draft appendix (problems):** draft handling correct: `build` drops `problems.tmd`, no `problems.html`, 0 dangling nav links, chapter numbers intact (1.1/2.1/2.2/3.1), `check` clean. Cross-refs from the appendix target valid anchors. No findings (preview-shows-badged-draft deferred to the Task 8 browser pass).
+- **Task 7, pin test:** `crates/core/tests/course.rs` (4 tests) passes; full core suite green; clippy `-D warnings` clean on the test.
+- **Task 8, gallery:** mounted the course at `/gallery/course` (additive `mounts:` entry) + a `site/gallery.tmd` exhibit card + nav item; static build wires the mount with its own `build ... --out` step (mirrors the docs books). **Browser-verified (dark, desktop):** the gallery page renders + links resolve; the mounted course renders with chapter numbering, cross-page refs + "Referenced by" back-links, the Definition/Theorem boxes, the authored SVG figure, the collapsible proof, the **embedded lecture deck** (live, 1/4 with nav), the code-walkthrough (sticky panel + line-2 highlight + scroll scenes), and prev/next showing the draft appendix ("4 Problem set") in preview. **Zero console errors.** Findings: **F-04** (mount cells don't execute in preview) + an OFF-1 canonical-URL observation.
 
 ## Roll-up (filled at Task 9)
 

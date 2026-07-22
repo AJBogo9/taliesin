@@ -8,16 +8,19 @@ url: "https://taliesin.dev"
 favicon: favicon.svg
 toc: false
 
-# Serve the two sibling docs books so the nav links resolve live in `preview`.
+# Serve the two sibling docs books + the gallery exhibits so the nav links resolve live
+# in `preview` (the static `build` wires each with its own `build ... --out` step).
 mounts:
   docs/guide: ../docs/guide
   docs/internals: ../docs/internals
+  gallery/course: ../corpus/course
 
 nav:
   left:
     - { text: "Features", href: features.tmd }
     - { text: "Document types", href: formats.tmd }
     - { text: "See it live", href: showcase.tmd }
+    - { text: "Gallery", href: gallery.tmd }
     - { text: "Guide", href: "docs/guide/" }
     - { text: "Internals", href: "docs/internals/" }
   right:
