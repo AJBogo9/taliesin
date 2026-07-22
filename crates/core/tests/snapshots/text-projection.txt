@@ -19,3 +19,16 @@ $$ E = mc^2 $$
 x = 1
 print(x)
 ```
+
+### Structured blocks
+
+The projection keeps these apart instead of fusing them:
+
+- name: the column to reference.
+- Returns: an Expr you can compare and combine.
+
+[input] step size = 0.12
+
+The landscape. Descent begins high on the steep left wall of the valley.
+
+Which way is downhill. The negative gradient points almost straight across.

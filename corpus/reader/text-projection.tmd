@@ -23,3 +23,22 @@ $$E = mc^2$$
 x = 1
 print(x)
 ```
+
+## Structured blocks {#sec-structured}
+
+The projection keeps these apart instead of fusing them:
+
+- **name**: the column to reference.
+- **Returns**: an `Expr` you can compare and combine.
+
+{{< input name="lr" type="slider" min="0.01" max="0.35" step="0.01" value="0.12" label="step size" >}}
+
+::: {.scrolly}
+::: {.step}
+The landscape. Descent begins high on the steep left wall of the valley.
+:::
+
+::: {.step}
+Which way is downhill. The negative gradient points almost straight across.
+:::
+:::

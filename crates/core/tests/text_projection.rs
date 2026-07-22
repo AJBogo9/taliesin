@@ -67,4 +67,23 @@ fn text_projection_of_a_rich_doc_is_pinned() {
         actual.contains("```python"),
         "code cell fenced with its language"
     );
+
+    // Structured blocks stay separated (item 19): list items on their own lines, an input
+    // control as `label = value`, and scrolly steps as distinct paragraphs.
+    assert!(
+        actual.contains("- name: the column to reference."),
+        "list item on its own line"
+    );
+    assert!(
+        !actual.contains("reference.Returns"),
+        "list items must not fuse"
+    );
+    assert!(
+        actual.contains("[input] step size = 0.12"),
+        "input control as label = value"
+    );
+    assert!(
+        !actual.contains("wall.Which"),
+        "scrolly steps must not merge"
+    );
 }
