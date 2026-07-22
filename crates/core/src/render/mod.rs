@@ -165,10 +165,11 @@ pub fn render_document_with_includes_scoped(
 }
 
 /// Like [`render_document_with_includes_scoped`] but with a book-level `theorems:`
-/// fallback: the site book path passes `Some`, so a chapter with no `theorems:` block of
-/// its own inherits the book-wide numbering policy. Everything else passes `None` and is
-/// byte-identical to [`render_document_with_includes_scoped`].
-pub(crate) fn render_document_scoped_with_theorems(
+/// fallback: the site book path passes `Some` (from `_site.yml`), so a chapter with no
+/// `theorems:` block of its own inherits the book-wide numbering policy. Everything else
+/// passes `None` and is byte-identical to [`render_document_with_includes_scoped`]. Public
+/// so the server's site build + live preview render each page with the book policy.
+pub fn render_document_scoped_with_theorems(
     src: &str,
     base_dir: &Path,
     chapter: Option<u32>,

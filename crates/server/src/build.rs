@@ -1031,8 +1031,12 @@ async fn build_one_page(
         };
     };
     let base = page.input.parent().unwrap_or(root);
-    let mut doc =
-        taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+    let mut doc = taliesin_core::render_document_scoped_with_theorems(
+        &src,
+        base,
+        site.chapter_for(page),
+        site.config.theorems.as_ref(),
+    );
     let mut problems = 0usize;
     // Malformed front-matter YAML: the lenient line-parser silently mis-extracts fields, so
     // the page builds with the wrong title/format. `check` reports it; the site build did not.

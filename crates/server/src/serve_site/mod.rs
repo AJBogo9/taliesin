@@ -568,8 +568,12 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         };
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
-    let mut doc =
-        taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+    let mut doc = taliesin_core::render_document_scoped_with_theorems(
+        &src,
+        base,
+        site.chapter_for(page),
+        site.config.theorems.as_ref(),
+    );
     let toc = site.page_toc(page, doc.toc_explicit, &doc.blocks);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
     // listing/about expansion, post decoration) so preview matches the build.
@@ -1048,8 +1052,16 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
         return;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let chapter = project.site.lock().chapter_for(&page);
-    let mut doc = taliesin_core::render_document_with_includes_scoped(&src, &base, chapter);
+    let (chapter, book_theorems) = {
+        let site = project.site.lock();
+        (site.chapter_for(&page), site.config.theorems.clone())
+    };
+    let mut doc = taliesin_core::render_document_scoped_with_theorems(
+        &src,
+        &base,
+        chapter,
+        book_theorems.as_ref(),
+    );
 
     let exec = pool.get(rel, &base);
     // Stream this page's code-cell execution progress (`build-state`) onto its own
