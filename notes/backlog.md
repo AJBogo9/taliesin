@@ -187,10 +187,8 @@ the medium/low band below (OFF-2 mermaid-offline, item 13).
     marketing-site exhibit) was authored to probe where a book-length computational project meets friction.
     The *stacked* HTML interactions (book × shared-theorem-counter × chapter-scope × cross-page refs ×
     deck-embed-in-chapter × code-walkthrough × `{python}` cell × draft-appendix) ALL work — 0 interaction-bugs.
-    The remaining findings sit on secondary surfaces (F-02 book-scoped `read` shipped 2026-07-22, see "Already
-    shipped"):
-    - **F-01 (friction, P3):** `theorems:` is not a book-level (`_site.yml`) key — it warns/errors and is ignored;
-      a book-wide theorem policy must be repeated per chapter. Candidate: recognize `theorems:` at book level.
+    The remaining findings sit on secondary surfaces (F-01 book-level `theorems:` and F-02 book-scoped `read`
+    both shipped 2026-07-22, see "Already shipped"):
     - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
       `.code-walkthrough` (steps + code concatenate) is lossy.
 
@@ -443,6 +441,22 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
+- **Book-level `theorems:`** (was item 16 F-01; shipped 2026-07-23, landed to local `main`, unpushed): a
+  book-wide theorem-numbering policy in `_site.yml` (`theorems:`), inherited by any chapter with no
+  `theorems:` block of its own and overridden wholesale by one that declares its own. `theorems` is now a
+  recognized `_site.yml` key (`NATIVE_KEYS`), parsed into `SiteConfig.theorems: Option<TheoremConfig>` and
+  value-validated via the shared `validate_theorem_values`. Render carries it through a new public
+  `render_document_scoped_with_theorems(src, base, chapter, book_theorems)` (the merge:
+  `theorem_config_with_fallback` in `fm_extract.rs` + a book-defaulted init in `render_internal_impl`, so a
+  chapter that starts straight into `#` with no front-matter still inherits). Threaded through EVERY site
+  render path: core `Site::render_page`/discovery/`llms`/`search::page_fragment` AND the server's site build
+  (`build.rs`) + live preview + per-page search refresh (`serve_site`, the paths that actually bypass
+  `Site::render_page`). `TheoremConfig` is now a public opaque type; the `_site.yml` schema gained a shared
+  `theorems_schema()`. Pinned by `corpus/theorem-book/` + `crates/core/tests/book_theorems.rs` (alpha
+  inherits `numbered:false` -> empty number span; beta overrides -> "Theorem 2.1") + render/config unit
+  tests; existing books (no `_site.yml theorems:`) render byte-identically (the `None` path is inert, no
+  snapshot churn). Whole-config override, not per-field (YAGNI). Spec/plan:
+  `docs/superpowers/{specs,plans}/2026-07-22-book-level-theorems*`.
 - **Live-executor mounts (F-04 full fix)** (was item 16 F-04; shipped 2026-07-22, landed to local `main`,
   unpushed): a mounted sub-project now serves through the **same live per-page path** as the root, so its
   `{python}`/`{r}` cells execute live in the host `preview` (not only in the static `build`). Engine is all
