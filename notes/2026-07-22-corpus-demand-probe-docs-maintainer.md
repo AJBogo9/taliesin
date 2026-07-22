@@ -46,6 +46,11 @@ a trivial workaround.
   tarn`/`conda install`/`brew install tarn`/`scoop install tarn` are indexed as plain
   text): tabset-hidden content is fully offline-complete and searchable, no lazy gap. One
   finding: **F-01** (`powershell` unhighlighted).
+- **Task 4, ch3 (concepts):** authored cleanly, no findings. `@fig-dataflow` numbers
+  chapter-scoped (Figure 3.1) with no config; both callout kinds (`callout-note` with a
+  `title=`, bare `callout-tip`) render; the hand-authored `dataflow.svg` (named colors, no
+  hex) is offline-complete; the `#sec-lazy` subsection anchor is in place for the later
+  cross-page refs. A "covered" case. `check` clean.
 
 ## Roll-up (filled at Task 8)
 - gaps: … · friction: … · interaction-bugs: … · correctly-refused: …

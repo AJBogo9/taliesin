@@ -1,3 +1,34 @@
 # Concepts {#sec-concepts}
 
-Stub — frames, columns, and lazy evaluation.
+Two ideas carry most of Tarn: a **Frame** is a table of named columns, and a **query**
+is a lazy plan over frames that does no work until you ask for a result. Understanding
+those two is enough to read every example in the [Reference](api-frame.tmd).
+
+![A Tarn query is a plan: each step records what to do, and nothing runs until `collect()`.](dataflow.svg){#fig-dataflow}
+
+## The Frame {#sec-frame-concept}
+
+A `Frame` is an ordered set of equal-length **columns**, each with a name and a type.
+Frames are immutable: every operation returns a *new* frame that shares the untouched
+columns with its parent, so narrowing a million-row table to three columns copies
+nothing. A `Column` is a typed array you rarely touch directly; you name columns in
+queries and let Tarn fetch them.
+
+::: {.callout-note title="Since v0.4"}
+Frames are backed by Arrow arrays, so a slice or a column selection is zero-copy: the
+child frame points into the same memory as its parent until one of them is written.
+:::
+
+## Lazy evaluation {#sec-lazy}
+
+A query method such as `filter` or `groupby` does **not** touch data. It appends a step
+to a plan and returns a new frame carrying that plan, exactly the flow in
+@fig-dataflow. Work happens only when you *collect* the result, at which point Tarn has
+the whole plan in hand and can fuse steps, skip unread columns, and push filters down to
+the source.
+
+::: {.callout-tip}
+Chaining stays lazy no matter how long the chain: only `collect()` (or a sink such as
+`write_csv()`) triggers execution. If a script feels slow, check that you are not calling
+`collect()` inside a loop.
+:::
