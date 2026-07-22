@@ -182,7 +182,7 @@
      label by size; the muted token carries it at full strength (5.38-7.46:1). */
   .tali-cat-count { font-size: .82em; font-variant-numeric: tabular-nums; }
 
-  @media (max-width: 640px) {
+  @media (max-width: 40rem) {
     .tali-listing-default .tali-card { flex-direction: column; }
     .tali-listing-default .tali-card-img,
     .tali-listing-default .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; }
@@ -272,7 +272,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    disclosure, not a permanent rail). Starts `hidden`; the script reveals it. */
 .tali-book-drawer[hidden] { display: none; }
 .tali-book-drawer { position: fixed; inset: 0; z-index: 60; }
-.tali-book-drawer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .38); }
+.tali-book-drawer-backdrop { position: absolute; inset: 0; background: var(--tali-scrim); }
 .tali-book-drawer-panel { position: absolute; top: 0; left: 0; bottom: 0;
   width: min(20rem, 86vw); overflow-y: auto; padding: 1.4rem 1.25rem 2rem;
   background: var(--tali-bg); border-right: 1px solid var(--tali-border);

@@ -4227,6 +4227,75 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
     }
 }
 
+/// One `--tali-scrim` token single-sources the "dim behind an overlay" backdrop, which used to
+/// carry three drifted black alphas: the mobile TOC sheet (base, .42), the book drawer (site,
+/// .38), and the deck share modal (deck, .55). Folded to one token; no raw scrim literal survives
+/// (each literal string was unique to its own backdrop rule). PA-F2.
+#[test]
+fn overlay_backdrops_share_the_scrim_token() {
+    assert_eq!(
+        TOKENS_CSS.matches("--tali-scrim:").count(),
+        1,
+        "--tali-scrim must be defined exactly once, in tokens.css :root"
+    );
+    for (sheet, css) in [
+        ("base.css", BASE_CSS),
+        ("site.css", SITE_CSS),
+        ("deck.css", super::deck::DECK_CSS),
+    ] {
+        assert!(
+            css.contains("var(--tali-scrim)"),
+            "{sheet}'s overlay backdrop must reference var(--tali-scrim)"
+        );
+    }
+    assert!(
+        !BASE_CSS.contains("rgba(0, 0, 0, .42)"),
+        "base.css still ships the raw .42 TOC-sheet scrim; route it through --tali-scrim"
+    );
+    assert!(
+        !SITE_CSS.contains("rgba(0, 0, 0, .38)"),
+        "site.css still ships the raw .38 book-drawer scrim; route it through --tali-scrim"
+    );
+    assert!(
+        !super::deck::DECK_CSS.contains("rgba(0, 0, 0, .55)"),
+        "deck.css still ships the raw .55 share-modal scrim; route it through --tali-scrim"
+    );
+}
+
+/// The motion scale is exactly two durations (`--tali-dur` / `--tali-dur-slow`); a bare `.15s`
+/// had crept in as an undocumented third value. Every `.15s` left in base.css is part of the
+/// `1.15s` peek-hint animation (an intentional special), and site/deck carry none. PA-S3.
+#[test]
+fn no_stray_15s_duration_outside_the_motion_scale() {
+    assert_eq!(
+        BASE_CSS.matches(".15s").count(),
+        BASE_CSS.matches("1.15s").count(),
+        "base.css has a bare .15s transition; fold it to var(--tali-dur)"
+    );
+    for (sheet, css) in [("site.css", SITE_CSS), ("deck.css", super::deck::DECK_CSS)] {
+        assert!(
+            !css.contains(".15s"),
+            "{sheet} carries a stray .15s duration; fold it to var(--tali-dur)"
+        );
+    }
+}
+
+/// Layout breakpoints are rem, so they scale with the reader's text-zoom; a `640px` width query
+/// (the hero in base, one query in site) diverged under zoom. Every `@media` width in base/site
+/// is expressed in rem. PA-F4.
+#[test]
+fn layout_breakpoints_are_rem_not_px() {
+    for (sheet, css) in [("base.css", BASE_CSS), ("site.css", SITE_CSS)] {
+        for line in css.lines().filter(|l| l.trim_start().starts_with("@media")) {
+            assert!(
+                !(line.contains("width:") && line.contains("px")),
+                "{sheet} has a px width breakpoint (use rem so it scales with text-zoom): {}",
+                line.trim()
+            );
+        }
+    }
+}
+
 /// Composite `color-mix(in srgb, C pct%, transparent)` over `bg`: what a callout title bar
 /// actually renders as.
 #[cfg(test)]

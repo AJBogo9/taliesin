@@ -65,6 +65,11 @@
     --tali-shadow-md: 0 4px 18px var(--tali-edge-shadow);
     --tali-shadow-lg: 0 8px 34px var(--tali-edge-shadow);
     --tali-dur: .12s; --tali-dur-slow: .25s;
+    /* One "dim behind an overlay" scrim for every modal/drawer/sheet backdrop, so the dimming
+       is set once instead of drifting per surface (it was .38/.42/.55 across site/base/deck).
+       A pure black alpha, theme-independent like the literals it replaces (a black scrim reads
+       as "content is behind this" in light, dark, and sepia alike). */
+    --tali-scrim: rgba(0, 0, 0, .42);
   }
 
   /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Settings panel). */
