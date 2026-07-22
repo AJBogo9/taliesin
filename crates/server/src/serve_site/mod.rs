@@ -59,6 +59,26 @@ struct MountedSite {
     site: Site,
 }
 
+/// Longest-prefix match of a request `path` against mount `prefixes` (each like
+/// `gallery/course`). Returns the winning mount index and `path` with that prefix (and
+/// its trailing `/`) removed; `None` when nothing matches, i.e. the request belongs to
+/// the root project. Pure — this is the routing seam, unit-tested without any
+/// `Site`/kernel. Wired into project resolution when the `Project` struct lands.
+#[allow(dead_code)]
+fn match_mount<'a>(prefixes: &[String], path: &'a str) -> Option<(usize, &'a str)> {
+    let mut best: Option<(usize, usize)> = None; // (index, prefix byte-len)
+    for (i, p) in prefixes.iter().enumerate() {
+        let hit = path == p || path.strip_prefix(p).is_some_and(|r| r.starts_with('/'));
+        if hit && best.is_none_or(|(_, len)| p.len() > len) {
+            best = Some((i, p.len()));
+        }
+    }
+    best.map(|(i, _)| {
+        let sub = path.strip_prefix(&prefixes[i]).unwrap_or("");
+        (i, sub.strip_prefix('/').unwrap_or(sub))
+    })
+}
+
 /// A job for the executor worker: rebuild a page, or restart its kernel first
 /// (the dev-menu "Restart kernel" action) then rebuild.
 enum BuildMsg {
@@ -1645,6 +1665,36 @@ mod card_preview {
             png.len() > 1000,
             "suspiciously small card ({} bytes) — likely a blank/failed render",
             png.len()
+        );
+    }
+}
+
+#[cfg(test)]
+mod project_tests {
+    //! The routing seam that lets a mounted sub-project be served under its URL prefix.
+    //! `match_mount` is the pure core (no `Site`/kernel), so prefix resolution is pinned
+    //! here; the live per-page wiring on top is browser-verified (no live-HTTP harness).
+    use super::*;
+
+    #[test]
+    fn match_mount_picks_the_longest_matching_prefix() {
+        let prefixes = vec!["gallery/course".to_string(), "docs/guide".to_string()];
+        // Unprefixed → None (the root project serves it).
+        assert_eq!(match_mount(&prefixes, "features.html"), None);
+        // Exact prefix (the mount landing) → that mount, empty sub-path (caller maps to index).
+        assert_eq!(match_mount(&prefixes, "gallery/course"), Some((0, "")));
+        // Nested under a prefix → that mount, prefix + leading slash stripped.
+        assert_eq!(
+            match_mount(&prefixes, "gallery/course/em.html"),
+            Some((0, "em.html"))
+        );
+        // Shares only a leading segment, not the whole prefix → None (root).
+        assert_eq!(match_mount(&prefixes, "gallery/other.html"), None);
+        // A deeper mount prefix wins over a shorter one that also matches.
+        let nested = vec!["gallery".to_string(), "gallery/course".to_string()];
+        assert_eq!(
+            match_mount(&nested, "gallery/course/em.html"),
+            Some((1, "em.html"))
         );
     }
 }
