@@ -25,3 +25,13 @@ callouts, and full-text **Cmd-K search** that spans every page: the whole shape 
 open-source documentation site.
 
 [Open the docs &rarr;](gallery/tarn/)
+
+## Gradient descent, by hand
+
+An interactive explainer, the kind you scroll and poke at. One long page where a
+**reactive graphic** redraws as you drag the starting point and work three sliders, a
+**scrollytelling** walk-through whose figure changes step by step, a live **Observable
+Plot** chart wired to the same controls, and the derivation in real **math** alongside:
+an explorable explanation with every moving part authored in `.tmd`.
+
+[Open the explainer &rarr;](gallery/descent/)

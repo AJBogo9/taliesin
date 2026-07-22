@@ -15,6 +15,7 @@ mounts:
   docs/internals: ../docs/internals
   gallery/course: ../corpus/course
   gallery/tarn: ../corpus/tarn
+  gallery/descent: ../corpus/descent
 
 nav:
   left:
