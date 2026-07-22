@@ -1,3 +1,41 @@
 # The Frame type {#sec-api-frame}
 
-Stub — the Frame API.
+A `Frame` is a lazy table. Every method returns a *new* `Frame` (or a scalar) and never
+mutates in place, so you can share a frame between queries without fear; see @sec-lazy for
+why nothing runs until you `collect()`.
+
+## `Frame.select` {#fn-select}
+
+```python
+Frame.select(*columns: str) -> Frame
+```
+
+Keep only the named columns, in the order given. Selecting is zero-copy: the result shares
+its columns with the parent frame.
+
+- **columns** — one or more column names.
+- **Returns** — a new `Frame` with just those columns.
+
+## `Frame.filter` {#fn-filter}
+
+```python
+Frame.filter(predicate: Expr) -> Frame
+```
+
+Keep the rows where `predicate` is true. Build predicates with [`col`](api-query.tmd#fn-col)
+and the comparison operators, for example `col("year") >= 2020`.
+
+- **predicate** — a boolean `Expr` over the frame's columns.
+- **Returns** — a new `Frame` with the matching rows.
+
+## `Frame.groupby` {#fn-groupby}
+
+```python
+Frame.groupby(*keys: str) -> GroupBy
+```
+
+Group rows by the key columns. The result is a `GroupBy` handle; follow it with an
+aggregation such as `.sum("revenue")` or `.mean("price")` to get back a `Frame`.
+
+- **keys** — the columns to group by.
+- **Returns** — a `GroupBy` you finish with an aggregation.

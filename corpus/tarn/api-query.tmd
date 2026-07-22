@@ -1,3 +1,35 @@
 # Query functions {#sec-api-query}
 
-Stub — expression helpers.
+Expressions (`Expr`) are the predicates and derived columns you pass to
+[`Frame.filter`](api-frame.tmd#fn-filter) and the other query methods. Build them from the
+helpers below.
+
+## `col` {#fn-col}
+
+```python
+col(name: str) -> Expr
+```
+
+Reference a column by name inside a query. Compare or combine the result to form a
+predicate: `col("year") >= 2020`, or `col("a") + col("b")` for a derived column.
+
+- **name** — the column to reference.
+- **Returns** — an `Expr` you can compare, combine, and pass to a query method.
+
+## `lit` {#fn-lit}
+
+```python
+lit(value) -> Expr
+```
+
+Wrap a Python scalar as an `Expr`, for the rare case where a bare literal is ambiguous
+(for instance the right-hand side of a `.otherwise(lit(0))`).
+
+- **value** — any Python scalar.
+- **Returns** — a constant `Expr`.
+
+::: {.callout-warning title="Deprecated since v0.5"}
+`Frame.where()` is deprecated and will be removed in v1.0. Use
+[`Frame.filter`](api-frame.tmd#fn-filter) instead: it takes the same predicate and reads
+the same way.
+:::
