@@ -226,6 +226,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     } else if expose {
         crate::log::warn("--host set, but no LAN address was found");
     }
+    crate::log::keys_hint();
     crate::log::watching(
         &root.display().to_string(),
         &format!("site, {page_count} pages"),

@@ -109,6 +109,23 @@ pub fn network(url: &str) {
     line(Style::Network, &paint(url, "\x1b[1m"));
 }
 
+/// The one-line orientation hint for the preview's controls. Taliesin has no interactive
+/// stdin key loop — a reader coming from Vite (or a Vite-style dev server) who presses
+/// `r`/`o`/`u`/`c`/`q`/`h` at the terminal gets silence, because every control lives in the
+/// browser's `◇` dev menu instead. Pure so its wording is unit-testable.
+fn keys_hint_body() -> &'static str {
+    "controls live in the browser — open the ◇ dev menu (top-right)"
+}
+
+/// Print the controls hint once at startup. TTY-gated: a human at a terminal is the only one
+/// with keystrokes to misdirect, so an agent/CI/piped run keeps its captured log clean.
+pub fn keys_hint() {
+    if !std::io::stderr().is_terminal() {
+        return;
+    }
+    line(Style::Info, keys_hint_body());
+}
+
 /// A one-shot `build` wrote a file.
 pub fn built(path: &str) {
     line(Style::Built, &paint(path, "\x1b[1m"));
@@ -239,6 +256,18 @@ mod tests {
         assert_eq!(cache_tally_body(5, 0), "restored 5 cached cells · 0 re-ran");
         assert_eq!(cache_tally_body(1, 2), "restored 1 cached cell · 2 re-ran");
         assert_eq!(cache_tally_body(3, 1), "restored 3 cached cells · 1 re-ran");
+    }
+
+    #[test]
+    fn keys_hint_points_readers_at_the_browser_menu() {
+        // The whole point is redirecting terminal muscle-memory to the browser: it must name
+        // the browser and the ◇ menu glyph, or the hint fails silently.
+        let body = keys_hint_body();
+        assert!(
+            body.contains("browser"),
+            "hint must name the browser: {body:?}"
+        );
+        assert!(body.contains('◇'), "hint must name the ◇ menu: {body:?}");
     }
 
     #[test]
