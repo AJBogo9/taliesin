@@ -1,0 +1,12 @@
+title: "Probabilistic Modeling: A Short Course"
+author: "Andreas Bogossian"
+toc: true
+
+chapters:                 # presence makes this a book
+  - index.tmd
+  - part: "Foundations"
+    chapters:
+      - probability.tmd
+      - mle.tmd
+  - em.tmd
+  - problems.tmd
