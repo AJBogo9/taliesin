@@ -15,25 +15,30 @@ DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click
 located diagnostics, CSS hot-swap, Cmd-K search). The editor language intelligence (diagnostics,
 go-to-definition, outline, hover, completion, quick-fix code actions, rename) now ships editor-agnostically
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
-shipped"). **Most of the backlog has already shipped** (DX, PMF, polish, machine-facing, corpus-coverage
-and reduction audits are all closed; a second **2026-07-22 polish round** — a browser sweep + 4 code auditors —
-reopened a small P3 hardening/a11y tail, item 11, whose **pass (a) — design-system single-source + the
-dark-mode WCAG-AA fix on filled chrome controls — shipped 2026-07-22**). What is actually open is small; it is
-ranked below by product impact.
+shipped"). **Most of the backlog has already shipped.** A large **2026-07-22 (late) backlog-clearing pass**
+shipped (all local, unpushed — the author pushes): focus-mode/fullscreen split (was item 3); a Vite-user
+hint banner (item 9); deck `footer:`/`logo:` (item 2); a per-book offline `<book>.zip` (item 6); the
+cross-page duplicate-label warning is now located (item 5); DX16 update-nudge ruled **skip**; item 8 i18n
+labels **assessed → defer**; and item 11 polish **passes (b)-(e)** (pass (a) shipped earlier). What remains
+open is small: DX17b (a heavy new dep, ready-to-build in its own session) plus deferred low-value
+sub-findings; ranked below by product impact.
 
 ## Next session: start here
 
-Tree is green across all gates; `origin/main` is current. Three clean entry points, pick by appetite:
+Tree is green across all gates; commits sit on local `main` **unpushed** (author pushes). Clean entry
+points, pick by appetite:
 
-- **Continue the 2026-07-22 polish audit (item 11) — small + safe.** Pass (a) shipped; the next
-  highest-value slice is **pass (b) scaffold-completeness, PA-H2** — the audit's one "high" finding:
-  listing/section pages (`/blog`, `/publications`, `/projects`) emit **no `<h1>`** and open at H2/H3 (SEO +
-  heading-nav). It demotes heading levels, so it **touches the body-HTML snapshot tests** — a bigger, more
-  visible change than pass (a). Then (c) a11y announce/focus holes, (d) CLI/diagnostics, (e)
-  reduced-motion+print. Detail: [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md).
-- **Or the one High-impact feature, DX17(b) headless `{js}` (item 1) — large, needs a ruling first:** it
-  adds a headless-Chrome dependency (`chromiumoxide`) to the offline tool, so it wants its own spec/plan and
-  an owner sign-off on the new dep before coding. Design is already drafted (see item 1).
+- **The one remaining feature: DX17(b) headless `{js}` (item 1) — READY TO BUILD, its own session.** A
+  **build-ready plan** now exists:
+  [plans/2026-07-22-dx17b-headless-js-plan.md](../docs/superpowers/plans/2026-07-22-dx17b-headless-js-plan.md).
+  Deferred (not blocked): it adds `chromiumoxide` (a CDP browser-automation crate) to the offline-minimal
+  tool + needs a real headless-Chrome verify loop — worth a focused session. Owner already said "build it";
+  step 1 of the plan is the dep-resolution risk gate.
+- **Item 11 deferred sub-findings (P3, opportunistic):** PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`),
+  PA-H1 residual (deck `theme-color`/OG); PA-B3 (mobile-TOC focus-trap), PA-B5 (cite-tabs roving-tabindex),
+  PA-B14 (Cmd-K Home/End), PA-B15 (menu tab-out close); PA-CLI1/2/3 (undocumented `preview --port` / `read
+  --run` / hand-written usage); PA-F2/C5/F4/S3 tokens. Detail:
+  [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md).
 - **Or run one of the twelve queued *audit perspectives* (new "Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see (perf, fuzzing,
   concurrency, cache-correctness, i18n/sourcepos, cross-browser, a11y, determinism, semantic HTML,
@@ -41,7 +46,7 @@ Tree is green across all gates; `origin/main` is current. Three clean entry poin
   feeds build-ready items back here; the author has credits queued for exactly this. Recommended first
   three: AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).
 
-Everything else open is P3/gated (items 5–10) or demand-driven (Tier 3). Working method is in "Standing
+Everything else open is P3/gated (items 4, 10 + band D) or demand-driven (Tier 3). Working method is in "Standing
 constraints": branch per feature, verify by mutation, browser-verify, ff-merge locally.
 
 ## Standing constraints (read before working)
@@ -86,69 +91,28 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-1. **DX17(b): headless `{js}` executed-output visibility** (the remaining fork; part (a), python/r via
-   `read --run`, shipped 2026-07-21, see "Already shipped"). `{js}` (Observable Plot, the corpus's own
-   idiom) is still never server-run, so an agent can't headlessly tell a `{js}` chart produced. Plan:
-   a local headless Chrome (`chromiumoxide`) over the built page, gated + optional (degrades to
-   "skipped: chrome unavailable"), observation-only (no reactive re-run, so the CUT `js-kernel-rerun`
-   trap stays out). *Gating: L, net-new; own spec/plan when picked up. Design (Phase 2):*
-   [2026-07-21-dx17-headless-executed-output-design.md](../docs/superpowers/specs/2026-07-21-dx17-headless-executed-output-design.md).
+1. **DX17(b): headless `{js}` executed-output visibility** — **READY TO BUILD (own session).** `{js}`
+   (Observable Plot, the corpus's own idiom) is still never server-run, so an agent can't headlessly tell a
+   `{js}` chart produced. A local headless Chrome (`chromiumoxide`) over the built page, gated + optional
+   (degrades to "skipped: chrome unavailable"), observation-only (no reactive re-run, so the CUT
+   `js-kernel-rerun` trap stays out). Owner signed off on the dep ("build it"); deferred to a focused
+   session because the heavy `chromiumoxide` dep + a live headless-Chrome verify loop deserve isolated
+   attention. *Gating: L, net-new.* **Build-ready plan:**
+   [plans/2026-07-22-dx17b-headless-js-plan.md](../docs/superpowers/plans/2026-07-22-dx17b-headless-js-plan.md)
+   · design: [2026-07-21-dx17-headless-executed-output-design.md](../docs/superpowers/specs/2026-07-21-dx17-headless-executed-output-design.md).
 
 ### B. Medium impact
 
-2. **One-command deck publish + presenter tools** *(needs an owner ruling)*: the deck design questions
-   with real speaker value. Today the Share QR only encodes `localhost:PORT` and `build` yields a file
-   the user must self-host, so: one-command deck publish? Plus a presenter laser/spotlight + auto-advance
-   (reveal.js reflexes). Also thread `footer:`/`logo:` through both deck-page builders (no corpus deck
-   needs one yet).
-
-3. **Decouple focus mode from OS fullscreen** *(needs an owner ruling)*: focus mode is welded to OS
-   fullscreen (`03-focus-mode.js:39-45`, "the author's ask"). Split the calm reading column from
-   fullscreen?
+2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
+   publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
+   `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"); the presenter pieces
+   were considered and left for later. Revive only on a real speaker ask.
 
 4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
    deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
    fit-on-show refactor first).
 
-5. **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B). `site/xref.rs` +
-   `site/mod.rs` push `"duplicate cross-reference label X defined on multiple pages"` onto a
-   **`Vec<String>`** channel that carries no location, half-reproducing the Quarto flaw the tool
-   critiques. This is **not just a channel type change**: a cross-page duplicate has **two or more
-   locations** (page A's line and page B's line), so the fix must first decide what to point at (the
-   second definition, both, or a per-page list). *Gating: P3, corpus-exercised (nothing ships wrong).*
-
-6. **Reader-facing offline download** *(needs an owner ruling: scope)*: a "download this
-   book/page to read offline" affordance. The built output is *already* 100% self-contained and
-   network-free (framework CSS/JS/fonts/KaTeX inlined or `data:`-URI'd; `_assets/` is root-relative), so
-   this is roughly 90% repackaging and 10% new: a build-time-generated **static** `<book>.zip` (a static
-   link fits the "no server at read time" architecture better than an on-demand `serve_site` route), plus
-   an `<a download>` in the book topbar (`site/chrome.rs` ~218-238). No archive crate is in the tree yet
-   (add `zip`, or a small store/deflate writer); `build_site_async` already holds the page manifest and
-   output tree. *Format settled (owner, 2026-07-21): a **zip*** (a directory is not deliverable via a
-   static `<a download>`, which hands the browser a single file; the `file://` double-click gotcha does
-   not apply because pages already use document-relative asset paths, `asset_href` at `build.rs:1191`;
-   text compresses ~70-85% so it scales with doc size). *Ruling still needed:* whole-site vs per-book vs
-   per-page, and default-on vs opt-in (minimal-config favors always-emit, no knob). On-brand: the
-   reader-offline experience is
-   `FEATURE-IDEAS.md`'s headline opportunity (its #14 framed this as a PWA/service-worker; a zip is the
-   simpler, more explicit sibling). **Not a new output format** (a delivery wrapper around the existing
-   HTML). *Gating: S/M, net-new.* Pin: build a book, assert `<book>.zip` exists plus a chrome download link.
-
 ### C. Low / hardening (P3)
-
-7. **DX16: update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S, net-new. *Weigh
-   against the offline invariant first (it implies a network check).*
-
-8. **Cross-reference labels are English-only** (§2 #3): an i18n scope question, not a small defect. The
-    hardcoded English const table is `cite/render.rs:15-21`, and `lang` appears **zero** times in that
-    file, so there is no localization seam yet. `lang:` correctly sets `<html lang>`; the "promise" of
-    translated labels was never real. **No corpus doc demands it.**
-
-9. **Remaining design questions** *(owner ruling first, low impact)*: deck inverts the page serif/sans
-    logic (`deck.css:705-711`), accept+document or unify? · add a `//| uses:` alias for the consumer
-    `//| input:` (weigh vocab sprawl)? · callout kinds are namespaced but theorem kinds are bare,
-    document or reconsider? · a Vite user pressing `r/o/u/c/q` or `h` gets silence now that interactivity
-    moved to the browser dev menu, so one banner line pointing at the `◇` menu.
 
 10. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
@@ -199,17 +163,22 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     every_interactive_deck_control_gets_a_focus_visible_ring, sepia_search_mark_keeps_body_text_readable,
     listing_card_gets_a_focus_visible_affordance}` + browser-verified light/dark/sepia. **Residual (low, deferred):**
     PA-F2 (a `--tali-scrim` token folding 3 divergent overlay alphas), PA-C5 (per-slide-bg hex drift-lock),
-    PA-F4 (px↔rem breakpoints), PA-S3 (base.css's own `.15s` uses). **(b) scaffold completeness**
-    — listing/section pages (`/blog`,`/publications`,`/projects`) emit **no `<h1>`** and start at H2/H3 (SEO +
-    heading-nav; PA-H2, M), dates are `<span>` not `<time>` and a listing is a `<div>` not a list (PA-M1). **(c) a11y
-    announce/focus holes** — one missing `aria-live`/focus-trap/roving-tabindex per surface (lightbox gallery step
-    silent to AT, PA-A2; etc.). **(d) CLI/diagnostics** — the kernel-unavailable error tells headless `build`/`read`/CI
-    to "click Restart kernel" (a button that isn't there; PA-B1, `exec.rs:333`), `check` human diagnostics are
-    uncoloured (PA-B2), residual `--help` drift. **(e) reduced-motion + print** — honoured in the reader enhancers
-    but **not the preview client** (PA-B6/B7), and printed links lose their URL (no `a[href]::after`; PA-P1). *Gating:
-    mostly S/P3; a couple M (PA-H2 listing `<h1>` + heading-level demotion touches snapshots; the token pass). Verify
-    each against source (entries rot) and by mutation. Owner design-Qs (deck copy-button, card whole-`<a>`) parked in
-    the doc, not build-ready.*
+    PA-F4 (px↔rem breakpoints), PA-S3 (base.css's own `.15s` uses). **(b) scaffold completeness — SHIPPED
+    2026-07-22** (`polish/scaffold-h1-time`): listing/section pages get a visually-hidden `<h1>` (only when the
+    body has none, so a `hero:` landing keeps one `<h1>`; PA-H2), and card + title-block dates are now
+    `<time datetime>` (PA-M1); pinned `title_block_style_none_injects_a_hidden_h1_but_no_visible_block`,
+    `..._does_not_duplicate_an_existing_h1`. *Residual:* PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`),
+    PA-H1 deck `theme-color`/OG. **(c) a11y announce/focus holes — SHIPPED** (`polish/a11y-holes`): `<th scope>`
+    (PA-M6), footnotes region `aria-label` (PA-M7), footnote-ref `doc-noteref` (PA-M8), lightbox caption
+    `aria-live` (PA-A2), deck share `aria-modal` (PA-B4). *Residual:* PA-B3 focus-trap, PA-B5 roving-tabindex,
+    PA-B14 Home/End, PA-B15 tab-out-close. **(d) CLI/diagnostics — SHIPPED** (`polish/cli-diagnostics`): the
+    kernel-unavailable message no longer tells headless `build`/`read`/CI to "click Restart kernel" (PA-B1,
+    extracted to a pure `Executor::kernel_unavailable_message`), and `check` severity is now colorized
+    (TTY-gated; PA-B2). *Residual:* PA-CLI1/2/3 `--help` drift. **(e) reduced-motion + print — SHIPPED**
+    (`polish/reduced-motion-print`): the preview client's 3 smooth-scrolls + the lightbox/link-preview
+    transitions honour `prefers-reduced-motion` (PA-B6/B7), printed external links spell out their URL
+    (`a[href^=http]::after`; PA-P1), and `pre` drops its scroll-shadow for print (PA-P2). Owner design-Qs (deck
+    copy-button, card whole-`<a>`) parked in the doc, not build-ready.
 
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
@@ -403,8 +372,16 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
-- **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); only
-  **DX16** and **DX17(b)** (headless `{js}`) remain (above).
+- **2026-07-22 (late) backlog-clearing pass** (local, unpushed): **focus mode split from OS fullscreen**
+  (`f` = calm column, `F`/menu = fullscreen; `03-focus-mode.js`); **Vite-user hint banner** (`log::keys_hint`,
+  TTY-gated, points at the `◇` dev menu); **deck `footer:`/`logo:`** (`render::deck_overlay_html` +
+  `DeckParts.deck_overlay`, corpus-pinned in `deck.tmd`); **per-book offline `<book>.zip`** (`server::zip`
+  hand-rolled DEFLATE over the already-present flate2/crc32fast, topbar `<a download>` gated to the build via
+  `page_chrome(downloads)`, `Site::archive_name`); **cross-page dup-label warning located** (`file:line:` at
+  the redefining anchor via `content_lines_numbered`); **item 11 passes (b)-(e)** (see item 11). Owner
+  rulings: DX16 skip, i18n defer, item-9 design-Qs documented (see "Decided against").
+- **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); **DX16 ruled
+  skip** (Decided against); only **DX17(b)** (headless `{js}`, ready-to-build) remains (item 1).
 - **Editor DevX (VS Code companion) E1-E6 shipped 2026-07-21; E7 (`taliesin lsp`) shipped 2026-07-22 —
   the whole initiative is complete** (audit
   [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md);
@@ -479,6 +456,14 @@ claim that one of these is "missing"):
 
 ## Decided against / do-not-re-litigate
 
+- **2026-07-22 rulings** (owner, this session): **DX16 update-nudge = SKIP** — a version check is network
+  egress that undercuts the offline-first identity; drop it (was item 7). **Cross-ref labels i18n = DEFER** —
+  no corpus doc demands it and full i18n is a real scope question; minimal-config says don't add speculative
+  config (was item 8; revive with a corpus pin + a real ask). **Item 9 design-Qs documented as-is** (owner
+  chose only the Vite banner, which shipped): the deck serif/sans inversion (`deck.css`), no `//| uses:`
+  alias (vocab sprawl), and the callout-namespaced/theorem-bare asymmetry all stay as intentional, not
+  bugs. **Deck presenter tools** (one-command publish / laser-spotlight / auto-advance) considered and NOT
+  selected — revive on a real speaker ask.
 - **2026-07-12 wishlist cut to `FEATURE-IDEAS.md`** (revive only when a corpus doc needs one):
   cross-revision diff, repro manifest, List-of-Figures/Tables/Theorems, interactive tables, line-level
   code xrefs, image `dark=`. Reader text-size/line-spacing controls declined (a11y-exempt substrate in
