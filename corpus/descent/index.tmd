@@ -1,0 +1,437 @@
+---
+title: "Gradient descent, by hand"
+---
+
+# Gradient descent, by hand
+
+Almost every model you have ever trained was fit the same way: start somewhere,
+look at which way is downhill, take a step, repeat. That is **gradient descent**,
+and for all its fame it is small enough to watch happen. This page lets you do
+exactly that. Change the step size, add some momentum, drag the starting point
+around the slope, and see where the little ball rolls.
+
+We will descend a single, deliberately awkward surface throughout: a long, narrow
+valley. It is the example that shows why the step size is a knife-edge and why
+momentum was invented, and it is simple enough that we can write its slope down by
+hand in a moment.
+
+## Play with it first {#sec-playground}
+
+Here is the whole story in one picture. The rings are contours of the loss, low in
+the middle and high at the edges. The dot is where descent **starts**, and the line
+is the path it takes. Drag the dot anywhere on the slope; nudge the three sliders.
+Push the step size high enough and watch the path stop converging and start
+ricocheting across the valley.
+
+{{< input name="lr" type="slider" min="0.01" max="0.35" step="0.01" value="0.12" label="step size (η)" >}}
+{{< input name="beta" type="slider" min="0" max="0.9" step="0.05" value="0" label="momentum (β)" >}}
+{{< input name="steps" type="slider" min="1" max="60" step="1" value="25" label="steps" >}}
+
+```{js}
+// A "once" cell: no `//| input:`, so the DAG builds it a single time and never
+// tears it down. We read the sliders live with qmd.value(), redraw the path in
+// place via qmd.onInput(), and keep the dragged start point in a local that
+// survives every redraw. That is what lets the sliders and the drag coexist.
+const NS = "http://www.w3.org/2000/svg";
+const W = 660, H = 380, pad = 26;
+const xmin = -4, xmax = 4, ymin = -2.6, ymax = 2.6;
+const B = 6;                                   // valley anisotropy
+const loss = (x, y) => 0.5 * (x * x + B * y * y);
+const grad = (x, y) => [x, B * y];             // ∇L = (x, 6y)
+
+// domain <-> pixel maps
+const px = (x) => pad + ((x - xmin) / (xmax - xmin)) * (W - 2 * pad);
+const py = (y) => H - pad - ((y - ymin) / (ymax - ymin)) * (H - 2 * pad);
+
+const svg = document.createElementNS(NS, "svg");
+svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+svg.setAttribute("width", "100%");
+svg.setAttribute("role", "img");
+svg.setAttribute("aria-label", "A loss surface with a draggable start point and the descent path it produces.");
+svg.style.maxWidth = W + "px";
+svg.style.height = "auto";
+svg.style.touchAction = "none";                // let us own touch-drag
+svg.style.overflow = "hidden";                 // clip a divergent path to the box
+svg.style.border = "1px solid var(--tali-border)";
+svg.style.borderRadius = "8px";
+svg.style.background = "var(--tali-bg)";
+svg.style.boxSizing = "border-box";            // width:100% must include the border, else 2px overflow
+
+function line(x1, y1, x2, y2, stroke, w, opacity) {
+  const l = document.createElementNS(NS, "line");
+  l.setAttribute("x1", x1); l.setAttribute("y1", y1);
+  l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+  l.setAttribute("stroke", stroke); l.setAttribute("stroke-width", w);
+  if (opacity != null) l.setAttribute("stroke-opacity", opacity);
+  svg.appendChild(l); return l;
+}
+
+// axes through the minimum
+line(px(xmin), py(0), px(xmax), py(0), "var(--tali-muted)", 1, 0.4);
+line(px(0), py(ymin), px(0), py(ymax), "var(--tali-muted)", 1, 0.4);
+
+// iso-loss contours: x^2 + 6y^2 = 2c  ->  ellipse, semi-axes sqrt(2c), sqrt(2c/B)
+for (const c of [0.5, 2, 4.5, 8, 12.5]) {
+  const ax = Math.sqrt(2 * c), ay = Math.sqrt(2 * c / B);
+  const el = document.createElementNS(NS, "ellipse");
+  el.setAttribute("cx", px(0)); el.setAttribute("cy", py(0));
+  el.setAttribute("rx", (ax / (xmax - xmin)) * (W - 2 * pad));
+  el.setAttribute("ry", (ay / (ymax - ymin)) * (H - 2 * pad));
+  el.setAttribute("fill", "none");
+  el.setAttribute("stroke", "var(--tali-border-strong)");
+  el.setAttribute("stroke-opacity", "0.55");
+  svg.appendChild(el);
+}
+
+// the minimum
+const minMark = document.createElementNS(NS, "circle");
+minMark.setAttribute("cx", px(0)); minMark.setAttribute("cy", py(0));
+minMark.setAttribute("r", 3); minMark.setAttribute("fill", "var(--tali-fg)");
+svg.appendChild(minMark);
+
+// the descent path (rebuilt each redraw)
+const path = document.createElementNS(NS, "polyline");
+path.setAttribute("fill", "none");
+path.setAttribute("stroke", "var(--tali-accent)");
+path.setAttribute("stroke-width", "2");
+path.setAttribute("stroke-linejoin", "round");
+svg.appendChild(path);
+
+// the draggable start point
+const ball = document.createElementNS(NS, "circle");
+ball.setAttribute("r", 7);
+ball.setAttribute("fill", "var(--tali-accent)");
+ball.setAttribute("stroke", "var(--tali-bg)");
+ball.setAttribute("stroke-width", "2");
+ball.style.cursor = "grab";
+const title = document.createElementNS(NS, "title");
+title.textContent = "Drag to move the starting point";
+ball.appendChild(title);
+svg.appendChild(ball);
+
+const caption = document.createElement("p");
+caption.style.margin = "0.4rem 0 0";
+caption.style.color = "var(--tali-muted)";
+caption.style.fontSize = "0.9rem";
+
+let start = [-3.4, 1.4];                        // drag state, persists across redraws
+let alive = true;
+if (invalidation) invalidation.then(() => { alive = false; });
+
+function trajectory() {
+  const eta = qmd.value("lr") ?? 0.12;
+  const beta = qmd.value("beta") ?? 0;
+  const steps = Math.round(qmd.value("steps") ?? 25);
+  let [x, y] = start, vx = 0, vy = 0;
+  const pts = [[x, y]];
+  let diverged = false;
+  for (let i = 0; i < steps; i++) {
+    const [gx, gy] = grad(x, y);
+    vx = beta * vx - eta * gx;
+    vy = beta * vy - eta * gy;
+    x += vx; y += vy;
+    if (Math.abs(x) > 40 || Math.abs(y) > 40) { diverged = true; break; }
+    pts.push([x, y]);
+  }
+  return { pts, diverged, end: pts[pts.length - 1] };
+}
+
+function redraw() {
+  if (!alive) return;                           // gated by invalidation, not DOM-attachment:
+  const { pts, diverged, end } = trajectory();  // the first paint runs before qmd-js mounts us
+  path.setAttribute("points", pts.map(([x, y]) => `${px(x)},${py(y)}`).join(" "));
+  ball.setAttribute("cx", px(start[0]));
+  ball.setAttribute("cy", py(start[1]));
+  const steps = Math.round(qmd.value("steps") ?? 25);
+  const startLoss = loss(start[0], start[1]);
+  const endLoss = loss(end[0], end[1]);
+  if (diverged) {
+    caption.textContent = "The step size is so large the path flies off the surface — it has diverged.";
+  } else if (endLoss > startLoss + 1e-9) {
+    caption.textContent = `The loss rose to ${endLoss.toFixed(3)} from ${startLoss.toFixed(3)}: this step size is too large, and the path is climbing out of the valley instead of into it.`;
+  } else {
+    caption.textContent = `After ${steps} steps the loss fell to ${endLoss.toFixed(3)} (the minimum is 0).`;
+  }
+}
+
+// drag via pointer capture: no window-level listeners to leak
+const clientPt = svg.createSVGPoint();
+function toDomain(evt) {
+  clientPt.x = evt.clientX; clientPt.y = evt.clientY;
+  const p = clientPt.matrixTransform(svg.getScreenCTM().inverse());
+  const x = xmin + ((p.x - pad) / (W - 2 * pad)) * (xmax - xmin);
+  const y = ymin + ((H - pad - p.y) / (H - 2 * pad)) * (ymax - ymin);
+  return [Math.max(xmin, Math.min(xmax, x)), Math.max(ymin, Math.min(ymax, y))];
+}
+let dragging = false;
+ball.addEventListener("pointerdown", (e) => {
+  dragging = true; ball.setPointerCapture(e.pointerId);
+  ball.style.cursor = "grabbing"; e.preventDefault();
+});
+ball.addEventListener("pointermove", (e) => {
+  if (!dragging) return; start = toDomain(e); redraw();
+});
+ball.addEventListener("pointerup", (e) => {
+  dragging = false; ball.releasePointerCapture(e.pointerId);
+  ball.style.cursor = "grab";
+});
+
+qmd.onInput(["lr", "beta", "steps"], redraw);
+redraw();
+
+const wrap = document.createElement("figure");
+wrap.style.margin = "0";
+wrap.appendChild(svg);
+wrap.appendChild(caption);
+return wrap;
+```
+
+## The slope, written down {#sec-math}
+
+The surface you were just playing on is one tidy formula. Writing $\theta = (x, y)$
+for a point on it, the loss is
+
+$$ L(\theta) = \tfrac{1}{2}\!\left(x^2 + 6\,y^2\right). $$
+
+That factor of six is the whole personality of the problem. Move the same small
+distance away from the floor along $x$ or along $y$, and the $y$ direction costs six
+times as much loss. The result is the long, narrow trough you can see in the rings:
+gentle end to end, steep wall to wall.
+
+The direction of steepest **ascent** is the gradient, the vector of partial
+derivatives, which for this loss is short enough to read off by hand:
+
+$$ \nabla L(\theta) = \left(\frac{\partial L}{\partial x},\ \frac{\partial L}{\partial y}\right) = (x,\ 6y). $$
+
+Gradient descent simply walks the other way. It takes a fixed fraction $\eta$ of the
+gradient, the **step size** (or *learning rate*), and subtracts it:
+
+$$ \theta \;\leftarrow\; \theta - \eta\,\nabla L(\theta). $$
+
+@fig-landscape draws one such step. At a point $\theta$ up on the slope, $-\nabla L$
+points inward, toward the floor, and a step of length $\eta\lVert\nabla L\rVert$
+carries you part of the way there.
+
+![The loss surface as contour rings: shallow along the valley floor (the $x$ axis), steep across it (the $y$ axis). At a point on the slope, the descent step $-\nabla L$ points inward toward the minimum.](landscape.svg){#fig-landscape}
+
+Here is the catch that the rest of the page is about. The same $\eta$ multiplies both
+components of the gradient, but the two components live on very different scales: the
+$y$ component is $6y$, the $x$ component only $x$. A step size gentle enough to crawl
+along the shallow $x$ direction barely moves; make it big enough to move usefully and
+it can overshoot the steep $y$ walls entirely. That tension is exactly what the step
+size slider lets you feel.
+
+## One step at a time {#sec-walk}
+
+The playground shows the whole path at once. To see *why* it bends the way it does,
+scroll the five steps below: the picture on the side redraws for each one, from the
+bare landscape to a full run and, finally, to a run that falls apart.
+
+::: {.scrolly name="scene"}
+```{js}
+//| input: scene
+const NS = "http://www.w3.org/2000/svg";
+const W = 460, H = 340, pad = 24;
+const xmin = -4, xmax = 4, ymin = -2.6, ymax = 2.6;
+const B = 6;
+const loss = (x, y) => 0.5 * (x * x + B * y * y);
+const grad = (x, y) => [x, B * y];
+const px = (x) => pad + ((x - xmin) / (xmax - xmin)) * (W - 2 * pad);
+const py = (y) => H - pad - ((y - ymin) / (ymax - ymin)) * (H - 2 * pad);
+const scene = qmd.value("scene") || "landscape";
+const START = [-3.2, 1.6];
+
+const svg = document.createElementNS(NS, "svg");
+svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+svg.setAttribute("width", "100%");
+svg.setAttribute("role", "img");
+svg.setAttribute("aria-label", "Loss surface illustrating scene: " + scene);
+svg.style.maxWidth = W + "px";
+svg.style.height = "auto";
+svg.style.overflow = "hidden";
+svg.style.border = "1px solid var(--tali-border)";
+svg.style.borderRadius = "8px";
+svg.style.background = "var(--tali-bg)";
+svg.style.boxSizing = "border-box";            // width:100% must include the border, else 2px overflow
+
+function el(name, attrs) {
+  const n = document.createElementNS(NS, name);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  svg.appendChild(n);
+  return n;
+}
+// axes + contours + minimum, always
+el("line", { x1: px(xmin), y1: py(0), x2: px(xmax), y2: py(0), stroke: "var(--tali-muted)", "stroke-width": 1, "stroke-opacity": 0.4 });
+el("line", { x1: px(0), y1: py(ymin), x2: px(0), y2: py(ymax), stroke: "var(--tali-muted)", "stroke-width": 1, "stroke-opacity": 0.4 });
+for (const c of [0.5, 2, 4.5, 8, 12.5]) {
+  const ax = Math.sqrt(2 * c), ay = Math.sqrt(2 * c / B);
+  el("ellipse", {
+    cx: px(0), cy: py(0),
+    rx: (ax / (xmax - xmin)) * (W - 2 * pad),
+    ry: (ay / (ymax - ymin)) * (H - 2 * pad),
+    fill: "none", stroke: "var(--tali-border-strong)", "stroke-opacity": 0.5,
+  });
+}
+el("circle", { cx: px(0), cy: py(0), r: 3, fill: "var(--tali-fg)" });
+
+function dot(p, color) {
+  el("circle", { cx: px(p[0]), cy: py(p[1]), r: 5, fill: color || "var(--tali-accent)", stroke: "var(--tali-bg)", "stroke-width": 1.5 });
+}
+function arrow(a, b, color) {
+  el("line", { x1: px(a[0]), y1: py(a[1]), x2: px(b[0]), y2: py(b[1]), stroke: color, "stroke-width": 2.5, "marker-end": "url(#tip)" });
+}
+function polyline(pts, color) {
+  el("polyline", { points: pts.map(([x, y]) => `${px(x)},${py(y)}`).join(" "), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" });
+}
+function run(eta, steps, beta) {
+  let [x, y] = START, vx = 0, vy = 0;
+  const pts = [[x, y]];
+  for (let i = 0; i < steps; i++) {
+    const [gx, gy] = grad(x, y);
+    vx = (beta || 0) * vx - eta * gx; vy = (beta || 0) * vy - eta * gy;
+    x += vx; y += vy;
+    if (Math.abs(x) > 60 || Math.abs(y) > 60) break;
+    pts.push([x, y]);
+  }
+  return pts;
+}
+// arrow marker (built namespace-correctly, not via innerHTML)
+const defs = document.createElementNS(NS, "defs");
+const marker = document.createElementNS(NS, "marker");
+for (const [k, v] of Object.entries({ id: "tip", viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" })) marker.setAttribute(k, v);
+const tip = document.createElementNS(NS, "path");
+tip.setAttribute("d", "M0,0 L10,5 L0,10 z");
+tip.setAttribute("fill", "currentColor");
+marker.appendChild(tip);
+defs.appendChild(marker);
+svg.insertBefore(defs, svg.firstChild);
+svg.style.color = "var(--tali-accent)";
+
+if (scene === "landscape") {
+  dot(START);
+} else if (scene === "gradient") {
+  const [gx, gy] = grad(START[0], START[1]);
+  const n = Math.hypot(gx, gy);
+  arrow(START, [START[0] - 0.9 * gx / n, START[1] - 0.9 * gy / n], "var(--tali-accent)"); // -grad, downhill
+  dot(START);
+} else if (scene === "step") {
+  const eta = 0.12; const [gx, gy] = grad(START[0], START[1]);
+  const next = [START[0] - eta * gx, START[1] - eta * gy];
+  polyline([START, next], "var(--tali-accent)");
+  dot(START); dot(next, "var(--tali-fg)");
+} else if (scene === "iterate") {
+  polyline(run(0.12, 30, 0), "var(--tali-accent)");
+  dot(START);
+} else if (scene === "diverge") {
+  polyline(run(0.34, 22, 0), "var(--tali-accent)");
+  dot(START);
+}
+return svg;
+```
+::: {.step state="landscape"}
+**The landscape.** The rings are the loss. Descent begins at the marked point, high on
+the steep left wall of the valley. Everything that follows is a rule for getting from
+there to the dark point in the middle.
+:::
+::: {.step state="gradient"}
+**Which way is downhill.** At the start point, the negative gradient $-\nabla L$ points
+almost straight *across* the valley, not along it. That is the trap: the steepest
+direction is rarely the direction of the minimum.
+:::
+::: {.step state="step"}
+**One step.** Multiply that direction by the step size and move. With a modest $\eta$
+the first step lands well down the wall but overshoots the floor slightly, ending up on
+the far side. The path has already started to zig-zag.
+:::
+::: {.step state="iterate"}
+**Many steps.** Repeat, and the zig-zags shrink as the walls get shallower near the
+floor. The path settles into the trough and crawls the long way toward the minimum. It
+works, but notice how much of the effort went sideways.
+:::
+::: {.step state="diverge"}
+**Too far.** Now push the step size past the edge. Each step across the valley is longer
+than the last; instead of settling, the path climbs the opposite wall higher every time
+and ricochets out of the frame. Same rule, same surface, one number too large.
+:::
+:::
+
+## Choosing the step size {#sec-rate}
+
+Watching the path is one way to judge a step size; watching the **loss fall** is
+another, and often clearer. The chart below plots the loss at each iteration for
+whatever the three sliders are set to right now. A healthy run drops fast and flattens
+near zero; a too-large one bottoms out early and then climbs, the curve turning back
+upward as the path escapes the valley.
+
+```{js}
+//| input: lr, beta, steps
+const B = 6, loss = (x, y) => 0.5 * (x * x + B * y * y), grad = (x, y) => [x, B * y];
+const eta = qmd.value("lr"), beta = qmd.value("beta"), steps = Math.round(qmd.value("steps"));
+let x = -3.4, y = 1.4, vx = 0, vy = 0;
+const data = [{ i: 0, loss: loss(x, y) }];
+for (let i = 1; i <= steps; i++) {
+  const [gx, gy] = grad(x, y);
+  vx = beta * vx - eta * gx; vy = beta * vy - eta * gy;
+  x += vx; y += vy;
+  data.push({ i, loss: Math.min(loss(x, y), 1e6) });
+}
+const fig = Plot.plot({
+  height: 240,
+  marginLeft: 54,
+  x: { label: "iteration →" },
+  y: { type: "log", label: "↑ loss (log scale)", grid: true },
+  marks: [
+    Plot.line(data, { x: "i", y: "loss", stroke: "currentColor", strokeWidth: 2 }),
+    Plot.dot(data, { x: "i", y: "loss", r: 2, fill: "currentColor" }),
+  ],
+});
+fig.style.color = "var(--tali-accent)";
+return fig;
+```
+
+::: {.callout-warning title="The step size is a two-sided constraint"}
+For a quadratic like this one, plain gradient descent converges only while
+$\eta < 2/\lambda_{\max}$, where $\lambda_{\max}$ is the largest curvature, here the
+$6$ of the steep direction. That puts the ceiling at $\eta < \tfrac{1}{3}$. Below it,
+smaller is safer but slower; above it, no amount of patience helps. Most of the art of
+training is keeping $\eta$ under a ceiling you cannot see directly.
+:::
+
+## A shove downhill: momentum {#sec-momentum}
+
+The slow part of every run above was the crawl along the valley floor, where the
+gradient is tiny and each step barely moves. **Momentum** fixes this by giving the ball
+inertia: instead of stepping by the gradient alone, it accumulates a velocity that
+carries over from step to step,
+
+$$ v \leftarrow \beta\,v - \eta\,\nabla L(\theta), \qquad \theta \leftarrow \theta + v. $$
+
+The friction term $\beta$ (the momentum slider) decides how much of the past velocity
+survives. Along the shallow floor the gradient keeps pointing the same way, so the
+velocity builds and the ball rolls faster; across the steep walls the gradient keeps
+flipping sign, so those contributions cancel and the wobble is damped. @fig-momentum
+shows both runs from the same start for the same number of steps: plain descent is
+still short of the minimum while the momentum run has arrived.
+
+![Two descent runs from the same start, fourteen steps each. Plain gradient descent (dashed) is still crawling along the floor; the momentum run (solid) has reached the minimum.](momentum.svg){#fig-momentum}
+
+Scroll back to the playground and raise the momentum slider on a run that was
+converging slowly: the same $\eta$ now reaches the floor in far fewer steps. Push it too
+high, though, and momentum overshoots on its own, a third way to make the path unstable.
+
+## What to carry away {#sec-takeaways}
+
+::: {.callout-note title="Three things the valley taught us"}
+- **Steepest is not shortest.** The negative gradient points across the valley, not at
+  the minimum, so descent zig-zags. Curvature, not distance, sets the direction.
+- **The step size has a ceiling.** One number, shared across every parameter, has to be
+  small enough for the steepest direction and is therefore usually too small for the
+  rest. Cross the ceiling and the run diverges no matter what.
+- **Momentum buys back the crawl.** Accumulating velocity accelerates the shallow
+  directions and cancels the wobble in the steep ones, which is why nearly every modern
+  optimizer keeps some form of it.
+:::
+
+Every trick that came later, adaptive rates, per-parameter scaling, learning-rate
+schedules, is a more careful answer to the same two questions you just felt by hand:
+which way, and how far.

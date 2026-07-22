@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260" role="img" aria-labelledby="landscape-title">
+  <title id="landscape-title">The loss surface: a narrow valley, steep across and shallow along.</title>
+  <style>
+    .contour { fill: none; stroke: #9a97c4; stroke-opacity: .8; }
+    .axis { stroke: #b9b6c9; stroke-width: 1; stroke-opacity: .6; }
+    .ink { fill: #2a2a3a; }
+    .accent { stroke: #4b3fa7; fill: #4b3fa7; }
+    .label { fill: #4a4a5a; font: 13px ui-sans-serif, system-ui, sans-serif; }
+    .muted { fill: #6a6a7a; font: 12px ui-sans-serif, system-ui, sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      .contour { stroke: #6f6ca0; }
+      .axis { stroke: #565468; }
+      .ink { fill: #e6e6f0; }
+      .accent { stroke: #a99cf5; fill: #a99cf5; }
+      .label { fill: #c9c9d6; }
+      .muted { fill: #9a9aa8; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="accent" stroke="none"/>
+    </marker>
+  </defs>
+
+  <!-- axes through the minimum at (210,130) -->
+  <line class="axis" x1="20" y1="130" x2="400" y2="130"/>
+  <line class="axis" x1="210" y1="20" x2="210" y2="240"/>
+
+  <!-- iso-loss contours: wide in x (shallow), narrow in y (steep) -->
+  <ellipse class="contour" cx="210" cy="130" rx="55" ry="22"/>
+  <ellipse class="contour" cx="210" cy="130" rx="110" ry="45"/>
+  <ellipse class="contour" cx="210" cy="130" rx="170" ry="70"/>
+
+  <!-- the minimum -->
+  <circle class="ink" cx="210" cy="130" r="3.5"/>
+  <text class="muted" x="216" y="146">minimum</text>
+
+  <!-- a point on the slope and its downhill step -->
+  <circle class="accent" cx="96" cy="70" r="4.5"/>
+  <line class="accent" x1="96" y1="70" x2="168" y2="108" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text class="label" x="70" y="60">a point θ</text>
+  <text class="label" x="150" y="86">−∇L (downhill)</text>
+
+  <!-- direction annotations -->
+  <text class="muted" x="300" y="126">shallow along x →</text>
+  <text class="muted" x="216" y="34">steep across y</text>
+</svg>

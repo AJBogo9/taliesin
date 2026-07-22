@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260" role="img" aria-labelledby="mom-title">
+  <title id="mom-title">Plain gradient descent crawls along the valley floor; momentum reaches the minimum in the same number of steps.</title>
+  <style>
+    .contour { fill: none; stroke: #9a97c4; stroke-opacity: .8; }
+    .axis { stroke: #b9b6c9; stroke-width: 1; stroke-opacity: .6; }
+    .ink { fill: #2a2a3a; }
+    .plain { fill: none; stroke: #8a8a9a; stroke-width: 2; stroke-dasharray: 4 3; }
+    .mom { fill: none; stroke: #4b3fa7; stroke-width: 2.5; }
+    .label { font: 12px ui-sans-serif, system-ui, sans-serif; }
+    .lp { fill: #6a6a7a; } .lm { fill: #4b3fa7; }
+    @media (prefers-color-scheme: dark) {
+      .contour { stroke: #6f6ca0; } .axis { stroke: #565468; } .ink { fill: #e6e6f0; }
+      .plain { stroke: #9a9aa8; } .mom { stroke: #a99cf5; }
+      .lp { fill: #9a9aa8; } .lm { fill: #a99cf5; }
+    }
+  </style>
+  <line class="axis" x1="20" y1="130" x2="400" y2="130"/>
+  <line class="axis" x1="210" y1="20" x2="210" y2="240"/>
+  <ellipse class="contour" cx="210" cy="130" rx="42.5" ry="16.3"/>
+  <ellipse class="contour" cx="210" cy="130" rx="85.0" ry="32.7"/>
+  <ellipse class="contour" cx="210" cy="130" rx="127.5" ry="49.0"/>
+  <ellipse class="contour" cx="210" cy="130" rx="170.0" ry="65.3"/>
+  <circle class="ink" cx="210" cy="130" r="3.5"/>
+  <polyline class="plain" points="74.0,68.0 93.0,120.1 109.4,128.4 123.5,129.7 135.6,130.0 146.0,130.0 155.0,130.0 162.7,130.0 169.3,130.0 175.0,130.0 179.9,130.0 184.1,130.0 187.7,130.0 190.9,130.0 193.5,130.0"/>
+  <polyline class="mom" points="74.0,68.0 93.0,120.1 123.1,165.9 156.9,168.7 188.7,138.2 214.6,109.4 232.6,105.9 242.3,123.7 244.9,141.8 241.8,144.9 235.1,134.7 226.8,123.4 218.5,120.8 211.3,126.7 205.9,133.7"/>
+  <circle class="ink" cx="74.0" cy="68.0" r="3"/>
+  <text class="label lp" x="30" y="250">– – plain descent</text>
+  <text class="label lm" x="230" y="250">— with momentum</text>
+</svg>

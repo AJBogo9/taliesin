@@ -1,0 +1,6 @@
+# A single-page website (no `chapters:`) — one long, interactive explainer.
+# `url:` is deliberately omitted so the standalone build stays offline-clean (no
+# canonical/OG self-URL, avoiding the OFF-1 observation on a self-contained exhibit).
+title: "Gradient descent, by hand"
+description: "An interactive, scrollable explainer: watch gradient descent pick its way down a loss surface as you change the learning rate, the momentum, and where it starts."
+toc: true
