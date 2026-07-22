@@ -47,6 +47,11 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("image", "Social-card and listing thumbnail image path."),
         ("image-alt", "Alt text for `image`."),
         (
+            "footer",
+            "Deck-only: persistent footer text shown on every slide.",
+        ),
+        ("logo", "Deck-only: logo image shown in a slide corner."),
+        (
             "format",
             "Output format (for example `deck`); an extension owns its sub-keys.",
         ),

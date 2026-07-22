@@ -51,6 +51,11 @@ struct AppState {
 struct DocState {
     title: Option<String>,
     subtitle: Option<String>,
+    /// Deck chrome (front-matter `footer:`/`logo:`): a persistent per-slide footer text
+    /// and corner logo image. Rendered into the initial deck page; a live edit to either
+    /// is reflected on the next full page load (the overlay sits outside the diffed mount).
+    footer: Option<String>,
+    logo: Option<String>,
     format: DocFormat,
     toc: bool,
     theme_css: String,
@@ -168,6 +173,8 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
             let mut d = app.doc.lock();
             d.title = doc.title;
             d.subtitle = doc.subtitle;
+            d.footer = doc.footer;
+            d.logo = doc.logo;
             d.format = doc.format;
             d.toc = doc.toc;
             d.theme_css = doc.theme_css;
@@ -366,7 +373,18 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css, theme_default, theme_is_custom, includes, body, generation) = {
+    let (
+        format,
+        toc,
+        theme_css,
+        theme_default,
+        theme_is_custom,
+        includes,
+        body,
+        footer,
+        logo,
+        generation,
+    ) = {
         let d = app.doc.lock();
         (
             d.format,
@@ -376,6 +394,8 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
             d.theme_is_custom,
             d.includes.clone(),
             d.body_html(),
+            d.footer.clone(),
+            d.logo.clone(),
             d.generation,
         )
     };
@@ -396,6 +416,8 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
         base_dir: &base_dir.to_string_lossy(),
         includes: &includes,
         body: &body,
+        footer: footer.as_deref(),
+        logo: logo.as_deref(),
         generation,
     };
     Html(index_html(&ctx))
@@ -416,6 +438,10 @@ struct PageCtx<'a> {
     /// The rendered body, server-rendered into the page so content shows on the
     /// first paint (the websocket then only drives live updates).
     body: &'a str,
+    /// Deck chrome (front-matter `footer:`/`logo:`), rendered as a persistent overlay on
+    /// a live deck's initial page. `None` for a non-deck doc or a deck without chrome.
+    footer: Option<&'a str>,
+    logo: Option<&'a str>,
     /// The render generation `body` was built at, stamped into
     /// `window.TALIESIN_SSR_GEN` so the client can tell a still-current SSR body from
     /// one a rebuild made stale before the websocket connected.
@@ -754,6 +780,7 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 /// `TALIESIN_FORMAT` flag switches the client into deck mode.
 fn deck_index_html(ctx: &PageCtx) -> String {
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
+    let deck_overlay = taliesin_core::deck_overlay_html(ctx.footer, ctx.logo);
     // Absolute paths so click-to-source can build `vscode://file/…` links. The
     // single-doc page sets this in its scripts_pre; the deck has none, so the tail
     // carries it — without it, `openSource` bails (no TALIESIN_DOC) and click-to-source
@@ -793,6 +820,9 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         include_before_body: &ctx.includes.before_body,
         slides_attr: " id=\"tali-root\"",
         slides: ctx.body,
+        // Persistent footer/logo overlay for the live deck's initial render (a live edit to
+        // either shows on the next full page load; the overlay sits outside the diffed mount).
+        deck_overlay: &deck_overlay,
         // The dev-menu host (the floating `</>` button), same as the single-doc
         // page: `client.js`'s buildDevMenu fills it with the live status dot,
         // click-to-source toggle, and restart-kernel control. (Was a bare
@@ -1350,6 +1380,8 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         let theme_changed = d.theme_css != doc.theme_css;
         d.title = doc.title;
         d.subtitle = doc.subtitle;
+        d.footer = doc.footer;
+        d.logo = doc.logo;
         d.format = doc.format;
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
@@ -1745,6 +1777,8 @@ mod protocol_contract {
             base_dir: "/tmp",
             includes: &includes,
             body: "<section><h2>S</h2></section>",
+            footer: None,
+            logo: None,
             generation: 0,
         };
         let html = deck_index_html(&ctx);
@@ -1773,6 +1807,8 @@ mod protocol_contract {
                 base_dir: "/tmp",
                 includes: &includes,
                 body: "<h2 id=\"s\" data-block-id=\"b\">S</h2>",
+                footer: None,
+                logo: None,
                 generation: 0,
             };
             blog_index_html(&ctx)
@@ -1803,6 +1839,8 @@ mod protocol_contract {
             base_dir: "/tmp",
             includes: &includes,
             body: "<h2 data-block-id=\"b\">S</h2>",
+            footer: None,
+            logo: None,
             generation: 0,
         };
         let html = blog_index_html(&ctx);

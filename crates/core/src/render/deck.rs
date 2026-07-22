@@ -38,6 +38,10 @@ pub struct DeckParts<'a> {
     pub slides_attr: &'a str,
     /// The slide HTML (`<section>`s).
     pub slides: &'a str,
+    /// Persistent deck chrome (front-matter `footer:`/`logo:`) as HTML, placed as a fixed
+    /// sibling of `.tali-slides` inside `.tali-deck` so it stays put across slide changes.
+    /// `""` when the deck sets neither. Built by [`deck_overlay_html`].
+    pub deck_overlay: &'a str,
     /// Markup right after the `.tali-deck` container (the live status node); `""` build.
     pub after_deck: &'a str,
     /// Everything after the deck body: the deck-engine script + the format-specific
@@ -75,7 +79,7 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
          <meta name=\"referrer\" content=\"no-referrer\" />\n\
          <meta name=\"generator\" content=\"Taliesin\" />\n\
          <title>{title}</title>\n{favicon}{deck_theme}<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
-         </head>\n<body>\n{before_body}<div class=\"tali-deck\">\n<div class=\"tali-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
+         </head>\n<body>\n{before_body}<div class=\"tali-deck\">\n<div class=\"tali-slides\"{slides_attr}>\n{slides}</div>\n{overlay}</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
         title = p.title,
@@ -87,10 +91,32 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
         js_head = js_head_html,
         slides_attr = p.slides_attr,
         slides = p.slides,
+        overlay = p.deck_overlay,
         after_deck = p.after_deck,
         extra_head = p.extra_head,
         tail = p.tail,
     )
+}
+
+/// The persistent deck-chrome overlay (front-matter `footer:`/`logo:`): a fixed sibling of
+/// `.tali-slides` that stays put across slide changes. `footer` is escaped plain text;
+/// `logo` is an image URL/path rendered as a decorative `<img>` (empty `alt` — it is
+/// branding that repeats on every slide, not per-slide content). Returns `""` when the deck
+/// sets neither, so a deck without chrome emits exactly what it did before.
+pub fn deck_overlay_html(footer: Option<&str>, logo: Option<&str>) -> String {
+    let mut s = String::new();
+    if let Some(src) = logo.map(str::trim).filter(|v| !v.is_empty()) {
+        s.push_str(&format!(
+            "<img class=\"tali-deck-logo\" src=\"{}\" alt=\"\" />\n",
+            escape_attr(src)
+        ));
+    }
+    if let Some(text) = footer.map(str::trim).filter(|v| !v.is_empty()) {
+        let mut esc = String::new();
+        escape_html(text, &mut esc);
+        s.push_str(&format!("<div class=\"tali-deck-footer\">{esc}</div>\n"));
+    }
+    s
 }
 
 pub(super) fn deck_page_from_doc(
@@ -120,6 +146,7 @@ pub(super) fn deck_page_from_doc(
     // The live-preview and site paths set their own favicon on `DeckParts` (a served
     // route / the site's configured mark) and reach `assemble_deck_page` directly.
     let favicon = super::page::default_favicon();
+    let overlay = deck_overlay_html(doc.footer.as_deref(), doc.logo.as_deref());
     assemble_deck_page(&DeckParts {
         title: &t,
         lang: doc.lang.as_deref().unwrap_or("en"),
@@ -133,6 +160,7 @@ pub(super) fn deck_page_from_doc(
         include_before_body: &doc.includes.before_body,
         slides_attr: "",
         slides: &slides,
+        deck_overlay: &overlay,
         after_deck: "",
         tail: &tail,
     })

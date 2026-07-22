@@ -156,6 +156,14 @@
         "name": "image-alt"
       },
       {
+        "description": "Deck-only: persistent footer text shown on every slide.",
+        "name": "footer"
+      },
+      {
+        "description": "Deck-only: logo image shown in a slide corner.",
+        "name": "logo"
+      },
+      {
         "description": "Output format (for example `deck`); an extension owns its sub-keys.",
         "name": "format"
       },

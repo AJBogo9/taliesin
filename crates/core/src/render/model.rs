@@ -194,6 +194,11 @@ impl std::fmt::Display for Warning {
 pub struct RenderedDoc {
     pub title: Option<String>,
     pub subtitle: Option<String>,
+    /// Deck chrome (front-matter `footer:`/`logo:`), rendered as a persistent overlay
+    /// on every slide by the deck builders. `footer` is plain text; `logo` is an image
+    /// URL/path (resolved like any slide image). Ignored on non-deck documents.
+    pub footer: Option<String>,
+    pub logo: Option<String>,
     /// Front-matter `lang:` (a BCP-47 tag like `en`/`fr`), emitted as `<html lang>`
     /// by the page builders. `None` falls back to `en`.
     pub lang: Option<String>,

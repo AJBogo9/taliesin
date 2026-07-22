@@ -59,8 +59,8 @@ pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{emit_code_listing, emit_js_cell, emit_js_figure};
 mod deck;
 pub use deck::{
-    DeckParts, ScriptSummary, assemble_deck_page, deck_client_script, deck_slide_blocks,
-    script_summary, slides_html,
+    DeckParts, ScriptSummary, assemble_deck_page, deck_client_script, deck_overlay_html,
+    deck_slide_blocks, script_summary, slides_html,
 };
 // `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
 // tests; it's not part of the public API, so it's only pulled into scope here for
@@ -259,6 +259,10 @@ fn render_internal_impl(
     let mut author: Option<String> = None;
     let mut description: Option<String> = None;
     let mut lang: Option<String> = None;
+    // Deck chrome: a persistent per-slide footer text + corner logo image. Read on any
+    // doc but only the deck builders render them.
+    let mut footer: Option<String> = None;
+    let mut logo: Option<String> = None;
     let mut format = DocFormat::Html;
     let mut toc_explicit: Option<bool> = None;
     // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
@@ -371,6 +375,8 @@ fn render_internal_impl(
                 date = extract_field(fm, "date");
                 author = extract_field(fm, "author");
                 description = extract_field(fm, "description");
+                footer = extract_field(fm, "footer");
+                logo = extract_field(fm, "logo");
                 lang = extract_field(fm, "lang");
                 bib_paths = bibliography_paths(fm);
                 format = detect_format(fm);
@@ -906,6 +912,8 @@ fn render_internal_impl(
     RenderedDoc {
         title,
         subtitle,
+        footer,
+        logo,
         lang,
         description,
         is_article,

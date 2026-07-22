@@ -25,6 +25,7 @@
       },
       "type": "object"
     },
+    "footer": {},
     "format": {},
     "hero": {
       "additionalProperties": false,
@@ -83,6 +84,7 @@
         }
       ]
     },
+    "logo": {},
     "page-layout": {},
     "prose-lint": {
       "oneOf": [

@@ -26,6 +26,17 @@ further down this page puts each one on its own slide. The rest of this section 
 exact authoring syntax for those features. (The deck's source lives at
 `docs/guide/demo.tmd`, so you can read it side by side with these snippets.)
 
+Two front-matter keys add persistent chrome that stays put on every slide:
+
+```yaml
+footer: "Conference 2026 · Your Name"   # small footer text, centred
+logo: brand.png                          # image in the bottom-left corner
+```
+
+`footer` is plain text; `logo` is an image path resolved like any slide image (copied
+into a folder build, inlined nowhere the reader has to fetch). Both are decorative
+overlays, so they never intercept a slide click.
+
 ### Reveal content step by step
 
 Two ways to stage a slide, both standard Markdown-in-a-fence:

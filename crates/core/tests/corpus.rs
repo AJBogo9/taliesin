@@ -372,6 +372,13 @@ fn corpus_deck_pins_every_kept_rich_feature() {
         slides.contains("id=\"sec-second-point\""),
         "deck corpus must exercise an explicit slide anchor"
     );
+    // Front-matter `footer:` becomes a persistent overlay in the full deck page (a sibling
+    // of `.tali-slides`, so it is not in `slides_html`; render the whole page to see it).
+    let page = taliesin_core::render_html_page(&src, "deck");
+    assert!(
+        page.contains("<div class=\"tali-deck-footer\">Taliesin"),
+        "deck corpus `footer:` must render a persistent footer overlay"
+    );
 }
 
 #[test]

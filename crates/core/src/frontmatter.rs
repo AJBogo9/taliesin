@@ -28,6 +28,10 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Images / social
     "image",
     "image-alt",
+    // Deck chrome: a persistent per-slide footer text + corner logo image (deck-only,
+    // ignored elsewhere).
+    "footer",
+    "logo",
     // Output / format / theme
     "format",
     "theme",

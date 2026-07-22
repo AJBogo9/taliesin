@@ -1392,6 +1392,57 @@ fn reveal_deck_injects_includes_and_theme() {
 }
 
 #[test]
+fn deck_footer_and_logo_render_a_persistent_overlay() {
+    // A deck's front-matter `footer:`/`logo:` become a fixed overlay inside `.tali-deck`,
+    // a sibling of `.tali-slides`. `footer` is escaped text; `logo` is an <img> with an
+    // empty alt (decorative branding that repeats on every slide).
+    let src = "---\n\
+        format: deck\n\
+        footer: \"ACME <2026> & co\"\n\
+        logo: brand.png\n\
+        ---\n\n## Slide\n";
+    let page = render_html_page(src, "deck");
+    assert!(
+        page.contains("<div class=\"tali-deck-footer\">ACME &lt;2026&gt; &amp; co</div>"),
+        "footer text not rendered/escaped"
+    );
+    assert!(
+        page.contains("<img class=\"tali-deck-logo\" src=\"brand.png\" alt=\"\" />"),
+        "logo image not rendered"
+    );
+    // The overlay closes the slides container first, so it is a sibling of `.tali-slides`
+    // inside `.tali-deck` (not swept into the scrolling slide area). Search the node markup,
+    // not the bare class (which also appears in the inlined deck CSS in <head>).
+    let slides = page.find("<div class=\"tali-slides\"").expect("has slides");
+    let footer = page
+        .find("<div class=\"tali-deck-footer\"")
+        .expect("has footer node");
+    assert!(
+        slides < footer,
+        "overlay must come after the slides container"
+    );
+}
+
+#[test]
+fn deck_without_footer_or_logo_emits_no_overlay() {
+    // Regression: a chrome-less deck must render exactly what it did before (no empty
+    // overlay nodes), so `deck_overlay_html(None, None)` is the empty string. (The class
+    // names live in the inlined deck CSS, so assert on the node markup, not the class.)
+    let page = render_html_page("---\nformat: deck\n---\n\n## Slide\n", "deck");
+    assert!(
+        !page.contains("<div class=\"tali-deck-footer\""),
+        "phantom footer node"
+    );
+    assert!(
+        !page.contains("<img class=\"tali-deck-logo\""),
+        "phantom logo node"
+    );
+    assert_eq!(deck_overlay_html(None, None), "");
+    // Whitespace-only values are treated as unset (no blank strip).
+    assert_eq!(deck_overlay_html(Some("   "), Some(" ")), "");
+}
+
+#[test]
 fn front_matter_lang_sets_html_lang_attr() {
     // `lang:` drives `<html lang>` (for screen readers + SEO); absent falls back to en.
     assert!(
