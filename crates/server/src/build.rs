@@ -265,7 +265,9 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // (a remote image, an external stylesheet, a remote/bare `{js}` import) verbatim, so a
     // "portable" output can silently need the network at view time. Warn (located, never fail)
     // rather than download — the tool does not fetch arbitrary URLs at build time.
-    warn_external_refs(&html, path);
+    for w in offline_ref_warnings(&html, path) {
+        log::warn(&w);
+    }
 
     // In `--strict` mode, a cell that crashed (its traceback is baked into the HTML)
     // or any located warning fails the build instead of shipping a broken page with
@@ -1114,6 +1116,12 @@ async fn build_one_page(
         diagnostics.push(crate::check::diag_from(w, &page.rel));
     }
     problems += render_warnings.len();
+    // Offline-guarantee, per page: flag any external reference this page keeps, exactly like the
+    // single-doc build, so the common multi-page deploy (`build <dir>`) is covered too.
+    // Informational — deferred into the page's warnings, never counted in `problems`/`--strict`.
+    for w in offline_ref_warnings(&html, &page.rel) {
+        warnings.push(w);
+    }
     let dest = out.join(&page.url);
     if let Some(parent) = dest.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -2164,7 +2172,7 @@ fn dynamic_import_specifiers(src: &str) -> Vec<(usize, String)> {
 fn external_refs(html: &str) -> Vec<ExternalRef> {
     let bytes = html.as_bytes();
     let mut out: Vec<ExternalRef> = Vec::new();
-    let mut push = |url: &str, off: usize, out: &mut Vec<ExternalRef>| {
+    let push = |url: &str, off: usize, out: &mut Vec<ExternalRef>| {
         let line = sourcepos_line_before(html, off);
         if !out.iter().any(|r| r.url == url && r.line == line) {
             out.push(ExternalRef {
@@ -2212,23 +2220,28 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
     out
 }
 
-/// Log one located, informational warning per external reference the build left in `html`, so
-/// the author learns a "portable" output is not self-contained at the one moment they can act.
+/// One located, informational warning per external reference the build left in `html`, so the
+/// author learns a "portable" output is not self-contained at the one moment they can act.
 /// Never fails the build (even under `--strict`): an external ref may be intentional, and the
 /// tool deliberately does not download arbitrary URLs at build time. `label` names the document
-/// for the located `path:line:` prefix (mirrors the other build warnings).
-fn warn_external_refs(html: &str, label: &str) {
-    for r in external_refs(html) {
-        let loc = match r.line {
-            Some(l) => format!("{label}:{l}"),
-            None => label.to_string(),
-        };
-        log::warn(&format!(
-            "{loc}: external reference not bundled: {} — the build will fetch it at view time, \
-             so the output is not self-contained (offline viewing fails)",
-            r.url
-        ));
-    }
+/// for the located `path:line:` prefix (mirrors the other build warnings). Empty for an
+/// all-local page. Shared by the single-doc build (logged immediately) and the site build
+/// (collected into the page's deferred warning list), so both deploy shapes are covered.
+fn offline_ref_warnings(html: &str, label: &str) -> Vec<String> {
+    external_refs(html)
+        .into_iter()
+        .map(|r| {
+            let loc = match r.line {
+                Some(l) => format!("{label}:{l}"),
+                None => label.to_string(),
+            };
+            format!(
+                "{loc}: external reference not bundled: {} — the build will fetch it at view time, \
+                 so the output is not self-contained (offline viewing fails)",
+                r.url
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -2324,6 +2337,25 @@ mod mirror_tests {
             "const m = await import(\"./mod.js\");\n</script></div>",
         );
         assert_eq!(external_refs(html), Vec::new());
+    }
+
+    #[test]
+    fn offline_ref_warnings_locate_the_source_and_stay_empty_for_local() {
+        // The shared helper the single-doc AND site-build paths both emit through: located
+        // `label:line:` prefix + the url, and silent for an all-local page.
+        let html = "<p data-sourcepos=\"4:1-4:9\"><img src=\"https://x.test/y.png\"></p>";
+        let w = offline_ref_warnings(html, "posts/p.tmd");
+        assert_eq!(w.len(), 1);
+        assert!(w[0].starts_with("posts/p.tmd:4:"), "located: {}", w[0]);
+        assert!(
+            w[0].contains("https://x.test/y.png"),
+            "names the url: {}",
+            w[0]
+        );
+        assert!(
+            offline_ref_warnings("<p data-sourcepos=\"1:1\"><img src=\"a.png\"></p>", "p.tmd")
+                .is_empty()
+        );
     }
 
     #[test]
