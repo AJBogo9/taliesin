@@ -44,9 +44,11 @@ use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
 pub use fm_extract::is_reveal_doc;
+#[cfg(test)]
+use fm_extract::parse_theorem_config;
 use fm_extract::{
     Numbered, TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
-    parse_theorem_config,
+    theorem_config_with_fallback,
 };
 mod cell_extract;
 pub(crate) use cell_extract::option_directive;
@@ -125,7 +127,7 @@ use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 /// assert!(doc.blocks[0].html.contains("<h1"));
 /// ```
 pub fn render_document(src: &str) -> RenderedDoc {
-    render_internal(src, None, None, None, None)
+    render_internal(src, None, None, None, None, None)
 }
 
 /// The languages Taliesin executes against a warm kernel, whose *output block* can
@@ -155,7 +157,20 @@ pub fn render_document_with_includes_scoped(
     base_dir: &Path,
     chapter: Option<u32>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None)
+    render_doc_with_includes_impl(src, base_dir, chapter, None, None)
+}
+
+/// Like [`render_document_with_includes_scoped`] but with a book-level `theorems:`
+/// fallback: the site book path passes `Some`, so a chapter with no `theorems:` block of
+/// its own inherits the book-wide numbering policy. Everything else passes `None` and is
+/// byte-identical to [`render_document_with_includes_scoped`].
+pub(crate) fn render_document_scoped_with_theorems(
+    src: &str,
+    base_dir: &Path,
+    chapter: Option<u32>,
+    book_theorems: Option<&TheoremConfig>,
+) -> RenderedDoc {
+    render_doc_with_includes_impl(src, base_dir, chapter, None, book_theorems)
 }
 
 /// Like [`render_document_with_includes`], but confining `{{< include >}}` and the
@@ -170,7 +185,7 @@ pub fn render_document_with_includes_rooted(
     base_dir: &Path,
     root: Option<&Path>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, None, root)
+    render_doc_with_includes_impl(src, base_dir, None, root, None)
 }
 
 fn render_doc_with_includes_impl(
@@ -178,6 +193,7 @@ fn render_doc_with_includes_impl(
     base_dir: &Path,
     chapter: Option<u32>,
     root: Option<&Path>,
+    book_theorems: Option<&TheoremConfig>,
 ) -> RenderedDoc {
     let (expanded, origins, include_warnings) =
         crate::includes::resolve_warned_in(src, base_dir, root);
@@ -186,7 +202,14 @@ fn render_doc_with_includes_impl(
     // that no built-in declares is left verbatim but reported, so a typo'd shortcode
     // doesn't ship silently as literal text.
     let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
-    let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir), root, chapter);
+    let mut doc = render_internal(
+        &expanded,
+        Some(&origins),
+        Some(base_dir),
+        root,
+        chapter,
+        book_theorems,
+    );
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
     // located, click-to-source diagnostic on the same channel as broken refs so it
@@ -216,12 +239,13 @@ fn render_internal(
     base_dir: Option<&Path>,
     include_root: Option<&Path>,
     chapter: Option<u32>,
+    book_theorems: Option<&TheoremConfig>,
 ) -> RenderedDoc {
     std::thread::scope(|scope| {
         match std::thread::Builder::new()
             .stack_size(256 * 1024 * 1024)
             .spawn_scoped(scope, || {
-                render_internal_impl(src, origins, base_dir, include_root, chapter)
+                render_internal_impl(src, origins, base_dir, include_root, chapter, book_theorems)
             }) {
             Ok(handle) => match handle.join() {
                 Ok(doc) => doc,
@@ -230,7 +254,9 @@ fn render_internal(
             // Spawning the big-stack worker can fail under a strict address-space
             // limit (e.g. `ulimit -v`). Fall back to rendering inline on the current
             // (default-stack) thread rather than panicking — same as before this guard.
-            Err(_) => render_internal_impl(src, origins, base_dir, include_root, chapter),
+            Err(_) => {
+                render_internal_impl(src, origins, base_dir, include_root, chapter, book_theorems)
+            }
         }
     })
 }
@@ -241,6 +267,7 @@ fn render_internal_impl(
     base_dir: Option<&Path>,
     include_root: Option<&Path>,
     chapter: Option<u32>,
+    book_theorems: Option<&TheoremConfig>,
 ) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
@@ -305,7 +332,11 @@ fn render_internal_impl(
     let mut exec_echo = true;
     let mut exec_include = true;
     let mut exec_cache = true;
-    let mut theorem_config = TheoremConfig::default();
+    // Default to the book-level policy (when the site passes one), so a chapter that
+    // starts straight into `#` with no front-matter still inherits it; a page that DOES
+    // carry front-matter re-derives via `theorem_config_with_fallback` below (its own
+    // `theorems:` wins, else the book).
+    let mut theorem_config = book_theorems.cloned().unwrap_or_default();
     let mut flat: Vec<FlatBlock> = Vec::new();
     // Footnote definitions, rendered as `<li>`s and gathered into a section at the
     // end (comrak moves them here in reference order); see below the loop.
@@ -385,7 +416,7 @@ fn render_internal_impl(
                 theme = detect_theme(fm);
                 includes = resolve_doc_includes(fm, base_dir, include_root);
                 (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
-                theorem_config = parse_theorem_config(fm);
+                theorem_config = theorem_config_with_fallback(fm, book_theorems);
                 continue;
             }
             let sp = data.sourcepos;
