@@ -22,8 +22,10 @@ hint banner (item 9); deck `footer:`/`logo:` (item 2); a per-book offline `<book
 cross-page duplicate-label warning is now located (item 5); DX16 update-nudge ruled **skip**; item 8 i18n
 labels **assessed → defer**; and all six item-11 polish passes (a)-(f). **DX17b headless `{js}` also shipped
 2026-07-22** (the last high-impact feature); the AP8 determinism guards (was item 15) are complete and
-that item is now removed. What remains open is smaller and mostly P3; the one genuinely high-yield open
-thread is the machine-facing `read` projection (item 19). Ranked below by product impact.
+that item is now removed. **The machine-facing `read` projection (was item 19) shipped 2026-07-22** on
+branch `structure-preserving-read` (structure-preserving lists/steps/inputs + book-aware chapter/cross-page
+scoping + whole-book `read <dir>`; see "Already shipped"), awaiting the author's merge. What remains open is
+smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
@@ -35,9 +37,8 @@ most of item 10's mount gap. **Land that first**, then pick in priority order:
 
 1. **Merge + push live-executor mounts (F-04)** from `worktree-live-executor-mounts` (done on the branch;
    just needs the author's merge+push, then delete items 16 F-04 / item 10 mount-serve here).
-2. **Structure-preserving `taliesin read` (item 19, NEW; highest yield).** Three independent demand probes
-   (personas 1/2/3) each hit the same seam: `read`'s text projection fuses structured blocks. Consolidated
-   from item 16 F-02 + item 17 F-03 + item 18 F-01. No code started; the clearest "build next."
+2. **Merge structure-preserving read (was item 19)** from `structure-preserving-read` (done on the branch,
+   gates green; the author's merge decision). Landed the recurring cross-persona `read` seam.
 3. **Item 14 heading-demotion**: real and evidence-backed, but **owner-gated** (reshapes every corpus
    snapshot; needs a model ruling before building).
 4. Then the medium/low band: deck mobile polish (item 4), OFF-2 mermaid-offline-preview (item 13), the
@@ -96,19 +97,9 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-19. **Structure-preserving machine-facing `read`** *(NEW; highest yield, the one clear "build next")*.
-    Consolidates the single most-repeated demand-probe finding: `taliesin read`'s text projection fuses
-    structured blocks that should stay separated, so an agent/LLM reading a doc gets run-on text. Three
-    concrete seams, each surfaced by a different persona:
-    - list items concatenate with no separator, e.g. `…column names.Returns —…` (item 17 F-03);
-    - `.scrolly` `.step` narrations merge *across* step boundaries, and a `{{< input >}}` control's
-      label+value fuse (`step size (η)0.12`), per item 18 F-01;
-    - a book-chapter read loses cross-page ref resolution + chapter-scoped numbering (bare
-      "Theorem"/"Section"; `@thm-elbo` gives "Theorem 1" not 3.1), and `read <book-dir>` errors (item 16 F-02).
-    The build path already scopes via `render_document_with_includes_scoped` / `Site::chapter_for`; `read`
-    could reuse it. Note the same `render::indexable_text` feeds Cmd-K search (benign there, so verify search
-    output stays unchanged). Not started. *(This item is the home for items 16 F-02, 17 F-03, 18 F-01;
-    those entries now point here.)*
+Currently clear: the last high-yield item (structure-preserving, book-aware `read`) shipped 2026-07-22
+(branch `structure-preserving-read`, see "Already shipped"). Next-highest is item 14 (heading-demotion,
+owner-gated) in band C.
 
 ### B. Medium impact
 
@@ -215,10 +206,8 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     marketing-site exhibit) was authored to probe where a book-length computational project meets friction.
     The *stacked* HTML interactions (book × shared-theorem-counter × chapter-scope × cross-page refs ×
     deck-embed-in-chapter × code-walkthrough × `{python}` cell × draft-appendix) ALL work — 0 interaction-bugs.
-    The four findings sit on secondary surfaces:
-    - **F-02 (gap, P2; now consolidated in item 19):** `taliesin read <book-chapter>.tmd` loses cross-page ref resolution + chapter-scoped
-      numbering (bare "Theorem"/"Section"; `@thm-elbo` → "Theorem 1" not 3.1), and `read <book-dir>` errors. The
-      build path already scopes via `render_document_with_includes_scoped`/`Site::chapter_for`; `read` could too.
+    The remaining findings sit on secondary surfaces (F-02 book-scoped `read` shipped 2026-07-22, see "Already
+    shipped"):
     - **F-01 (friction, P3):** `theorems:` is not a book-level (`_site.yml`) key — it warns/errors and is ignored;
       a book-wide theorem policy must be repeated per chapter. Candidate: recognize `theorems:` at book level.
     - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
@@ -241,11 +230,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     - **F-01 (friction, P3):** `powershell` is not in the bundled syntect set, so a Windows install snippet
       renders as unstyled plain text + a `TAL-CODE-LANG` warning (`bash` highlights fine). `two-face` ships a
       PowerShell syntax; adding it to the bundled set closes it. Edits `crates/core/src/highlight.rs`.
-    - **F-03 (friction, P3; now consolidated in item 19):** `taliesin read` concatenates adjacent list items with no separator
-      (`…column names.Returns —…`), so an API param list reads as a run-on. The same `render::indexable_text`
-      feeds search (benign there). Candidate: separate list items in the text projection. **Reinforces item
-      16's F-02** — the machine-facing `read` projection is the recurring cross-persona seam (see that item);
-      book-aware, structure-preserving `read` is the highest-yield item across both personas.
     - **F-04 (friction, P3):** single-file `check` (the editor companion) false-positives a `site/gallery.tmd`
       card's `mounts:` link as broken, because single-file mode lacks site/mount context; whole-site
       `taliesin check site` is clean and the build is unaffected. Candidate: treat an unknown-prefix link
@@ -260,12 +244,8 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     a `/gallery/descent` exhibit) stacked the interactive cluster the corpus never combined on one page —
     `{{< input >}}` sliders × a **draggable** `{js}` graphic × a `.scrolly` sticky `{js}` graphic × a
     reactive Plot cell × math × two numbered SVG figures — and it ALL works, standalone and mounted, 0
-    console errors. Three P3 findings:
-    - **F-01 (friction, P3; now consolidated in item 19):** the machine-facing `taliesin read` projection concatenates structured
-      blocks — a `{{< input >}}` control's label+value (`step size (η)0.12`) and, worse, `.scrolly`
-      `.step` narrations *across step boundaries* (`…the middle.Which way is downhill.`). **Third straight
-      persona to hit the `read` seam** (after item 16 F-02 + item 17 F-03); the recurrence is the signal —
-      book-aware, structure-preserving `read` is the highest-yield cross-persona item. Same family as those.
+    console errors. Two remaining P3 findings (F-01 read-projection fusion shipped 2026-07-22, see "Already
+    shipped"):
     - **F-02 (gap, P3):** an authored numbered figure is emitted as `<img src="fig.svg">`, and an
       `<img>`-embedded SVG is style-isolated: it can't see `--tali-*` or the `qmd-theme` toggle, only the
       **OS** `prefers-color-scheme`. So a reader who forces the page theme opposite their OS gets the
@@ -486,6 +466,19 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
+- **Structure-preserving, book-aware `read`** (was item 19; shipped 2026-07-22 on branch
+  `structure-preserving-read`, awaiting merge): the recurring cross-persona `read`-projection seam
+  (folded items 16 F-02 + 17 F-03 + 18 F-01). Three pure arms in `render/text.rs::project_block`
+  (`project_list` one line per `<li>` incl. ordered/nested; `project_steps` each `.scrolly`/`.step`
+  narration its own paragraph; `project_inputs` `[input] label = value`), pinned by unit tests +
+  `corpus/reader/text-projection.tmd` snapshot. Book-aware `read` in `query.rs`: `scoped_site_doc`
+  auto-detects an enclosing `_site.yml` (walk-up, `.git`-bounded) and renders a page as the site does
+  (`render_document_with_includes_scoped` + `Site::number_chapter` + `resolve_cross_refs`), so
+  `@thm-elbo`→"Theorem 3.1", cross-page `@thm-consistency`→"Theorem 2.1"/"Chapter 2"; `read <dir>`
+  projects a whole book (`===== rel (Chapter N) =====` headers, human + `--json`), `--run` on a dir
+  rejected. Pinned by `crates/server/tests/read_book.rs`; `indexable_text` (Cmd-K) unchanged
+  (arms live in `project_block`, which search doesn't call). Still open: item 16 F-03 (embed iframe-chrome
+  leak in `read`) is a SEPARATE finding, NOT folded here.
 - **2026-07-22 (late) backlog-clearing pass** (shipped 2026-07-22, on origin/main): **focus mode split from OS fullscreen**
   (`f` = calm column, `F`/menu = fullscreen; `03-focus-mode.js`); **Vite-user hint banner** (`log::keys_hint`,
   TTY-gated, points at the `◇` dev menu); **deck `footer:`/`logo:`** (`render::deck_overlay_html` +
