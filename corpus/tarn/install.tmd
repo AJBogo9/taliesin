@@ -1,3 +1,78 @@
 # Installation {#sec-install}
 
-Stub — install the library and the CLI.
+Tarn ships two ways: a Python **library** you import, and a standalone **command-line
+tool** for one-off queries against a file. Most projects want the library; reach for the
+CLI when you just need to slice a CSV from a shell script. Both read the same query
+language, so what you learn in one carries over to the other.
+
+## The library {#sec-install-library}
+
+Install into whichever environment manager your project already uses. Tarn has no
+required dependencies beyond Arrow, which the wheels bundle.
+
+::: {.panel-tabset}
+
+## pip
+
+```bash
+pip install tarn
+```
+
+## conda
+
+```bash
+conda install -c conda-forge tarn
+```
+
+## uv
+
+```bash
+uv add tarn
+```
+
+:::
+
+Verify the install from a Python prompt:
+
+```python
+import tarn
+print(tarn.__version__)
+```
+
+## The command-line tool {#sec-install-cli}
+
+The `tarn` binary is self-contained: it bundles its own Python runtime, so it does not
+touch your project environment.
+
+::: {.panel-tabset}
+
+## macOS
+
+```bash
+brew install tarn
+```
+
+## Linux
+
+```bash
+curl -LsSf https://tarn.dev/install.sh | sh
+```
+
+## Windows
+
+```bash
+scoop install tarn
+```
+
+:::
+
+Confirm the CLI is on your path:
+
+```bash
+tarn --version
+```
+
+::: {.callout-note}
+Tarn needs Python 3.10 or newer for the library. The CLI has no such requirement, since
+it carries its own runtime.
+:::
