@@ -276,6 +276,30 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
       for nav only, no live exec channel, no kernel notice); the static `build` of the mount IS correct (shipped
       gallery fine, live preview misleads). Related to item 10's "`mounts:` live serve untested".
 
+17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
+    [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
+    A realistic library documentation site (`corpus/tarn/`, corpus-pinned by `tarn.rs` + a `/gallery/tarn`
+    marketing-site exhibit) probed the tabsets × full-text-search × API-reference cluster. The *stacked*
+    interactions (book × Guide/Reference parts × two `.panel-tabset`s per page × `.code-walkthrough` ×
+    guide→reference `.tmd#anchor` cross-page links × chapter-scoped `@sec-` refs × Cmd-K search spanning the
+    book incl. tabset-hidden content × version/deprecation callouts × mount) ALL work — 0 interaction-bugs.
+    Four P3 findings, all on secondary surfaces:
+    - **F-01 (friction, P3):** `powershell` is not in the bundled syntect set, so a Windows install snippet
+      renders as unstyled plain text + a `TAL-CODE-LANG` warning (`bash` highlights fine). `two-face` ships a
+      PowerShell syntax; adding it to the bundled set closes it. Edits `crates/core/src/highlight.rs`.
+    - **F-03 (friction, P3):** `taliesin read` concatenates adjacent list items with no separator
+      (`…column names.Returns —…`), so an API param list reads as a run-on. The same `render::indexable_text`
+      feeds search (benign there). Candidate: separate list items in the text projection. **Reinforces item
+      16's F-02** — the machine-facing `read` projection is the recurring cross-persona seam (see that item);
+      book-aware, structure-preserving `read` is the highest-yield item across both personas.
+    - **F-04 (friction, P3):** single-file `check` (the editor companion) false-positives a `site/gallery.tmd`
+      card's `mounts:` link as broken, because single-file mode lacks site/mount context; whole-site
+      `taliesin check site` is clean and the build is unaffected. Candidate: treat an unknown-prefix link
+      matching an enclosing site's `mounts:` entry as valid in single-file mode. Related to item 10's
+      "`mounts:` live serve untested" + item 16's F-04.
+    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
+      the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
+
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.

@@ -154,5 +154,64 @@ enclosing site as valid, or suppress cross-boundary link errors in single-file m
   asset); I did not exhaustively shoot all three viewports × both themes. Findings: **F-04**
   (single-file `check` false-positives the card's mount link; `check site` is clean).
 
-## Roll-up (filled at Task 8)
-- gaps: … · friction: … · interaction-bugs: … · correctly-refused: …
+## Roll-up
+
+**6 pages + 1 companion figure authored (a book with Guide + Reference parts), 4 findings +
+1 cross-persona confirmation.**
+
+- **gaps (0).**
+- **friction (4):** F-01 (`powershell` unhighlighted, P3) · F-02 (a11y heading-skip lint on
+  the flat-`###` API-reference shape; working-as-intended, P3) · F-03 (`read` concatenates
+  adjacent list items, P3) · F-04 (single-file `check` false-positives a gallery card's
+  mount link; `check site` clean, P3).
+- **interaction-bugs (0).** Every *stacked* interaction worked: book × Guide/Reference
+  parts × **two `.panel-tabset`s on one page** × `.code-walkthrough` × **guide→reference
+  `.tmd#anchor` cross-page links (even inside walkthrough steps)** × chapter-scoped
+  cross-page `@sec-` refs × **full-text Cmd-K search spanning the whole book including
+  tabset-hidden panel content** × version/deprecation callouts × the `/gallery/tarn` mount.
+  This is the headline result: the combinations the single-feature corpus never tests
+  together are solid.
+- **correctly-refused (0).** The persona stayed cleanly in scope; nothing reached a settled
+  non-goal (e.g. a versioned-docs switcher or multi-language i18n would have been refused,
+  but the docs never needed them).
+- **cross-persona confirmation (1):** the pilot's **F-02** (`read` loses cross-reference
+  resolution) reproduced here on `@sec-` + `.tmd#anchor` links, confirming it is
+  persona-independent (folded into the existing backlog item, not double-counted).
+
+All four findings are P3, in-scope, with working workarounds; none block the exhibit. As in
+the pilot, **all sit on secondary surfaces** (syntax-highlight coverage, an a11y-lint
+ergonomics nuance, the machine-facing `read` projection, and single-file `check`), not on
+the core HTML render path, which handled every stacked combination cleanly.
+
+## Persona retro
+
+**Did the recipe (spec §3) hold on a second, different persona?** Yes, and faster: with the
+pilot's recipe validated, authoring → build/check → `read` probe → browser-verify → pin →
+gallery ran without re-deriving the method. Authoring in **dependency order** (targets
+before the pages that reference them) let every cross-page ref verify immediately.
+
+**Overlap vs. fresh findings.** Little overlap with the course's *specific* findings
+(theorems-config / embed-projection / mount-exec), exactly as predicted — the
+docs-maintainer's **tabsets × search × API-reference** cluster produced its own distinct set
+(F-01/F-02/F-03/F-04). The one overlap is a *confirmation*: the `read` cross-ref gap recurs.
+That is the highest-signal cross-persona result so far: **the machine-facing `read`
+projection is the recurring seam** (pilot F-02 + F-03, this persona's F-03 + the
+confirmation). If any single backlog item deserves to jump the queue, it is book-aware
+`read` with resolved refs and structure-preserving projection.
+
+**A positive worth recording:** full-text search over a book **indexes tabset-hidden,
+non-default-tab content** and spans Guide + Reference — so a reader searching "conda" or
+"collect" finds the right page even when the match lives in a collapsed tab. That is a
+genuine "wider than the isolated pins knew" capability, surfaced only by stacking tabsets ×
+search × a multi-part book.
+
+**Go/no-go for persona 3 (interactive-explainer):** GO. The recipe is validated across two
+distinct clusters. Persona 3 stresses a third (scrolly × reactive `{js}` graph × `{{< input
+>}}` × math-in-one-long-page), so expect a fresh finding set. One carry-forward: persona 3
+*will* have executable `{js}` cells, so the pilot's **F-04 (mount cells don't execute in
+`preview`)** will bite its gallery exhibit — worth fixing (or surfacing a kernel/exec state)
+before that exhibit lands, else live-previewing the gallery misleads. This persona
+deliberately avoided executable cells, so it did not re-hit that gap.
+
+**Slate:** unchanged. Four-persona plan stands; sequence interactive-explainer → analyst.
+The gallery now has two exhibits; the page reads well with two cards and will keep growing.
