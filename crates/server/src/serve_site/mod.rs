@@ -95,8 +95,7 @@ struct MountPoint {
 /// `gallery/course`). Returns the winning mount index and `path` with that prefix (and
 /// its trailing `/`) removed; `None` when nothing matches, i.e. the request belongs to
 /// the root project. Pure — this is the routing seam, unit-tested without any
-/// `Site`/kernel. Wired into project resolution when the `Project` struct lands.
-#[allow(dead_code)]
+/// `Site`/kernel; the live per-page wiring on top is browser-verified.
 fn match_mount<'a>(prefixes: &[String], path: &'a str) -> Option<(usize, &'a str)> {
     let mut best: Option<(usize, usize)> = None; // (index, prefix byte-len)
     for (i, p) in prefixes.iter().enumerate() {
@@ -109,6 +108,26 @@ fn match_mount<'a>(prefixes: &[String], path: &'a str) -> Option<(usize, &'a str
         let sub = path.strip_prefix(&prefixes[i]).unwrap_or("");
         (i, sub.strip_prefix('/').unwrap_or(sub))
     })
+}
+
+/// Resolve a request `path` to the project that owns it (root or a mount) and the path
+/// with the mount prefix stripped. The root project is the fallback when no mount matches.
+fn resolve_project<'a>(app: &'a SiteApp, path: &'a str) -> (&'a Arc<Project>, &'a str) {
+    let prefixes: Vec<String> = app.mounts.iter().map(|m| m.prefix.clone()).collect();
+    match match_mount(&prefixes, path) {
+        Some((i, sub)) => (&app.mounts[i].project, sub),
+        None => (&app.root, path),
+    }
+}
+
+/// The `?page=` websocket key for a page: prefixed by the project's mount so the ws
+/// handler routes the client back to the owning project (the root uses the bare rel).
+fn ws_page_key(project: &Project, rel: &str) -> String {
+    if project.key.0.is_empty() {
+        rel.to_string()
+    } else {
+        format!("{}/{}", project.key.0, rel)
+    }
 }
 
 /// A job for the executor worker: rebuild a page, or restart its kernel first
@@ -361,10 +380,11 @@ async fn og_card_preview(
     State(app): State<Arc<SiteApp>>,
     Query(q): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let rel = q.get("page").cloned().unwrap_or_default();
+    let page_key = q.get("page").cloned().unwrap_or_default();
+    let (project, sub) = resolve_project(&app, &page_key);
     let bytes = {
-        let site = app.root.site.lock();
-        site.page(&rel).map(|page| {
+        let site = project.site.lock();
+        site.page(sub).map(|page| {
             let spec = taliesin_core::site::card_spec(&site, page);
             taliesin_core::site::render_card(&spec)
         })
@@ -422,23 +442,54 @@ async fn page_or_asset(
     uri: axum::http::Uri,
 ) -> axum::response::Response {
     let path = percent_decode(uri.path().trim_start_matches('/'));
-    let lookup = if path.is_empty() {
+    // Route to the owning project (root or a mount) by URL prefix. A mount now serves
+    // through the SAME live per-page path as the root, so its `{python}`/`{r}` cells
+    // execute live in preview (replacing the old static pre-exec render of a mount).
+    let (project, sub) = resolve_project(&app, &path);
+    let lookup = if sub.is_empty() {
         "index.html".to_string()
     } else {
-        path.clone()
+        sub.to_string()
     };
-    let page = { app.root.site.lock().page(&lookup).cloned() };
+    // 1) A live page of this project.
+    let page = { project.site.lock().page(&lookup).cloned() };
     if let Some(page) = page {
-        return Html(ensure_and_render_page(&app, &page)).into_response();
+        return Html(ensure_and_render_page(&app, project, &page)).into_response();
     }
-    // A deck referenced by `{{< embed >}}` (a standalone document, not a page/
-    // chapter): render it self-contained on the fly so the embedding iframe resolves
-    // in preview, mirroring what `build` writes.
-    let deck = { app.root.site.lock().deck(&lookup).cloned() };
+    // 2) The project's route-served search + hover indexes (not written to disk in
+    //    preview). For a mount these arrive as `/<prefix>/search-index.js`; without this
+    //    Cmd-K search on a mounted page would 404.
+    if lookup == "search-index.js" {
+        let j = project.site.lock().search_index_json.clone();
+        let j = if j.is_empty() { "[]".to_string() } else { j };
+        return (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/javascript; charset=utf-8",
+            )],
+            format!("window.TALIESIN_SEARCH_INDEX={j};"),
+        )
+            .into_response();
+    }
+    if lookup == "hover-index.js" {
+        let j = project.site.lock().hover_index_json.clone();
+        let j = if j.is_empty() { "{}".to_string() } else { j };
+        return (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/javascript; charset=utf-8",
+            )],
+            format!("window.TALIESIN_HOVER_INDEX={j};"),
+        )
+            .into_response();
+    }
+    // 3) A deck referenced by `{{< embed >}}` (a standalone document, not a page/chapter):
+    //    render it self-contained on the fly so the embedding iframe resolves in preview.
+    let deck = { project.site.lock().deck(&lookup).cloned() };
     if let Some(deck) = deck
         && let Ok(src) = std::fs::read_to_string(&deck.input)
     {
-        let base = deck.input.parent().unwrap_or(&app.root.dir).to_path_buf();
+        let base = deck.input.parent().unwrap_or(&project.dir).to_path_buf();
         let doc = taliesin_core::render_document_with_includes(&src, &base);
         let stem = deck
             .url
@@ -453,71 +504,11 @@ async fn page_or_asset(
         ))
         .into_response();
     }
-    // A `mounts:` sub-project (e.g. the docs book under /docs): render the requested
-    // page from it on the fly (so its links resolve in preview, mirroring the
-    // single-tree build), or serve one of its assets.
-    for m in &app.mounts {
-        let sub = if path == m.prefix {
-            Some("")
-        } else {
-            match path.strip_prefix(&m.prefix) {
-                Some(r) if r.starts_with('/') => Some(&r[1..]),
-                _ => None,
-            }
-        };
-        if let Some(sub) = sub {
-            let lookup = if sub.is_empty() { "index.html" } else { sub };
-            // The mounted site's search + feed are route-served (not written to disk
-            // in preview), exactly like the parent's. Without this, Cmd-K search on a
-            // mounted-book page loads `/<mount>/search-index.js` → 404.
-            if lookup == "search-index.js" {
-                let j = m.project.site.lock().search_index_json.clone();
-                let j = if j.is_empty() { "[]".to_string() } else { j };
-                let js_ct = "text/javascript; charset=utf-8";
-                let body = format!("window.TALIESIN_SEARCH_INDEX={j};");
-                return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
-            }
-            if lookup == "hover-index.js" {
-                let j = m.project.site.lock().hover_index_json.clone();
-                let j = if j.is_empty() { "{}".to_string() } else { j };
-                let js_ct = "text/javascript; charset=utf-8";
-                let body = format!("window.TALIESIN_HOVER_INDEX={j};");
-                return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
-            }
-            let rendered = m.project.site.lock().render_page(lookup);
-            if let Some(html) = rendered {
-                return Html(html).into_response();
-            }
-            // A deck embedded by a mounted page (e.g. `/docs/guide/tour.html`):
-            // render it self-contained on the fly, mirroring the parent's deck
-            // branch above. Without this the embedding iframe 404s in preview.
-            let deck = m.project.site.lock().deck(lookup).cloned();
-            if let Some(deck) = deck
-                && let Ok(src) = std::fs::read_to_string(&deck.input)
-            {
-                let base = deck.input.parent().unwrap_or(&m.project.dir).to_path_buf();
-                let doc = taliesin_core::render_document_with_includes(&src, &base);
-                let stem = deck
-                    .url
-                    .rsplit('/')
-                    .next()
-                    .and_then(|f| f.strip_suffix(".html"))
-                    .unwrap_or("deck");
-                return Html(taliesin_core::render_doc_to_page(
-                    &doc,
-                    stem,
-                    taliesin_core::OutputMode::Preview,
-                ))
-                .into_response();
-            }
-            return serve_asset(&m.project.dir, lookup);
-        }
-    }
-    // Nothing matched. If it isn't an existing asset either, serve the site's own
-    // 404 page (with a 404 status) so preview mirrors the deployed `404.html`.
-    let asset = serve_asset(&app.root.dir, &path);
+    // 4) A static asset under this project's root, else this project's own 404 page
+    //    (with a 404 status) so preview mirrors the deployed `404.html`.
+    let asset = serve_asset(&project.dir, &lookup);
     if asset.status() == axum::http::StatusCode::NOT_FOUND {
-        let html = { app.root.site.lock().render_404_page() };
+        let html = { project.site.lock().render_404_page() };
         return (axum::http::StatusCode::NOT_FOUND, Html(html)).into_response();
     }
     asset
@@ -530,26 +521,26 @@ fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
 
 /// Ensure the page has live state (creating it + queuing an execution build on
 /// first visit), then render its full live HTML for the first paint.
-fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
+fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) -> String {
     let rel = page.rel.clone();
-    if !app.root.pages.lock().contains_key(&rel) {
+    if !project.pages.lock().contains_key(&rel) {
         // First-paint render (markdown + listing cards, no code execution yet);
         // done outside the pages lock since it needs the site lock for listings.
         let doc = {
-            let site = app.root.site.lock();
+            let site = project.site.lock();
             render_markdown_only(&site, page)
         };
         let (tx, _) = broadcast::channel(256);
-        app.root
+        project
             .pages
             .lock()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
         let _ = app
             .build_tx
-            .send(BuildMsg::Build(ProjectKey::default(), rel.clone()));
+            .send(BuildMsg::Build(project.key.clone(), rel.clone()));
     }
-    site_page_html(app, page)
+    site_page_html(project, page)
 }
 
 /// A first-paint render without code execution (the worker fills outputs after).
@@ -598,14 +589,14 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
 
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
 /// wrapped in the site chrome, and the preview client scoped to this page's ws.
-fn site_page_html(app: &SiteApp, page: &Page) -> String {
+fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // `tab_title` is the string the producer already resolved (`Site::page_title`) — the
     // very one the websocket re-asserts on connect, so the two cannot disagree. It is
     // deliberately NOT re-derived here if empty: that means the page has no live state at
     // all (the arm below has no body and no theme either), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
     let (tab_title, toc, theme_css, theme_default, body, page_includes, generation) = {
-        let pages = app.root.pages.lock();
+        let pages = project.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
             Some(ps) => (
@@ -629,7 +620,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         }
     };
     // Live preview: no book archive on disk, so no offline-download link (it would 404).
-    let chrome = { app.root.site.lock().page_chrome(page, false) };
+    let chrome = { project.site.lock().page_chrome(page, false) };
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);
@@ -664,9 +655,12 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
         js_str(&base_dir.to_string_lossy()),
-        js_str(&app.root.dir.to_string_lossy()),
+        js_str(&project.dir.to_string_lossy()),
     );
-    let ws_path = format!("/ws?page={}", encode_query(&page.rel));
+    let ws_path = format!(
+        "/ws?page={}",
+        encode_query(&ws_page_key(project, &page.rel))
+    );
     // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
     // (depth-relative, served at the root). Empty for a project with no index.
     let search_cfg = if chrome.search_index.is_empty() {
@@ -733,7 +727,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
     // link resolves from any page depth. A build ships neither this global nor the dev menu.
     let drafts_global = {
-        let site = app.root.site.lock();
+        let site = project.site.lock();
         let items: Vec<String> = site
             .pages
             .iter()
@@ -808,20 +802,26 @@ async fn ws_handler(
         .into_response()
 }
 
-async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
+async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
     let (mut sink, mut stream) = socket.split();
 
-    // Normalise the client's page key (it may send a url) to the source rel.
-    let rel = {
-        let site = app.root.site.lock();
-        match site.page(&rel_or_url) {
-            Some(p) => p.rel.clone(),
-            None => rel_or_url.clone(),
-        }
+    // Route the client's page key (possibly `<mount-prefix>/<rel-or-url>`) to its owning
+    // project, then normalise to that project's source rel (the key may be a url).
+    let (project, rel) = {
+        let (project, sub) = resolve_project(&app, &page_key);
+        let project = project.clone();
+        let rel = {
+            let site = project.site.lock();
+            match site.page(sub) {
+                Some(p) => p.rel.clone(),
+                None => sub.to_string(),
+            }
+        };
+        (project, rel)
     };
 
     let (snapshot, mut rx, created) = {
-        let mut pages = app.root.pages.lock();
+        let mut pages = project.pages.lock();
         let created = !pages.contains_key(&rel);
         let ps = pages.entry(rel.clone()).or_insert_with(|| PageState {
             doc: PageDoc::default(),
@@ -832,7 +832,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
     if created {
         let _ = app
             .build_tx
-            .send(BuildMsg::Build(ProjectKey::default(), rel.clone()));
+            .send(BuildMsg::Build(project.key.clone(), rel.clone()));
     }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
@@ -846,7 +846,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => {
                     let fr = {
-                        let pages = app.root.pages.lock();
+                        let pages = project.pages.lock();
                         pages.get(&rel).map(|ps| full_render_json(&ps.doc))
                     };
                     if let Some(fr) = fr
@@ -861,8 +861,9 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
                 Some(Ok(Message::Text(t))) => {
                     // The dev menu's "Restart kernel" action restarts this page's kernel.
                     if is_restart_kernel(t.as_str()) {
-                        let _ = app.build_tx
-                            .send(BuildMsg::Restart(ProjectKey::default(), rel.clone()));
+                        let _ = app
+                            .build_tx
+                            .send(BuildMsg::Restart(project.key.clone(), rel.clone()));
                     } else {
                         handle_client_msg(t.as_str());
                     }
