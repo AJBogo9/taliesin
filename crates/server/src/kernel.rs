@@ -1003,7 +1003,7 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 };
                 s.push_str(&format!(
                     "<pre class=\"{class}\">{}</pre>",
-                    esc(&strip_ansi(text))
+                    esc(&scrub_kernel_paths(&strip_ansi(text)))
                 ));
             }
             Output::Rich(html) => s.push_str(html),
@@ -1071,6 +1071,68 @@ fn render_media(media: &Media) -> String {
         return format!("<pre>{}</pre>", esc(&t));
     }
     String::new()
+}
+
+/// Replace a Jupyter cell's non-deterministic source path with a stable `<cell>` marker.
+/// An executed cell's stream — matplotlib's Agg `UserWarning`, any `warnings.warn`, or a
+/// `print(__file__)` — cites the kernel's per-process temp file
+/// `<tmpdir>/ipykernel_<PID>/<HASH>.py`. The PID (and hash across machines) change every
+/// run, so leaving it in leaks a local absolute path into the published HTML AND makes
+/// cold/CI/cross-machine builds non-reproducible (AP8-1). The IPython *traceback* arm
+/// already reads `Cell In[N]` (IPython rewrites the frame filename), so only these stream
+/// paths and the legacy `<ipython-input-…>` form remain. Mirrors nbconvert/Quarto; the
+/// trailing `:<line>:` is deterministic (the cell's own line) and is kept. Applies to every
+/// stream regardless of language — R streams simply carry no such path to match.
+fn scrub_kernel_paths(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while !rest.is_empty() {
+        // Legacy `<ipython-input-…>` (older IPython): replace the whole `<…>` token.
+        if let Some(after) = rest.strip_prefix("<ipython-input-") {
+            if let Some(gt) = after.find('>') {
+                out.push_str("<cell>");
+                rest = &after[gt + 1..];
+                continue;
+            }
+        }
+        // `<tmpdir>/ipykernel_<digits>/<digits>.py`: anchor on `ipykernel_`, match the tail
+        // forward, then drop the already-emitted tmpdir prefix back to a whitespace boundary
+        // so the whole absolute path token (not just the filename) becomes `<cell>`.
+        if rest.starts_with("ipykernel_") {
+            if let Some(tail) = ipykernel_tail_len(rest) {
+                let keep = out.trim_end_matches(|c: char| !c.is_whitespace()).len();
+                out.truncate(keep);
+                out.push_str("<cell>");
+                rest = &rest[tail..];
+                continue;
+            }
+        }
+        let ch = rest.chars().next().unwrap();
+        out.push(ch);
+        rest = &rest[ch.len_utf8()..];
+    }
+    out
+}
+
+/// If `s` begins with `ipykernel_<digits>/<digits>.py`, the byte length of that match, else
+/// `None` (so `ipykernel_launcher` and other non-cell tokens are left untouched).
+fn ipykernel_tail_len(s: &str) -> Option<usize> {
+    let b = s.as_bytes();
+    let after_pid = take_ascii_digits(b, "ipykernel_".len())?;
+    if b.get(after_pid) != Some(&b'/') {
+        return None;
+    }
+    let after_hash = take_ascii_digits(b, after_pid + 1)?;
+    s[after_hash..].starts_with(".py").then_some(after_hash + 3)
+}
+
+/// Advance over one-or-more ASCII digits from `i`; `None` if there is not at least one.
+fn take_ascii_digits(b: &[u8], i: usize) -> Option<usize> {
+    let mut j = i;
+    while b.get(j).is_some_and(u8::is_ascii_digit) {
+        j += 1;
+    }
+    (j > i).then_some(j)
 }
 
 /// Strip ANSI SGR escape sequences (IPython colourises tracebacks).
@@ -1193,6 +1255,67 @@ mod tests {
         assert!(
             !out.contains("[31m") && !out.contains("[0m"),
             "ANSI SGR code leaked as visible text: {out}"
+        );
+    }
+
+    // Regression (AP8-1): an executed cell's stderr warning (matplotlib's Agg
+    // `UserWarning`, any `warnings.warn`, or a stdout `print(__file__)`) cites the kernel's
+    // per-process cell file `<tmpdir>/ipykernel_<PID>/<HASH>.py`. Left in, the PID/hash make
+    // cold/CI/cross-machine builds non-reproducible AND leak a local absolute path into the
+    // published HTML. Scrub it to a stable `<cell>` marker (the IPython traceback arm already
+    // reads `Cell In[N]`). Captured verbatim from a real ipykernel-7 build.
+    #[test]
+    fn render_outputs_scrubs_nondeterministic_kernel_paths() {
+        let out = render_outputs(&[Output::Stream {
+            stderr: true,
+            text: "/tmp/ipykernel_3761593/2688443964.py:2: UserWarning: reproducible?\n".into(),
+        }]);
+        assert!(
+            out.contains(":2: UserWarning: reproducible?"),
+            "the deterministic line + message must be kept: {out}"
+        );
+        assert!(
+            !out.contains("ipykernel_") && !out.contains("3761593") && !out.contains("/tmp/"),
+            "the non-deterministic PID / local temp path leaked into the page: {out}"
+        );
+        // The stable marker survives HTML-escaping (renders as `<cell>` for the reader).
+        assert!(
+            out.contains("&lt;cell&gt;:2:"),
+            "stable marker missing: {out}"
+        );
+    }
+
+    #[test]
+    fn scrub_kernel_paths_normalizes_cell_source_paths() {
+        // The exact string a Python warning emits (captured from a real ipykernel-7 build).
+        assert_eq!(
+            scrub_kernel_paths("/tmp/ipykernel_3761593/2688443964.py:2: UserWarning: hi"),
+            "<cell>:2: UserWarning: hi",
+        );
+        // TMPDIR need not be /tmp (macOS uses /var/folders/…); the whole path token goes.
+        assert_eq!(
+            scrub_kernel_paths("/var/folders/ab/T/ipykernel_9/12.py:6: UserWarning: agg"),
+            "<cell>:6: UserWarning: agg",
+        );
+        // Legacy `<ipython-input-N-hash>` form (older IPython).
+        assert_eq!(
+            scrub_kernel_paths("<ipython-input-12-3a9f2b1c>:1: DeprecationWarning: old"),
+            "<cell>:1: DeprecationWarning: old",
+        );
+        // Two occurrences in one stream are both scrubbed; surrounding text is preserved.
+        assert_eq!(
+            scrub_kernel_paths("a /tmp/ipykernel_1/2.py:3 b /tmp/ipykernel_1/4.py:5 c"),
+            "a <cell>:3 b <cell>:5 c",
+        );
+        // No false positive: the launcher module name has no `<digits>/<digits>.py` tail.
+        assert_eq!(
+            scrub_kernel_paths("using ipykernel_launcher here"),
+            "using ipykernel_launcher here",
+        );
+        // Ordinary warning text is untouched.
+        assert_eq!(
+            scrub_kernel_paths("just a warning, be careful"),
+            "just a warning, be careful",
         );
     }
 

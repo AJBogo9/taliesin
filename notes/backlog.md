@@ -253,18 +253,8 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     `58db11d`, which also ran the kernel path). Both agree render + build are deterministic BY DESIGN and
     reproducible cross-machine (single docs byte-identical across separate processes, 9 site builds
     byte-identical, sorted discovery/listings/hover index, `.zip` fixed-1980 timestamp, content-hash
-    block-ids). Two build-ready items:
-    - **AP8-1 (P3, the real defect, from the audit session's round):** executed-cell **stderr** embeds the
-      non-deterministic `/tmp/ipykernel_<PID>/<hash>.py` path (Python/R warnings such as matplotlib's Agg
-      `UserWarning`), so cold/CI/cross-machine builds are non-reproducible, it **leaks a local absolute path**
-      into published HTML (the leak vector my AP12 offline round at item 13 explicitly deferred), and it adds
-      reader noise. Root cause pinned: the `Output::Stream` arm of `render_outputs`
-      (`crates/server/src/kernel.rs:994`) strips ANSI and HTML-escapes but never normalizes the path; the
-      `Output::Error` traceback arm is already clean (`Cell In[N]`). Fix: scrub `/tmp/ipykernel_\d+/\d+\.py`
-      (and legacy `<ipython-input-…>`) to a stable `<cell>` placeholder before escaping (mirrors
-      nbconvert/Quarto); apply to Python and R. Pin: a matplotlib-`UserWarning` doc must build byte-identically
-      twice under `TALIESIN_NO_CACHE=1`. Verified by the audit session (two cold builds differed only in the
-      PID line).
+    block-ids). **AP8-1 shipped 2026-07-22** (this session, branch `worktree-ap8-1-ipykernel-path-scrub`;
+    see "Already shipped"), leaving one build-ready item:
     - **DET-1 (S, complementary, this session):** a broader end-to-end guard that builds a representative
       multi-page site (xrefs + listing + search/hover index) twice in separate processes and asserts
       byte-identical output, so a future unsorted HashMap/HashSet/`read_dir`-to-output cannot silently regress
@@ -487,6 +477,18 @@ claim that one of these is "missing"):
   `page_chrome(downloads)`, `Site::archive_name`); **cross-page dup-label warning located** (`file:line:` at
   the redefining anchor via `content_lines_numbered`); **item 11 passes (b)-(e)** (see item 11). Owner
   rulings: DX16 skip, i18n defer, item-9 design-Qs documented (see "Decided against").
+- **AP8-1 executed-output path scrub** (item 15, AP8) **shipped 2026-07-22** (branch
+  `worktree-ap8-1-ipykernel-path-scrub`, local): a cell's stream (matplotlib's Agg `UserWarning`, any
+  `warnings.warn`, a `print(__file__)`) cited the kernel's per-process temp file
+  `<tmpdir>/ipykernel_<PID>/<HASH>.py`, making builds non-reproducible + leaking a local absolute path into
+  published HTML. Fix: a hand-rolled `scrub_kernel_paths` (no new dep, mirrors `strip_ansi`) normalizes that
+  path — and the legacy `<ipython-input-…>` form — to a stable `<cell>` marker in the `Output::Stream` arm of
+  `render_outputs` (`crates/server/src/kernel.rs`), before escaping; the `:<line>:` suffix is deterministic and
+  kept. Language-agnostic (R warnings carry no such path — verified). Pinned by pure unit tests
+  (`scrub_kernel_paths_normalizes_cell_source_paths`, `render_outputs_scrubs_nondeterministic_kernel_paths`) +
+  a kernel-gated end-to-end `crates/server/tests/executed_output_reproducible.rs` (build the same warning doc
+  twice under `TALIESIN_NO_CACHE=1` → byte-identical, no `ipykernel_` path); mutation-checked both ways.
+  Completes item 15 alongside DET-1.
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); **DX16 ruled
   skip** (Decided against); **DX17(b)** (headless `{js}`) **shipped 2026-07-22** — `read --run` drives a
   local headless Chrome (`chromiumoxide` 0.9, `default-features = false` so no fetcher/openssl; tokio
