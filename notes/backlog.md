@@ -162,7 +162,12 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     2026-07-22** (`polish/scaffold-h1-time`): listing/section pages get a visually-hidden `<h1>` (only when the
     body has none, so a `hero:` landing keeps one `<h1>`; PA-H2), and card + title-block dates are now
     `<time datetime>` (PA-M1); pinned `title_block_style_none_injects_a_hidden_h1_but_no_visible_block`,
-    `..._does_not_duplicate_an_existing_h1`. *Residual:* PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`),
+    `..._does_not_duplicate_an_existing_h1`. **PA-M2 (`<article>` landmark) — SHIPPED**
+    (`feat/pa-m2-article-landmark`): a dated post wraps its reading content in `<main><article>…</article></main>`
+    (title block + body + footnotes); an undated page (listing/section/generic) stays plain `<main>`. Semantic-only
+    (no layout: `<article>` is `display:block` and no CSS rule targets `main`'s direct children on an article page),
+    pinned by `render::tests::a_dated_post_wraps_its_reading_content_in_an_article_landmark`. *Residual:* PA-M3
+    (`<ul>`/`role=list`, needs CSS-grid + category-filter-JS restructuring → browser verify),
     PA-H1 deck `theme-color`/OG. **(c) a11y announce/focus holes — SHIPPED** (`polish/a11y-holes`): `<th scope>`
     (PA-M6), footnotes region `aria-label` (PA-M7), footnote-ref `doc-noteref` (PA-M8), lightbox caption
     `aria-live` (PA-A2), deck share `aria-modal` (PA-B4). *Residual:* PA-B3 focus-trap, PA-B5 roving-tabindex,
