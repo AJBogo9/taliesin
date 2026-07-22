@@ -37,6 +37,7 @@ author's own projects; provenance is below.
 | `diagnostics/` | Validator coverage | docs that deliberately trip Taliesin's schema validators (`typos.tmd`) + the opt-in prose linter (`prose.tmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.tmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
 | `bare-draft.tmd` | Bare build (`--bare`) | prose + inline math + a server-highlighted code block + an image + a `{js}` cell + a Mermaid block; pins the `build --bare` contract (zero `<script>`/zero CDN, CSS-only theme, math kept, `{js}` dropped, Mermaid as source) and the Phase-1 enhancer gating | (purpose-built) |
 | `agent/executed-read.tmd` | Headless executed-output (DX17) | a labelled-figure python cell + a printed stream + a deliberately-erroring cell; pins `read --run`'s executed-output projection (`[figure fig-x: produced, alt "…"]` / `[output: …]` / `[cell error: …]`) via `read_run.rs` | (purpose-built) |
+| `agent/executed-read-js.tmd` | Headless `{js}` executed-output (DX17b) | an Observable-Plot `{js}` cell that paints an `<svg>` + a deliberately-throwing `{js}` cell; pins `read --run`'s headless-Chrome `{js}` projection (`[js: produced, <svg W×H>]` / `[js error: …]` / `[js: skipped …]`) via the Chrome-gated `read_run_js.rs` | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,

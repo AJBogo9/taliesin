@@ -14,7 +14,7 @@ title: "CLI reference"
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
 | `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload |
 | `render <file.tmd>` | Render a one-shot full HTML page to stdout (static; does **not** execute code cells) |
-| `read <file.tmd>` | Project the document to plain text (agent-readable; static, does **not** execute code cells) |
+| `read <file.tmd> [--run]` | Project the document to plain text (agent-readable). Static by default; `--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is available, observes each `{js}` chart (`[js: produced, <svg W×H>]`), reporting what every cell produced (`--format json` for structured per-cell results) |
 | `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 | `vocab` | Emit the editor autocomplete vocabulary as JSON (the companion consumes it) |

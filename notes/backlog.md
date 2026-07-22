@@ -19,21 +19,22 @@ shipped"). **Most of the backlog has already shipped.** A large **2026-07-22 (la
 shipped (all local, unpushed — the author pushes): focus-mode/fullscreen split (was item 3); a Vite-user
 hint banner (item 9); deck `footer:`/`logo:` (item 2); a per-book offline `<book>.zip` (item 6); the
 cross-page duplicate-label warning is now located (item 5); DX16 update-nudge ruled **skip**; item 8 i18n
-labels **assessed → defer**; and item 11 polish **passes (b)-(e)** (pass (a) shipped earlier). What remains
-open is small: DX17b (a heavy new dep, ready-to-build in its own session) plus deferred low-value
-sub-findings; ranked below by product impact.
+labels **assessed → defer**; and item 11 polish **passes (b)-(e)** (pass (a) shipped earlier). **DX17b headless `{js}` also shipped
+2026-07-22** (its own session; the last high-impact feature). What remains open is small: deferred
+low-value sub-findings; ranked below by product impact.
 
 ## Next session: start here
 
 Tree is green across all gates; commits sit on local `main` **unpushed** (author pushes). Clean entry
 points, pick by appetite:
 
-- **The one remaining feature: DX17(b) headless `{js}` (item 1) — READY TO BUILD, its own session.** A
-  **build-ready plan** now exists:
-  [plans/2026-07-22-dx17b-headless-js-plan.md](../docs/superpowers/plans/2026-07-22-dx17b-headless-js-plan.md).
-  Deferred (not blocked): it adds `chromiumoxide` (a CDP browser-automation crate) to the offline-minimal
-  tool + needs a real headless-Chrome verify loop — worth a focused session. Owner already said "build it";
-  step 1 of the plan is the dep-resolution risk gate.
+- **DX17(b) headless `{js}` — SHIPPED 2026-07-22** (own session, branch `worktree-dx17b-headless-js`,
+  unpushed): `read --run` now drives a local headless Chrome (`chromiumoxide`, browser-download `fetcher`
+  off so offline holds + no openssl) over the built page and reports each `{js}` cell's outcome
+  (`[js: produced, <svg W×H>]` / `[js error: …]` / `[js: skipped (chrome unavailable)]`), observation-only.
+  Pure `classify_js_node` + `JsOutcome` in `headless_js.rs`; wired via `body_text_with_js` (core) +
+  `query.rs`; corpus-pinned `agent/executed-read-js.tmd`; Chrome-gated `read_run_js.rs` (+
+  `TALIESIN_REQUIRE_CHROME` canary). See "Already shipped".
 - **Item 11 deferred sub-findings (P3, opportunistic):** PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`),
   PA-H1 residual (deck `theme-color`/OG); PA-B3 (mobile-TOC focus-trap), PA-B5 (cite-tabs roving-tabindex),
   PA-B14 (Cmd-K Home/End), PA-B15 (menu tab-out close); PA-CLI1/2/3 (undocumented `preview --port` / `read
@@ -91,15 +92,8 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-1. **DX17(b): headless `{js}` executed-output visibility** — **READY TO BUILD (own session).** `{js}`
-   (Observable Plot, the corpus's own idiom) is still never server-run, so an agent can't headlessly tell a
-   `{js}` chart produced. A local headless Chrome (`chromiumoxide`) over the built page, gated + optional
-   (degrades to "skipped: chrome unavailable"), observation-only (no reactive re-run, so the CUT
-   `js-kernel-rerun` trap stays out). Owner signed off on the dep ("build it"); deferred to a focused
-   session because the heavy `chromiumoxide` dep + a live headless-Chrome verify loop deserve isolated
-   attention. *Gating: L, net-new.* **Build-ready plan:**
-   [plans/2026-07-22-dx17b-headless-js-plan.md](../docs/superpowers/plans/2026-07-22-dx17b-headless-js-plan.md)
-   · design: [2026-07-21-dx17-headless-executed-output-design.md](../docs/superpowers/specs/2026-07-21-dx17-headless-executed-output-design.md).
+*(Cleared: DX17(b) headless `{js}` shipped 2026-07-22 — see "Already shipped". No high-impact feature
+is currently open; the remaining work is P3/gated or demand-driven.)*
 
 ### B. Medium impact
 
@@ -381,7 +375,16 @@ claim that one of these is "missing"):
   the redefining anchor via `content_lines_numbered`); **item 11 passes (b)-(e)** (see item 11). Owner
   rulings: DX16 skip, i18n defer, item-9 design-Qs documented (see "Decided against").
 - **DX audit batch** DX1-DX15, DX18, DX19 shipped; **DX17(a)** shipped 2026-07-21 (below); **DX16 ruled
-  skip** (Decided against); only **DX17(b)** (headless `{js}`, ready-to-build) remains (item 1).
+  skip** (Decided against); **DX17(b)** (headless `{js}`) **shipped 2026-07-22** — `read --run` drives a
+  local headless Chrome (`chromiumoxide` 0.9, `default-features = false` so no fetcher/openssl; tokio
+  1.52/edition-2024 clean) over the built page and projects each `{js}` cell's outcome. Pure
+  `classify_js_node`/`JsOutcome` (`headless_js.rs`), core interleave `body_text_with_js`
+  (`render/text.rs::project_with_js`), a `detail` field on `read --format json`'s cells (skip-if-none, so
+  python/r JSON stays byte-identical), gated + optional (no Chrome → `[js: skipped (chrome unavailable)]`,
+  exit 0), observation-only (no reactive re-run, no `{js}` freeze write). Pinned by
+  `corpus/agent/executed-read-js.tmd` + the Chrome-gated `read_run_js.rs` (`TALIESIN_REQUIRE_CHROME`
+  canary) + pure unit tests; `TALIESIN_JS_TIMEOUT` (default 10s) settle budget. **The whole DX audit is now
+  complete.**
 - **Editor DevX (VS Code companion) E1-E6 shipped 2026-07-21; E7 (`taliesin lsp`) shipped 2026-07-22 —
   the whole initiative is complete** (audit
   [2026-07-21-vscode-devx-audit.md](2026-07-21-vscode-devx-audit.md);
