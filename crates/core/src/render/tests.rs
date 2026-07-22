@@ -4295,6 +4295,104 @@ fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
     );
 }
 
+/// PA-C1/C2/C3 (2026-07-22 polish audit): the "confirmed"/"active" chrome controls — the
+/// cite-this "Copied!" button (site.css), the deck speaker "Read mode" toggle, and the deck
+/// share "Copy" button (deck.css) — filled themselves with the raw `--tali-accent` behind
+/// white text. In dark mode the accent is a LIGHT indigo (#9aa8dc), so white-on-accent was
+/// ≈2.3:1, below AA on the one control a dark reader sees on success. Every filled control
+/// must use the AA-tuned `--tali-accent-fill` (white on it = 5.59:1 in dark) + `--tali-on-accent`,
+/// the same pairing the Cmd-K selected row already uses; the off-palette one-off blues
+/// (#3b6ea5, #4b57b0) must be gone.
+#[test]
+fn filled_chrome_controls_use_the_aa_accent_fill_not_raw_accent() {
+    // The page-side cite-this confirmed button.
+    let i = SITE_CSS
+        .find(".tali-cite-copy[data-copied=\"true\"] {")
+        .expect("the cite-copy confirmed rule");
+    let rule = &SITE_CSS[i..i + SITE_CSS[i..].find('}').expect("closing brace")];
+    assert!(
+        rule.contains("background: var(--tali-accent-fill)")
+            && rule.contains("color: var(--tali-on-accent)")
+            && !rule.contains("var(--tali-accent)"),
+        "cite-copy confirmed must fill with --tali-accent-fill + --tali-on-accent, not raw --tali-accent: {rule}"
+    );
+    // The deck's two filled controls (speaker "Read mode" active + share "Copy").
+    let d = super::deck::DECK_CSS;
+    for (name, needle) in [
+        ("speaker read-mode active", ".tali-speaker.read .sp-read {"),
+        ("share copy", ".tali-share-copy {"),
+    ] {
+        let j = d.find(needle).unwrap_or_else(|| panic!("{needle}"));
+        let rule = &d[j..j + d[j..].find('}').expect("closing brace")];
+        assert!(
+            rule.contains("var(--tali-accent-fill)") && rule.contains("var(--tali-on-accent)"),
+            "deck {name} must fill with --tali-accent-fill + --tali-on-accent: {rule}"
+        );
+    }
+    // The two off-palette one-off blues must be gone from the deck sheet.
+    let ld = d.to_ascii_lowercase();
+    assert!(
+        !ld.contains("#3b6ea5") && !ld.contains("#4b57b0"),
+        "deck.css still ships an off-palette one-off blue (#3b6ea5/#4b57b0); route it through --tali-accent-fill"
+    );
+    // The resolved dark fill must actually clear AA (the regression floor the tokens promise).
+    assert!(
+        wcag_contrast("#ffffff", "#57659d") >= 4.5,
+        "white on the dark --tali-accent-fill must clear AA"
+    );
+}
+
+/// PA-D1: the deck's `:focus-visible` ring reached only `.tali-ctl`/`.tali-menu-item`/
+/// `.tali-menu-slide`; the theme segment, share-dialog controls, and speaker buttons had no
+/// keyboard-focus ring at all — and deck.js focuses the share "Copy" button programmatically
+/// (a ringless target). Every interactive deck control must carry a `:focus-visible` ring.
+#[test]
+fn every_interactive_deck_control_gets_a_focus_visible_ring() {
+    let d = super::deck::DECK_CSS;
+    for cls in [
+        ".tali-ctl",
+        ".tali-menu-item",
+        ".tali-menu-slide",
+        ".tali-theme-opt",
+        ".tali-share-copy",
+        ".tali-share-close",
+        ".sp-read",
+        ".sp-reset",
+        ".sp-size button",
+    ] {
+        assert!(
+            d.contains(&format!("{cls}:focus-visible")),
+            "deck control {cls} must get a :focus-visible ring"
+        );
+    }
+}
+
+/// PA-C4: the search-hit `<mark>` fallback (engines without the Custom Highlight API) had a
+/// light and a dark branch but no sepia one, so a sepia reader fell through to the base
+/// 50%-alpha amber over warm paper. Pin an opaque sepia mark that keeps the sepia body ink
+/// (`--tali-fg` #5b4636) AA-readable ON the highlight.
+#[test]
+fn sepia_search_mark_keeps_body_text_readable() {
+    let c = color_after(
+        BASE_CSS,
+        "html[data-theme=\"sepia\"] mark.tali-search-mark { background-color: ",
+    );
+    let r = wcag_contrast("#5b4636", c);
+    assert!(r >= 4.5, "sepia search mark {c}: body text at {r:.2}");
+}
+
+/// PA-F3: keyboard focus on a listing card missed the pointer-hover lift/border/title-tint,
+/// so a keyboard reader tabbing the blog got no card affordance. The `:focus-visible` state
+/// must mirror the `:hover` one.
+#[test]
+fn listing_card_gets_a_focus_visible_affordance() {
+    assert!(
+        SITE_CSS.contains(".tali-card:focus-visible")
+            || SITE_CSS.contains(".tali-card:hover, .tali-card:focus-visible"),
+        "a listing card must show its hover affordance on keyboard focus too"
+    );
+}
+
 #[test]
 fn same_page_sec_ref_uses_hierarchical_number_in_a_chapter() {
     // Batch 4: inside a book chapter, a SAME-PAGE `@sec-` must show the same

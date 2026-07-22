@@ -56,8 +56,13 @@ listing pages skip favicon / `<h1>` / list semantics), one-of-a-kind a11y holes 
 residual CLI `--help` drift. Grind order = 5 passes (design-system token PR · scaffold · a11y holes ·
 CLI/diagnostics · reduced-motion+print) in the file. **PA-H1 LANDED 2026-07-22 (`dc58aa9`)** as the first item: the
 standalone deck build shipped no `<link rel="icon">` (a `/favicon.ico` 404 + a blank tab), so it now falls back to
-the same bundled mark a page does (pinned by `deck_offline_build::built_deck_carries_a_favicon`). The rest are queued
-as item 13 in [backlog.md](backlog.md).
+the same bundled mark a page does (pinned by `deck_offline_build::built_deck_carries_a_favicon`). **Pass (a),
+design-system single-source, LANDED 2026-07-22** (branch `polish/design-system-single-source`): `site.css` +
+`deck.css` now route their radii/durations/hover-shadows through the PL11 tokens, and the cite-this "Copied!" + deck
+speaker/share active buttons take `--tali-accent-fill` (dark **5.59:1**, was ≈2.3:1 — the round's one true WCAG-AA
+failure), with `:focus-visible` rings on every deck control, keyboard-focus parity on listing cards, and a sepia
+search-`<mark>` (PA-C1/C2/C3/D1/F1/F3/S1/S2/S4/C4; four `render::tests` pins). The rest are queued
+as item 11 in [backlog.md](backlog.md).
 
 **DX1 LANDED 2026-07-18** (the dominant finding). Live static validation now runs on both serve paths:
 a new `crates/server/src/preview_diag.rs` bridge converts the `check`-superset validators

@@ -33,8 +33,8 @@
   .tali-nav-spacer { flex: 1 1 auto; }
   .tali-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;
     color: var(--tali-muted); text-decoration: none; padding: .35rem .6rem;
-    border-radius: 6px; white-space: nowrap;
-    transition: color .12s ease, background .12s ease; }
+    border-radius: var(--tali-radius-md); white-space: nowrap;
+    transition: color var(--tali-dur) ease, background var(--tali-dur) ease; }
   /* Reserve the bold (active) width on every item so bolding the current page's
      link never changes its width — the bar stays put across navigations. */
   .tali-nav-link::after { content: attr(data-label); font-weight: 600; height: 0;
@@ -54,21 +54,21 @@
   /* reader Settings gear docked in the navbar / book topbar: a subtle icon button (opens the
      floating Theme / Focus / Keyboard popover; highlighted while that popover is open). */
   .tali-nav-settings { display: inline-flex; align-items: center; justify-content: center;
-    width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 7px; cursor: pointer;
-    background: transparent; color: var(--tali-muted); transition: color .12s ease, background .12s ease; }
+    width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: var(--tali-radius-md); cursor: pointer;
+    background: transparent; color: var(--tali-muted); transition: color var(--tali-dur) ease, background var(--tali-dur) ease; }
   .tali-nav-settings:hover,
   .tali-nav-settings[aria-expanded="true"] { color: var(--tali-fg); background: var(--tali-code-bg); }
   .tali-nav-settings svg { display: block; }
   /* visible search control (navbar + book sidebar) that opens the Cmd-K palette */
   .tali-search-btn { display: inline-flex; align-items: center; gap: .4rem;
     background: var(--tali-code-bg); color: var(--tali-muted);
-    border: 1px solid var(--tali-border); border-radius: 8px;
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
     padding: .32rem .55rem; font: inherit; font-size: .9rem; line-height: 1;
-    cursor: pointer; transition: border-color .12s ease, color .12s ease; }
+    cursor: pointer; transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
   .tali-search-btn:hover { border-color: var(--tali-accent); color: var(--tali-fg); }
   .tali-search-btn svg { flex: none; }
   .tali-search-kbd { font-size: .72rem; border: 1px solid var(--tali-border);
-    border-radius: 4px; padding: 0 .3rem; color: var(--tali-muted); }
+    border-radius: var(--tali-radius-sm); padding: 0 .3rem; color: var(--tali-muted); }
   /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
      A real <button>, so reset its native chrome to look like the bare icon. */
   .tali-nav-burger { display: none; background: transparent; border: 0; }
@@ -125,10 +125,11 @@
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
   .tali-listing-default { display: flex; flex-direction: column; gap: 1rem; }
   .tali-card { display: flex; flex-direction: column; text-decoration: none; color: var(--tali-fg);
-    border: 1px solid var(--tali-border); border-radius: 10px; overflow: hidden; background: var(--tali-bg);
-    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
-  .tali-card:hover { border-color: var(--tali-accent); transform: translateY(-2px);
-    box-shadow: 0 6px 20px var(--tali-edge-shadow); }
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg); overflow: hidden; background: var(--tali-bg);
+    transition: border-color var(--tali-dur) ease, transform var(--tali-dur) ease, box-shadow var(--tali-dur) ease; }
+  /* Keyboard focus gets the same lift/border/shadow affordance as pointer hover (PA-F3). */
+  .tali-card:hover, .tali-card:focus-visible { border-color: var(--tali-accent); transform: translateY(-2px);
+    box-shadow: var(--tali-shadow-md); }
   .tali-listing-default .tali-card { flex-direction: row; align-items: stretch; }
   .tali-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
     background: var(--tali-code-bg); }
@@ -146,14 +147,14 @@
   .tali-card-date { font: 600 .72rem var(--tali-font-head); color: var(--tali-muted);
     text-transform: uppercase; letter-spacing: .04em; }
   .tali-card-title { font: 600 1.08rem/1.25 var(--tali-font-head); margin: 0;
-    transition: color .15s ease; }
-  /* Hovering a card tints its title to the ink accent (reinforces the accent border). */
-  .tali-card:hover .tali-card-title { color: var(--tali-link); }
+    transition: color var(--tali-dur) ease; }
+  /* Hovering or focusing a card tints its title to the ink accent (reinforces the border). */
+  .tali-card:hover .tali-card-title, .tali-card:focus-visible .tali-card-title { color: var(--tali-link); }
   .tali-card-desc { margin: 0; font-size: .92rem; color: var(--tali-muted); line-height: 1.5; }
   .tali-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
   .tali-cat { font: 500 .72rem var(--tali-font-head); color: var(--tali-muted);
     background: var(--tali-code-bg); border: 1px solid var(--tali-border);
-    border-radius: 999px; padding: .1rem .55rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+    border-radius: 999px; padding: .1rem .55rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
   /* a card's category tag doubles as a filter toggle, so it needs a >=24px target (WCAG 2.5.8) */
   .tali-cat[data-cat] { cursor: pointer; display: inline-flex; align-items: center;
     min-height: 24px; box-sizing: border-box; }
@@ -167,7 +168,7 @@
     min-height: 24px; box-sizing: border-box; /* WCAG 2.5.8 target size */
     font: 500 .8rem var(--tali-font-head); color: var(--tali-muted);
     background: var(--tali-code-bg); border: 1px solid var(--tali-border); border-radius: 999px;
-    padding: .25rem .7rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+    padding: .25rem .7rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
   .tali-cat-chip:hover { color: var(--tali-fg); border-color: var(--tali-muted); }
   .tali-cat-chip.tali-cat-active { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
   /* `opacity: .65` composited the count to 2.56-3.34:1. It is already distinguished from the
@@ -186,11 +187,11 @@
       align-items: center; gap: 4px; cursor: pointer; margin-left: auto;
       width: 44px; height: 44px; padding: 0; }
     .tali-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
-      background: var(--tali-fg); transition: transform .15s ease, opacity .15s ease; }
+      background: var(--tali-fg); transition: transform var(--tali-dur) ease, opacity var(--tali-dur) ease; }
     .tali-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
       flex-direction: column; align-items: stretch; gap: 0; flex: none;
       background: var(--tali-bg); border-bottom: 1px solid var(--tali-border);
-      box-shadow: 0 8px 20px rgba(0,0,0,.12); padding: .35rem 0; }
+      box-shadow: var(--tali-shadow-md); padding: .35rem 0; }
     /* The button toggles this class (see the inline nav script); replaces the old
        `.tali-nav-toggle:checked ~ .tali-nav-links` checkbox-hack selector. */
     .tali-nav-links.tali-nav-open { display: flex; }
@@ -222,9 +223,9 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-topbar-inner { max-width: var(--tali-chrome-maxw); margin: 0 auto; padding: .45rem 1rem;
   display: flex; align-items: center; gap: .7rem; font: 500 15px/1 var(--tali-font-head); }
 .tali-book-drawer-btn { display: inline-flex; align-items: center; gap: .45rem;
-  background: transparent; border: 1px solid var(--tali-border); border-radius: 8px;
+  background: transparent; border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
   color: var(--tali-fg); cursor: pointer; padding: .35rem .6rem; font: inherit; font-size: .9rem;
-  transition: border-color .12s ease, color .12s ease; }
+  transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
 .tali-book-drawer-btn:hover { border-color: var(--tali-accent); }
 /* `flex: none`, or else: once the topbar row outgrows a narrow viewport it puts all of its
    shrink pressure on the one item with no min-content floor, the icon (base.css's
@@ -278,7 +279,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-brand:hover { color: var(--tali-link); }
 .tali-book-drawer-close { flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
   color: var(--tali-muted); font-size: 1.1rem; line-height: 1; padding: .15rem .35rem;
-  border-radius: 6px; }
+  border-radius: var(--tali-radius-md); }
 .tali-book-drawer-close:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
 .tali-book-chapters { list-style: none; margin: 0; padding: 0; }
 .tali-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;
@@ -353,7 +354,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    citation is still shown and selectable. */
 .tali-cite-this {
   margin: 3rem 0 1rem; padding: 1.1rem 1.25rem 1.25rem;
-  border: 1px solid var(--tali-border); border-radius: 10px; background: var(--tali-code-bg); }
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg); background: var(--tali-code-bg); }
 .tali-cite-this-title {
   margin: 0 0 .75rem; font: 600 .95rem/1.2 var(--tali-font-head);
   letter-spacing: .02em; text-transform: uppercase; color: var(--tali-muted); }
@@ -368,16 +369,16 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-cite-tab[aria-selected="true"] { color: var(--tali-fg); border-bottom-color: var(--tali-accent); }
 .tali-cite-out {
   margin: 0; padding: .75rem .9rem; max-height: 15rem; overflow: auto;
-  background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: 7px;
+  background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
   font: .8rem/1.5 var(--tali-font-mono); color: var(--tali-fg); white-space: pre; tab-size: 2; }
 .tali-cite-actions { display: flex; gap: .5rem; margin-top: .75rem; }
 .tali-cite-copy, .tali-cite-download {
   appearance: none; cursor: pointer; padding: .4rem .8rem;
   font: 600 .82rem var(--tali-font-head); color: var(--tali-fg);
-  background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: 6px; }
+  background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); }
 .tali-cite-copy:hover, .tali-cite-download:hover { border-color: var(--tali-accent); color: var(--tali-accent); }
 .tali-cite-copy[data-copied="true"] {
-  color: var(--tali-on-accent); background: var(--tali-accent); border-color: var(--tali-accent); }
+  color: var(--tali-on-accent); background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); }
 @media (forced-colors: active) {
   .tali-cite-this { border: 1px solid CanvasText; }
   .tali-cite-tab[aria-selected="true"] { border-bottom-color: Highlight; }
@@ -398,7 +399,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   text-transform: uppercase;
   color: var(--tali-bg);
   background: var(--tali-muted);
-  border-radius: 4px;
+  border-radius: var(--tali-radius-sm);
   padding: .05rem .35rem;
   margin-right: .4rem;
   vertical-align: middle;

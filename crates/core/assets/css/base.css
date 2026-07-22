@@ -107,6 +107,12 @@
   html[data-theme="dark"] mark.tali-search-mark { background-color: #6e5414; }
   @keyframes tali-search-mark-fade-dark { 0%, 45% { background-color: #6e5414; } 100% { background-color: transparent; } }
   html[data-theme="dark"] mark.tali-search-mark { animation-name: tali-search-mark-fade-dark; }
+  /* Sepia has no Custom-Highlight-API branch either; without its own <mark> tuning it fell
+     through to the light 50%-alpha amber over warm paper. Sepia ink (#5b4636) is dark, so the
+     mark stays LIGHT but opaque + warm-tuned to the paper, keeping body text at 5.45:1 ON it. */
+  html[data-theme="sepia"] mark.tali-search-mark { background-color: #e9c86a; }
+  @keyframes tali-search-mark-fade-sepia { 0%, 45% { background-color: #e9c86a; } 100% { background-color: transparent; } }
+  html[data-theme="sepia"] mark.tali-search-mark { animation-name: tali-search-mark-fade-sepia; }
   html.tali-search-flashing { animation: tali-search-flash 1.5s ease-out forwards; }
   @keyframes tali-search-flash {
     0%, 45% { --tali-search-flash: rgba(250, 204, 21, .55); }

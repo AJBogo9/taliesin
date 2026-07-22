@@ -406,7 +406,7 @@ html.tali-feed .fragment.fade-out.tali-frag-visible {
   border-radius: var(--tali-radius-md); padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer;
 }
 .tali-speaker .sp-read:hover { background: #2f343d; }
-.tali-speaker.read .sp-read { background: var(--tali-accent, #3b6ea5); border-color: var(--tali-accent, #3b6ea5); color: #fff; }
+.tali-speaker.read .sp-read { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
 .tali-speaker .sp-size { display: none; gap: 4px; }
 .tali-speaker.read .sp-size { display: inline-flex; }
 .tali-speaker .sp-size button {
@@ -718,7 +718,7 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   border: 1px solid #2c313b; background: rgba(255, 255, 255, .05); color: #e6e8ec;
   font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .tali-share-copy { flex: 0 0 auto; padding: 8px 14px; border: 0; border-radius: var(--tali-radius-md); cursor: pointer;
-  background: #4b57b0; color: #fff; font: inherit; font-weight: 600; }
+  background: var(--tali-accent-fill); color: var(--tali-on-accent); font: inherit; font-weight: 600; }
 .tali-share-copy:hover { filter: brightness(1.1); }
 
 /* ===========================================================================
@@ -929,15 +929,23 @@ html.tali-alt [data-block-id] { cursor: pointer; }
 
 /* One consistent keyboard-focus ring across the deck's interactive controls, mirroring
    the page-side `--tali-focus` token (deck chrome lives on its own dark surface, so it
-   uses the deck accent). Mouse clicks don't show it (:focus-visible). */
-.tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible {
+   uses the deck accent). Mouse clicks don't show it (:focus-visible). Covers every deck
+   control: the corner controls + menu, the theme segment, the share dialog (deck.js focuses
+   the Copy button on open), and the speaker-window buttons. */
+.tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
+.tali-theme-opt:focus-visible, .tali-share-copy:focus-visible, .tali-share-close:focus-visible,
+.tali-share-url:focus-visible, .tali-speaker .sp-read:focus-visible,
+.tali-speaker .sp-reset:focus-visible, .tali-speaker .sp-size button:focus-visible {
   outline: 2px solid var(--tali-accent); outline-offset: 2px; border-radius: var(--tali-radius-md);
 }
 
 /* High-contrast / forced-colors (Windows High Contrast): keep the focus ring, control
    borders, and the progress fill visible by mapping them to system colors. */
 @media (forced-colors: active) {
-  .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible { outline-color: Highlight; }
+  .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
+  .tali-theme-opt:focus-visible, .tali-share-copy:focus-visible, .tali-share-close:focus-visible,
+  .tali-share-url:focus-visible, .tali-speaker .sp-read:focus-visible,
+  .tali-speaker .sp-reset:focus-visible, .tali-speaker .sp-size button:focus-visible { outline-color: Highlight; }
   .tali-ctl, .tali-menu { border: 1px solid CanvasText; }
   .tali-progress-fill { background: Highlight; forced-color-adjust: none; }
 }

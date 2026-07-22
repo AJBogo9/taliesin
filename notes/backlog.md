@@ -165,9 +165,16 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     sweep + 4 read-only code auditors; [AUDITS.md](AUDITS.md) records the round). **PA-H1 (standalone deck build
     shipped no favicon → a `/favicon.ico` 404 + blank tab) already landed** 2026-07-22 (`dc58aa9`, pinned by
     `deck_offline_build::built_deck_carries_a_favicon`). The rest grind as **5 passes**, each a branch → corpus-pin
-    (where behavioral) → browser-verify: **(a) design-system single-source** — `site.css` (0 token uses) + `deck.css`
-    never took the PL4/PL11 colour+geometry+motion tokens (PA-S1/S2/C2/C3/D1/F1), and the cite-this "Copied!" + deck
-    active buttons **fail WCAG AA in dark** (wrong accent token, white ≈2.3:1; PA-C1). **(b) scaffold completeness**
+    (where behavioral) → browser-verify: **(a) design-system single-source — SHIPPED 2026-07-22** (branch
+    `polish/design-system-single-source`): `site.css` radii/durations/hover-shadows now route through
+    `--tali-radius-*` / `var(--tali-dur)` / `--tali-shadow-md`, the cite-this "Copied!" + deck speaker/share active
+    buttons take `--tali-accent-fill` (dark **5.59:1**, was ≈2.3:1 — clears WCAG AA), every deck control gets a
+    `:focus-visible` ring, listing cards get keyboard-focus parity with hover, and sepia gets its own search-`<mark>`
+    (PA-C1/C2/C3/D1/F1/F3/S1/S2/S4/C4). Pinned by `render::tests::{filled_chrome_controls_use_the_aa_accent_fill_not_raw_accent,
+    every_interactive_deck_control_gets_a_focus_visible_ring, sepia_search_mark_keeps_body_text_readable,
+    listing_card_gets_a_focus_visible_affordance}` + browser-verified light/dark/sepia. **Residual (low, deferred):**
+    PA-F2 (a `--tali-scrim` token folding 3 divergent overlay alphas), PA-C5 (per-slide-bg hex drift-lock),
+    PA-F4 (px↔rem breakpoints), PA-S3 (base.css's own `.15s` uses). **(b) scaffold completeness**
     — listing/section pages (`/blog`,`/publications`,`/projects`) emit **no `<h1>`** and start at H2/H3 (SEO +
     heading-nav; PA-H2, M), dates are `<span>` not `<time>` and a listing is a `<div>` not a list (PA-M1). **(c) a11y
     announce/focus holes** — one missing `aria-live`/focus-trap/roving-tabindex per surface (lightbox gallery step
