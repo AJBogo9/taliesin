@@ -2060,6 +2060,9 @@
     var wrap = document.createElement('div');
     wrap.className = 'tali-share';
     wrap.setAttribute('role', 'dialog');
+    // A backdrop-dimmed, focus-trapped modal — declare it so AT confines to it (PA-B4); it
+    // was the one dialog in the app missing aria-modal.
+    wrap.setAttribute('aria-modal', 'true');
     wrap.setAttribute('aria-label', 'Share this view');
     wrap.setAttribute('hidden', '');
     wrap.innerHTML =

@@ -866,7 +866,7 @@ fn render_internal_impl(
             sourcepos: String::new(),
             source_file: None,
             html: format!(
-                "<section class=\"footnotes\" role=\"doc-endnotes\" data-block-id=\"qmd-footnotes\"><hr><ol>{inner}</ol></section>"
+                "<section class=\"footnotes\" role=\"doc-endnotes\" aria-label=\"Footnotes\" data-block-id=\"qmd-footnotes\"><hr><ol>{inner}</ol></section>"
             ),
             cell: None,
         });

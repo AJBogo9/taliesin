@@ -177,7 +177,11 @@ fn table_uses_thead_th_and_tbody_td() {
     let doc = render_document("| A | B |\n|---|--:|\n| 1 | 2 |\n");
     let h = &doc.blocks[0].html;
     assert!(h.starts_with("<table "), "got: {h}");
-    assert!(h.contains("<thead><tr><th>A</th><th"), "got: {h}");
+    // Header cells carry `scope="col"` (PA-M6) so AT pairs each data cell with its column.
+    assert!(
+        h.contains("<thead><tr><th scope=\"col\">A</th><th scope=\"col\""),
+        "got: {h}"
+    );
     assert!(h.contains("<tbody><tr><td>1</td>"), "got: {h}");
     assert!(
         h.contains("text-align: right"),
@@ -2773,8 +2777,17 @@ fn footnotes_emit_ref_and_gathered_section() {
         "footnote ref: {page}"
     );
     assert!(page.contains("href=\"#fn-1\""), "ref links to def");
-    // Definitions are gathered into one footnotes section (not rendered in place).
+    // The ref link is a `doc-noteref` (PA-M8), not a bare number, for AT.
+    assert!(
+        page.contains("role=\"doc-noteref\" href=\"#fn-1\""),
+        "footnote ref carries doc-noteref role: {page}"
+    );
+    // Definitions are gathered into one footnotes section with an accessible name (PA-M7).
     assert!(page.contains("class=\"footnotes\""), "footnotes section");
+    assert!(
+        page.contains("aria-label=\"Footnotes\""),
+        "footnotes region needs an accessible name: {page}"
+    );
     assert!(page.contains("id=\"fn-1\""), "footnote def id");
     assert!(page.contains("The supporting note"), "footnote body");
     assert!(page.contains("tali-fn-back"), "backlink to the reference");

@@ -48,7 +48,9 @@ function taliInitLightbox() {
     '<button class="tali-lb-nav tali-lb-prev" aria-label="Previous image">‹</button>' +
     '<button class="tali-lb-nav tali-lb-next" aria-label="Next image">›</button>' +
     '<img alt=""><video class="tali-lb-video" muted loop playsinline></video>' +
-    '<div class="tali-lb-svg"></div><div class="tali-lb-cap"></div>';
+    // aria-live so stepping the gallery (←/→) announces the new caption + "(n / N)" counter
+    // to a screen reader (PA-A2); every sibling enhancer already has one.
+    '<div class="tali-lb-svg"></div><div class="tali-lb-cap" aria-live="polite"></div>';
   document.body.appendChild(box);
   // These are the fixed children just written into `box.innerHTML` above, so they are
   // always present; cast to their concrete element types (non-null) accordingly.

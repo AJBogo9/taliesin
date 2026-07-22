@@ -90,9 +90,10 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
         NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
-        // `[^name]` reference → a superscript link to the gathered footnote section.
+        // `[^name]` reference → a superscript link to the gathered footnote section. The link
+        // is a `doc-noteref` (PA-M8) so AT announces it as a note reference, not a bare number.
         NodeValue::FootnoteReference(r) => out.push_str(&format!(
-            "<sup class=\"tali-fnref\" id=\"fnref-{name}-{rn}\"><a href=\"#fn-{name}\">{ix}</a></sup>",
+            "<sup class=\"tali-fnref\" id=\"fnref-{name}-{rn}\"><a role=\"doc-noteref\" href=\"#fn-{name}\">{ix}</a></sup>",
             name = escape_attr(&r.name),
             rn = r.ref_num,
             ix = r.ix,
@@ -404,6 +405,9 @@ fn emit_table<'a>(node: &'a AstNode<'a>, aligns: &[TableAlignment], attrs: &str,
 }
 
 fn emit_cells<'a>(row: &'a AstNode<'a>, aligns: &[TableAlignment], tag: &str, out: &mut String) {
+    // A header cell announces which column it labels (PA-M6): `scope="col"` so a screen
+    // reader can pair each data cell with its header. Body cells carry no scope.
+    let scope = if tag == "th" { " scope=\"col\"" } else { "" };
     for (i, cell) in row.children().enumerate() {
         let style = match aligns.get(i) {
             Some(TableAlignment::Left) => " style=\"text-align: left\"",
@@ -411,7 +415,7 @@ fn emit_cells<'a>(row: &'a AstNode<'a>, aligns: &[TableAlignment], tag: &str, ou
             Some(TableAlignment::Right) => " style=\"text-align: right\"",
             _ => "",
         };
-        out.push_str(&format!("<{tag}{style}>"));
+        out.push_str(&format!("<{tag}{scope}{style}>"));
         emit_children(cell, out);
         out.push_str(&format!("</{tag}>"));
     }
