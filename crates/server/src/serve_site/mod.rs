@@ -37,26 +37,37 @@ use crate::serve::{
 mod exec_pool;
 use exec_pool::ExecPool;
 
+/// The whole live site: the root project plus any mounted sub-projects, all served
+/// through the same per-page live path. One builder task + one file watcher drive every
+/// project; a request routes to a project by URL prefix (see [`match_mount`]).
 struct SiteApp {
-    root: PathBuf,
-    site: Mutex<Site>,
-    pages: Mutex<HashMap<String, PageState>>,
+    /// The root site (URL prefix `""`).
+    root: Arc<Project>,
+    /// `mounts:` — other taliesin projects (e.g. a docs `book` or a gallery exhibit),
+    /// each served under a URL prefix. Every mount is a full [`Project`]: its pages
+    /// execute live and hot-reload exactly like the root's, so a mounted `{python}`/`{r}`
+    /// cell runs in `preview` (not just in a static `build`).
+    mounts: Vec<MountPoint>,
     /// Page rel-paths queued for a (re)build by the executor worker.
     build_tx: mpsc::UnboundedSender<BuildMsg>,
-    /// `mounts:` — other taliesin projects (e.g. a docs `book`) served under a URL
-    /// prefix, so a site's link to `/docs` resolves in `preview` (not just `build`).
-    /// Discovered once; pages render on request (content edits show on refresh).
-    mounts: Vec<MountedSite>,
     /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
     /// loopback *origin* may open the control-channel ws (see [`origin_allowed`]).
     loopback_bound: bool,
 }
 
-/// A mounted sub-project: serve `site` (rooted at `root`) under the `/at/` prefix.
-struct MountedSite {
-    at: String,
-    root: PathBuf,
-    site: Site,
+/// A servable project: the root site or a mounted sub-project. Owns the per-project live
+/// state the builder and router act on — the discovered [`Site`], plus the live per-page
+/// block state + broadcast channels, created lazily on first visit.
+struct Project {
+    dir: PathBuf,
+    site: Mutex<Site>,
+    pages: Mutex<HashMap<String, PageState>>,
+}
+
+/// A mounted sub-project served under `prefix` (e.g. `gallery/course`).
+struct MountPoint {
+    prefix: String,
+    project: Arc<Project>,
 }
 
 /// Longest-prefix match of a request `path` against mount `prefixes` (each like
@@ -156,8 +167,9 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         crate::log::warn(w);
     }
     let page_count = site.pages.len();
-    // Discover any `mounts:` sub-projects (e.g. a docs book under /docs) once.
-    let mounts: Vec<MountedSite> = site
+    // Discover any `mounts:` sub-projects (e.g. a docs book under /docs) once. Each becomes
+    // a full `Project`, so its pages execute live + hot-reload under its URL prefix.
+    let mounts: Vec<MountPoint> = site
         .config
         .mounts
         .clone()
@@ -178,10 +190,13 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
                 &format!("mounted at /{}/", m.at),
             );
             let msite = Site::discover_with(&mroot, taliesin_core::DraftMode::Include);
-            Some(MountedSite {
-                at: m.at,
-                root: mroot,
-                site: msite,
+            Some(MountPoint {
+                prefix: m.at,
+                project: Arc::new(Project {
+                    dir: mroot,
+                    site: Mutex::new(msite),
+                    pages: Mutex::new(HashMap::new()),
+                }),
             })
         })
         .collect();
@@ -197,11 +212,13 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     }
     let (build_tx, build_rx) = mpsc::unbounded_channel();
     let app = Arc::new(SiteApp {
-        root: root.clone(),
-        site: Mutex::new(site),
-        pages: Mutex::new(HashMap::new()),
-        build_tx,
+        root: Arc::new(Project {
+            dir: root.clone(),
+            site: Mutex::new(site),
+            pages: Mutex::new(HashMap::new()),
+        }),
         mounts,
+        build_tx,
         loopback_bound: !expose,
     });
 
@@ -298,7 +315,7 @@ async fn og_card(
 ) -> impl IntoResponse {
     let want = format!("og/{name}");
     let bytes = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         site.pages.iter().find_map(|page| {
             let spec = taliesin_core::site::card_spec(&site, page);
             (taliesin_core::site::card_rel_path(&spec) == want)
@@ -323,7 +340,7 @@ async fn og_card_preview(
 ) -> impl IntoResponse {
     let rel = q.get("page").cloned().unwrap_or_default();
     let bytes = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         site.page(&rel).map(|page| {
             let spec = taliesin_core::site::card_spec(&site, page);
             taliesin_core::site::render_card(&spec)
@@ -340,7 +357,7 @@ async fn og_card_preview(
 /// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
 /// under file:// for a built book opened from disk.
 async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
-    let json = { app.site.lock().search_index_json.clone() };
+    let json = { app.root.site.lock().search_index_json.clone() };
     let json = if json.is_empty() {
         "[]".to_string()
     } else {
@@ -360,7 +377,7 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
 /// `window.TALIESIN_HOVER_INDEX`), lazy-loaded by `12-link-preview.js` on the first
 /// cross-page hover. Served as JS (not JSON) so a `<script>` load works under file://.
 async fn hover_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
-    let json = { app.site.lock().hover_index_json.clone() };
+    let json = { app.root.site.lock().hover_index_json.clone() };
     let json = if json.is_empty() {
         "{}".to_string()
     } else {
@@ -387,18 +404,18 @@ async fn page_or_asset(
     } else {
         path.clone()
     };
-    let page = { app.site.lock().page(&lookup).cloned() };
+    let page = { app.root.site.lock().page(&lookup).cloned() };
     if let Some(page) = page {
         return Html(ensure_and_render_page(&app, &page)).into_response();
     }
     // A deck referenced by `{{< embed >}}` (a standalone document, not a page/
     // chapter): render it self-contained on the fly so the embedding iframe resolves
     // in preview, mirroring what `build` writes.
-    let deck = { app.site.lock().deck(&lookup).cloned() };
+    let deck = { app.root.site.lock().deck(&lookup).cloned() };
     if let Some(deck) = deck
         && let Ok(src) = std::fs::read_to_string(&deck.input)
     {
-        let base = deck.input.parent().unwrap_or(&app.root).to_path_buf();
+        let base = deck.input.parent().unwrap_or(&app.root.dir).to_path_buf();
         let doc = taliesin_core::render_document_with_includes(&src, &base);
         let stem = deck
             .url
@@ -417,10 +434,10 @@ async fn page_or_asset(
     // page from it on the fly (so its links resolve in preview, mirroring the
     // single-tree build), or serve one of its assets.
     for m in &app.mounts {
-        let sub = if path == m.at {
+        let sub = if path == m.prefix {
             Some("")
         } else {
-            match path.strip_prefix(&m.at) {
+            match path.strip_prefix(&m.prefix) {
                 Some(r) if r.starts_with('/') => Some(&r[1..]),
                 _ => None,
             }
@@ -431,29 +448,31 @@ async fn page_or_asset(
             // in preview), exactly like the parent's. Without this, Cmd-K search on a
             // mounted-book page loads `/<mount>/search-index.js` → 404.
             if lookup == "search-index.js" {
-                let j = m.site.search_index_json.clone();
+                let j = m.project.site.lock().search_index_json.clone();
                 let j = if j.is_empty() { "[]".to_string() } else { j };
                 let js_ct = "text/javascript; charset=utf-8";
                 let body = format!("window.TALIESIN_SEARCH_INDEX={j};");
                 return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
             }
             if lookup == "hover-index.js" {
-                let j = m.site.hover_index_json.clone();
+                let j = m.project.site.lock().hover_index_json.clone();
                 let j = if j.is_empty() { "{}".to_string() } else { j };
                 let js_ct = "text/javascript; charset=utf-8";
                 let body = format!("window.TALIESIN_HOVER_INDEX={j};");
                 return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
             }
-            if let Some(html) = m.site.render_page(lookup) {
+            let rendered = m.project.site.lock().render_page(lookup);
+            if let Some(html) = rendered {
                 return Html(html).into_response();
             }
             // A deck embedded by a mounted page (e.g. `/docs/guide/tour.html`):
             // render it self-contained on the fly, mirroring the parent's deck
             // branch above. Without this the embedding iframe 404s in preview.
-            if let Some(deck) = m.site.deck(lookup)
+            let deck = m.project.site.lock().deck(lookup).cloned();
+            if let Some(deck) = deck
                 && let Ok(src) = std::fs::read_to_string(&deck.input)
             {
-                let base = deck.input.parent().unwrap_or(&m.root).to_path_buf();
+                let base = deck.input.parent().unwrap_or(&m.project.dir).to_path_buf();
                 let doc = taliesin_core::render_document_with_includes(&src, &base);
                 let stem = deck
                     .url
@@ -468,14 +487,14 @@ async fn page_or_asset(
                 ))
                 .into_response();
             }
-            return serve_asset(&m.root, lookup);
+            return serve_asset(&m.project.dir, lookup);
         }
     }
     // Nothing matched. If it isn't an existing asset either, serve the site's own
     // 404 page (with a 404 status) so preview mirrors the deployed `404.html`.
-    let asset = serve_asset(&app.root, &path);
+    let asset = serve_asset(&app.root.dir, &path);
     if asset.status() == axum::http::StatusCode::NOT_FOUND {
-        let html = { app.site.lock().render_404_page() };
+        let html = { app.root.site.lock().render_404_page() };
         return (axum::http::StatusCode::NOT_FOUND, Html(html)).into_response();
     }
     asset
@@ -490,15 +509,16 @@ fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
 /// first visit), then render its full live HTML for the first paint.
 fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
     let rel = page.rel.clone();
-    if !app.pages.lock().contains_key(&rel) {
+    if !app.root.pages.lock().contains_key(&rel) {
         // First-paint render (markdown + listing cards, no code execution yet);
         // done outside the pages lock since it needs the site lock for listings.
         let doc = {
-            let site = app.site.lock();
+            let site = app.root.site.lock();
             render_markdown_only(&site, page)
         };
         let (tx, _) = broadcast::channel(256);
-        app.pages
+        app.root
+            .pages
             .lock()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
@@ -560,7 +580,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // all (the arm below has no body and no theme either), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
     let (tab_title, toc, theme_css, theme_default, body, page_includes, generation) = {
-        let pages = app.pages.lock();
+        let pages = app.root.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
             Some(ps) => (
@@ -584,7 +604,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         }
     };
     // Live preview: no book archive on disk, so no offline-download link (it would 404).
-    let chrome = { app.site.lock().page_chrome(page, false) };
+    let chrome = { app.root.site.lock().page_chrome(page, false) };
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);
@@ -619,7 +639,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
         js_str(&base_dir.to_string_lossy()),
-        js_str(&app.root.to_string_lossy()),
+        js_str(&app.root.dir.to_string_lossy()),
     );
     let ws_path = format!("/ws?page={}", encode_query(&page.rel));
     // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
@@ -688,7 +708,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
     // link resolves from any page depth. A build ships neither this global nor the dev menu.
     let drafts_global = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         let items: Vec<String> = site
             .pages
             .iter()
@@ -768,7 +788,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
 
     // Normalise the client's page key (it may send a url) to the source rel.
     let rel = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         match site.page(&rel_or_url) {
             Some(p) => p.rel.clone(),
             None => rel_or_url.clone(),
@@ -776,7 +796,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
     };
 
     let (snapshot, mut rx, created) = {
-        let mut pages = app.pages.lock();
+        let mut pages = app.root.pages.lock();
         let created = !pages.contains_key(&rel);
         let ps = pages.entry(rel.clone()).or_insert_with(|| PageState {
             doc: PageDoc::default(),
@@ -799,7 +819,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => {
                     let fr = {
-                        let pages = app.pages.lock();
+                        let pages = app.root.pages.lock();
                         pages.get(&rel).map(|ps| full_render_json(&ps.doc))
                     };
                     if let Some(fr) = fr
@@ -885,14 +905,14 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         // .venv, env, or default) against the site root, so every page executor and the
         // warm pool agree on which interpreter runs. Read the config under the site lock.
         let (py, r) = {
-            let site = app.site.lock();
+            let site = app.root.site.lock();
             (
-                crate::interpreter::resolve_python(site.config.python.as_deref(), &app.root),
-                crate::interpreter::resolve_r(site.config.r.as_deref(), &app.root),
+                crate::interpreter::resolve_python(site.config.python.as_deref(), &app.root.dir),
+                crate::interpreter::resolve_r(site.config.r.as_deref(), &app.root.dir),
             )
         };
         let warm_pool = crate::warm_pool::warm_pool_for_preview(&py).await;
-        let mut pool = ExecPool::new(app.root.join("_freeze"), warm_pool, py, r);
+        let mut pool = ExecPool::new(app.root.dir.join("_freeze"), warm_pool, py, r);
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut pool).await,
@@ -904,7 +924,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                     // A fresh kernel means fresh outputs — including any `ojs_define`
                     // values. Reload the page so the `{js}` cells re-bind to the
                     // fresh `qmd-define` blobs from a clean module scope.
-                    if let Some(ps) = app.pages.lock().get(&rel) {
+                    if let Some(ps) = app.root.pages.lock().get(&rel) {
                         let _ = ps.tx.send(protocol::reload());
                     }
                 }
@@ -927,7 +947,7 @@ async fn build_page_guarded(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         crate::log::error(&format!(
             "render panicked on {rel} (preview kept alive): {msg}"
         ));
-        let mut pages = app.pages.lock();
+        let mut pages = app.root.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
             let _ = ps
@@ -940,12 +960,12 @@ async fn build_page_guarded(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
 /// Re-render a page's markdown, run its code cells (on the page's own executor),
 /// then diff against its live blocks and broadcast the changes to its subscribers.
 async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
-    let page = { app.site.lock().page(rel).cloned() };
+    let page = { app.root.site.lock().page(rel).cloned() };
     let Some(page) = page else {
         return;
     };
     let Ok(src) = std::fs::read_to_string(&page.input) else {
-        let mut pages = app.pages.lock();
+        let mut pages = app.root.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
             let _ = ps.tx.send(protocol::error(&format!(
@@ -956,7 +976,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         return;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let chapter = app.site.lock().chapter_for(&page);
+    let chapter = app.root.site.lock().chapter_for(&page);
     let mut doc = taliesin_core::render_document_with_includes_scoped(&src, &base, chapter);
 
     let exec = pool.get(rel, &base);
@@ -965,7 +985,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     // The page's `Sender` is created on first visit (before this build is queued), so
     // it's normally present; if it isn't yet, we just don't stream this pass.
     {
-        let tx = app.pages.lock().get(rel).map(|ps| ps.tx.clone());
+        let tx = app.root.pages.lock().get(rel).map(|ps| ps.tx.clone());
         let sink: crate::exec::ProgressSink = tx.map(|tx| {
             std::sync::Arc::new(move |m: String| {
                 let _ = tx.send(m);
@@ -988,7 +1008,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     // whole site, so it needs the site lock.
     let mut warnings = doc.warnings.clone();
     let (toc, tab_title) = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         site.finish_blocks(&page, &mut doc.blocks, &mut warnings);
         (
             site.page_toc(&page, doc.toc_explicit, &doc.blocks),
@@ -1002,7 +1022,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
     // re-renders the whole site (~27 ms), so scope the site lock tightly.
     {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         diags.extend(crate::preview_diag::cross_page_diagnostics(&site, rel));
         diags.extend(crate::preview_diag::site_config_diagnostics(&site));
     }
@@ -1014,7 +1034,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         diags.push(d);
     }
 
-    let mut pages = app.pages.lock();
+    let mut pages = app.root.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
         doc: PageDoc::default(),
         tx: broadcast::channel(256).0,
@@ -1110,7 +1130,7 @@ fn is_qmd(p: &Path) -> bool {
 
 fn spawn_watcher(app: Arc<SiteApp>) {
     let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
-    let root = app.root.clone();
+    let root = app.root.dir.clone();
 
     std::thread::spawn(move || {
         // Pump events through a channel so this thread owns the watcher and can register
@@ -1215,7 +1235,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
     if config_changed {
-        let new = Site::discover_with(&app.root, taliesin_core::DraftMode::Include);
+        let new = Site::discover_with(&app.root.dir, taliesin_core::DraftMode::Include);
         // A mid-edit save can leave `_site.yml` transiently malformed; re-discovering then
         // would replace the live site with the degraded default (losing nav/title/output).
         // Keep the last-good `Site` instead, and surface the parse error, so the preview
@@ -1228,7 +1248,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
             crate::log::warn(&format!("{w}; keeping the last-good _site.yml"));
             return;
         }
-        *app.site.lock() = new;
+        *app.root.site.lock() = new;
         reload_open_tabs(app);
         return;
     }
@@ -1238,7 +1258,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // two ways it moves. Both ways have to be compared against the same "before", or the
     // rebuild selection below silently doesn't apply to one of them.
     let xrefs_before = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         (site.xref_targets.clone(), site.backlinks.clone())
     };
 
@@ -1247,9 +1267,9 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
     // normal per-page rebuild against the refreshed site.
     if structural {
-        let new = Site::discover_with(&app.root, taliesin_core::DraftMode::Include);
-        let set_changed = page_rels(&new) != page_rels(&app.site.lock());
-        *app.site.lock() = new;
+        let new = Site::discover_with(&app.root.dir, taliesin_core::DraftMode::Include);
+        let set_changed = page_rels(&new) != page_rels(&app.root.site.lock());
+        *app.root.site.lock() = new;
         if set_changed {
             reload_open_tabs(app);
             return;
@@ -1257,9 +1277,9 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     }
 
     // Rebuild only pages that are open (have live state) and depend on a change.
-    let open: Vec<String> = app.pages.lock().keys().cloned().collect();
+    let open: Vec<String> = app.root.pages.lock().keys().cloned().collect();
     let mut to_rebuild: Vec<String> = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         open.iter()
             .filter(|rel| {
                 let Some(page) = site.page(rel) else {
@@ -1320,7 +1340,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
     if touches_source && !structural {
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            app.site.lock().refresh_xrefs();
+            app.root.site.lock().refresh_xrefs();
         }));
         if refreshed.is_err() {
             crate::log::warn("cross-reference refresh panicked; numbers may be stale");
@@ -1350,7 +1370,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // over open tabs the precision is not worth an anchor-diff.
     let (targets_before, backlinks_before) = xrefs_before;
     let moved = {
-        let site = app.site.lock();
+        let site = app.root.site.lock();
         let moved = site.xref_targets != targets_before;
         if moved {
             let referring: HashSet<&str> = site
@@ -1379,12 +1399,12 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // the discovery-time ordering exists to prevent, so it must not come back on the warm
     // path. Only on a real move (a prose edit still refreshes one page's fragment below).
     if moved {
-        app.site.lock().rebuild_search_index();
+        app.root.site.lock().rebuild_search_index();
     }
     // Cloned once, after the refresh and before the loop: the fragment render below runs OFF
     // the lock (see the note there) but must resolve against the registry the served pages
     // use, or Cmd-K indexes a bare "Figure" for text the page shows as "Figure 1.1".
-    let xref_targets = app.site.lock().xref_targets.clone();
+    let xref_targets = app.root.site.lock().xref_targets.clone();
     // Refresh the cross-page Cmd-K index for each rebuilt page, so a re-fetch of
     // `/search-index.js` (the client re-fetches on each palette open in preview) reflects
     // the edit's new headings/prose instead of staying frozen at discovery. Per-page so a
@@ -1397,7 +1417,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         // off-lock (the point of this split), and the index gets the same numbers the page
         // shows ("Theorem 2.1", not "Theorem 1").
         let found = {
-            let site = app.site.lock();
+            let site = app.root.site.lock();
             site.page(rel).map(|p| (p.clone(), site.chapter_for(p)))
         };
         let Some((page, chapter)) = found else {
@@ -1408,7 +1428,10 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         }));
         // A render panic keeps the last-good fragment (don't wipe the page from search).
         if let Ok(fragment) = computed {
-            app.site.lock().install_search_fragment(&page.rel, fragment);
+            app.root
+                .site
+                .lock()
+                .install_search_fragment(&page.rel, fragment);
         }
     }
     for rel in to_rebuild {
@@ -1420,7 +1443,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
 /// fresh against the (re-discovered) site — used after a `_site.yml` or page-set
 /// change. The reload message is delivered before each channel's sender is dropped.
 fn reload_open_tabs(app: &SiteApp) {
-    let mut pages = app.pages.lock();
+    let mut pages = app.root.pages.lock();
     for ps in pages.values() {
         let _ = ps.tx.send(protocol::reload());
     }
