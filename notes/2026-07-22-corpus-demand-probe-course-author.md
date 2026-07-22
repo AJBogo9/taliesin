@@ -104,6 +104,26 @@ further here (out of this pilot's scope).
 - **Task 7, pin test:** `crates/core/tests/course.rs` (4 tests) passes; full core suite green; clippy `-D warnings` clean on the test.
 - **Task 8, gallery:** mounted the course at `/gallery/course` (additive `mounts:` entry) + a `site/gallery.tmd` exhibit card + nav item; static build wires the mount with its own `build ... --out` step (mirrors the docs books). **Browser-verified (dark, desktop):** the gallery page renders + links resolve; the mounted course renders with chapter numbering, cross-page refs + "Referenced by" back-links, the Definition/Theorem boxes, the authored SVG figure, the collapsible proof, the **embedded lecture deck** (live, 1/4 with nav), the code-walkthrough (sticky panel + line-2 highlight + scroll scenes), and prev/next showing the draft appendix ("4 Problem set") in preview. **Zero console errors.** Findings: **F-04** (mount cells don't execute in preview) + an OFF-1 canonical-URL observation.
 
-## Roll-up (filled at Task 9)
+## Roll-up
 
-- gaps: … · friction: … · interaction-bugs: … · correctly-refused: …
+**5 chapters/artifacts authored, 4 findings + 1 tangential observation.**
+
+- **gaps (2):** F-02 (`read` on a book chapter loses cross-refs/numbering, P2) · F-04 (mount cells don't execute in preview, P3).
+- **friction (2):** F-01 (book-level `theorems:` config unsupported, P3) · F-03 (`read` projection of embed/walkthrough lossy, P3).
+- **interaction-bugs (0).** Every stacked HTML interaction worked: book × shared-theorem-counter × chapter scope × cross-page refs × deck-embed-in-chapter × code-walkthrough × executable cell × draft-appendix-renumber. This is the headline result: the *combinations* the corpus never tested together are solid.
+- **correctly-refused (0).** The persona never reached for a settled non-goal, so nothing had to be refused. The slate stayed cleanly in scope.
+
+All four findings are P2/P3, in-scope, with working workarounds; none block the pilot. Notably, all four sit on **secondary surfaces** (machine-facing `read`, book-wide config ergonomics, mount live-preview), not on the core render path.
+
+## Pilot retro
+
+**Did the recipe (spec §3) hold?** Yes. Author-for-real → log resistance → pin what works → package for the gallery worked cleanly, and the gallery step doubled as a probe (it surfaced F-04 and the OFF-1 observation, which pure authoring would have missed). Confirmation: the demand probe's value here was less "the tool is broken" (it is not) and more "here are the exact seams where a real book-length computational project meets friction," which is precisely the roadmap-feeding signal we wanted.
+
+**Refinements before scaling:**
+1. Run the machine-facing `read` probe on **every** persona, not just when convenient: it produced the highest-value finding (F-02) and is cheap.
+2. Build + browser-verify the **mounted** gallery exhibit for each persona (not just the standalone build): the mount is its own surface (F-04).
+3. Keep authoring to showcase quality: F-01/F-03/F-04 only surfaced because the doc was pushed to real depth + real packaging.
+
+**Go/no-go for the next persona (OSS docs maintainer):** GO. The recipe is validated and cheap per finding. The docs-maintainer persona stresses a different cluster (tabsets × search × mounts × API-reference), so expect a fresh finding set with little overlap. No slate change: the four-persona plan stands; sequence docs-maintainer → interactive-explainer → analyst.
+
+**One slate note:** F-04 (mount preview exec) will recur for every gallery exhibit, so it is worth fixing (or at least surfacing a state) before the gallery has 4 exhibits, else live-previewing the gallery misleads.

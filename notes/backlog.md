@@ -258,6 +258,24 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     **item 15 is complete.** The executed-cell stderr path scrub (AP8-1) and the end-to-end
     byte-reproducibility guard (DET-1) both landed, so no build-ready item remains here.
 
+16. **Demand-probe (course pilot) findings** (P2/P3, in-scope; detail:
+    [2026-07-22-corpus-demand-probe-course-author.md](2026-07-22-corpus-demand-probe-course-author.md)).
+    A realistic lecturer's course (`corpus/course/`, corpus-pinned by `course.rs` + a `/gallery/course`
+    marketing-site exhibit) was authored to probe where a book-length computational project meets friction.
+    The *stacked* HTML interactions (book × shared-theorem-counter × chapter-scope × cross-page refs ×
+    deck-embed-in-chapter × code-walkthrough × `{python}` cell × draft-appendix) ALL work — 0 interaction-bugs.
+    The four findings sit on secondary surfaces:
+    - **F-02 (gap, P2):** `taliesin read <book-chapter>.tmd` loses cross-page ref resolution + chapter-scoped
+      numbering (bare "Theorem"/"Section"; `@thm-elbo` → "Theorem 1" not 3.1), and `read <book-dir>` errors. The
+      build path already scopes via `render_document_with_includes_scoped`/`Site::chapter_for`; `read` could too.
+    - **F-01 (friction, P3):** `theorems:` is not a book-level (`_site.yml`) key — it warns/errors and is ignored;
+      a book-wide theorem policy must be repeated per chapter. Candidate: recognize `theorems:` at book level.
+    - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
+      `.code-walkthrough` (steps + code concatenate) is lossy.
+    - **F-04 (gap, P3):** a mounted sub-project's `{python}` cells don't execute in the host `preview` (rendered
+      for nav only, no live exec channel, no kernel notice); the static `build` of the mount IS correct (shipped
+      gallery fine, live preview misleads). Related to item 10's "`mounts:` live serve untested".
+
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
