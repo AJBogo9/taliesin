@@ -15,41 +15,44 @@ DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click
 located diagnostics, CSS hot-swap, Cmd-K search). The editor language intelligence (diagnostics,
 go-to-definition, outline, hover, completion, quick-fix code actions, rename) now ships editor-agnostically
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
-shipped"). **Most of the backlog has already shipped.** A large **2026-07-22 (late) backlog-clearing pass**
-shipped (all local, unpushed — the author pushes): focus-mode/fullscreen split (was item 3); a Vite-user
+shipped"). **Most of the backlog has already shipped, and everything is pushed** (`main` == `origin/main` at
+`d2a07fe`, 2026-07-22 20:42; no unpushed local work). A large **2026-07-22 (late) backlog-clearing pass**
+shipped: focus-mode/fullscreen split (was item 3); a Vite-user
 hint banner (item 9); deck `footer:`/`logo:` (item 2); a per-book offline `<book>.zip` (item 6); the
 cross-page duplicate-label warning is now located (item 5); DX16 update-nudge ruled **skip**; item 8 i18n
-labels **assessed → defer**; and item 11 polish **passes (b)-(e)** (pass (a) shipped earlier). **DX17b headless `{js}` also shipped
-2026-07-22** (its own session; the last high-impact feature). What remains open is small: deferred
-low-value sub-findings; ranked below by product impact.
+labels **assessed → defer**; and all six item-11 polish passes (a)-(f). **DX17b headless `{js}` also shipped
+2026-07-22** (the last high-impact feature); the AP8 determinism guards (was item 15) are complete and
+that item is now removed. What remains open is smaller and mostly P3; the one genuinely high-yield open
+thread is the machine-facing `read` projection (item 19). Ranked below by product impact.
 
 ## Next session: start here
 
-Tree is green across all gates; commits sit on local `main` **unpushed** (author pushes). Clean entry
-points, pick by appetite:
+Tree is green across all gates; `main` is fully pushed (no unpushed local work). One feature is **done on a
+branch, awaiting merge+push**: `worktree-live-executor-mounts` (8 commits, tip `decce6c`; the F-04 full fix
+that gives a mounted sub-project its own live executor + kernel so its `{python}`/`{r}` cells run in the
+host `preview`). Browser-verified, gates green, merges cleanly onto `d2a07fe`; it closes item 16 F-04 and
+most of item 10's mount gap. **Land that first**, then pick in priority order:
 
-- **DX17(b) headless `{js}` — SHIPPED 2026-07-22** (own session, branch `worktree-dx17b-headless-js`,
-  unpushed): `read --run` now drives a local headless Chrome (`chromiumoxide`, browser-download `fetcher`
-  off so offline holds + no openssl) over the built page and reports each `{js}` cell's outcome
-  (`[js: produced, <svg W×H>]` / `[js error: …]` / `[js: skipped (chrome unavailable)]`), observation-only.
-  Pure `classify_js_node` + `JsOutcome` in `headless_js.rs`; wired via `body_text_with_js` (core) +
-  `query.rs`; corpus-pinned `agent/executed-read-js.tmd`; Chrome-gated `read_run_js.rs` (+
-  `TALIESIN_REQUIRE_CHROME` canary). See "Already shipped".
-- **Item 11 deferred sub-findings (P3, opportunistic):** PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`),
-  PA-H1 residual (deck `theme-color`/OG); PA-B3 (mobile-TOC focus-trap), PA-B5 (cite-tabs roving-tabindex),
-  PA-B14 (Cmd-K Home/End), PA-B15 (menu tab-out close); PA-CLI1/2/3 (undocumented `preview --port` / `read
-  --run` / hand-written usage); PA-F2/C5/F4/S3 tokens. Detail:
-  [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md).
-- **Or run one of the twelve queued *audit perspectives* (new "Audit perspectives" section below):**
+1. **Merge + push live-executor mounts (F-04)** from `worktree-live-executor-mounts` (done on the branch;
+   just needs the author's merge+push, then delete items 16 F-04 / item 10 mount-serve here).
+2. **Structure-preserving `taliesin read` (item 19, NEW; highest yield).** Three independent demand probes
+   (personas 1/2/3) each hit the same seam: `read`'s text projection fuses structured blocks. Consolidated
+   from item 16 F-02 + item 17 F-03 + item 18 F-01. No code started; the clearest "build next."
+3. **Item 14 heading-demotion**: real and evidence-backed, but **owner-gated** (reshapes every corpus
+   snapshot; needs a model ruling before building).
+4. Then the medium/low band: deck mobile polish (item 4), OFF-2 mermaid-offline-preview (item 13), the
+   small persona findings (items 16-18), and the P3 test-infra + polish residuals (items 10, 11).
+
+- **Or run one of the eight remaining *audit perspectives* ("Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see (perf, fuzzing,
   concurrency, cache-correctness, i18n/sourcepos, cross-browser, a11y, determinism, semantic HTML,
   codebase health, chaos, offline-proof). Each is a fresh session that writes a dated findings doc and
-  feeds build-ready items back here; the author has credits queued for exactly this. Recommended first
-  three: AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos). **AP5 RUN 2026-07-22** (findings folded
-  into Open-work item 12).
+  feeds build-ready items back here; the author has credits queued for exactly this. Recommended next:
+  AP2 (fuzzing) + AP4 (freeze cache), both stateful/solo; the pure code-read AP10 is fan-out-safe. (AP5,
+  AP8, AP9, AP12 already run.)
 
-Everything else open is P3/gated (items 4, 10 + band D) or demand-driven (Tier 3). Working method is in "Standing
-constraints": branch per feature, verify by mutation, browser-verify, ff-merge locally.
+Working method is in "Standing constraints": branch per feature, verify by mutation, browser-verify,
+ff-merge locally, delete the item here on landing.
 
 ## Standing constraints (read before working)
 
@@ -93,8 +96,19 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-*(Cleared: DX17(b) headless `{js}` shipped 2026-07-22 — see "Already shipped". No high-impact feature
-is currently open; the remaining work is P3/gated or demand-driven.)*
+19. **Structure-preserving machine-facing `read`** *(NEW; highest yield, the one clear "build next")*.
+    Consolidates the single most-repeated demand-probe finding: `taliesin read`'s text projection fuses
+    structured blocks that should stay separated, so an agent/LLM reading a doc gets run-on text. Three
+    concrete seams, each surfaced by a different persona:
+    - list items concatenate with no separator, e.g. `…column names.Returns —…` (item 17 F-03);
+    - `.scrolly` `.step` narrations merge *across* step boundaries, and a `{{< input >}}` control's
+      label+value fuse (`step size (η)0.12`), per item 18 F-01;
+    - a book-chapter read loses cross-page ref resolution + chapter-scoped numbering (bare
+      "Theorem"/"Section"; `@thm-elbo` gives "Theorem 1" not 3.1), and `read <book-dir>` errors (item 16 F-02).
+    The build path already scopes via `render_document_with_includes_scoped` / `Site::chapter_for`; `read`
+    could reuse it. Note the same `render::indexable_text` feeds Cmd-K search (benign there, so verify search
+    output stays unchanged). Not started. *(This item is the home for items 16 F-02, 17 F-03, 18 F-01;
+    those entries now point here.)*
 
 ### B. Medium impact
 
@@ -114,11 +128,11 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
       warm-pool, cold-Python and `/tmp`-sweep halves all landed.)
-    - **`mounts:` live serve/discovery is untested** (C5's only remaining gap): everything else about
-      `mounts:` is pinned; untested is the live `serve_site` `MountedSite` discovery + serving under the
-      `/at/` prefix (`serve_site/mod.rs` ~139-170), incl. the "no directory" warn path. A bin-crate
-      integration gap (the suite has no live-HTTP serve test). Low-value (mounts are preview-only, so
-      nothing ships wrong), demand-driven.
+    - **`mounts:` live serve/discovery has no automated test** (mostly closed by the live-executor-mounts
+      branch, unmerged): the F-04 work reworks `serve_site` mount discovery/serving and unit-pins the pure
+      `match_mount`/`resolve_project`/`classify_change` helpers. What remains is only the bin-crate gap of an
+      end-to-end live-HTTP serve test (no `reqwest`/`TcpListener` harness), browser-verified for now.
+      Low-value (mounts are preview-only), demand-driven. Fold this once that branch lands.
     - **Two load-sensitive timing tests:**
       `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
       `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load; both
@@ -144,89 +158,37 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     - **Audit long-tail:** a tens-of-MB cell output blocks ZMQ receive before the cap fires
       (`kernel.rs`, do-not-touch).
 
-11. **2026-07-22 polish-audit follow-ups** (P3 hardening + a11y + "feels finished"; detail:
-    [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md) — ~55 `PA-*` findings from an empirical browser
-    sweep + 4 read-only code auditors; [AUDITS.md](AUDITS.md) records the round). **PA-H1 (standalone deck build
-    shipped no favicon → a `/favicon.ico` 404 + blank tab) already landed** 2026-07-22 (`dc58aa9`, pinned by
-    `deck_offline_build::built_deck_carries_a_favicon`). The rest grind as **5 passes**, each a branch → corpus-pin
-    (where behavioral) → browser-verify: **(a) design-system single-source — SHIPPED 2026-07-22** (branch
-    `polish/design-system-single-source`): `site.css` radii/durations/hover-shadows now route through
-    `--tali-radius-*` / `var(--tali-dur)` / `--tali-shadow-md`, the cite-this "Copied!" + deck speaker/share active
-    buttons take `--tali-accent-fill` (dark **5.59:1**, was ≈2.3:1 — clears WCAG AA), every deck control gets a
-    `:focus-visible` ring, listing cards get keyboard-focus parity with hover, and sepia gets its own search-`<mark>`
-    (PA-C1/C2/C3/D1/F1/F3/S1/S2/S4/C4). Pinned by `render::tests::{filled_chrome_controls_use_the_aa_accent_fill_not_raw_accent,
-    every_interactive_deck_control_gets_a_focus_visible_ring, sepia_search_mark_keeps_body_text_readable,
-    listing_card_gets_a_focus_visible_affordance}` + browser-verified light/dark/sepia. **Residual (low, deferred):**
-    PA-F2 (a `--tali-scrim` token folding 3 divergent overlay alphas), PA-C5 (per-slide-bg hex drift-lock),
-    PA-F4 (px↔rem breakpoints), PA-S3 (base.css's own `.15s` uses). **(b) scaffold completeness — SHIPPED
-    2026-07-22** (`polish/scaffold-h1-time`): listing/section pages get a visually-hidden `<h1>` (only when the
-    body has none, so a `hero:` landing keeps one `<h1>`; PA-H2), and card + title-block dates are now
-    `<time datetime>` (PA-M1); pinned `title_block_style_none_injects_a_hidden_h1_but_no_visible_block`,
-    `..._does_not_duplicate_an_existing_h1`. **PA-M2 (`<article>` landmark) — SHIPPED**
-    (`feat/pa-m2-article-landmark`): a dated post wraps its reading content in `<main><article>…</article></main>`
-    (title block + body + footnotes); an undated page (listing/section/generic) stays plain `<main>`. Semantic-only
-    (no layout: `<article>` is `display:block` and no CSS rule targets `main`'s direct children on an article page),
-    pinned by `render::tests::a_dated_post_wraps_its_reading_content_in_an_article_landmark`. *Residual:* PA-M3
-    (`<ul>`/`role=list`, needs CSS-grid + category-filter-JS restructuring → browser verify),
-    PA-H1 deck `theme-color`/OG. **(c) a11y announce/focus holes — SHIPPED** (`polish/a11y-holes`): `<th scope>`
-    (PA-M6), footnotes region `aria-label` (PA-M7), footnote-ref `doc-noteref` (PA-M8), lightbox caption
-    `aria-live` (PA-A2), deck share `aria-modal` (PA-B4). *Residual:* PA-B3 focus-trap, PA-B5 roving-tabindex,
-    PA-B14 Home/End, PA-B15 tab-out-close. **(d) CLI/diagnostics — SHIPPED** (`polish/cli-diagnostics`): the
-    kernel-unavailable message no longer tells headless `build`/`read`/CI to "click Restart kernel" (PA-B1,
-    extracted to a pure `Executor::kernel_unavailable_message`), and `check` severity is now colorized
-    (TTY-gated; PA-B2). *Residual:* PA-CLI1/2/3 `--help` drift. **(e) reduced-motion + print — SHIPPED**
-    (`polish/reduced-motion-print`): the preview client's 3 smooth-scrolls + the lightbox/link-preview
-    transitions honour `prefers-reduced-motion` (PA-B6/B7), printed external links spell out their URL
-    (`a[href^=http]::after`; PA-P1), and `pre` drops its scroll-shadow for print (PA-P2). **(f) extension
-    emitted-markup a11y — SHIPPED** (`feat/a11y-emitted-markup`): the reactive-slider `<output>` gains
-    `for="<control-id>"` so AT ties the readout to its range input (PA-M9), and the deck-embed `target="_blank"`
-    "Open ↗" link gains a visually-hidden "(opens in a new tab)" cue (PA-M11); pinned by
-    `render::extension::a11y_tests::{slider_output_is_tied_to_its_control_with_for,
-    embed_external_link_announces_the_new_tab}` + the updated `input_slider_shortcode_emits_reactive_control` +
-    `reactive_inputs` snapshot. *Residual:* PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`), PA-M13 (hero/card
-    image-alt lint nudge). Owner design-Qs (deck copy-button, card whole-`<a>`) parked in the doc, not build-ready.
+11. **2026-07-22 polish-audit residuals** (P3 hardening + a11y + "feels finished"; detail:
+    [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md); [AUDITS.md](AUDITS.md) records the round).
+    **Passes (a)-(f) all shipped** (design-system single-source, scaffold `<h1>`/`<time>`, `<article>`
+    landmark, announce/focus holes, CLI/diagnostics, reduced-motion+print, emitted-markup a11y; see
+    "Already shipped"). Only low/opportunistic leftovers remain:
+    - **Tokens (F2/C5/F4/S3):** a `--tali-scrim` token folding 3 divergent overlay alphas (PA-F2),
+      per-slide-bg hex drift-lock (PA-C5), px/rem breakpoints (PA-F4), base.css's own `.15s` uses (PA-S3).
+    - **a11y interaction (B3/B5/B14/B15):** mobile-TOC focus-trap, cite-tabs roving-tabindex, Cmd-K
+      Home/End, menu tab-out-close.
+    - **Semantics (M3/M13, H1):** `<ul>`/`role=list` (needs a CSS-grid + category-filter-JS restructure +
+      browser verify), hero/card image-alt lint nudge, deck `theme-color`/OG (PA-H1 residual).
+    - **CLI docs (CLI1/2/3):** `--help` drift (undocumented `preview --port` / `read --run` / hand-written
+      usage). Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
 
-12. **i18n / Unicode multibyte-offset correctness — LSP encoding fix SHIPPED 2026-07-22** (branch
-    `worktree-i18n-multibyte-lsp`, unpushed — author pushes; detail:
-    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md), perspective AP5).
-    I18N-2/3/4/5 landed: the stdio LSP now advertises `positionEncoding: utf-16` and converts UTF-16 <->
-    Unicode scalar at every boundary (incoming positions **and** every emitted `Position`: go-to-definition,
-    hover, completion replace-range, prepareRename, **rename** (the write path), documentSymbol, and diagnostics
-    `to_lsp`) via a pure `lsp_pos` module. Scalar equals UTF-16 across the whole BMP, so only astral characters
-    (emoji, math letters) before a token were ever off; now correct there too. Pinned (all as failing guards
-    first, per TDD): `lsp_pos::tests::*` + `check::tests::to_lsp_*utf16*` + `lsp::tests::rename_speaks_utf16_*`.
-    **I18N-1 resolved as documentation** (`web-client/client.js`): a block's start column is always ASCII-prefixed
-    (indentation / list / blockquote markers), so its byte column already equals its character column, and the
-    client has no source text to convert with — the "wrong-unit contract" was unreachable; made explicit in a
-    comment rather than faking a conversion. *Residual (not build-ready, demand-driven — do not spin up without
-    a real ask): RTL layout, CJK line-breaking, non-ASCII heading-slug collisions.*
+12. **i18n / Unicode multibyte correctness: DONE bar a demand-driven residual.** The LSP UTF-16 encoding
+    fix shipped 2026-07-22 (folded from AP5; detail:
+    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)): the stdio
+    LSP advertises `positionEncoding: utf-16` and converts at every boundary (I18N-2/3/4/5); I18N-1 was
+    resolved as documentation (block start columns are always ASCII-prefixed, so the client conversion was
+    unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
+    layout, CJK line-breaking, non-ASCII heading-slug collisions.*
 
-13. **Offline-guarantee: warn when a `--out` build is not self-contained** (P3, protects a headline invariant;
-    detail: [2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md), perspective AP12;
-    [AUDITS.md](AUDITS.md) records the round). The tool's OWN assets are genuinely offline (local woff2 fonts,
-    server-rendered KaTeX, vendored d3/Plot, mermaid inlined into static builds, a reveal/jsdelivr regression
-    guard), but a `build ... --out <dir>` "portable" folder silently keeps any external reference the author
-    wrote, with no diagnostic.
-    - **OFF-1 core — SHIPPED 2026-07-22** (reconciled from two parallel sessions' takes): `build` now emits one
-      located, informational warning (`label:line: external reference not bundled: <url> …`) per view-time
-      external reference left in the output — resource `src=` (img/script/iframe/…), a `<link href>` stylesheet
-      (never an `<a>` hyperlink), and remote or bare `{js}` `import()` specifiers (scanned only in author cell
-      bodies, so vendored d3/Plot don't false-positive). On **both** the single-doc `--out` path and the
-      **multi-page site** build (per page, via the shared `offline_ref_warnings` helper → `build_one_page`'s
-      warnings). Never fails the build (even `--strict`): the tool warns, it does not download (non-download
-      stays pinned at `copy_local_assets_bundles_js_cell_imports_recursively`). Pure
-      `external_refs`/`ExternalRef`/`offline_ref_warnings` in `build.rs`, pinned by `mirror_tests::external_refs_*`
-      (hyperlink/local/data negatives, remote+bare positives, located) + `offline_ref_warnings_*`. **Deferred
-      (own follow-ups):** CSS `url()`/`@import` external hosts; surfacing in `check` + `--format json` (kept out
-      of `check.rs` — detection is on rendered HTML, and a build-time `log::warn`/deferred-warning was the
-      collision-free surface).
-    - **OFF-2 (S-M, open):** make live preview offline-complete for mermaid by inlining the vendored library on
-      mermaid pages (gated like the build path), or surface the network load. Overlaps item 10.
-      `render/mod.rs:1292-1311`.
-    *Verified offline (do not re-audit): fonts, KaTeX, d3/Plot, mermaid-in-build, the reveal/jsdelivr guard;
-    the `https://` strings in the vendored mermaid/d3 blobs are license/error text, not fetches. Not chased:
-    whether built HTML leaks absolute local paths or author identity (the AP12 entry's second sub-question;
-    item 15's AP8-1 later found one instance: executed-cell stderr leaks the `/tmp/ipykernel_<PID>` path).*
+13. **Offline-guarantee: OFF-2 mermaid preview** (P3; detail:
+    [2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md), AP12). **OFF-1 shipped
+    2026-07-22**: `build` and the site build now emit one located, informational warning per view-time
+    external reference left in a `--out`/site output (never fails the build; see "Already shipped";
+    deferred follow-ups: CSS `url()`/`@import` hosts, surfacing in `check` / `--format json`). **OFF-2
+    (S-M, open):** live preview lazy-loads mermaid from a CDN despite the vendored copy, so inline the
+    vendored library on mermaid pages (gated like the build path) or surface the network load. Overlaps
+    item 10. `render/mod.rs:1292-1311`.
+    *Verified offline (do not re-audit): fonts, KaTeX, d3/Plot, mermaid-in-build, the reveal/jsdelivr guard.*
 
 14. **HTML-1: heading-demotion for a single-root document outline** (P3 semantic/a11y, OWNER-GATED; detail:
     [2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md), perspective AP9;
@@ -247,17 +209,6 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     `<header>`/`<main>` landmarks present. The render pipeline's HTML structure is sound; only the h1 outline
     is off.*
 
-15. **Determinism & reproducibility (AP8, run TWICE in parallel: this session + the audit session).** P3.
-    Details: [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md) (static, this session) and
-    [2026-07-22-ap8-determinism-audit.md](2026-07-22-ap8-determinism-audit.md) (fuller, the audit session's
-    `58db11d`, which also ran the kernel path). Both agree render + build are deterministic BY DESIGN and
-    reproducible cross-machine (single docs byte-identical across separate processes, 9 site builds
-    byte-identical, sorted discovery/listings/hover index, `.zip` fixed-1980 timestamp, content-hash
-    block-ids). **AP8-1 + DET-1 both shipped 2026-07-22** (branches
-    `worktree-ap8-1-ipykernel-path-scrub` + `worktree-det1-determinism-guard`; see "Already shipped"):
-    **item 15 is complete.** The executed-cell stderr path scrub (AP8-1) and the end-to-end
-    byte-reproducibility guard (DET-1) both landed, so no build-ready item remains here.
-
 16. **Demand-probe (course pilot) findings** (P2/P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-course-author.md](2026-07-22-corpus-demand-probe-course-author.md)).
     A realistic lecturer's course (`corpus/course/`, corpus-pinned by `course.rs` + a `/gallery/course`
@@ -265,16 +216,19 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     The *stacked* HTML interactions (book × shared-theorem-counter × chapter-scope × cross-page refs ×
     deck-embed-in-chapter × code-walkthrough × `{python}` cell × draft-appendix) ALL work — 0 interaction-bugs.
     The four findings sit on secondary surfaces:
-    - **F-02 (gap, P2):** `taliesin read <book-chapter>.tmd` loses cross-page ref resolution + chapter-scoped
+    - **F-02 (gap, P2; now consolidated in item 19):** `taliesin read <book-chapter>.tmd` loses cross-page ref resolution + chapter-scoped
       numbering (bare "Theorem"/"Section"; `@thm-elbo` → "Theorem 1" not 3.1), and `read <book-dir>` errors. The
       build path already scopes via `render_document_with_includes_scoped`/`Site::chapter_for`; `read` could too.
     - **F-01 (friction, P3):** `theorems:` is not a book-level (`_site.yml`) key — it warns/errors and is ignored;
       a book-wide theorem policy must be repeated per chapter. Candidate: recognize `theorems:` at book level.
     - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
       `.code-walkthrough` (steps + code concatenate) is lossy.
-    - **F-04 (gap, P3):** a mounted sub-project's `{python}` cells don't execute in the host `preview` (rendered
-      for nav only, no live exec channel, no kernel notice); the static `build` of the mount IS correct (shipped
-      gallery fine, live preview misleads). Related to item 10's "`mounts:` live serve untested".
+    - **F-04 (gap, P3), FIXED on branch `worktree-live-executor-mounts` (unmerged; delete on merge):** a
+      mounted sub-project's `{python}`/`{r}` cells did not execute in the host `preview` (rendered for nav
+      only, no live exec channel, no kernel notice); the static `build` of the mount was already correct
+      (shipped gallery fine, live preview misled). The F-04 full fix gives each mounted project its own live
+      executor + kernel + `_freeze`; browser-verified on `/gallery/course/em.html`. Related to item 10's
+      mount-serve note (also closed by the same branch).
 
 17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
@@ -287,7 +241,7 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     - **F-01 (friction, P3):** `powershell` is not in the bundled syntect set, so a Windows install snippet
       renders as unstyled plain text + a `TAL-CODE-LANG` warning (`bash` highlights fine). `two-face` ships a
       PowerShell syntax; adding it to the bundled set closes it. Edits `crates/core/src/highlight.rs`.
-    - **F-03 (friction, P3):** `taliesin read` concatenates adjacent list items with no separator
+    - **F-03 (friction, P3; now consolidated in item 19):** `taliesin read` concatenates adjacent list items with no separator
       (`…column names.Returns —…`), so an API param list reads as a run-on. The same `render::indexable_text`
       feeds search (benign there). Candidate: separate list items in the text projection. **Reinforces item
       16's F-02** — the machine-facing `read` projection is the recurring cross-persona seam (see that item);
@@ -307,7 +261,7 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     `{{< input >}}` sliders × a **draggable** `{js}` graphic × a `.scrolly` sticky `{js}` graphic × a
     reactive Plot cell × math × two numbered SVG figures — and it ALL works, standalone and mounted, 0
     console errors. Three P3 findings:
-    - **F-01 (friction, P3):** the machine-facing `taliesin read` projection concatenates structured
+    - **F-01 (friction, P3; now consolidated in item 19):** the machine-facing `taliesin read` projection concatenates structured
       blocks — a `{{< input >}}` control's label+value (`step size (η)0.12`) and, worse, `.scrolly`
       `.step` narrations *across step boundaries* (`…the middle.Which way is downhill.`). **Third straight
       persona to hit the `read` seam** (after item 16 F-02 + item 17 F-03); the recurrence is the signal —
@@ -415,8 +369,9 @@ session runs.
   done a real screen-reader + keyboard pass over rendered docs, and especially the **deck as an interactive
   application** (focus management, `aria`, KaTeX a11y, live-region announcement on slide change). Overlaps
   item 11 pass (c) but goes deeper than one-hole-per-surface. *Stateful, solo.*
-- **AP8: Determinism / reproducibility. RUN 2026-07-22** (findings:
-  [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md); folded into Open-work item 15). Covered
+- **AP8: Determinism / reproducibility. RUN 2026-07-22, findings shipped + closed** (findings:
+  [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md); was Open-work item 15, now complete +
+  removed). Covered
   BOTH halves (the read hunt AND the stateful rebuild-twice check, via the frozen binary). Result: a positive
   bill of health. Single-doc renders and a full multi-page site build are byte-identical across separate
   processes with fresh HashMap seeds, and determinism holds by construction (sorted discovery/listings/hover
@@ -531,7 +486,7 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
-- **2026-07-22 (late) backlog-clearing pass** (local, unpushed): **focus mode split from OS fullscreen**
+- **2026-07-22 (late) backlog-clearing pass** (shipped 2026-07-22, on origin/main): **focus mode split from OS fullscreen**
   (`f` = calm column, `F`/menu = fullscreen; `03-focus-mode.js`); **Vite-user hint banner** (`log::keys_hint`,
   TTY-gated, points at the `◇` dev menu); **deck `footer:`/`logo:`** (`render::deck_overlay_html` +
   `DeckParts.deck_overlay`, corpus-pinned in `deck.tmd`); **per-book offline `<book>.zip`** (`server::zip`
@@ -540,7 +495,7 @@ claim that one of these is "missing"):
   the redefining anchor via `content_lines_numbered`); **item 11 passes (b)-(e)** (see item 11). Owner
   rulings: DX16 skip, i18n defer, item-9 design-Qs documented (see "Decided against").
 - **AP8-1 executed-output path scrub** (item 15, AP8) **shipped 2026-07-22** (branch
-  `worktree-ap8-1-ipykernel-path-scrub`, local): a cell's stream (matplotlib's Agg `UserWarning`, any
+  `worktree-ap8-1-ipykernel-path-scrub`, now on origin/main): a cell's stream (matplotlib's Agg `UserWarning`, any
   `warnings.warn`, a `print(__file__)`) cited the kernel's per-process temp file
   `<tmpdir>/ipykernel_<PID>/<HASH>.py`, making builds non-reproducible + leaking a local absolute path into
   published HTML. Fix: a hand-rolled `scrub_kernel_paths` (no new dep, mirrors `strip_ansi`) normalizes that
@@ -552,7 +507,7 @@ claim that one of these is "missing"):
   twice under `TALIESIN_NO_CACHE=1` → byte-identical, no `ipykernel_` path); mutation-checked both ways.
   Completes item 15 alongside DET-1.
 - **DET-1 reproducibility guard** (item 15, AP8) **shipped 2026-07-22** (branch
-  `worktree-det1-determinism-guard`, local): `crates/server/tests/build_reproducibility.rs` builds a
+  `worktree-det1-determinism-guard`, now on origin/main): `crates/server/tests/build_reproducibility.rs` builds a
   feature-rich **kernel-free** site (listing + categories + Atom feed, cross-page `@thm-`/`@def-` xrefs,
   8 hover targets, site `url:` → sitemap + OG cards) twice in **separate processes at separate paths**
   (⇒ different HashMap seeds *and* `read_dir` order) and asserts **every** emitted file is byte-identical
