@@ -84,6 +84,10 @@ and the Settings gear stay, so you keep your exit paths and your theme control. 
 **f** again or **Esc** to leave. Focus mode is momentary: it is not remembered across
 reloads, and the `f` key is ignored while you are typing in a field or a dialog is open.
 
+Focus mode and fullscreen are separate: focus centres the column without filling the
+screen, and **F** (or the Fullscreen menu toggle) fills the screen without hiding the
+chrome. Combine them, or use either alone.
+
 ## Keyboard and accessibility
 
 Tab from the top of any page reveals a **Skip to content** link that jumps focus past
@@ -94,7 +98,7 @@ is open):
 
 - `?` opens (and closes) the Settings menu, whose Keyboard shortcuts section lists these.
 - `/` opens the search palette.
-- `f` toggles focus mode.
+- `f` toggles focus mode; `F` toggles fullscreen.
 - `←` / `→` move to the previous / next chapter (in a book).
 - `Esc` closes the open menu, dialog, or palette.
 
