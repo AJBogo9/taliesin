@@ -1,0 +1,14 @@
+title: "Tarn: the tabular query library"
+toc: true
+
+chapters:                 # presence makes this a book
+  - index.tmd
+  - part: "Guide"
+    chapters:
+      - install.tmd
+      - quickstart.tmd
+      - concepts.tmd
+  - part: "Reference"
+    chapters:
+      - api-frame.tmd
+      - api-query.tmd
