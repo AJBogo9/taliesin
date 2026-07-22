@@ -977,7 +977,10 @@ async fn set_kernel_cwd(kernel: &mut Kernel, dir: &Path) {
 ///     (and everything after) is kept out of the warm prefix.
 ///   - cells `[shared, run_end)` execute; `run_end` is one past the last cell whose
 ///     output we don't already have. A *known* cell inside this range still runs —
-///     the kernel needs its state to reach an unknown cell after it.
+///     the kernel needs its state to reach an unknown cell after it. `run_end` also
+///     jumps to `len` when any `#| cache: false` cell exists: that cell re-runs with
+///     possibly-different state, so every cell after it must re-run too rather than
+///     restore a disk hit the cumulative key can't tell is stale.
 ///   - cells `[run_end, len)` are all known and restore from the disk cache; their
 ///     kernel state is never needed (nothing after them runs).
 ///
@@ -1007,6 +1010,17 @@ fn plan(
         if !known(i) {
             run_end = i + 1;
         }
+    }
+    // A `#| cache: false` cell re-executes every run and may leave *different* kernel
+    // state behind, so every cell after it is untrustworthy from disk even when its own
+    // key is a cache hit (the cumulative key can't see the upstream cell's
+    // non-determinism). Extend the run range to the document end so those downstream
+    // cells re-run against the freshly-computed state instead of restoring a stale
+    // output. This only bites when a `cache: false` cell exists (`first_uncacheable ==
+    // len` otherwise, leaving `run_end` untouched), so the common all-cacheable
+    // document is unchanged.
+    if first_uncacheable < hashes.len() {
+        run_end = hashes.len();
     }
     (shared, run_end)
 }
@@ -2277,6 +2291,35 @@ mod tests {
         assert_eq!(
             run_plan_nc(&["a", "b", "c"], &["a", "b", "c"], &[], &[2]),
             (2, 3)
+        );
+    }
+
+    #[test]
+    fn plan_cache_false_forces_downstream_disk_hits_to_rerun() {
+        // AP4-1 regression: a `#| cache: false` cell re-executes with possibly-different
+        // kernel state, so a *cacheable* cell after it must re-run too, even when its own
+        // key is a disk-cache hit. The cumulative key can't see the upstream cell's
+        // non-determinism, so restoring the downstream cell from disk serves a stale output.
+
+        // Cold build, cell 0 is `cache: false`, cell 1 is cacheable and ON DISK: cell 1
+        // must still re-run (run_end reaches the end), not restore stale from disk.
+        assert_eq!(run_plan_nc(&[], &["a", "b"], &["b"], &[0]), (0, 2));
+        // Warm session, everything unchanged, a `cache: false` middle cell with a
+        // disk-cached cell after it: the tail re-runs against fresh state, not from disk.
+        assert_eq!(
+            run_plan_nc(&["a", "b", "c"], &["a", "b", "c"], &["c"], &[1]),
+            (1, 3)
+        );
+        // A `cache: false` cell with several disk-cached cells after it: everything from
+        // the warm-prefix boundary to the end re-runs, no stale tail restore.
+        assert_eq!(
+            run_plan_nc(
+                &["a", "b", "c", "d"],
+                &["a", "b", "c", "d"],
+                &["c", "d"],
+                &[1]
+            ),
+            (1, 4)
         );
     }
 
