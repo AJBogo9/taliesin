@@ -1088,24 +1088,24 @@ fn scrub_kernel_paths(s: &str) -> String {
     let mut rest = s;
     while !rest.is_empty() {
         // Legacy `<ipython-input-…>` (older IPython): replace the whole `<…>` token.
-        if let Some(after) = rest.strip_prefix("<ipython-input-") {
-            if let Some(gt) = after.find('>') {
-                out.push_str("<cell>");
-                rest = &after[gt + 1..];
-                continue;
-            }
+        if let Some(after) = rest.strip_prefix("<ipython-input-")
+            && let Some(gt) = after.find('>')
+        {
+            out.push_str("<cell>");
+            rest = &after[gt + 1..];
+            continue;
         }
         // `<tmpdir>/ipykernel_<digits>/<digits>.py`: anchor on `ipykernel_`, match the tail
         // forward, then drop the already-emitted tmpdir prefix back to a whitespace boundary
         // so the whole absolute path token (not just the filename) becomes `<cell>`.
-        if rest.starts_with("ipykernel_") {
-            if let Some(tail) = ipykernel_tail_len(rest) {
-                let keep = out.trim_end_matches(|c: char| !c.is_whitespace()).len();
-                out.truncate(keep);
-                out.push_str("<cell>");
-                rest = &rest[tail..];
-                continue;
-            }
+        if rest.starts_with("ipykernel_")
+            && let Some(tail) = ipykernel_tail_len(rest)
+        {
+            let keep = out.trim_end_matches(|c: char| !c.is_whitespace()).len();
+            out.truncate(keep);
+            out.push_str("<cell>");
+            rest = &rest[tail..];
+            continue;
         }
         let ch = rest.chars().next().unwrap();
         out.push(ch);

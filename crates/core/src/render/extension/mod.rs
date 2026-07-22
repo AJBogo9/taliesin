@@ -385,48 +385,6 @@ fn deck_href(path: &str) -> String {
     }
 }
 
-#[cfg(test)]
-mod a11y_tests {
-    use super::*;
-
-    #[test]
-    fn slider_output_is_tied_to_its_control_with_for() {
-        // PA-M9: the live `<output>` readout must carry `for="<control-id>"` so AT associates the
-        // reading with the range input it reflects. The control id is name-derived (`qin-<slug>`).
-        let mut ids = std::collections::HashMap::new();
-        let mut warns = Vec::new();
-        let html = input_shortcode(
-            &["type=slider".to_string(), "name=freq".to_string()],
-            1,
-            &mut warns,
-            &mut ids,
-        );
-        assert!(
-            html.contains("id=\"qin-freq\""),
-            "sanity: the control carries its id: {html}"
-        );
-        assert!(
-            html.contains("for=\"qin-freq\" data-qmd-out"),
-            "the <output> readout must be tied to its control via for=: {html}"
-        );
-    }
-
-    #[test]
-    fn embed_external_link_announces_the_new_tab() {
-        // PA-M11: the embed's `target="_blank"` "Open ↗" link gives no programmatic new-tab cue.
-        // A visually-hidden suffix keeps the visible label terse while AT announces the new tab.
-        let html = embed_html("deck.tmd", None);
-        assert!(
-            html.contains("target=\"_blank\""),
-            "sanity: the link opens a new tab: {html}"
-        );
-        assert!(
-            html.contains("<span class=\"tali-sr-only\"> (opens in a new tab)</span>"),
-            "the new-tab link needs a visually-hidden cue for AT: {html}"
-        );
-    }
-}
-
 /// The HTML for an embedded deck: a responsive 16:9 iframe (isolating the deck's
 /// full-viewport CSS/JS/keyboard from the host page) plus a fullscreen button and an
 /// "open in a new tab" link. Emitted as a raw-HTML block, which the renderer passes
@@ -505,4 +463,46 @@ pub fn embed_targets(src: &str) -> Vec<String> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod a11y_tests {
+    use super::*;
+
+    #[test]
+    fn slider_output_is_tied_to_its_control_with_for() {
+        // PA-M9: the live `<output>` readout must carry `for="<control-id>"` so AT associates the
+        // reading with the range input it reflects. The control id is name-derived (`qin-<slug>`).
+        let mut ids = std::collections::HashMap::new();
+        let mut warns = Vec::new();
+        let html = input_shortcode(
+            &["type=slider".to_string(), "name=freq".to_string()],
+            1,
+            &mut warns,
+            &mut ids,
+        );
+        assert!(
+            html.contains("id=\"qin-freq\""),
+            "sanity: the control carries its id: {html}"
+        );
+        assert!(
+            html.contains("for=\"qin-freq\" data-qmd-out"),
+            "the <output> readout must be tied to its control via for=: {html}"
+        );
+    }
+
+    #[test]
+    fn embed_external_link_announces_the_new_tab() {
+        // PA-M11: the embed's `target="_blank"` "Open ↗" link gives no programmatic new-tab cue.
+        // A visually-hidden suffix keeps the visible label terse while AT announces the new tab.
+        let html = embed_html("deck.tmd", None);
+        assert!(
+            html.contains("target=\"_blank\""),
+            "sanity: the link opens a new tab: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"tali-sr-only\"> (opens in a new tab)</span>"),
+            "the new-tab link needs a visually-hidden cue for AT: {html}"
+        );
+    }
 }
