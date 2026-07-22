@@ -14,7 +14,7 @@
 use crate::headless_js::{self, JsOutcome};
 use crate::log;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
@@ -133,15 +133,21 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
     let p = Path::new(path);
     let base = p.parent().unwrap_or_else(|| Path::new("."));
 
-    // The parse-only render is panic-guarded exactly as before.
-    let mut doc = match crate::serve::guarded(|| {
-        taliesin_core::render_document_with_includes_rooted(&src, base, Some(base))
-    }) {
-        Ok(d) => d,
-        Err(panic) => {
-            log::error(&format!("read panicked on {path}: {panic}"));
-            return ExitCode::FAILURE;
-        }
+    // Auto-scope: if this file lives in a site (an enclosing `_site.yml`), render it as the
+    // site does (chapter numbering + cross-page refs), so a book chapter reads "Theorem
+    // 3.1" / "Chapter 2", not a bare "Theorem". A standalone `.tmd` falls back to the
+    // panic-guarded standalone render, exactly as before.
+    let mut doc = match scoped_site_doc(p, &src) {
+        Some(d) => d,
+        None => match crate::serve::guarded(|| {
+            taliesin_core::render_document_with_includes_rooted(&src, base, Some(base))
+        }) {
+            Ok(d) => d,
+            Err(panic) => {
+                log::error(&format!("read panicked on {path}: {panic}"));
+                return ExitCode::FAILURE;
+            }
+        },
     };
 
     // `--run` executes python/r (reusing build's exec path); `--run` under TALIESIN_NO_EXEC
@@ -255,6 +261,47 @@ fn count_kernel_cells(blocks: &[taliesin_core::Block]) -> usize {
                 .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
         })
         .count()
+}
+
+/// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
+/// boundary or the filesystem root, so `read` of a file inside a book/site can render it
+/// the way the site does. Returns the directory that holds the `_site.yml`, if any.
+fn enclosing_site_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.canonicalize().ok()?;
+    loop {
+        if dir.join("_site.yml").is_file() {
+            return Some(dir);
+        }
+        // Don't climb out of the repo/project the file lives in.
+        if dir.join(".git").exists() {
+            return None;
+        }
+        dir = dir.parent()?.to_path_buf();
+    }
+}
+
+/// Render a single file the way its enclosing site would: chapter-scoped numbering
+/// (`@thm-elbo` → "Theorem 3.1") plus cross-page reference resolution (`@thm-consistency`
+/// on another page → "Theorem 2.1"). Returns `None` when the file is not part of a
+/// discoverable site (the caller then does today's standalone render). Reuses the exact
+/// sequence `site/search.rs::page_fragment` is proven on, plus heading numbering.
+fn scoped_site_doc(path: &Path, src: &str) -> Option<taliesin_core::RenderedDoc> {
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let root = enclosing_site_root(base)?;
+    let site = taliesin_core::Site::discover_with(&root, taliesin_core::DraftMode::Include);
+    let canon = path.canonicalize().ok()?;
+    let page = site
+        .pages
+        .iter()
+        .find(|p| p.input.canonicalize().ok().as_deref() == Some(canon.as_path()))?;
+    crate::serve::guarded(|| {
+        let mut doc =
+            taliesin_core::render_document_with_includes_scoped(src, base, site.chapter_for(page));
+        site.number_chapter(page, &mut doc.blocks);
+        site.resolve_cross_refs(&mut doc.blocks, &page.url);
+        doc
+    })
+    .ok()
 }
 
 /// Execute a single doc's cells, mirroring build's single-file exec (no HTML assembly).
