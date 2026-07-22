@@ -1083,9 +1083,15 @@ impl Site {
                     // figure reads "Figure 1" — contradicting the warning's own "using …".
                     if e.get().url != url {
                         if !dup_reported(&self.warnings, e.key()) {
+                            // A cell-labelled anchor (`#| label:`) has no source line to point
+                            // at (it's harvested from the rendered block, not the source scan),
+                            // so name BOTH colliding pages instead — the first (winning) page
+                            // and the second that redefines it.
                             self.warnings.push(format!(
-                                "duplicate cross-reference label \u{201c}{}\u{201d} defined on multiple pages (using {})",
+                                "duplicate cross-reference label \u{201c}{}\u{201d} defined on both {} and {}; using {}",
                                 e.key(),
+                                e.get().url,
+                                url,
                                 e.get().url
                             ));
                         }
@@ -1541,6 +1547,12 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
 /// detection reads the file raw). A refactor of two ~identical pre-scans into one, not a
 /// behavior change.
 pub(super) fn content_lines(src: &str) -> impl Iterator<Item = &str> {
+    content_lines_numbered(src).map(|(_, t)| t)
+}
+
+/// [`content_lines`] paired with each line's 1-based source line number, so a scan can point
+/// a diagnostic at exactly where an anchor lives.
+pub(super) fn content_lines_numbered(src: &str) -> impl Iterator<Item = (usize, &str)> {
     let mut in_front_matter = false;
     let mut in_code = false;
     src.lines().enumerate().filter_map(move |(i, line)| {
@@ -1560,7 +1572,7 @@ pub(super) fn content_lines(src: &str) -> impl Iterator<Item = &str> {
         if in_code {
             return None;
         }
-        Some(t)
+        Some((i + 1, t))
     })
 }
 

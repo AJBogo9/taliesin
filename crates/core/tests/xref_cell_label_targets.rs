@@ -76,6 +76,35 @@ fn the_same_cell_label_on_two_pages_warns_like_a_duplicate_brace_id() {
 }
 
 #[test]
+fn a_source_anchor_duplicated_across_pages_warns_with_a_located_line() {
+    // The source-scan duplicate used to carry no location (backlog item 5). It is now a
+    // `file:line:` linter line at the redefining anchor, and still names the winning page.
+    let proj = TempProj::new();
+    proj.file("_site.yml", "title: \"Dup\"\n")
+        .file("a.tmd", "---\ntitle: \"A\"\n---\n\n## First {#sec-dup}\n")
+        .file(
+            "b.tmd",
+            "---\ntitle: \"B\"\n---\n\nintro\n\n## Second {#sec-dup}\n",
+        );
+    let site = Site::discover(&proj.0);
+    let w = site
+        .warnings
+        .iter()
+        .find(|w| w.contains("duplicate cross-reference label") && w.contains("sec-dup"))
+        .unwrap_or_else(|| panic!("expected a dup warning, got: {:?}", site.warnings));
+    // A `file.tmd:line:` located prefix (the fix), plus the winning page named for context.
+    let (file, rest) = w.split_once(':').expect("located file:line: prefix");
+    assert!(file.ends_with(".tmd"), "located at a source file: {w}");
+    assert!(
+        rest.chars()
+            .take_while(|c| *c != ':')
+            .all(|c| c.is_ascii_digit()),
+        "a line number follows the file: {w}"
+    );
+    assert!(w.contains(".html"), "names the winning page: {w}");
+}
+
+#[test]
 fn an_id_that_is_not_a_ref_anchor_never_becomes_a_cross_page_target() {
     // The render registry is looser than the source scan: the Markdown-table caption
     // path registers ANY id (`render/mod.rs`, unlike the figure path's `fig-` filter),

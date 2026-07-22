@@ -41,7 +41,7 @@ pub(super) fn scan_xref_targets(
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
         let chapter = super::book::chapter_of(book, page);
-        for (anchor, number) in scan_page_anchors(&src, chapter) {
+        for (anchor, number, line) in scan_page_anchors(&src, chapter) {
             match map.entry(anchor) {
                 std::collections::hash_map::Entry::Occupied(e) => {
                     // First definition wins project-wide; warn when a *different*
@@ -49,10 +49,14 @@ pub(super) fn scan_xref_targets(
                     // the per-page render). Otherwise `@x` silently links to whichever
                     // page was discovered first.
                     // Warn once per label (a page can define it twice, which would
-                    // otherwise push the identical warning repeatedly).
+                    // otherwise push the identical warning repeatedly). The message is
+                    // located at the SECOND (redefining) anchor — the actionable one to
+                    // remove/rename — in `file:line:` linter form, and names the first
+                    // (winning) page so both sides of the collision are visible.
                     if e.get().url != page.url && warned.insert(e.key().clone()) {
                         warnings.push(format!(
-                            "duplicate cross-reference label \u{201c}{}\u{201d} defined on multiple pages (using {})",
+                            "{}:{line}: duplicate cross-reference label \u{201c}{}\u{201d} \u{2014} already defined on {}; this page's anchor is ignored (the first definition wins)",
+                            page.rel,
                             e.key(),
                             e.get().url
                         ));
@@ -72,10 +76,10 @@ pub(super) fn scan_xref_targets(
 /// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
 /// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
 /// are counted in order so an unlabeled section still advances the numbering.
-fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String)> {
+fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String, usize)> {
     let mut out = Vec::new();
     let mut counters = [0u32; 5];
-    for t in content_lines(src) {
+    for (line, t) in content_lines_numbered(src) {
         let level = t.bytes().take_while(|&b| b == b'#').count();
         let is_heading = (1..=6).contains(&level) && t.as_bytes().get(level) == Some(&b' ');
         if is_heading {
@@ -83,10 +87,10 @@ fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String)> {
                 .map(|ch| section_number(ch, level, &mut counters))
                 .unwrap_or_default();
             if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-                out.push((id, number));
+                out.push((id, number, line));
             }
         } else if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-            out.push((id, String::new())); // a figure/equation anchor: link, no number
+            out.push((id, String::new(), line)); // a figure/equation anchor: link, no number
         }
     }
     out
