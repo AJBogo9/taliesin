@@ -15,33 +15,28 @@ DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click
 located diagnostics, CSS hot-swap, Cmd-K search). The editor language intelligence (diagnostics,
 go-to-definition, outline, hover, completion, quick-fix code actions, rename) now ships editor-agnostically
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
-shipped"). **Most of the backlog has already shipped, and everything is pushed** (`main` == `origin/main` at
-`d2a07fe`, 2026-07-22 20:42; no unpushed local work). A large **2026-07-22 (late) backlog-clearing pass**
+shipped"). **Most of the backlog has already shipped.** Through item 19 everything is pushed (`origin/main`
+at `cc45af4`); the live-executor-mounts F-04 fix landed to **local `main` after that (unpushed, the author
+pushes)**. A large **2026-07-22 (late) backlog-clearing pass**
 shipped: focus-mode/fullscreen split (was item 3); a Vite-user
 hint banner (item 9); deck `footer:`/`logo:` (item 2); a per-book offline `<book>.zip` (item 6); the
 cross-page duplicate-label warning is now located (item 5); DX16 update-nudge ruled **skip**; item 8 i18n
 labels **assessed → defer**; and all six item-11 polish passes (a)-(f). **DX17b headless `{js}` also shipped
 2026-07-22** (the last high-impact feature); the AP8 determinism guards (was item 15) are complete and
-that item is now removed. **The machine-facing `read` projection (was item 19) shipped 2026-07-22** on
-branch `structure-preserving-read` (structure-preserving lists/steps/inputs + book-aware chapter/cross-page
-scoping + whole-book `read <dir>`; see "Already shipped"), awaiting the author's merge. What remains open is
-smaller and mostly P3. Ranked below by product impact.
+that item is now removed. **The machine-facing `read` projection (was item 19) shipped + pushed 2026-07-22**
+(structure-preserving lists/steps/inputs + book-aware chapter/cross-page scoping + whole-book `read <dir>`;
+see "Already shipped"). **The live-executor-mounts F-04 fix also landed** (local `main`, unpushed). What
+remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-Tree is green across all gates; `main` is fully pushed (no unpushed local work). One feature is **done on a
-branch, awaiting merge+push**: `worktree-live-executor-mounts` (8 commits, tip `decce6c`; the F-04 full fix
-that gives a mounted sub-project its own live executor + kernel so its `{python}`/`{r}` cells run in the
-host `preview`). Browser-verified, gates green, merges cleanly onto `d2a07fe`; it closes item 16 F-04 and
-most of item 10's mount gap. **Land that first**, then pick in priority order:
+Tree is green across all gates. Both branch features landed to local `main`: structure-preserving `read`
+(item 19, also pushed) and the live-executor-mounts F-04 fix (unpushed, the author pushes). No open branches
+remain. Pick in priority order:
 
-1. **Merge + push live-executor mounts (F-04)** from `worktree-live-executor-mounts` (done on the branch;
-   just needs the author's merge+push, then delete items 16 F-04 / item 10 mount-serve here).
-2. **Merge structure-preserving read (was item 19)** from `structure-preserving-read` (done on the branch,
-   gates green; the author's merge decision). Landed the recurring cross-persona `read` seam.
-3. **Item 14 heading-demotion**: real and evidence-backed, but **owner-gated** (reshapes every corpus
+1. **Item 14 heading-demotion**: real and evidence-backed, and **owner-gated** (reshapes every corpus
    snapshot; needs a model ruling before building).
-4. Then the medium/low band: deck mobile polish (item 4), OFF-2 mermaid-offline-preview (item 13), the
+2. Then the medium/low band: deck mobile polish (item 4), OFF-2 mermaid-offline-preview (item 13), the
    small persona findings (items 16-18), and the P3 test-infra + polish residuals (items 10, 11).
 
 - **Or run one of the eight remaining *audit perspectives* ("Audit perspectives" section below):**
@@ -119,11 +114,11 @@ owner-gated) in band C.
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
       warm-pool, cold-Python and `/tmp`-sweep halves all landed.)
-    - **`mounts:` live serve/discovery has no automated test** (mostly closed by the live-executor-mounts
-      branch, unmerged): the F-04 work reworks `serve_site` mount discovery/serving and unit-pins the pure
-      `match_mount`/`resolve_project`/`classify_change` helpers. What remains is only the bin-crate gap of an
-      end-to-end live-HTTP serve test (no `reqwest`/`TcpListener` harness), browser-verified for now.
-      Low-value (mounts are preview-only), demand-driven. Fold this once that branch lands.
+    - **`mounts:` live serve/discovery: only an automated live-HTTP test is missing** (the live-executor-mounts
+      branch LANDED to local `main`): the F-04 work reworked `serve_site` mount discovery/serving and unit-pins
+      the pure `match_mount`/`resolve_project`/`classify_change` helpers, and live mount serving is
+      browser-verified. What remains is only the bin-crate gap of an end-to-end live-HTTP serve test (no
+      `reqwest`/`TcpListener` harness). Low-value (mounts are preview-only), demand-driven.
     - **Two load-sensitive timing tests:**
       `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
       `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load; both
@@ -212,12 +207,6 @@ owner-gated) in band C.
       a book-wide theorem policy must be repeated per chapter. Candidate: recognize `theorems:` at book level.
     - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
       `.code-walkthrough` (steps + code concatenate) is lossy.
-    - **F-04 (gap, P3), FIXED on branch `worktree-live-executor-mounts` (unmerged; delete on merge):** a
-      mounted sub-project's `{python}`/`{r}` cells did not execute in the host `preview` (rendered for nav
-      only, no live exec channel, no kernel notice); the static `build` of the mount was already correct
-      (shipped gallery fine, live preview misled). The F-04 full fix gives each mounted project its own live
-      executor + kernel + `_freeze`; browser-verified on `/gallery/course/em.html`. Related to item 10's
-      mount-serve note (also closed by the same branch).
 
 17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
@@ -466,8 +455,17 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
-- **Structure-preserving, book-aware `read`** (was item 19; shipped 2026-07-22 on branch
-  `structure-preserving-read`, awaiting merge): the recurring cross-persona `read`-projection seam
+- **Live-executor mounts (F-04 full fix)** (was item 16 F-04; shipped 2026-07-22, landed to local `main`,
+  unpushed): a mounted sub-project now serves through the **same live per-page path** as the root, so its
+  `{python}`/`{r}` cells execute live in the host `preview` (not only in the static `build`). Engine is all
+  in `serve_site/mod.rs`: `Project`/`MountPoint`/`ProjectKey` + pure `match_mount`/`resolve_project`/
+  `classify_change` (unit-pinned) + **one `ExecPool` per project** (the frozen `exec_pool.rs` byte-unchanged,
+  used once per project); a mount shares the warm pool only when its interpreter matches root, else cold-start.
+  Each project owns its `_freeze` + websocket + hot-reload. Browser-verified on `/gallery/course/em.html`.
+  Spec/plan: `docs/superpowers/{specs,plans}/2026-07-22-live-executor-mounts*`. Remaining (item 10, low): an
+  automated live-HTTP serve test (the bin crate has no `reqwest`/`TcpListener` harness).
+- **Structure-preserving, book-aware `read`** (was item 19; shipped + pushed 2026-07-22): the recurring
+  cross-persona `read`-projection seam
   (folded items 16 F-02 + 17 F-03 + 18 F-01). Three pure arms in `render/text.rs::project_block`
   (`project_list` one line per `<li>` incl. ordered/nested; `project_steps` each `.scrolly`/`.step`
   narration its own paragraph; `project_inputs` `[input] label = value`), pinned by unit tests +
