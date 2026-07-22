@@ -1,0 +1,9 @@
+# Alpha
+
+This chapter carries no `theorems:` block of its own, so it inherits the book-wide
+policy (`numbered: false`) set in `_site.yml`.
+
+::: {.theorem #thm-alpha title="Alpha"}
+A statement that inherits the book-wide unnumbered policy, so it renders as a bare
+"Theorem" with no number.
+:::

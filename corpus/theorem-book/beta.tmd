@@ -1,0 +1,13 @@
+---
+theorems:
+  numbered: true
+---
+
+# Beta
+
+This chapter declares its own `theorems:` block, which overrides the book-wide policy
+wholesale, so its theorem is numbered (chapter-scoped, "Theorem 2.1").
+
+::: {.theorem #thm-beta title="Beta"}
+A statement that overrides the book policy back to numbered.
+:::
