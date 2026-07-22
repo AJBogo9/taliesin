@@ -141,6 +141,13 @@ fn project_block(b: &Block) -> String {
         return project_steps(html);
     }
 
+    // Input control(s): `[input] label = value`, one line per control, so a control's
+    // label and value don't fuse (`step size (η)0.12`). `class="tali-input"` (closing
+    // quote included) matches only the control wrapper, not `tali-input-label`/`-out`.
+    if html.contains("class=\"tali-input\"") {
+        return project_inputs(html);
+    }
+
     let text = visible(html);
     // A bare image (no figure/caption) has no visible text; surface its alt so the block
     // isn't silently dropped.
@@ -369,6 +376,42 @@ fn step_inners(html: &str) -> Vec<&str> {
         pos = i;
     }
     steps
+}
+
+/// Project a `{{< input >}}` block's control(s) as `[input] <label> = <value>`, one line
+/// per control (a block can hold several). Label = the `.tali-input-label` text; value =
+/// the `.tali-input-out` `<output>` text.
+fn project_inputs(html: &str) -> String {
+    let open = "<div class=\"tali-input\"";
+    let mut lines = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = html[pos..].find(open) {
+        let start = pos + rel;
+        // This control runs to the next control, or to the block end.
+        let next = html[start + open.len()..]
+            .find(open)
+            .map(|r| start + open.len() + r)
+            .unwrap_or(html.len());
+        let chunk = &html[start..next];
+        let label = class_text(chunk, "tali-input-label").unwrap_or_default();
+        let value = class_text(chunk, "tali-input-out").unwrap_or_default();
+        lines.push(format!("[input] {label} = {value}"));
+        pos = next;
+    }
+    lines.join("\n")
+}
+
+/// The visible text of the first element whose opening tag carries `class_token`. The
+/// label/output spans hold plain text with no nested element, so the text runs from the
+/// tag's `>` to the next `<` (its closing tag).
+fn class_text(html: &str, class_token: &str) -> Option<String> {
+    let (_, gt) = class_tag_span(html, class_token)?;
+    let inner_start = gt + 1;
+    let end = html[inner_start..]
+        .find('<')
+        .map(|r| inner_start + r)
+        .unwrap_or(html.len());
+    Some(visible(&html[inner_start..end]))
 }
 
 /// `(index of '<' opening the element, index of '>' closing its opening tag)` for the first
@@ -731,6 +774,24 @@ mod tests {
         assert!(
             !out.contains("wall.Which"),
             "steps must not merge across their boundary:\n{out}"
+        );
+    }
+
+    #[test]
+    fn projects_input_controls_as_label_equals_value() {
+        // `{{< input >}}` is a declarative shortcode, expanded by the includes pass, so
+        // render through it (bare `render_document` leaves the shortcode as prose).
+        let src = "{{< input name=\"lr\" type=\"slider\" min=\"0\" max=\"1\" \
+                   step=\"0.01\" value=\"0.12\" label=\"step size\" >}}\n";
+        let doc = crate::render_document_with_includes(src, std::path::Path::new("."));
+        let out = project(&doc.blocks);
+        assert!(
+            out.contains("[input] step size = 0.12"),
+            "input label = value:\n{out}"
+        );
+        assert!(
+            !out.contains("size0.12"),
+            "label and value must not fuse:\n{out}"
         );
     }
 }
