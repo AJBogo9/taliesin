@@ -4,4 +4,20 @@ draft: true
 
 # Problem set
 
-Stub, exercises.
+A few exercises that tie the three chapters together. Each one leans on a result you have
+already seen, so the work is in connecting them, not in new machinery.
+
+::: {.callout-note title="Exercise 1: the score identity"}
+Using @def-expectation, show directly that the score in @lem-score has zero mean for a
+one-parameter exponential family. Where does the regularity assumption enter?
+:::
+
+::: {.callout-note title="Exercise 2: tightness of the bound"}
+Verify that the bound in @thm-elbo holds with equality exactly when $q(z) = p(z \mid x)$,
+and explain why that makes the E-step the best possible choice of $q$.
+:::
+
+::: {.callout-tip title="Hint for Exercise 2"}
+Write the gap between the two sides as a single expectation and recognize it as a KL
+divergence. Then invoke @thm-consistency to argue the fixed point is where you want it.
+:::

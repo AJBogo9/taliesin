@@ -71,6 +71,7 @@ blocks; HTML renders both correctly, so this is projection-only.
 - **Task 3, ch2 (MLE):** the headline interaction WORKS: shared counter × chapter scope gives Theorem 2.1 / Lemma 2.2; auto-QED proof; cross-page refs resolve (`probability.html#def-expectation` → Definition 1.1, `@sec-probability` → "Chapter 1", `@fig-distributions` → Figure 1.1). One finding: **F-01** (book-level `theorems:` config unsupported).
 - **Task 4, lecture deck:** builds clean as a standalone deck (title slide + 3 content slides, ARIA roles, `. . .` fragment, `.incremental` list, footer). No findings.
 - **Task 5, ch3 (EM):** the heavy HTML stack all WORKS: Theorem 3.1; collapsible `<details>` proof (`.tali-proof-collapse`); `{{< embed lecture.tmd >}}` → iframe + deck built beside the page; `.code-walkthrough` with `data-cw-lines` 2/3/4; `{python}` cell executes with the venv kernel (`[1.7 1.3] -> total 3.0`); all cross-page refs resolve (Theorem 2.1 / Chapter 2 / Definition 1.1). Kernel-unavailable degradation is documented behavior, not a finding. The `read` probe surfaced **F-02** (book-chapter read loses cross-refs/numbering) and **F-03** (read projection of embed + walkthrough is lossy).
+- **Task 6, draft appendix (problems):** draft handling correct: `build` drops `problems.tmd`, no `problems.html`, 0 dangling nav links, chapter numbers intact (1.1/2.1/2.2/3.1), `check` clean. Cross-refs from the appendix target valid anchors. No findings (preview-shows-badged-draft deferred to the Task 8 browser pass).
 
 ## Roll-up (filled at Task 9)
 
