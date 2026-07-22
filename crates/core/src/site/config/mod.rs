@@ -60,6 +60,10 @@ pub struct SiteConfig {
     pub python: Option<String>,
     /// Project-pinned R interpreter (`r:` in `_site.yml`). `None` falls back to env/`R`.
     pub r: Option<String>,
+    /// Book-wide theorem-numbering policy (`theorems:` in `_site.yml`). `Some` only when the
+    /// config declares it; a chapter with no `theorems:` block of its own inherits it, a
+    /// chapter that declares one overrides it wholesale. `None` = no book-level policy.
+    pub theorems: Option<crate::render::TheoremConfig>,
 }
 
 /// One `mounts:` entry: serve the project at `path` (relative to the site root)
@@ -140,6 +144,7 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "publish",
     "python",
     "r",
+    "theorems",
 ];
 
 /// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
@@ -228,6 +233,20 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         .and_then(|v| v.as_sequence())
         .cloned()
         .unwrap_or_default();
+    // Book-wide `theorems:` policy, inherited by any chapter without its own block. Validate
+    // the `numbered:` value like a per-document block (unlocated here: `parse_native` holds
+    // only the parsed value, not the raw text), then parse. Absent -> `None`, so the render
+    // fallback can tell "book set a policy" from "book said nothing".
+    let theorems = if value.get("theorems").is_some() {
+        if let Some(map) = value.as_mapping() {
+            let mut tw: Vec<crate::render::Warning> = Vec::new();
+            crate::frontmatter::validate_theorem_values(map, "", &mut tw);
+            warnings.extend(tw.into_iter().map(|w| w.message));
+        }
+        Some(crate::render::parse_theorem_config_value(value))
+    } else {
+        None
+    };
     SiteConfig {
         is_book: !chapters.is_empty(),
         output_dir: str_of("output"),
@@ -248,6 +267,7 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         publish: publish_from(value.get("publish")),
         python: str_of("python"),
         r: str_of("r"),
+        theorems,
     }
 }
 
@@ -487,6 +507,42 @@ mod config_tests {
         assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
         assert_eq!(cfg.r.as_deref(), Some("/usr/bin/R"));
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
+    }
+
+    #[test]
+    fn parses_book_level_theorems_and_its_absence() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("title: X\ntheorems:\n  numbered: false\n").unwrap();
+        let cfg = parse_native(&v, &mut w);
+        assert!(
+            cfg.theorems.is_some(),
+            "a declared theorems: parses to Some"
+        );
+        assert!(
+            w.iter().all(|m| !m.contains("config key")),
+            "theorems is a recognized _site.yml key: {w:?}"
+        );
+
+        let mut w2 = Vec::new();
+        let v2: serde_yaml::Value = serde_yaml::from_str("title: X\n").unwrap();
+        let cfg2 = parse_native(&v2, &mut w2);
+        assert!(
+            cfg2.theorems.is_none(),
+            "an absent theorems: parses to None"
+        );
+    }
+
+    #[test]
+    fn a_bad_book_level_theorems_numbered_value_warns() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("title: X\ntheorems:\n  numbered: banana\n").unwrap();
+        let _ = parse_native(&v, &mut w);
+        assert!(
+            w.iter().any(|m| m.contains("numbered")),
+            "a bad book-level numbered value is diagnosed: {w:?}"
+        );
     }
 
     #[test]

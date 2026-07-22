@@ -321,8 +321,13 @@ fn validate_child_keys(
 /// Value-level checks for `theorems:`. The parser silently ignores an unrecognized
 /// `numbered` value (rendering the OPPOSITE of intent — e.g. `numbered: never` stays
 /// numbered), so flag it with a did-you-mean rather than certifying it on a green check.
-/// Mirrors the accepted set in `render::fm_extract::parse_theorem_config`.
-fn validate_theorem_values(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+/// Mirrors the accepted set in `render::fm_extract::parse_theorem_config`. `pub(crate)` so
+/// the `_site.yml` book-level `theorems:` path validates its `numbered:` value identically.
+pub(crate) fn validate_theorem_values(
+    map: &serde_yaml::Mapping,
+    block: &str,
+    out: &mut Vec<Warning>,
+) {
     let Some(serde_yaml::Value::Mapping(thm)) = map.get("theorems") else {
         return;
     };

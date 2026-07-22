@@ -43,13 +43,16 @@ pub use doc_includes::includes_from_parts;
 use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
+// Re-exported crate-wide so the `_site.yml` book-level `theorems:` path (site::config) can
+// parse into the same config type the front-matter path uses.
 pub use fm_extract::is_reveal_doc;
 #[cfg(test)]
 use fm_extract::parse_theorem_config;
 use fm_extract::{
-    Numbered, TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
+    Numbered, detect_format, detect_title_block_hidden, detect_toc, extract_field,
     theorem_config_with_fallback,
 };
+pub(crate) use fm_extract::{TheoremConfig, parse_theorem_config_value};
 mod cell_extract;
 pub(crate) use cell_extract::option_directive;
 use cell_extract::{
