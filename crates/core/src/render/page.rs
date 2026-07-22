@@ -501,16 +501,27 @@ fn html_page_inner(
     // move focus into it without making it a tab stop. The runtime `taliInitSkipLink`
     // no-ops when this server markup is present (it only synthesizes the pair on the
     // live `#tali-root` mount, which has no `<main>`).
+    // A dated post is a self-contained, syndicatable unit, so its reading content is an
+    // `<article>` landmark (PA-M2) — the title block, body, and footnotes are all the article.
+    // An undated page (listing / section / generic) stays plain `<main>` content. `<article>`
+    // is `display:block` like the content it wraps, and no CSS selector targets `main`'s direct
+    // children on an article page (the one such rule is gated to listing pages), so this is a
+    // semantic-only change with no layout effect.
+    let reading = if doc.is_article {
+        format!("<article>\n{body}</article>\n")
+    } else {
+        body
+    };
     // Content first (left, wide column), TOC second (right, sticky column).
     let (mut body_class, content) = if toc.is_empty() {
         (
             String::new(),
-            format!("<main id=\"tali-main\" tabindex=\"-1\">\n{body}</main>\n"),
+            format!("<main id=\"tali-main\" tabindex=\"-1\">\n{reading}</main>\n"),
         )
     } else {
         (
             " class=\"has-toc\"".to_string(),
-            format!("<main id=\"tali-main\" tabindex=\"-1\">\n{body}</main>\n{toc}\n"),
+            format!("<main id=\"tali-main\" tabindex=\"-1\">\n{reading}</main>\n{toc}\n"),
         )
     };
     // Site mode: body becomes a full-width flex column (navbar, a centred content

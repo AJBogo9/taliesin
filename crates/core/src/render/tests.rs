@@ -2867,6 +2867,30 @@ fn sidenote_div_renders_with_class() {
 }
 
 #[test]
+fn a_dated_post_wraps_its_reading_content_in_an_article_landmark() {
+    // PA-M2: a dated post is a self-contained syndicatable unit — an <article> landmark inside
+    // <main>. An undated page (listing / section / generic) stays plain <main> content.
+    let post = render_html_page(
+        "---\ntitle: A Post\ndate: 2026-05-15\n---\n\nBody text here.\n",
+        "fb",
+    );
+    assert!(
+        post.contains("<main id=\"tali-main\" tabindex=\"-1\">\n<article>"),
+        "the article opens right inside <main>: {post}"
+    );
+    assert!(
+        post.contains("</article>\n</main>"),
+        "the article closes just inside </main>: {post}"
+    );
+
+    let page = render_html_page("---\ntitle: A Page\n---\n\nBody text here.\n", "fb");
+    assert!(
+        !page.contains("<article>"),
+        "an undated page is not an article landmark: {page}"
+    );
+}
+
+#[test]
 fn input_slider_shortcode_emits_reactive_control() {
     let doc = render_document_with_includes(
         "{{< input name=\"k\" type=\"slider\" min=\"1\" max=\"10\" value=\"3\" label=\"k\" >}}\n",
