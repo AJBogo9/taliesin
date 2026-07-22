@@ -15,6 +15,7 @@ chapters:
       - using/interactive.tmd
       - using/formats.tmd
       - using/theming.tmd
+      - using/agents.tmd
       - using/recipes.tmd
   - part: "Reference"
     chapters:

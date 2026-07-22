@@ -129,6 +129,42 @@ and the deck controls, applied via `:focus-visible`. Retune it once and every
 interactive element follows.
 :::
 
+### Diagram colours (Mermaid)
+
+Mermaid bakes its colours into the SVG when it renders, so they cannot be
+restyled with ordinary CSS. Instead Taliesin reads the diagram's config from a
+second set of CSS variables and re-renders the diagram on a light/dark switch, so
+you theme diagrams from the same theme file, with no JavaScript.
+
+| Variable | Role | Default |
+|:--|:--|:--|
+| `--tali-mermaid-theme` | Mermaid theme name (`default`, `dark`, `neutral`, `forest`, `base`) | `dark` in dark mode, else `default` |
+| `--tali-mermaid-bg` | Diagram background | the Mermaid theme's |
+| `--tali-mermaid-node` | Node fill | the Mermaid theme's |
+| `--tali-mermaid-node-border` | Node border | the Mermaid theme's |
+| `--tali-mermaid-text` | Node text | the Mermaid theme's |
+| `--tali-mermaid-line` | Edges and arrows | the Mermaid theme's |
+
+Set nothing and diagrams follow the built-in light and dark themes. For full
+colour control, choose `--tali-mermaid-theme: base` (Mermaid's `base` theme is the
+one built to be customised) and point the colour variables at the rest of your
+palette:
+
+```css
+html[data-theme="dark"] {
+  --tali-mermaid-theme: base;
+  --tali-mermaid-bg: var(--tali-bg);
+  --tali-mermaid-node: var(--tali-code-bg);
+  --tali-mermaid-node-border: var(--tali-border);
+  --tali-mermaid-text: var(--tali-fg);
+  --tali-mermaid-line: var(--tali-muted);
+}
+```
+
+The zoom (click-to-enlarge) backdrop uses `--tali-bg`, so an enlarged diagram
+matches the page. Mermaid itself loads from a CDN by default, so diagrams are
+fully offline only when `TALIESIN_MERMAID_URL` points at a local copy.
+
 ## Four ways to customize
 
 From lightest touch to a full bundle.

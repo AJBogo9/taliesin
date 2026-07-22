@@ -24,6 +24,7 @@ title: "CLI reference"
 | `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
 | `map <dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning) |
 | `mcp` | Run a stdio **MCP server** exposing check/read/symbols/map/vocab/build tools |
+| `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics in any LSP editor (Neovim, Helix, Zed, VS Code) |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
 `check` renders the document or site in memory and reports everything that flows
@@ -334,6 +335,70 @@ minted each server start, and loopback (`127.0.0.1`) is exempt. See
 Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
 that rebuilds it when the tool's sources change) so `taliesin preview <file>`
 works from anywhere.
+
+## Machine-facing commands: `read`, `map`, `vocab`, `mcp`, `lsp`
+
+A second family of commands exists for *programs* rather than a human reader: an AI
+agent driving the write-check-read loop, an editor asking for autocomplete data, a
+CI job. They are all offline, and none of them writes to your source: the `.tmd`
+stays the single editing surface (the preview is a read-only view of it, and so are
+these). [Working with an agent](../using/agents.tmd) walks through the loop; this is
+the per-command reference.
+
+`read` projects the rendered document to structured **plain text**: headings, the
+resolved `Figure N` / cross-reference numbers, callouts, fenced code, and math as
+raw TeX. It is what an agent "sees" without a browser or any HTML, a *view* of the
+document, not a new output format. Static by default (like `render`, it does not run
+code cells), so kernel cells show as source:
+
+```sh
+taliesin read post.tmd                 # the plain-text projection
+taliesin read post.tmd --run           # also execute cells, report what each produced
+taliesin read post.tmd --run --format json | jq   # structured per-cell results
+```
+
+`--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is
+available, observes each `{js}` chart (`[js: produced, <svg W×H>]`) and reports what
+every cell produced, so an agent can confirm a figure actually rendered.
+
+`map` is the whole-project outline in one read-only call: every page in nav / chapter
+order (its path, URL, title, date, categories, layout), the nav and any `mounts:`, the
+cross-reference graph (each anchor, where it is defined, and its backlinks), and any
+embedded decks. It reuses site discovery, so it never starts a kernel, and it is how
+an agent plans an edit across a site without opening each file:
+
+```sh
+taliesin map . --format json | jq '.pages[].url'
+```
+
+`vocab` emits the editor autocomplete vocabulary as one JSON blob (front-matter keys,
+cell options, callout and theorem kinds, div classes, cross-reference prefixes). It is
+generated from the validator's own lists, so it never drifts from what `check`
+enforces, and it is what feeds the VS Code companion's completions.
+
+`mcp` runs a local, offline **stdio MCP server** (Model Context Protocol) so an MCP
+host can drive the read / validate / build loop without shelling out. It exposes six
+tools, `check`, `read`, `symbols`, `map`, `vocab`, and `build`, and deliberately **no
+write, edit, or preview tool**, so the `.tmd` stays your direct edit surface.
+
+::: {.callout-warning}
+## The MCP server is not a sandbox
+
+The no-write guarantee is about the `.tmd` edit surface, not containment. There is no
+project root: every tool reads any path you hand it (including outside the project),
+and `build` writes HTML beside that path and executes the document's code cells.
+Contain it with the host's own sandbox and working directory.
+:::
+
+`lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so any LSP
+editor (Neovim, Helix, Zed, VS Code) gets live `.tmd` diagnostics as you type, the same
+validators as `check`, run on the unsaved buffer. It is parse-only: no kernel, no code
+execution, and it never edits your source.
+
+```
+-- Neovim (nvim-lspconfig or vim.lsp.start)
+cmd = { "taliesin", "lsp" }
+```
 
 ## Shell completions
 

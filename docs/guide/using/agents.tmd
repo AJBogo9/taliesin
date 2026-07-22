@@ -1,0 +1,112 @@
+---
+title: "Working with an agent"
+---
+
+Taliesin is built so a *program* can drive the whole authoring loop with no
+browser. That program is usually an AI coding agent, but the same commands serve
+an editor's language features and a CI job. Every one of them is **offline** and
+**read-only toward your source**: the `.tmd` is the single editing surface, and
+these commands only read, render, and validate it. This page is the workflow; the
+[CLI reference](../reference/cli.tmd) has the per-command flags.
+
+## The headless loop
+
+The loop an agent runs is the same one you run, minus the browser:
+
+1. **Scaffold.** `taliesin new post my-post` (or `taliesin init` for a whole
+   project) writes a document that is correct on its first save: it renders, and
+   `check` passes on it with zero diagnostics. `--json` prints a `{kind, slug,
+   created, preview}` receipt instead of a human hint.
+2. **Edit the `.tmd`.** Directly, as text, the same file a human would open. The
+   one rule is below: edit the source, never the preview.
+3. **Check.** `taliesin check <path> --format json` renders in memory and prints an
+   object with a `diagnostics` array and an `environment` section. A non-empty
+   `diagnostics` array (and a non-zero exit code) means there is something to fix.
+4. **Read back.** `taliesin read <file>` projects the rendered document to plain
+   text, the agent's substitute for looking at the preview.
+
+```sh
+taliesin new post my-post --json      # 1. scaffold (check-clean on first save)
+# 2. edit posts/my-post/index.tmd
+taliesin check posts/my-post/index.tmd --format json   # 3. gate
+taliesin read posts/my-post/index.tmd                  # 4. read back
+```
+
+## The `check` gate
+
+`check --format json` is the machine-readable gate an agent drives in place of
+opening a browser. Each diagnostic carries a stable `code` (for example
+`TAL-XREF-UNREF`), a `severity`, the `file` and `line`, a `message`, a `docs_url`,
+and, for a near-miss, a `suggestion` with the `replacement` to apply. It never
+executes code cells, so it is fast and deterministic (runtime cell errors stay in
+`preview` / `build`). To expand any code into its cause and canonical fix without a
+file:
+
+```sh
+taliesin check --explain TAL-XREF-UNREF
+```
+
+The full catalogue of `TAL-*` codes lives in
+[Troubleshooting](../reference/troubleshooting.tmd).
+
+## Reading back what you made
+
+`taliesin read` is what the agent "sees": headings, the resolved `Figure N` /
+cross-reference numbers, callouts, fenced code, and math as raw TeX. It is static by
+default, so add `--run` to also execute `{python}` / `{r}` cells and report what each
+produced, and, when a local headless Chrome is available, whether each `{js}` chart
+painted. That is how an agent confirms a computed figure actually baked, again with
+no browser.
+
+`taliesin map <dir>` is the whole-project outline in one call: every page in nav /
+chapter order, the nav and any `mounts:`, and the cross-reference graph (each anchor,
+where it is defined, and its backlinks). It is how an agent plans an edit across a
+site without opening each file.
+
+## The MCP server
+
+`taliesin mcp` exposes that same loop as an offline stdio **MCP server** (Model
+Context Protocol), so an MCP host can drive check / read / symbols / map / vocab /
+build as tools without shelling out. It has **no write, edit, or preview tool**, by
+design: the `.tmd` stays your direct edit surface.
+
+::: {.callout-warning}
+## The MCP server is not a sandbox
+
+The no-write guarantee is about the edit surface, not containment. Every tool reads
+any path you hand it, and `build` writes HTML beside that path and runs the
+document's code cells. Contain it with the host's own sandbox and working directory.
+:::
+
+## Discovering the dialect
+
+An agent never has to guess what Taliesin accepts. Three read-only commands describe
+the surface, each generated from the validator's own lists so it cannot drift from
+what `check` enforces:
+
+- `taliesin vocab` emits every closed-set construct (front-matter keys, cell options,
+  callout and theorem kinds, div classes, cross-reference prefixes) as JSON.
+- `taliesin schema` emits the JSON Schema for front matter and `_site.yml` (the same
+  schemas that power [editor autocomplete](../reference/configuration.tmd)).
+- `taliesin symbols <file>` lists a document's headings, figures, and other
+  cross-reference targets.
+
+## The `AGENTS.md` onramp
+
+`taliesin init` writes an `AGENTS.md` beside the project: a generated onramp that
+orients an agent to exactly this loop, edit the `.tmd` and not the preview, gate on
+`check --format json`, read back with `read`, discover the surface with `vocab` /
+`schema` / `symbols`, plus the dialect's closed sets (callout kinds, cell options,
+cross-reference prefixes, front-matter keys) and a worked figure-from-a-CSV recipe.
+Because it is generated from the live validator vocabulary, it cannot drift from what
+`check` enforces. Drop an agent into a Taliesin project and this file tells it how to
+work with no explaining from you.
+
+## Why there is no write tool
+
+Every machine command reads, renders, and validates; none of them writes your source.
+The agent edits the `.tmd` the same way you would, then validates and reads back, and
+the preview, the MCP server, and the LSP server all stay read-only views. This is the
+same single-editing-surface rule that keeps click-to-source unambiguous: there is one
+writer, the source file, and one bridge back from the view, navigation, never a
+write. An agent that respects it composes cleanly with you editing the same file.

@@ -8,6 +8,23 @@ The preview surfaces most problems as a small **diagnostics** note in the corner
 (non-fatal) or a dismissible **error overlay** (a failed render). Here are the
 common ones.
 
+## Decoding a diagnostic code
+
+Every diagnostic `taliesin check` reports carries a stable `TAL-*` code (for
+example `TAL-XREF-UNREF`, `TAL-FM-KEY`, `TAL-A11Y-ALT`). To expand any code into
+its cause and canonical fix, offline and without a file, ask `check --explain`:
+
+```sh
+taliesin check --explain TAL-XREF-UNREF   # one code
+taliesin check --explain                  # list every code
+```
+
+The explanation honours `--format json`, and the same codes appear in the
+`code` field of `check --format json` output, so an editor or agent can link
+straight to the fix. This is the canonical, always-current catalogue: it is
+generated from the validator itself, so it never drifts from what `check`
+enforces.
+
 ## Code cells show as source / "kernel unavailable"
 
 There is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python that has
