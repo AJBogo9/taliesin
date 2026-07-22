@@ -2878,8 +2878,8 @@ fn input_slider_shortcode_emits_reactive_control() {
     assert!(h.contains("type=\"range\""), "range control: {h}");
     assert!(h.contains("min=\"1\"") && h.contains("max=\"10\"") && h.contains("value=\"3\""));
     assert!(
-        h.contains("<output class=\"tali-input-out\" data-qmd-out>3</output>"),
-        "slider readout: {h}"
+        h.contains("<output class=\"tali-input-out\" for=\"qin-k\" data-qmd-out>3</output>"),
+        "slider readout, tied to its control via for= (PA-M9): {h}"
     );
     assert!(h.contains(">k</label>"), "label: {h}");
 }
