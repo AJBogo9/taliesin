@@ -1,3 +1,65 @@
 # The EM algorithm {#sec-em}
 
-Stub, latent variables and the ELBO.
+Recall @thm-consistency from @sec-mle: maximum likelihood is worth chasing. But when
+each observation hides a latent label, the likelihood is a sum inside a logarithm and
+has no closed-form maximizer. Expectation maximization sidesteps this by optimizing a
+lower bound instead, one whose maximizer we can write down.
+
+::: {.theorem #thm-elbo}
+For any distribution $q$ over the latent variables,
+$$ \log p(x) \;\ge\; \mathbb{E}_{q}\!\left[\log \frac{p(x, z)}{q(z)}\right] \;=:\; \mathcal{L}(q, \theta). $$
+The gap is exactly $\mathrm{KL}\!\left(q \,\|\, p(z \mid x)\right)$, so the bound is tight
+when $q$ is the posterior.
+:::
+
+::: {.proof collapse="true"}
+Start from $\log p(x) = \mathbb{E}_q[\log p(x)]$ and substitute
+$p(x) = p(x, z) / p(z \mid x)$. Adding and subtracting $\log q(z)$ inside the expectation
+splits the logarithm into $\mathcal{L}(q, \theta)$ plus
+$\mathrm{KL}(q \,\|\, p(z \mid x))$, and the divergence is non-negative by Gibbs'
+inequality.
+:::
+
+The lecture slides give the intuition before we compute anything:
+
+{{< embed lecture.tmd >}}
+
+The E-step sets $q$ to the current posterior over the latents; every responsibility is a
+posterior mean in the sense of @def-expectation. The M-step then maximizes the bound in
+closed form. Here is that update, walked through line by line:
+
+::: {.code-walkthrough}
+```python
+def m_step(x, resp):
+    w = resp.sum(axis=0)
+    mu = (resp.T @ x) / w[:, None]
+    return mu, w / w.sum()
+```
+
+::: {.step lines="2"}
+Sum the responsibilities down the columns to get each component's **effective count**,
+the soft number of points it currently owns.
+:::
+
+::: {.step lines="3"}
+Re-estimate each component **mean** as a responsibility-weighted average of the data,
+so points a component is confident about pull its mean hardest.
+:::
+
+::: {.step lines="4"}
+The new **mixing weights** are just the normalized counts, and the updated means are
+returned for the next E-step.
+:::
+:::
+
+A quick numerical sanity check that the counts sum to the number of points:
+
+```{python}
+#| echo: true
+import numpy as np
+resp = np.array([[0.9, 0.1], [0.2, 0.8], [0.6, 0.4]])
+print("effective counts:", resp.sum(axis=0), "-> total", resp.sum())
+```
+
+By @thm-elbo each round can only raise the bound, so EM climbs toward a local optimum of
+the very likelihood @thm-consistency told us to trust.
