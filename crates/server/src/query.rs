@@ -11,7 +11,9 @@
 //! [`crate::log`] for the no-execution warning. No code execution, no kernel — `symbols`
 //! in particular is called from an editor's completion request and must never start one.
 
+use crate::headless_js::{self, JsOutcome};
 use crate::log;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -161,12 +163,87 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
         }
     }
 
-    if format == "json" {
-        print!("{}", read_json(path, &doc, executed));
+    // DX17b: a `{js}` cell (Observable Plot, the corpus's own idiom) runs in the *browser*,
+    // so nothing above ever sees whether its chart painted. When executing, drive a local
+    // headless Chrome over the built page and observe each `{js}` cell. Gated + optional: no
+    // Chrome → every cell reports `skipped (chrome unavailable)`, never a hard failure; a
+    // python/r-only doc (no `{js}`) never launches a browser.
+    let js_ids = js_cell_ids(&doc.blocks);
+    let js_outcomes = if executed && !js_ids.is_empty() {
+        observe_js(&doc, &js_ids, p)
     } else {
-        print!("{}", doc.body_text());
+        HashMap::new()
+    };
+
+    if format == "json" {
+        print!("{}", read_json(path, &doc, executed, &js_outcomes));
+    } else {
+        let js_lines: HashMap<String, String> = js_outcomes
+            .iter()
+            .map(|(id, o)| (id.clone(), o.text_line()))
+            .collect();
+        print!("{}", doc.body_text_with_js(&js_lines));
     }
     ExitCode::SUCCESS
+}
+
+/// The block ids of every `{js}` cell in the document, in document order.
+fn js_cell_ids(blocks: &[taliesin_core::Block]) -> Vec<String> {
+    blocks
+        .iter()
+        .filter(|b| b.cell.as_ref().is_some_and(|c| c.lang == "js"))
+        .map(|b| b.id.clone())
+        .collect()
+}
+
+/// Observe the document's `{js}` cells headlessly: render the self-contained page they run
+/// in to a temp file, then drive a local headless Chrome over it (see [`headless_js`]).
+/// Never fails to the caller — no Chrome or any render/IO/launch failure degrades every
+/// cell to a `Skipped` outcome. Observation-only: it never writes source or `_freeze`.
+fn observe_js(
+    doc: &taliesin_core::RenderedDoc,
+    js_ids: &[String],
+    doc_path: &Path,
+) -> HashMap<String, JsOutcome> {
+    // No Chrome → skip every cell up front, so a Chrome-less run pays ~nothing.
+    if !headless_js::chrome_available() {
+        return skip_all_js(js_ids, "chrome unavailable");
+    }
+    // The page the cells actually run in: a self-contained build page (D3/Plot + the qmd-js
+    // runtime inlined, no network), written to a temp `.html`.
+    let stem = doc_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("doc");
+    let html = match crate::serve::guarded(|| {
+        taliesin_core::render_doc_to_page(doc, stem, taliesin_core::OutputMode::Build)
+    }) {
+        Ok(h) => h,
+        Err(_) => return skip_all_js(js_ids, "page render failed"),
+    };
+    let tmp = std::env::temp_dir().join(format!(
+        "tali-read-js-{}_{}.html",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    if std::fs::write(&tmp, html.as_bytes()).is_err() {
+        return skip_all_js(js_ids, "temp write failed");
+    }
+    let page_path = std::fs::canonicalize(&tmp).unwrap_or_else(|_| tmp.clone());
+    let outcomes = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt.block_on(headless_js::observe_js_cells(&page_path, js_ids)),
+        Err(_) => skip_all_js(js_ids, "async runtime unavailable"),
+    };
+    let _ = std::fs::remove_file(&tmp);
+    outcomes
+}
+
+/// Every `{js}` cell reports the same skip reason (no Chrome / a setup failure).
+fn skip_all_js(js_ids: &[String], reason: &str) -> HashMap<String, JsOutcome> {
+    js_ids
+        .iter()
+        .map(|id| (id.clone(), JsOutcome::Skipped(reason.to_string())))
+        .collect()
 }
 
 fn count_kernel_cells(blocks: &[taliesin_core::Block]) -> usize {
@@ -232,6 +309,10 @@ struct CellResult {
     label: Option<String>,
     produced: bool,
     kind: &'static str,
+    /// A `{js}` cell's node kind + dims (`"svg 640×400"`) or a skip reason. `skip_if_none`
+    /// so python/r cell JSON stays byte-identical to the pre-DX17b shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fig_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -243,7 +324,12 @@ struct CellResult {
 /// Serialize the per-cell executed-output summary for `read --format json`. An output block
 /// (when a cell produced one) immediately follows its cell, so we attach the next
 /// `tali-output` block to the last-seen executable cell.
-fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> String {
+fn read_json(
+    path: &str,
+    doc: &taliesin_core::RenderedDoc,
+    executed: bool,
+    js: &HashMap<String, JsOutcome>,
+) -> String {
     use taliesin_core::ExecOutput;
     let mut cells = Vec::new();
     let mut pending: Option<(String, String)> = None; // (cell block id, lang)
@@ -252,8 +338,16 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
             if let Some((id, lang)) = pending.take() {
                 cells.push(empty_or_not_run(id, lang, executed));
             }
-            if matches!(c.lang.as_str(), "python" | "r") {
-                pending = Some((b.id.clone(), c.lang.clone()));
+            match c.lang.as_str() {
+                "python" | "r" => pending = Some((b.id.clone(), c.lang.clone())),
+                // A `{js}` cell has no server-side output block; its outcome (if it was
+                // observed) comes from the headless browser pass, keyed by block id.
+                "js" => {
+                    if let Some(outcome) = js.get(&b.id) {
+                        cells.push(js_cell_result(b.id.clone(), outcome));
+                    }
+                }
+                _ => {}
             }
             continue;
         }
@@ -270,6 +364,7 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
                     label: fig_id.clone(),
                     produced: true,
                     kind: "figure",
+                    detail: None,
                     fig_id,
                     alt,
                     error: None,
@@ -280,6 +375,7 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
                     label: tbl_id,
                     produced: true,
                     kind: "table",
+                    detail: None,
                     fig_id: None,
                     alt: None,
                     error: None,
@@ -290,6 +386,7 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
                     label: None,
                     produced: true,
                     kind: "stream",
+                    detail: None,
                     fig_id: None,
                     alt: None,
                     error: None,
@@ -300,6 +397,7 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
                     label: None,
                     produced: true,
                     kind: "rich",
+                    detail: None,
                     fig_id: None,
                     alt: None,
                     error: None,
@@ -310,6 +408,7 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
                     label: None,
                     produced: false,
                     kind: "error",
+                    detail: None,
                     fig_id: None,
                     alt: None,
                     error: Some(msg),
@@ -320,11 +419,17 @@ fn read_json(path: &str, doc: &taliesin_core::RenderedDoc, executed: bool) -> St
     if let Some((id, lang)) = pending.take() {
         cells.push(empty_or_not_run(id, lang, executed));
     }
+    // The `text` field mirrors the human projection, `[js: …]` lines included, so the two
+    // formats never disagree.
+    let js_lines: HashMap<String, String> = js
+        .iter()
+        .map(|(id, o)| (id.clone(), o.text_line()))
+        .collect();
     let out = ReadDoc {
         path,
         executed,
         cells,
-        text: doc.body_text(),
+        text: doc.body_text_with_js(&js_lines),
     };
     format!(
         "{}\n",
@@ -339,9 +444,27 @@ fn empty_or_not_run(id: String, lang: String, executed: bool) -> CellResult {
         label: None,
         produced: false,
         kind: if executed { "empty" } else { "not-run" },
+        detail: None,
         fig_id: None,
         alt: None,
         error: None,
+    }
+}
+
+/// A `{js}` cell's JSON entry, projected from its headless observation ([`JsOutcome`]): the
+/// `kind`/`produced`/`detail`/`error` fields come straight off the outcome (`js` /
+/// `js-error` / `js-empty` / `skipped`).
+fn js_cell_result(id: String, outcome: &JsOutcome) -> CellResult {
+    CellResult {
+        id,
+        lang: "js".to_string(),
+        label: None,
+        produced: outcome.produced(),
+        kind: outcome.json_kind(),
+        detail: outcome.detail(),
+        fig_id: None,
+        alt: None,
+        error: outcome.error(),
     }
 }
 

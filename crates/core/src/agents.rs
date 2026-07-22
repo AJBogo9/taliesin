@@ -118,6 +118,13 @@ pub fn agents_md() -> String {
          opening a browser; `taliesin read --run <file> --format json` gives the same \
          per-cell result structured.\n\n",
     );
+    s.push_str(
+        "A `{js}`/Observable-Plot cell runs in the browser, so with `--run` Taliesin also \
+         drives a local headless Chrome over the built page and reports whether each \
+         `{js}` chart painted (`[js: produced, <svg W×H>]`, or `[js error: …]` when it \
+         threw). With no local Chrome available it degrades to `[js: skipped (chrome \
+         unavailable)]`, never a failure.\n\n",
+    );
 
     // Pillar 3 — discovery surfaces.
     s.push_str("## Discover the surface\n\n");

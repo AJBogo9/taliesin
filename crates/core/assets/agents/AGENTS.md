@@ -18,6 +18,8 @@ To *read what you made* without a browser, `taliesin read <file>` projects the r
 
 Add `--run` to also execute the `{python}`/`{r}` cells and report what each produced (`[figure fig-x: produced, alt "…"]`, `[output: …]`, `[cell error: …]`), so you can confirm a computed figure actually baked without opening a browser; `taliesin read --run <file> --format json` gives the same per-cell result structured.
 
+A `{js}`/Observable-Plot cell runs in the browser, so with `--run` Taliesin also drives a local headless Chrome over the built page and reports whether each `{js}` chart painted (`[js: produced, <svg W×H>]`, or `[js error: …]` when it threw). With no local Chrome available it degrades to `[js: skipped (chrome unavailable)]`, never a failure.
+
 ## Discover the surface
 
 Three read-only commands describe what Taliesin accepts, so an agent never has to guess:

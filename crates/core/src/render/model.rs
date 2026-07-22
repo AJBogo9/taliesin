@@ -309,6 +309,18 @@ impl RenderedDoc {
     pub fn body_text(&self) -> String {
         super::text::project(&self.blocks)
     }
+
+    /// Like [`body_text`], but appends the server's headless `{js}` observation line
+    /// (DX17b) after each matching `{js}` cell. `js_lines` maps a `{js}` cell's block id to
+    /// its preformatted `[js: …]` line (the server computes it — observing a browser-run
+    /// cell needs Chrome); core only interleaves it. An empty map yields exactly
+    /// [`body_text`].
+    pub fn body_text_with_js(
+        &self,
+        js_lines: &std::collections::HashMap<String, String>,
+    ) -> String {
+        super::text::project_with_js(&self.blocks, js_lines)
+    }
 }
 
 #[cfg(test)]

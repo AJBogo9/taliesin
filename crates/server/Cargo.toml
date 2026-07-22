@@ -35,3 +35,14 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "
 uuid = { version = "1.23.3", features = ["v4"] }
 lsp-server = "0.7"
 lsp-types = "0.95"
+
+# Headless-Chrome driver for `read --run`'s `{js}` observation (DX17b): CDP over a
+# local, system-provided Chrome so a `{js}`/Observable-Plot cell can be checked for
+# "did it actually produce an <svg>/<canvas>". `default-features = false` drops the
+# `bytes` screenshot API we don't use and, crucially, the `fetcher`/`native-tls`/
+# `rustls` browser-download stack — this tool stays offline and never fetches a
+# browser (reqwest is pulled with no TLS backend, for the loopback CDP handshake
+# only). Optional + gated: no system Chrome → the feature reports "skipped", never a
+# hard failure. Uses tokio (the workspace runtime); `futures` drives its CDP Handler.
+chromiumoxide = { version = "0.9", default-features = false }
+futures = "0.3"
