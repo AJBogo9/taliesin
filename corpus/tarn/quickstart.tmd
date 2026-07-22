@@ -1,3 +1,72 @@
 # Quickstart {#sec-quickstart}
 
-Stub — a first worked query.
+This walks through a single, complete query: load a CSV of sales rows, keep the recent
+ones, and total revenue by region. It is four lines, and every line is lazy until the
+last. Install Tarn first if you have not (@sec-install).
+
+The whole query, then line by line:
+
+::: {.code-walkthrough}
+
+```python
+frame  = tarn.read_csv("sales.csv")            # a lazy Frame, nothing read yet
+recent = frame.filter(col("year") >= 2020)     # a predicate, still lazy
+totals = recent.groupby("region").sum("revenue")   # the aggregation, still lazy
+result = totals.collect()                       # run it: this is where work happens
+```
+
+::: {.step lines="1"}
+`read_csv` returns a lazy [`Frame`](api-frame.tmd#sec-api-frame). No file is opened yet;
+the frame just records where its data will come from.
+:::
+
+::: {.step lines="2"}
+`filter` keeps matching rows. The predicate `col("year") >= 2020` is itself a value, built
+from [`col`](api-query.tmd#fn-col); see [`Frame.filter`](api-frame.tmd#fn-filter). Still
+nothing has run.
+:::
+
+::: {.step lines="3"}
+`groupby(...).sum(...)` is the aggregation; see [`Frame.groupby`](api-frame.tmd#fn-groupby).
+It appends two more steps to the plan.
+:::
+
+::: {.step lines="4"}
+`collect()` is the first line that touches data. With the whole plan in hand, Tarn reads
+only the `year`, `region`, and `revenue` columns and applies the filter as it scans, which
+is why laziness pays off (@sec-lazy).
+:::
+
+:::
+
+## The same query from the shell {#sec-quickstart-cli}
+
+You do not need Python for a one-off. The CLI reads the same query language:
+
+::: {.panel-tabset}
+
+## Python
+
+```python
+import tarn
+from tarn import col
+
+result = (tarn.read_csv("sales.csv")
+          .filter(col("year") >= 2020)
+          .groupby("region").sum("revenue")
+          .collect())
+print(result)
+```
+
+## CLI
+
+```bash
+tarn query sales.csv \
+  --filter 'year >= 2020' \
+  --groupby region --sum revenue
+```
+
+:::
+
+Both print the same table. From here, the [Concepts](concepts.tmd) page explains *why* the
+query stays lazy, and the [Reference](api-frame.tmd) documents every method.

@@ -104,6 +104,15 @@ here as corroboration, folded into the same backlog entry, not double-counted.
   findings: **F-02** (a11y heading-skip lint on the flat-`###` API shape; WAI, demoted to
   `##`) surfaced by `check`; **F-03** (`read` concatenates list items) plus a
   cross-persona **confirmation of pilot F-02** surfaced by the `read` probe.
+- **Task 3, ch2 (quickstart):** the headline docs interaction WORKS end to end and
+  produced **no findings**. A `.code-walkthrough` (`data-cw-lines` 1-4) whose *step prose*
+  carries **cross-page links into the reference** (`api-frame.html#fn-filter`,
+  `api-query.html#fn-col`, `api-frame.html#fn-groupby`), a `@sec-install`→"Chapter 1" and
+  `@sec-lazy`→"Section 3.2" cross-page xref, and a per-language usage `.panel-tabset`
+  (Python/CLI) all render together; `check` clean. The full-text search index **spans the
+  guide and the reference** (`quickstart.html` + `api-frame.html` entries) and includes the
+  CLI tab's `tarn query sales.csv`. This is the demand-probe's core positive result: the
+  tabset × walkthrough × guide→reference-links × cross-book-search *combination* is solid.
 
 ## Roll-up (filled at Task 8)
 - gaps: … · friction: … · interaction-bugs: … · correctly-refused: …
