@@ -130,6 +130,21 @@ fn ws_page_key(project: &Project, rel: &str) -> String {
     }
 }
 
+/// Attribute a changed absolute path to the project whose root is its deepest ancestor,
+/// returning that project's key + the path relative to that root. `None` if under no
+/// project root. Pure — the watcher's routing seam; unit-tested without any I/O.
+fn classify_change(roots: &[(ProjectKey, PathBuf)], abs: &Path) -> Option<(ProjectKey, PathBuf)> {
+    roots
+        .iter()
+        .filter_map(|(key, root)| {
+            abs.strip_prefix(root)
+                .ok()
+                .map(|rel| (root.as_os_str().len(), key.clone(), rel.to_path_buf()))
+        })
+        .max_by_key(|(len, _, _)| *len)
+        .map(|(_, key, rel)| (key, rel))
+}
+
 /// A job for the executor worker: rebuild a page, or restart its kernel first
 /// (the dev-menu "Restart kernel" action) then rebuild.
 enum BuildMsg {
@@ -1187,7 +1202,11 @@ fn is_qmd(p: &Path) -> bool {
 
 fn spawn_watcher(app: Arc<SiteApp>) {
     let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
-    let root = app.root.dir.clone();
+    // Watch the root site AND every mounted sub-project's dir, so an edit to a mounted
+    // page hot-reloads it exactly like a root page.
+    let roots: Vec<PathBuf> = std::iter::once(app.root.dir.clone())
+        .chain(app.mounts.iter().map(|m| m.project.dir.clone()))
+        .collect();
 
     std::thread::spawn(move || {
         // Pump events through a channel so this thread owns the watcher and can register
@@ -1207,10 +1226,13 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                     return;
                 }
             };
-        // A non-recursive watch on every directory except the pruned generated/VCS trees.
-        for dir in crate::serve::watch_tree(&root) {
-            if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
-                crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
+        // A non-recursive watch on every directory except the pruned generated/VCS trees,
+        // across the root site and every mounted sub-project.
+        for base in &roots {
+            for dir in crate::serve::watch_tree(base) {
+                if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
+                    crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
+                }
             }
         }
         for ev in ev_rx {
@@ -1234,7 +1256,10 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                     let is_dir = std::fs::symlink_metadata(p)
                         .map(|m| m.is_dir())
                         .unwrap_or(false);
-                    if is_dir && p.starts_with(&root) && !crate::serve::is_pruned_dir(p) {
+                    if is_dir
+                        && roots.iter().any(|r| p.starts_with(r))
+                        && !crate::serve::is_pruned_dir(p)
+                    {
                         for d in crate::serve::watch_tree(p) {
                             let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
                         }
@@ -1278,11 +1303,17 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     });
 }
 
-/// Map a batch of changed files to rebuilds: a `_site.yml` change (or a `.tmd`
-/// added/removed that changes the page set) re-discovers the site and reloads open
-/// tabs; otherwise rebuild every *open* page whose source or include set touches a
-/// changed file. `structural` is set when the batch created/removed a `.tmd`.
-fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
+/// Rebuild one project's affected pages from a batch of changed files (already filtered
+/// to this project by [`dispatch_changes`]): a `_site.yml` change (or a `.tmd`
+/// added/removed that changes the page set) re-discovers this project's site and reloads
+/// its open tabs; otherwise rebuild every *open* page whose source or include set touches
+/// a changed file. `structural` is set when the batch created/removed a `.tmd`.
+fn rebuild_project(
+    app: &SiteApp,
+    project: &Arc<Project>,
+    changed: &HashSet<PathBuf>,
+    structural: bool,
+) {
     let changed_canon: HashSet<PathBuf> = changed
         .iter()
         .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
@@ -1292,7 +1323,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
     if config_changed {
-        let new = Site::discover_with(&app.root.dir, taliesin_core::DraftMode::Include);
+        let new = Site::discover_with(&project.dir, taliesin_core::DraftMode::Include);
         // A mid-edit save can leave `_site.yml` transiently malformed; re-discovering then
         // would replace the live site with the degraded default (losing nav/title/output).
         // Keep the last-good `Site` instead, and surface the parse error, so the preview
@@ -1305,8 +1336,8 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
             crate::log::warn(&format!("{w}; keeping the last-good _site.yml"));
             return;
         }
-        *app.root.site.lock() = new;
-        reload_open_tabs(app);
+        *project.site.lock() = new;
+        reload_open_tabs(project);
         return;
     }
 
@@ -1315,7 +1346,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // two ways it moves. Both ways have to be compared against the same "before", or the
     // rebuild selection below silently doesn't apply to one of them.
     let xrefs_before = {
-        let site = app.root.site.lock();
+        let site = project.site.lock();
         (site.xref_targets.clone(), site.backlinks.clone())
     };
 
@@ -1324,19 +1355,19 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
     // normal per-page rebuild against the refreshed site.
     if structural {
-        let new = Site::discover_with(&app.root.dir, taliesin_core::DraftMode::Include);
-        let set_changed = page_rels(&new) != page_rels(&app.root.site.lock());
-        *app.root.site.lock() = new;
+        let new = Site::discover_with(&project.dir, taliesin_core::DraftMode::Include);
+        let set_changed = page_rels(&new) != page_rels(&project.site.lock());
+        *project.site.lock() = new;
         if set_changed {
-            reload_open_tabs(app);
+            reload_open_tabs(project);
             return;
         }
     }
 
     // Rebuild only pages that are open (have live state) and depend on a change.
-    let open: Vec<String> = app.root.pages.lock().keys().cloned().collect();
+    let open: Vec<String> = project.pages.lock().keys().cloned().collect();
     let mut to_rebuild: Vec<String> = {
-        let site = app.root.site.lock();
+        let site = project.site.lock();
         open.iter()
             .filter(|rel| {
                 let Some(page) = site.page(rel) else {
@@ -1397,7 +1428,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
     if touches_source && !structural {
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            app.root.site.lock().refresh_xrefs();
+            project.site.lock().refresh_xrefs();
         }));
         if refreshed.is_err() {
             crate::log::warn("cross-reference refresh panicked; numbers may be stale");
@@ -1427,7 +1458,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // over open tabs the precision is not worth an anchor-diff.
     let (targets_before, backlinks_before) = xrefs_before;
     let moved = {
-        let site = app.root.site.lock();
+        let site = project.site.lock();
         let moved = site.xref_targets != targets_before;
         if moved {
             let referring: HashSet<&str> = site
@@ -1456,12 +1487,12 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // the discovery-time ordering exists to prevent, so it must not come back on the warm
     // path. Only on a real move (a prose edit still refreshes one page's fragment below).
     if moved {
-        app.root.site.lock().rebuild_search_index();
+        project.site.lock().rebuild_search_index();
     }
     // Cloned once, after the refresh and before the loop: the fragment render below runs OFF
     // the lock (see the note there) but must resolve against the registry the served pages
     // use, or Cmd-K indexes a bare "Figure" for text the page shows as "Figure 1.1".
-    let xref_targets = app.root.site.lock().xref_targets.clone();
+    let xref_targets = project.site.lock().xref_targets.clone();
     // Refresh the cross-page Cmd-K index for each rebuilt page, so a re-fetch of
     // `/search-index.js` (the client re-fetches on each palette open in preview) reflects
     // the edit's new headings/prose instead of staying frozen at discovery. Per-page so a
@@ -1474,7 +1505,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         // off-lock (the point of this split), and the index gets the same numbers the page
         // shows ("Theorem 2.1", not "Theorem 1").
         let found = {
-            let site = app.root.site.lock();
+            let site = project.site.lock();
             site.page(rel).map(|p| (p.clone(), site.chapter_for(p)))
         };
         let Some((page, chapter)) = found else {
@@ -1492,17 +1523,43 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         }
     }
     for rel in to_rebuild {
-        let _ = app
-            .build_tx
-            .send(BuildMsg::Build(ProjectKey::default(), rel));
+        let _ = app.build_tx.send(BuildMsg::Build(project.key.clone(), rel));
+    }
+}
+
+/// Fan a batch of changed files out to the projects that own them (root + mounts), then
+/// rebuild each affected project independently against its own site/pages/freeze. A file
+/// under a mount's dir rebuilds that mount's page; a root file rebuilds the root's.
+fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
+    let roots: Vec<(ProjectKey, PathBuf)> =
+        std::iter::once((app.root.key.clone(), app.root.dir.clone()))
+            .chain(
+                app.mounts
+                    .iter()
+                    .map(|m| (m.project.key.clone(), m.project.dir.clone())),
+            )
+            .collect();
+    // Group changed files by the project whose root is their deepest ancestor.
+    let mut by_project: HashMap<ProjectKey, HashSet<PathBuf>> = HashMap::new();
+    for p in changed {
+        let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+        if let Some((key, _)) = classify_change(&roots, &canon) {
+            by_project.entry(key).or_default().insert(p.clone());
+        }
+    }
+    for (key, project_changed) in by_project {
+        if let Some(project) = app.project(&key) {
+            let project = project.clone();
+            rebuild_project(app, &project, &project_changed, structural);
+        }
     }
 }
 
 /// Reload every open tab and drop its cached block state, so the reload re-renders
 /// fresh against the (re-discovered) site — used after a `_site.yml` or page-set
 /// change. The reload message is delivered before each channel's sender is dropped.
-fn reload_open_tabs(app: &SiteApp) {
-    let mut pages = app.root.pages.lock();
+fn reload_open_tabs(project: &Arc<Project>) {
+    let mut pages = project.pages.lock();
     for ps in pages.values() {
         let _ = ps.tx.send(protocol::reload());
     }
@@ -1777,6 +1834,38 @@ mod project_tests {
         assert_eq!(
             match_mount(&nested, "gallery/course/em.html"),
             Some((1, "em.html"))
+        );
+    }
+
+    #[test]
+    fn classify_change_attributes_a_file_to_its_deepest_project_root() {
+        let roots = [
+            (
+                ProjectKey("gallery/course".into()),
+                PathBuf::from("/corpus/course"),
+            ),
+            (ProjectKey(String::new()), PathBuf::from("/site")),
+        ];
+        // A file under the mount root → the mount, path relative to that root.
+        assert_eq!(
+            classify_change(&roots, Path::new("/corpus/course/em.tmd")),
+            Some((ProjectKey("gallery/course".into()), PathBuf::from("em.tmd")))
+        );
+        // A file under the site root → the root project.
+        assert_eq!(
+            classify_change(&roots, Path::new("/site/features.tmd")),
+            Some((ProjectKey(String::new()), PathBuf::from("features.tmd")))
+        );
+        // A file under neither project root → None.
+        assert_eq!(classify_change(&roots, Path::new("/elsewhere/x.tmd")), None);
+        // A nested project root wins over an ancestor root (deepest match).
+        let nested = [
+            (ProjectKey(String::new()), PathBuf::from("/site")),
+            (ProjectKey("sub".into()), PathBuf::from("/site/sub")),
+        ];
+        assert_eq!(
+            classify_change(&nested, Path::new("/site/sub/p.tmd")),
+            Some((ProjectKey("sub".into()), PathBuf::from("p.tmd")))
         );
     }
 }
