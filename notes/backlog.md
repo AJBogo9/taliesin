@@ -32,12 +32,16 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 Tree is green across all gates. Both branch features landed to local `main`: structure-preserving `read`
 (item 19, also pushed) and the live-executor-mounts F-04 fix (unpushed, the author pushes). No open branches
-remain. Pick in priority order:
+remain. **Item 14 (heading-demotion) was found already shipped** (2026-07-12, `7e60f6c`) when picked up
+2026-07-22: AP9's "12 sibling `<h1>`" was a stale-artifact false lead (it measured a gitignored pre-fix
+`corpus/bayesian-website/_site/index.html`; a fresh render/build emits exactly one `<h1>`). See "Refuted by
+measurement". The remaining open work is the medium/low band, pick in priority order:
 
-1. **Item 14 heading-demotion**: real and evidence-backed, and **owner-gated** (reshapes every corpus
-   snapshot; needs a model ruling before building).
-2. Then the medium/low band: deck mobile polish (item 4), OFF-2 mermaid-offline-preview (item 13), the
-   small persona findings (items 16-18), and the P3 test-infra + polish residuals (items 10, 11).
+1. **OFF-2 mermaid-offline-preview (item 13)**: preview lazy-loads mermaid from a CDN despite the vendored
+   copy; protects the load-bearing offline invariant. Self-contained, no gating.
+2. Small persona findings (items 16-18): powershell syntax, book-level `theorems:`, inline-SVG figure theme.
+3. Deck mobile polish (item 4, P2, hard to verify without a device) and the P3 test-infra/polish residuals
+   (items 10, 11).
 
 - **Or run one of the eight remaining *audit perspectives* ("Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see (perf, fuzzing,
@@ -92,9 +96,9 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-Currently clear: the last high-yield item (structure-preserving, book-aware `read`) shipped 2026-07-22
-(branch `structure-preserving-read`, see "Already shipped"). Next-highest is item 14 (heading-demotion,
-owner-gated) in band C.
+Currently clear: the last high-yield item (structure-preserving, book-aware `read`) shipped 2026-07-22, and
+item 14 (heading-demotion) was found already shipped (2026-07-12) when picked up 2026-07-22. Next-highest is
+the medium/low band below (OFF-2 mermaid-offline, item 13).
 
 ### B. Medium impact
 
@@ -176,24 +180,6 @@ owner-gated) in band C.
     item 10. `render/mod.rs:1292-1311`.
     *Verified offline (do not re-audit): fonts, KaTeX, d3/Plot, mermaid-in-build, the reveal/jsdelivr guard.*
 
-14. **HTML-1: heading-demotion for a single-root document outline** (P3 semantic/a11y, OWNER-GATED; detail:
-    [2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md), perspective AP9;
-    [AUDITS.md](AUDITS.md) records the round). A titled document emits a title-block `<h1 class="title">` AND
-    renders every author `#` heading as `<h1>` (`emit.rs:15`), so titled multi-section docs emit many sibling
-    `<h1>` (proven: the built `corpus/bayesian-website` index has 12 `<h1>` in one `<main>`; 20 corpus docs emit
-    2 to 12 each). The visual render is fine, but the semantic outline is a flat list of competing roots, which
-    contradicts the tool's own single-h1 intent (PA-H2 injects a hidden `<h1>` only when the body has none).
-    This is the "heading-demotion" idea gated in the 2026-07-11 website-design audit; AP9 adds the evidence.
-    Fix: when a title-block `<h1>` is present, demote author heading levels by one for the HTML document view
-    (`#` becomes `<h2>`, ...). Verified safe/scoped: heading ids come from `slugify(text)` not the level
-    (`mod.rs:1496`, `520-534`), so anchors/xrefs survive; **decks must be exempt** (the deck engine groups
-    slides BY heading level, `deck.rs`); a no-title doc keeps `#` as `<h1>`. `crates/core/src/render`; reshapes
-    most corpus render snapshots, so it needs an owner ruling on the model before building (why it was gated).
-    Size: M + a wide mechanical snapshot update.
-    *Verified valid across 84 renders + a site build (do not re-audit): zero invalid nesting, zero per-page
-    duplicate ids, well-formed figures (one `<figcaption>` each), labelled deck sections, valid list/table/dl,
-    `<header>`/`<main>` landmarks present. The render pipeline's HTML structure is sound; only the h1 outline
-    is off.*
 
 16. **Demand-probe (course pilot) findings** (P2/P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-course-author.md](2026-07-22-corpus-demand-probe-course-author.md)).
@@ -347,11 +333,13 @@ session runs.
   index, index-placed parallel builds, no time/random in output, cross-machine reproducible). One low finding,
   DET-1: no explicit end-to-end regression guard, so the manually-maintained property could silently regress.
 - **AP9: Semantic-HTML / document-model correctness. RUN 2026-07-22** (findings:
-  [2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md); folded into Open-work item 14).
+  [2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md)).
   Result: a strong positive bill of health. Across 84 corpus renders + a site build the emitted HTML is
   structurally valid (no invalid nesting, no per-page duplicate ids, well-formed figures/tables/lists,
-  labelled deck sections). The one finding is HTML-1: titled docs emit many sibling `<h1>` (title block +
-  every `#`), breaking the single-root outline (the gated heading-demotion idea, now with evidence). Done as a
+  labelled deck sections). Its one finding, HTML-1 (titled docs emit many sibling `<h1>`), was **REFUTED on
+  2026-07-22** when picked up: heading-demotion had already shipped 2026-07-12 (`7e60f6c`), and AP9's "12
+  `<h1>`" measurement came from a stale gitignored `corpus/bayesian-website/_site/index.html` (a pre-fix
+  build); a fresh render/build of that page emits exactly one `<h1>`. See "Refuted by measurement". Done as a
   render-probe + offline HTML-parse audit, no browser drive needed.
 - **AP10: Internal codebase health.** Distinct from the feature-reduction audit: the ~700-panic surface
   (which `unwrap`s are reachable from user input?), module coupling, dead code, and a *coverage-hole* map
@@ -613,7 +601,13 @@ claim that one of these is "missing"):
   off by default, never reachable from `build`/`publish`); numeric/quoted-claim-without-citation hint
   (its own spec rates it FP-prone); per-page text/JSON sidecar (redundant, `taliesin read` +
   `llms.txt`/`llms-full.txt` ship).
-- **Refuted by measurement (do NOT re-scope):** `build` does not leak forkserver subtrees (the graceful
+- **Refuted by measurement (do NOT re-scope):** **heading-demotion (AP9's HTML-1 / former item 14) already
+  ships** (`7e60f6c`, 2026-07-12): a titled HTML doc demotes every body heading one level under its
+  `<h1 class="title">` (`demote_heading_html`, gated Html+titled+`!hide_title_block`, decks/books excluded by
+  construction), so a fresh render/build of a titled page emits exactly one `<h1>`. AP9's "12 `<h1>`" measured
+  a stale gitignored `corpus/bayesian-website/_site/index.html` (a pre-fix build artifact). The only corpus
+  docs with multiple `<h1>` are decks (`deck.tmd`/`deck-marginalia.tmd`/`embed/talk.tmd`), which are exempt by
+  design. `build` does not leak forkserver subtrees (the graceful
   path is reaped; the *ungraceful* R residual is the only gap, above); the warm pool booting Python on
   prose-only builds is hygiene, not latency; dev attributes are 0.29% of page bytes (don't strip); a
   `--version -dirty` marker is stale-by-construction (refused); the `assets/css` stale-embed claim did
