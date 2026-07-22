@@ -18,7 +18,9 @@ function taliInitLinkPreview() {
     '#tali-link-preview.open{opacity:1;transform:none;pointer-events:auto;visibility:visible;}' +
     '#tali-link-preview > :first-child{margin-top:0;}#tali-link-preview > :last-child{margin-bottom:0;}' +
     '#tali-link-preview img{max-width:100%;height:auto;}#tali-link-preview figure{margin:0;}' +
-    '#tali-link-preview .tali-lp-head{font-weight:600;}';
+    '#tali-link-preview .tali-lp-head{font-weight:600;}' +
+    // No open/close fade+slide for a reader who asked for reduced motion (PA-B7).
+    '@media (prefers-reduced-motion: reduce){#tali-link-preview{transition:none}}';
   document.head.appendChild(style);
 
   var card = document.createElement('div');

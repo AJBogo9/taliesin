@@ -32,6 +32,12 @@
 (() => {
   const root = document.getElementById("tali-root");
   if (!root) return; // the client mounts into #tali-root; nothing to do without it
+  // Honour prefers-reduced-motion for JS-initiated scrolls (PA-B6): the CSS scroll-behavior
+  // gate never covers a programmatic scrollIntoView/scrollTo. Mirrors search.js's helper.
+  const scrollBehavior = () =>
+    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
   let statusEl = /** @type {HTMLElement|null} */ (null);
   let wordCountEl = /** @type {HTMLElement|null} */ (null);
   let ws = /** @type {WebSocket|undefined} */ (undefined);
@@ -151,7 +157,7 @@
       row.className = "tali-cellerr";
       row.textContent = "✗ " + (el.textContent || "cell error").trim().slice(0, 90);
       row.addEventListener("click", () => {
-        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
         pulse(/** @type {HTMLElement} */ (el), "tali-hl-flash");
       });
       cellErrEl.appendChild(row);
@@ -698,7 +704,7 @@
     progressEl.addEventListener("click", function () {
       if (!activeCell) return;
       var target = elById(activeCell + "-out") || elById(activeCell);
-      if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (target) target.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     });
     document.body.appendChild(progressEl);
     return progressEl;
@@ -1573,7 +1579,7 @@
     } else {
       const r = target.getBoundingClientRect();
       if (r.top < 0 || r.bottom > window.innerHeight) {
-        target.scrollIntoView({ block: "center", behavior: "smooth" });
+        target.scrollIntoView({ block: "center", behavior: scrollBehavior() });
       }
     }
   };

@@ -37,7 +37,9 @@ function taliInitLightbox() {
     'cursor:pointer;opacity:.7;transition:opacity .15s ease,background .15s ease}' +
     '#tali-lightbox .tali-lb-nav:hover{opacity:1;background:rgba(0,0,0,.55)}' +
     '#tali-lightbox.has-gallery .tali-lb-nav{display:flex}' +
-    '#tali-lightbox .tali-lb-prev{left:.6rem}#tali-lightbox .tali-lb-next{right:.6rem}';
+    '#tali-lightbox .tali-lb-prev{left:.6rem}#tali-lightbox .tali-lb-next{right:.6rem}' +
+    // No open/close fade for a reader who asked for reduced motion (PA-B7).
+    '@media (prefers-reduced-motion: reduce){#tali-lightbox{transition:none}}';
   document.head.appendChild(style);
 
   var box = document.createElement('div');

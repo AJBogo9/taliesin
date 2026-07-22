@@ -866,11 +866,18 @@
       margin: 0 0 1.5rem !important; padding: 0 0 1rem !important;
       border-bottom: 1px solid var(--tali-border) !important; }
     #TOC::before { display: none !important; }
-    pre { white-space: pre-wrap !important; overflow: visible !important; }
+    /* `background-image: none` drops the 4-layer scroll-shadow gradients (PA-P2): with
+       overflow visible there's nothing to scroll, so on paper they were just faint
+       edge-vignettes on every code block. The code-bg colour is kept. */
+    pre { white-space: pre-wrap !important; overflow: visible !important; background-image: none !important; }
     table { display: table !important; overflow: visible !important; background: none !important; }
     .katex-display { overflow: visible !important; background: none !important; }
     pre, figure, table, blockquote, .callout, .tali-eqn { break-inside: avoid; }
     h2, h3, h4 { break-after: avoid; }
+    /* Printed links reveal their destination (PA-P1): a paper reader can't click, so an
+       external link's URL is spelled out after it. In-page `#` anchors (incl. the heading
+       copy-links) and non-http schemes are skipped, and the URL wraps so it never clips. */
+    a[href^="http"]::after { content: " (" attr(href) ")"; font-size: .85em; color: var(--tali-muted); word-break: break-all; }
   }
 
 /* The kernel error box and the `{js}` error box are the same meaning, so they are the same red.
