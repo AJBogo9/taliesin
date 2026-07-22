@@ -4,6 +4,58 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+**Perspective audit AP5 (i18n / Unicode / multibyte offsets), 2026-07-22** →
+[2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md). First of the
+"Audit perspectives" series in [backlog.md](backlog.md) (each a single unexplored lens, one per session, run
+around live parallel sessions so it built nothing and touched no source). Headline: the tool has three
+disagreeing column conventions at the editor boundary and none is the UTF-16 that both `vscode://file:line:col`
+and the LSP protocol expect (comrak `data-sourcepos` is byte-based, proven by a render probe; the stdio LSP +
+diagnostics `to_lsp` are Unicode-scalar-based and never negotiate `positionEncoding`; the TS companion is
+UTF-16). Scalar equals UTF-16 across the whole BMP, so all realistic natural-language text is correct; the
+defect surface is astral characters (emoji, math letters) on the same line before a token, with LSP rename (a
+write path) the sharpest edge. Just as valuable: the core scanners, text truncation (`char_indices`), and block
+identity were verified multibyte-safe already, so a later robustness/fuzzing pass can skip them. Build-ready
+pieces (I18N-1..5) folded into Open-work item 12.
+
+**Perspective audit AP12 (offline-guarantee verification), 2026-07-22** →
+[2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md). Headline: the tool's OWN assets
+are genuinely offline (local woff2 fonts, server-rendered KaTeX, vendored d3/Plot, mermaid inlined into static
+builds, a reveal/jsdelivr guard), but a `build ... --out` "portable" folder silently keeps any external
+reference the author wrote (a remote image, a remote `{js}` `import()`) with no diagnostic. Proven by a
+frozen-binary build probe: a doc with an `esm.sh` import and an `example.com` image builds to "0 assets"
+(exit 0, no warning) yet still fetches both hosts at view time. Preview additionally lazy-loads mermaid from a
+CDN despite the vendored copy. The fix that fits is a diagnostic, not a downloader (auto-fetching is correctly
+avoided and tested today). Build-ready OFF-1/OFF-2 folded into Open-work item 13.
+
+**Perspective audit AP9 (semantic-HTML / document-model validity), 2026-07-22** →
+[2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md). A strong positive bill of health:
+across 84 corpus renders plus a full website build, the emitted HTML is structurally valid (a raw stack
+tokenizer and `html5lib` found zero invalid nesting, zero per-page duplicate ids, well-formed figures with one
+`<figcaption>` each, labelled deck slide `<section>`s, valid list/table/definition-list structure); the only
+nesting hit was the intentional `corpus/diagnostics/a11y.tmd` fixture. One finding, HTML-1 (medium): titled
+docs emit multiple `<h1>` (the title-block h1 plus every author `#`, which the corpus uses for sections), so a
+built site index carries 12 `<h1>` in one `<main>` and the single-root outline the tool's own PA-H2 logic
+assumes is broken. Fix is the gated "heading-demotion" idea (2026-07-11 website-design audit), now evidenced;
+anchor ids are level-independent so it is safe, but decks must be exempt (levels drive slide grouping). Folded
+into Open-work item 14 (owner-gated).
+
+**Perspective audit AP8 (determinism / reproducibility), 2026-07-22** →
+[2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md). Covered both the read hunt and the
+stateful rebuild-twice check (frozen binary). Result: a positive bill of health. Single-doc renders and a full
+`corpus/bayesian-website` build are byte-identical across SEPARATE processes (fresh HashMap seeds each), and
+the property holds by construction: page discovery, listings, and the hover index are explicitly sorted (the
+hover index even carries a "deterministic across builds" comment), parallel page builds reassemble by index not
+completion order, `xref` iteration is a keyed insert, and no time/random/pid reaches output (only temp-dir
+scratch names). Reproducible cross-machine too (ordering by path/anchor/date). One low finding, DET-1: the
+property has no explicit end-to-end regression guard (only single-run body-HTML snapshots + the hash unit
+test), so a future unsorted HashMap-to-output could regress it silently. Folded into Open-work item 15.
+NOTE: the audit session independently ran AP8 in parallel (`58db11d`,
+[2026-07-22-ap8-determinism-audit.md](2026-07-22-ap8-determinism-audit.md)), a concurrent-choice collision.
+Their round is the fuller record (121 docs x3 processes + 9 site builds, plus the KERNEL path this static pass
+skipped) and found the one real defect, **AP8-1**: executed-cell stderr embeds the non-deterministic
+`/tmp/ipykernel_<PID>/…py` path (`kernel.rs:994`), a reproducibility break and a local-path leak that the AP12
+round missed. Item 15 merges both rounds (AP8-1 + this pass's complementary DET-1 regression guard).
+
 **Subsystem audits (own detail files):** the **slide-deck** feature was deep-audited 2026-07-12 →
 [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md) (43 bugs + a keep/cut/fix/add feature verdict +
 a mobile-feed spec + a grind order). Also queued as **section F** in [backlog.md](backlog.md). Note:

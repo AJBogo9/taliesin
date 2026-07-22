@@ -44,7 +44,8 @@ points, pick by appetite:
   concurrency, cache-correctness, i18n/sourcepos, cross-browser, a11y, determinism, semantic HTML,
   codebase health, chaos, offline-proof). Each is a fresh session that writes a dated findings doc and
   feeds build-ready items back here; the author has credits queued for exactly this. Recommended first
-  three: AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).
+  three: AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos). **AP5 RUN 2026-07-22** (findings folded
+  into Open-work item 12).
 
 Everything else open is P3/gated (items 4, 10 + band D) or demand-driven (Tier 3). Working method is in "Standing
 constraints": branch per feature, verify by mutation, browser-verify, ff-merge locally.
@@ -180,6 +181,92 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     (`a[href^=http]::after`; PA-P1), and `pre` drops its scroll-shadow for print (PA-P2). Owner design-Qs (deck
     copy-button, card whole-`<a>`) parked in the doc, not build-ready.
 
+12. **i18n / Unicode multibyte-offset correctness** (P3 hardening; detail:
+    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md), perspective AP5;
+    [AUDITS.md](AUDITS.md) records the round). Three disagreeing column conventions meet at the editor
+    boundary, none of them the UTF-16 that both `vscode://file:line:col` and the LSP protocol expect: comrak
+    `data-sourcepos` columns are byte-based (proven: `你好 world`, 8 chars / 12 bytes, emits `1:1-1:12`), the
+    stdio LSP + diagnostics `to_lsp` are Unicode-scalar-based and never negotiate `positionEncoding`, and the
+    TS companion is UTF-16. Scalar equals UTF-16 across the whole BMP, so all realistic natural-language text
+    (accents, CJK, Cyrillic, Arabic) navigates correctly; the defect surface is astral characters (emoji, math
+    letters) sitting on the same line before a token. Build-ready pieces:
+    - **I18N-2/I18N-3 (one change, M):** make the stdio LSP encoding-correct. Advertise `position_encoding`
+      and convert UTF-16 <-> scalar at the boundary (incoming positions) and when emitting `Position`s
+      (go-to-definition, hover, completion replace-range, prepareRename, **rename** (a write path, the
+      sharpest edge), document symbols, and `to_lsp`). `crates/server/src/{lsp.rs,lsp_nav.rs,check.rs}`.
+    - **I18N-1 (browser link, S):** convert the byte-based `data-sourcepos` start column to a character column
+      before building the `vscode://file:line:col` URL (`web-client/client.js:1455-1462`). Low practical impact
+      (block start column is usually 1) but removes the wrong-unit contract.
+    - **I18N-5 (S):** add BMP + astral fixtures to the LSP + diagnostics tests (land first, as a failing
+      guard). **I18N-4 (XS):** after the fix, restore the `lsp_nav.rs` "port of the companion" parity claim.
+    *Verified safe, do not re-audit: the core scanners, text truncation (`char_indices`), heading-attr
+    slicing, block identity, and front-matter diagnostic columns are all multibyte-correct already.*
+
+13. **Offline-guarantee: warn when a `--out` build is not self-contained** (P3, protects a headline invariant;
+    detail: [2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md), perspective AP12;
+    [AUDITS.md](AUDITS.md) records the round). The tool's OWN assets are genuinely offline (local woff2 fonts,
+    server-rendered KaTeX, vendored d3/Plot, mermaid inlined into static builds, a reveal/jsdelivr regression
+    guard), but a `build ... --out <dir>` "portable" folder silently keeps any external reference the author
+    wrote, with no diagnostic. Proven: a doc with `![](https://example.com/pic.png)` plus a `{js}` cell doing
+    `import("https://esm.sh/three@0.163.0")` builds to `index.html · 0 assets` (exit 0, no warning) yet the
+    output still fetches both hosts at view time. Build-ready:
+    - **OFF-1 (M):** a located build/preview diagnostic inventorying external runtime references (external
+      `<img>/<script>/<link>`, CSS `url()`/`@import`, remote/bare `{js}` `import()` specifiers) left in the
+      output, in the same "did-you-mean" style, gated informational not error. Do NOT auto-download (correctly
+      avoided today, pinned at `build.rs:2300-2339`); warn. Detection points: the `://` skip at
+      `build.rs:2046` plus the import walker at `build.rs:889`; surface via `check.rs`.
+    - **OFF-2 (S-M):** make live preview offline-complete for mermaid by inlining the vendored library on
+      mermaid pages (gated like the build path), or surface the network load. Overlaps item 10.
+      `render/mod.rs:1292-1311`.
+    *Verified offline (do not re-audit): fonts, KaTeX, d3/Plot, mermaid-in-build, the reveal/jsdelivr guard;
+    the `https://` strings in the vendored mermaid/d3 blobs are license/error text, not fetches. Not chased:
+    whether built HTML leaks absolute local paths or author identity (the AP12 entry's second sub-question;
+    item 15's AP8-1 later found one instance: executed-cell stderr leaks the `/tmp/ipykernel_<PID>` path).*
+
+14. **HTML-1: heading-demotion for a single-root document outline** (P3 semantic/a11y, OWNER-GATED; detail:
+    [2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md), perspective AP9;
+    [AUDITS.md](AUDITS.md) records the round). A titled document emits a title-block `<h1 class="title">` AND
+    renders every author `#` heading as `<h1>` (`emit.rs:15`), so titled multi-section docs emit many sibling
+    `<h1>` (proven: the built `corpus/bayesian-website` index has 12 `<h1>` in one `<main>`; 20 corpus docs emit
+    2 to 12 each). The visual render is fine, but the semantic outline is a flat list of competing roots, which
+    contradicts the tool's own single-h1 intent (PA-H2 injects a hidden `<h1>` only when the body has none).
+    This is the "heading-demotion" idea gated in the 2026-07-11 website-design audit; AP9 adds the evidence.
+    Fix: when a title-block `<h1>` is present, demote author heading levels by one for the HTML document view
+    (`#` becomes `<h2>`, ...). Verified safe/scoped: heading ids come from `slugify(text)` not the level
+    (`mod.rs:1496`, `520-534`), so anchors/xrefs survive; **decks must be exempt** (the deck engine groups
+    slides BY heading level, `deck.rs`); a no-title doc keeps `#` as `<h1>`. `crates/core/src/render`; reshapes
+    most corpus render snapshots, so it needs an owner ruling on the model before building (why it was gated).
+    Size: M + a wide mechanical snapshot update.
+    *Verified valid across 84 renders + a site build (do not re-audit): zero invalid nesting, zero per-page
+    duplicate ids, well-formed figures (one `<figcaption>` each), labelled deck sections, valid list/table/dl,
+    `<header>`/`<main>` landmarks present. The render pipeline's HTML structure is sound; only the h1 outline
+    is off.*
+
+15. **Determinism & reproducibility (AP8, run TWICE in parallel: this session + the audit session).** P3.
+    Details: [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md) (static, this session) and
+    [2026-07-22-ap8-determinism-audit.md](2026-07-22-ap8-determinism-audit.md) (fuller, the audit session's
+    `58db11d`, which also ran the kernel path). Both agree render + build are deterministic BY DESIGN and
+    reproducible cross-machine (single docs byte-identical across separate processes, 9 site builds
+    byte-identical, sorted discovery/listings/hover index, `.zip` fixed-1980 timestamp, content-hash
+    block-ids). Two build-ready items:
+    - **AP8-1 (P3, the real defect, from the audit session's round):** executed-cell **stderr** embeds the
+      non-deterministic `/tmp/ipykernel_<PID>/<hash>.py` path (Python/R warnings such as matplotlib's Agg
+      `UserWarning`), so cold/CI/cross-machine builds are non-reproducible, it **leaks a local absolute path**
+      into published HTML (the leak vector my AP12 offline round at item 13 explicitly deferred), and it adds
+      reader noise. Root cause pinned: the `Output::Stream` arm of `render_outputs`
+      (`crates/server/src/kernel.rs:994`) strips ANSI and HTML-escapes but never normalizes the path; the
+      `Output::Error` traceback arm is already clean (`Cell In[N]`). Fix: scrub `/tmp/ipykernel_\d+/\d+\.py`
+      (and legacy `<ipython-input-…>`) to a stable `<cell>` placeholder before escaping (mirrors
+      nbconvert/Quarto); apply to Python and R. Pin: a matplotlib-`UserWarning` doc must build byte-identically
+      twice under `TALIESIN_NO_CACHE=1`. Verified by the audit session (two cold builds differed only in the
+      PID line).
+    - **DET-1 (S, complementary, this session):** a broader end-to-end guard that builds a representative
+      multi-page site (xrefs + listing + search/hover index) twice in separate processes and asserts
+      byte-identical output, so a future unsorted HashMap/HashSet/`read_dir`-to-output cannot silently regress
+      the reproducibility both rounds confirmed. Wider than AP8-1's single-doc pin. `crates/server/tests/`.
+    *NOTE: this item merges two independently-run AP8 rounds (a concurrent-choice collision); during
+    consolidation, dedupe against the audit session's own backlog edit if it files AP8-1 separately.*
+
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
@@ -222,7 +309,10 @@ The *stateful* ones (AP1, AP2, AP3, AP4, AP5, AP6, AP11) each build, fuzz, run t
 drive a browser, or spawn kernels, so they corrupt each other if run at once: keep them solo. Only the
 pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan out together in one
 Workflow. Recommended first three, by yield for effort, each striking a load-bearing invariant no one has
-attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).**
+attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).** AP5 is RUN (2026-07-22, see its
+entry below); AP2 and AP4 remain, but both are *stateful/solo* and collide with a live feature session that
+owns the exec/serve/build surface, so a pure code-read pick (AP9/AP10/AP12) is the safer next while that
+session runs.
 
 ### Tier 1: genuinely untouched, highest expected yield
 
@@ -248,11 +338,14 @@ attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).**
   boundaries. One stale hit is a credibility bug for the core design. Start: enumerate the cumulative-hash
   inputs in `crates/server/src/freeze.rs` and construct a change that is NOT reflected in the key. *Stateful,
   solo. Recommended first.*
-- **AP5: i18n / Unicode / multibyte sourcepos.** Untouched, and aimed straight at the invariant: sourcepos
-  is byte-based, so any char-offset assumption means Alt-click-to-source silently misfires on any doc with
-  CJK, accented Latin, or emoji. Plus RTL (Arabic/Hebrew) layout, CJK line-breaking, non-ASCII heading-slug
-  generation. Start: a corpus doc mixing CJK + emoji + combining marks, then Alt-click every block and check
-  the editor cursor lands on the right character. *Stateful (browser), solo. Recommended first.*
+- **AP5: i18n / Unicode / multibyte sourcepos. RUN 2026-07-22** (findings:
+  [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md); folded into Open-work
+  item 12). The starting hypothesis (byte-based sourcepos breaks Alt-click on any CJK/accent doc) was mostly
+  *refuted*: the primary Alt-click locator uses the line only, block start columns are ~1, and all BMP text is
+  correct. The real find was the editor LSP: it speaks Unicode scalars, comrak emits byte columns, and the TS
+  companion is UTF-16 (three conventions, none of them UTF-16), diverging on astral characters (rename is a write path).
+  A follow-up, done as a code read rather than the browser sweep first planned. Residual not yet chased: RTL
+  layout, CJK line-breaking, non-ASCII heading-slug collisions.
 - **AP6: Cross-browser / cross-platform.** CLAUDE.md mandates chrome-devtools MCP and development is
   Linux-only, so Safari, Firefox, and mobile browsers are effectively untested, as are macOS/Windows path
   handling, file-watch semantics, and kernel spawning. The vanilla-JS client and the deck engine are where
@@ -265,13 +358,20 @@ attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).**
   done a real screen-reader + keyboard pass over rendered docs, and especially the **deck as an interactive
   application** (focus management, `aria`, KaTeX a11y, live-region announcement on slide change). Overlaps
   item 11 pass (c) but goes deeper than one-hole-per-surface. *Stateful, solo.*
-- **AP8: Determinism / reproducibility.** Does one `.tmd` produce byte-identical HTML twice? (the
-  `body_html_snapshots` drift is a symptom.) Hunt hashmap-iteration order, timestamps, random ids, plot
-  float noise. Matters for caching, diffs, and any future content-addressed story. *Read half is
-  fan-out-safe; the rebuild-twice check is stateful.*
-- **AP9: Semantic-HTML / document-model correctness.** Beyond "does it look right": heading hierarchy,
-  sectioning, figure/caption association, table semantics, W3C-validator conformance. Is the document
-  *model* correct, not just the pixels? Overlaps PA-H2 (item 11 pass b). *Code-read, fan-out-safe.*
+- **AP8: Determinism / reproducibility. RUN 2026-07-22** (findings:
+  [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md); folded into Open-work item 15). Covered
+  BOTH halves (the read hunt AND the stateful rebuild-twice check, via the frozen binary). Result: a positive
+  bill of health. Single-doc renders and a full multi-page site build are byte-identical across separate
+  processes with fresh HashMap seeds, and determinism holds by construction (sorted discovery/listings/hover
+  index, index-placed parallel builds, no time/random in output, cross-machine reproducible). One low finding,
+  DET-1: no explicit end-to-end regression guard, so the manually-maintained property could silently regress.
+- **AP9: Semantic-HTML / document-model correctness. RUN 2026-07-22** (findings:
+  [2026-07-22-semantic-html-audit.md](2026-07-22-semantic-html-audit.md); folded into Open-work item 14).
+  Result: a strong positive bill of health. Across 84 corpus renders + a site build the emitted HTML is
+  structurally valid (no invalid nesting, no per-page duplicate ids, well-formed figures/tables/lists,
+  labelled deck sections). The one finding is HTML-1: titled docs emit many sibling `<h1>` (title block +
+  every `#`), breaking the single-root outline (the gated heading-demotion idea, now with evidence). Done as a
+  render-probe + offline HTML-parse audit, no browser drive needed.
 - **AP10: Internal codebase health.** Distinct from the feature-reduction audit: the ~700-panic surface
   (which `unwrap`s are reachable from user input?), module coupling, dead code, and a *coverage-hole* map
   (behaviors with zero test), which is different from the vacuous-test *quality* audit already done.
@@ -280,10 +380,12 @@ attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).**
   websocket, SIGKILL the server: how graceful is each degradation and what does the author actually see? DX
   touched error loops; nobody has injected real failures. (Note PA-B1 in item 11: the kernel-unavailable
   message already tells headless callers to click a Restart button that is not there.) *Stateful, solo.*
-- **AP12: Offline-guarantee verification.** The tool *claims* fully offline (bundled KaTeX/fonts/JS). Prove
-  it: does any built page or live preview make an external request, and does built HTML leak absolute local
-  paths or author identity? The security pass touched network egress; this is the positive proof, not an
-  assumption. *Code-read + a network-capture check; mostly fan-out-safe.*
+- **AP12: Offline-guarantee verification. RUN 2026-07-22** (findings:
+  [2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md); folded into Open-work item
+  13). The tool's own assets proved genuinely offline; the gap is author-introduced external references, which a
+  `--out` build keeps with no diagnostic (proven by a build probe), plus preview lazy-loading mermaid from a CDN
+  despite the vendored copy. Done as a code read + a frozen-binary build probe (no network capture needed). Not
+  chased: whether built HTML leaks absolute local paths or author identity (the second sub-question here).
 
 ## Tier 3: demand-driven (band E; build only when a real user asks)
 
