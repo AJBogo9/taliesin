@@ -195,15 +195,20 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     [AUDITS.md](AUDITS.md) records the round). The tool's OWN assets are genuinely offline (local woff2 fonts,
     server-rendered KaTeX, vendored d3/Plot, mermaid inlined into static builds, a reveal/jsdelivr regression
     guard), but a `build ... --out <dir>` "portable" folder silently keeps any external reference the author
-    wrote, with no diagnostic. Proven: a doc with `![](https://example.com/pic.png)` plus a `{js}` cell doing
-    `import("https://esm.sh/three@0.163.0")` builds to `index.html · 0 assets` (exit 0, no warning) yet the
-    output still fetches both hosts at view time. Build-ready:
-    - **OFF-1 (M):** a located build/preview diagnostic inventorying external runtime references (external
-      `<img>/<script>/<link>`, CSS `url()`/`@import`, remote/bare `{js}` `import()` specifiers) left in the
-      output, in the same "did-you-mean" style, gated informational not error. Do NOT auto-download (correctly
-      avoided today, pinned at `build.rs:2300-2339`); warn. Detection points: the `://` skip at
-      `build.rs:2046` plus the import walker at `build.rs:889`; surface via `check.rs`.
-    - **OFF-2 (S-M):** make live preview offline-complete for mermaid by inlining the vendored library on
+    wrote, with no diagnostic.
+    - **OFF-1 core — SHIPPED** (`feat/off1-external-ref-warn`): a single-doc `build` now logs one located,
+      informational warning (`path:line: external reference not bundled: <url> …`) per view-time external
+      reference left in the output — resource `src=` (img/script/iframe/…), a `<link href>` stylesheet
+      (never an `<a>` hyperlink), and remote or bare `{js}` `import()` specifiers (scanned only in author
+      cell bodies, so vendored d3/Plot don't false-positive). Never fails the build (even `--strict`): the
+      tool warns, it does not download (the non-download stays pinned at `build.rs`'s
+      `copy_local_assets_bundles_js_cell_imports_recursively`). Pure `external_refs`/`ExternalRef` +
+      `warn_external_refs` in `build.rs`, pinned by `mirror_tests::external_refs_*` (positive, negative, and
+      located cases). **Deferred (own follow-ups):** CSS `url()`/`@import` external hosts; the **multi-page
+      site** build path (`build_site`/`mirror_assets`, not just single-doc); surfacing in `check` +
+      `--format json` (kept out of `check.rs` this round to avoid a live-session collision — a build-time
+      `log::warn` was the collision-free surface).
+    - **OFF-2 (S-M, open):** make live preview offline-complete for mermaid by inlining the vendored library on
       mermaid pages (gated like the build path), or surface the network load. Overlaps item 10.
       `render/mod.rs:1292-1311`.
     *Verified offline (do not re-audit): fonts, KaTeX, d3/Plot, mermaid-in-build, the reveal/jsdelivr guard;

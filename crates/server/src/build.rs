@@ -261,6 +261,12 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         }
     };
 
+    // Offline-guarantee nudge: a built page keeps any external reference the author wrote
+    // (a remote image, an external stylesheet, a remote/bare `{js}` import) verbatim, so a
+    // "portable" output can silently need the network at view time. Warn (located, never fail)
+    // rather than download — the tool does not fetch arbitrary URLs at build time.
+    warn_external_refs(&html, path);
+
     // In `--strict` mode, a cell that crashed (its traceback is baked into the HTML)
     // or any located warning fails the build instead of shipping a broken page with
     // exit 0. Without `--strict` the warnings were already logged; we still write.
@@ -2051,10 +2057,274 @@ fn is_local_ref(v: &str) -> bool {
         && !v.starts_with("javascript:")
 }
 
+/// A reference the browser fetches over the network at view time: an absolute `http(s)://`
+/// URL or a protocol-relative `//host/…`. Deliberately narrow — `data:` (inline), a `#frag`,
+/// and `mailto:`/`tel:`/`vscode:`/`javascript:` are not view-time fetches, and a relative or
+/// root path is local.
+fn is_external_fetch(v: &str) -> bool {
+    v.starts_with("//") || v.starts_with("http://") || v.starts_with("https://")
+}
+
+/// A bare ESM specifier (`import("three")`): not relative, not root-absolute, not a URL, not a
+/// data URI. In a browser `{js}` cell it is unresolvable without an import map, so it also
+/// breaks a portable build (like a remote import).
+fn is_bare_specifier(v: &str) -> bool {
+    !v.is_empty()
+        && !v.starts_with("./")
+        && !v.starts_with("../")
+        && !v.starts_with('/')
+        && !v.starts_with("data:")
+        && !is_external_fetch(v)
+}
+
+/// An external reference left verbatim in a built page, with the best-effort source line of
+/// the block that contains it (from the nearest preceding `data-sourcepos`).
+#[derive(Debug, PartialEq, Eq)]
+struct ExternalRef {
+    url: String,
+    line: Option<u32>,
+}
+
+/// The 1-based source line of the block enclosing byte `offset` in `html`, read from the
+/// nearest preceding `data-sourcepos="L:…"`. `None` when no located block precedes it.
+fn sourcepos_line_before(html: &str, offset: usize) -> Option<u32> {
+    const KEY: &str = "data-sourcepos=\"";
+    let at = html[..offset].rfind(KEY)? + KEY.len();
+    let digits: String = html[at..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
+}
+
+/// Whether the tag opened just before byte `attr_at` in `html` has tag name `name` (ASCII,
+/// case-insensitive) — used to keep an external `href=` flag to `<link>` (a stylesheet/preload
+/// fetch), never `<a>`/`<area>`/`<base>` (navigation/base).
+fn tag_named_before(html: &str, attr_at: usize, name: &str) -> bool {
+    let Some(lt) = html[..attr_at].rfind('<') else {
+        return false;
+    };
+    let after = &html[lt + 1..];
+    after.len() >= name.len()
+        && after.as_bytes()[..name.len()].eq_ignore_ascii_case(name.as_bytes())
+        && after[name.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_ascii_whitespace() || c == '>' || c == '/')
+}
+
+/// Each dynamic `import("spec")` / `import('spec')` in `src`, as `(byte offset of `import`,
+/// specifier)`. Only the dynamic-call form (the `{js}` cell shape the audit found) is matched,
+/// with an `import` word boundary, so a substring like `reimport(` or a comment is ignored.
+fn dynamic_import_specifiers(src: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let b = src.as_bytes();
+    let mut i = 0;
+    while let Some(pos) = src[i..].find("import") {
+        let at = i + pos;
+        i = at + "import".len();
+        // `import` must start a word (not `reimport`); a non-ASCII lead byte is a boundary too.
+        if at > 0 {
+            let p = b[at - 1];
+            if p == b'_' || p.is_ascii_alphanumeric() {
+                continue;
+            }
+        }
+        let mut j = at + "import".len();
+        while j < b.len() && b[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= b.len() || b[j] != b'(' {
+            continue; // a static `import x from …`, not the dynamic call form
+        }
+        j += 1;
+        while j < b.len() && b[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        if j >= b.len() || (b[j] != b'"' && b[j] != b'\'') {
+            continue; // import(expr) with a non-literal specifier — can't classify, skip
+        }
+        let q = b[j] as char;
+        let spec_start = j + 1;
+        let Some(rel) = src[spec_start..].find(q) else {
+            break;
+        };
+        out.push((at, src[spec_start..spec_start + rel].to_string()));
+        i = spec_start + rel + 1;
+    }
+    out
+}
+
+/// Every external (network-fetched-at-view-time) reference left verbatim in built `html`: a
+/// resource `src=` (img/script/iframe/audio/video/…), a `<link href=>` stylesheet/preload, and
+/// a remote or bare `{js}` `import()` specifier. These keep a `--out` build from being
+/// self-contained (offline viewing fails). NOT flagged: `<a href>` hyperlinks (navigation, not
+/// a fetch), `data:` URIs, local/relative paths, or the tool's own inlined assets (the import
+/// scan reads only author `{js}` cell bodies). Each ref carries its enclosing block's line.
+fn external_refs(html: &str) -> Vec<ExternalRef> {
+    let bytes = html.as_bytes();
+    let mut out: Vec<ExternalRef> = Vec::new();
+    let mut push = |url: &str, off: usize, out: &mut Vec<ExternalRef>| {
+        let line = sourcepos_line_before(html, off);
+        if !out.iter().any(|r| r.url == url && r.line == line) {
+            out.push(ExternalRef {
+                url: url.to_string(),
+                line,
+            });
+        }
+    };
+    // (1) resource `src=` (always a fetch) and `<link href=>` (a stylesheet/preload fetch).
+    for attr in ["src=\"", "href=\""] {
+        let mut i = 0;
+        while let Some(pos) = html[i..].find(attr) {
+            let at = i + pos;
+            let start = at + attr.len();
+            let Some(len) = html[start..].find('"') else {
+                break;
+            };
+            let val = &html[start..start + len];
+            i = start + len;
+            // The match must *begin* an attribute name, so `data-qmd-src="…"` (click-to-source)
+            // is not harvested — mirrors `local_refs`.
+            if at > 0 && bytes[at - 1] != b'<' && !bytes[at - 1].is_ascii_whitespace() {
+                continue;
+            }
+            if !is_external_fetch(val) {
+                continue;
+            }
+            // `href=` fetches only on `<link>`; an `<a>`/`<area>`/`<base>` href is not a fetch.
+            if attr == "href=\"" && !tag_named_before(html, at, "link") {
+                continue;
+            }
+            push(val, at, &mut out);
+        }
+    }
+    // (2) remote / bare `{js}` `import()` specifiers — only inside author cell bodies, so the
+    //     tool's own inlined vendored libraries (d3/Plot) can't false-positive.
+    for body in qmd_js_cell_sources(html) {
+        let base = body.as_ptr() as usize - html.as_ptr() as usize;
+        for (rel_off, spec) in dynamic_import_specifiers(body) {
+            if is_external_fetch(&spec) || is_bare_specifier(&spec) {
+                push(&spec, base + rel_off, &mut out);
+            }
+        }
+    }
+    out
+}
+
+/// Log one located, informational warning per external reference the build left in `html`, so
+/// the author learns a "portable" output is not self-contained at the one moment they can act.
+/// Never fails the build (even under `--strict`): an external ref may be intentional, and the
+/// tool deliberately does not download arbitrary URLs at build time. `label` names the document
+/// for the located `path:line:` prefix (mirrors the other build warnings).
+fn warn_external_refs(html: &str, label: &str) {
+    for r in external_refs(html) {
+        let loc = match r.line {
+            Some(l) => format!("{label}:{l}"),
+            None => label.to_string(),
+        };
+        log::warn(&format!(
+            "{loc}: external reference not bundled: {} — the build will fetch it at view time, \
+             so the output is not self-contained (offline viewing fails)",
+            r.url
+        ));
+    }
+}
+
 #[cfg(test)]
 mod mirror_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn external_refs_flags_remote_resources_not_hyperlinks_or_local() {
+        let html = concat!(
+            "<p data-sourcepos=\"3:1-3:40\"><img src=\"https://example.com/pic.png\" alt=\"a\"></p>",
+            "<p data-sourcepos=\"5:1-5:20\"><a href=\"https://example.com\">link</a></p>",
+            "<p data-sourcepos=\"7:1-7:20\"><img src=\"local.png\"></p>",
+            "<link href=\"//cdn.test/x.css\" rel=\"stylesheet\">",
+            "<img src=\"data:image/png;base64,AAAA\">",
+            // data-qmd-src=\"…\" contains `src=\"` but must NOT be harvested (click-to-source attr).
+            "<div data-qmd-src=\"post.tmd:1\"></div>",
+        );
+        let refs = external_refs(html);
+        let urls: Vec<&str> = refs.iter().map(|r| r.url.as_str()).collect();
+        assert!(
+            urls.contains(&"https://example.com/pic.png"),
+            "a remote <img> src is a view-time fetch: {refs:?}"
+        );
+        assert!(
+            urls.contains(&"//cdn.test/x.css"),
+            "a protocol-relative <link> href is external: {refs:?}"
+        );
+        assert!(
+            !urls.contains(&"https://example.com"),
+            "an <a> hyperlink is navigation, not a view-time fetch: {refs:?}"
+        );
+        assert!(
+            !urls.iter().any(|u| u.contains("local.png")),
+            "local ref is fine"
+        );
+        assert!(
+            !urls.iter().any(|u| u.starts_with("data:")),
+            "data: URI is inline"
+        );
+        assert!(
+            !urls.iter().any(|u| u.contains("post.tmd")),
+            "data-qmd-src must not be read as a resource ref: {refs:?}"
+        );
+        let img = refs
+            .iter()
+            .find(|r| r.url == "https://example.com/pic.png")
+            .unwrap();
+        assert_eq!(
+            img.line,
+            Some(3),
+            "located to the enclosing block's sourcepos"
+        );
+    }
+
+    #[test]
+    fn external_refs_flags_remote_and_bare_js_imports_not_relative() {
+        let html = concat!(
+            "<div data-sourcepos=\"8:1-11:3\" class=\"cell tali-js-cell\">",
+            "<script type=\"application/qmd-js\" data-target=\"x\">",
+            "const three = await import(\"https://esm.sh/three@0.163.0\");\n",
+            "const local = await import(\"./helper.js\");\n",
+            "const bare = await import('lodash-es');\n",
+            "</script></div>",
+        );
+        let refs = external_refs(html);
+        let urls: Vec<&str> = refs.iter().map(|r| r.url.as_str()).collect();
+        assert!(
+            urls.contains(&"https://esm.sh/three@0.163.0"),
+            "a remote dynamic import is external: {refs:?}"
+        );
+        assert!(
+            urls.contains(&"lodash-es"),
+            "a bare specifier is unresolvable offline (no import map): {refs:?}"
+        );
+        assert!(
+            !urls.iter().any(|u| u.contains("helper.js")),
+            "a relative import is bundled by copy_js_imports, not flagged: {refs:?}"
+        );
+        let remote = refs.iter().find(|r| r.url.contains("esm.sh")).unwrap();
+        assert_eq!(remote.line, Some(8), "located to the cell's sourcepos");
+    }
+
+    #[test]
+    fn external_refs_is_empty_for_a_fully_local_page() {
+        // The nudge must not cry wolf: a self-contained page (local assets, inline data URIs,
+        // relative imports, ordinary external <a> links) yields nothing.
+        let html = concat!(
+            "<p data-sourcepos=\"1:1-1:10\"><img src=\"fig.png\"><a href=\"https://ok.test\">x</a></p>",
+            "<img src=\"data:image/svg+xml,%3Csvg/%3E\">",
+            "<link href=\"style.css\" rel=\"stylesheet\">",
+            "<div class=\"cell tali-js-cell\"><script type=\"application/qmd-js\">",
+            "const m = await import(\"./mod.js\");\n</script></div>",
+        );
+        assert_eq!(external_refs(html), Vec::new());
+    }
 
     #[test]
     fn draft_report_line_counts_and_names() {
