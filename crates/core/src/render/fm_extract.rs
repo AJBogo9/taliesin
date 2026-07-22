@@ -202,7 +202,7 @@ pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
 
 /// `theorems: numbered:` mode. `UnlessUnique` numbers a kind only when it appears more
 /// than once (a lone Theorem shows just "Theorem").
-#[derive(Default, PartialEq, Eq, Clone, Copy)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug)]
 pub(crate) enum Numbered {
     #[default]
     Yes,
@@ -213,7 +213,7 @@ pub(crate) enum Numbered {
 /// Parsed `theorems:` front-matter config (`shared` counters + `numbered` mode).
 /// Numbering *scope* is not configurable: a theorem in a numbered book chapter scopes to
 /// it ("Theorem 2.3") and is flat everywhere else, the same rule every float follows.
-#[derive(Default)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub(crate) struct TheoremConfig {
     /// Kinds that share a single counter, in declaration order. Empty = the default
     /// (each kind counts independently).
@@ -240,20 +240,12 @@ impl TheoremConfig {
     }
 }
 
-/// Parse the `theorems:` block out of a front-matter string into a `TheoremConfig`.
-/// An absent block, a parse failure, or an unexpected shape yields the default
-/// (per-kind numbering). `shared:` is a YAML list of kind names. Uses serde_yaml,
-/// already a dependency (see `frontmatter::validate_front_matter`).
-pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
+/// Parse a `theorems:` block out of an already-parsed YAML value into a `TheoremConfig`.
+/// A missing block or unexpected shape yields the default (per-kind numbering). `shared:`
+/// is a YAML list of kind names. Shared by the per-document front-matter path and the
+/// `_site.yml` book-level path.
+pub(crate) fn parse_theorem_config_value(value: &serde_yaml::Value) -> TheoremConfig {
     let mut config = TheoremConfig::default();
-    // comrak's FrontMatter node includes the `---` fences; serde_yaml treats a leading or
-    // trailing `---` as a document marker, so strip the fences to one YAML document.
-    let body = front_matter.trim();
-    let body = body.strip_prefix("---").unwrap_or(body);
-    let body = body.strip_suffix("---").unwrap_or(body);
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(body) else {
-        return config;
-    };
     if let Some(shared) = value
         .get("theorems")
         .and_then(|t| t.get("shared"))
@@ -270,4 +262,64 @@ pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
         _ => {} // true / absent / unrecognized -> Yes (default)
     }
     config
+}
+
+/// The effective theorem config for a page: its own `theorems:` block when the front-matter
+/// declares one (even an empty `theorems: {}` counts as an explicit override), else the
+/// book-level `book` config when present, else the default. A YAML parse failure falls back
+/// to `book` (or default) rather than dropping a book-wide policy.
+pub(crate) fn theorem_config_with_fallback(
+    front_matter: &str,
+    book: Option<&TheoremConfig>,
+) -> TheoremConfig {
+    // comrak's FrontMatter node includes the `---` fences; serde_yaml treats a leading or
+    // trailing `---` as a document marker, so strip the fences to one YAML document.
+    let body = front_matter.trim();
+    let body = body.strip_prefix("---").unwrap_or(body);
+    let body = body.strip_suffix("---").unwrap_or(body);
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(body) else {
+        return book.cloned().unwrap_or_default();
+    };
+    if value.get("theorems").is_some() {
+        parse_theorem_config_value(&value)
+    } else {
+        book.cloned().unwrap_or_default()
+    }
+}
+
+/// Parse the `theorems:` block out of a front-matter string into a `TheoremConfig`
+/// (no book fallback). An absent block, a parse failure, or an unexpected shape yields
+/// the default (per-kind numbering).
+pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
+    theorem_config_with_fallback(front_matter, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn theorem_fallback_prefers_page_then_book_then_default() {
+        let book = TheoremConfig {
+            shared: vec![],
+            numbered: Numbered::No,
+        };
+        // A page with no `theorems:` inherits the book config.
+        let none_page = "---\ntitle: X\n---";
+        assert_eq!(
+            theorem_config_with_fallback(none_page, Some(&book)).numbered(),
+            Numbered::No
+        );
+        // A page with its own `theorems:` overrides the book.
+        let own_page = "---\ntheorems:\n  numbered: true\n---";
+        assert_eq!(
+            theorem_config_with_fallback(own_page, Some(&book)).numbered(),
+            Numbered::Yes
+        );
+        // No book, no page config -> the default (Yes).
+        assert_eq!(
+            theorem_config_with_fallback(none_page, None).numbered(),
+            Numbered::Yes
+        );
+    }
 }
