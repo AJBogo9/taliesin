@@ -193,8 +193,9 @@ pub fn page_search_fragment(
     page: &Page,
     chapter: Option<u32>,
     targets: &HashMap<String, XrefTarget>,
+    book_theorems: Option<&render::TheoremConfig>,
 ) -> Option<String> {
-    search::page_fragment(page, chapter, targets)
+    search::page_fragment(page, chapter, targets, book_theorems)
 }
 
 mod book;
@@ -411,7 +412,12 @@ impl Site {
     /// fragments of pages nobody has open — which is the exact
     /// snippet-contradicts-its-target defect this index ordering exists to prevent.
     pub fn rebuild_search_index(&mut self) {
-        self.search_sections = search::build_sections(&self.pages, &self.book, &self.xref_targets);
+        self.search_sections = search::build_sections(
+            &self.pages,
+            &self.book,
+            &self.xref_targets,
+            self.config.theorems.as_ref(),
+        );
         self.search_index_json = search::assemble(&self.search_sections);
     }
 
@@ -496,7 +502,12 @@ impl Site {
         let Some((rel, fragment)) = self.page(rel_or_url).map(|page| {
             (
                 page.rel.clone(),
-                search::page_fragment(page, self.chapter_for(page), &self.xref_targets),
+                search::page_fragment(
+                    page,
+                    self.chapter_for(page),
+                    &self.xref_targets,
+                    self.config.theorems.as_ref(),
+                ),
             )
         }) else {
             return;
@@ -519,8 +530,12 @@ impl Site {
             },
             // Not previously indexed but now has content: recompute so page order holds.
             None if fragment.is_some() => {
-                self.search_sections =
-                    search::build_sections(&self.pages, &self.book, &self.xref_targets);
+                self.search_sections = search::build_sections(
+                    &self.pages,
+                    &self.book,
+                    &self.xref_targets,
+                    self.config.theorems.as_ref(),
+                );
             }
             None => return,
         }
@@ -646,7 +661,12 @@ impl Site {
         let base = page.input.parent().unwrap_or(&self.root);
         // A numbered book chapter scopes its theorems to its chapter number
         // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
-        let doc = render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+        let doc = render::render_document_scoped_with_theorems(
+            &src,
+            base,
+            self.chapter_for(page),
+            self.config.theorems.as_ref(),
+        );
         Some(self.render_page_doc(page, doc))
     }
 
@@ -1024,8 +1044,12 @@ impl Site {
                 continue;
             };
             let base = page.input.parent().unwrap_or(&self.root);
-            let doc =
-                render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+            let doc = render::render_document_scoped_with_theorems(
+                &src,
+                base,
+                self.chapter_for(page),
+                self.config.theorems.as_ref(),
+            );
             let mut refs: Vec<String> = Vec::new();
             for b in &doc.blocks {
                 if b.html.contains("data-qmd-xref=\"") {
@@ -1145,8 +1169,12 @@ impl Site {
                 continue;
             };
             let base = page.input.parent().unwrap_or(&self.root);
-            let mut doc =
-                render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+            let mut doc = render::render_document_scoped_with_theorems(
+                &src,
+                base,
+                self.chapter_for(page),
+                self.config.theorems.as_ref(),
+            );
             // Apply the book's chapter/section numbering so a hovered section heading
             // shows its number ("2.1"), matching the page it previews (the scoped render
             // alone doesn't prefix heading numbers — that's number_chapter_headings).

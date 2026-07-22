@@ -46,6 +46,25 @@ mod generate {
         })
     }
 
+    /// The `theorems:` config shape (`shared:` counter groups + a `numbered:` mode). Shared
+    /// by the per-document front-matter schema and the `_site.yml` book-level schema so both
+    /// describe the same key identically.
+    fn theorems_schema() -> Value {
+        closed_object(
+            THEOREM_KEYS,
+            &[
+                (
+                    "shared",
+                    json!({ "type": "array", "items": { "type": "string" } }),
+                ),
+                (
+                    "numbered",
+                    json!({ "oneOf": [{ "type": "boolean" }, { "type": "string", "enum": ["unless-unique"] }] }),
+                ),
+            ],
+        )
+    }
+
     fn boolean() -> Value {
         json!({ "type": "boolean" })
     }
@@ -78,26 +97,13 @@ mod generate {
             ]
         });
         // theorems: `shared` is a list of kind names sharing one counter.
-        let theorems = closed_object(
-            THEOREM_KEYS,
-            &[
-                (
-                    "shared",
-                    json!({ "type": "array", "items": { "type": "string" } }),
-                ),
-                (
-                    "numbered",
-                    json!({ "oneOf": [{ "type": "boolean" }, { "type": "string", "enum": ["unless-unique"] }] }),
-                ),
-            ],
-        );
         let overrides = [
             ("toc", boolean()),
             ("execute", execute),
             ("listing", listing),
             ("hero", hero),
             ("prose-lint", prose_lint),
-            ("theorems", theorems),
+            ("theorems", theorems_schema()),
             // An extension owns `format:`'s sub-keys, so leave it fully permissive.
             ("format", json!({})),
         ];
@@ -164,7 +170,12 @@ mod generate {
             "additionalProperties": false,
             "properties": properties(
                 NATIVE_KEYS,
-                &[("toc", boolean()), ("chapters", chapters), ("publish", publish)],
+                &[
+                    ("toc", boolean()),
+                    ("chapters", chapters),
+                    ("publish", publish),
+                    ("theorems", theorems_schema()),
+                ],
             ),
         })
     }

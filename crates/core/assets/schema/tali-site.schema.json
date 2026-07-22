@@ -99,6 +99,31 @@
     },
     "python": {},
     "r": {},
+    "theorems": {
+      "additionalProperties": false,
+      "properties": {
+        "numbered": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "enum": [
+                "unless-unique"
+              ],
+              "type": "string"
+            }
+          ]
+        },
+        "shared": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "title": {},
     "toc": {
       "type": "boolean"

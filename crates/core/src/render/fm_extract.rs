@@ -213,8 +213,11 @@ pub(crate) enum Numbered {
 /// Parsed `theorems:` front-matter config (`shared` counters + `numbered` mode).
 /// Numbering *scope* is not configurable: a theorem in a numbered book chapter scopes to
 /// it ("Theorem 2.3") and is flat everywhere else, the same rule every float follows.
+/// Theorem-numbering policy (`theorems:`), from a document's front-matter or a book's
+/// `_site.yml`. Public as an opaque handle so the site search API can carry a book-level
+/// config through; its fields and accessors stay crate-internal.
 #[derive(Default, Clone, Debug, PartialEq)]
-pub(crate) struct TheoremConfig {
+pub struct TheoremConfig {
     /// Kinds that share a single counter, in declaration order. Empty = the default
     /// (each kind counts independently).
     shared: Vec<String>,
@@ -288,8 +291,9 @@ pub(crate) fn theorem_config_with_fallback(
 }
 
 /// Parse the `theorems:` block out of a front-matter string into a `TheoremConfig`
-/// (no book fallback). An absent block, a parse failure, or an unexpected shape yields
-/// the default (per-kind numbering).
+/// (no book fallback). A readability wrapper used only by tests; production code calls
+/// [`theorem_config_with_fallback`] directly (with or without a book fallback).
+#[cfg(test)]
 pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
     theorem_config_with_fallback(front_matter, None)
 }

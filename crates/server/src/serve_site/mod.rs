@@ -1506,13 +1506,19 @@ fn rebuild_project(
         // shows ("Theorem 2.1", not "Theorem 1").
         let found = {
             let site = project.site.lock();
-            site.page(rel).map(|p| (p.clone(), site.chapter_for(p)))
+            site.page(rel)
+                .map(|p| (p.clone(), site.chapter_for(p), site.config.theorems.clone()))
         };
-        let Some((page, chapter)) = found else {
+        let Some((page, chapter, book_theorems)) = found else {
             continue;
         };
         let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            taliesin_core::site::page_search_fragment(&page, chapter, &xref_targets)
+            taliesin_core::site::page_search_fragment(
+                &page,
+                chapter,
+                &xref_targets,
+                book_theorems.as_ref(),
+            )
         }));
         // A render panic keeps the last-good fragment (don't wipe the page from search).
         if let Ok(fragment) = computed {
