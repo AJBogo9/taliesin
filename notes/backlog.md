@@ -172,8 +172,14 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     (TTY-gated; PA-B2). *Residual:* PA-CLI1/2/3 `--help` drift. **(e) reduced-motion + print — SHIPPED**
     (`polish/reduced-motion-print`): the preview client's 3 smooth-scrolls + the lightbox/link-preview
     transitions honour `prefers-reduced-motion` (PA-B6/B7), printed external links spell out their URL
-    (`a[href^=http]::after`; PA-P1), and `pre` drops its scroll-shadow for print (PA-P2). Owner design-Qs (deck
-    copy-button, card whole-`<a>`) parked in the doc, not build-ready.
+    (`a[href^=http]::after`; PA-P1), and `pre` drops its scroll-shadow for print (PA-P2). **(f) extension
+    emitted-markup a11y — SHIPPED** (`feat/a11y-emitted-markup`): the reactive-slider `<output>` gains
+    `for="<control-id>"` so AT ties the readout to its range input (PA-M9), and the deck-embed `target="_blank"`
+    "Open ↗" link gains a visually-hidden "(opens in a new tab)" cue (PA-M11); pinned by
+    `render::extension::a11y_tests::{slider_output_is_tied_to_its_control_with_for,
+    embed_external_link_announces_the_new_tab}` + the updated `input_slider_shortcode_emits_reactive_control` +
+    `reactive_inputs` snapshot. *Residual:* PA-M2 (`<article>`), PA-M3 (`<ul>`/`role=list`), PA-M13 (hero/card
+    image-alt lint nudge). Owner design-Qs (deck copy-button, card whole-`<a>`) parked in the doc, not build-ready.
 
 12. **i18n / Unicode multibyte-offset correctness** (P3 hardening; detail:
     [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md), perspective AP5;
