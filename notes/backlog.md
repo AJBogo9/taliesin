@@ -300,6 +300,30 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
       the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
 
+18. **Demand-probe (interactive-explainer, persona #3) findings** (P3, in-scope; detail:
+    [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)).
+    A single-page explorable explanation (`corpus/descent/`, gradient descent, pinned by `descent.rs` +
+    a `/gallery/descent` exhibit) stacked the interactive cluster the corpus never combined on one page —
+    `{{< input >}}` sliders × a **draggable** `{js}` graphic × a `.scrolly` sticky `{js}` graphic × a
+    reactive Plot cell × math × two numbered SVG figures — and it ALL works, standalone and mounted, 0
+    console errors. Three P3 findings:
+    - **F-01 (friction, P3):** the machine-facing `taliesin read` projection concatenates structured
+      blocks — a `{{< input >}}` control's label+value (`step size (η)0.12`) and, worse, `.scrolly`
+      `.step` narrations *across step boundaries* (`…the middle.Which way is downhill.`). **Third straight
+      persona to hit the `read` seam** (after item 16 F-02 + item 17 F-03); the recurrence is the signal —
+      book-aware, structure-preserving `read` is the highest-yield cross-persona item. Same family as those.
+    - **F-02 (gap, P3):** an authored numbered figure is emitted as `<img src="fig.svg">`, and an
+      `<img>`-embedded SVG is style-isolated: it can't see `--tali-*` or the `qmd-theme` toggle, only the
+      **OS** `prefers-color-scheme`. So a reader who forces the page theme opposite their OS gets the
+      figure in the wrong palette (light-palette labels, weak contrast, on a dark page). Inline `{js}`/SVG
+      graphics on the same page track the toggle fine (they use `--tali-*`). Candidates: an inline-SVG
+      figure path so `![](x.svg)` inherits page vars, or document a neutral-palette convention. Edits
+      would touch `crates/core/src/render/figure.rs` (figure emission).
+    - **F-03 (WAI, authoring nuance):** a `{js}` "once" cell's returned node is mounted *after* the cell
+      body runs, so an attachment-gated init (`if (!node.isConnected) return`) silently no-ops the first
+      paint. Gate teardown on `invalidation`, not DOM attachment. WAI but a sharp edge — candidate: a doc
+      line in the `{js}`-cell reference, or an optional post-mount hook.
+
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
