@@ -133,6 +133,14 @@ fn project_block(b: &Block) -> String {
         return project_list(html, 0);
     }
 
+    // A scrolly / code-walkthrough: project each `.step`'s narration as its own paragraph
+    // so adjacent steps don't merge across the boundary (`…in the middle.Which way…`). The
+    // `scrolly-steps` container carries the token `scrolly-steps`, not `step`, so matching
+    // the exact opening `<div class="step"` never mistakes the container for a step.
+    if html.contains("<div class=\"step\"") {
+        return project_steps(html);
+    }
+
     let text = visible(html);
     // A bare image (no figure/caption) has no visible text; surface its alt so the block
     // isn't silently dropped.
@@ -307,6 +315,60 @@ fn split_nested_list(item: &str) -> (&str, Option<&str>) {
         Some(at) => (&item[..at], Some(&item[at..])),
         None => (item, None),
     }
+}
+
+/// Project a stepped block (a `.scrolly`'s `scrolly-steps`, or a `.code-walkthrough`) so
+/// each `.step`'s visible text is its own paragraph, blank-line separated.
+fn project_steps(html: &str) -> String {
+    step_inners(html)
+        .into_iter()
+        .map(visible)
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// The inner HTML of each `<div class="step"…>` in a stepped block, matched depth-aware
+/// over `<div`/`</div>` so a nested `<div>` inside a step does not close it early.
+fn step_inners(html: &str) -> Vec<&str> {
+    let open = "<div class=\"step\"";
+    let mut steps = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = html[pos..].find(open) {
+        let tag_start = pos + rel;
+        let Some(gt) = html[tag_start..].find('>') else {
+            break;
+        };
+        let start = tag_start + gt + 1;
+        let mut depth = 1usize;
+        let mut i = start;
+        loop {
+            let next_open = html[i..].find("<div");
+            let next_close = html[i..].find("</div>");
+            match (next_open, next_close) {
+                (Some(o), Some(c)) if o < c => {
+                    depth += 1;
+                    i += o + "<div".len();
+                }
+                (_, Some(c)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        steps.push(&html[start..i + c]);
+                        i += c + "</div>".len();
+                        break;
+                    }
+                    i += c + "</div>".len();
+                }
+                _ => {
+                    steps.push(&html[start..]);
+                    i = html.len();
+                    break;
+                }
+            }
+        }
+        pos = i;
+    }
+    steps
 }
 
 /// `(index of '<' opening the element, index of '>' closing its opening tag)` for the first
@@ -650,6 +712,25 @@ mod tests {
         assert!(
             out.contains("  - nested b"),
             "nested item indented two spaces:\n{out}"
+        );
+    }
+
+    #[test]
+    fn projects_scrolly_steps_as_separate_paragraphs() {
+        let src = "::: {.scrolly}\n::: {.step}\nThe landscape. High on the wall.\n:::\n\n\
+                   ::: {.step}\nWhich way is downhill. The gradient points across.\n:::\n:::\n";
+        let out = project_src(src);
+        assert!(
+            out.contains("The landscape. High on the wall."),
+            "step 1 text:\n{out}"
+        );
+        assert!(
+            out.contains("Which way is downhill."),
+            "step 2 text:\n{out}"
+        );
+        assert!(
+            !out.contains("wall.Which"),
+            "steps must not merge across their boundary:\n{out}"
         );
     }
 }
