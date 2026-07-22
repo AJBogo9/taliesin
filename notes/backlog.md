@@ -17,7 +17,26 @@ go-to-definition, outline, hover, completion, quick-fix code actions, rename) no
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
 shipped"). **Most of the backlog has already shipped** (DX, PMF, polish, machine-facing, corpus-coverage
 and reduction audits are all closed; a second **2026-07-22 polish round** — a browser sweep + 4 code auditors —
-reopened a small P3 hardening/a11y tail, item 11). What is actually open is small; it is ranked below by product impact.
+reopened a small P3 hardening/a11y tail, item 11, whose **pass (a) — design-system single-source + the
+dark-mode WCAG-AA fix on filled chrome controls — shipped 2026-07-22**). What is actually open is small; it is
+ranked below by product impact.
+
+## Next session: start here
+
+Tree is green across all gates; `origin/main` is current. Two clean entry points, pick by appetite:
+
+- **Continue the 2026-07-22 polish audit (item 11) — small + safe.** Pass (a) shipped; the next
+  highest-value slice is **pass (b) scaffold-completeness, PA-H2** — the audit's one "high" finding:
+  listing/section pages (`/blog`, `/publications`, `/projects`) emit **no `<h1>`** and open at H2/H3 (SEO +
+  heading-nav). It demotes heading levels, so it **touches the body-HTML snapshot tests** — a bigger, more
+  visible change than pass (a). Then (c) a11y announce/focus holes, (d) CLI/diagnostics, (e)
+  reduced-motion+print. Detail: [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md).
+- **Or the one High-impact feature, DX17(b) headless `{js}` (item 1) — large, needs a ruling first:** it
+  adds a headless-Chrome dependency (`chromiumoxide`) to the offline tool, so it wants its own spec/plan and
+  an owner sign-off on the new dep before coding. Design is already drafted (see item 1).
+
+Everything else open is P3/gated (items 5–10) or demand-driven (Tier 3). Working method is in "Standing
+constraints": branch per feature, verify by mutation, browser-verify, ff-merge locally.
 
 ## Standing constraints (read before working)
 
