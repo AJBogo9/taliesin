@@ -1452,6 +1452,11 @@
         return;
       }
       abs = ref.source_file ? doc.baseDir.replace(/\/+$/, "") + "/" + ref.source_file : doc.path;
+      // `data-sourcepos` columns are byte offsets (comrak), while `vscode://file:line:col`
+      // wants a character column. We only ever take a *block start* column, and everything
+      // before a block's start on its line is ASCII structural syntax (indentation, list /
+      // blockquote markers), so its byte column always equals its character column here —
+      // no source text (which the client does not have) is needed to convert.
       const m = /^(\d+):(\d+)/.exec(ref.sourcepos || "");
       if (m) { line = m[1]; col = m[2]; }
     }

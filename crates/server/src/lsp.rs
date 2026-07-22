@@ -8,8 +8,9 @@
 
 use lsp_server::{Connection, Message};
 use lsp_types::{
-    CodeActionProviderCapability, CompletionOptions, HoverProviderCapability, OneOf, RenameOptions,
-    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    CodeActionProviderCapability, CompletionOptions, HoverProviderCapability, OneOf,
+    PositionEncodingKind, RenameOptions, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
@@ -19,6 +20,10 @@ use std::process::ExitCode;
 /// cross-reference anchor + its references. This is the full E7 intelligence surface.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
+        // Columns on the wire are UTF-16 code units (the LSP default, and what the VS Code
+        // companion uses). We work in Unicode scalars internally and convert at the boundary
+        // (`lsp_pos`); advertise the encoding explicitly so the contract is not implicit.
+        position_encoding: Some(PositionEncodingKind::UTF16),
         text_document_sync: Some(TextDocumentSyncCapability::Options(
             TextDocumentSyncOptions {
                 open_close: Some(true),
@@ -231,50 +236,59 @@ fn resolve_definition(
     let uri = &params.text_document_position_params.text_document.uri;
     let pos = params.text_document_position_params.position;
     let text = docs.get(uri)?;
-    let point = |line: u32, col: u32, end: u32| {
-        Range::new(Position::new(line, col), Position::new(line, end))
+    // Incoming column is UTF-16; the nav scanners work in scalar offsets. `point` builds an
+    // outgoing range from scalar columns on a given line, converting each back to UTF-16.
+    let cursor_char = crate::lsp_pos::utf16_to_char(
+        crate::lsp_pos::nth_line(text, pos.line as usize),
+        pos.character as usize,
+    );
+    let point = |src: &str, line: u32, col: u32, end: u32| {
+        let l = crate::lsp_pos::nth_line(src, line as usize);
+        Range::new(
+            Position::new(line, crate::lsp_pos::char_to_utf16(l, col as usize) as u32),
+            Position::new(line, crate::lsp_pos::char_to_utf16(l, end as usize) as u32),
+        )
     };
 
-    let location =
-        match crate::lsp_nav::classify_target(text, pos.line as usize, pos.character as usize) {
-            // `{{< include x.tmd >}}` → the file (position 0:0), when it exists on disk.
-            Target::Include { path, .. } => {
-                let dir = uri.to_file_path().ok()?;
-                let abs = dir.parent()?.join(&path);
-                if !abs.exists() {
-                    return None;
+    let location = match crate::lsp_nav::classify_target(text, pos.line as usize, cursor_char) {
+        // `{{< include x.tmd >}}` → the file (position 0:0), when it exists on disk.
+        Target::Include { path, .. } => {
+            let dir = uri.to_file_path().ok()?;
+            let abs = dir.parent()?.join(&path);
+            if !abs.exists() {
+                return None;
+            }
+            Location::new(Url::from_file_path(&abs).ok()?, point("", 0, 0, 0))
+        }
+        // `@fig-x` → its definition in this document (cross-file refs get nothing).
+        Target::Xref { id, .. } => {
+            let (line, col) = crate::lsp_nav::definition_site(text, &id)?;
+            Location::new(
+                uri.clone(),
+                point(text, line, col, col + id.chars().count() as u32),
+            )
+        }
+        // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
+        Target::Cite { key, .. } => {
+            let dir = uri.to_file_path().ok()?;
+            let dir = dir.parent()?;
+            let mut hit = None;
+            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
+                let abs = dir.join(&rel);
+                if let Ok(bib) = std::fs::read_to_string(&abs)
+                    && let Some((line, col)) = crate::lsp_nav::bib_entry_site(&bib, &key)
+                {
+                    hit = Some(Location::new(
+                        Url::from_file_path(&abs).ok()?,
+                        point(&bib, line, col, col),
+                    ));
+                    break;
                 }
-                Location::new(Url::from_file_path(&abs).ok()?, point(0, 0, 0))
             }
-            // `@fig-x` → its definition in this document (cross-file refs get nothing).
-            Target::Xref { id, .. } => {
-                let (line, col) = crate::lsp_nav::definition_site(text, &id)?;
-                Location::new(
-                    uri.clone(),
-                    point(line, col, col + id.chars().count() as u32),
-                )
-            }
-            // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
-            Target::Cite { key, .. } => {
-                let dir = uri.to_file_path().ok()?;
-                let dir = dir.parent()?;
-                let mut hit = None;
-                for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                    let abs = dir.join(&rel);
-                    if let Ok(bib) = std::fs::read_to_string(&abs)
-                        && let Some((line, col)) = crate::lsp_nav::bib_entry_site(&bib, &key)
-                    {
-                        hit = Some(Location::new(
-                            Url::from_file_path(&abs).ok()?,
-                            point(line, col, col),
-                        ));
-                        break;
-                    }
-                }
-                hit?
-            }
-            Target::FrontmatterKey { .. } | Target::None => return None,
-        };
+            hit?
+        }
+        Target::FrontmatterKey { .. } | Target::None => return None,
+    };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
 
@@ -293,6 +307,10 @@ fn resolve_hover(
     let uri = &params.text_document_position_params.text_document.uri;
     let pos = params.text_document_position_params.position;
     let text = docs.get(uri)?;
+    // The hovered token is always on the cursor's line, so scalar↔UTF-16 both convert
+    // against that one line: UTF-16 in for the lookup, UTF-16 out for the highlight range.
+    let cur_line = crate::lsp_pos::nth_line(text, pos.line as usize);
+    let cursor_char = crate::lsp_pos::utf16_to_char(cur_line, pos.character as usize);
     let markup = |value: String, start: usize, end: usize| {
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -300,13 +318,19 @@ fn resolve_hover(
                 value,
             }),
             range: Some(Range::new(
-                Position::new(pos.line, start as u32),
-                Position::new(pos.line, end as u32),
+                Position::new(
+                    pos.line,
+                    crate::lsp_pos::char_to_utf16(cur_line, start) as u32,
+                ),
+                Position::new(
+                    pos.line,
+                    crate::lsp_pos::char_to_utf16(cur_line, end) as u32,
+                ),
             )),
         })
     };
 
-    match crate::lsp_nav::classify_target(text, pos.line as usize, pos.character as usize) {
+    match crate::lsp_nav::classify_target(text, pos.line as usize, cursor_char) {
         // `@fig-2` → the rendered label + number ("Figure 2"). The label lookup gates it: an
         // anchor whose prefix names no cross-reference kind gets no hover.
         Target::Xref { id, start, end } => {
@@ -398,11 +422,18 @@ fn resolve_prepare_rename(
     use lsp_types::{Position, PrepareRenameResponse, Range};
     let text = docs.get(&params.text_document.uri)?;
     let pos = params.position;
-    let (_, start, end) =
-        crate::lsp_nav::anchor_at(text, pos.line as usize, pos.character as usize)?;
+    let cur_line = crate::lsp_pos::nth_line(text, pos.line as usize);
+    let cursor_char = crate::lsp_pos::utf16_to_char(cur_line, pos.character as usize);
+    let (_, start, end) = crate::lsp_nav::anchor_at(text, pos.line as usize, cursor_char)?;
     Some(PrepareRenameResponse::Range(Range::new(
-        Position::new(pos.line, start as u32),
-        Position::new(pos.line, end as u32),
+        Position::new(
+            pos.line,
+            crate::lsp_pos::char_to_utf16(cur_line, start) as u32,
+        ),
+        Position::new(
+            pos.line,
+            crate::lsp_pos::char_to_utf16(cur_line, end) as u32,
+        ),
     )))
 }
 
@@ -422,12 +453,27 @@ fn resolve_rename(
         return None;
     }
     let text = docs.get(uri)?;
-    let (id, _, _) = crate::lsp_nav::anchor_at(text, pos.line as usize, pos.character as usize)?;
+    let cursor_char = crate::lsp_pos::utf16_to_char(
+        crate::lsp_pos::nth_line(text, pos.line as usize),
+        pos.character as usize,
+    );
+    let (id, _, _) = crate::lsp_nav::anchor_at(text, pos.line as usize, cursor_char)?;
+    // Occurrences span many lines; each edit range converts its own line's scalar columns to
+    // UTF-16 so the editor overwrites exactly the id, never a byte off, on any line.
     let edits: Vec<TextEdit> = crate::lsp_nav::anchor_occurrences(text, &id)
         .into_iter()
-        .map(|(line, start, end)| TextEdit {
-            range: Range::new(Position::new(line, start), Position::new(line, end)),
-            new_text: new_name.to_string(),
+        .map(|(line, start, end)| {
+            let l = crate::lsp_pos::nth_line(text, line as usize);
+            TextEdit {
+                range: Range::new(
+                    Position::new(
+                        line,
+                        crate::lsp_pos::char_to_utf16(l, start as usize) as u32,
+                    ),
+                    Position::new(line, crate::lsp_pos::char_to_utf16(l, end as usize) as u32),
+                ),
+                new_text: new_name.to_string(),
+            }
         })
         .collect();
     if edits.is_empty() {
@@ -460,9 +506,11 @@ fn resolve_completion(
     let text = docs.get(uri)?;
 
     // Char-based line prefix (line start → cursor) and document prefix (doc start → cursor).
+    // The incoming column is UTF-16; convert to a scalar index before slicing by `chars()`.
     let lines: Vec<&str> = text.split('\n').collect();
     let line = lines.get(pos.line as usize).copied().unwrap_or("");
-    let line_prefix: String = line.chars().take(pos.character as usize).collect();
+    let cursor_char = crate::lsp_pos::utf16_to_char(line, pos.character as usize);
+    let line_prefix: String = line.chars().take(cursor_char).collect();
     let mut doc_prefix = String::new();
     for l in lines.iter().take(pos.line as usize) {
         doc_prefix.push_str(l);
@@ -593,10 +641,15 @@ fn resolve_completion(
                 Shortcode::Include => "partial",
             };
             // Replace the whole typed path (incl. any dir prefix) so descending overwrites
-            // cleanly rather than appending to a half-typed segment.
-            let typed_len = typed.chars().count() as u32;
+            // cleanly rather than appending to a half-typed segment. The start is the cursor
+            // less the typed length in scalars, re-expressed in UTF-16; the end is the cursor.
+            let typed_len = typed.chars().count();
+            let start_char = cursor_char.saturating_sub(typed_len);
             let replace = Range::new(
-                Position::new(pos.line, pos.character.saturating_sub(typed_len)),
+                Position::new(
+                    pos.line,
+                    crate::lsp_pos::char_to_utf16(line, start_char) as u32,
+                ),
                 pos,
             );
             crate::lsp_complete::shortcode_path_candidates(&entries, &typed, file_detail)
@@ -738,7 +791,12 @@ fn to_document_symbol(
     let last = lines.len().saturating_sub(1);
     let start = node.start_line.min(last);
     let end = node.end_line.max(node.start_line).min(last);
-    let line_len = |i: usize| lines.get(i).map_or(0, |l| l.chars().count()) as u32;
+    // Column 0 needs no conversion; the end-of-line column is a UTF-16 unit count.
+    let line_len = |i: usize| {
+        lines
+            .get(i)
+            .map_or(0, |l| l.chars().map(char::len_utf16).sum::<usize>()) as u32
+    };
     let name = if node.title.is_empty() {
         "(untitled)".to_string()
     } else {
@@ -1639,6 +1697,52 @@ mod tests {
             ranges,
             vec![(0, 13, 22), (2, 5, 14), (2, 20, 29)],
             "the definition span then both reference spans"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn rename_speaks_utf16_columns_across_an_astral_char() {
+        // The write path is the sharpest edge of the encoding boundary: an astral char (😀,
+        // two UTF-16 units) before a reference shifts every column. The editor sends UTF-16
+        // and expects UTF-16 back; a scalar-vs-UTF-16 mismatch would make the server miss the
+        // anchor (wrong incoming column) or overwrite the wrong span (wrong outgoing range).
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-rename-astral.tmd").unwrap();
+        // Def `{#fig-1}` on line 0 (ASCII, id chars/UTF-16 [13,18)); ref `@fig-1` on line 2
+        // after two emojis, so the id sits at char [3,8) but UTF-16 [5,10).
+        let text = "![p](i.png){#fig-1}\n\n😀😀@fig-1\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Cursor at UTF-16 col 9 (the `1`). Read as a scalar column that is past the 8-scalar
+        // line end, so without incoming conversion the server finds no anchor and returns null.
+        let edit = rename_at(&client, &uri, 50, 2, 9, "fig-2")
+            .expect("the anchor is found when the incoming UTF-16 column is converted");
+        let edits = edit
+            .changes
+            .as_ref()
+            .and_then(|c| c.get(&uri))
+            .expect("edits for this document");
+        let ranges: Vec<(u32, u32, u32)> = edits
+            .iter()
+            .map(|e| {
+                (
+                    e.range.start.line,
+                    e.range.start.character,
+                    e.range.end.character,
+                )
+            })
+            .collect();
+        assert_eq!(
+            ranges,
+            vec![(0, 13, 18), (2, 5, 10)],
+            "the ASCII def span, then the ref span shifted by the two emojis' extra UTF-16 units"
         );
 
         shutdown(&client);

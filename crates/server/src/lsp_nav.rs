@@ -4,8 +4,9 @@
 //! `definitionSite`, `bibEntryOffset`) + `complete.ts` (`frontmatterBibPaths`), so the
 //! `lsp` server can answer go-to-definition for any editor.
 //!
-//! Offsets are char-based (equal to UTF-16 for ASCII, which covers every realistic xref
-//! id / cite key / path / front-matter key), matching the diagnostics slice's `to_lsp`.
+//! Offsets are scalar (`char`) based, matching the diagnostics slice's `to_lsp`; the `lsp`
+//! server converts them to/from the wire's UTF-16 columns at its boundary (`lsp_pos`), so
+//! parity with the UTF-16 companion holds for all text, astral characters included.
 
 /// Front-matter parents whose immediate children have their own vocabulary (mirrors
 /// `hover.ts`/`complete.ts`).

@@ -175,26 +175,20 @@ is currently open; the remaining work is P3/gated or demand-driven.)*
     (`a[href^=http]::after`; PA-P1), and `pre` drops its scroll-shadow for print (PA-P2). Owner design-Qs (deck
     copy-button, card whole-`<a>`) parked in the doc, not build-ready.
 
-12. **i18n / Unicode multibyte-offset correctness** (P3 hardening; detail:
-    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md), perspective AP5;
-    [AUDITS.md](AUDITS.md) records the round). Three disagreeing column conventions meet at the editor
-    boundary, none of them the UTF-16 that both `vscode://file:line:col` and the LSP protocol expect: comrak
-    `data-sourcepos` columns are byte-based (proven: `你好 world`, 8 chars / 12 bytes, emits `1:1-1:12`), the
-    stdio LSP + diagnostics `to_lsp` are Unicode-scalar-based and never negotiate `positionEncoding`, and the
-    TS companion is UTF-16. Scalar equals UTF-16 across the whole BMP, so all realistic natural-language text
-    (accents, CJK, Cyrillic, Arabic) navigates correctly; the defect surface is astral characters (emoji, math
-    letters) sitting on the same line before a token. Build-ready pieces:
-    - **I18N-2/I18N-3 (one change, M):** make the stdio LSP encoding-correct. Advertise `position_encoding`
-      and convert UTF-16 <-> scalar at the boundary (incoming positions) and when emitting `Position`s
-      (go-to-definition, hover, completion replace-range, prepareRename, **rename** (a write path, the
-      sharpest edge), document symbols, and `to_lsp`). `crates/server/src/{lsp.rs,lsp_nav.rs,check.rs}`.
-    - **I18N-1 (browser link, S):** convert the byte-based `data-sourcepos` start column to a character column
-      before building the `vscode://file:line:col` URL (`web-client/client.js:1455-1462`). Low practical impact
-      (block start column is usually 1) but removes the wrong-unit contract.
-    - **I18N-5 (S):** add BMP + astral fixtures to the LSP + diagnostics tests (land first, as a failing
-      guard). **I18N-4 (XS):** after the fix, restore the `lsp_nav.rs` "port of the companion" parity claim.
-    *Verified safe, do not re-audit: the core scanners, text truncation (`char_indices`), heading-attr
-    slicing, block identity, and front-matter diagnostic columns are all multibyte-correct already.*
+12. **i18n / Unicode multibyte-offset correctness — LSP encoding fix SHIPPED 2026-07-22** (branch
+    `worktree-i18n-multibyte-lsp`, unpushed — author pushes; detail:
+    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md), perspective AP5).
+    I18N-2/3/4/5 landed: the stdio LSP now advertises `positionEncoding: utf-16` and converts UTF-16 <->
+    Unicode scalar at every boundary (incoming positions **and** every emitted `Position`: go-to-definition,
+    hover, completion replace-range, prepareRename, **rename** (the write path), documentSymbol, and diagnostics
+    `to_lsp`) via a pure `lsp_pos` module. Scalar equals UTF-16 across the whole BMP, so only astral characters
+    (emoji, math letters) before a token were ever off; now correct there too. Pinned (all as failing guards
+    first, per TDD): `lsp_pos::tests::*` + `check::tests::to_lsp_*utf16*` + `lsp::tests::rename_speaks_utf16_*`.
+    **I18N-1 resolved as documentation** (`web-client/client.js`): a block's start column is always ASCII-prefixed
+    (indentation / list / blockquote markers), so its byte column already equals its character column, and the
+    client has no source text to convert with — the "wrong-unit contract" was unreachable; made explicit in a
+    comment rather than faking a conversion. *Residual (not build-ready, demand-driven — do not spin up without
+    a real ask): RTL layout, CJK line-breaking, non-ASCII heading-slug collisions.*
 
 13. **Offline-guarantee: warn when a `--out` build is not self-contained** (P3, protects a headline invariant;
     detail: [2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md), perspective AP12;

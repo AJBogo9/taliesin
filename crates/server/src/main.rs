@@ -22,6 +22,7 @@ mod lsp;
 mod lsp_complete;
 mod lsp_nav;
 mod lsp_outline;
+mod lsp_pos;
 mod mcp;
 mod minify;
 mod preview_diag;

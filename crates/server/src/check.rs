@@ -80,13 +80,19 @@ impl Diagnostic {
         };
         let last = lines.len().saturating_sub(1) as u32;
         let line0 = self.line.unwrap_or(1).saturating_sub(1).min(last);
+        // `col`/`end_col` are 1-based *character* columns; LSP columns are UTF-16 code units,
+        // so convert against this line's text (a no-op for BMP text, which is why all realistic
+        // natural-language docs already worked; astral chars are what shift).
+        let line_text = lines.get(line0 as usize).copied().unwrap_or("");
+        let to_u16 =
+            |char_col: u32| crate::lsp_pos::char_to_utf16(line_text, char_col as usize) as u32;
         let range = match (self.col, self.end_col) {
             (Some(c), Some(e)) => Range::new(
-                Position::new(line0, c.saturating_sub(1)),
-                Position::new(line0, e.saturating_sub(1)),
+                Position::new(line0, to_u16(c.saturating_sub(1))),
+                Position::new(line0, to_u16(e.saturating_sub(1))),
             ),
             _ => {
-                let len = lines.get(line0 as usize).map_or(0, |l| l.chars().count()) as u32;
+                let len = line_text.chars().map(char::len_utf16).sum::<usize>() as u32;
                 Range::new(Position::new(line0, 0), Position::new(line0, len))
             }
         };
@@ -874,6 +880,49 @@ mod tests {
             lsp.code_description.map(|c| c.href.to_string()),
             Some("https://example.test/DIAGNOSTICS.md#tal-fm-key".to_string())
         );
+    }
+
+    #[test]
+    fn to_lsp_columns_are_utf16_when_an_astral_char_precedes_the_token() {
+        // The `check` validators produce 1-based *character* columns. LSP columns are UTF-16
+        // code units, so an astral char (😀 = 2 UTF-16 units) before the token must shift the
+        // emitted column by one extra unit. `😀tittle`: `tittle` is char cols [2,8), which is
+        // UTF-16 cols [2,8) (0-based) once the emoji's second unit is counted.
+        let d = super::Diagnostic {
+            code: "TAL-FM-KEY",
+            docs_url: "https://example.test/x".to_string(),
+            severity: "warning",
+            file: "buf.tmd".to_string(),
+            line: Some(1),
+            col: Some(2),
+            end_col: Some(8),
+            message: "unknown key `tittle`".to_string(),
+            suggestion: None,
+        };
+        let lines = ["😀tittle: Hi"];
+        let lsp = d.to_lsp(&lines);
+        assert_eq!(lsp.range.start, lsp_types::Position::new(0, 2));
+        assert_eq!(lsp.range.end, lsp_types::Position::new(0, 8));
+    }
+
+    #[test]
+    fn to_lsp_whole_line_span_length_is_in_utf16_units() {
+        // `😀 hello` is 7 scalars but 8 UTF-16 units; the uncolumned whole-line span must end
+        // at the UTF-16 length, not the char count.
+        let d = super::Diagnostic {
+            code: "TAL-XREF-UNDEF",
+            docs_url: "https://example.test/x".to_string(),
+            severity: "error",
+            file: "buf.tmd".to_string(),
+            line: Some(1),
+            col: None,
+            end_col: None,
+            message: "undefined".to_string(),
+            suggestion: None,
+        };
+        let lines = ["😀 hello"];
+        let lsp = d.to_lsp(&lines);
+        assert_eq!(lsp.range.end, lsp_types::Position::new(0, 8));
     }
 
     #[test]
