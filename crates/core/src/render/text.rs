@@ -127,6 +127,12 @@ fn project_block(b: &Block) -> String {
         return project_callout(html, kind);
     }
 
+    // A list: project each top-level <li> on its own line so items don't run together
+    // (`…reference.Returns —…`). Ordered lists count; a nested list indents two spaces.
+    if matches!(leading_tag(html), Some("ul") | Some("ol")) {
+        return project_list(html, 0);
+    }
+
     let text = visible(html);
     // A bare image (no figure/caption) has no visible text; surface its alt so the block
     // isn't silently dropped.
@@ -214,6 +220,92 @@ fn project_callout(html: &str, kind: &str) -> String {
         head
     } else {
         format!("{head}\n{body}")
+    }
+}
+
+/// Project a `<ul>`/`<ol>` list block to one line per item, nested lists indented two
+/// spaces per level. `indent` is the current nesting depth (0 at the top). Each item keeps
+/// its visible inline text (bold/links/code stripped); an ordered list counts from `start`.
+fn project_list(html: &str, indent: usize) -> String {
+    let ordered = leading_tag(html) == Some("ol");
+    // `<ol start="N">` begins at N; a bare `<ol>`/`<ul>` at 1.
+    let mut n: usize = first_attr(html, "start")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    let pad = "  ".repeat(indent);
+    let mut lines = Vec::new();
+    for item in top_level_li_inner(html) {
+        // Split off a trailing nested list: the text before it is this item; the nested
+        // list (if any) recurses one level deeper.
+        let (own, nested) = split_nested_list(item);
+        let marker = if ordered {
+            let m = format!("{n}.");
+            n += 1;
+            m
+        } else {
+            "-".to_string()
+        };
+        lines.push(format!("{pad}{marker} {}", visible(own)));
+        if let Some(nested) = nested {
+            let sub = project_list(nested, indent + 1);
+            if !sub.is_empty() {
+                lines.push(sub);
+            }
+        }
+    }
+    lines.join("\n")
+}
+
+/// The inner HTML of each TOP-LEVEL `<li>` in a list block. `<li>` is emitted
+/// attribute-free (`emit.rs::emit_item`), so the literal `<li>`/`</li>` delimit items;
+/// nested lists' `<li>`s are matched by depth so a nested item is not taken as top-level.
+fn top_level_li_inner(html: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = html[pos..].find("<li>") {
+        let start = pos + rel + "<li>".len();
+        let mut depth = 1usize;
+        let mut i = start;
+        loop {
+            let open = html[i..].find("<li>");
+            let close = html[i..].find("</li>");
+            match (open, close) {
+                (Some(o), Some(c)) if o < c => {
+                    depth += 1;
+                    i += o + "<li>".len();
+                }
+                (_, Some(c)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        items.push(&html[start..i + c]);
+                        i += c + "</li>".len();
+                        break;
+                    }
+                    i += c + "</li>".len();
+                }
+                _ => {
+                    // Malformed (no matching close): take the rest and stop.
+                    items.push(&html[start..]);
+                    i = html.len();
+                    break;
+                }
+            }
+        }
+        pos = i;
+    }
+    items
+}
+
+/// Split a `<li>`'s inner HTML at its first nested list (`<ul`/`<ol`): the leading part is
+/// the item's own content; the trailing part (if any) is the nested list to recurse into.
+fn split_nested_list(item: &str) -> (&str, Option<&str>) {
+    let at = match (item.find("<ul"), item.find("<ol")) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    match at {
+        Some(at) => (&item[..at], Some(&item[at..])),
+        None => (item, None),
     }
 }
 
@@ -525,5 +617,39 @@ mod tests {
         let mut lines = std::collections::HashMap::new();
         lines.insert(doc.blocks[0].id.clone(), "[js: produced]".to_string());
         assert_eq!(project(&doc.blocks), project_with_js(&doc.blocks, &lines));
+    }
+
+    // --- item 19: structure-preserving projection (lists, steps, inputs) ---
+
+    #[test]
+    fn projects_list_items_on_separate_lines() {
+        let out = project_src("- **name**: the column to reference.\n- **Returns**: an `Expr`.\n");
+        assert!(
+            out.contains("- name: the column to reference."),
+            "first item on its own line:\n{out}"
+        );
+        assert!(
+            out.contains("- Returns: an Expr"),
+            "second item separated:\n{out}"
+        );
+        assert!(
+            !out.contains("reference.Returns"),
+            "adjacent list items must not fuse:\n{out}"
+        );
+    }
+
+    #[test]
+    fn projects_ordered_and_nested_lists() {
+        let out = project_src("1. first\n2. second\n   - nested a\n   - nested b\n");
+        assert!(out.contains("1. first"), "ordered marker:\n{out}");
+        assert!(out.contains("2. second"), "ordered counts up:\n{out}");
+        assert!(
+            out.contains("  - nested a"),
+            "nested item indented two spaces:\n{out}"
+        );
+        assert!(
+            out.contains("  - nested b"),
+            "nested item indented two spaces:\n{out}"
+        );
     }
 }
