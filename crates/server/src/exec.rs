@@ -323,23 +323,39 @@ impl Executor {
             } else {
                 ("TALIESIN_PYTHON", self.python.display().to_string())
             };
-            // The usual cause is a fine interpreter that's just missing the Jupyter kernel
-            // package (`ipykernel`/`IRkernel`), NOT a wrong interpreter path — so name both
-            // and route to `doctor`, which reports exactly which it is (PL6).
-            Some(match &s.last_error {
-                Some(e) => format!(
-                    "{lang} kernel unavailable ({path}): {e}. Code cells render as source; fix \
-                     the interpreter ({var} or _site.yml {lang}:) or install its Jupyter kernel \
-                     package, then click Restart kernel. Run `taliesin doctor` to see which."
-                ),
-                None => format!(
-                    "{lang} kernel unavailable ({path}); code cells render as source (set {var} \
-                     or _site.yml {lang}: to an interpreter with the Jupyter kernel, then Restart \
-                     kernel). Run `taliesin doctor` to see whether it's the interpreter or a \
-                     missing kernel package."
-                ),
-            })
+            Some(Self::kernel_unavailable_message(
+                lang,
+                &path,
+                var,
+                s.last_error.as_deref(),
+            ))
         })
+    }
+
+    /// The shared "kernel unavailable" diagnostic. Pure (so its wording is unit-testable).
+    /// The usual cause is a fine interpreter that's just missing the Jupyter kernel package
+    /// (`ipykernel`/`IRkernel`), NOT a wrong interpreter path — so name both and route to
+    /// `doctor`, which reports exactly which it is (PL6). No "Restart kernel" clause: the
+    /// message is shared with headless `build`/`read`/CI, where that dev-menu action doesn't
+    /// exist (PA-B1); the live preview still surfaces the Restart button in its dev menu.
+    fn kernel_unavailable_message(
+        lang: &str,
+        path: &str,
+        var: &str,
+        last_error: Option<&str>,
+    ) -> String {
+        match last_error {
+            Some(e) => format!(
+                "{lang} kernel unavailable ({path}): {e}. Code cells render as source; fix \
+                 the interpreter ({var} or _site.yml {lang}:) or install its Jupyter kernel \
+                 package. Run `taliesin doctor` to see which."
+            ),
+            None => format!(
+                "{lang} kernel unavailable ({path}); code cells render as source (set {var} \
+                 or _site.yml {lang}: to an interpreter with the Jupyter kernel). Run \
+                 `taliesin doctor` to see whether it's the interpreter or a missing kernel package."
+            ),
+        }
     }
 
     /// Drop every language's kernel and clear the failure backoff, so the next run
@@ -1272,6 +1288,33 @@ mod tests {
     //! the `#fig-` anchor that lets `@fig-x` resolve to the output.
     use super::*;
     use taliesin_core::render::Cell;
+
+    #[test]
+    fn kernel_unavailable_message_is_headless_safe_and_routes_to_doctor() {
+        // Shared with `build`/`read`/CI, where the dev-menu "Restart kernel" action does not
+        // exist (PA-B1). It must never tell a headless caller to click it, must route to
+        // `taliesin doctor`, and must name the env var to fix.
+        for last in [Some("boom"), None] {
+            let msg = Executor::kernel_unavailable_message(
+                "python",
+                "/usr/bin/python3",
+                "TALIESIN_PYTHON",
+                last,
+            );
+            assert!(
+                !msg.to_lowercase().contains("restart kernel"),
+                "must not reference the dev-menu Restart action: {msg}"
+            );
+            assert!(
+                msg.contains("taliesin doctor"),
+                "must route to doctor: {msg}"
+            );
+            assert!(
+                msg.contains("TALIESIN_PYTHON"),
+                "must name the env var: {msg}"
+            );
+        }
+    }
 
     /// The render pass reserves a `@fig-`/`@tbl-` number only for a lang core believes
     /// executes (`taliesin_core::render::executes_to_kernel`), while `kernel_lang` is

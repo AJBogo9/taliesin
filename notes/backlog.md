@@ -23,7 +23,7 @@ ranked below by product impact.
 
 ## Next session: start here
 
-Tree is green across all gates; `origin/main` is current. Two clean entry points, pick by appetite:
+Tree is green across all gates; `origin/main` is current. Three clean entry points, pick by appetite:
 
 - **Continue the 2026-07-22 polish audit (item 11) — small + safe.** Pass (a) shipped; the next
   highest-value slice is **pass (b) scaffold-completeness, PA-H2** — the audit's one "high" finding:
@@ -34,6 +34,12 @@ Tree is green across all gates; `origin/main` is current. Two clean entry points
 - **Or the one High-impact feature, DX17(b) headless `{js}` (item 1) — large, needs a ruling first:** it
   adds a headless-Chrome dependency (`chromiumoxide`) to the offline tool, so it wants its own spec/plan and
   an owner sign-off on the new dep before coding. Design is already drafted (see item 1).
+- **Or run one of the twelve queued *audit perspectives* (new "Audit perspectives" section below):**
+  proactive, findings-generating angles the prior rounds structurally could not see (perf, fuzzing,
+  concurrency, cache-correctness, i18n/sourcepos, cross-browser, a11y, determinism, semantic HTML,
+  codebase health, chaos, offline-proof). Each is a fresh session that writes a dated findings doc and
+  feeds build-ready items back here; the author has credits queued for exactly this. Recommended first
+  three: AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).
 
 Everything else open is P3/gated (items 5–10) or demand-driven (Tier 3). Working method is in "Standing
 constraints": branch per feature, verify by mutation, browser-verify, ff-merge locally.
@@ -222,6 +228,93 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 - **D72 bare `@key`:** declined for now (the diagnostic already ships, so nothing renders wrong
   silently, which makes it a feature question not a defect). Edits `crates/core/src/cite/`, needs
   sign-off if revived.
+
+## Audit perspectives (unexplored angles: pick ONE per session)
+
+Brainstormed 2026-07-22 against the [AUDITS.md](AUDITS.md) ledger, which already covers UI, feature polish
+(x3), website/marketing design, machine-facing/AI-native, the deck subsystem, DX, PMF, the VS Code
+companion, simplification/reduction, and a pre-open-source security + supply-chain pass. The twelve items
+below are the dimensions those rounds could **not** see: they need the tool *run hard*, fed *hostile
+input*, or reasoned about as a *concurrent system*, rather than "look at rendered output" or "read code for
+feature quality." They are the moat's crown jewels (source-mapped, warm, incremental, offline) which no
+round has yet stress-tested.
+
+**These are perspectives, not tasks.** Point a fresh session at one item. It produces a dated findings doc
+in `notes/` (same shape as the existing audit files: headline, verified findings ranked by corrected
+severity, and false leads recorded honestly per the project's "trust the symptom, re-derive the cause"
+rule), records the round in [AUDITS.md](AUDITS.md), and files the build-ready findings back into "Open
+work" above with their own prefix. Every session inherits the **Standing constraints** at the top of this
+file (Do-NOT-touch freeze, verify-by-mutation, entries rot so re-derive from source). Two facts that set
+the priority: non-test code carries ~700 `unwrap()`/`expect()`/`panic!`/`unreachable!` sites, and
+`data-sourcepos` (the load-bearing invariant) is byte-offset based.
+
+**Run one perspective per session** (context isolation + token budget: the author's stated preference).
+The *stateful* ones (AP1, AP2, AP3, AP4, AP5, AP6, AP11) each build, fuzz, run the server, bind ports,
+drive a browser, or spawn kernels, so they corrupt each other if run at once: keep them solo. Only the
+pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan out together in one
+Workflow. Recommended first three, by yield for effort, each striking a load-bearing invariant no one has
+attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).**
+
+### Tier 1: genuinely untouched, highest expected yield
+
+- **AP1: Performance & scale.** No perf note exists in `notes/`; every prior audit used small corpus docs.
+  Hunt: cold-build time on a ~200-page site, a `.tmd` with ~10k blocks, RSS growth over a multi-hour warm
+  preview, whether the block diff (`crates/core/src/diff.rs`) goes quadratic anywhere, kernel RSS drift.
+  The warm incremental loop *is* the moat; nobody has measured where it degrades. Start: generate synthetic
+  large docs, trace build/rebuild latency + RSS, flamegraph the diff. *Stateful, solo.*
+- **AP2: Robustness / adversarial input (fuzzing).** ~700 panic sites, zero fuzz coverage. Feed the
+  parse to render pipeline malformed `.tmd`: unbalanced `:::` fences, thousands-deep nesting, circular
+  `{{< include >}}`, garbage YAML front-matter, pathological Unicode, truncated files. Every panic (which
+  500s the dev server) or hang is a finding. Start: `cargo-fuzz`, or `proptest` + `arbitrary` over
+  parse+render. *Stateful, solo. Recommended first.*
+- **AP3: Concurrency / race conditions.** The server multiplexes a `notify` file watcher, websocket
+  handlers, a warm ZMQ kernel, the exec pool, the `MAX_WARM_PAGES` LRU, and `_freeze/` writes across N
+  browser clients. Rust stops data races, not logic races: save-while-executing, file-change-mid-build,
+  two clients on one preview, concurrent freeze writes, eviction interleaving. Start: a stress driver plus
+  a code read of shared-state ordering in `serve_site/exec_pool.rs` (respect the M6a freeze: observe, do
+  not retune). *Stateful, solo.*
+- **AP4: Cache-correctness (adversarial freeze).** The `_freeze/` cache promises "no stale hits, nothing to
+  clear by hand." Nobody has tried to break that promise. Attack it: interpreter swap mid-session, partial
+  write or crash during a freeze write, clock skew, an upstream cell edited then reverted, `#| cache: false`
+  boundaries. One stale hit is a credibility bug for the core design. Start: enumerate the cumulative-hash
+  inputs in `crates/server/src/freeze.rs` and construct a change that is NOT reflected in the key. *Stateful,
+  solo. Recommended first.*
+- **AP5: i18n / Unicode / multibyte sourcepos.** Untouched, and aimed straight at the invariant: sourcepos
+  is byte-based, so any char-offset assumption means Alt-click-to-source silently misfires on any doc with
+  CJK, accented Latin, or emoji. Plus RTL (Arabic/Hebrew) layout, CJK line-breaking, non-ASCII heading-slug
+  generation. Start: a corpus doc mixing CJK + emoji + combining marks, then Alt-click every block and check
+  the editor cursor lands on the right character. *Stateful (browser), solo. Recommended first.*
+- **AP6: Cross-browser / cross-platform.** CLAUDE.md mandates chrome-devtools MCP and development is
+  Linux-only, so Safari, Firefox, and mobile browsers are effectively untested, as are macOS/Windows path
+  handling, file-watch semantics, and kernel spawning. The vanilla-JS client and the deck engine are where
+  these bugs hide. Start: drive the client through Firefox + WebKit (Playwright headless); grep the Rust for
+  `\`-vs-`/` path assumptions and Linux-only syscalls. *Stateful, solo.*
+
+### Tier 2: partially touched; a dedicated deep pass still pays
+
+- **AP7: Deep accessibility of the output.** The polish rounds found chrome-level a11y holes; nobody has
+  done a real screen-reader + keyboard pass over rendered docs, and especially the **deck as an interactive
+  application** (focus management, `aria`, KaTeX a11y, live-region announcement on slide change). Overlaps
+  item 11 pass (c) but goes deeper than one-hole-per-surface. *Stateful, solo.*
+- **AP8: Determinism / reproducibility.** Does one `.tmd` produce byte-identical HTML twice? (the
+  `body_html_snapshots` drift is a symptom.) Hunt hashmap-iteration order, timestamps, random ids, plot
+  float noise. Matters for caching, diffs, and any future content-addressed story. *Read half is
+  fan-out-safe; the rebuild-twice check is stateful.*
+- **AP9: Semantic-HTML / document-model correctness.** Beyond "does it look right": heading hierarchy,
+  sectioning, figure/caption association, table semantics, W3C-validator conformance. Is the document
+  *model* correct, not just the pixels? Overlaps PA-H2 (item 11 pass b). *Code-read, fan-out-safe.*
+- **AP10: Internal codebase health.** Distinct from the feature-reduction audit: the ~700-panic surface
+  (which `unwrap`s are reachable from user input?), module coupling, dead code, and a *coverage-hole* map
+  (behaviors with zero test), which is different from the vacuous-test *quality* audit already done.
+  *Code-read, fan-out-safe.*
+- **AP11: Chaos / failure-injection UX.** Kill the kernel mid-cell, fill the disk during a build, drop the
+  websocket, SIGKILL the server: how graceful is each degradation and what does the author actually see? DX
+  touched error loops; nobody has injected real failures. (Note PA-B1 in item 11: the kernel-unavailable
+  message already tells headless callers to click a Restart button that is not there.) *Stateful, solo.*
+- **AP12: Offline-guarantee verification.** The tool *claims* fully offline (bundled KaTeX/fonts/JS). Prove
+  it: does any built page or live preview make an external request, and does built HTML leak absolute local
+  paths or author identity? The security pass touched network egress; this is the positive proof, not an
+  assumption. *Code-read + a network-capture check; mostly fan-out-safe.*
 
 ## Tier 3: demand-driven (band E; build only when a real user asks)
 

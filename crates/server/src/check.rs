@@ -11,6 +11,7 @@
 //! + `Site`, [`crate::log`], and `serde_json` for the JSON formatter.
 
 use crate::log;
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -459,18 +460,28 @@ pub(crate) fn check_json(target: &Path) -> String {
 /// linter convention VS Code problem-matchers / gcc / tsc key off), with `severity[CODE]:`
 /// inserted before the message (the gcc/clang shape). The `docs_url` is JSON-only; it never
 /// leaks here — the code + `--explain` footer are the human path back to the catalog.
-fn format_human(diags: &[Diagnostic]) -> String {
+fn format_human(diags: &[Diagnostic], color: bool) -> String {
     let mut s = String::new();
     for d in diags {
+        // Paint just the severity word (rustc/cargo/tsc all colorize severity). `color` is
+        // TTY-gated by the caller, so the non-TTY greppable contract stays byte-identical —
+        // the `file:line: severity[CODE]:` shape a problem-matcher keys off is untouched.
+        let sev = if color {
+            let code = match d.severity {
+                "error" => "\x1b[31m",   // red
+                "warning" => "\x1b[33m", // yellow
+                _ => "\x1b[90m",         // grey (info)
+            };
+            format!("{code}{}\x1b[0m", d.severity)
+        } else {
+            d.severity.to_string()
+        };
         match d.line {
             Some(l) => s.push_str(&format!(
                 "{}:{}: {}[{}]: {}\n",
-                d.file, l, d.severity, d.code, d.message
+                d.file, l, sev, d.code, d.message
             )),
-            None => s.push_str(&format!(
-                "{}: {}[{}]: {}\n",
-                d.file, d.severity, d.code, d.message
-            )),
+            None => s.push_str(&format!("{}: {}[{}]: {}\n", d.file, sev, d.code, d.message)),
         }
     }
     s
@@ -745,8 +756,11 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         println!("{}", format_json(&diags, &environment));
     } else {
         // Greppable `path:line: severity[CODE]: message` lines to stderr (linter-style), then a
-        // per-severity summary + the `--explain` footer (both in `human_summary`).
-        eprint!("{}", format_human(&diags));
+        // per-severity summary + the `--explain` footer (both in `human_summary`). The severity
+        // word is colorized only at a TTY (and not under NO_COLOR), so piped/redirected output
+        // stays byte-identical for problem-matchers.
+        let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        eprint!("{}", format_human(&diags, color));
         eprint!("{}", human_summary(&diags));
         // Under `--require-kernel` (the only human path that probed), surface just the DEGRADED
         // languages — an all-green probe is `doctor`'s business, not a linter's — then point at
@@ -949,7 +963,7 @@ mod tests {
             url.ends_with("#tal-xref-undef"),
             "anchored by lowercased code: {json}"
         );
-        let human = format_human(std::slice::from_ref(&d));
+        let human = format_human(std::slice::from_ref(&d), false);
         assert!(!human.contains("http"), "no url in human output: {human}");
         assert!(
             human.contains("error[TAL-XREF-UNDEF]"),
@@ -1622,7 +1636,7 @@ mod tests {
             Diagnostic::new("a.tmd".into(), Some(3), "m1".into()),
             Diagnostic::new("b.tmd".into(), None, "m2".into()),
         ];
-        let text = format_human(&diags);
+        let text = format_human(&diags, false);
         assert!(
             text.contains("a.tmd:3: error[TAL-CHECK]: m1"),
             "located line carries severity + code: {text}"
@@ -1631,6 +1645,26 @@ mod tests {
             text.contains("b.tmd: error[TAL-CHECK]: m2"),
             "unlocated line carries severity + code: {text}"
         );
+    }
+
+    #[test]
+    fn format_human_colorizes_only_when_asked_and_stays_greppable_plain() {
+        // The non-TTY path must be byte-identical to the historical greppable line (no ANSI),
+        // so a problem-matcher keeps working; the TTY path paints just the severity word.
+        let diags = vec![Diagnostic::new("a.tmd".into(), Some(3), "m1".into())];
+        let plain = format_human(&diags, false);
+        assert!(
+            !plain.contains('\x1b'),
+            "plain output must carry no ANSI: {plain:?}"
+        );
+        assert!(plain.contains("a.tmd:3: error[TAL-CHECK]: m1"));
+        let colored = format_human(&diags, true);
+        assert!(
+            colored.contains("\x1b[31merror\x1b[0m"),
+            "severity must be painted: {colored:?}"
+        );
+        // Only the severity word is wrapped — the file:line prefix and code stay bare.
+        assert!(colored.contains("a.tmd:3: \x1b[31merror\x1b[0m[TAL-CHECK]: m1"));
     }
 
     #[test]
