@@ -38,11 +38,13 @@ function taliAskWalk(node, out) {
   }
   if (node.nodeType !== 1 /* element */) return;
   var el = /** @type {Element} */ (node);
-  // Skip our own injected UI (anchor '#', per-heading Ask button) so it never leaks into text.
+  // Skip navigation chrome + our own injected UI (anchor '#', per-heading Ask button,
+  // cross-ref backlinks) so none of it leaks into the extracted prose.
   if (
     el.classList.contains('tali-askai-heading') ||
     el.classList.contains('tali-anchor') ||
-    el.classList.contains('tali-askai-pop')
+    el.classList.contains('tali-askai-pop') ||
+    el.classList.contains('tali-backrefs')
   )
     return;
   if (el.classList.contains('katex')) {
@@ -582,6 +584,7 @@ function taliAskOpenComposer(payload) {
 function taliAskCloseComposer() {
   var dlg = taliAskDialogEl;
   if (!dlg) return;
+  var trigger = taliAskPayload && taliAskPayload.trigger;
   taliAskToggleMenu(false);
   if (taliAskRelease) {
     taliAskRelease();
@@ -589,6 +592,13 @@ function taliAskCloseComposer() {
   }
   dlg.hidden = true;
   if (taliAskBackdropEl) taliAskBackdropEl.hidden = true;
+  // Explicitly return focus to the trigger (the focus trap only restores what was focused at
+  // open time, which a non-focusing mouse click may not have set).
+  if (trigger && trigger.focus) {
+    try {
+      trigger.focus();
+    } catch (e) {}
+  }
 }
 
 // --- Triggers (selection popover + per-heading section button) ----------------------------

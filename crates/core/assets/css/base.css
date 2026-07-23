@@ -895,7 +895,7 @@
 .tali-askai-backdrop[hidden] { display: none; }
 .tali-askai-dialog {
   position: fixed; z-index: 60; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(92vw, 34rem); max-height: 88vh; overflow-y: auto;
+  box-sizing: border-box; width: min(92vw, 34rem); max-height: 88vh; overflow-y: auto;
   background: var(--tali-bg); color: var(--tali-fg);
   border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg);
   box-shadow: 0 12px 48px rgb(0 0 0 / 0.32); padding: 1.25rem; }
