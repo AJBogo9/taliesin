@@ -18,3 +18,12 @@ fn course_book_emits_canonical_link_for_tier_a() {
         "book with url: must emit the canonical link the Ask-AI client keys off:\n{html}"
     );
 }
+
+#[test]
+fn ask_ai_asset_ships_in_page_bundle() {
+    let html = course().render_page("mle.tmd").expect("mle renders");
+    assert!(
+        html.contains("/*!tali-askai v1*/"),
+        "the 19-ask-ai.js fragment must be compiled into the page bundle (marker missing)"
+    );
+}
