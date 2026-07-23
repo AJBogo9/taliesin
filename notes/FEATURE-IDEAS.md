@@ -598,6 +598,24 @@ revive any one here when a corpus doc needs it). Status verified against the cod
 
 ---
 
+## Parked pending market demand (2026-07-23)
+
+- **CAD-as-code cell (`{openscad}` / `{python}` build123d → interactive 3D preview)** — write CAD
+  as code in a `.tmd` block, render an interactive 3D model in the browser, version-control the
+  model as text. **Status: PARKED, no market demand** (owner's rule: no demand → don't build).
+  Feasible and a clean fit (reuses the `{js}`/kernel machinery, not a new output format, mesh is
+  display-only so read-only-preview holds); commercialization is legally clean via an arm's-length
+  subprocess to a user-installed `openscad` (never bundle GPL openscad-wasm). But CAD workers are
+  the wrong audience, code-CAD is a niche-within-the-hobbyist-niche, and Taliesin's peer group
+  (Quarto/Jupyter Book/mdBook) shows zero traction for embedded CAD. **Revive when:** you actually
+  want to write a doc with a live parametric model (a 3D-printing build log / parametric explainer,
+  the legitimate author-pull reason, name the pin doc); or peer-group / notebook-CAD demand
+  materializes; or a concrete external ask lands. Full feasibility + licensing + market record,
+  and the pre-decided implementation path if revived, in
+  [2026-07-23-cad-as-code-research.md](2026-07-23-cad-as-code-research.md).
+
+---
+
 ## Provenance
 
 Session 2026-06-25. Five parallel deep-research agents (web-native doc/notebook tools; dev
