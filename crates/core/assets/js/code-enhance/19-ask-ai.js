@@ -296,6 +296,263 @@ function taliAskForget() {
   } catch (e) {}
 }
 
+// --- Composer dialog (the single home for the question input + every provider path) -------
+
+/** @type {HTMLElement | null} */
+var taliAskDialogEl = null;
+/** @type {HTMLElement | null} */
+var taliAskBackdropEl = null;
+/** @type {(() => void) | null} */
+var taliAskRelease = null;
+/** @type {(TaliAskPayload & { trigger?: HTMLElement }) | null} */
+var taliAskPayload = null;
+
+var TALI_ASK_DISCLOSURE =
+  'This opens your chosen AI in a new tab and sends the passage you selected, your question, ' +
+  'and (if this book is online) a link to it. It goes to your OWN AI account under their privacy ' +
+  'policy, where it may be used to train their AI. This book has no server and stores nothing but ' +
+  'your provider choice.';
+
+/** querySelector that asserts non-null (we build the markup ourselves).
+ * @param {ParentNode} root @param {string} sel @returns {HTMLElement} */
+function taliAskQ(root, sel) {
+  return /** @type {HTMLElement} */ (root.querySelector(sel));
+}
+
+/** Build the singleton dialog + backdrop once; wire the handlers that persist across opens. */
+function taliAskBuildDialog() {
+  if (taliAskDialogEl) return taliAskDialogEl;
+  var backdrop = document.createElement('div');
+  backdrop.className = 'tali-askai-backdrop';
+  backdrop.hidden = true;
+  backdrop.addEventListener('click', taliAskCloseComposer);
+
+  var dlg = document.createElement('div');
+  dlg.className = 'tali-askai-dialog';
+  dlg.setAttribute('role', 'dialog');
+  dlg.setAttribute('aria-labelledby', 'tali-askai-title');
+  dlg.hidden = true;
+  dlg.innerHTML =
+    '<button type="button" class="tali-askai-close" aria-label="Close">×</button>' +
+    '<h2 id="tali-askai-title" class="tali-askai-title">Ask AI</h2>' +
+    '<div class="tali-askai-consent" hidden>' +
+    '<p class="tali-askai-consent-text"></p>' +
+    '<div class="tali-askai-btnrow">' +
+    '<button type="button" class="tali-askai-btn tali-askai-consent-continue">Continue</button>' +
+    '<button type="button" class="tali-askai-btn-ghost tali-askai-consent-cancel">Cancel</button>' +
+    '</div></div>' +
+    '<div class="tali-askai-main" hidden>' +
+    '<div class="tali-askai-pick"><p class="tali-askai-picklabel">Ask which AI? (remembered next time)</p>' +
+    '<div class="tali-askai-providers"></div></div>' +
+    '<div class="tali-askai-ready" hidden>' +
+    '<div class="tali-askai-actionrow">' +
+    '<button type="button" class="tali-askai-btn tali-askai-go"></button>' +
+    '<button type="button" class="tali-askai-caret" aria-haspopup="menu" aria-expanded="false" aria-label="Change AI provider">▾</button>' +
+    '</div>' +
+    '<div class="tali-askai-menu" role="menu" hidden></div>' +
+    '<p class="tali-askai-using"></p></div>' +
+    '<label class="tali-askai-qlabel">Your question' +
+    '<textarea class="tali-askai-q" rows="2" placeholder="Ask about this… (e.g. explain this passage in simpler terms)"></textarea>' +
+    '</label>' +
+    '<div class="tali-askai-preview" aria-label="Selected passage"></div>' +
+    '<details class="tali-askai-full"><summary>Full prompt</summary>' +
+    '<textarea class="tali-askai-fulltext" readonly rows="6"></textarea>' +
+    '<button type="button" class="tali-askai-btn-ghost tali-askai-copy">Copy prompt</button>' +
+    '</details>' +
+    '<p class="tali-askai-note"></p></div>';
+
+  document.body.appendChild(backdrop);
+  document.body.appendChild(dlg);
+  taliAskDialogEl = dlg;
+  taliAskBackdropEl = backdrop;
+
+  taliAskQ(dlg, '.tali-askai-close').addEventListener('click', taliAskCloseComposer);
+  taliAskQ(dlg, '.tali-askai-consent-cancel').addEventListener('click', taliAskCloseComposer);
+  taliAskQ(dlg, '.tali-askai-consent-continue').addEventListener('click', function () {
+    taliAskSetAck();
+    taliAskRenderState();
+  });
+  taliAskQ(dlg, '.tali-askai-q').addEventListener('input', taliAskRecompute);
+  taliAskQ(dlg, '.tali-askai-copy').addEventListener('click', function () {
+    if (!taliAskPayload) return;
+    var composed = taliAskComposePrompt(taliAskPayload, taliAskTier());
+    taliCopyText(composed.full, function () {}, function () {});
+  });
+  taliAskQ(dlg, '.tali-askai-caret').addEventListener('click', function () {
+    taliAskToggleMenu();
+  });
+  dlg.addEventListener('keydown', taliAskOnKey);
+  return dlg;
+}
+
+/** @param {KeyboardEvent} e */
+function taliAskOnKey(e) {
+  if (e.key === 'Escape') taliAskCloseComposer();
+}
+
+/** Render consent -> picker -> ready based on stored ack + provider. */
+function taliAskRenderState() {
+  var dlg = taliAskDialogEl;
+  if (!dlg) return;
+  var consent = taliAskQ(dlg, '.tali-askai-consent');
+  var main = taliAskQ(dlg, '.tali-askai-main');
+  if (!taliAskGetAck()) {
+    taliAskQ(dlg, '.tali-askai-consent-text').textContent = TALI_ASK_DISCLOSURE;
+    consent.hidden = false;
+    main.hidden = true;
+    return;
+  }
+  consent.hidden = true;
+  main.hidden = false;
+  var pick = taliAskQ(dlg, '.tali-askai-pick');
+  var ready = taliAskQ(dlg, '.tali-askai-ready');
+  var current = taliAskProvider();
+  if (!current) {
+    taliAskRenderProviders();
+    pick.hidden = false;
+    ready.hidden = true;
+  } else {
+    taliAskRenderReady(current);
+    pick.hidden = true;
+    ready.hidden = false;
+  }
+  taliAskRecompute();
+}
+
+/** Render the first-run provider tiles. */
+function taliAskRenderProviders() {
+  var dlg = taliAskDialogEl;
+  if (!dlg) return;
+  var box = taliAskQ(dlg, '.tali-askai-providers');
+  box.innerHTML = '';
+  Object.keys(TALI_ASK_PROVIDERS).forEach(function (id) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tali-askai-provider';
+    btn.textContent = TALI_ASK_PROVIDERS[id].label;
+    btn.addEventListener('click', function () {
+      taliAskSetProvider(id);
+      taliAskRenderState();
+    });
+    box.appendChild(btn);
+  });
+}
+
+/** Render the remembered-provider action row + the change/forget menu. @param {string} id */
+function taliAskRenderReady(id) {
+  var dlg = taliAskDialogEl;
+  if (!dlg) return;
+  var prov = TALI_ASK_PROVIDERS[id];
+  var go = taliAskQ(dlg, '.tali-askai-go');
+  go.textContent = (prov.paste ? 'Open ' : 'Ask ') + prov.label;
+  go.onclick = function () {
+    taliAskGo(id);
+  };
+  taliAskQ(dlg, '.tali-askai-using').textContent = 'Using ' + prov.label;
+  var menu = taliAskQ(dlg, '.tali-askai-menu');
+  menu.innerHTML = '';
+  Object.keys(TALI_ASK_PROVIDERS).forEach(function (other) {
+    if (other === id) return;
+    menu.appendChild(
+      taliAskMenuItem('Switch to ' + TALI_ASK_PROVIDERS[other].label, function () {
+        taliAskSetProvider(other);
+        taliAskToggleMenu(false);
+        taliAskRenderState();
+      })
+    );
+  });
+  menu.appendChild(
+    taliAskMenuItem('Forget my choice', function () {
+      taliAskForget();
+      taliAskToggleMenu(false);
+      taliAskRenderState();
+    })
+  );
+}
+
+/** @param {string} label @param {() => void} onClick @returns {HTMLElement} */
+function taliAskMenuItem(label, onClick) {
+  var mi = document.createElement('button');
+  mi.type = 'button';
+  mi.className = 'tali-askai-menuitem';
+  mi.setAttribute('role', 'menuitem');
+  mi.textContent = label;
+  mi.addEventListener('click', onClick);
+  return mi;
+}
+
+/** @param {boolean} [force] */
+function taliAskToggleMenu(force) {
+  var dlg = taliAskDialogEl;
+  if (!dlg) return;
+  var menu = taliAskQ(dlg, '.tali-askai-menu');
+  var caret = taliAskQ(dlg, '.tali-askai-caret');
+  var open = typeof force === 'boolean' ? force : menu.hidden;
+  menu.hidden = !open;
+  caret.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+/** Recompute the prompt from the payload + current question, refresh preview/full/note. */
+function taliAskRecompute() {
+  var dlg = taliAskDialogEl;
+  if (!dlg || !taliAskPayload) return;
+  var qbox = /** @type {HTMLTextAreaElement} */ (dlg.querySelector('.tali-askai-q'));
+  taliAskPayload.question = qbox.value;
+  var tier = taliAskTier();
+  var composed = taliAskComposePrompt(taliAskPayload, tier);
+  taliAskQ(dlg, '.tali-askai-preview').textContent = taliAskPayload.passage;
+  /** @type {HTMLTextAreaElement} */ (dlg.querySelector('.tali-askai-fulltext')).value = composed.full;
+  taliAskQ(dlg, '.tali-askai-note').textContent =
+    tier === 'B'
+      ? 'Sends the selected passage to your AI. (This book isn’t public, so no link is included.)'
+      : 'Opens your AI in a new tab. The full prompt is also copied to your clipboard — paste with Cmd/Ctrl+V if the box is empty.';
+}
+
+/** The "Ask {provider}" action. @param {string} id */
+function taliAskGo(id) {
+  if (!taliAskPayload) return;
+  var composed = taliAskComposePrompt(taliAskPayload, taliAskTier());
+  taliAskHandOff(id, composed);
+  taliAskCloseComposer();
+}
+
+/**
+ * Hand off to the provider. NOTE: the popup-safe synchronous open sequence lands in Task 8;
+ * this stub only copies the prompt so the composer is testable in isolation.
+ * @param {string} id @param {{ full: string, compact: string, deepLinkable: boolean }} composed
+ */
+function taliAskHandOff(id, composed) {
+  void id;
+  taliCopyText(composed.full, function () {}, function () {});
+}
+
+/** @param {TaliAskPayload & { trigger?: HTMLElement }} payload */
+function taliAskOpenComposer(payload) {
+  taliAskBuildDialog();
+  var dlg = taliAskDialogEl;
+  if (!dlg) return;
+  taliAskPayload = payload;
+  var qbox = /** @type {HTMLTextAreaElement} */ (dlg.querySelector('.tali-askai-q'));
+  qbox.value = payload.question || '';
+  taliAskRenderState();
+  if (taliAskBackdropEl) taliAskBackdropEl.hidden = false;
+  dlg.hidden = false;
+  var initial = taliAskGetAck() && taliAskProvider() ? qbox : null;
+  if (window.taliFocusTrap) taliAskRelease = window.taliFocusTrap(dlg, initial);
+}
+
+function taliAskCloseComposer() {
+  var dlg = taliAskDialogEl;
+  if (!dlg) return;
+  taliAskToggleMenu(false);
+  if (taliAskRelease) {
+    taliAskRelease();
+    taliAskRelease = null;
+  }
+  dlg.hidden = true;
+  if (taliAskBackdropEl) taliAskBackdropEl.hidden = true;
+}
+
 /**
  * Entry point; registered in 09-register.js. Idempotent; skips decks.
  * @param {Document | Element} [root]

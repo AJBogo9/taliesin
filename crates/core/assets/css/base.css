@@ -888,3 +888,60 @@
      above drops the generic pre rule's shadow). Wrap them so nothing is lost. */
   white-space: pre-wrap; overflow-wrap: anywhere; }
 
+
+/* Ask AI — client-side hand-off composer (code-enhance/19-ask-ai.js). Tokens only, so
+   light/dark + print inherit automatically. Spec: notes/2026-07-23-ask-ai-handoff-design.md. */
+.tali-askai-backdrop { position: fixed; inset: 0; z-index: 59; background: var(--tali-scrim); }
+.tali-askai-backdrop[hidden] { display: none; }
+.tali-askai-dialog {
+  position: fixed; z-index: 60; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(92vw, 34rem); max-height: 88vh; overflow-y: auto;
+  background: var(--tali-bg); color: var(--tali-fg);
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg);
+  box-shadow: 0 12px 48px rgb(0 0 0 / 0.32); padding: 1.25rem; }
+.tali-askai-dialog[hidden] { display: none; }
+.tali-askai-title { margin: 0 2rem 0.75rem 0; font-size: 1.15rem; }
+.tali-askai-close {
+  position: absolute; top: 0.4rem; right: 0.4rem; width: 44px; height: 44px;
+  border: 0; background: transparent; color: var(--tali-muted); font-size: 1.5rem; line-height: 1;
+  cursor: pointer; border-radius: var(--tali-radius-md); }
+.tali-askai-close:hover { color: var(--tali-fg); }
+.tali-askai-consent-text { color: var(--tali-muted); font-size: 0.9rem; line-height: 1.55; }
+.tali-askai-btnrow, .tali-askai-actionrow { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.6rem; }
+.tali-askai-btn {
+  min-height: 44px; padding: 0.5rem 1.1rem; border: 0; cursor: pointer; font: inherit; font-weight: 600;
+  border-radius: var(--tali-radius-md); background: var(--tali-accent); color: var(--tali-on-accent); }
+.tali-askai-btn:hover { filter: brightness(1.08); }
+.tali-askai-btn-ghost {
+  min-height: 44px; padding: 0.5rem 0.9rem; cursor: pointer; font: inherit;
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); background: transparent; color: inherit; }
+.tali-askai-picklabel { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--tali-muted); }
+.tali-askai-providers { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.tali-askai-provider {
+  min-height: 44px; padding: 0.5rem 1rem; cursor: pointer; font: inherit; font-weight: 500;
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); background: transparent; color: inherit; }
+.tali-askai-provider:hover { border-color: var(--tali-accent); color: var(--tali-accent); }
+.tali-askai-caret {
+  min-width: 44px; min-height: 44px; cursor: pointer; font: inherit;
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); background: transparent; color: inherit; }
+.tali-askai-menu {
+  display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem; padding: 0.35rem;
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); }
+.tali-askai-menu[hidden] { display: none; }
+.tali-askai-menuitem {
+  text-align: left; min-height: 40px; padding: 0.4rem 0.6rem; border: 0; font: inherit;
+  background: transparent; color: inherit; cursor: pointer; border-radius: var(--tali-radius-md); }
+.tali-askai-menuitem:hover { background: var(--tali-border); }
+.tali-askai-using { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--tali-muted); }
+.tali-askai-qlabel { display: block; margin: 0.95rem 0 0; font-size: 0.9rem; font-weight: 600; }
+.tali-askai-q, .tali-askai-fulltext {
+  display: block; width: 100%; margin-top: 0.35rem; padding: 0.5rem; font: inherit; resize: vertical;
+  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
+  background: var(--tali-bg); color: var(--tali-fg); }
+.tali-askai-preview {
+  margin: 0.85rem 0; padding: 0.5rem 0.75rem; font-size: 0.9rem; color: var(--tali-muted);
+  border-left: 3px solid var(--tali-accent); max-height: 8rem; overflow-y: auto; white-space: pre-wrap; }
+.tali-askai-full { margin-top: 0.6rem; }
+.tali-askai-full summary { cursor: pointer; font-size: 0.85rem; color: var(--tali-muted); }
+.tali-askai-full .tali-askai-copy { margin-top: 0.4rem; }
+.tali-askai-note { margin: 0.8rem 0 0; font-size: 0.78rem; color: var(--tali-muted); line-height: 1.5; }
