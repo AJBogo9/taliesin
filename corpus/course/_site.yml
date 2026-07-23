@@ -1,5 +1,6 @@
 title: "Probabilistic Modeling: A Short Course"
 author: "Andreas Bogossian"
+url: https://course.example.edu   # a course textbook is meant to be deployed; enables Tier-A Ask-AI (canonical + llms.txt)
 toc: true
 
 chapters:                 # presence makes this a book
