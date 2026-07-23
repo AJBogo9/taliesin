@@ -945,3 +945,19 @@
 .tali-askai-full summary { cursor: pointer; font-size: 0.85rem; color: var(--tali-muted); }
 .tali-askai-full .tali-askai-copy { margin-top: 0.4rem; }
 .tali-askai-note { margin: 0.8rem 0 0; font-size: 0.78rem; color: var(--tali-muted); line-height: 1.5; }
+
+/* Ask AI — triggers: selection popover + per-heading section button. */
+.tali-askai-pop {
+  position: absolute; z-index: 61; min-height: 32px; padding: 0.25rem 0.7rem; font: inherit; font-size: 0.85rem;
+  font-weight: 500; border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
+  background: var(--tali-bg); color: var(--tali-accent); cursor: pointer; box-shadow: 0 2px 12px rgb(0 0 0 / 0.22); }
+.tali-askai-pop[hidden] { display: none; }
+.tali-askai-pop:hover { border-color: var(--tali-accent); }
+.tali-askai-heading {
+  margin-left: 0.45rem; font: inherit; font-size: 0.68rem; font-weight: 500; letter-spacing: 0.02em;
+  vertical-align: middle; opacity: 0; transition: opacity var(--tali-dur);
+  padding: 0.1rem 0.45rem; border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
+  background: transparent; color: var(--tali-accent); cursor: pointer; }
+:is(h1, h2, h3, h4, h5, h6):hover > .tali-askai-heading,
+.tali-askai-heading:focus-visible { opacity: 1; }
+@media (pointer: coarse) { .tali-askai-heading { opacity: 1; min-height: 44px; padding: 0.3rem 0.7rem; } }

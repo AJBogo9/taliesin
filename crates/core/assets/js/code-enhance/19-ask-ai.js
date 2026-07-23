@@ -31,8 +31,20 @@ function taliAskWalk(node, out) {
     out.push(node.nodeValue || '');
     return;
   }
+  // DocumentFragment (11, e.g. range.cloneContents()) / Document (9): walk children directly.
+  if (node.nodeType === 11 || node.nodeType === 9) {
+    for (var f = node.firstChild; f; f = f.nextSibling) taliAskWalk(f, out);
+    return;
+  }
   if (node.nodeType !== 1 /* element */) return;
   var el = /** @type {Element} */ (node);
+  // Skip our own injected UI (anchor '#', per-heading Ask button) so it never leaks into text.
+  if (
+    el.classList.contains('tali-askai-heading') ||
+    el.classList.contains('tali-anchor') ||
+    el.classList.contains('tali-askai-pop')
+  )
+    return;
   if (el.classList.contains('katex')) {
     var ann = el.querySelector('annotation[encoding="application/x-tex"]');
     var tex = ann ? (ann.textContent || '').trim() : '';
@@ -156,20 +168,25 @@ function taliAskComposePrompt(p, tier) {
         p.pageUrl +
         (p.llmsUrl ? '\n(Whole-book map, if you need it: ' + p.llmsUrl + ')' : '')
       : '';
+  // Omit the surrounding-section block when it is empty or identical to the passage (the
+  // per-heading "ask about this section" case sends the section AS the passage).
+  var hasSection = !!p.sectionText && p.sectionText !== p.passage;
+  var sectionBlock = hasSection
+    ? '\n\nSurrounding section (for context):\n"""\n' + p.sectionText + '\n"""'
+    : '';
   var full =
     'I\'m reading "' + p.bookTitle + '", section "' + p.sectionHeading + '".\n\n' +
-    'Passage I highlighted:\n"""\n' + p.passage + '\n"""\n\n' +
-    'Surrounding section (for context):\n"""\n' + p.sectionText + '\n"""\n\n' +
-    'My question: ' + q + linkBlock;
+    'Passage I highlighted:\n"""\n' + p.passage + '\n"""' +
+    sectionBlock +
+    '\n\nMy question: ' + q + linkBlock;
 
   var linkTail = tier === 'A' && p.pageUrl ? ' If you can browse, more at ' + p.pageUrl + '.' : '';
   /** @param {number} passageLen @param {number} sectionLen @returns {string} */
   function build(passageLen, sectionLen) {
-    return (
-      'From "' + p.bookTitle + '" § "' + p.sectionHeading + '". Passage: "' +
-      taliAskClip(p.passage, passageLen) + '". Context: "' +
-      taliAskClip(p.sectionText, sectionLen) + '". ' + q + '.' + linkTail
-    );
+    var s = 'From "' + p.bookTitle + '" § "' + p.sectionHeading + '". Passage: "' + taliAskClip(p.passage, passageLen) + '".';
+    if (hasSection) s += ' Context: "' + taliAskClip(p.sectionText, sectionLen) + '".';
+    s += ' ' + q + '.' + linkTail;
+    return s;
   }
   var deepLinkable = true;
   var compact = build(p.passage.length, p.sectionText.length);
@@ -553,6 +570,176 @@ function taliAskCloseComposer() {
   if (taliAskBackdropEl) taliAskBackdropEl.hidden = true;
 }
 
+// --- Triggers (selection popover + per-heading section button) ----------------------------
+
+/** The book title from og:site_name, else the tail of the document title. @returns {string} */
+function taliAskBookTitle() {
+  var og = document.querySelector('meta[property="og:site_name"]');
+  var c = og && og.getAttribute('content');
+  if (c) return c;
+  var t = document.title || '';
+  var parts = t.split('·');
+  return (parts.length > 1 ? parts[parts.length - 1] : t).trim();
+}
+
+/** Canonical page URL (Tier-A link target), else the current location. @returns {string} */
+function taliAskPageUrl() {
+  var link = document.querySelector('link[rel="canonical"]');
+  return (link && link.getAttribute('href')) || location.href;
+}
+
+/** Whole-book llms.txt at the canonical origin, or '' if no canonical. @returns {string} */
+function taliAskLlmsUrl() {
+  var link = document.querySelector('link[rel="canonical"]');
+  var href = link && link.getAttribute('href');
+  if (!href) return '';
+  try {
+    return new URL(href, location.href).origin + '/llms.txt';
+  } catch (e) {
+    return '';
+  }
+}
+
+/** Visible heading text with our injected `#`/Ask buttons stripped. @param {Element | null} h @returns {string} */
+function taliAskHeadingText(h) {
+  if (!h) return taliAskBookTitle();
+  var clone = /** @type {Element} */ (h.cloneNode(true));
+  clone.querySelectorAll('.tali-anchor, .tali-askai-heading').forEach(function (n) {
+    n.remove();
+  });
+  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+/** The nearest heading at/before `node`, among the flat block children of #tali-root.
+ * @param {Node} node @returns {HTMLElement | null} */
+function taliAskHeadingOf(node) {
+  var root = document.querySelector('#tali-root');
+  if (!root) return null;
+  var el = node.nodeType === 1 ? /** @type {Element} */ (node) : node.parentElement;
+  while (el && el.parentElement && el.parentElement !== root) el = el.parentElement;
+  var cur = el;
+  while (cur) {
+    if (/^H[1-6]$/.test(cur.tagName)) return /** @type {HTMLElement} */ (cur);
+    cur = cur.previousElementSibling;
+  }
+  return null;
+}
+
+/** Body text of a heading's section: following siblings until the next same-or-higher heading.
+ * @param {HTMLElement | null} heading @returns {string} */
+function taliAskSectionText(heading) {
+  if (!heading) return '';
+  var level = +heading.tagName.slice(1);
+  var parts = [];
+  var sib = heading.nextElementSibling;
+  while (sib) {
+    if (/^H[1-6]$/.test(sib.tagName) && +sib.tagName.slice(1) <= level) break;
+    var t = taliAskExtractText(sib);
+    if (t) parts.push(t);
+    sib = sib.nextElementSibling;
+  }
+  return parts.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** @param {Range} range @param {HTMLElement} [trigger]
+ * @returns {(TaliAskPayload & { trigger?: HTMLElement }) | null} */
+function taliAskSelectionPayload(range, trigger) {
+  var passage = taliAskExtractText(range.cloneContents()).trim();
+  if (!passage) return null;
+  var heading = taliAskHeadingOf(range.startContainer);
+  return {
+    bookTitle: taliAskBookTitle(),
+    sectionHeading: taliAskHeadingText(heading),
+    passage: passage,
+    sectionText: taliAskSectionText(heading),
+    question: '',
+    pageUrl: taliAskPageUrl(),
+    llmsUrl: taliAskLlmsUrl(),
+    trigger: trigger,
+  };
+}
+
+/** @param {HTMLElement} heading @returns {TaliAskPayload & { trigger?: HTMLElement }} */
+function taliAskHeadingPayload(heading) {
+  var body = taliAskSectionText(heading);
+  return {
+    bookTitle: taliAskBookTitle(),
+    sectionHeading: taliAskHeadingText(heading),
+    passage: body || taliAskHeadingText(heading),
+    sectionText: '', // the whole section IS the passage; composePrompt omits the context block
+    question: '',
+    pageUrl: taliAskPageUrl(),
+    llmsUrl: taliAskLlmsUrl(),
+    trigger: heading,
+  };
+}
+
+/** @type {HTMLElement | null} */
+var taliAskPopEl = null;
+
+function taliAskPopover() {
+  if (taliAskPopEl) return taliAskPopEl;
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'tali-askai-pop';
+  b.setAttribute('aria-label', 'Ask AI about the selected text');
+  b.textContent = 'Ask AI';
+  b.hidden = true;
+  // Don't let pressing the button collapse the selection before the click handler reads it.
+  b.addEventListener('mousedown', function (e) {
+    e.preventDefault();
+  });
+  b.addEventListener('click', function () {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    var payload = taliAskSelectionPayload(sel.getRangeAt(0), b);
+    taliAskHidePopover();
+    if (payload) taliAskOpenComposer(payload);
+  });
+  document.body.appendChild(b);
+  taliAskPopEl = b;
+  return b;
+}
+
+function taliAskHidePopover() {
+  if (taliAskPopEl) taliAskPopEl.hidden = true;
+}
+
+/** Show the popover under the current selection, if it is a real selection inside #tali-root. */
+function taliAskOnSelectionSettle() {
+  var root = document.querySelector('#tali-root');
+  var sel = window.getSelection();
+  if (!root || !sel || sel.isCollapsed || sel.rangeCount === 0) return taliAskHidePopover();
+  var range = sel.getRangeAt(0);
+  var common = range.commonAncestorContainer;
+  var commonEl = common.nodeType === 1 ? /** @type {Element} */ (common) : common.parentElement;
+  if (!commonEl || !root.contains(commonEl)) return taliAskHidePopover();
+  if (sel.toString().trim().length < 2) return taliAskHidePopover();
+  var rect = range.getBoundingClientRect();
+  if (!rect || (rect.width === 0 && rect.height === 0)) return taliAskHidePopover();
+  var b = taliAskPopover();
+  b.hidden = false;
+  b.style.top = window.scrollY + rect.bottom + 8 + 'px';
+  b.style.left = Math.max(8, window.scrollX + rect.left) + 'px';
+}
+
+/** Append a persistent-on-touch "Ask AI about this section" button to a heading. @param {HTMLElement} heading */
+function taliAskDecorateHeading(heading) {
+  if (heading.dataset.taliAskHeading) return;
+  heading.dataset.taliAskHeading = '1';
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tali-askai-heading';
+  btn.textContent = 'Ask AI';
+  btn.setAttribute('aria-label', 'Ask AI about the section: ' + taliAskHeadingText(heading));
+  btn.title = 'Ask AI about this section';
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    taliAskOpenComposer(taliAskHeadingPayload(heading));
+  });
+  heading.appendChild(btn);
+}
+
 /**
  * Entry point; registered in 09-register.js. Idempotent; skips decks.
  * @param {Document | Element} [root]
@@ -560,9 +747,46 @@ function taliAskCloseComposer() {
 function taliInitAskAi(root) {
   if (typeof document === 'undefined') return;
   if (document.querySelector('.tali-deck')) return; // decks are not reading views
+  void root;
+
+  // Per-heading section buttons: always (persistent on touch). Idempotent, so re-mounts re-scan.
+  var tRoot = document.querySelector('#tali-root');
+  if (tRoot) {
+    tRoot.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]').forEach(function (h) {
+      taliAskDecorateHeading(/** @type {HTMLElement} */ (h));
+    });
+  }
+
+  // Document-level selection listeners install once.
   var host = document.body;
   if (!host || host.getAttribute('data-tali-askai') === 'on') return;
   host.setAttribute('data-tali-askai', 'on');
-  void root; // reserved for future scoped re-init
-  // Wiring added in later tasks.
+
+  var coarse = false;
+  try {
+    coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  } catch (e) {}
+
+  // Selection popover is desktop-pointer only — touch has native selection handles/menus.
+  if (!coarse) {
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    var settleTimer = null;
+    var schedule = function () {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(taliAskOnSelectionSettle, 120);
+    };
+    document.addEventListener('mouseup', schedule);
+    document.addEventListener('keyup', function (e) {
+      if (e.shiftKey || e.key === 'Shift' || (e.key && e.key.indexOf('Arrow') === 0)) schedule();
+    });
+    document.addEventListener('selectionchange', function () {
+      var s = window.getSelection();
+      if (!s || s.isCollapsed) taliAskHidePopover();
+    });
+    window.addEventListener('scroll', taliAskHidePopover, true);
+    window.addEventListener('resize', taliAskHidePopover);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') taliAskHidePopover();
+    });
+  }
 }
