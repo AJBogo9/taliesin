@@ -4,6 +4,29 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+**Perspective audit AP1 (performance & scale), 2026-07-23** →
+[2026-07-23-ap1-performance-scale-audit.md](2026-07-23-ap1-performance-scale-audit.md). Tier-1 "genuinely
+untouched, highest expected yield"; first perf note in `notes/`. Run solo on a clean tree with a fresh
+`--release` binary + a throwaway harness that path-depends on `taliesin-core` (`scratchpad/perfbench/`),
+touching no source. Headline: **performance is healthy and free of quadratic blowups on every path measured**
+— single-doc render is sublinear per block (8000 blocks / 20k lines in 647 ms; ms/block *falls* 0.111→0.081
+across 1k→8k), site cold build is linear + parallel (400 pages in 874 ms), and the block diff is O(n log n)
+by construction (source-verified LCS→LIS, textbook O(m·n) DP explicitly avoided). The one real degradation is
+in the warm-preview **moat**: every `.tmd` save in a site/book preview runs **two independent full-site
+sequential render passes** — `refresh_xrefs()` (per save) then `validate_cross_page_links()` (per open tab,
+inside `build_page`) — each rendering every page from disk, each annotated in source as a fixed "~27 ms" that
+is actually a size-dependent tax. It is linear in (pages × blocks-per-page), so it is invisible until a
+project is large: the real `corpus/tech-blog` (17 content-rich pages) already pays **~60 ms/keystroke** of
+pure whole-site re-render (on top of the edited page), extrapolating to ~360 ms at 100 pages and ~700 ms at
+200. Not a bug (DX1 rightly judged the debounced re-derive fine at corpus size); the finding is that the cost
+doubles unnecessarily (two passes could share one render) and is the first thing to slide as a book grows.
+Build-ready **PERF-1** (a: share one whole-site render across the two passes → ~halve it; b: scope
+`validate_cross_page_links`'s all-pages-then-filter discard; c: debounce only if a real >100-page book
+appears) folded into Open-work item 20. Warm-preview RSS bounded in a 30-edit probe (+2.7 MB, no leak).
+Refuted false leads: `site.clone()` per page O(pages²) (it is `Arc`), hover/xref index quadratic (measured
+linear), single-doc render quadratic (sublinear). Residuals not chased: kernel RSS drift, multi-hour warm
+RSS, `notify` at extreme dir counts.
+
 **Perspective audit AP5 (i18n / Unicode / multibyte offsets), 2026-07-22** →
 [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md). First of the
 "Audit perspectives" series in [backlog.md](backlog.md) (each a single unexplored lens, one per session, run

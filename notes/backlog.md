@@ -43,13 +43,14 @@ measurement". The remaining open work is the medium/low band, pick in priority o
 3. Deck mobile polish (item 4, P2, hard to verify without a device) and the P3 test-infra/polish residuals
    (items 10, 11).
 
-- **Or run one of the eight remaining *audit perspectives* ("Audit perspectives" section below):**
-  proactive, findings-generating angles the prior rounds structurally could not see (perf, fuzzing,
-  concurrency, cache-correctness, i18n/sourcepos, cross-browser, a11y, determinism, semantic HTML,
-  codebase health, chaos, offline-proof). Each is a fresh session that writes a dated findings doc and
+- **Or run one of the five remaining *audit perspectives* ("Audit perspectives" section below):**
+  proactive, findings-generating angles the prior rounds structurally could not see. **Done so far:
+  AP1, AP2, AP4, AP5, AP8, AP9, AP12** (perf, fuzzing, cache-correctness, i18n/sourcepos, determinism,
+  semantic HTML, offline-proof). **Remaining: AP3 (concurrency), AP6 (cross-browser), AP7 (a11y),
+  AP10 (codebase health), AP11 (chaos).** Each is a fresh session that writes a dated findings doc and
   feeds build-ready items back here; the author has credits queued for exactly this. Recommended next:
-  AP2 (fuzzing) + AP4 (freeze cache), both stateful/solo; the pure code-read AP10 is fan-out-safe. (AP5,
-  AP8, AP9, AP12 already run.)
+  **AP10 (codebase health)** is the pure code-read pick, fan-out-safe and safe alongside a live session;
+  of the stateful/solo ones **AP7 (deep a11y)** and **AP3 (concurrency)** are the highest-yield.
 
 Working method is in "Standing constraints": branch per feature, verify by mutation, browser-verify,
 ff-merge locally, delete the item here on landing.
@@ -231,6 +232,29 @@ the medium/low band below (OFF-2 mermaid-offline, item 13).
       paint. Gate teardown on `invalidation`, not DOM attachment. WAI but a sharp edge — candidate: a doc
       line in the `{js}`-cell reference, or an optional post-mount hook.
 
+20. **PERF-1: warm site-preview does two redundant full-site render passes per keystroke** (P2, from AP1;
+    detail: [2026-07-23-ap1-performance-scale-audit.md](2026-07-23-ap1-performance-scale-audit.md)). AP1
+    found performance otherwise healthy (no quadratic anywhere; 8000-block doc in 647 ms, 400-page build in
+    874 ms, diff is O(n log n) by construction). The one degradation: every `.tmd` save in a **site/book**
+    preview runs `refresh_xrefs()` (per save, `serve_site/mod.rs:1441`) **and** `validate_cross_page_links()`
+    (per open tab, via `cross_page_diagnostics` in `build_page`) — two *independent* full-site sequential
+    render passes, each rebuilding every page from disk. Cost is linear in (pages × blocks-per-page); the
+    source comments (`serve_site/mod.rs:1107,1430`) enshrine it as a fixed "~27 ms" measured at 20 pages, but
+    the real 17-page `tech-blog` already pays **~60 ms/keystroke** (~30 ms/pass), extrapolating to ~360 ms at
+    100 content-rich pages, ~700 ms at 200 — the moat degrading, invisibly (linear, no cliff). **Not a
+    correctness bug** and DX1 rightly OK'd the debounced re-derive at corpus size; the fix is to stop paying
+    it *twice*. Build-ready, cheapest first: **(a)** share ONE whole-site render/registry across the two
+    passes within a rebuild (`refresh_xrefs` already builds the anchor/number registry;
+    `validate_cross_page_links` mostly needs each page's id-set + outgoing links, capturable in the same
+    pass) → ~halves it; **(b)** `validate_cross_page_links` renders all N pages to keep only the current
+    page's warnings (`preview_diag.rs:47` filters the rest away) — scope it to the current page's links
+    resolved against the shared registry; **(c)** debounce/coalesce the whole-site passes ONLY if a real
+    >100-page book appears (demand-driven; perfect-default lens says don't add machinery first). Touches
+    `serve_site` + `site::{refresh_xrefs, validate_cross_page_links}` only — NOT the diff, block model, or
+    the Do-NOT-touch `exec_pool` LRU. No natural corpus pin (corpus has no 100-page book); verify with the
+    AP1 harness pattern (`scratchpad/perfbench/`: time the passes before/after on a generated large book) +
+    existing `serve_site` tests green.
+
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
@@ -272,19 +296,24 @@ the priority: non-test code carries ~700 `unwrap()`/`expect()`/`panic!`/`unreach
 The *stateful* ones (AP1, AP2, AP3, AP4, AP5, AP6, AP11) each build, fuzz, run the server, bind ports,
 drive a browser, or spawn kernels, so they corrupt each other if run at once: keep them solo. Only the
 pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan out together in one
-Workflow. Recommended first three, by yield for effort, each striking a load-bearing invariant no one has
-attacked: **AP2 (fuzzing), AP4 (freeze cache), AP5 (multibyte sourcepos).** AP5 is RUN (2026-07-22, see its
-entry below); AP2 and AP4 remain, but both are *stateful/solo* and collide with a live feature session that
-owns the exec/serve/build surface, so a pure code-read pick (AP9/AP10/AP12) is the safer next while that
-session runs.
+Workflow. The recommended-first set (**AP1, AP2, AP4, AP5**, each striking a load-bearing invariant) is now
+all RUN (see their entries below). Of what remains, **AP10 (codebase health)** is the safe pure-code-read
+next (fan-out-safe, no collision with a live session); **AP7 (deep a11y)** and **AP3 (concurrency)** are the
+highest-yield stateful/solo picks; **AP6 (cross-browser)** and **AP11 (chaos)** round out the set.
 
 ### Tier 1: genuinely untouched, highest expected yield
 
-- **AP1: Performance & scale.** No perf note exists in `notes/`; every prior audit used small corpus docs.
-  Hunt: cold-build time on a ~200-page site, a `.tmd` with ~10k blocks, RSS growth over a multi-hour warm
-  preview, whether the block diff (`crates/core/src/diff.rs`) goes quadratic anywhere, kernel RSS drift.
-  The warm incremental loop *is* the moat; nobody has measured where it degrades. Start: generate synthetic
-  large docs, trace build/rebuild latency + RSS, flamegraph the diff. *Stateful, solo.*
+- **AP1: Performance & scale. RUN 2026-07-23** (findings:
+  [2026-07-23-ap1-performance-scale-audit.md](2026-07-23-ap1-performance-scale-audit.md); build-ready PERF-1
+  folded into Open-work item 20). Result: **no quadratic anywhere** — single-doc render is sublinear per
+  block (8000 blocks in 647 ms), site cold build linear + parallel (400 pages in 874 ms), the block diff is
+  O(n log n) by construction. The one degradation is the warm-preview moat: every `.tmd` save in a site/book
+  preview runs **two** independent full-site sequential render passes (`refresh_xrefs` + `validate_cross_page_links`),
+  a linear-in-(pages × blocks-per-page) tax the source annotates as a fixed "~27 ms" — already ~60 ms/keystroke
+  on the real 17-page `tech-blog`, extrapolating to ~360 ms at 100 pages. Not a bug (DX1 rightly OK'd it at
+  corpus size); the fix is to stop paying it twice. Refuted: `site.clone()` O(pages²) (it is `Arc`), hover-index
+  quadratic, render quadratic. Residuals not chased: kernel RSS drift, multi-hour warm RSS. *Was stateful/solo;
+  done as a release-binary measurement + a `taliesin-core` path-dep harness.*
 - **AP2: Robustness / adversarial input (fuzzing).** ~700 panic sites, zero fuzz coverage. Feed the
   parse to render pipeline malformed `.tmd`: unbalanced `:::` fences, thousands-deep nesting, circular
   `{{< include >}}`, garbage YAML front-matter, pathological Unicode, truncated files. Every panic (which
