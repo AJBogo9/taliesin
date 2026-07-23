@@ -189,6 +189,113 @@ function taliAskComposePrompt(p, tier) {
   return { full: full, compact: compact, deepLinkable: deepLinkable };
 }
 
+var TALI_ASK_KEY = 'tali-askai';
+
+/**
+ * Provider registry — the one place a broken deep-link is a one-line fix. `deepLink(q)` takes
+ * the already-encoded compact string; `paste:true` => open the bare new-chat URL and rely on
+ * the clipboard (Claude's web ?q= prefill was removed ~Oct-2025). Verified 2026 mechanics
+ * (spec §4/§12). Gemini app / Copilot / Duck.ai are copy-only, so not listed as first-class.
+ * @type {Record<string, { label: string, deepLink: ((q: string) => string) | null, paste: boolean }>}
+ */
+var TALI_ASK_PROVIDERS = {
+  chatgpt: {
+    label: 'ChatGPT',
+    deepLink: function (q) {
+      return 'https://chatgpt.com/?q=' + q + '&hints=search';
+    },
+    paste: false,
+  },
+  perplexity: {
+    label: 'Perplexity',
+    deepLink: function (q) {
+      return 'https://www.perplexity.ai/search/?q=' + q;
+    },
+    paste: false,
+  },
+  google: {
+    label: 'Google AI Mode',
+    deepLink: function (q) {
+      return 'https://www.google.com/search?udm=50&q=' + q;
+    },
+    paste: false,
+  },
+  claude: {
+    label: 'Claude',
+    deepLink: function () {
+      return 'https://claude.ai/new';
+    },
+    paste: true,
+  },
+  copy: { label: 'Copy prompt', deepLink: null, paste: true },
+};
+
+/**
+ * @typedef {Object} TaliAskStore
+ * @property {number} v
+ * @property {string} [provider]
+ * @property {boolean} [ack]
+ * @property {number} [picked_at]
+ */
+
+/** Defensive read: parse failure, wrong version, or unknown provider => null (first-run).
+ * @returns {TaliAskStore | null} */
+function taliAskRead() {
+  try {
+    var raw = localStorage.getItem(TALI_ASK_KEY);
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    if (!o || o.v !== 1) return null;
+    if (o.provider && !TALI_ASK_PROVIDERS[o.provider]) return null;
+    return o;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** @param {TaliAskStore} o */
+function taliAskWrite(o) {
+  try {
+    localStorage.setItem(TALI_ASK_KEY, JSON.stringify(o));
+  } catch (e) {}
+}
+
+/** @returns {string | null} the remembered provider id, or null on first run */
+function taliAskProvider() {
+  var o = taliAskRead();
+  return o && o.provider ? o.provider : null;
+}
+
+/** Set + promote a provider to the default. @param {string} id */
+function taliAskSetProvider(id) {
+  if (!TALI_ASK_PROVIDERS[id]) return;
+  var o = taliAskRead() || { v: 1 };
+  o.v = 1;
+  o.provider = id;
+  o.picked_at = Date.now();
+  taliAskWrite(o);
+}
+
+/** @returns {boolean} whether the first-run consent was acknowledged */
+function taliAskGetAck() {
+  var o = taliAskRead();
+  return !!(o && o.ack);
+}
+
+function taliAskSetAck() {
+  var o = taliAskRead() || { v: 1 };
+  o.v = 1;
+  o.ack = true;
+  taliAskWrite(o);
+}
+
+/** Reversible: drop the stored choice + ack => back to the first-run picker. */
+function taliAskForget() {
+  try {
+    localStorage.removeItem(TALI_ASK_KEY);
+  } catch (e) {}
+}
+
 /**
  * Entry point; registered in 09-register.js. Idempotent; skips decks.
  * @param {Document | Element} [root]
