@@ -4,6 +4,31 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+**Perspective audit AP10 (internal codebase health), 2026-07-23** →
+[2026-07-23-ap10-codebase-health-audit.md](2026-07-23-ap10-codebase-health-audit.md). The pure code-read,
+fan-out-safe lens; run **alongside a live parallel session** (the `ask-ai-handoff` feature session) precisely
+because it binds no port/kernel/browser and edits no source, written up in an isolated worktree off
+`origin/main`. Asks the AP10 question the reduction + vacuous-test rounds did not: **which of the ~708 non-test
+panic sites are reachable from user input, and which sit behind a recovery boundary?** Headline: the codebase
+is healthy — **dead code is essentially nil** (2 `#[allow(dead_code)]` in the whole non-test tree, corroborating
+the reduction audit) and the panic surface is dominated by guarded/structural sites. The one real finding,
+**HEALTH-1 (medium):** the two *persistent stdio servers* — `lsp` (editor) and `mcp` (agent) — render/project
+user documents in their request loop with **no per-request `catch_unwind`**, unlike the `serve`/`build` paths
+AP2 verified and unlike the LSP's own `render_buffer` (which already wraps its render in `serve::guarded` with
+the comment "so a malformed buffer yields `None` rather than crashing the request loop"). `lsp::main_loop`
+(`lsp.rs:93`) dispatches with `?` (propagates `Result`, not panics) and `publish()`→`check::buffer_diagnostics`
+renders the buffer unguarded **every keystroke**; `mcp::cmd_mcp` (`mcp.rs:105`) calls `handle` unguarded. A
+catchable panic there kills the server for the whole session (LSP: all editor intelligence dies silently; MCP:
+every subsequent tool call fails). The guard is applied to hover/completion but not the every-keystroke
+diagnostics path — an inconsistency AP2's census (scoped to build/serve) structurally missed. Fix: wrap the
+per-message dispatch in the existing `serve::guarded`, + a "malformed buffer keeps the server alive" pin.
+**AP10 also raises AP2-1/AP2-2's priority:** the deep-`>` stack-overflow abort and the O(n²) nested-bracket
+hang (neither `catch_unwind`-fixable) degrade to a recovered 500 on `serve` but **kill a persistent server** on
+`lsp`/`mcp`. Build-ready HEALTH-1 folded into Open-work item 21. Refuted: LSP position math panics (`lsp_pos.rs`
+is defensive + tested — the AP5 divergence is a wrong-offset correctness issue, not a panic); dead-code/module
+sprawl (lean). Residuals: full per-site reachability census, coupling metric, the check/`to_lsp`/projection
+layer's own fuzz coverage (an AP2-followup).
+
 **Perspective audit AP1 (performance & scale), 2026-07-23** →
 [2026-07-23-ap1-performance-scale-audit.md](2026-07-23-ap1-performance-scale-audit.md). Tier-1 "genuinely
 untouched, highest expected yield"; first perf note in `notes/`. Run solo on a clean tree with a fresh

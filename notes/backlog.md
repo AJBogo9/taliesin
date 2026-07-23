@@ -43,14 +43,14 @@ measurement". The remaining open work is the medium/low band, pick in priority o
 3. Deck mobile polish (item 4, P2, hard to verify without a device) and the P3 test-infra/polish residuals
    (items 10, 11).
 
-- **Or run one of the five remaining *audit perspectives* ("Audit perspectives" section below):**
+- **Or run one of the four remaining *audit perspectives* ("Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see. **Done so far:
-  AP1, AP2, AP4, AP5, AP8, AP9, AP12** (perf, fuzzing, cache-correctness, i18n/sourcepos, determinism,
-  semantic HTML, offline-proof). **Remaining: AP3 (concurrency), AP6 (cross-browser), AP7 (a11y),
-  AP10 (codebase health), AP11 (chaos).** Each is a fresh session that writes a dated findings doc and
-  feeds build-ready items back here; the author has credits queued for exactly this. Recommended next:
-  **AP10 (codebase health)** is the pure code-read pick, fan-out-safe and safe alongside a live session;
-  of the stateful/solo ones **AP7 (deep a11y)** and **AP3 (concurrency)** are the highest-yield.
+  AP1, AP2, AP4, AP5, AP8, AP9, AP10, AP12** (perf, fuzzing, cache-correctness, i18n/sourcepos, codebase
+  health, determinism, semantic HTML, offline-proof). **Remaining: AP3 (concurrency), AP6 (cross-browser),
+  AP7 (a11y), AP11 (chaos)** — all four are *stateful/solo* (server/kernel/browser), so run one when no
+  parallel session owns that surface. Each is a fresh session that writes a dated findings doc and feeds
+  build-ready items back here; the author has credits queued for exactly this. Recommended next:
+  **AP7 (deep a11y)** and **AP3 (concurrency)** are the highest-yield of the remaining stateful set.
 
 Working method is in "Standing constraints": branch per feature, verify by mutation, browser-verify,
 ff-merge locally, delete the item here on landing.
@@ -255,6 +255,26 @@ the medium/low band below (OFF-2 mermaid-offline, item 13).
     AP1 harness pattern (`scratchpad/perfbench/`: time the passes before/after on a generated large book) +
     existing `serve_site` tests green.
 
+21. **HEALTH-1: the persistent stdio servers (`lsp`, `mcp`) have no per-request panic boundary** (P2, from
+    AP10; detail: [2026-07-23-ap10-codebase-health-audit.md](2026-07-23-ap10-codebase-health-audit.md)). AP10
+    found the codebase healthy (dead code nil; ~708-panic surface dominated by guarded/structural sites). The
+    one finding: `lsp::main_loop` (`lsp.rs:93`) dispatches each notification/request with `?` (propagates a
+    `Result` error, NOT a panic) and `publish()`→`check::buffer_diagnostics` renders the buffer **unguarded on
+    every keystroke**; `mcp::cmd_mcp` (`mcp.rs:105`) calls `handle` unguarded. A catchable panic there unwinds
+    out of the loop and **kills the server for the whole session** (LSP: all editor intelligence dies
+    silently; MCP: every subsequent tool call fails). Inconsistent with the `serve`/`build` paths (AP2-verified
+    `catch_unwind`) and with the LSP's OWN `render_buffer` (`lsp.rs:722`), which already wraps its render in
+    `crate::serve::guarded` "so a malformed buffer yields `None` rather than crashing the request loop" — the
+    guard is on hover/completion but not the every-keystroke diagnostics path. **Fix:** wrap the per-message
+    dispatch in `main_loop` (and `handle` in `mcp`) in the existing `serve::guarded` — a panicking request →
+    error response, a panicking notification → log + skip so the loop survives; pin with a "malformed buffer
+    keeps the server answering" test (the resilience test that can't exist while unguarded). Surface:
+    `lsp.rs` (loop + `publish`) + `mcp.rs` (loop); reuses `serve::guarded`; touches no core render/diff/block
+    model. **Explicitly NOT fixed by this** (route to the AP2 items): the deep-`>` stack-overflow **abort**
+    (AP2-1) and the O(n²) nested-bracket **hang** (AP2-2) also crash/hang these servers and neither is
+    `catch_unwind`-catchable — **AP10 raises AP2-1/AP2-2 from "dev-server 500" to "editor/agent-server death",
+    which is the strongest case for shipping the pre-parse depth guard + render watchdog.**
+
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
@@ -296,10 +316,10 @@ the priority: non-test code carries ~700 `unwrap()`/`expect()`/`panic!`/`unreach
 The *stateful* ones (AP1, AP2, AP3, AP4, AP5, AP6, AP11) each build, fuzz, run the server, bind ports,
 drive a browser, or spawn kernels, so they corrupt each other if run at once: keep them solo. Only the
 pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan out together in one
-Workflow. The recommended-first set (**AP1, AP2, AP4, AP5**, each striking a load-bearing invariant) is now
-all RUN (see their entries below). Of what remains, **AP10 (codebase health)** is the safe pure-code-read
-next (fan-out-safe, no collision with a live session); **AP7 (deep a11y)** and **AP3 (concurrency)** are the
-highest-yield stateful/solo picks; **AP6 (cross-browser)** and **AP11 (chaos)** round out the set.
+Workflow. The recommended-first set (**AP1, AP2, AP4, AP5**) plus the one safe code-read pick (**AP10**) are
+now all RUN (see their entries below). **Everything remaining — AP3 (concurrency), AP6 (cross-browser), AP7
+(a11y), AP11 (chaos) — is stateful/solo** (server/kernel/browser/ports), so each needs a session where no
+parallel work owns that surface. Highest-yield of the four: **AP7 (deep a11y)** and **AP3 (concurrency)**.
 
 ### Tier 1: genuinely untouched, highest expected yield
 
@@ -368,10 +388,18 @@ highest-yield stateful/solo picks; **AP6 (cross-browser)** and **AP11 (chaos)** 
   `<h1>`" measurement came from a stale gitignored `corpus/bayesian-website/_site/index.html` (a pre-fix
   build); a fresh render/build of that page emits exactly one `<h1>`. See "Refuted by measurement". Done as a
   render-probe + offline HTML-parse audit, no browser drive needed.
-- **AP10: Internal codebase health.** Distinct from the feature-reduction audit: the ~700-panic surface
-  (which `unwrap`s are reachable from user input?), module coupling, dead code, and a *coverage-hole* map
-  (behaviors with zero test), which is different from the vacuous-test *quality* audit already done.
-  *Code-read, fan-out-safe.*
+- **AP10: Internal codebase health. RUN 2026-07-23** (findings:
+  [2026-07-23-ap10-codebase-health-audit.md](2026-07-23-ap10-codebase-health-audit.md); build-ready HEALTH-1
+  folded into Open-work item 21). Run as the pure code-read pick alongside a live parallel session
+  (`ask-ai-handoff`), written up in an isolated worktree. Result: healthy — **dead code is essentially nil**
+  (2 `#[allow(dead_code)]`, corroborating the reduction audit), and the ~708-panic surface is dominated by
+  guarded/structural sites. One finding, **HEALTH-1 (medium):** the two *persistent stdio servers* (`lsp`,
+  `mcp`) render/project user docs in their request loop with **no per-request `catch_unwind`**, unlike the
+  guarded `serve`/`build` paths and unlike the LSP's own `render_buffer` (which uses `serve::guarded`); a
+  catchable panic in the every-keystroke diagnostics render (`publish`→`buffer_diagnostics`) or the MCP
+  `handle` kills the server for the session. Also **raises AP2-1/AP2-2 priority** (the abort + hang kill a
+  persistent server, not a recoverable 500). Refuted: LSP position-math panics (`lsp_pos.rs` defensive +
+  tested), dead-code sprawl. *Was code-read, fan-out-safe — the correct pick under contention.*
 - **AP11: Chaos / failure-injection UX.** Kill the kernel mid-cell, fill the disk during a build, drop the
   websocket, SIGKILL the server: how graceful is each degradation and what does the author actually see? DX
   touched error loops; nobody has injected real failures. (Note PA-B1 in item 11: the kernel-unavailable
