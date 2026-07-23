@@ -961,3 +961,4 @@
 :is(h1, h2, h3, h4, h5, h6):hover > .tali-askai-heading,
 .tali-askai-heading:focus-visible { opacity: 1; }
 @media (pointer: coarse) { .tali-askai-heading { opacity: 1; min-height: 44px; padding: 0.3rem 0.7rem; } }
+.tali-askai-settings-label { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--tali-muted); line-height: 1.5; }

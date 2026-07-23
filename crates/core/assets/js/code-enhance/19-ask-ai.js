@@ -313,6 +313,15 @@ function taliAskForget() {
   } catch (e) {}
 }
 
+/** Clear only the provider (keep the consent ack) => back to the picker without re-consenting. */
+function taliAskClearProvider() {
+  var o = taliAskRead();
+  if (!o) return;
+  delete o.provider;
+  delete o.picked_at;
+  taliAskWrite(o);
+}
+
 // --- Composer dialog (the single home for the question input + every provider path) -------
 
 /** @type {HTMLElement | null} */
@@ -480,7 +489,7 @@ function taliAskRenderReady(id) {
   });
   menu.appendChild(
     taliAskMenuItem('Forget my choice', function () {
-      taliAskForget();
+      taliAskClearProvider(); // back to the picker, but keep the consent ack
       taliAskToggleMenu(false);
       taliAskRenderState();
     })
@@ -534,13 +543,25 @@ function taliAskGo(id) {
 }
 
 /**
- * Hand off to the provider. NOTE: the popup-safe synchronous open sequence lands in Task 8;
- * this stub only copies the prompt so the composer is testable in isolation.
+ * Hand off to the provider. Popup-safe: the clipboard write is fire-and-forget (initiated while
+ * the book tab still has focus) and the provider tab is opened SYNCHRONOUSLY in the same click
+ * gesture — there must be NO `await` between the gesture and window.open, or popup blockers kill
+ * the tab. Deep-link providers get the compact prompt in the URL when it fits; paste-primary
+ * providers (Claude) and the over-budget case open bare and rely on the clipboard.
  * @param {string} id @param {{ full: string, compact: string, deepLinkable: boolean }} composed
  */
 function taliAskHandOff(id, composed) {
-  void id;
-  taliCopyText(composed.full, function () {}, function () {});
+  var prov = TALI_ASK_PROVIDERS[id];
+  if (!prov) return;
+  taliCopyText(composed.full, function () {}, function () {}); // fire-and-forget; not awaited
+  var url = null;
+  if (prov.deepLink) {
+    url =
+      !prov.paste && composed.deepLinkable
+        ? prov.deepLink(encodeURIComponent(composed.compact))
+        : prov.deepLink('');
+  }
+  if (url) window.open(url, '_blank', 'noopener'); // synchronous, in-gesture
 }
 
 /** @param {TaliAskPayload & { trigger?: HTMLElement }} payload */
@@ -740,6 +761,46 @@ function taliAskDecorateHeading(heading) {
   heading.appendChild(btn);
 }
 
+/** Dock an "AI hand-off" row into the reader settings sheet — one canonical place to change
+ * or reset the remembered provider without needing to select text first. */
+function taliAskSettingsRow() {
+  var rm = window.taliReaderMenu;
+  if (!rm || typeof rm.addSection !== 'function') return;
+  var wrap = document.createElement('div');
+  var label = document.createElement('p');
+  label.className = 'tali-askai-settings-label';
+  var row = document.createElement('div');
+  row.className = 'tali-askai-btnrow';
+  var change = document.createElement('button');
+  change.type = 'button';
+  change.className = 'tali-askai-btn-ghost';
+  change.textContent = 'Change provider';
+  var reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'tali-askai-btn-ghost';
+  reset.textContent = 'Reset';
+  function sync() {
+    var p = taliAskProvider();
+    label.textContent = p
+      ? 'Hands off to your own ' + TALI_ASK_PROVIDERS[p].label + '.'
+      : 'No AI chosen yet — you’ll pick one the first time you ask.';
+  }
+  change.addEventListener('click', function () {
+    taliAskClearProvider();
+    sync();
+  });
+  reset.addEventListener('click', function () {
+    taliAskForget();
+    sync();
+  });
+  row.appendChild(change);
+  row.appendChild(reset);
+  wrap.appendChild(label);
+  wrap.appendChild(row);
+  sync();
+  rm.addSection('AI hand-off', wrap, sync);
+}
+
 /**
  * Entry point; registered in 09-register.js. Idempotent; skips decks.
  * @param {Document | Element} [root]
@@ -761,6 +822,8 @@ function taliInitAskAi(root) {
   var host = document.body;
   if (!host || host.getAttribute('data-tali-askai') === 'on') return;
   host.setAttribute('data-tali-askai', 'on');
+
+  taliAskSettingsRow();
 
   var coarse = false;
   try {
