@@ -1491,6 +1491,30 @@ mod tests {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
+    /// [`probe_interp_id`], retried past a transient failure to *ask*.
+    ///
+    /// A just-written executable can briefly refuse to exec with `ETXTBSY`: these tests
+    /// run in parallel, and another one spawning a process forks a child that momentarily
+    /// inherits a write descriptor to this inode, which `execve` refuses to run. The
+    /// probe reports that as an empty version, which at this call site is indistinguishable
+    /// from a real answer of "no version", so a single unlucky probe reads as a format
+    /// regression.
+    ///
+    /// Retrying is sound rather than a way to make red go green: a failure to *ask* is
+    /// deliberately never memoized (that is the contract these tests pin), so a retry
+    /// genuinely re-probes, while a wrong id is served identically on every call and the
+    /// loop simply expires with the assertion still failing.
+    async fn interp_id_settled(lang: &str, program: &Path, want: &str) -> String {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let id = probe_interp_id(lang, program, Duration::from_secs(10)).await;
+            if id == want || std::time::Instant::now() >= deadline {
+                return id;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn a_successful_probe_pins_the_freeze_key_format() {
@@ -1504,19 +1528,15 @@ mod tests {
         // Version on stdout: the ordinary python case.
         let out = dir.join("on-stdout");
         write_exe(&out, "#!/bin/sh\necho 'Python 3.12.3'\n");
-        assert_eq!(
-            probe_interp_id("python", &out, Duration::from_secs(10)).await,
-            format!("python::{}::Python 3.12.3", out.display())
-        );
+        let want = format!("python::{}::Python 3.12.3", out.display());
+        assert_eq!(interp_id_settled("python", &out, &want).await, want);
 
         // Version on stderr only (how `python -V` used to report): stdout is empty, so
         // the probe falls back to stderr rather than recording an empty version.
         let err = dir.join("on-stderr");
         write_exe(&err, "#!/bin/sh\necho 'Python 2.7.18' >&2\n");
-        assert_eq!(
-            probe_interp_id("python", &err, Duration::from_secs(10)).await,
-            format!("python::{}::Python 2.7.18", err.display())
-        );
+        let want = format!("python::{}::Python 2.7.18", err.display());
+        assert_eq!(interp_id_settled("python", &err, &want).await, want);
 
         // Chatty multi-line output with padding: first line only, trimmed (R's banner).
         let multi = dir.join("multi-line");
@@ -1524,20 +1544,16 @@ mod tests {
             &multi,
             "#!/bin/sh\nprintf '  R version 4.3.1 (2023-06-16) \\nCopyright (C)\\n'\n",
         );
-        assert_eq!(
-            probe_interp_id("r", &multi, Duration::from_secs(10)).await,
-            format!("r::{}::R version 4.3.1 (2023-06-16)", multi.display())
-        );
+        let want = format!("r::{}::R version 4.3.1 (2023-06-16)", multi.display());
+        assert_eq!(interp_id_settled("r", &multi, &want).await, want);
 
         // Non-zero exit that still prints a version: the interpreter ANSWERED, so its
         // version must reach the id. Gating the probe on exit status instead of on
         // "did it run" would silently rewrite this key.
         let nz = dir.join("nonzero-exit");
         write_exe(&nz, "#!/bin/sh\necho 'Python 3.1.2'\nexit 3\n");
-        assert_eq!(
-            probe_interp_id("python", &nz, Duration::from_secs(10)).await,
-            format!("python::{}::Python 3.1.2", nz.display())
-        );
+        let want = format!("python::{}::Python 3.1.2", nz.display());
+        assert_eq!(interp_id_settled("python", &nz, &want).await, want);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1565,10 +1581,14 @@ mod tests {
         // The interpreter shows up (a slow NFS mount, a shim finishing an install).
         write_exe(&prog, "#!/bin/sh\necho 'Python 9.9.9'\n");
 
-        let found = interp_id("python", &prog).await;
+        // Probe 2 goes through `interp_id_settled` because it can itself transiently fail
+        // to *ask* (see that helper), which is the same empty version a memoized failure
+        // would produce. The regression this test exists for still fails: a memoized
+        // failure is served from the cache on every retry, so the version never appears.
+        let want = format!("python::{}::Python 9.9.9", prog.display());
         assert_eq!(
-            found,
-            format!("python::{}::Python 9.9.9", prog.display()),
+            interp_id_settled("python", &prog, &want).await,
+            want,
             "the earlier FAILURE must not be memoized: a later successful probe has to \
              report the real version, or the freeze key stays poisoned for the process"
         );
