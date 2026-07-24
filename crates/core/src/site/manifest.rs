@@ -15,17 +15,11 @@ use std::path::Path;
 /// `var(--tali-bg)` and has to be duplicated here; `manifest_colors_match_the_tali_bg_tokens`
 /// pins the duplicate so it cannot drift.
 pub const MANIFEST_LIGHT_BG: &str = "#ffffff";
-/// The dark-mode page background, mirroring `--tali-bg` in `tokens-dark.css`. Used only by
-/// the `prefers-color-scheme: dark` meta tag; a manifest holds exactly one colour.
-pub const MANIFEST_DARK_BG: &str = "#16181d";
-
-/// The token files the two constants above mirror. Read only by
-/// `manifest_colors_match_the_tali_bg_tokens`, which is the whole point of keeping them:
-/// they exist so the duplication is pinned, not so anything reads the CSS at runtime.
+/// The token file the constant above mirrors. Read only by
+/// `manifest_color_matches_the_tali_bg_token`, which is the whole point of keeping it: it
+/// exists so the duplication is pinned, not so anything reads the CSS at runtime.
 #[cfg(test)]
 const TOKENS_LIGHT_CSS: &str = include_str!("../../assets/css/tokens.css");
-#[cfg(test)]
-const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-dark.css");
 
 /// Icon file names, at the output root. The same names serve as the author-override
 /// convention (drop them next to `_site.yml`) and as the bundled fallback's output names,
@@ -135,18 +129,20 @@ fn manifest_json_for(cfg: &SiteConfig, dir_name: &str, icons: Icons) -> String {
 
 /// The `<head>` block that makes a page installable, relative to a page at `depth`
 /// directories below the output root. `apple-touch-icon` reuses the 192px asset (iOS
-/// scales it) rather than shipping a fourth size. The theme-colour pair is what follows the
-/// reader's light/dark toggle: a manifest holds only one static colour.
+/// scales it) rather than shipping a fourth size.
+///
+/// Emits NO `<meta name="theme-color">`. The pre-paint theme bootstrap
+/// (`render::theme::theme_head`) already creates one and keeps it in lockstep with the
+/// canvas, following the reader's in-page toggle rather than only the OS preference, and
+/// sourcing the colour from its own `BG` map. A static `prefers-color-scheme` pair here
+/// would be strictly worse (OS-only) AND inert: the bootstrap runs earlier in the head, so
+/// its media-less meta comes first in tree order and wins.
 fn manifest_head_at(depth: usize, name: &str) -> String {
     let up = "../".repeat(depth);
     format!(
         "<link rel=\"manifest\" href=\"{up}manifest.webmanifest\" />\
          <link rel=\"apple-touch-icon\" href=\"{up}{ICON_192}\" />\
-         <meta name=\"apple-mobile-web-app-title\" content=\"{label}\" />\
-         <meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" \
-         content=\"{MANIFEST_LIGHT_BG}\" />\
-         <meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" \
-         content=\"{MANIFEST_DARK_BG}\" />",
+         <meta name=\"apple-mobile-web-app-title\" content=\"{label}\" />",
         label = esc(&short_name(name)),
     )
 }
@@ -269,10 +265,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The manifest is JSON, so its colours cannot be `var(--tali-bg)` and must be
-    /// duplicated as Rust constants. Pin the duplicates against the CSS they mirror.
+    /// The manifest is JSON, so its colour cannot be `var(--tali-bg)` and must be
+    /// duplicated as a Rust constant. Pin the duplicate against the CSS it mirrors.
     #[test]
-    fn manifest_colors_match_the_tali_bg_tokens() {
+    fn manifest_color_matches_the_tali_bg_token() {
         fn tali_bg(css: &str) -> String {
             let at = css.find("--tali-bg:").expect("tokens define --tali-bg");
             let rest = &css[at + "--tali-bg:".len()..];
@@ -280,7 +276,15 @@ mod tests {
             rest[..end].trim().to_string()
         }
         assert_eq!(tali_bg(TOKENS_LIGHT_CSS), MANIFEST_LIGHT_BG);
-        assert_eq!(tali_bg(TOKENS_DARK_CSS), MANIFEST_DARK_BG);
+    }
+
+    /// The pre-paint theme bootstrap owns `<meta name="theme-color">` and keeps it in
+    /// lockstep with the reader's chosen theme. A static `prefers-color-scheme` pair here
+    /// would be inert (it parses after the bootstrap's media-less meta, which wins on tree
+    /// order) and would duplicate a hex the bootstrap's `BG` map single-sources.
+    #[test]
+    fn the_install_head_leaves_theme_color_to_the_theme_bootstrap() {
+        assert!(!manifest_head_at(0, "X").contains("theme-color"));
     }
 
     #[test]
@@ -292,7 +296,6 @@ mod tests {
         );
         assert!(head.contains("href=\"../../icon-192.png\""), "{head}");
         assert!(head.contains("content=\"Ada &amp; Co\""), "{head}");
-        assert!(head.contains("(prefers-color-scheme: dark)"), "{head}");
 
         let root = manifest_head_at(0, "X");
         assert!(root.contains("href=\"manifest.webmanifest\""), "{root}");

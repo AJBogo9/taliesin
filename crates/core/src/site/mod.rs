@@ -728,7 +728,12 @@ impl Site {
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
         // The multi-page build path: a book emits `<book>.zip` at its output root, so this
         // is the one place the offline-download link is wired.
-        let ctx = self.page_chrome(page, self.is_book());
+        let mut ctx = self.page_chrome(page, self.is_book());
+        // Same reasoning for the install head (`manifest.webmanifest` + the iOS icon/label +
+        // the theme-colour pair): the manifest is a build artifact, and a live preview that
+        // emitted it would let Chrome install `localhost`, leaving the reader an app that
+        // breaks the moment the dev server stops.
+        ctx.includes.in_header.push_str(&self.manifest_head(page));
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
         (rewrite_qmd_links(&html), warnings)
@@ -2299,6 +2304,45 @@ pub(crate) mod tests {
         let src = std::fs::read_to_string(&page.input).unwrap();
         let doc = crate::render::render_document_with_includes(&src, &site.root);
         site.render_page_doc_warned(page, doc)
+    }
+
+    /// The preview render path must never emit the install head. A manifest served from
+    /// `localhost` lets Chrome install the dev server, and that installed app breaks
+    /// permanently the moment the server stops.
+    #[test]
+    fn only_the_static_build_path_emits_the_install_head() {
+        let root = write_site(
+            "install-head",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\n# Home\n\nHi.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (preview_html, _) = render_page(&site, "index.tmd");
+
+        let page = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let doc = crate::render::render_document_with_includes(&src, &site.root);
+        let ext = render::ExternalAssets {
+            app_css: "_assets/app.a.css",
+            katex_css: "_assets/katex.b.css",
+            app_js: "_assets/app.c.js",
+            mermaid_js: "_assets/mermaid.d.js",
+            jslibs_js: "_assets/jslibs.e.js",
+        };
+        let (build_html, _) = site.render_page_doc_external(page, doc, ext);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            build_html.contains("rel=\"manifest\""),
+            "the static build path must emit the install head: {build_html}"
+        );
+        assert!(
+            !preview_html.contains("rel=\"manifest\""),
+            "preview must not offer an installable manifest: {preview_html}"
+        );
+        assert!(!preview_html.contains("apple-touch-icon"), "{preview_html}");
     }
 
     #[test]

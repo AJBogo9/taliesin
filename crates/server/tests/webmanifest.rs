@@ -166,3 +166,46 @@ fn an_incomplete_author_set_falls_back_to_the_bundled_icons() {
     );
     assert!(manifest.contains("maskable"), "{manifest}");
 }
+
+#[test]
+fn every_built_page_links_the_manifest_at_its_own_depth() {
+    let (out, _) = build(
+        "depth",
+        &[
+            (
+                "_site.yml",
+                "title: \"Deep Book: Volume One\"\nchapters:\n  - index.tmd\n  - sub/two.tmd\n",
+            ),
+            ("index.tmd", "---\ntitle: Intro\n---\n\n# Intro\n\nHello.\n"),
+            ("sub/two.tmd", "---\ntitle: Two\n---\n\n# Two\n\nWorld.\n"),
+        ],
+    );
+    let index = fs::read_to_string(out.join("index.html")).unwrap_or_default();
+    let nested = fs::read_to_string(out.join("sub/two.html")).unwrap_or_default();
+    let _ = fs::remove_dir_all(out.parent().unwrap());
+
+    assert!(
+        index.contains("rel=\"manifest\" href=\"manifest.webmanifest\""),
+        "root page does not link the manifest"
+    );
+    assert!(
+        nested.contains("rel=\"manifest\" href=\"../manifest.webmanifest\""),
+        "a nested page's manifest link must be depth-relative"
+    );
+    assert!(
+        nested.contains("rel=\"apple-touch-icon\" href=\"../icon-192.png\""),
+        "a nested page's apple-touch-icon must be depth-relative"
+    );
+    // The launcher label is the title up to its first colon.
+    assert!(
+        index.contains("name=\"apple-mobile-web-app-title\" content=\"Deep Book\""),
+        "{index}"
+    );
+    // `theme-color` stays the theme bootstrap's job: it follows the reader's in-page
+    // toggle, where a static `prefers-color-scheme` pair would only follow the OS (and
+    // would lose to the bootstrap's media-less meta on tree order anyway).
+    assert!(
+        !index.contains("theme-color\" media="),
+        "the install head must not emit a static theme-colour pair"
+    );
+}
