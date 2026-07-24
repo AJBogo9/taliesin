@@ -171,10 +171,19 @@ collaboration** (no backend, no shared server) and is explicitly in-scope.
     figures/code as marks, your highlights/bookmarks + viewport shown), click to jump. —
     spatial overview + "jump to that figure I saw." — **M** — reader — fits (derived from
     the block/numbering model).
-14. **"Save offline" / installable PWA** — a minimal service worker + manifest so a
+14. ⚠️ PARTLY SHIPPED 2026-07-24 (install half only). **"Save offline" / installable PWA** — a minimal service worker + manifest so a
     site/book installs and reads fully offline + app-like on phone. The output is *already*
     self-contained, so this is mostly packaging. — read on a plane; keep it forever. — **M**
     — build — fits (delivery wrapper, **not** a new output format).
+    **Shipped:** `manifest.webmanifest` + app icons per site build, so a site/book installs
+    from Chrome/Edge, iOS "Add to Home Screen" and Safari's "Add to Dock"
+    (`crates/core/src/site/manifest.rs`, spec
+    `docs/superpowers/specs/2026-07-24-webmanifest-install-design.md`).
+    **Deliberately NOT shipped:** the service worker. It is a one-way door (it lives in the
+    reader's browser independent of the pages, so a bug outlives the fix and un-shipping
+    needs a self-unregistering replacement plus every reader returning), and the offline
+    value it would buy is already delivered by the book `<book>.zip`, which the reader owns
+    outright. Reopen only if the zip proves insufficient in practice.
 15. **"On this page" mini-TOC with per-section min-read + read-state checkmarks** — sections
     you've scrolled past get a check; each shows its own time estimate. — triage a long
     reference page. — **S** — reader — fits (extends the shipped TOC).

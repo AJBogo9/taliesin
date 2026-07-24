@@ -152,6 +152,49 @@ unlinted, since a format extension may add its own. (The Internals book covers t
 and the drift-locked Draft 2020-12 schemas behind the `taliesin schema` command, in its
 *Validation & schemas* chapter.)
 
+## Installing a site as an app
+
+Every built site and book ships a `manifest.webmanifest`, so a reader can install it and
+come back to it without hunting for a bookmark:
+
+| Where | How it appears |
+|---|---|
+| Chrome / Edge, desktop and Android | An **Install** button in the address bar; the site opens in its own window with a taskbar or launcher icon |
+| iOS / iPadOS | Share, then **Add to Home Screen**. Manual only: Safari never prompts |
+| macOS Safari | **Add to Dock** |
+| Firefox on desktop | Manifests are ignored. Nothing breaks; there is simply no install button |
+
+Installing changes how a reader *returns* to your site. It does **not** make the site work
+offline. For offline reading, a book build also emits a `<book>.zip` that readers download
+from the topbar and keep.
+
+Nothing to configure: the app name comes from `title:`, the label from the part of it
+before the first colon ("Taliesin: The User Guide" becomes "Taliesin"), and the scope from
+wherever the site is deployed, so a book published under `/docs/guide/` installs as its own
+app.
+
+### Bringing your own icon
+
+By default an installed site wears the Taliesin mark. To use your own, drop two PNGs next
+to `_site.yml`:
+
+```
+icon-192.png            192 x 192
+icon-512.png            512 x 512
+icon-maskable-512.png   512 x 512, optional
+```
+
+Both of the first two are required. With only one, the built-in mark is used instead,
+because Chrome will not offer to install at all unless both sizes are present, and a
+half-replaced icon set would mix your mark with Taliesin's.
+
+The optional maskable icon is the one Android crops to a circle, so keep its artwork inside
+the middle 80%. Make every image square and fully opaque: transparent corners render black
+on an iOS home screen.
+
+`favicon:` is separate and still controls the browser tab icon. It can stay an SVG;
+manifests do not accept SVG, which is why the app icons are their own files.
+
 ## Editor autocomplete (config schema)
 
 Taliesin ships JSON Schemas for both config surfaces so your editor's YAML

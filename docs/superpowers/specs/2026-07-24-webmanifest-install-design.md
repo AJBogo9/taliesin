@@ -131,24 +131,25 @@ Derivation rules:
   the OS ellipsizes.
 - `display: standalone` is what removes browser chrome, and on iOS it is also what exempts
   a home-screen app from Safari's 7-day script-writable-storage purge.
-- Colours are the light `--tali-bg` value from `crates/core/assets/css/tokens.css:18`. The
-  default theme mode is `auto` (`crates/core/src/render/theme.rs:56-62`), so no single
-  static value can be right for both modes. A manifest permits only one. The live UI is
-  handled instead by paired head tags, which browsers honour over the manifest:
-
-```html
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="<light --tali-bg>">
-<meta name="theme-color" media="(prefers-color-scheme: dark)"  content="<dark --tali-bg>">
-```
-
-  Known limitation, accepted: a dark-mode reader may see a light launch splash, because
-  `background_color` has no media-query form.
-- The colour values are the project's own `--tali-bg` tokens, not new colours invented for
-  this feature. Because a manifest is JSON, the values must exist as Rust constants rather
-  than as `var(--tali-bg)`, so they are duplicated from
-  `crates/core/assets/css/tokens.css:18` and `tokens-dark.css:10` into one commented pair
-  of constants, and a test (below) asserts the constants still match the CSS so the
-  duplicate cannot drift.
+- `theme_color` and `background_color` are the light `--tali-bg` value from
+  `crates/core/assets/css/tokens.css:18`. The default theme mode is `auto`
+  (`crates/core/src/render/theme.rs:56-62`), so no single static value can be right for both
+  modes, and a manifest permits only one. Known limitation, accepted: a dark-mode reader may
+  see a light launch splash, because `background_color` has no media-query form.
+- **Corrected during implementation.** This spec originally added a
+  `prefers-color-scheme` pair of `<meta name="theme-color">` tags to handle the live UI.
+  That was wrong twice over. The pre-paint theme bootstrap (`render::theme::theme_head`,
+  `theme.rs:114-123`) already creates a `theme-color` meta and keeps it in lockstep with the
+  canvas, following the reader's **in-page toggle** rather than only the OS, and sourcing the
+  colour from its own `BG` map. A static pair is therefore strictly worse, and also inert:
+  the bootstrap runs earlier in the head, so its media-less meta comes first in tree order
+  and wins under the HTML "first matching `theme-color`" rule. Verified in Chrome: with the
+  pair added, the page carried three `theme-color` metas and only the bootstrap's took
+  effect. The install head emits none, and a unit test pins that.
+- The one colour value is the project's own `--tali-bg` token, not a colour invented for
+  this feature. Because a manifest is JSON it cannot be `var(--tali-bg)`, so it is
+  duplicated from `crates/core/assets/css/tokens.css:18` into one commented constant, and a
+  test (below) asserts the constant still matches the CSS so the duplicate cannot drift.
 
 No new `_site.yml` keys, so `NATIVE_KEYS` and the typo validator are unchanged.
 
@@ -160,9 +161,9 @@ Added on the build path only, per page, at the correct relative depth:
 <link rel="manifest" href="<depth>manifest.webmanifest">
 <link rel="apple-touch-icon" href="<depth>icon-192.png">
 <meta name="apple-mobile-web-app-title" content="<short_name>">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="...">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="...">
 ```
+
+No `theme-color`: the theme bootstrap owns it, per the correction above.
 
 `apple-touch-icon` reuses the 192px asset rather than adding a fourth 180px file. iOS
 scales it, which is a marginal quality cost in exchange for one fewer asset to generate,
@@ -193,12 +194,13 @@ the output only when used, and `include_bytes!`'d like other bundled assets.
 (`resvg` or otherwise) enters the build. The generating command is recorded in a comment
 next to the committed files so they can be regenerated if the mark changes.
 
-`taliesin check` emits a note in two cases: a project that sets `favicon:` but ships no
-icons at all, and a project whose icon set is incomplete (for example only
-`icon-512.png`), which silently falls back to the bundled mark under the rule above. Both
-say that the installed app will wear the default Taliesin mark and which files to add. It
-is a `check` note only, never a `build` warning, so an author who does not care about
-installing never sees it during normal work.
+**Dropped during implementation.** This spec originally called for a `taliesin check` note
+when a project ships no icons or an incomplete set. `crates/core/src/diagnostics/codes.rs:12-15`
+has only `error` and `warning` severities and states that `check` "exits non-zero on ANY
+diagnostic regardless of severity", so a cosmetic note would turn `check` red for every
+project that has not shipped custom icons, which today is all of them. Discoverability
+lives in the user guide instead
+(`docs/guide/reference/configuration.tmd`, "Installing a site as an app").
 
 ## Non-goals
 
@@ -236,9 +238,13 @@ New `crates/server/tests/webmanifest.rs`:
 6. Both a book and a website get one.
 7. The preview render path emits **no** manifest link and no `apple-touch-icon`.
 8. `short_name` derivation: colon truncation, and the over-30-characters fallback.
-9. The two colour constants still equal the `--tali-bg` values in the bundled
-   `tokens.css` / `tokens-dark.css`, parsed from the compiled-in CSS at test time, so the
-   duplication cannot drift silently.
+9. The colour constant still equals the `--tali-bg` value in the bundled `tokens.css`,
+   parsed from the compiled-in CSS at test time, so the duplication cannot drift silently.
+10. The install head emits no `theme-color`, leaving it to the theme bootstrap.
+
+Items 1, 2, 3, 4, 5 and 6 live in `crates/server/tests/webmanifest.rs`; 7 in
+`crates/core/src/site/mod.rs`'s test module (it needs both render paths, which only the
+core crate can call); 8, 9 and 10 in `crates/core/src/site/manifest.rs`.
 
 ## Documentation
 
