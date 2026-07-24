@@ -2,6 +2,8 @@
 //! [`Page`]s, and find loose reveal decks. The filesystem-walking front end of
 //! `Site::discover`.
 
+use std::collections::HashSet;
+
 use super::*;
 
 /// A website's pages: every `.tmd` under `root` (path-ordered), each mapped to a
@@ -107,7 +109,29 @@ pub(super) fn discover_decks(
 
 /// Recursively collect input `.tmd` pages under `dir`, skipping `_`-prefixed
 /// directories (`_includes`, `_freeze`, `_site`, …) and dotfiles.
+///
+/// The walk reads directories directly rather than resolving paths through
+/// [`crate::includes::safe_join`], so it applies that function's symlink boundary by
+/// hand: a link is followed only while it stays inside the repository.
 fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
+    let boundary = crate::includes::repo_boundary(dir);
+    let mut walked = HashSet::new();
+    // Seed with the root itself, so a link pointing back at it is a repeat, not a
+    // second copy of every page beneath it.
+    if let Ok(c) = dir.canonicalize() {
+        walked.insert(c);
+    }
+    collect_pages_in(dir, &boundary, &mut walked, out);
+}
+
+/// `boundary` is the repository the walk may not leave; `walked` holds the canonical
+/// directories already visited.
+fn collect_pages_in(
+    dir: &Path,
+    boundary: &Path,
+    walked: &mut HashSet<PathBuf>,
+    out: &mut Vec<PathBuf>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -117,8 +141,21 @@ fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
         if name.starts_with('_') || name.starts_with('.') {
             continue;
         }
+        // Checking the link itself is enough: anything deeper can only leave the
+        // repository through a link that this same test already refused.
+        if entry.file_type().is_ok_and(|t| t.is_symlink())
+            && !p.canonicalize().is_ok_and(|c| c.starts_with(boundary))
+        {
+            continue;
+        }
         if p.is_dir() {
-            collect_pages(&p, out);
+            // A link back up the tree stays inside the repository, so the boundary above
+            // permits it and only this cycle guard ends the walk. Without it the recursion
+            // ran until the path outgrew `PATH_MAX`, emitting one output page per level.
+            if p.canonicalize().is_ok_and(|c| !walked.insert(c)) {
+                continue;
+            }
+            collect_pages_in(&p, boundary, walked, out);
         } else if crate::ext::is_source_path(&p) {
             out.push(p);
         }

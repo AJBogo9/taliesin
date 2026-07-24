@@ -714,6 +714,7 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
 /// dangling asset references).
 fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
+    let boundary = taliesin_core::includes::repo_boundary(base);
     for r in local_refs(html) {
         // The filesystem path is the ref without any ?query / #fragment (a static
         // host ignores those, so `img.png?v=2` is the file `img.png`).
@@ -725,6 +726,12 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
         let from = base.join(path);
         if !from.is_file() {
             continue; // e.g. an href to something that isn't a local file
+        }
+        if !inside_repo(&from, &boundary) {
+            log::warn(&format!(
+                "asset resolves outside the repository, not bundled: {r}"
+            ));
+            continue;
         }
         let to = dest.join(path);
         // In-place build: the asset is already where the page points, and copying a
@@ -751,6 +758,7 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
 /// loud out-of-tree warning belongs to the single-doc [`copy_local_assets`]).
 fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
+    let boundary = taliesin_core::includes::repo_boundary(base);
     for r in local_refs(html) {
         let path = &r[..r.find(['?', '#']).unwrap_or(r.len())];
         // Cross-page / out-of-tree refs aren't ours to ship; mirror_assets already
@@ -766,7 +774,7 @@ fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
             continue;
         }
         let from = base.join(path);
-        if !from.is_file() {
+        if !from.is_file() || !inside_repo(&from, &boundary) {
             continue;
         }
         let to = dest.join(path);
@@ -788,14 +796,30 @@ fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
 /// source tree, so each page's relative refs resolve from its source directory. Returns
 /// the count deployed. See [`deploy_referenced_sources`].
 fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
-    fn walk(dir: &Path, root: &Path, out: &Path, copied: &mut usize) {
+    fn walk(
+        dir: &Path,
+        root: &Path,
+        out: &Path,
+        seen: &mut std::collections::HashSet<PathBuf>,
+        copied: &mut usize,
+    ) {
+        // The build never emits a symlink, so one under `out` is the author's own mount
+        // (`sweep_stale` leaves them alone for that reason) and reading through it is
+        // intended — but a mount pointing back up the tree used to re-walk the whole
+        // deploy once per level, re-resolving each page against a longer path and
+        // re-copying what it had already shipped. Descend into each directory once.
+        if let Ok(canon) = dir.canonicalize()
+            && !seen.insert(canon)
+        {
+            return;
+        }
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
         for entry in entries.flatten() {
             let p = entry.path();
             if p.is_dir() {
-                walk(&p, root, out, copied);
+                walk(&p, root, out, seen, copied);
             } else if p.extension().and_then(|s| s.to_str()) == Some("html") {
                 let Ok(html) = std::fs::read_to_string(&p) else {
                     continue;
@@ -811,8 +835,23 @@ fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
         }
     }
     let mut copied = 0usize;
-    walk(out, root, out, &mut copied);
+    walk(
+        out,
+        root,
+        out,
+        &mut std::collections::HashSet::new(),
+        &mut copied,
+    );
     copied
+}
+
+/// Whether a path resolved out of a page's `src=`/`href=` still lands inside the
+/// repository once symlinks are followed. The lexical rule the callers apply first
+/// (no absolute path, no `..` segment) constrains what the *page text* may ask for and
+/// says nothing about what an in-tree path resolves *to*: `<img src="fig.png">` where
+/// `fig.png` is a symlink is contained by that rule and can still leave the checkout.
+fn inside_repo(from: &Path, boundary: &Path) -> bool {
+    from.canonicalize().is_ok_and(|c| c.starts_with(boundary))
 }
 
 /// Whether two paths resolve to the same file on disk (so we don't self-copy).
@@ -1868,7 +1907,16 @@ fn write_book_archive(out: &Path, name: &str) -> std::io::Result<u64> {
     let archive_path = out.join(name);
     let mut entries: Vec<crate::zip::ZipEntry> = Vec::new();
     let mut stack = vec![out.to_path_buf()];
+    // A symlinked directory under `out` is the author's own mount (the build emits none,
+    // and `sweep_stale` leaves them in place), so its contents belong in the archive —
+    // but one pointing back up the tree is a cycle, and the walk followed it until the
+    // path outgrew the kernel's link limit, failing the whole archive. Pack each
+    // directory once.
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     while let Some(dir) = stack.pop() {
+        if dir.canonicalize().is_ok_and(|c| !seen.insert(c)) {
+            continue;
+        }
         for e in std::fs::read_dir(&dir)? {
             let path = e?.path();
             if path.is_dir() {
@@ -1915,11 +1963,17 @@ const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
 /// Returns `(out-relative paths copied, names of skipped cache dirs)` so the caller can
 /// report residue it dropped rather than silently omitting it, and knows which output
 /// files this build owns (for the stale-file sweep).
+/// A symlink is followed only while its target stays inside the repository, matching
+/// what [`taliesin_core::includes`] allows a document path to resolve to: a link to a
+/// sibling directory of the same checkout is first-party authoring, one that leaves the
+/// checkout would publish a file the author never put in the project.
 fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
+    #[allow(clippy::too_many_arguments)]
     fn walk(
         dir: &Path,
         root: &Path,
         out: &Path,
+        boundary: &Path,
         seen: &mut std::collections::HashSet<PathBuf>,
         copied: &mut Vec<PathBuf>,
         skipped: &mut Vec<String>,
@@ -1940,6 +1994,13 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
             if name.starts_with('_') || name.starts_with('.') {
                 continue;
             }
+            // Testing the link itself is enough: anything deeper can only leave the
+            // repository through a link this same test already refused.
+            if entry.file_type().is_ok_and(|t| t.is_symlink())
+                && !p.canonicalize().is_ok_and(|c| c.starts_with(boundary))
+            {
+                continue;
+            }
             if p.is_dir() {
                 // Never recurse into the output directory (it may live in-tree).
                 if p.canonicalize().ok().as_deref() == Some(out) {
@@ -1951,7 +2012,7 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
                     skipped.push(name.to_string());
                     continue;
                 }
-                walk(&p, root, out, seen, copied, skipped);
+                walk(&p, root, out, boundary, seen, copied, skipped);
             } else if !SKIP_EXT.contains(&p.extension().and_then(|s| s.to_str()).unwrap_or("")) {
                 let Ok(rel) = p.strip_prefix(root) else {
                     continue;
@@ -1972,6 +2033,7 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
         root,
         root,
         out,
+        &taliesin_core::includes::repo_boundary(root),
         &mut std::collections::HashSet::new(),
         &mut copied,
         &mut skipped,
@@ -2997,5 +3059,198 @@ mod asset_bundle_tests {
             "app.js should have been minified"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// The build's own filesystem walks, held to the same symlink boundary
+/// `taliesin_core::includes` applies to every path resolved out of a document.
+///
+/// Two boundaries, because the two trees are owned by different parties:
+///
+/// * The **source** tree is authored, so a walk that publishes from it (`mirror_assets`,
+///   `copy_local_assets`) may follow a symlink only while the target stays inside the
+///   repository. Otherwise a link the author dropped in for convenience silently ships
+///   out-of-repo files into a public deploy.
+/// * The **output** tree is ours: the build never emits a symlink, so one found there is
+///   the author's deliberate mount and reading through it is intended. It still must not
+///   be walked twice, or a mount pointing back up the tree re-walks the whole deploy once
+///   per level.
+#[cfg(all(test, unix))]
+mod symlink_containment_tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tali-symcontain-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).expect("temp dir");
+        d
+    }
+
+    #[test]
+    fn mirror_assets_refuses_a_symlink_leaving_the_repository() {
+        //   <dir>/outside/secret.png                     out of tree
+        //   <dir>/repo/.git
+        //   <dir>/repo/paper/figures/fig.png             in-repo, above the site root
+        //   <dir>/repo/book/_site.yml                    the site root
+        //   <dir>/repo/book/shared -> ../paper/figures   in-repo: mirrored
+        //   <dir>/repo/book/private -> ../../outside     out-of-repo: refused
+        //   <dir>/repo/book/leak.png -> ../../outside/secret.png   likewise
+        let dir = tmp("mirror-assets");
+        let book = dir.join("repo/book");
+        fs::create_dir_all(&book).unwrap();
+        fs::create_dir_all(dir.join("repo/paper/figures")).unwrap();
+        fs::create_dir_all(dir.join("outside")).unwrap();
+        fs::write(dir.join("repo/.git"), b"").unwrap();
+        fs::write(dir.join("outside/secret.png"), b"SECRET").unwrap();
+        fs::write(dir.join("repo/paper/figures/fig.png"), b"FIG").unwrap();
+        fs::write(book.join("_site.yml"), b"title: Book\n").unwrap();
+        symlink("../paper/figures", book.join("shared")).unwrap();
+        symlink("../../outside", book.join("private")).unwrap();
+        symlink("../../outside/secret.png", book.join("leak.png")).unwrap();
+
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        let (copied, _skipped) = mirror_assets(&book, &out);
+
+        assert!(
+            !out.join("private/secret.png").exists(),
+            "a directory symlinked out of the repository must not be mirrored into the \
+             deploy; copied: {copied:?}"
+        );
+        assert!(
+            !out.join("leak.png").exists(),
+            "a file symlinked out of the repository must not be mirrored either; copied: {copied:?}"
+        );
+        assert!(
+            out.join("shared/fig.png").exists(),
+            "a symlink to a sibling inside the repository is first-party authoring and \
+             must still be mirrored; copied: {copied:?}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn copy_local_assets_refuses_an_asset_symlinked_out_of_the_repository() {
+        // The single-doc `--out` bundle resolves each `src=`/`href=` under the doc's own
+        // directory. The ref is held to the lexical rule (no absolute path, no `..`), but
+        // that says nothing about what the path *resolves* to.
+        let dir = tmp("copy-local-assets");
+        let repo = dir.join("repo");
+        fs::create_dir_all(repo.join("doc")).unwrap();
+        fs::create_dir_all(repo.join("paper")).unwrap();
+        fs::create_dir_all(dir.join("outside")).unwrap();
+        fs::write(repo.join(".git"), b"").unwrap();
+        fs::write(dir.join("outside/secret.png"), b"SECRET").unwrap();
+        fs::write(repo.join("paper/fig.png"), b"FIG").unwrap();
+        symlink("../../outside/secret.png", repo.join("doc/leak.png")).unwrap();
+        symlink("../paper/fig.png", repo.join("doc/shared.png")).unwrap();
+
+        let dest = dir.join("bundle");
+        fs::create_dir_all(&dest).unwrap();
+        let html = r#"<img src="leak.png"><img src="shared.png">"#;
+        let copied = copy_local_assets(html, &repo.join("doc"), &dest);
+
+        assert!(
+            !dest.join("leak.png").exists(),
+            "an asset symlinked out of the repository must not be bundled"
+        );
+        assert!(
+            dest.join("shared.png").exists(),
+            "an asset symlinked to a sibling inside the repository must still be bundled \
+             ({copied} copied)"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn referenced_sources_refuse_a_source_symlinked_out_of_the_repository() {
+        // The second asset pass ships the source-only files a page *links* to (a `.md`
+        // download, a `.scss` offered for inspection). Those are exactly the extensions
+        // `mirror_assets` deliberately keeps out of the deploy, so this pass is the one
+        // that would publish a symlinked private note.
+        let dir = tmp("referenced-sources-escape");
+        let repo = dir.join("repo");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(dir.join("outside")).unwrap();
+        fs::write(repo.join(".git"), b"").unwrap();
+        fs::write(dir.join("outside/diary.md"), b"# Private\n").unwrap();
+        symlink("../outside/diary.md", repo.join("notes.md")).unwrap();
+
+        let dest = dir.join("_site");
+        fs::create_dir_all(&dest).unwrap();
+        let copied = deploy_referenced_sources(r#"<a href="notes.md">notes</a>"#, &repo, &dest);
+
+        assert!(
+            !dest.join("notes.md").exists(),
+            "a linked source symlinked out of the repository must not be deployed \
+             ({copied} copied)"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_book_archive_packs_a_mounted_directory_once() {
+        // `sweep_stale` already treats a symlink under the output as the author's own
+        // mount and leaves it alone. The archive walk followed it without a cycle guard,
+        // so a mount pointing back up the tree re-packed every file once per level until
+        // the path outgrew `PATH_MAX` — at which point `read_dir` failed and `?` took the
+        // whole archive down with it.
+        let dir = tmp("book-archive-loop");
+        let out = dir.join("_book");
+        fs::create_dir_all(out.join("sub")).unwrap();
+        fs::write(out.join("index.html"), b"<p>home</p>").unwrap();
+        symlink("..", out.join("sub/up")).unwrap();
+
+        let bytes = write_book_archive(&out, "book.zip").expect("the archive must be written");
+        assert!(bytes > 0);
+
+        // A ZIP names each entry twice: local file header + central directory.
+        let zip = fs::read(out.join("book.zip")).unwrap();
+        let hits = zip
+            .windows(b"index.html".len())
+            .filter(|w| *w == b"index.html")
+            .count();
+        assert_eq!(
+            hits, 2,
+            "index.html must be packed exactly once, not once per trip through the mount"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn referenced_sources_are_deployed_once_through_a_mounted_directory() {
+        // Same walk shape, in the pass that ships linked `.md`/`.scss` sources: without a
+        // cycle guard the deploy recursed through the mount, re-resolving the same page
+        // against a longer path each time and re-copying what it had already shipped.
+        let dir = tmp("referenced-sources-loop");
+        let root = dir.join("src");
+        let out = dir.join("_site");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&out).unwrap();
+        fs::write(dir.join(".git"), b"").unwrap();
+        fs::write(root.join("notes.md"), b"# Notes\n").unwrap();
+        symlink(".", root.join("loop")).unwrap();
+        fs::write(
+            out.join("index.html"),
+            br#"<p>A <a href="notes.md">note</a>.</p>"#,
+        )
+        .unwrap();
+        symlink(".", out.join("loop")).unwrap();
+
+        let copied = deploy_referenced_sources_for_site(&root, &out);
+
+        assert!(out.join("notes.md").is_file(), "the linked source ships");
+        assert_eq!(
+            copied, 1,
+            "the mount must be walked once, so the linked source is deployed once"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

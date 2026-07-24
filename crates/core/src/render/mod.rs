@@ -1157,19 +1157,29 @@ fn load_bibliography(
             ))));
             continue;
         }
-        match crate::includes::safe_join_in(base, path, root)
-            .and_then(|p| std::fs::read_to_string(&p).ok())
-        {
-            Some(content) => {
-                text.push_str(&content);
-                text.push('\n');
+        // An explicitly named `.bib` that can't be read is worth flagging: citations
+        // would otherwise silently fail to resolve, rendering as bare keys. A path that
+        // was *refused* is reported as such rather than as "not found", so an author
+        // whose file plainly exists is not sent hunting for a typo.
+        match crate::includes::try_join_in(base, path, root) {
+            Ok(p) => match std::fs::read_to_string(&p) {
+                Ok(content) => {
+                    text.push_str(&content);
+                    text.push('\n');
+                }
+                Err(_) => warnings.push(locate(Warning::new(format!(
+                    "bibliography file not found: {path}"
+                )))),
+            },
+            Err(crate::includes::Refused::OutsideRoot) => warnings.push(locate(Warning::new(
+                format!("bibliography `{path}` is outside the project root and was not read"),
+            ))),
+            Err(crate::includes::Refused::SymlinkOutsideRepo) => {
+                warnings.push(locate(Warning::new(format!(
+                    "bibliography `{path}` is a symlink whose target is outside the project \
+                     repository and was not read"
+                ))))
             }
-            // An explicitly named `.bib` that can't be read (or escapes the project
-            // root) is a typo worth flagging: citations would otherwise just
-            // silently fail to resolve.
-            None => warnings.push(locate(Warning::new(format!(
-                "bibliography file not found: {path}"
-            )))),
         }
     }
     let (bib, bib_warnings) = crate::cite::parse_bib_warned(&text);

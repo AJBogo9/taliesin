@@ -353,7 +353,21 @@ fn relative_from(base: &Path, target: &Path) -> Option<String> {
 /// (the repo root contains both the doc and `_includes/`). Shared by include
 /// resolution, theme/CSS includes, and format-resource reads.
 pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
-    safe_join_in(base_dir, rel, None)
+    try_join_in(base_dir, rel, None).ok()
+}
+
+/// Why [`try_join_in`] refused a path. Callers that report to the author use this to
+/// separate "the file is not there" (their own read fails) from "the file is there and
+/// was deliberately not read" — different problems with different fixes, and reporting
+/// the second as the first is what let a refused-but-present `.bib` go unnoticed while
+/// every reference on the page silently degraded to a bare citation key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Refused {
+    /// Absolute, or a `../` climb above the containment root.
+    OutsideRoot,
+    /// In-root lexically, but the path resolves through a symlink to a target outside
+    /// the enclosing repository.
+    SymlinkOutsideRepo,
 }
 
 /// Like [`safe_join`], but the containment boundary can be given explicitly as `root`
@@ -369,10 +383,19 @@ pub(crate) fn safe_join_in(
     rel: &str,
     explicit_root: Option<&Path>,
 ) -> Option<PathBuf> {
+    try_join_in(base_dir, rel, explicit_root).ok()
+}
+
+/// [`safe_join_in`] with the refusal reason kept, for callers that report it.
+pub(crate) fn try_join_in(
+    base_dir: &Path,
+    rel: &str,
+    explicit_root: Option<&Path>,
+) -> Result<PathBuf, Refused> {
     let relp = Path::new(rel);
     // An absolute path (incl. a Windows drive/UNC root) escapes immediately.
     if relp.has_root() || relp.is_absolute() {
-        return None;
+        return Err(Refused::OutsideRoot);
     }
     // Resolve against an *absolute* base so the containment check and the returned
     // target share one coordinate system: a relative CLI path (e.g. the doc's
@@ -392,26 +415,72 @@ pub(crate) fn safe_join_in(
     // through, so the caller's read fails with a "not found" diagnostic rather than a
     // traversal one.
     if !target.starts_with(&root) {
-        return None;
+        return Err(Refused::OutsideRoot);
     }
     // Symlink defense: a lexical check alone is fooled by an in-tree symlink whose target
-    // escapes the root (its bytes would be read + inlined verbatim). When the target
-    // exists, its *canonical* path must still be within the *canonical* root, mirroring
-    // `serve_asset_from`. A non-existent target cannot be a symlink escape, so a
-    // canonicalize failure falls through to the lexical result. The lexical `target` is
-    // still what we return, so labels / `data-source-file` are unchanged.
-    if let (Ok(croot), Ok(ctarget)) = (root.canonicalize(), target.canonicalize())
-        && !ctarget.starts_with(&croot)
-    {
-        return None;
+    // escapes the project (its bytes would be read + inlined verbatim). When the target
+    // exists, its *canonical* path must stay within the canonical `symlink_root`,
+    // mirroring `serve_asset_from`. The lexical `target` is still what we return, so
+    // labels / `data-source-file` are unchanged.
+    match target.canonicalize() {
+        // A non-existent target cannot be a symlink escape; the caller's read reports it.
+        Err(_) => Ok(target),
+        Ok(ctarget) => {
+            let boundary = symlink_root(&abs_base, &root);
+            match boundary.canonicalize() {
+                Ok(cboundary) if ctarget.starts_with(&cboundary) => Ok(target),
+                // Either the target escaped, or no boundary could be canonicalized to
+                // clear it against. Both refuse: an unresolvable boundary used to skip
+                // the check entirely, so a bare-filename invocation (empty base dir,
+                // hence empty root) disabled it and inlined the escaping target.
+                _ => Err(Refused::SymlinkOutsideRepo),
+            }
+        }
     }
-    Some(target)
 }
 
 /// Make `p` absolute by prepending the current working directory if needed, then
-/// normalizing `.`/`..` lexically. No filesystem access, no symlink resolution.
+/// normalizing `.`/`..` lexically. No symlink resolution.
+///
+/// `std::path::absolute` errors on the **empty** path, which is exactly what
+/// `Path::new("index.tmd").parent()` yields when the CLI is handed a bare filename.
+/// Returning `p` unchanged there left the base relative and the containment root empty,
+/// which no longer names a directory that can be canonicalized. Resolve against the cwd
+/// instead, so every caller gets a real absolute boundary.
 fn absolutize(p: &Path) -> PathBuf {
-    normalize(&std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()))
+    let abs = std::path::absolute(p)
+        .or_else(|_| std::path::absolute(Path::new(".")).map(|cwd| cwd.join(p)))
+        .unwrap_or_else(|_| p.to_path_buf());
+    normalize(&abs)
+}
+
+/// The boundary the *symlink* check uses: the enclosing repository (nearest ancestor
+/// holding `.git`), falling back to the lexical `root` when the project is not a
+/// checkout.
+///
+/// It is deliberately wider than the lexical root. The lexical check governs what the
+/// *document text* may ask for, where `../../etc/passwd` is plainly an escape attempt. A
+/// symlink is a different thing: a filesystem fact placed by whoever owns the checkout,
+/// which the document text cannot conjure. The repository is therefore the honest unit of
+/// first-party trust, and confining symlinks to a narrower `_site.yml` root only forced
+/// authors to duplicate files that are already theirs (a book sharing one
+/// `references.bib` with the `paper/` beside it was refused). Escapes that actually leave
+/// the checkout, `/etc/passwd` or `~/.ssh/id_rsa`, are still refused.
+///
+/// The walk only ever *widens*: a `.git` found below `root` (a nested checkout) is
+/// skipped, so an explicit root can never be narrowed by a marker inside it.
+fn symlink_root(base_dir: &Path, root: &Path) -> PathBuf {
+    let base = base_dir.to_path_buf();
+    let mut cur: &Path = &base;
+    loop {
+        if cur.join(".git").exists() && root.starts_with(cur) {
+            return cur.to_path_buf();
+        }
+        match cur.parent() {
+            Some(p) if !p.as_os_str().is_empty() => cur = p,
+            _ => return root.to_path_buf(),
+        }
+    }
 }
 
 /// The containment boundary for [`safe_join`]: the nearest ancestor of `base_dir`
@@ -436,6 +505,16 @@ fn containment_root(base_dir: &Path) -> PathBuf {
             _ => return base.clone(),
         }
     }
+}
+
+/// The canonical repository boundary for `dir` (see [`symlink_root`]), for callers that
+/// walk the filesystem themselves instead of resolving a path through [`try_join_in`].
+/// Page discovery and the build's asset mirror are those callers: they read directories
+/// directly, so each has to apply this boundary by hand or it applies none at all.
+pub fn repo_boundary(dir: &Path) -> PathBuf {
+    let abs = absolutize(dir);
+    let root = symlink_root(&abs, &abs);
+    root.canonicalize().unwrap_or(root)
 }
 
 /// Lexically normalize a path (resolve `.` and `..`) without touching the

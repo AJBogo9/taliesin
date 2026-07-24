@@ -46,6 +46,15 @@ The following are by design:
   only", never the public internet.
 - **The preview is a read-only view.** It never writes back to your source;
   click-to-source only navigates the editor.
+- **Symlinks inside your checkout are followed.** A `{{< include >}}`, `css:`,
+  `bibliography:` or other resource path may resolve through a symlink to anywhere
+  in the enclosing repository (the nearest ancestor holding `.git`), so sibling
+  project directories can share one file. The document *text* is held to a narrower
+  boundary: an absolute path or a `../` climb above the project root is refused, and
+  so is a symlink whose target leaves the checkout. `build` applies the same rule when it
+  mirrors assets into the output, so a link out of the checkout is never published. The
+  `preview` server's asset endpoint is stricter still: it serves only what canonicalizes
+  under the document's own directory, so a symlinked image that builds fine may 404 there.
 
 Reports that fall inside this model (for example, "a cell can run arbitrary
 code") are working as intended. Reports that let an *untrusted* document or a
