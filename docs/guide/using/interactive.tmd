@@ -181,3 +181,53 @@ The first tab is selected on load. Readers switch with a click or the keyboard
 (arrow keys move between tabs, Home and End jump to the first and last). Panel
 content keeps its own ids and source positions, so click-to-source still works
 inside a tab, and a `@fig-` reference resolves through it.
+
+## Interactive 3-D with a `{js}` cell
+
+A `{js}` cell mounts whatever DOM node it returns, and that node can be a WebGL
+canvas. So a full interactive 3-D scene, spin, zoom, fullscreen, is just a cell that
+imports a 3-D library and returns its renderer's canvas. The shape is always the same:
+
+```js
+const THREE = await import("https://esm.sh/three@0.163.0");
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(620, 500);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 620 / 500, 0.1, 100);
+camera.position.set(4, 3, 6);
+scene.add(new THREE.AmbientLight(0xffffff, 1));
+scene.add(new THREE.Mesh(
+  new THREE.IcosahedronGeometry(1.5, 0),
+  new THREE.MeshStandardMaterial({ color: 0x4c8dff, flatShading: true }),
+));
+
+(function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+})();
+
+invalidation.then(() => renderer.dispose());   // clean up when the cell re-runs
+
+return renderer.domElement;   // the cell mounts the canvas
+```
+
+Two things make this idiomatic. `invalidation` is a promise the cell provides that
+resolves when the cell is about to re-run or leave the page, so it is where you cancel
+animation frames and dispose GPU resources. And because a cell returns a node rather
+than printing markup, you can attach controls, an `OrbitControls` from three.js, a
+`<select>`, sliders, straight to the same container.
+
+The data can come from a `{python}` or `{r}` cell. Compute coordinates or a mesh in
+the kernel, `define()` them, and read them back in the `{js}` cell with
+`qmd.get("...")`: the numbers come from your kernel, the rendering is browser-native.
+
+```js
+// {python} cell:  define(points=my_array.tolist())
+const points = qmd.get("points");   // in the {js} cell
+```
+
+The **Live 3-D graphics** gallery exhibit is built entirely this way: a molecule
+viewer, a Lorenz attractor, a CAD model beside a computed gear, and instrumented
+sorting algorithms, each one a `{js}` cell in a plain `.tmd` file.
