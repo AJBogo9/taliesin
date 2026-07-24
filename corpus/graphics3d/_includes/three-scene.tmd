@@ -22,6 +22,7 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     ambientIntensity = 1.0,
     onFrame          = null,
     controls         = null,   // NEW: [{type:'select'|'range', ...}]
+    autoRotate       = false,
   } = opts;
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha });
@@ -58,6 +59,8 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   ctrl.dampingFactor = 0.06;
   ctrl.minDistance   = minDistance;
   ctrl.maxDistance   = maxDistance;
+  ctrl.autoRotate      = autoRotate;
+  ctrl.autoRotateSpeed = 0.6;
 
   // NEW: dispose + repopulate a group without tearing down the scene
   function rebuild(group, populate) {
