@@ -41,6 +41,11 @@ request, so content edits show on refresh).
 taliesin build site            --out _site
 taliesin build docs/guide      --out _site/docs/guide
 taliesin build docs/internals  --out _site/docs/internals
+# gallery exhibits (each `mounts:` entry gets its own build into _site/gallery/<name>)
+taliesin build ../corpus/course     --out _site/gallery/course
+taliesin build ../corpus/tarn       --out _site/gallery/tarn
+taliesin build ../corpus/descent    --out _site/gallery/descent
+taliesin build ../corpus/graphics3d --out _site/gallery/graphics3d
 ```
 
 Deploy `_site/` to any static host with directory indexing.

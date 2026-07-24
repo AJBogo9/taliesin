@@ -16,6 +16,7 @@ mounts:
   gallery/course: ../corpus/course
   gallery/tarn: ../corpus/tarn
   gallery/descent: ../corpus/descent
+  gallery/graphics3d: ../corpus/graphics3d
 
 nav:
   left:

@@ -339,6 +339,155 @@ return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
 ````
 :::
 
+## Chaos you can hold in your hand
+
+The Lorenz attractor, integrated live in the browser and drawn as it grows. Drag to
+orbit, and move the σ / ρ / β sliders to watch a deterministic system fold into a
+two-winged strange attractor, and then collapse. The whole thing is the `{js}` cell
+in the **Source** tab.
+
+::: {.panel-tabset}
+
+### Result
+
+```{js}
+//| echo: false
+
+const makeScene3D = qmd.get("makeScene3D");
+
+const P = { sigma: 10, rho: 28, beta: 8 / 3 };
+const N = 8000, dt = 0.006, SCALE = 0.14;
+
+// integrate the Lorenz system (RK4) into a flat Float32Array of xyz points
+function integrate({ sigma, rho, beta }) {
+  const f = (s) => [
+    sigma * (s[1] - s[0]),
+    s[0] * (rho - s[2]) - s[1],
+    s[0] * s[1] - beta * s[2],
+  ];
+  let s = [0.1, 0, 0];
+  const pts = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const k1 = f(s);
+    const k2 = f(s.map((v, j) => v + dt / 2 * k1[j]));
+    const k3 = f(s.map((v, j) => v + dt / 2 * k2[j]));
+    const k4 = f(s.map((v, j) => v + dt * k3[j]));
+    s = s.map((v, j) => v + dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]));
+    pts[i * 3 + 0] = s[0] * SCALE;
+    pts[i * 3 + 1] = (s[2] - 25) * SCALE;
+    pts[i * 3 + 2] = s[1] * SCALE;
+  }
+  return pts;
+}
+
+let geom, drawn = 0, THREEref;
+
+function rebuildLine() {
+  const pts = integrate(P);
+  geom.setAttribute("position", new THREEref.BufferAttribute(pts, 3));
+  geom.setDrawRange(0, 0);
+  drawn = 0;
+}
+
+const el = document.createElement("div");
+
+makeScene3D((scene, THREE, ctx) => {
+  THREEref = THREE;
+  geom = new THREE.BufferGeometry();
+  const mat = new THREE.LineBasicMaterial({ color: 0x8bd3ff });
+  scene.add(new THREE.Line(geom, mat));
+  rebuildLine();
+}, invalidation, {
+  cameraPos: [0, 0, 9], fov: 45, target: [0, 0, 0],
+  minDistance: 3, maxDistance: 25, bgColor: 0x0b0f1a,
+  onFrame: () => { if (!geom) return; drawn = Math.min(drawn + 40, N); geom.setDrawRange(0, drawn); },
+  controls: [
+    { type: "range", label: "σ", min: 1, max: 20, step: 0.5, value: P.sigma,
+      onInput: (v) => { P.sigma = v; rebuildLine(); } },
+    { type: "range", label: "ρ", min: 1, max: 50, step: 1, value: P.rho,
+      onInput: (v) => { P.rho = v; rebuildLine(); } },
+    { type: "range", label: "β", min: 0.5, max: 5, step: 0.1, value: P.beta,
+      onInput: (v) => { P.beta = v; rebuildLine(); } },
+  ],
+}).then((node) => el.appendChild(node));
+
+return el;
+```
+
+### Source
+
+```js
+//| echo: false
+
+const makeScene3D = qmd.get("makeScene3D");
+
+const P = { sigma: 10, rho: 28, beta: 8 / 3 };
+const N = 8000, dt = 0.006, SCALE = 0.14;
+
+// integrate the Lorenz system (RK4) into a flat Float32Array of xyz points
+function integrate({ sigma, rho, beta }) {
+  const f = (s) => [
+    sigma * (s[1] - s[0]),
+    s[0] * (rho - s[2]) - s[1],
+    s[0] * s[1] - beta * s[2],
+  ];
+  let s = [0.1, 0, 0];
+  const pts = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const k1 = f(s);
+    const k2 = f(s.map((v, j) => v + dt / 2 * k1[j]));
+    const k3 = f(s.map((v, j) => v + dt / 2 * k2[j]));
+    const k4 = f(s.map((v, j) => v + dt * k3[j]));
+    s = s.map((v, j) => v + dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]));
+    pts[i * 3 + 0] = s[0] * SCALE;
+    pts[i * 3 + 1] = (s[2] - 25) * SCALE;
+    pts[i * 3 + 2] = s[1] * SCALE;
+  }
+  return pts;
+}
+
+let geom, drawn = 0, THREEref;
+
+function rebuildLine() {
+  const pts = integrate(P);
+  geom.setAttribute("position", new THREEref.BufferAttribute(pts, 3));
+  geom.setDrawRange(0, 0);
+  drawn = 0;
+}
+
+const el = document.createElement("div");
+
+makeScene3D((scene, THREE, ctx) => {
+  THREEref = THREE;
+  geom = new THREE.BufferGeometry();
+  const mat = new THREE.LineBasicMaterial({ color: 0x8bd3ff });
+  scene.add(new THREE.Line(geom, mat));
+  rebuildLine();
+}, invalidation, {
+  cameraPos: [0, 0, 9], fov: 45, target: [0, 0, 0],
+  minDistance: 3, maxDistance: 25, bgColor: 0x0b0f1a,
+  onFrame: () => { if (!geom) return; drawn = Math.min(drawn + 40, N); geom.setDrawRange(0, drawn); },
+  controls: [
+    { type: "range", label: "σ", min: 1, max: 20, step: 0.5, value: P.sigma,
+      onInput: (v) => { P.sigma = v; rebuildLine(); } },
+    { type: "range", label: "ρ", min: 1, max: 50, step: 1, value: P.rho,
+      onInput: (v) => { P.rho = v; rebuildLine(); } },
+    { type: "range", label: "β", min: 0.5, max: 5, step: 0.1, value: P.beta,
+      onInput: (v) => { P.beta = v; rebuildLine(); } },
+  ],
+}).then((node) => el.appendChild(node));
+
+return el;
+```
+
+:::
+
+That is one interactive graphic; the **[Live 3-D graphics gallery](gallery/graphics3d/)**
+has three more, each a real `.tmd` document you can open: a spin-and-fullscreen
+**molecule** viewer, a **CAD** model loaded beside a spur gear the page computes from
+three numbers, and seven **sorting algorithms** replayed from their real
+comparison-and-swap traces (with optional sound).
+
 ## It is all just Taliesin
 
 Every demo on this page is plain text in one `.tmd` file, served by Taliesin itself,

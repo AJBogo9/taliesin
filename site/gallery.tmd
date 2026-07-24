@@ -35,3 +35,13 @@ Plot** chart wired to the same controls, and the derivation in real **math** alo
 an explorable explanation with every moving part authored in `.tmd`.
 
 [Open the explainer &rarr;](gallery/descent/)
+
+## Live 3-D graphics
+
+Interactive graphics that run **client-side in the built page**: a ball-and-stick
+**molecule** viewer you can spin and fullscreen, a **Lorenz attractor** drawn as it
+integrates, a **CAD** model loaded beside a spur gear the document *computes* from
+three numbers, and seven **sorting algorithms** replayed from their real traces.
+Every moving part is authored in `.tmd` with `{js}` cells.
+
+[Open the graphics &rarr;](gallery/graphics3d/)
