@@ -109,6 +109,18 @@ the contrast holds without any per-slide styling.
 ![A fitted curve](media/fit-a.png)
 :::
 
+## A diagram on a slide
+
+A Mermaid flowchart renders inline and follows the deck's light/dark theme.
+
+```mermaid
+flowchart LR
+  A[One .tmd source] --> B{Render}
+  B --> C[Page]
+  B --> D[Deck]
+  B --> E[Book]
+```
+
 ## Speaker notes
 
 The audience sees the slide; only the presenter sees the notes.

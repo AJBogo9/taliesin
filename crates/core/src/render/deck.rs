@@ -206,7 +206,12 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
   }}
   window.taliDeckEmbedded = embedded;
   window.taliDeckThemeManaged = true;
-  window.taliDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
+  window.taliDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; var prev = window.__taliDeckMode; window.__taliDeckMode = m; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m;
+    // A live light/dark flip must re-render mermaid (it bakes colours into the SVG at
+    // run() time); the page fires this same event, so a deck reuses it. Skip the first
+    // apply (prev undefined) — the initial diagram render already reads the resolved mode.
+    if (prev !== undefined && prev !== m) {{ try {{ window.dispatchEvent(new CustomEvent('qmd:themechange', {{ detail: {{ mode: m }} }})); }} catch(e){{}} }}
+    return m; }};
   window.taliDeckSetTheme = function(m){{ if (!embedded) {{ try {{ if (m==='dark'||m==='light') localStorage.setItem('qmd-deck-theme', m); else localStorage.removeItem('qmd-deck-theme'); }} catch(e){{}} }} return window.taliDeckApplyTheme(); }};
   window.taliDeckThemeChoice = function(){{ return stored() || 'auto'; }};  // 'auto' = no stored key (OS-follow)
   // A standalone deck in Auto follows a live OS light/dark flip, mirroring the page's pre-paint script.

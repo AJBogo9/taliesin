@@ -595,9 +595,9 @@ html.tali-feed .tali-slides > section > section {
   font-size: calc(100vw / 960 * 40);
   box-sizing: border-box;
 }
-/* Code floors at a legible size (the deck's .5em would be ~8px on a phone) and takes
+/* Code floors at a legible size (the deck's .7em would be ~12px on a phone) and takes
    its own horizontal scroll instead of forcing the whole page wide. */
-html.tali-feed .tali-deck pre { font-size: max(0.5em, 11px); overflow-x: auto; }
+html.tali-feed .tali-deck pre { font-size: max(0.7em, 11px); overflow-x: auto; }
 /* Constrain media to the slide width. Font-size only scales EM-sized (text) content; a
    raster image keeps its intrinsic pixel width and, on a phone-width slide, would overflow
    and be clipped by the slide's `overflow:hidden`. The camera transform used to scale it in
@@ -920,7 +920,10 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   position: relative;
   width: 100%;
   box-shadow: none;
-  font-size: .5em;
+  /* Block code reads at ~0.7 of the body ink, not half: at .5em it fit more lines
+     but sat far below inline code (.9em) and forced the audience to squint. A slide
+     that overflows still shrinks to fit (fitSlide), so a larger base is safe. */
+  font-size: .7em;
   background: var(--tali-code-bg);
   border: 1px solid var(--tali-border);
   border-radius: .4em;
@@ -939,7 +942,11 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   position: absolute; top: .4em; right: .4em; padding: .1em .4em;
   font: 600 .5em var(--deck-font); color: var(--tali-muted);
   background: #fff; border: 1px solid var(--tali-border); border-radius: var(--tali-radius-sm); cursor: pointer;
+  opacity: 0; transition: opacity var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease;
 }
+/* Reveal on hover/focus like the book + site, so the glyph stops cluttering every code
+   panel; keyboard users still reach it via :focus-visible. */
+.tali-deck pre:hover .tali-copy, .tali-deck .tali-copy:focus-visible { opacity: 1; }
 .tali-deck .tali-copy.tali-copied { color: var(--tali-callout-tip); border-color: var(--tali-callout-tip); }
 .tali-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
 

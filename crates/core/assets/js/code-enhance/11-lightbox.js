@@ -151,9 +151,16 @@ function taliInitLightbox() {
   var unmodified = function (e) {
     return !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
   };
+  // In a deck's overview, a click on a tile must NAVIGATE to that slide, not zoom the
+  // media it happens to contain. The deck's own click-to-navigate is a bubble-phase
+  // listener, so it never runs if this capture-phase delegate opens the viewer (and
+  // stops the event) first. Bail here so the click bubbles through to navigation.
+  /** @param {Element | null} t */
+  var inDeckOverview = function (t) { return !!(t && t.closest && t.closest('.tali-deck.overview')); };
   document.addEventListener('click', function (e) {
     var t = /** @type {Element | null} */ (e.target);
     if (!t || !t.closest) return;
+    if (inDeckOverview(t)) return; // overview: let the click reach the deck's slide navigation
     // Mutually-exclusive image / video / mermaid targets, as early returns (was an
     // if / else-if / else chain — same semantics, but each branch narrows its own type).
     var img = /** @type {HTMLImageElement | null} */ (t.closest('figure img, img.lightbox'));
@@ -172,7 +179,7 @@ function taliInitLightbox() {
   // Keep a double-click on a figure/diagram/video from reaching click-to-source.
   document.addEventListener('dblclick', function (e) {
     var t = /** @type {Element | null} */ (e.target);
-    if (t && t.closest && t.closest('figure img, img.lightbox, pre.mermaid, .tali-video video')) {
+    if (t && t.closest && !inDeckOverview(t) && t.closest('figure img, img.lightbox, pre.mermaid, .tali-video video')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);

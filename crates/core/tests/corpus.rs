@@ -237,12 +237,12 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
     // One slide per `##` heading. The corpus deck is the deck-engine regression net
-    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries sixteen level-2
+    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries seventeen level-2
     // slides plus one level-1 vertical-stack lead. `data-level` is the count anchor.
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
-        content_slides, 16,
-        "expected 16 content slides, got {content_slides}"
+        content_slides, 17,
+        "expected 17 content slides, got {content_slides}"
     );
     // Slide ids are slugged from the heading text.
     assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
@@ -327,6 +327,13 @@ fn corpus_deck_pins_every_kept_rich_feature() {
     assert!(
         slides.contains("<div class=\"tali-stretch\""),
         "deck corpus must exercise .tali-stretch"
+    );
+    // A Mermaid diagram: emitted as `<pre class="mermaid">` (source for client-side
+    // mermaid.js), which the deck engine themes light/dark and, in overview, must let a
+    // tile click navigate past instead of zooming (11-lightbox.js overview guard).
+    assert!(
+        slides.contains("class=\"mermaid\""),
+        "deck corpus must exercise a Mermaid diagram"
     );
     // Speaker notes ride along, hidden from the audience view.
     assert!(
