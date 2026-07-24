@@ -30,8 +30,8 @@ use tokio::sync::{broadcast, mpsc};
 use crate::protocol::{self, Diagnostic};
 use crate::serve::{
     CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, lan_url, local_ip,
-    new_session_token, open_in_browser, percent_decode, print_qr, with_host_guard, with_lan_guard,
-    ws_origin_ok,
+    new_session_token, open_in_browser, percent_decode, print_qr, with_host_guard, with_identity,
+    with_lan_guard, ws_origin_ok,
 };
 
 mod exec_pool;
@@ -301,10 +301,11 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .route("/og-preview", get(og_card_preview))
         .fallback(page_or_asset)
         .with_state(app.clone());
+    let router = with_identity(router, &root);
     let router = with_lan_guard(router, token.clone());
     let router = with_host_guard(router, lan_ip);
 
-    let (listener, addr) = bind_with_fallback(port, expose).await?;
+    let (listener, addr) = bind_with_fallback(port, expose, &root).await?;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
     let network = expose

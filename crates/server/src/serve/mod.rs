@@ -17,8 +17,9 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use taliesin_core::{Block, BlockOp, DocFormat, RenderedDoc};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{broadcast, mpsc};
 
 pub(crate) const CLIENT_JS: &str = include_str!("../../../../web-client/client.js");
@@ -118,33 +119,47 @@ pub fn run(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Resul
     result
 }
 
-/// Resolve when the process is asked to shut down: Ctrl-C (SIGINT) or SIGTERM. The
-/// two dev servers race their `axum::serve` against this so `serve` **returns** on a
-/// signal (rather than the process being hard-killed with kernels still live),
-/// letting `run` tear the runtime down and drop the watcher/builder tasks that own
-/// the kernels + warm pool — which runs their teardown Drops. We race (rather than
-/// `axum`'s `with_graceful_shutdown`) because the preview holds a persistent
-/// websocket that never closes on its own, so graceful shutdown would hang. Without
-/// this, a Ctrl-C'd preview leaks the whole kernel/forkserver subtree.
+/// Await a unix signal, or never resolve if the handler cannot be installed (that
+/// signal then simply doesn't trigger shutdown, rather than taking the server down).
+#[cfg(unix)]
+async fn unix_signal(kind: tokio::signal::unix::SignalKind) {
+    match tokio::signal::unix::signal(kind) {
+        Ok(mut sig) => {
+            sig.recv().await;
+        }
+        Err(_) => std::future::pending::<()>().await,
+    }
+}
+
+/// Resolve when the process is asked to shut down: Ctrl-C (SIGINT), SIGTERM, or
+/// SIGHUP. The two dev servers race their `axum::serve` against this so `serve`
+/// **returns** on a signal (rather than the process being hard-killed with kernels
+/// still live), letting `run` tear the runtime down and drop the watcher/builder
+/// tasks that own the kernels + warm pool — which runs their teardown Drops. We race
+/// (rather than `axum`'s `with_graceful_shutdown`) because the preview holds a
+/// persistent websocket that never closes on its own, so graceful shutdown would
+/// hang. Without this, a Ctrl-C'd preview leaks the whole kernel/forkserver subtree.
+///
+/// SIGHUP is here because closing a terminal tab is the most common way a dev server
+/// dies, and its default disposition *terminates the process*, skipping this teardown
+/// entirely and leaking exactly the subtree the SIGINT/SIGTERM paths are careful to
+/// reap.
 pub(crate) async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
     #[cfg(unix)]
-    let terminate = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut sig) => {
-                sig.recv().await;
-            }
-            // Can't install the SIGTERM handler: fall back to Ctrl-C only.
-            Err(_) => std::future::pending::<()>().await,
-        }
-    };
+    let terminate = unix_signal(tokio::signal::unix::SignalKind::terminate());
+    #[cfg(unix)]
+    let hangup = unix_signal(tokio::signal::unix::SignalKind::hangup());
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
+    #[cfg(not(unix))]
+    let hangup = std::future::pending::<()>();
     tokio::select! {
         _ = ctrl_c => {}
         _ = terminate => {}
+        _ = hangup => {}
     }
 }
 
@@ -222,10 +237,11 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         // document's directory, so figures display in the live preview.
         .fallback(static_asset)
         .with_state(app.clone());
+    let router = with_identity(router, &app.path);
     let router = with_lan_guard(router, token.clone());
     let router = with_host_guard(router, lan_ip);
 
-    let (listener, addr) = bind_with_fallback(port, expose).await?;
+    let (listener, addr) = bind_with_fallback(port, expose, &app.path).await?;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
     // With --host we bound 0.0.0.0; surface the LAN URL (and a QR for phones), with the
@@ -292,26 +308,216 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     }
 }
 
-/// Bind `port`, falling back to the next few ports if it's in use (so a second
-/// `serve` doesn't just fail). Binds 0.0.0.0 (LAN-reachable) with `expose`, else
-/// loopback only. Logs the substitution when it happens.
+/// The path a preview answers with its own identity. A second launch uses it to tell
+/// "this root is already being previewed" (take the port over) from "some other server
+/// owns this port" (fall back to the next one).
+pub(crate) const IDENTITY_PATH: &str = "/__taliesin";
+
+/// Resolve a root to the form both sides of the identity check agree on. Falls back to
+/// the path as written when it cannot be canonicalized (`serve` deliberately stays up
+/// for a document that does not exist yet, and two such servers still compare equal).
+fn canonical(root: &Path) -> PathBuf {
+    std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
+}
+
+/// Attach the identity route. The answer is fixed for the process's lifetime, so it is
+/// rendered once here rather than per request.
+pub(crate) fn with_identity(router: Router, root: &Path) -> Router {
+    let body = serde_json::json!({
+        "root": canonical(root).to_string_lossy(),
+        "pid": std::process::id(),
+        "version": taliesin_core::VERSION,
+    })
+    .to_string();
+    router.route(
+        IDENTITY_PATH,
+        get(move || {
+            let body = body.clone();
+            async move {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    body,
+                )
+            }
+        }),
+    )
+}
+
+/// A preview already listening on `port`, as it describes itself.
+struct Incumbent {
+    port: u16,
+    root: PathBuf,
+    pid: i32,
+}
+
+/// How long a port holder gets to answer the identity probe. Generous, because a
+/// machine under load still has to be able to answer: a probe that gives up early reads
+/// as "someone else's port" and silently stacks a second preview, the exact outcome this
+/// is here to prevent. Bounded, because a port held by something that accepts
+/// connections and never replies must not stall startup.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Accept a reported pid only if signalling it could mean one process. Any local user
+/// can bind a loopback port, so this number is untrusted input on its way to `kill`, and
+/// the non-positive range is where it gets dangerous: `kill(-1, ...)` signals *every*
+/// process the user can reach, `kill(-N, ...)` a whole process group, and `0` the
+/// caller's own group. 1 is init. None of those is ever a preview.
+fn plausible_pid(raw: i64) -> Option<i32> {
+    (2..=i64::from(i32::MAX))
+        .contains(&raw)
+        .then_some(raw as i32)
+}
+
+/// Strip the marker the kernel appends to `/proc/*/exe` once the binary behind it has
+/// been replaced. Rebuilding while a preview runs is routine here (the `taliesin`
+/// launcher rebuilds on source change), and that preview is still a preview.
+#[cfg(target_os = "linux")]
+fn without_deleted_marker(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    let stripped: &str = s.strip_suffix(" (deleted)").unwrap_or(&s);
+    PathBuf::from(stripped)
+}
+
+/// Confirm against the OS that `pid` is another instance of *this binary*, instead of
+/// taking the port holder's word for it. `/proc/<pid>/exe` answers both halves at once:
+/// it names the executable, and reading it for a process owned by another user fails
+/// outright, so a hostile responder cannot borrow this preview's privileges to signal
+/// something it could not signal itself.
+#[cfg(target_os = "linux")]
+fn is_sibling_preview(pid: i32) -> bool {
+    let (Ok(mine), Ok(theirs)) = (
+        std::env::current_exe(),
+        std::fs::read_link(format!("/proc/{pid}/exe")),
+    ) else {
+        return false;
+    };
+    without_deleted_marker(&mine) == without_deleted_marker(&theirs)
+}
+
+/// No cheap portable equivalent of the `/proc` check, so elsewhere the root match and
+/// [`plausible_pid`] are what stand between a responder and a SIGTERM. The residual
+/// exposure is a same-user process being terminated, which such an attacker could do
+/// directly anyway.
+#[cfg(not(target_os = "linux"))]
+fn is_sibling_preview(_pid: i32) -> bool {
+    true
+}
+
+/// Ask whatever holds `port` to identify itself. `None` when nothing answers, when the
+/// answer isn't a taliesin preview's, or when it doesn't reply within [`PROBE_TIMEOUT`].
+/// In each of those cases the port belongs to something we must leave alone.
+async fn identify(port: u16) -> Option<Incumbent> {
+    let ask = async {
+        let mut sock = tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
+            .await
+            .ok()?;
+        let req =
+            format!("GET {IDENTITY_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        sock.write_all(req.as_bytes()).await.ok()?;
+        let mut raw = Vec::new();
+        sock.read_to_end(&mut raw).await.ok()?;
+        let raw = String::from_utf8(raw).ok()?;
+        let (_head, body) = raw.split_once("\r\n\r\n")?;
+        let v: serde_json::Value = serde_json::from_str(body).ok()?;
+        Some(Incumbent {
+            port,
+            root: PathBuf::from(v["root"].as_str()?),
+            pid: plausible_pid(v["pid"].as_i64()?)?,
+        })
+    };
+    tokio::time::timeout(PROBE_TIMEOUT, ask)
+        .await
+        .ok()
+        .flatten()
+}
+
+async fn try_bind(
+    host: [u8; 4],
+    port: u16,
+) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
+    let addr = SocketAddr::from((host, port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    // Report the *bound* address: with port 0 ("any free port") the OS assigns the
+    // real port, so the requested `addr` would still read `:0`.
+    let bound = listener.local_addr().unwrap_or(addr);
+    Ok((listener, bound))
+}
+
+/// Bind `port` for a preview of `root`. Binds 0.0.0.0 (LAN-reachable) with `expose`,
+/// else loopback only.
+///
+/// Three outcomes, in order. The port is free, and we take it. Or the port (or one in
+/// the fallback range) is held by a preview of *this same root*, which we replace:
+/// previewing one root twice is never what was meant, and the surplus instances are
+/// not harmless: each keeps its own file watcher and kernel subtree re-executing the
+/// same sources, on a port nobody is looking at. Or the port belongs to something
+/// else, and we fall back to the next free one, so a second project can be previewed
+/// alongside the first.
 pub(crate) async fn bind_with_fallback(
     port: u16,
     expose: bool,
+    root: &Path,
 ) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
     let host = if expose { [0, 0, 0, 0] } else { [127, 0, 0, 1] };
-    let mut last_err = None;
-    for p in port..=port.saturating_add(9) {
-        let addr = SocketAddr::from((host, p));
-        match tokio::net::TcpListener::bind(addr).await {
-            Ok(listener) => {
-                if p != port {
-                    crate::log::warn(&format!("port {port} in use; using {p}"));
+    let mut last_err = match try_bind(host, port).await {
+        Ok(bound) => return Ok(bound),
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => Some(e),
+        Err(e) => return Err(e),
+    };
+
+    // Taken. Sweep the whole fallback range rather than just `port`: launches from
+    // before this behavior existed could have stacked several previews of this root.
+    // Probe concurrently: a port held by something that accepts connections but never
+    // answers costs the full timeout, and ten of those in series would stall startup.
+    // Both halves of the filter matter: the root match says the incumbent is redundant,
+    // and `is_sibling_preview` says the pid it handed us is really its own, since a
+    // responder that simply names a pid must not have it signalled on its say-so.
+    let root = canonical(root);
+    let mine: Vec<Incumbent> =
+        futures::future::join_all((port..=port.saturating_add(9)).map(identify))
+            .await
+            .into_iter()
+            .flatten()
+            .filter(|i| i.root == root && is_sibling_preview(i.pid))
+            .collect();
+
+    if !mine.is_empty() {
+        for inc in &mine {
+            crate::log::warn(&format!(
+                "port {}: replacing an existing preview of this project (pid {})",
+                inc.port, inc.pid
+            ));
+            // SAFETY: SIGTERM to a pid that just identified itself, over loopback, as a
+            // preview of the very root we are about to serve, i.e. this user's own server.
+            // SIGTERM rather than SIGKILL so it runs its kernel-reaping teardown.
+            unsafe { libc::kill(inc.pid, libc::SIGTERM) };
+        }
+        // Wait for the canonical port, but only when it was one of ours. If something
+        // else holds it, the fallback scan below is already the right answer and there
+        // is nothing to wait for.
+        if mine.iter().any(|i| i.port == port) {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                match try_bind(host, port).await {
+                    Ok(bound) => return Ok(bound),
+                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                        if Instant::now() >= deadline {
+                            last_err = Some(e);
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                    }
+                    Err(e) => return Err(e),
                 }
-                // Report the *bound* address: with port 0 ("any free port") the OS
-                // assigns the real port, so the requested `addr` would still read `:0`.
-                let bound = listener.local_addr().unwrap_or(addr);
-                return Ok((listener, bound));
+            }
+        }
+    }
+
+    for p in port.saturating_add(1)..=port.saturating_add(9) {
+        match try_bind(host, p).await {
+            Ok(bound) => {
+                crate::log::warn(&format!("port {port} in use; using {p}"));
+                return Ok(bound);
             }
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
             Err(e) => return Err(e),
@@ -1942,5 +2148,30 @@ mod percent_decode_tests {
         assert_eq!(percent_decode("done%"), "done%");
         // A `%` followed by a non-hex ASCII pair is left literal (not mis-parsed).
         assert_eq!(percent_decode("%zz"), "%zz");
+    }
+}
+
+#[cfg(test)]
+mod takeover_tests {
+    use super::plausible_pid;
+
+    #[test]
+    fn only_a_pid_that_means_one_process_survives_the_takeover_check() {
+        // The pid arrives over a loopback socket any local user can answer on, and its
+        // next stop is `kill`. The whole non-positive range is a broadcast in disguise:
+        // -1 signals every process the user can reach, -N a process group, 0 the
+        // caller's own group. Letting one through turns "replace the old preview" into
+        // "SIGTERM the session".
+        assert_eq!(plausible_pid(-1), None, "kill(-1) signals everything");
+        assert_eq!(plausible_pid(-4321), None, "kill(-N) signals a group");
+        assert_eq!(plausible_pid(0), None, "kill(0) signals our own group");
+        assert_eq!(plausible_pid(1), None, "1 is init, never a preview");
+        // Out of range for a pid_t, so a cast would wrap into a live process.
+        assert_eq!(plausible_pid(i64::from(i32::MAX) + 1), None);
+        assert_eq!(plausible_pid(i64::MAX), None);
+        // An ordinary pid still passes.
+        assert_eq!(plausible_pid(2), Some(2));
+        assert_eq!(plausible_pid(31_337), Some(31_337));
+        assert_eq!(plausible_pid(i64::from(i32::MAX)), Some(i32::MAX));
     }
 }

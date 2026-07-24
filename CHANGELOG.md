@@ -17,6 +17,27 @@ output) are kept stable.
   dependency license policy in `deny.toml` stays permissive-only to keep that
   option open. The VS Code editor companion under `editor/vscode` remains MIT.
 
+- **One preview per project.** Re-running `taliesin preview` on a project that
+  is already being previewed now replaces that server rather than binding the
+  next free port. Previews answer a `/__taliesin` identity endpoint (canonical
+  root, pid, version), so a launch can tell its own project's preview from an
+  unrelated server holding the port; an unrelated holder still falls back to the
+  next port, so two projects can be previewed side by side. Stacking was not
+  harmless: every surplus preview kept its own file watcher and kernel subtree
+  re-executing the same sources, on a port nobody was looking at. Any local user
+  can bind a loopback port, so the pid a holder reports is treated as untrusted:
+  non-positive values (`kill(-1, ...)` reaches every process the user owns) are
+  rejected outright, and on Linux the pid is checked against `/proc/<pid>/exe`
+  before it is signalled, so answering the probe cannot get an unrelated process
+  terminated.
+
+### Fixed
+
+- **SIGHUP no longer leaks the kernel subtree.** `shutdown_signal` raced only
+  SIGINT and SIGTERM, so closing a terminal tab took the preview down via
+  SIGHUP's default disposition, skipping the teardown that reaps the Jupyter
+  kernel and its forkserver children. SIGHUP now takes the same graceful path.
+
 ## [0.2.0] - 2026-06-27
 
 The release-hardening release. Two waves of correctness, accessibility, and

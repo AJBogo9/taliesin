@@ -178,7 +178,8 @@ fn usage() {
     println!("  preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
     println!("                             a dir previews the whole SITE with nav + hot reload;");
-    println!("                             default port 4321, auto-picks a free one;");
+    println!("                             default port 4321, replacing this project's own");
+    println!("                             running preview and stepping past anyone else's;");
     println!("                             --host exposes it on your LAN with a QR code");
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
@@ -254,7 +255,9 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Live preview server (aliases: dev, serve). A file previews one document; a\n\
              directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
-             Default port 4321 (auto-picks the next free one if it's taken).\n\
+             Default port 4321. Re-previewing a project replaces its own running\n\
+             preview, so there is only ever one; a port held by anything else falls\n\
+             back to the next free one.\n\
              \n\
              Flags:\n\
              \x20 --host      bind your LAN + print a QR code for phones (token-gated)\n\

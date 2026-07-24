@@ -107,8 +107,12 @@ Taliesin 0.2.0 (cdf0a13)
 top-level usage. Putting `--help` / `-h` **after** a subcommand
 (`taliesin build --help`, `taliesin check -h`, …) prints a focused page for just that
 command: its synopsis, its flags, and a one-line example. If
-the default port (or one you pass) is already in use, `preview` auto-picks the next free
-port and logs the chosen URL.
+the default port (or one you pass) is already in use, what happens depends on who holds
+it. A preview of the *same* project is replaced, so re-running `preview` hands back the
+canonical URL instead of stacking a second server (every extra one would keep its own
+file watcher and kernel re-executing the same sources, on a port nobody is watching). A
+port held by anything else falls back to the next free port. Either way the chosen URL
+is logged.
 
 `preview` takes these flags (they may appear anywhere on the line):
 
