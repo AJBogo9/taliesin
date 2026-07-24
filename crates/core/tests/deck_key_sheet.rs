@@ -1,9 +1,11 @@
 //! The deck's in-product key sheet must not drift from what the keys actually do.
 //!
-//! It did: the sheet advertised "Vertical slides" for ↑↓ while `up()`/`down()` called
-//! `moveTopic`. The 2026-07-12 deck audit's drift sweep corrected the `.tmd` docs and
-//! never read the string every presenter opens, so these pins read the *binding* and
-//! the *sheet* together rather than pinning either one's wording alone.
+//! It has drifted twice: first the sheet said "Vertical slides" for ↑↓ while `up()`/
+//! `down()` called `moveTopic`; then the topic-jump itself was removed (2026-07-24) for
+//! being confusing (from a slide in the main run, ↓ "kept the column" and could skip the
+//! first sub-slide of a section). ↑↓ now navigate linearly, like every mainstream deck
+//! tool: ↓/→ = next, ↑/← = previous. These pins read the *binding* and the *sheet*
+//! together, so neither can quietly say something the other doesn't.
 
 use std::path::Path;
 
@@ -25,32 +27,47 @@ fn key_sheet_label(js: &str, k: &str) -> String {
     rest[..end].to_string()
 }
 
-/// ↑↓ jump between topics (keeping the column); they do not step vertical slides.
-/// Guard the binding first: if ↑↓ ever stop being `moveTopic`, the wording pin below
-/// is measuring the wrong thing and must be rechecked rather than silently passing.
+/// ↑↓ navigate linearly (↓ = next, ↑ = previous), the same as →/←. Guard the binding
+/// first: if it ever changes, the wording pins below are measuring the wrong thing and
+/// must be rechecked rather than silently passing.
 #[test]
-fn key_sheet_describes_up_down_as_the_topic_jump_it_is() {
+fn key_sheet_describes_up_down_as_the_linear_nav_it_is() {
     let js = deck_js();
     assert!(
-        js.contains("function down() { moveTopic(1); }")
-            && js.contains("function up() { moveTopic(-1); }"),
-        "↑↓ no longer map to moveTopic; recheck the key-sheet wording pin in this file"
+        js.contains("function down() { next(); }") && js.contains("function up() { prev(); }"),
+        "↓/↑ no longer map to next()/prev(); recheck the key-sheet wording pins in this file"
     );
     assert!(
         js.contains("case 'ArrowDown': down(); break;")
             && js.contains("case 'ArrowUp': up(); break;"),
-        "ArrowUp/ArrowDown no longer route to up()/down(); recheck the key-sheet wording pin"
+        "ArrowUp/ArrowDown no longer route to up()/down(); recheck the key-sheet wording pins"
+    );
+    // The confusing grid-row jump is gone: `moveTopic` must not come back without a
+    // deliberate revisit of this whole decision (and this test).
+    assert!(
+        !js.contains("moveTopic"),
+        "moveTopic is back; the ↑↓ topic-jump was removed 2026-07-24 as confusing — \
+         if it is being reinstated, rewrite this test to match"
     );
 
-    let label = key_sheet_label(&js, "↑ ↓");
+    // The sheet must credit ↓ with going forward and ↑ with going back, and must not
+    // still describe either as a topic jump or vertical-slide movement.
+    let next = key_sheet_label(&js, "→ ↓ Space");
+    let prev = key_sheet_label(&js, "← ↑");
     assert!(
-        label.to_lowercase().contains("topic"),
-        "the key sheet calls ↑↓ {label:?}, but up()/down() call moveTopic: they jump topics, \
-         keeping the column. Vertical slides are stepped with ←→ (see `next`/`prev`). \
-         docs/guide/using/formats.tmd says \"Jump to the topic above / below\"."
+        next.to_lowercase().contains("next"),
+        "the key sheet's forward row (→ ↓ Space) is labelled {next:?}, not a 'next' action"
     );
     assert!(
-        !label.to_lowercase().contains("vertical"),
-        "the key sheet still credits ↑↓ with vertical-slide movement ({label:?}); ←→ do that"
+        prev.to_lowercase().contains("previous") || prev.to_lowercase().contains("back"),
+        "the key sheet's back row (← ↑) is labelled {prev:?}, not a 'previous' action"
     );
+    for label in [&next, &prev] {
+        let l = label.to_lowercase();
+        assert!(
+            !l.contains("topic") && !l.contains("vertical"),
+            "the key sheet still credits an arrow with a topic-jump / vertical move ({label:?}); \
+             ↑↓ now navigate linearly like ←→"
+        );
+    }
 }

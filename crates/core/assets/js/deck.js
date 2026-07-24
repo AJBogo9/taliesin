@@ -94,13 +94,21 @@
   // (a flat all-`##` deck is the worst case). In OVERVIEW ONLY, reflow such a run into
   // a near-square block of `ceil(sqrt(n))` columns so tiles are big and up/down work.
   // Present mode keeps the run as one row so the storyline pans straight left-to-right.
-  // Only top-level runs wrap: positionGrid lays a stack's sub-slides straight across
-  // from their wrapper regardless, so wrapping a stack row would desync the grid.
+  // A `#`-section STACK wraps on the same rule: its sub-slides are laid out across, so a
+  // 20-slide section was every bit the over-wide strip a top-level run was. positionGrid
+  // places each sub-slide from its OWN grid cell (not `v` cells across the wrapper), so
+  // a wrapped stack stays in sync with gridRows.
   var OVERVIEW_ROW_MAX = 6; // a run longer than this reflows; up to 6 stays a readable line
+  // The grid's two inputs, tracked separately because they change at DIFFERENT MOMENTS
+  // (see setOverview): `wrapped` reflows long runs into a block and moves every tile, so
+  // it may only run while the camera frames one cell and the move is invisible; `gutter`
+  // is the uniform per-tile shrink that opens the gaps, which is safe on the zoom clock.
+  var grid = { wrapped: false, gutter: false };
+  var GUTTER = 0.9; // the overview tile shrink that opens the gaps between flush cells
   /** @typedef {{ h: number, v: number }} GridCell */
   /** @param {GridCell[][]} rows @param {GridCell[]} run */
   function pushRun(rows, run) {
-    if (deck.overview && run.length > OVERVIEW_ROW_MAX) {
+    if (grid.wrapped && run.length > OVERVIEW_ROW_MAX) {
       var cols = Math.ceil(Math.sqrt(run.length));
       for (var i = 0; i < run.length; i += cols) rows.push(run.slice(i, i + cols));
     } else {
@@ -117,7 +125,7 @@
     for (var h = 0; h < T.length; h++) {
       if (isStack(T[h])) {
         if (run) { pushRun(rows, run); run = null; }
-        rows.push(vertsOf(T[h]).map(function (sec, v) { return { h: h, v: v }; }));
+        pushRun(rows, vertsOf(T[h]).map(function (sec, v) { return { h: h, v: v }; }));
       } else {
         if (!run) run = [];
         run.push({ h: h, v: 0 });
@@ -141,49 +149,56 @@
     return { cols: Math.max(1, cols), rows: Math.max(1, rows.length) };
   }
   // Place each section at its grid cell via an inline transform. A stack wrapper is
-  // translated to its column; its children drop down by row, relative to it. In
-  // overview each leaf tile shrinks slightly to open a gutter between flush cells.
+  // translated to its first leaf's cell; each sub-slide is then offset to its OWN cell
+  // relative to that wrapper, so a wrapped stack (>OVERVIEW_ROW_MAX sub-slides, spanning
+  // several rows) lands where gridRows says it does. `grid.gutter` shrinks each leaf tile
+  // slightly to open a gutter between otherwise flush cells.
   function positionGrid() {
     var W = deck.config.width, H = deck.config.height;
-    var gut = deck.overview ? ' scale(.9)' : ''; // shrink tiles in overview to open gutters
+    var gut = grid.gutter ? ' scale(' + GUTTER + ')' : '';
     var rows = gridRows(), T = tops(), s = slidesEl();
-    /** @type {Record<number, { row: number, col0: number }>} */
-    var loc = {};
-    var maxCols = 1; // per top index: its row + the column of its first leaf
+    /** @type {Record<string, { row: number, col: number }>} */
+    var at = {}; // "h:v" -> the leaf's own cell
+    /** @type {Record<number, { row: number, col: number }>} */
+    var origin = {}; // top index -> the cell of its FIRST leaf (a stack wrapper's origin)
+    var maxCols = 1;
     rows.forEach(function (rowArr, r) {
       maxCols = Math.max(maxCols, rowArr.length);
-      rowArr.forEach(function (cell, c) { if (!(cell.h in loc)) loc[cell.h] = { row: r, col0: c }; });
+      rowArr.forEach(function (cell, c) {
+        at[cell.h + ':' + cell.v] = { row: r, col: c };
+        if (!(cell.h in origin)) origin[cell.h] = { row: r, col: c };
+      });
     });
     if (s) {
       s.style.setProperty('--tali-cols', String(maxCols));
       s.style.setProperty('--tali-rows', String(rows.length));
     }
+    var n = 0; // 1-based slide number in presentation order, for the overview tile label
     T.forEach(function (top, h) {
-      var L = loc[h] || { row: 0, col0: 0 };
+      var L = origin[h] || { row: 0, col: 0 };
       if (isStack(top)) {
         top.classList.add('tali-stack');
-        top.style.transform = 'translate(' + (L.col0 * W) + 'px,' + (L.row * H) + 'px)';
+        top.style.transform = 'translate(' + (L.col * W) + 'px,' + (L.row * H) + 'px)';
         vertsOf(top).forEach(function (sec, v) {
-          sec.style.transform = 'translate(' + (v * W) + 'px,0px)' + gut; // sub-slides flow ACROSS the row
+          var p = at[h + ':' + v] || L;
+          sec.setAttribute('data-tali-n', String(++n));
+          sec.style.transform =
+            'translate(' + ((p.col - L.col) * W) + 'px,' + ((p.row - L.row) * H) + 'px)' + gut;
         });
       } else {
-        top.style.transform = 'translate(' + (L.col0 * W) + 'px,' + (L.row * H) + 'px)' + gut;
+        top.setAttribute('data-tali-n', String(++n));
+        top.style.transform = 'translate(' + (L.col * W) + 'px,' + (L.row * H) + 'px)' + gut;
       }
     });
   }
   // The camera target for the current state: the cell that fills the 16:9 stage
   // (normal), or the free map camera (overview).
   function cameraTarget() {
-    var rev = /** @type {HTMLElement} */ (deckEl());
-    var W = deck.config.width, H = deck.config.height;
-    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     if (deck.overview) {
       if (!deck.ov) fitOverview();
       return { cx: deck.ov.cx, cy: deck.ov.cy, scale: deck.ov.scale > 0 ? deck.ov.scale : 1 };
     }
-    var scale = Math.min(sw / W, sh / H);
-    var p = posOf(deck.h, deck.v);
-    return { cx: p.col * W + W / 2, cy: p.row * H + H / 2, scale: scale > 0 ? scale : 1 };
+    return cellCam(deck.h, deck.v, presentScale());
   }
   // Apply a camera (one translate+scale on `.tali-slides`, mapping world -> screen so the
   // target lands centred). mode: 'css' = CSS transition, anything else = instant.
@@ -200,28 +215,117 @@
   function reducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
-  // setCamera: snap (animate falsy) or CSS-tween (animate truthy) to the camera target.
-  // A pan IS the transition, so every move — a step, a long jump, overview enter/exit —
-  // rides the single CSS transform transition on `.tali-cam-anim`; reduced-motion snaps.
+
+  // --- the camera clock ----------------------------------------------------
+  // ONE transition cannot serve every camera move. A one-cell step, a jump to another
+  // topic and the overview zoom differ by more than an order of magnitude in distance,
+  // and a declarative CSS transition takes no distance input — so the old single
+  // `transition: transform .5s` on `.tali-slides` swept 14 screen-widths of empty grid
+  // in half a second on a topic change (a strobe, not a transition). The camera now has
+  // three primitives, picked by what the move actually is:
+  //
+  //   PAN  — a short move (<= CUT_AT screen-widths): a CSS transform transition. The
+  //          incoming slide really is adjacent, so sliding to it tells the truth.
+  //   CUT  — anything longer: reframe instantly, then fade the destination up. This is
+  //          not a fallback: "None" is the default slide transition in every major deck
+  //          tool, and a `#`-section change already announces itself with its own
+  //          section slide, so the motion's job there is to stay out of the way.
+  //   ZOOM — overview enter/exit: an rAF tween in LOG scale space, so the perceived
+  //          zoom rate is constant. (A linear scale ramp across a 5.7x zoom spends most
+  //          of its clock near the zoomed-out end: it rushes out, then crawls.)
+  //
+  // Durations live here and are published as CSS custom properties at init, so the
+  // stylesheet's tile and chrome transitions run off exactly the same numbers.
+  var CAM = { pan: 360, cut: 140, zoom: 460 };
+  var CUT_AT = 1.25; // screen-widths travelled; beyond this a pan reads as a strobe
+  function publishMotionTokens() {
+    var st = document.documentElement.style;
+    st.setProperty('--tali-deck-pan', CAM.pan + 'ms');
+    st.setProperty('--tali-deck-cut', CAM.cut + 'ms');
+    st.setProperty('--tali-deck-zoom', CAM.zoom + 'ms');
+  }
+  var camRAF = /** @type {number | null} */ (null);
+  function stopCamAnim() {
+    if (camRAF !== null) { cancelAnimationFrame(camRAF); camRAF = null; }
+  }
+  /** @param {number} u */
+  function easeCam(u) { return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  // Tween the camera itself (not a CSS transition), so scale can move through LOG space
+  // and `--tali-deck-scale` stays true on every frame — the overview's counter-scaled
+  // ring and slide numbers read it, and a CSS transition would only update it at the ends.
+  /** @param {{cx:number,cy:number,scale:number}} from @param {{cx:number,cy:number,scale:number}} to @param {() => void} [done] */
+  function zoomCam(from, to, done) {
+    stopCamAnim();
+    var t0 = 0, ls0 = Math.log(from.scale), ls1 = Math.log(to.scale);
+    /** @param {number} t */
+    var step = function (t) {
+      if (!t0) t0 = t;
+      var u = Math.min(1, (t - t0) / CAM.zoom), e = easeCam(u);
+      applyCam(from.cx + (to.cx - from.cx) * e, from.cy + (to.cy - from.cy) * e,
+               Math.exp(ls0 + (ls1 - ls0) * e), 'instant');
+      if (u < 1) { camRAF = requestAnimationFrame(step); return; }
+      camRAF = null;
+      if (done) done();
+    };
+    camRAF = requestAnimationFrame(step);
+  }
+  // The fade-up marker. Kept as an invariant: `.tali-cut-in` is on exactly the slide the
+  // most recent camera move cut to, and nothing else. The animation is inert once played
+  // (it ends at the slide's default opacity), but a class that lingers across later moves
+  // is DOM litter that reads as state which isn't there — so every non-cut move clears it.
+  var cutEl = /** @type {HTMLElement | null} */ (null);
+  function clearCut() {
+    if (cutEl) { cutEl.classList.remove('tali-cut-in'); cutEl = null; }
+  }
+  // A cut: land on the destination with no travel, then fade it up over CAM.cut so the
+  // change registers as a change instead of a flicker.
+  /** @param {{cx:number,cy:number,scale:number}} t */
+  function cutTo(t) {
+    applyCam(t.cx, t.cy, t.scale, 'instant');
+    var el = currentSlide();
+    clearCut();
+    if (!el) return;
+    void el.offsetWidth; // restart the animation when the cut re-enters the same slide
+    el.classList.add('tali-cut-in');
+    cutEl = el;
+  }
+  // setCamera: snap (animate falsy) or move to the camera target under whichever
+  // primitive the move calls for. Reduced motion snaps.
   /** @param {boolean} animate */
   function setCamera(animate) {
-    var t = cameraTarget();
-    applyCam(t.cx, t.cy, t.scale, (animate && !reducedMotion()) ? 'css' : 'instant');
+    stopCamAnim();
+    var t = cameraTarget(), from = deck.cam;
+    if (!animate || !from || reducedMotion()) { clearCut(); applyCam(t.cx, t.cy, t.scale, 'instant'); return; }
+    if (Math.abs(Math.log(t.scale / from.scale)) > 0.01) { clearCut(); zoomCam(from, t); return; }
+    var rev = deckEl();
+    var sw = (rev && rev.clientWidth) || window.innerWidth || 1;
+    if (Math.hypot(t.cx - from.cx, t.cy - from.cy) * t.scale / sw > CUT_AT) { cutTo(t); return; }
+    clearCut();
+    applyCam(t.cx, t.cy, t.scale, 'css');
+  }
+  // The camera that frames cell (h,v) at `scale`, in the grid AS CURRENTLY LAID OUT.
+  /** @param {number} h @param {number} v @param {number} scale */
+  function cellCam(h, v, scale) {
+    var W = deck.config.width, H = deck.config.height, p = posOf(h, v);
+    return { cx: p.col * W + W / 2, cy: p.row * H + H / 2, scale: scale > 0 ? scale : 1 };
+  }
+  function presentScale() {
+    var rev = /** @type {HTMLElement} */ (deckEl());
+    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
+    return Math.min(sw / deck.config.width, sh / deck.config.height);
   }
   // Snap the camera to a SPECIFIC cell (h,v) instead of the live deck.h/v. Used by an
   // auto-animate settle so a flushed morph frames its own captured target, not wherever
   // navigation has since advanced to (fixes the 3+-chained-morph camera misframe).
   /** @param {number} h @param {number} v */
   function setCameraToCell(h, v) {
-    var rev = /** @type {HTMLElement} */ (deckEl());
-    var W = deck.config.width, H = deck.config.height;
-    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
-    var scale = Math.min(sw / W, sh / H);
-    var p = posOf(h, v);
-    applyCam(p.col * W + W / 2, p.row * H + H / 2, scale > 0 ? scale : 1, 'instant');
+    stopCamAnim();
+    var c = cellCam(h, v, presentScale());
+    applyCam(c.cx, c.cy, c.scale, 'instant');
   }
   function layout() {
     if (!slidesEl()) return;
+    grid.wrapped = grid.gutter = deck.overview; // a fresh layout lands in the final state
     positionGrid();
     applyBackgrounds();
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
@@ -714,20 +818,14 @@
   }
   // Forward steps show the next fragment first, then advance; backward steps
   // hide the last fragment first, then retreat (landing fully shown).
-  // Arrow keys map to the visual grid: left/right step through the current topic
-  // (flowing on to the next topic at its ends, i.e. linear order); up/down jump
-  // straight to the topic above/below, keeping the column.
+  // The deck is a single linear sequence: BOTH arrow pairs walk it, forward or back
+  // (down/right = next, up/left = prev), matching PowerPoint / Keynote / Google Slides.
+  // (Up/down once jumped between grid rows keeping the column, which could land you on
+  // the *second* sub-slide of a section, skipping the first — removed as confusing.)
   function right() { next(); }
   function left() { prev(); }
-  function down() { moveTopic(1); }
-  function up() { moveTopic(-1); }
-  /** @param {number} d */
-  function moveTopic(d) {
-    var p = posOf(deck.h, deck.v), r = p.row + d;
-    if (r < 0 || r >= p.rows.length) return;
-    var rowArr = p.rows[r], cell = rowArr[Math.min(p.col, rowArr.length - 1)];
-    moveTo(cell.h, cell.v, true);
-  }
+  function down() { next(); }
+  function up() { prev(); }
   // Linear next/prev: fragments first, then flow down a stack, then across.
   function next() {
     if (showNextFrag()) return;
@@ -755,14 +853,40 @@
     var cur = currentSlide();
     allSlides().forEach(function (s) { s.classList.toggle('tali-overview-current', s === cur); });
   }
+  // Where the map OPENS. Fitting the whole grid is only useful while the tiles stay
+  // recognisable: a 106-slide deck fits at 0.063, which is a 60x34px tile — a picture of a
+  // deck, not a navigator you can pick a slide out of. So:
+  //   fits at a readable size  -> fit it, centred. (Almost every real deck.)
+  //   doesn't                  -> fit the WIDTH instead and open on the slide you were
+  //                               just looking at. The map is a column you scroll down,
+  //                               which is one pan axis instead of two and gives tiles as
+  //                               much room as the stage has; "where am I" is answered
+  //                               before "what else is there".
+  // `fit` stays the true fit-everything scale, so the wheel can still pull all the way
+  // out to the bird's-eye view when that is what you actually want.
+  var MIN_TILE_PX = 150; // below this a tile stops being a recognisable slide
+  var OV_MARGIN = 1 - 2 * 0.06;
   function fitOverview() {
     var rev = deckEl(); if (!rev) return;
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
-    var fit = Math.min(sw / gw, sh / gh) * (1 - 2 * 0.06); // whole map, with margin
-    if (!(fit > 0)) fit = 1;
-    deck.ov = { scale: fit, cx: gw / 2, cy: gh / 2, fit: fit };
+    var all = Math.min(sw / gw, sh / gh) * OV_MARGIN; // the whole map, with margin
+    if (!(all > 0)) all = 1;
+    var floor = Math.min(MIN_TILE_PX / W, presentScale()); // never "floor" past one full tile
+    var roomy = all >= floor;
+    var byWidth = (sw / gw) * OV_MARGIN;
+    var open = roomy ? all : Math.max(byWidth, floor);
+    var here = cellCam(deck.h, deck.v, open);
+    // Centre whichever axis fits at the opening scale; follow the current tile on the
+    // axis that doesn't, so the slide you came from is on screen either way.
+    deck.ov = {
+      scale: open,
+      cx: (roomy || byWidth >= floor) ? gw / 2 : here.cx,
+      cy: roomy ? gh / 2 : here.cy,
+      fit: all,
+    };
+    clampOv();
   }
   function ovStage() {
     var rev = /** @type {HTMLElement} */ (deckEl());
@@ -794,9 +918,36 @@
     clampOv();
     setCamera(false);
   }
+  // --- zoom out to open the map ------------------------------------------
+  // In step mode a deliberate ZOOM-OUT gesture (a trackpad pinch, which arrives as
+  // ctrl+wheel, or two fingers contracting on touch) opens the overview: the same
+  // "pinch to see everything" that Photos, Maps and Figma already train. It is an
+  // ACCELERATOR ONLY — Escape, `o` and the toolbar button are untouched — because a
+  // gesture nobody can see is a fine reward for trying and a terrible only route.
+  // Zoom-IN is left alone: there is nothing below one slide to zoom into, so the
+  // browser keeps it (and with it page zoom, which this would otherwise claim).
+  var ZOOM_OUT_AT = 0.82; // accumulated shrink that trips the map open
+  var zoomOut = { f: 1, t: 0 };
+  // Hysteresis: a gesture is the run of events with no pause in it, so a slow scroll
+  // can't dribble past the threshold and a landed gesture can't immediately re-fire.
+  /** @param {number} factor */
+  function zoomOutBy(factor) {
+    var now = Date.now();
+    if (now - zoomOut.t > 250) zoomOut.f = 1;
+    zoomOut.t = now;
+    zoomOut.f *= factor;
+    if (zoomOut.f > ZOOM_OUT_AT) return;
+    zoomOut.f = 1;
+    setOverview(true);
+  }
   /** @param {WheelEvent} e */
   function onOverviewWheel(e) {
-    if (!deck.overview) return;
+    if (!deck.overview) {
+      if (deck.feed || !e.ctrlKey || e.deltaY <= 0) return; // not a zoom-out: not ours
+      e.preventDefault();
+      zoomOutBy(Math.exp(-e.deltaY * 0.0015));
+      return;
+    }
     if (!deck.ov) fitOverview();
     e.preventDefault();
     // Disambiguate input: a trackpad pinch arrives as ctrlKey+wheel (zoom toward the
@@ -862,19 +1013,65 @@
     if (on === deck.overview) return;
     var rev = deckEl();
     if (!rev) return;
+    stopCamAnim();
+    var from = deck.cam; // where the camera is standing right now
     deck.overview = on;
     rev.classList.toggle('overview', on);
     if (on && deck.blackout) toggleBlackout(false); // can't navigate a map you can't see
-    if (on) { fitOverview(); markCurrentTile(); }
-    else { deck.ov = null; allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); }); }
+    if (on) markCurrentTile();
+    else allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); });
     syncInert(); // overview: every tile is browsable, so clear inert; exiting re-inerts off-camera
-    // Arm the transition BEFORE re-placing tiles so the reflow (wrapped-grid <-> strip,
-    // plus the gutter shrink) rides the same tween as the camera zoom instead of
-    // teleporting when .tali-cam-anim happens to be off (initial frame / post-resize).
-    var sl = slidesEl();
-    if (sl && !reducedMotion()) sl.classList.add('tali-cam-anim');
-    positionGrid(); // add (or remove) the per-tile gutter shrink
-    setCamera(true); // zoom out to the map, or back into the current cell
+    if (!from || reducedMotion()) { // no motion budget: land in the final state
+      grid.wrapped = grid.gutter = on;
+      positionGrid();
+      if (on) fitOverview(); else deck.ov = null;
+      setCamera(false);
+      return;
+    }
+    // THE GRID ONLY EVER CHANGES WHILE THE CHANGE IS INVISIBLE, and that is the whole fix.
+    // Opening the overview re-lays the grid (long runs wrap into a block, tiles take their
+    // gutter), which moves every tile. Letting that ride the camera's clock — as it used
+    // to — made every tile fly to a new cell while the camera flew the other way: a
+    // staircase cascade in which the slide you were on was shoved 2.2 screen-widths off
+    // the edge and back before landing. But in step mode the camera frames exactly ONE
+    // cell, so there is a moment when re-laying the grid moves nothing anyone can see. Do
+    // it there: on the way IN before the zoom, on the way OUT after it. The gutter comes
+    // along for the ride, paid for by zooming the camera an answering 1/GUTTER (the tile
+    // shrinks, the camera pushes in by the same factor, so on screen it is a no-op).
+    //
+    // What is left is a zoom that moves the camera and NOTHING ELSE: no reflow, no
+    // per-tile tween. So a tile's screen path is a straight line by construction (no
+    // excursion left to tune away), and the whole move is one object instead of a hundred
+    // (a 111-slide deck goes from 110 concurrent animations to 4), which is most of what
+    // made the old move feel crowded.
+    if (on) {
+      // The invisible-reflow re-pin below is only invisible when the grid was at rest in
+      // step mode (one cell framing the stage, unwrapped). If we are RE-entering while an
+      // exit zoom is still mid-flight, the grid never un-wrapped and `from` is a live
+      // interpolated camera — so re-laying moves no tile to hide the reframe, and the
+      // instant snap (plus a from.scale/GUTTER over-zoom) would be a visible pop. In that
+      // case there is nothing to hide: just reverse the zoom from wherever the camera is.
+      var wasWrapped = grid.wrapped;
+      grid.wrapped = grid.gutter = true;
+      positionGrid();
+      fitOverview();
+      if (wasWrapped) {
+        zoomCam(from, cameraTarget());
+      } else {
+        var pinned = cellCam(deck.h, deck.v, from.scale / GUTTER);
+        applyCam(pinned.cx, pinned.cy, pinned.scale, 'instant'); // invisible: same pixels
+        zoomCam(pinned, cameraTarget());
+      }
+    } else {
+      // Zoom in on the grid AS IT STANDS (still wrapped + guttered) so nothing rearranges
+      // under the moving camera; drop both once one cell fills the stage again.
+      deck.ov = null;
+      zoomCam(from, cellCam(deck.h, deck.v, presentScale() / GUTTER), function () {
+        grid.wrapped = grid.gutter = false;
+        positionGrid();
+        setCamera(false); // same pixels, back in plain present-mode coordinates
+      });
+    }
   }
   // Move the overview highlight one leaf forward/back in deck order, keeping it
   // on-screen as the map pans.
@@ -889,6 +1086,22 @@
     ensureCurrentTileVisible(true);
     announce(slideDesc(currentSlide())); // overview highlight moves are keyboard-only; voice them
   }
+  // Leave the map on a specific tile. Aims BEFORE exiting so the zoom-in flies straight
+  // into the tile that was picked; aiming afterwards (the old order) meant zooming into
+  // the slide you came FROM and then panning across to the pick — two moves for one
+  // intent, and the pan re-targeted the zoom mid-flight. Everything commit() does except
+  // the camera, which setOverview owns for the length of the zoom.
+  /** @param {number} h @param {number} v */
+  function pickTile(h, v) {
+    deck.h = h; deck.v = v;
+    clampIndices();
+    deck.frag = fragCount();
+    applyClasses();
+    setOverview(false);
+    updateNumber(); writeHash(); focusCurrent();
+    fire('slidechanged');
+    broadcastState();
+  }
   /** @param {MouseEvent} e */
   function onSlidesClick(e) {
     if (!deck.overview) return;
@@ -900,7 +1113,7 @@
     var T = tops();
     for (var h = 0; h < T.length; h++) {
       var v = vertsOf(T[h]).indexOf(sec);
-      if (sec === T[h] || v >= 0) { setOverview(false); moveTo(h, v < 0 ? 0 : v, true); return; }
+      if (sec === T[h] || v >= 0) { pickTile(h, v < 0 ? 0 : v); return; }
     }
     setOverview(false);
   }
@@ -1344,7 +1557,7 @@
       switch (e.key) {
         // `o` toggles overview closed (mirrors opening it with `o`), alongside
         // Escape/Enter/Space; all land on the highlighted slide.
-        case 'Escape': case 'Enter': case ' ': case 'o': setOverview(false); moveTo(deck.h, deck.v, true); break;
+        case 'Escape': case 'Enter': case ' ': case 'o': pickTile(deck.h, deck.v); break;
         case 'ArrowRight': moveHighlight(1, 0); break;
         case 'ArrowLeft': moveHighlight(-1, 0); break;
         case 'ArrowDown': moveHighlight(0, 1); break;
@@ -1415,6 +1628,7 @@
   }
   var touch = /** @type {{ x: number | null, y: number | null, t: number }} */ ({ x: null, y: null, t: 0 });
   var ovTouch = /** @type {any} */ (null); // overview touch-gesture state: 1-finger pan or 2-finger pinch (mode-dependent shape)
+  var pinchStart = 0; // step mode: the span of a 2-finger gesture, watched for a zoom-out
   /** @param {Touch} a @param {Touch} b */
   function touchDist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
   // Seat (or re-seat, when a finger is added/lifted mid-gesture) an overview touch
@@ -1440,7 +1654,12 @@
       if (!ovTouch) deck.ovDragged = false;
       startOverviewTouch(e); return; // overview owns touch: pan/pinch, never nav
     }
-    if (e.touches.length !== 1) { touch.x = null; return; }
+    if (e.touches.length >= 2) { // step mode: two fingers are a zoom-out gesture, not nav
+      touch.x = null;
+      pinchStart = touchDist(e.touches[0], e.touches[1]) || 0;
+      return;
+    }
+    pinchStart = 0;
     touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY; touch.t = Date.now();
   }
   // In overview, one finger pans the map and two fingers pinch-zoom toward the
@@ -1448,7 +1667,16 @@
   // the gesture (deck.overview sets touch-action:none, so this is cancelable).
   /** @param {TouchEvent} e */
   function onTouchMove(e) {
-    if (!deck.overview || !ovTouch) return;
+    if (deck.feed) return; // native scroll owns the axis in the feed (match onTouchStart/End)
+    if (!deck.overview) { // step mode: watch a 2-finger pinch for the zoom-out that opens the map
+      if (!pinchStart || e.touches.length < 2) return;
+      if (touchDist(e.touches[0], e.touches[1]) / pinchStart < ZOOM_OUT_AT) {
+        pinchStart = 0;
+        setOverview(true);
+      }
+      return;
+    }
+    if (!ovTouch) return;
     e.preventDefault();
     if (ovTouch.mode === 'pinch' && e.touches.length >= 2) {
       var a = e.touches[0], b = e.touches[1], d = touchDist(a, b);
@@ -1475,6 +1703,7 @@
       else ovTouch = null;
       return; // a still tap falls through to onSlidesClick, which picks the tile
     }
+    if (!e.touches || e.touches.length === 0) pinchStart = 0; // the pinch is over
     if (touch.x == null || touch.y == null) return;
     var c = e.changedTouches[0];
     var dx = c.clientX - touch.x, dy = c.clientY - touch.y, dt = Date.now() - touch.t;
@@ -1486,7 +1715,7 @@
   // An OS interruption (system-UI edge swipe, incoming call, palm rejection) fires
   // touchcancel, not touchend — hard-reset the gesture so a stranded `moved` flag
   // can't swallow the next tile-pick tap. No click follows a cancel, so drop ovDragged too.
-  function onTouchCancel() { ovTouch = null; deck.ovDragged = false; }
+  function onTouchCancel() { ovTouch = null; deck.ovDragged = false; pinchStart = 0; }
 
   // --- mobile slide-feed (A3) --------------------------------------------
   // On a phone / portrait screen a deck opens as a vertical scroll-feed of full-
@@ -1851,7 +2080,7 @@
   /** @param {string} k @param {string} d */
   function key(k, d) { return '<div class="tali-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
   var KEYS_HTML =
-    key('← →', 'Navigate') + key('↑ ↓', 'Jump topic') + key('Space', 'Next') +
+    key('→ ↓ Space', 'Next') + key('← ↑', 'Previous') +
     key('Home End', 'First / last slide') +
     key('O', 'Overview') + key('0', 'Fit map') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
     key('B', 'Black screen') +
@@ -2176,6 +2405,7 @@
     // and early-returns when it's already set, so pre-setting it would no-op the enter.
     var wantFeed = !embedded && (qmd === 'feed' || (deck.autoRoute && isPortrait()));
 
+    publishMotionTokens(); // the camera's clock, so CSS runs off the same numbers
     if (!readHash()) { deck.h = 0; deck.v = 0; }
     clampIndices();
     // Restore a deep-linked fragment step (#/h/v/frag) once the slide is known.

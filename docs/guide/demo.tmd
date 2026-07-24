@@ -76,14 +76,14 @@ Per-slide backgrounds (`background-color`, `background-gradient`,
 
 Gradients work the same way.
 
-# Vertical stacks
+# Sections
 
-Press <kbd>↓</kbd> to go deeper, <kbd>→</kbd> to move on.
+Step forward with <kbd>→</kbd>, <kbd>↓</kbd>, or <kbd>Space</kbd>.
 
 ## Deep dive
 
-A heading under a section becomes a vertical sub-slide, so a topic can have its
-own thread without cluttering the main flow.
+A heading under a section becomes a sub-slide, so a topic can have its own thread;
+in the overview map the section shows as its own row.
 
 ## Presenter tools
 

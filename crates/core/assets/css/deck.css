@@ -35,11 +35,29 @@ body { background: transparent; }
   height: var(--tali-deck-h, 540px); /* one cell; sections translate out into the grid */
   transform-origin: 0 0;
 }
-/* The pan/zoom transition. Gated by a class so resize + first paint don't animate. */
-.tali-deck .tali-slides.tali-cam-anim,
-.tali-deck .tali-slides.tali-cam-anim > section,
-.tali-deck .tali-slides.tali-cam-anim > section > section {
-  transition: transform .5s cubic-bezier(.2, .8, .2, 1);
+/* The PAN transition, and only the pan. Gated by a class so resize + first paint don't
+   animate. Long moves and the overview zoom are driven by deck.js directly (a cut and an
+   rAF tween respectively) — see "the camera clock" there for why one CSS transition
+   could not serve all three. `> section` is deliberately NOT in this selector: putting
+   the tiles on the camera's clock meant every tile flew to a new cell while the camera
+   flew the other way when the overview opened, which is what made that move a cascade. */
+.tali-deck .tali-slides.tali-cam-anim {
+  transition: transform var(--tali-deck-pan, 360ms) cubic-bezier(.33, .7, .3, 1);
+}
+/* Tiles have NO transform transition at all, deliberately. Every grid change (the
+   overview wrap, the gutter) is made by deck.js at a moment when the camera frames a
+   single cell and the change cannot be seen, so there is nothing to smooth over — and a
+   hundred concurrent tile tweens is what dropped frames on a large deck. */
+/* A cut's fade-up: the destination arrives with no travel, then resolves over a beat, so
+   the change registers as a change rather than a flicker. */
+@keyframes tali-cut-in { from { opacity: 0; } to { opacity: 1; } }
+.tali-deck .tali-slides > section.tali-cut-in,
+.tali-deck .tali-slides > section > section.tali-cut-in {
+  animation: tali-cut-in var(--tali-deck-cut, 140ms) ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tali-deck .tali-slides > section.tali-cut-in,
+  .tali-deck .tali-slides > section > section.tali-cut-in { animation: none; }
 }
 
 /* Hide the deck until deck.js positions the first slide, so neither the plain
@@ -138,24 +156,55 @@ body { background: transparent; }
    their cells, so the move is a continuous zoom, not a relayout. Tiles get card
    styling, a per-section gutter-shrink (positionGrid) opens the gaps, and the
    current tile is ringed in the accent colour. Click a tile to zoom into it. */
+/* Tile chrome is COUNTER-SCALED by the camera (--tali-deck-scale, written by deck.js on
+   every frame of the zoom). A tile lives inside the scaled `.tali-slides`, so a flat 3px
+   ring drew at 3 x scale = under one physical pixel once the map was zoomed out — the
+   "you are here" marker vanished exactly when it was needed. Dividing through keeps the
+   ring, radius, shadow and number at their intended SCREEN size at any zoom. */
 .tali-deck.overview .tali-slides > section:not(.tali-stack),
 .tali-deck.overview .tali-slides > section > section {
-  border-radius: var(--tali-radius-lg);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
-  outline: 1px solid rgba(127, 127, 127, .25);
+  --tali-px: calc(1px / var(--tali-deck-scale, 1)); /* one screen pixel, in tile units */
+  border-radius: calc(12 * var(--tali-px));
+  box-shadow: 0 calc(12 * var(--tali-px)) calc(34 * var(--tali-px)) rgba(0, 0, 0, .5);
+  outline: var(--tali-px) solid rgba(127, 127, 127, .25);
   background: rgba(127, 127, 127, .07); /* a faint surface for slides with no background */
   cursor: pointer;
   overflow: hidden;
 }
 .tali-deck.overview .tali-slides > section.tali-overview-current,
 .tali-deck.overview .tali-slides > section > section.tali-overview-current {
-  outline: 3px solid var(--tali-accent);
-  box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
+  outline: calc(3 * var(--tali-px)) solid var(--tali-accent);
+  box-shadow: 0 calc(16 * var(--tali-px)) calc(46 * var(--tali-px)) rgba(0, 0, 0, .6);
 }
 .tali-deck.overview .tali-slides > section:not(.tali-stack):hover,
 .tali-deck.overview .tali-slides > section > section:hover {
   outline-color: rgba(160, 170, 190, .55);
-  box-shadow: 0 18px 52px rgba(0, 0, 0, .62);
+  box-shadow: 0 calc(18 * var(--tali-px)) calc(52 * var(--tali-px)) rgba(0, 0, 0, .62);
+}
+/* The slide number. Every slide sorter people already know (PowerPoint's, Keynote's,
+   Google Slides') numbers its thumbnails, because at map scale the tile art alone is not
+   enough to tell two slides apart or to say "go to 12". data-tali-n is written in
+   presentation order by positionGrid. Top-right, matching where this deck already puts a
+   slide number (`.tali-slide-number` below) and the corner slide content is least likely
+   to reach — bottom-left sat on the body text of a slide that filled its box. */
+.tali-deck.overview .tali-slides > section:not(.tali-stack)::after,
+.tali-deck.overview .tali-slides > section > section::after {
+  content: attr(data-tali-n);
+  position: absolute;
+  right: calc(9 * var(--tali-px));
+  top: calc(9 * var(--tali-px));
+  padding: calc(2 * var(--tali-px)) calc(7 * var(--tali-px));
+  border-radius: calc(999 * var(--tali-px));
+  font: 600 calc(12 * var(--tali-px)) / 1 ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: rgba(232, 234, 240, .92);
+  background: rgba(16, 18, 23, .72);
+  pointer-events: none;
+}
+.tali-deck.overview .tali-slides > section.tali-overview-current::after,
+.tali-deck.overview .tali-slides > section > section.tali-overview-current::after {
+  background: var(--tali-accent-fill, var(--tali-accent));
+  color: var(--tali-on-accent, #fff);
 }
 /* The overview is a draggable map: grab cursor on the canvas (tiles keep pointer),
    grabbing while panning. */
@@ -180,9 +229,12 @@ body { background: transparent; }
   backdrop-filter: blur(6px);
   pointer-events: none;
   z-index: 30;
-  animation: tali-ov-hint 4.5s ease forwards;
+  /* Held back until the zoom has landed: arriving mid-flight put a second thing in
+     motion on top of a map that was still moving, which is most of what "crowded" was. */
+  opacity: 0;
+  animation: tali-ov-hint 4s ease var(--tali-deck-zoom, 460ms) forwards;
 }
-@keyframes tali-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes tali-ov-hint { 0% { opacity: 0; } 12%, 60% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tali-deck.overview::after { animation: none; opacity: .85; } }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
@@ -611,9 +663,7 @@ html.tali-deck-dark { background: var(--tali-bg); }
 html.tali-deck-dark .tali-deck.overview .tali-slides > section:not(.tali-stack),
 html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { background: #20242b; }
 @media (prefers-reduced-motion: reduce) {
-  .tali-deck .tali-slides.tali-cam-anim,
-  .tali-deck .tali-slides.tali-cam-anim > section,
-  .tali-deck .tali-slides.tali-cam-anim > section > section { transition: none !important; }
+  .tali-deck .tali-slides.tali-cam-anim { transition: none !important; }
 }
 
 /* === On-screen chrome: progress bar, nav arrows, control menu =============
@@ -700,8 +750,18 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
   background: #2a2e36; border: 1px solid #3a3f49; border-radius: var(--tali-radius-sm); padding: 1px 5px; white-space: nowrap; }
 
-/* live-presenting chrome only: hidden in overview (print is handled by @media print). */
-.tali-deck.overview .tali-progress, .tali-deck.overview .tali-controls { display: none !important; }
+/* live-presenting chrome only: gone in overview (print is handled by @media print). It
+   fades on the zoom's clock rather than `display: none`-ing, so opening the map is one
+   move instead of a pop plus a move; `visibility` is delayed to the end so the buttons
+   leave the tab order only once they are actually gone. */
+.tali-deck.overview .tali-progress, .tali-deck.overview .tali-controls {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--tali-deck-zoom, 460ms) ease,
+              visibility 0s linear var(--tali-deck-zoom, 460ms);
+}
+.tali-progress { transition: opacity var(--tali-dur-slow) ease; }
 
 /* Share panel (C-ADD-2): a centered light-dismiss dialog with an offline QR of the
    CURRENT url + a copy-link field, so the room can scan straight to this exact slide +

@@ -134,7 +134,8 @@ return p;
 
 # A deeper topic
 
-Press down (not right) to descend into a vertical stack of related slides.
+Right, down, or Space steps into this section's sub-slides in order, the same as
+anywhere else in the deck; in the overview they group as their own row.
 
 ## First sub-point
 

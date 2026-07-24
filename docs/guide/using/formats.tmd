@@ -149,12 +149,12 @@ flips the text to light when the backdrop is dark:
 `background-repeat` (default `no-repeat`). A background travels with its slide as the
 camera pans and shows as a per-tile backdrop in the overview.
 
-### Vertical stacks
+### Sections
 
-A `#` (section) heading opens a vertical stack and the `##` slides that follow nest
-under it; the audience presses <kbd>↓</kbd> to go deeper and <kbd>→</kbd> to move on
-to the next topic. So a section can carry its own thread without cluttering the main
-left-to-right flow.
+A `#` (section) heading opens a section and the `##` slides that follow group under it.
+The deck is one linear sequence: you step through a section's slides in order with the
+rest, and the section is drawn as its own row in the overview map, so a topic reads as a
+group there without changing how you present.
 
 ```markdown
 # A topic with depth
@@ -186,9 +186,8 @@ keyboard-only):
 
 | Key | Action |
 |---|---|
-| <kbd>→</kbd> / <kbd>Space</kbd> | Next step or slide |
-| <kbd>←</kbd> | Previous |
-| <kbd>↑</kbd> / <kbd>↓</kbd> | Jump to the topic above / below (vertical stacks) |
+| <kbd>→</kbd> / <kbd>↓</kbd> / <kbd>Space</kbd> | Next step or slide |
+| <kbd>←</kbd> / <kbd>↑</kbd> | Previous |
 | <kbd>o</kbd> / <kbd>Esc</kbd> | Overview: a zoomable map of every slide |
 | <kbd>s</kbd> | Speaker view (see below) |
 | <kbd>f</kbd> | Fullscreen |
