@@ -139,13 +139,14 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
         sel.addEventListener("change", () => c.onChange(sel.value));
         wrap.appendChild(sel);
       } else if (c.type === "range") {
+        const fmt = (v) => (Math.round(+v * 100) / 100).toString();
         const inp = document.createElement("input");
         inp.type = "range";
         inp.min = c.min; inp.max = c.max; inp.step = c.step ?? 1; inp.value = c.value;
         const out = document.createElement("output");
-        out.textContent = c.value;
+        out.textContent = fmt(c.value);
         inp.addEventListener("input", () => {
-          out.textContent = inp.value;
+          out.textContent = fmt(inp.value);
           c.onInput(parseFloat(inp.value));
         });
         wrap.append(inp, out);
