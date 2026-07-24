@@ -19,7 +19,12 @@ pub const MANIFEST_LIGHT_BG: &str = "#ffffff";
 /// the `prefers-color-scheme: dark` meta tag; a manifest holds exactly one colour.
 pub const MANIFEST_DARK_BG: &str = "#16181d";
 
+/// The token files the two constants above mirror. Read only by
+/// `manifest_colors_match_the_tali_bg_tokens`, which is the whole point of keeping them:
+/// they exist so the duplication is pinned, not so anything reads the CSS at runtime.
+#[cfg(test)]
 const TOKENS_LIGHT_CSS: &str = include_str!("../../assets/css/tokens.css");
+#[cfg(test)]
 const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-dark.css");
 
 /// Icon file names, at the output root. The same names serve as the author-override

@@ -1714,6 +1714,28 @@ async fn build_site_async(
             Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
         }
     }
+    // Installable-app packaging: `manifest.webmanifest` + the app icons at the output root,
+    // so a reader can install this site/book from Chrome's omnibox, iOS "Add to Home Screen"
+    // or Safari's "Add to Dock". Deliberately NOT gated on `url:` like the SEO sidecars
+    // below: every URL in a manifest resolves against the manifest itself, so a project with
+    // no configured site URL installs correctly anyway. No service worker ships with it —
+    // installing changes how a reader returns, not whether the site works offline (that is
+    // the book `<book>.zip`).
+    let mut manifest_written: Vec<PathBuf> = Vec::new();
+    match std::fs::write(out.join("manifest.webmanifest"), site.manifest_json()) {
+        Ok(()) => manifest_written.push(PathBuf::from("manifest.webmanifest")),
+        Err(e) => log::warn(&format!("cannot write manifest.webmanifest: {e}")),
+    }
+    // The author's own `icon-192.png` + `icon-512.png` are already mirrored into the output
+    // by `mirror_assets`, so the bundled mark ships only when they supplied no usable set.
+    if !site.manifest_icons().author_supplied {
+        for (name, bytes) in taliesin_core::site::BUNDLED_ICONS {
+            match std::fs::write(out.join(name), bytes) {
+                Ok(()) => manifest_written.push(PathBuf::from(name)),
+                Err(e) => log::warn(&format!("cannot write {name}: {e}")),
+            }
+        }
+    }
     // SEO + discoverability sidecars: emitted only when `url:` is set (absolute URLs
     // are mandatory for feeds/sitemap/JSON-LD). All auto-derived from the site's own
     // content; the author writes nothing SEO-specific.
@@ -1835,6 +1857,7 @@ async fn build_site_async(
         keep.insert(PathBuf::from("hover-index.js"));
     }
     keep.extend(seo_written.iter().cloned());
+    keep.extend(manifest_written.iter().cloned());
     let swept = sweep_stale(&out, &keep);
     if swept > 0 {
         log::info(&format!(
