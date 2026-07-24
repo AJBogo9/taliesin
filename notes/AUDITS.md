@@ -4,6 +4,36 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+**Skimmability audit (reader experience at book scale), 2026-07-24** →
+[2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md). Author-prompted, not an AP slot: "how do I
+make a tool that helps writers create documents that are easily skimmable, and what makes Taliesin better for
+large books". Method: 8 web-research agents (reading science, structured-writing methodology, docs-tooling
+competitive sweep, e-reader/annotation prior art, typography, search/findability, accessibility, build-time
+derivation) + 5 codebase-inventory agents, feeding 8 ideation lenses; 110 raw candidates consolidated to 41,
+then each attacked by 3 independent adversarial verifiers (already-shipped, invariant, efficacy) with permission
+to kill it; 5 killed, 36 survived; two hostile critiques on the draft raised 37 issues. Headline: **the problem
+is not missing features, it is that the heading layer, the only surface a skimmer actually reads, is defective
+in six small verified ways** (spurious `4.0.1` section numbers on 31 of 32 numbered dogfood chapters from a
+demotion/counter disagreement; whole-book Cmd-K search absent below `MIN_TOC_HEADINGS` while the button still
+renders; a scrollspy that measures a class books never emit; `h5`/`h6` dimmer than body text; a printed TOC
+showing 2 of 8 entries; 18% of guide sections truncated out of the search index by `BODY_CAP`). A seventh, worse
+and unrelated to skimming: **a nested `{part:, chapters:}` group silently deletes itself and every chapter under
+it, and `check` exits 0** (`site/book.rs:84-86` discards the inner loop's "not a chapter" signal). All seven
+re-verified by the main session at `5c25d00` via a fresh build plus a targeted repro. Above the defects, one
+structural gap dominates (**no whole-book outline below chapter granularity on any reader surface**, though 161
+section records already sit in the built index) and one substrate gap blocks four proposals (**zero `<section>`
+extents in the emitted HTML**, though `lsp_outline.rs` already computes per-section `end_line`). Second-order
+finding, evidence-backed: the leverage is on the **builder** side, not a reader annotation layer (Ponce/Mayer
+2022: author-provided highlighting helps comprehension, learner-generated does not). Third-order, and outside
+code: **roughly half the problem is content** (0 of 37 dogfood pages set `description:`, 8 xref links across 19
+chapters, 0 backlinks, 60,208 words of internals with zero `{.definition}` blocks), so glossary/term-index/float
+digest all render empty until an authoring pass happens. Build-ready work folded into Open-work items **22
+(band A), 23 (band B), 24 (band C)**. Explicitly ruled out and recorded so they are not rediscovered: section
+hover previews (built and deleted at `318f22f`), a TOC entry budget, margin footnotes, `taliesin split`, a
+reading-density fold, the `:~:text=` half of deep links, and anything LLM-generated (byte-identical build output
+is test-pinned). Also caught: `FEATURE-IDEAS.md` #9 is **falsely marked SHIPPED** (read-aloud; `speechSynthesis`
+greps to zero), a rot instance the audit tripped over mid-run.
+
 **Perspective audit AP10 (internal codebase health), 2026-07-23** →
 [2026-07-23-ap10-codebase-health-audit.md](2026-07-23-ap10-codebase-health-audit.md). The pure code-read,
 fan-out-safe lens; run **alongside a live parallel session** (the `ask-ai-handoff` feature session) precisely

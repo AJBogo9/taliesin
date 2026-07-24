@@ -35,7 +35,20 @@ Tree is green across all gates. Both branch features landed to local `main`: str
 remain. **Item 14 (heading-demotion) was found already shipped** (2026-07-12, `7e60f6c`) when picked up
 2026-07-22: AP9's "12 sibling `<h1>`" was a stale-artifact false lead (it measured a gitignored pre-fix
 `corpus/bayesian-website/_site/index.html`; a fresh render/build emits exactly one `<h1>`). See "Refuted by
-measurement". The remaining open work is the medium/low band, pick in priority order:
+measurement".
+
+**2026-07-24: band A is no longer empty. Start with item 22 (SKIM-1).** A skimmability audit
+([2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)) found six small, verified defects in the
+heading layer that a reader of a long book meets on every page: malformed section numbers (`4.0.1`) on 31 of 32
+numbered dogfood chapters, a nested `{part:, chapters:}` group that silently deletes its own chapters with
+`check` exiting 0, whole-book Cmd-K search absent on any chapter under `MIN_TOC_HEADINGS` while the search
+button still renders, a scrollspy that lags by one section on every book page, `h5`/`h6` rendered dimmer than
+body text, and a printed TOC showing 2 of 8 entries. All six re-verified by the main session at `5c25d00`.
+Do `grow-tarn` (22a) first: seven downstream items need one corpus book at book-ish scale and the net currently
+pins nothing above 1,135 words. **Note item 22 is NOT a re-open of item 14**: heading demotion works, the
+section-number counter was never taught about it.
+
+The rest of the open work is the medium/low band, pick in priority order:
 
 1. **OFF-2 mermaid-offline-preview (item 13)**: preview lazy-loads mermaid from a CDN despite the vendored
    copy; protects the load-bearing offline invariant. Self-contained, no gating.
@@ -97,11 +110,101 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-Currently clear: the last high-yield item (structure-preserving, book-aware `read`) shipped 2026-07-22, and
-item 14 (heading-demotion) was found already shipped (2026-07-12) when picked up 2026-07-22. Next-highest is
-the medium/low band below (OFF-2 mermaid-offline, item 13).
+22. **SKIM-1: the heading layer is broken in six measured ways** (P1/P2, S each, no gating; detail:
+    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). A 2026-07-24 audit (8 research +
+    5 inventory lenses, 30 survivors, 3 adversarial verifiers per candidate, 4 killed) found the problem is
+    **not missing features**: the boundary layer a skimmer actually reads is defective, and every defect is
+    small and verified at `5c25d00`. **The six were re-verified by the main session** (fresh build + a
+    targeted repro), so trust these symptoms; still re-derive causes per the standing constraint. **Start
+    here, in this order:**
+    - **(a) `grow-tarn` FIRST (session 0, M, it is writing not code).** Grow `corpus/tarn` (already a book,
+      two parts) to >=12 chapters / >=3 parts with: one nested `{part:, chapters:}` group, one chapter below
+      `MIN_TOC_HEADINGS`, one `###`-rooted titled chapter, one titled chapter carrying a body `# H1`, one
+      section over `BODY_CAP` whose distinctive term sits in its last paragraph, two `{.definition}` blocks,
+      one unnumbered appendix. **Do NOT mint `corpus/longbook`** (the walker renders every corpus doc on
+      every `cargo test`; the corpus is real documents, not a scale fixture). Seven downstream items
+      otherwise each mint their own fixture and the net still pins nothing at scale (largest corpus book
+      today: 6 chapters / 1,135 words, about 2% of target). Expect a `body_html_snapshots` re-bless.
+    - **(b) The six defects (session 1, all small, all independent, all default-on).** Section numbers emit a
+      spurious zero on **31 of 32** numbered dogfood chapters (`4.0.1`, `16.0.0.1`; live strings include
+      `1.0.6.1` and `12.0.1.8`) because heading demotion (`render/mod.rs:847-857`) and the counter
+      (`site/chapter.rs:35`, slot `level - 2`) disagree, and the three numbering sites disagree with *each
+      other*, so a link reading "6.1.1" lands on a heading reading "6.0.1.1": fix by threading a
+      chapter-local `base` through **all three** call sites at once (`site/chapter.rs`, `site/xref.rs:87`,
+      `render/mod.rs:533`), not one. **This is NOT the shipped item-14 heading-demotion fix**: demotion works,
+      the numbering counter was never taught about it. A nested `{part:, chapters:}` group **silently deletes
+      itself and every chapter under it** and `check` exits 0 (`site/book.rs:84-86`'s inner loop discards
+      `push_chapter_entry`'s `false`, the signal the outer loop at `:70-72` does check); give `_site.yml`
+      diagnostics a line number in the same change. Whole-book Cmd-K search disappears on any chapter under
+      `MIN_TOC_HEADINGS` because the index global rides inside the TOC-gated `toc_scripts()`
+      (`render/page.rs:483`) while the Cmd-K **button still renders**, so the affordance is advertised and the
+      index is absent (split them; the preview injects unconditionally, so the author never sees it).
+      Scrollspy measures `.tali-site-nav`, which books never emit, so the highlight lags by one section
+      (derive from computed `scroll-margin-top`, sampled in `collect()`, not on the scroll path). `h5`/`h6`
+      render at **lower contrast than body text** (`base.css:334-336`, both `--tali-muted`): a hierarchy
+      defect, not a WCAG one (all three themes pass AA), and it compounds with the demotion above, which
+      pushes an author's `####` into `<h5>`. The print block never un-collapses `#TOC ul ul`, so a printed
+      chapter shows 2 of 8 entries: one rule.
+    - **(c) One-line docs correction:** delete `, or a heading with its first lines` from
+      `docs/guide/using/reading.tmd:68` (it promises a hover card deleted at `318f22f`).
+    - **(d) Notes hygiene, bundled with (a):** `FEATURE-IDEAS.md` #9 is falsely marked SHIPPED (read-aloud;
+      `speechSynthesis` greps to zero, its pin file does not exist), plus #4-#7, #10, moonshots 1+3 and the
+      line-575 entry; annotate `:444` and `:552` to separate structural aggregation from prose extraction; add
+      "Decided against" lines for `079a30d` (Ask-AI) and `318f22f` (section hover previews). The audit tripped
+      over this rot once already.
+    **Pins:** `grow-tarn` (four-case lockstep pin for the numbering: rendered heading number == TOC row ==
+    resolved `@sec-` text; nested-part chapters present; below-gate chapter carries `TALIESIN_SEARCH_URL` +
+    `SEARCH_JS`), plus `corpus/layout/heading-scale.tmd` (new, exercises both `<h5>` and `<h6>`) and CSS-rule
+    assertions for the print + spy tokens. Browser-verify the spy at 390x844 / 1440x900 / 900x1440.
+    **Honest residual:** `reference/cli.html` stays `16.0.1` (its first heading is deeper than its
+    shallowest); that is arguably correct, do not quote it as an exemplar.
 
 ### B. Medium impact
+
+23. **SKIM-2: honest search, honest output, and the whole-book outline** (P2, M; sequenced after 22; detail:
+    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). Two sessions, in order:
+    - **Session 2, honest output.** `BODY_CAP = 1500` (`site/search.rs:11`, applied `:172-175`) truncates
+      **18.3%** of guide sections and **25.3%** of internals sections (main-session recount on a fresh build:
+      32 of 180 guide entries sit at the cap), taking roughly 15% of each book's prose out of the index with
+      no signal to reader or author: delete the cap and split long sections into records on **block**
+      boundaries (measured: uncapping grows indexed text only ~1.17x; `score()` costs 0.75-1.01 ms/keystroke
+      on the real index, 6.6-11.6 ms at 5x, so the matcher is not the constraint). **Do NOT ship the chunked
+      term-keyed index** (Stage 2): no measured trigger, and `install_search_fragment`'s per-page fragment
+      model has no term-keyed equivalent, so the dev loop is unsolved. Text in a non-active tab panel is
+      invisible to Ctrl-F (`tabset.js:28` sets `panel.hidden`) while `tarn.rs:42` actively asserts it **is**
+      in Cmd-K: fix with `hidden="until-found"`, which needs **four** edits (`divs.rs`, narrow
+      `base.css:582`, add a zero `contain-intrinsic-size`, and write the attribute as a string in
+      `tabset.js` or the boolean IDL setter kills it on the first click) plus a programmatic reveal on the
+      Cmd-K arrival path. Bound runaway cell output in **CSS** (`max-height` + `overflow-y` + a print reset),
+      never with `hidden="until-found"` (Chrome-only reveal; older Safari falls back to `display:none` and a
+      traceback becomes uncopyable and absent from print); decide `.tali-output img` explicitly, and budget a
+      **new** vertical fade, not a reuse (`base.css:625`'s `background` shorthand already resets the generic
+      `pre` shadow).
+    - **Session 3, the outline, cheap half first.** There is **no whole-book outline below chapter
+      granularity on any reader surface**: drawer, landing Contents and Cmd-K's empty state are three
+      renderings of one flat chapter list, while 161 section records already sit in the built index reachable
+      only by typing. **Ship A** (highest value-per-token in the whole audit): `search.js:373` filters
+      `it.level === 0`; group by page instead. Pure client change, zero Rust, zero new artifact, **but it
+      depends on 22(b)'s numbering fix** (the index's heading text carries the rendered numbers). Pair it with
+      chapter-grouped results: add `c` (chapter number, already an argument to `page_fragment` and discarded)
+      and `h` (heading path), keep >=1-term matches below full matches with a struck-through `Missing: X`,
+      make `within1` Damerau-aware. Carve actions out of the relaxed AND (they are scored by the same
+      `score()`), and gate grouping to books (the single-doc DOM branch has no `url`). **Ship B** (the drawer
+      sidecar, L, genuinely new: mdBook, Docusaurus, GitBook, Starlight and Material all list author-declared
+      pages, never harvested headings) is an **owner appetite call**, not build-ready: it needs a per-page
+      outline fragment (measured: the body field is 87% of raw and 92% of gzipped index bytes, so an
+      outline-only sidecar is ~13x smaller gzipped) plus a `refresh_search_for_page`-shaped invalidation. Ship
+      B also decides whether a drawer type-ahead is wanted at all; do not ship both.
+    **Pins:** `grow-tarn` throughout (its over-`BODY_CAP` section, its 12 chapters for grouping); extend
+    `corpus/tarn/install.tmd` for the tab attribute + the zero-intrinsic-size rule + the visible panel's
+    first-child margin; new `corpus/layout/dense-output.tmd` (kernel-free: long `<pre>`, 200-row table, tall
+    image) asserting the bound, the print reset, **and that the horizontal `pre` shadow is unchanged**. Ship A
+    pins producer-side (assert the built index carries the `l` and `i` fields the grouping keys off); say
+    plainly that the grouping render itself is unpinned.
+    **Invariants:** offline (no CDN, the index is a same-origin lazily-loaded subresource), read-only overlay,
+    zero new config keys (no `search.boost`, no per-page `search.exclude`). Nothing here touches the frozen
+    `exec_pool` LRU; at 60+ chapters a preview reader evicts constantly, and the consequence is **a slower
+    cold chapter, not a correctness bug**.
 
 2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
    publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
@@ -113,6 +216,82 @@ the medium/low band below (OFF-2 mermaid-offline, item 13).
    fit-on-show refactor first).
 
 ### C. Low / hardening (P3)
+
+24. **SKIM-3: author-side structure tooling** (P3, M-L, **two owner rulings gate it**; detail:
+    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). `taliesin check` has 27 diagnostic
+    families and **none** concerns document structure: it prints "no problems found" on a 32,600-word book
+    with a 4,077-word chapter behind 9 headings and a broken number scheme on every page. Genuine market gap
+    (measured from source: Vale/Google 2 of 31 rules structural, Microsoft 4 of 39, proselint 0 of 26,
+    markdownlint's are syntactic). Dependency order is strict:
+    - **`skim-suggestion-severity` first (S).** `check` exits non-zero on ANY diagnostic, so a structural lint
+      turns a green gate red for advice. Smaller than it looks: `check.rs:818`'s `at_severity_floor` already
+      exists for `--errors-only` and becomes a three-state floor (printed output keeps showing everything, the
+      **exit** default moves to errors+warnings). Must also teach `build --strict` (`build.rs:649`/`:1102`)
+      and `publish.rs:58`, or a default-on suggestion still blocks publish. **Owner ruling needed:** the same
+      plumbing was declined 2026-07-10 (TODO surfacing). If the answer is no, only the four binary rules ship,
+      as warnings, with a red gate until the corpus is clean.
+    - **`taliesin skim` + `machine-shape-projections` BEFORE the lints, not after** (you cannot calibrate a
+      structural lint against a corpus you cannot measure). `skim` prints the layer-cake projection (headings
+      + numbers, first sentences, captions, callout titles, theorem statements) as one linear stream across a
+      whole book; it is also the **evaluation instrument** for the whole audit, which is a stronger argument
+      than its standalone use. It must **always print the raw first sentence** and show any gate judgement as
+      a visible annotation, never as suppression, or a weak section and a heuristic misfire render identically
+      and the instrument dies. Projections: add `words` + a `headings` array to `map --format json` /
+      `read --json`, set LSP `detail` at **`lsp.rs:806`/`:809`** (not `lsp_outline.rs`, which supplies the
+      `end_line`), count from markdown line extents (not `search::section_text`, which is
+      `BODY_CAP`-truncated). `pub`-ify `prose::word_count` (`prose.rs:69`) once, in whichever of this or the
+      chapter-length signal lands first.
+    - **`skim-shape-lints`, heavily trimmed (M).** Ship only the threshold-free binary rules: HEADING
+      (duplicate, empty, contentless, title-echo, near-duplicate first-two-words), CAPTION (empty,
+      label-only, uncaptioned float that an xref points at), TOC-DROP (a heading the shared `toc_items` filter
+      discards; natural home for 22's `cli.html` residual), and NO-DESC (**depends on a derived first-sentence
+      gist**, else it degenerates into "you did not set `description:`" and fires on 100% of the corpus).
+      **Cut RUN, DENSITY, EMPHASIS, FANOUT, SKELETON, FORWARD:** measured against the corpus none has a
+      defensible threshold (the flagship RUN rule fires on exactly **one** of 36 dogfood pages and that one is
+      a false positive; the headline "1,832-word run" is 1,021 words of table cells). Nothing resembling a
+      readability grade, and never a rule about heading *form* (Sanchez/Lorch: no differential effect). Watch
+      `codes.rs::classify`, which matches by ordered substring with needles as generic as `("math", …)`.
+    - **Independent medium items, no ordering constraint:** per-chapter prose length in the drawer and landing
+      Contents (absolute units, never a normalized bar; do not touch `is_article`, it is test-pinned); the
+      preview/build TOC selector divergence (`client.js:847` selects by absolute tag, the build filters
+      relative to the shallowest, so the author tunes navigation against a TOC readers never see; `base` is
+      already correct, do not "fix" it); a citing-sentence backlink line; book-scoped resume; a static "Part,
+      Chapter" ribbon (**owner call**: it adds a fourth persistent top element, and the dwell-time evidence
+      says the first viewport is the screening surface).
+    - **`section-extents` is an owner ruling, not a task.** The DOM has no section boundaries (zero
+      `<section>` wrapping content headings on 17 of 19 built guide pages; `using/code.html` is 47 flat
+      siblings; repo-wide `<section>` is emitted only by `render/deck.rs` and the footnotes block at
+      `render/mod.rs:905`), which blocks four proposals. **Recommendation: option (b), a `data-section-end`
+      marker computed from the walk `lsp_outline.rs` already does** (purely additive, invisible to the diff
+      and to the corpus invariants). Option (a), a real wrapper, is the one that would also unlock
+      `content-visibility: auto` and sticky section headings, but it changes the parent/child shape the
+      incremental diff mounts, which is a design question, not an implementation detail. Pin:
+      `corpus/layout/structure.tmd` (already named by `FEATURE-IDEAS` #26, still does not exist).
+    **Pins:** `corpus/diagnostics/skim-shape.tmd` tripping each surviving code exactly once **plus** a
+    well-shaped `skim-shape-clean.tmd` asserted to produce zero, so the rules cannot pass vacuously; extend
+    `check_cli.rs`'s DX18 exit-code tests with the three-state cases; `corpus/demo-book` + `grow-tarn` for the
+    projections.
+    **Invariants:** the finding lands in the CLI or the editor and the **author** edits the `.tmd`: no preview
+    gesture, no auto-fix, no write-back. The preview "skim view" is a *display* of a read-only projection, not
+    a transformation of the source. No LLM anywhere: byte-identical build output is actively pinned
+    (`build_reproducibility.rs`, `parallel_build_determinism.rs`) and `include_str!`-bundling cannot carry
+    model weights, so generated summaries are dead at both read time and build time. Zero new YAML keys.
+    **Deferred / do not schedule** (record in "Decided against" so they are not rediscovered): a
+    reading-density fold (three unbuilt prerequisites, and its premise is measurably overstated);
+    `content-visibility: auto` (behind a measured trigger and option (a)); the `:~:text=` half of deep links
+    (`strip_tags_separated` inserts a space at every tag boundary, and 669 of 876 dogfood paragraphs contain
+    inline code, so fragments miss on exactly the identifier queries they exist for; ship the `?h=` half
+    alone); `changed-since`; read-aloud (verdict recorded: out on cost, not on principle).
+    **Killed by verification, do not re-scope:** section hover previews (built and deleted at `318f22f` 13
+    days before the audit, pinned by three tests), a TOC entry budget (the depth window is already relative,
+    two tests pin it), margin footnotes (two real footnotes exist in the whole repo), and `taliesin split` (it
+    would repair 0 references on the chapter it was designed for, and `_site.yml` round-trips destroy
+    load-bearing comments).
+    **Note for the author, no code in it:** roughly half the measured problem is *content*. Zero of 37 dogfood
+    pages set `description:`, 8 xref links exist across 19 chapters, 0 backlink lines render, and
+    `docs/internals` is 60,208 words with zero `{.definition}` blocks. A glossary, a term index and a float
+    digest all produce near-empty output until an authoring pass happens; defer those three rather than
+    building them into an empty registry.
 
 10. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
