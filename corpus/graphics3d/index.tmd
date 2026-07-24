@@ -21,8 +21,9 @@ dimensions.
 
 ## [CAD, loaded and computed &rarr;](cad.html)
 
-A real engineering model rendered in the page, beside a spur gear the document
-**computes** from three numbers. Change the tooth count and watch it regenerate.
+A real, materials-rich model rendered live from a `.glb`, beside a spur gear the
+document **computes** from three numbers. Change the tooth count and watch it
+regenerate.
 
 ## [Sorting algorithms &rarr;](sorting.html)
 

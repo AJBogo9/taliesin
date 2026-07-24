@@ -43,6 +43,15 @@ Bundled so the tool works fully offline.
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
 `mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are Taliesin's own (MIT).
 
+### Sample 3-D models (corpus content)
+
+- **ToyCar** (`corpus/graphics3d/assets/ToyCar.glb`, CC0 1.0 Universal / public
+  domain dedication). A glTF sample asset displayed by the "Live 3-D graphics"
+  gallery exhibit's CAD page (`corpus/graphics3d/cad.tmd`). Source: Khronos
+  glTF-Sample-Assets
+  (<https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar>).
+  License: <https://creativecommons.org/publicdomain/zero/1.0/>.
+
 ## Loaded at runtime from a CDN (live preview only)
 
 Taliesin itself fetches nothing over the network in a **static build** — Mermaid is now
