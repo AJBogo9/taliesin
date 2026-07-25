@@ -36,6 +36,8 @@ you run one.
 | [2026-07-25-ap7-accessibility-audit](2026-07-25-ap7-accessibility-audit.md) | **AP7** deep a11y of the output | 5 findings = item **34**; static surfaces came back sound, the defects are all "content changes without an announcement" |
 | [2026-07-25-ap3-concurrency-audit](2026-07-25-ap3-concurrency-audit.md) | **AP3** concurrency / race conditions | 3 findings = item **35**; every predicted race refuted (single builder task, task-owned pool, atomic freeze writes), the real cost is head-of-line blocking (0.11s to 12.15s measured) |
 | [2026-07-25-ap11-chaos-audit](2026-07-25-ap11-chaos-audit.md) | **AP11** chaos / failure injection | 1 finding = item **36**; degradation paths are well-built (corrupt cache self-heals, unwritable output exits 1), the defect is wording: a missing interpreter is reported as an author code exception |
+| [2026-07-25-ap6-cross-browser-audit](2026-07-25-ap6-cross-browser-audit.md) | **AP6** cross-browser (the last AP slot) | **no findings**: Firefox and Chromium byte-identical on every measured axis, 0 console errors. Coverage gaps (WebKit, mobile, the preview path, Windows/macOS) listed in the doc |
+| [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | DIAG-1 = item **37**, DOCS-1 = item **38**; 6 live diagnostics fall through to the uncatalogued code at ERROR, and the same hole already bit the prose-lint rules once |
 
 Rounds with their own narrative entry below (and so already in the ledger): AP1, AP5, AP8, AP9, AP10,
 AP12, the 2026-07-19 polish audit, the 2026-07-18 vacuous-test audit, the 2026-07-24 skimmability

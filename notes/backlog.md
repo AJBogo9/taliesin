@@ -22,8 +22,10 @@ below. Gates at the last code landing, **re-run before trusting them**: 1481 tes
 `clippy --workspace --all-targets -D warnings` and both JS `tsc` gates clean; `check` clean on
 `corpus/tarn`, `docs/guide`, `docs/internals` and `site`.
 
-Three audits then ran, **findings only, no code**: **AP7** (accessibility) = item **34**, **AP3**
-(concurrency) = item **35**, **AP11** (chaos) = item **36**.
+Five audit rounds then ran, **findings only**: **AP7** (accessibility) = item **34**, **AP3**
+(concurrency) = item **35**, **AP11** (chaos) = item **36**, **AP6** (cross-browser) = **no findings**,
+and two non-AP lenses = items **37** (diagnostics) and **38** (docs drift). **All twelve AP slots are
+now run.**
 
 **Build-ready now, both measured and unblocked:** **AP7-1** (37 of 51 book pages emit a skipped
 heading level while `check` prints "no problems found") and **AP3-1** (a page with no code cells
@@ -34,9 +36,8 @@ fix-shape constraint; read it before starting.
 naming purge (Task 8 Step 5). The companion was repackaged and reinstalled and the relay harness
 passes both directions, but nothing automated covers the real editor round-trip.
 
-**One audit perspective is left: AP6 (cross-browser)**, stateful/solo. Three non-AP lenses are also
-proposed and unrun (see "Audit perspectives"), and they are probably the better use of a session:
-AP11 returned only one low-medium finding because the failure paths are genuinely well-built.
+**Every AP slot is now run**, AP6 closing the set. The only audit work left is **AP1's unchased
+residuals** (kernel RSS drift, multi-hour warm RSS) and the *behavioural* half of the docs lens.
 Working method is in "Audit perspectives": a dated findings doc, a row in
 [AUDITS.md](AUDITS.md)'s round index, and the build-ready findings filed into "Open work" under
 their own prefix. No ruling requires the next session to take one.
@@ -112,7 +113,8 @@ their own prefix. No ruling requires the next session to take one.
 Ranked highest user/product value first. Impact is not the same as buildability, so each item carries a
 gating tag: a high-impact item can still be frozen or need a ruling.
 
-**Three audits on 2026-07-25 refilled this list: items 34 (AP7), 35 (AP3) and 36 (AP11).** Before them it was
+**Five audit rounds on 2026-07-25 refilled this list: items 34 (AP7), 35 (AP3), 36 (AP11), 37 and
+38 (the diagnostics + docs-drift lenses).** Before them it was
 genuinely empty of buildable, unruled work, which is why a session was ruled to an audit: A's single
 item is an owner decision ruled deferred; both of B's need a device or a demand signal; and C was
 down to **24**'s two owner calls, item **30** (writing, not code), and P3 residuals that each carry
@@ -160,6 +162,40 @@ have a fix-shape constraint recorded in their item; read it before starting.
    were considered and left for later. Revive only on a real speaker ask.
 
 ### C. Low / hardening (P3)
+
+37. **DIAG-1: six live diagnostics fall through to the uncatalogued code, at ERROR** (P3, S+test;
+    detail: [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
+    `classify` (`diagnostics/codes.rs:141`) substring-matches the human message against `TABLE`;
+    anything unmatched returns `(GENERIC, ERROR)`. **Measured over 23 corpus/dogfood targets plus a
+    purpose-built fixture**, these six reach the fallback today: `broken citation: @X (did you
+    mean …)`, ``unknown div class `X` (did you mean …)``, ``.scrolly` has no `.step` divs``,
+    ``.panel-tabset` has no headings``, ``.input` needs a `name=` ``, ``.input type=select` needs
+    `options=` ``. **Three real consequences:** severity is decided by whether someone remembered a
+    needle (an unknown *callout kind* is a WARNING, an unknown *div class* is an ERROR that fails
+    `check` / `build --strict` / `publish`); `check --explain` answers "an uncatalogued diagnostic"
+    for all six, five of which carry a ``did you mean`` hint and are the most fixable diagnostics
+    the tool has; and `--format json` emits the same wrong code + `docs_url`.
+    **This is a recurrence, not a new bug:** the opt-in `prose-lint:` rules hit the identical
+    fallback until 2026-07-25, where a green gate cost you the rule. That was fixed by adding three
+    needles, so the *instance* was fixed and the *failure mode* was not.
+    **The fix is the test, not the needles:** the only existing guard
+    (`uncatalogued_message_gets_a_stable_generic_code`, `codes.rs:709`) asserts the fallback works on
+    a synthetic string; nothing asserts no real message reaches it. Add a test that renders the
+    diagnostics fixtures (plus a new one for the four widget-validation families) and asserts **zero**
+    `GENERIC` classifications. Adding needles alone just resets the clock. Ordering constraint already
+    documented: shape rows must precede prose rows in `TABLE`.
+
+38. **DOCS-1: two user-facing env knobs are undocumented** (P3, XS; detail:
+    [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
+    The user guide documents nine `TALIESIN_*` variables; **`TALIESIN_RENDER_TIMEOUT`**
+    (`render/mod.rs:295`, the render watchdog, `0` disables) and **`TALIESIN_JS_TIMEOUT`**
+    (`headless_js.rs:211`, the headless `{js}` settle budget) appear nowhere in it. Both shipped with
+    feature work (AP2 hardening, DX17b) that never touched the reference page, which is the same
+    drift shape the CLI-flag gate exists to catch. Consider extending that mechanical gate to env
+    vars. **Do not re-derive the other seven apparent drifts:** they are refuted in the doc
+    (`TALIESIN_BOOT`/`SSR_GEN`/`SEARCH_LOAD_FAILED`/`LABELS` are `window.*` globals, not env vars;
+    `COLD_REAP_CHILD` is an internal child marker; `BIN` belongs to the test harnesses;
+    `EDITOR_URI` exists only in a historical spec).
 
 36. **AP11 chaos finding** (detail:
     [2026-07-25-ap11-chaos-audit.md](2026-07-25-ap11-chaos-audit.md)). One finding; the round's
@@ -446,7 +482,8 @@ one perspective per session, solo; write a dated findings doc in `notes/`; add a
 prefix. **Every audit's first job is to falsify its own entry:** the last four rounds each found
 their entry overstated, misnamed, or already-shipped, so budget the first hour for that.
 
-**Eleven of twelve are RUN. One remains: AP6**, stateful/solo.
+**All twelve are RUN** (AP6 closed the set on 2026-07-25). Two of the three non-AP lenses have also
+run; only **AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS) is left unstarted.
 
 | Round | Result | Work went to |
 |---|---|---|
@@ -459,25 +496,17 @@ their entry overstated, misnamed, or already-shipped, so budget the first hour f
 | [AP8 determinism](2026-07-22-determinism-audit.md) | positive bill of health; byte-identical across processes | closed |
 | [AP9 semantic HTML](2026-07-22-semantic-html-audit.md) | strong positive; its one finding was a stale-artifact false lead | closed |
 | [AP10 codebase health](2026-07-23-ap10-codebase-health-audit.md) | healthy; dead code ~nil; lsp/mcp lacked a panic boundary | item 21, shipped |
+| [AP6 cross-browser](2026-07-25-ap6-cross-browser-audit.md) | **no findings**: Firefox == Chromium on every measured axis, 0 console errors | closed |
 | [AP11 chaos](2026-07-25-ap11-chaos-audit.md) | failure paths well-built; the defect is wording (a missing interpreter reported as an author exception) | item **36** |
 | [AP12 offline](2026-07-22-offline-guarantee-audit.md) | own assets genuinely offline; gap is author-introduced external refs | item 13 |
 
-**AP6: Cross-browser / cross-platform.** CLAUDE.md mandates the chrome-devtools MCP and development
-is Linux-only, so Safari, Firefox and mobile browsers are effectively untested, as are macOS/Windows
-path handling, file-watch semantics and kernel spawning. The vanilla-JS client and the deck engine
-are where these bugs hide. Start: drive the client through Firefox + WebKit (Playwright headless);
-grep the Rust for `\`-vs-`/` path assumptions and Linux-only syscalls. **Setup cost is real:**
-`/usr/bin/firefox` exists but only Chromium is cached for Playwright and `tools/ui-audit` has no
-Playwright dependency. **Concrete exposure named by AP7:** `hidden="until-found"` on tabset panels,
-`inert` on deck slides, `:focus-visible` opacity reveals, IntersectionObserver trigger lines.
-*Stateful, solo.* Highest risk before the public flip (~end of summer), least certain yield.
+**Lenses that were never AP-shaped** (proposed 2026-07-25). **Two ran the same day**:
+*diagnostics-message quality* (items **37**) and *docs-vs-behaviour drift* (item **38**), findings in
+[2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md).
+**One is left and unstarted: AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS), a
+narrow round, but it targets the warm-server moat. The docs lens also left its expensive half
+untouched: *behavioural* claims in the two dogfood books (what a flag does, not whether it exists).
 
-**Lenses that were never AP-shaped** (proposed 2026-07-25, none run): **diagnostics-message quality**
-(27+ `check` families with `title`/`fix` fields; nobody has audited whether each message names the
-real fix and points at the right line; precedent: the generic CLI gate found 9 undocumented flags
-where an audit had filed 2, drifting in both directions); **docs-vs-behaviour drift** (the dogfood
-books *are* the manual and `check` validates their links but never their claims); **AP1's unchased
-residuals** (kernel RSS drift, multi-hour warm RSS).
 
 ## Tier 3: demand-driven (band E; build only when a real user asks)
 

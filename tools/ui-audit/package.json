@@ -10,5 +10,9 @@
   },
   "dependencies": {
     "puppeteer-core": "^25.3.0"
+  },
+  "devDependencies": {
+    "@playwright/browser-firefox": "^1.62.0",
+    "playwright-core": "^1.62.0"
   }
 }
