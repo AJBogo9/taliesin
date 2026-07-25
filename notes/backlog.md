@@ -145,6 +145,11 @@ in the batch that altered a daily-driver surface, and the one-line revert to the
 jump-menu was offered and declined. Do not re-litigate it; a collapsed-by-default variant was also
 considered and is not wanted (it is not a one-liner: it needs collapse state + keyboard handling).
 
+**The `qmd` purge is HALF DONE and has a written plan: resume at Task 3.** See the dedicated section
+[below](#the-qmd-purge-resume-at-task-3). Tasks 1 and 2 of nine are on `origin/main`; the remaining
+seven rewrite tokens across ~40 files and want a quiet tree (no parallel session editing
+`render/tests.rs`, `base.css` or `web-client/search.js`).
+
 **Items 22 (SKIM-1) and 23's Ship A are gone; both shipped 2026-07-25.** **Four owner rulings were
 also taken** (see the prior-state block), which un-gated a large amount of previously-blocked work.
 What is left now sorts into:
@@ -201,6 +206,74 @@ taught about it. Both shipped 2026-07-25.)
 
 Working method is in "Standing constraints": branch per feature, verify by mutation, browser-verify,
 ff-merge locally, delete the item here on landing.
+
+## The `qmd` purge: resume at Task 3
+
+**Goal: zero live `qmd` tokens.** Owner ruling 2026-07-25: purge everything **except**
+`docs/superpowers/` and `notes/`, which stay frozen as the pre-rename record (rewriting them would
+make a 2026-06 plan claim it used names that did not exist yet). Breaking changes are fine, no
+back-compat aliases survive.
+
+**Plan:** [docs/superpowers/plans/2026-07-25-purge-qmd-naming.md](../docs/superpowers/plans/2026-07-25-purge-qmd-naming.md).
+Nine tasks, each with an exact file list, the commands, and the expected output. **Tasks 1 and 2 are
+done and pushed.** Resume at **Task 3**.
+
+**Why this is not a `sed`.** Measured, not assumed: a blanket `qmd` -> `tali` substitution over the
+whole tree **builds clean** (one `include_str!` path aside) and changes the state of only **5 of 1387
+tests**, three of which are block-id hash drift. The suite is structurally blind to renames because
+every assertion is a string literal living in the same file as its emitter, so both sides move
+together. Do not "just try it".
+
+**Task 1 (done) built the net the suite lacked** — `crates/core/tests/token_contract.rs` +
+a `FORMAT_VERSION` pin in `freeze.rs`. Each was verified to *fire* on the defect it targets, not
+merely to pass. Four traps found while building it, all of which will bite again:
+- A block-level corpus render reaches only **4 of the 15** `data-qmd-*` names. Site chrome, the page
+  shell, and JS-stamped attributes never appear in it, hence the second source-side census.
+- The two censuses need **different scanners**. Rendered HTML needs `data-` whitespace-preceded *and*
+  followed by `=`/`>`/`/`, or it matches the `id="data-modeling"` heading slug and prose like "the
+  canonical data-figure loop". Source needs only a token boundary (attributes appear as
+  `querySelectorAll("[data-x]")`); the whitespace rule finds **1 of 13**.
+- The orphan check must read the **live census, not the pin**, or it keeps checking the old name and
+  passes. It must also **exclude Rust from "consumers"** — Rust is the emitter, so counting it made
+  the check vacuous.
+- `data-qmd-drawer-close` exists only inside a `<script>` string literal in `site/chrome.rs`, so the
+  Rust half of the scan is found **by content**, never by a hand-written file list.
+
+**Task 2 (done) renamed the contracts no Rust test can see** — storage keys, the theme CustomEvent,
+`?tali=`, the `tali_token` cookie, and the editor postMessage protocol. Browser-verified. Two things
+the file inventory missed, found only by grepping for residue afterwards:
+- `<style id="qmd-theme">` is also read by `client.js:1328` (preview theme hot-swap) and named in
+  `protocol.rs` and `theme_css.rs`. Renaming just the `theme.rs` emitter breaks the hot-swap silently.
+- `deck.js` carries a **second** postMessage protocol for speaker-window sync, discriminated by a
+  `{ qmd: 'deck' }` field. Both ends are in `deck.js`, so it stayed self-consistent by luck.
+
+**Remaining, in order.** 3: `data-qmd-*` -> `data-tali-*` (15 attrs, 39 files). 4: script types
+`application/tali-js` + `tali-define`, rename `qmd-js.js`, drop the `qmd` cell-API parameter, **bump
+`FORMAT_VERSION` to 4**. 5: the 13 name collisions + delete the seven `window.qmd*` aliases. 6:
+`_qmd_*` -> `_tali_*` in the injected Python prelude. 7: corpus/docs/site/tools/CI + re-bless
+snapshots. 8: repackage the VS Code companion. 9: the repo-wide `no_qmd.rs` guard + CLAUDE.md.
+
+**Three traps waiting in the remaining tasks:**
+- **Task 4: do NOT rename the `qmd` cell-API parameter to `tali`** — it sits beside an existing
+  `tali` parameter, so you get a duplicate parameter name: legal in sloppy mode, a **`SyntaxError`
+  under `"use strict"`**. Delete it instead.
+- **Task 4: the `FORMAT_VERSION` bump is not optional.** `d0b1ffa` is this exact bug already shipped
+  once. The freeze key hashes a cell's *source*, never its output, so renaming a token that appears
+  in cached output leaves every existing `_freeze/` replaying markup the runtime cannot read. The pin
+  added in Task 1 now forces the bump.
+- **Task 5: renaming the aliases instead of deleting them yields `window.taliJs = window.taliJs;`** —
+  a self-assignment that looks right and silently removes the compatibility it existed for.
+
+**Two corrections to earlier notes, re-derived from source:** `qmdFast.path` / `qmdFast.open` are
+**not** live VS Code settings keys (the real one is `taliesin.path`); those hits are a stale-branding
+guard regex plus stale prose in `troubleshooting.tmd`, and should be deleted, not renamed. And
+`site/showcase.tmd:183-232` references six `var(--qmd-*)` custom properties that **are not defined
+anywhere** — the real tokens are `--tali-*` — so those two `{js}` exhibits have been rendering
+unstyled. Task 7 fixes that as a side effect.
+
+**Found in passing, not fixed:** `data-scrolly-name` (emitted at `divs.rs:660`) is read by **nothing**
+— not `scrolly.js`, not Rust. `scrolly.js` takes the name off the hidden input's `data-qmd-input`.
+Recorded in `NO_RUNTIME_CONSUMER`; deleting an emitted attribute is a behaviour change, not a rename.
 
 ## Standing constraints (read before working)
 

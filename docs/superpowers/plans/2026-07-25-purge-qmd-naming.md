@@ -8,6 +8,43 @@
 
 **Tech Stack:** Rust (edition 2024), vanilla browser JS, `cargo test`, `tsc` for JS type-checking, chrome-devtools MCP for browser verification.
 
+## Progress
+
+**Tasks 1 and 2 are done and on `origin/main`. Resume at Task 3.**
+
+| Task | State |
+|---|---|
+| 1. Regression net | ✅ `183069b` — 3 checks in `token_contract.rs` + a `FORMAT_VERSION` pin in `freeze.rs`, each verified to *fire* on the defect it targets |
+| 2. Silent contracts | ✅ `e1cfa3b` — storage keys, theme event, `?tali=`, cookie, postMessage. Browser-verified |
+| 3–9 | ⬜ not started |
+
+**Corrections to this plan discovered while executing it** (the plan text below has been updated, but
+these are the ones that cost time):
+
+- The census in Task 1 as originally drafted saw only **4 of the 15** `data-qmd-*` names, because a
+  block-level corpus render never produces site chrome or JS-stamped attributes. A second, source-side
+  census was added. The two need *different* scanners; unifying them breaks one or the other.
+- The orphan check must read the **live census**, not the pinned const, and must **exclude Rust** from
+  the set of "consumers". Both were wrong in the first draft and both made the check vacuous.
+- Task 2's file list missed `<style id="qmd-theme">` consumers in `client.js`, `protocol.rs` and
+  `theme_css.rs`, and a **second** `{ qmd: 'deck' }` postMessage protocol inside `deck.js`.
+- `qmdFast.path` / `qmdFast.open` are **not** live VS Code settings keys (the real one is
+  `taliesin.path`); delete the stale references rather than renaming them.
+
+**Environment notes for whoever resumes:**
+
+- Port **4388 is the `/preview` port** and a parallel session may own it. `python3 -m http.server`
+  fails to bind silently and you will then verify *someone else's* page and get a confident wrong
+  answer. Check `ss -ltn | grep <port>` first.
+- `pkill -f <pattern>` matches this session's own shell command line and **kills the shell**. Kill by
+  PID.
+- chrome-devtools MCP refuses to start when another session holds
+  `~/.cache/chrome-devtools-mcp/chrome-profile`. Fall back to `puppeteer-core` from
+  `tools/ui-audit/node_modules` with your own `userDataDir`; import it from
+  `.../puppeteer-core/lib/puppeteer/puppeteer-core.js`.
+- A fresh worktree has no `node_modules` or `.vscode-test`, so 4 of the extension's grammar tests fail
+  for environmental reasons. That is not your rename.
+
 ## Global Constraints
 
 - **Breaking changes are allowed.** The author is the only user. No back-compat aliases survive: `window.qmdJs`, `window.QmdDeck`, `window.qmdEnhancers`, `window.qmdEnhanceCode`, `window.qmdInit*` and the `qmd` cell-API parameter are all deleted outright, not renamed.
@@ -47,7 +84,7 @@
 
 ---
 
-### Task 1: Build the regression net (before any rename)
+### Task 1: Build the regression net (before any rename)  ✅ DONE (`183069b`)
 
 The net must pass on today's `qmd` names, so it proves it measures the contract rather than the rename.
 
@@ -62,7 +99,7 @@ The net must pass on today's `qmd` names, so it proves it measures the contract 
 - Consumes: `crates/core/tests/common/mod.rs::corpus_dir()`
 - Produces: `EMITTED_DATA_ATTRS` census in `token_contract.rs`, which Tasks 4 and 6 must update as their visible diff.
 
-- [ ] **Step 1: Write the census test with an empty pin so it fails loudly**
+- [x] **Step 1: Write the census test with an empty pin so it fails loudly**
 
 Create `crates/core/tests/token_contract.rs`:
 
@@ -208,7 +245,7 @@ fn every_emitted_attribute_has_a_runtime_consumer() {
 }
 ```
 
-- [ ] **Step 2: Run it to get the real census printed**
+- [x] **Step 2: Run it to get the real census printed**
 
 ```sh
 cargo test -p taliesin-core --test token_contract 2>&1 | head -80
@@ -218,11 +255,11 @@ Expected: `emitted_data_attribute_census_is_pinned` FAILS, printing the actual s
 
 (API confirmed 2026-07-25: `render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc` at `crates/core/src/render/mod.rs:153`; `RenderedDoc.blocks: Vec<Block>` at `model.rs:244`; `Block.html: String` at `model.rs:109`. Note the bare `render_document` takes only `src`, so it will not compile with a second argument.)
 
-- [ ] **Step 3: Paste the actual list into `EMITTED_DATA_ATTRS`**
+- [x] **Step 3: Paste the actual list into `EMITTED_DATA_ATTRS`**
 
 Copy the `ACTUAL:` list verbatim into the const, one `"data-…",` per line, keeping sort order.
 
-- [ ] **Step 4: Run again and resolve orphans**
+- [x] **Step 4: Run again and resolve orphans**
 
 ```sh
 cargo test -p taliesin-core --test token_contract
@@ -230,7 +267,7 @@ cargo test -p taliesin-core --test token_contract
 
 If `every_emitted_attribute_has_a_runtime_consumer` fails, for each orphan decide: is it selected on by CSS/JS somewhere the scan missed (widen `runtime_sources`), or is it informational? Informational ones go into `NO_RUNTIME_CONSUMER` as `("data-x", "reason")`, e.g. `("data-sourcepos", "click-to-source coordinate, read by the editor bridge not by a selector")`. Both tests must pass before moving on.
 
-- [ ] **Step 5: Add the freeze-format pin**
+- [x] **Step 5: Add the freeze-format pin**
 
 Append to the existing `mod tests` in `crates/server/src/freeze.rs`:
 
@@ -264,7 +301,7 @@ fn cached_output_vocabulary_is_tied_to_format_version() {
 }
 ```
 
-- [ ] **Step 6: Run it, paste in the real digest**
+- [x] **Step 6: Run it, paste in the real digest**
 
 ```sh
 cargo test -p taliesin-server --lib freeze::tests::cached_output_vocabulary
@@ -272,7 +309,7 @@ cargo test -p taliesin-server --lib freeze::tests::cached_output_vocabulary
 
 Expected: FAILS showing the real digest. Replace `"0000000000000000"` with it. Re-run; expect PASS.
 
-- [ ] **Step 7: Confirm the whole suite is still green**
+- [x] **Step 7: Confirm the whole suite is still green**
 
 ```sh
 cargo test --workspace 2>&1 | grep -E '^test result'
@@ -280,7 +317,7 @@ cargo test --workspace 2>&1 | grep -E '^test result'
 
 Expected: no failures. (`cargo test` fail-fast can hide later binaries; if anything fails, re-run with `--no-fail-fast`.)
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```sh
 git add crates/core/tests/token_contract.rs crates/server/src/freeze.rs
@@ -294,7 +331,7 @@ whenever a cached cell's output vocabulary changes."
 
 ---
 
-### Task 2: Rename the contracts no Rust test can observe
+### Task 2: Rename the contracts no Rust test can observe  ✅ DONE (`e1cfa3b`)
 
 Browser storage, DOM events, URL params, an HTTP cookie, and the cross-process postMessage protocol. These break silently and are verified by hand in a browser, not by `cargo test`.
 
@@ -315,27 +352,27 @@ Browser storage, DOM events, URL params, an HTTP cookie, and the cross-process p
 - Consumes: nothing from Task 1 at compile time; Task 1's suite must be green first.
 - Produces: `tali-goto` / `tali-cursor` postMessage names that Task 8's extension repackage depends on.
 
-- [ ] **Step 1: Rename the four browser-storage keys**
+- [x] **Step 1: Rename the four browser-storage keys**
 
 Apply the mapping table: `qmd-theme` → `tali-theme` (both the `localStorage` key and the `<style id="…">`), `qmd-deck-theme` → `tali-deck-theme`, `qmd-read:` → `tali-read:`. Update surrounding comments so they name the new key.
 
-- [ ] **Step 2: Rename the CustomEvent across all 7 emit/listen sites**
+- [x] **Step 2: Rename the CustomEvent across all 7 emit/listen sites**
 
 `qmd:themechange` → `tali:themechange`. All of: `theme.rs:127` (dispatch), `theme.rs:185,207` (listen), `deck.rs:213` (dispatch), `14-reader-prefs.js:56` (listen), `mermaid.js:134` (listen), `mermaid.js:16` (comment). Missing one listener leaves mermaid diagrams or the reader-prefs segmented control frozen on the old theme with no error.
 
-- [ ] **Step 3: Rename the deck URL param and the cookie**
+- [x] **Step 3: Rename the deck URL param and the cookie**
 
 `?qmd=` → `?tali=` in `deck.js` and the `deck.css` comment; the JS reads the param into a variable also named `qmd` (`deck.js:2520,2538`), rename that to `tali`. Then `qmd_token` → `tali_token` in `security.rs`, including its four unit-test assertions.
 
-- [ ] **Step 4: Rename the postMessage wire protocol on both sides at once**
+- [x] **Step 4: Rename the postMessage wire protocol on both sides at once**
 
 `qmd-goto` → `tali-goto`, `qmd-cursor` → `tali-cursor` in `web-client/client.js`, `editor/vscode/src/extension.ts`, `editor/vscode/src/webview.ts`, `editor/vscode/scripts/relay-harness.cjs`. Also `id="qmd"` → `id="tali-preview"` and `getElementById("qmd")` → `getElementById("tali-preview")` in `webview.ts:9,12`, and `window.qmdToHost`/`window.qmdGot` → `window.taliToHost`/`window.taliGot` in `relay-harness.cjs`. This is one logical change across two processes; do not split it.
 
-- [ ] **Step 5: Update the three drift pins in `render/tests.rs`**
+- [x] **Step 5: Update the three drift pins in `render/tests.rs`**
 
 `tests.rs:1941,1965` assert on `?qmd=feed` / `?qmd=present`; `tests.rs:2357` on `qmd:themechange`. Update to the new names.
 
-- [ ] **Step 6: Build and type-check**
+- [x] **Step 6: Build and type-check**
 
 ```sh
 cargo build --workspace
@@ -346,7 +383,7 @@ cd editor/vscode && npm run compile && cd ../..
 
 Expected: all clean.
 
-- [ ] **Step 7: Run the suite**
+- [x] **Step 7: Run the suite**
 
 ```sh
 cargo test --workspace --no-fail-fast 2>&1 | grep -E '^test result'
@@ -354,7 +391,7 @@ cargo test --workspace --no-fail-fast 2>&1 | grep -E '^test result'
 
 Expected: no failures. Task 1's census must still pass (no `data-*` attribute changed in this task).
 
-- [ ] **Step 8: Verify in a real browser (the only check that covers this task)**
+- [x] **Step 8: Verify in a real browser (the only check that covers this task)**
 
 ```sh
 cargo build --release
@@ -371,7 +408,7 @@ Using the chrome-devtools MCP, confirm all five, and capture a screenshot of eac
 
 If chrome-devtools MCP is unavailable (a parallel session can hold the Chrome profile), fall back to `tools/ui-audit`, which drives `puppeteer-core` directly.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```sh
 git add -A
@@ -385,7 +422,7 @@ themes and read positions from before this commit are discarded by design."
 
 ---
 
-### Task 3: Rename `data-qmd-*` to `data-tali-*`
+### Task 3: Rename `data-qmd-*` to `data-tali-*`  ⬅ RESUME HERE
 
 15 attributes, 162 hits across 39 files, spanning Rust emitters, bundled CSS, bundled JS and the preview client. Task 1's census turns this from an invisible change into a required diff.
 
