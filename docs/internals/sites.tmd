@@ -230,25 +230,44 @@ reference can point at a label defined on a page that has not been rendered yet:
 `search.rs` builds **one cross-page index**: every page's title and each anchored
 heading, each carrying the **plain-text body of its section**, so Cmd-K matches
 prose, not just headings. It is built once at discovery and **written to a separate
-`search.json`, lazy-loaded by the client on first open**, rather than inlined into
+`search-index.js`, lazy-loaded by the client on first open**, rather than inlined into
 every page, so the index never bloats page weight. (On a 17-page book that saved
 over a megabyte across the pages.) The palette is opened by the navbar search
 control (or the book sidebar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcut.
 
-`build_index_json` renders each page's Markdown once (no code execution, so the anchor
+`page_fragment` renders each page's Markdown once (no code execution, so the anchor
 ids match the served pages exactly), then emits a flat JSON array of compact records, one
-per searchable target. Each record is `{u, p, i, l, t, b}`: the page **u**rl, the **p**age
-title, the anchor **i**d, the heading **l**evel, the heading **t**ext, and the **b**ody
-text of that section. Every page contributes one record for the page itself (id `""`,
+per searchable target. Each record is `{u, p, i, l, t, b}` plus two optional fields: the
+page **u**rl, the **p**age title, the anchor **i**d, the heading **l**evel, the heading
+**t**ext, the **b**ody text of that section, the book **c**hapter number, and the
+ancestor **h**eading path. Every page contributes one record for the page itself (id `""`,
 level `0`, body = the intro before the first heading) plus one record per anchored heading
 (body = the plain text from that heading's close to the next heading's open). The section
 body is capped at 1500 characters so one long section or a big code listing cannot blow up
 the index, and the author's own `404.html` is skipped so a search never surfaces it.
 
-Search is entirely **in-browser**: there is no server query endpoint. The client fetches
-`search.json` once (via `window.QMD_SEARCH_URL`, set in the page head) the first time the
-palette opens, caches the parsed array on `window.QMD_SEARCH_INDEX`, and filters it
-locally as you type. A static `build` ships the same `search.json` beside the pages, so
+`c` and `h` are omitted where they are empty, so a website's index is byte-identical to
+one built without them. They exist because the palette renders the index as the *book's
+outline*, not a flat row list: `c` numbers the chapter row (a page-title record carries
+the bare title, since the rendered section numbers live on headings), and `h` says where a
+section sits inside its chapter.
+
+The page's blocks are finished in the **same order the served page finishes them**
+(`Site::finish_blocks`: number the chapter, then resolve cross-refs). Scoping the render
+numbers floats and theorems but *not* headings — that is `number_chapter_headings` — so
+without that call every heading indexes unnumbered while the page it points at reads "5.2
+How nulls behave", and a reader cannot search the number they can see.
+
+A page that emits no title block and opens at `# H1` has that heading as its **own title**,
+not a section, so it is folded into the page record rather than indexed separately: it is
+the same destination, one line below, reading the same words. (The titled shape already
+behaves this way, since a title block's text lands in the page record's body.)
+
+Search is entirely **in-browser**: there is no server query endpoint. The client loads
+`search-index.js` once (via `window.TALIESIN_SEARCH_URL`, set in the page head) the first
+time the palette opens, caches the array on `window.TALIESIN_SEARCH_INDEX`, and filters it
+locally as you type. It is loaded as a `<script>` element rather than fetched, so it works
+under `file://` too. A static `build` ships the same `search-index.js` beside the pages, so
 search works on a deployed, server-less site identically to the live preview.
 
 ::: {.callout-note}

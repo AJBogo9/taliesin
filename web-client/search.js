@@ -48,9 +48,34 @@
     "font-weight:800;padding:0}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:#fff;" +
     "text-decoration:underline}" +
-    "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted,#888);white-space:nowrap;margin-left:auto}" +
+    // max-width so a long ancestor path ellipsizes instead of squeezing the title it is
+    // meant to contextualise (the title is what the reader is scanning for).
+    "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted,#888);white-space:nowrap;margin-left:auto;" +
+    "overflow:hidden;text-overflow:ellipsis;max-width:40%}" +
     "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link,#2563eb);text-transform:uppercase;" +
     "font-size:.66rem;letter-spacing:.05em;font-weight:700}" +
+    // Outline rows: a chapter leads with its number, its sections are indented one step per
+    // level of nesting WITHIN that chapter, and a chapter that only labels a group of
+    // results is not interactive.
+    "#tali-search .tali-s-label{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
+    "border-radius:7px}" +
+    "#tali-search .tali-s-chapter{margin-top:.35rem}" +
+    "#tali-search .tali-s-chapter:first-child{margin-top:0}" +
+    "#tali-search .tali-s-chapter .tali-s-title{font-weight:700}" +
+    "#tali-search .tali-s-label .tali-s-title{color:var(--tali-muted,#888);font-size:.78rem;" +
+    "text-transform:uppercase;letter-spacing:.05em}" +
+    "#tali-search .tali-s-num{font-variant-numeric:tabular-nums;font-weight:700;font-size:.8rem;" +
+    "color:var(--tali-muted,#888);min-width:1.4em}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-num{color:inherit}" +
+    "#tali-search .tali-s-d1{padding-left:1.7rem}" +
+    "#tali-search .tali-s-d2{padding-left:2.9rem}" +
+    "#tali-search .tali-s-d3{padding-left:4.1rem}" +
+    "#tali-search .tali-s-d4{padding-left:5.3rem}" +
+    "#tali-search .tali-s-item[class*=tali-s-d] .tali-s-title{font-weight:400}" +
+    "#tali-search .tali-s-more .tali-s-title{font-size:.8rem;color:var(--tali-link,#2563eb);font-weight:600}" +
+    "#tali-search .tali-s-more[aria-selected=true] .tali-s-title{color:inherit}" +
+    "#tali-search .tali-s-miss{font-size:.75rem;color:var(--tali-muted,#888)}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-miss{color:rgba(255,255,255,.85)}" +
     "#tali-search .tali-s-empty{padding:1rem 1.1rem;color:var(--tali-muted,#888)}" +
     "#tali-search .tali-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
     "color:var(--tali-muted,#888);border-top:1px solid var(--tali-border,#e0e0e0)}" +
@@ -68,7 +93,7 @@
   /** A built, match-ready index entry (memoized lowercase fields for the matcher). A
    * command-palette action is the same shape with `action:true` + a `run` callback and no
    * `url`/`page` (it executes instead of navigating). */
-  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, tLow: string, bLow: string, action?: boolean, run?: () => void }} SearchItem */
+  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, chapter?: number, path?: string, depth?: number, tLow: string, bLow: string, action?: boolean, run?: () => void }} SearchItem */
 
   // Lazily created in ensureUi() and always assigned before any use below, so they're
   // typed non-null; ensureUi() self-guards re-entry via `if (overlay) return`.
@@ -79,7 +104,7 @@
   var searchRelease = null;
   /** @type {SearchItem[]} */
   var index = [];
-  /** @type {SearchItem[]} */
+  /** @type {Row[]} the listbox's options, parallel with the rendered `.tali-s-item` rows */
   var matches = [];
   var sel = 0;
   /** @type {string[]} the current query's terms, for the search-hit flash */
@@ -143,12 +168,30 @@
     // (every page's title + anchored headings). A result carries its page url so
     // selecting it can navigate across chapters.
     if (window.TALIESIN_SEARCH_INDEX) {
-      return window.TALIESIN_SEARCH_INDEX.map(function (e) {
+      var built = window.TALIESIN_SEARCH_INDEX.map(function (e) {
         var body = e.b || "";
         // tLow/bLow are memoized once so the per-keystroke matcher is just indexOf scans.
         return { id: e.i, title: e.t, level: e.l, body: body, url: e.u, page: e.p,
+          chapter: e.c, path: e.h, depth: 0,
           tLow: (e.t || "").toLowerCase(), bLow: body.toLowerCase() };
       });
+      // Outline depth is relative to each PAGE's own shallowest heading, never the absolute
+      // level: whether a chapter's sections land on h2, h3 or h4 depends on whether it emits
+      // a title block and what level it happens to root at, so indenting by `level` made a
+      // `###`-rooted chapter's top-level sections sit three steps in beside a `##`-rooted
+      // chapter's. Computed once here, not per keystroke.
+      /** @type {Record<string, number>} */
+      var shallowest = {};
+      built.forEach(function (it) {
+        var key = it.url || "";
+        if (it.level && (shallowest[key] == null || it.level < shallowest[key])) {
+          shallowest[key] = it.level;
+        }
+      });
+      built.forEach(function (it) {
+        if (it.level) it.depth = it.level - shallowest[it.url || ""] + 1;
+      });
+      return built;
     }
     // Single doc: build from the current DOM (so it reflects live edits).
     var main = document.querySelector("main") || document.body;
@@ -157,7 +200,7 @@
     var out = [];
     for (var i = 0; i < heads.length; i++) {
       var h = heads[i];
-      var title = (h.textContent || "").trim();
+      var title = headingText(h);
       if (!title) continue;
       var sbody = sectionText(h, heads[i + 1]);
       out.push({
@@ -170,6 +213,16 @@
       });
     }
     return out;
+  }
+
+  // A heading's own words, without the hover `#` permalink the anchor-links enhancer
+  // appends: reading `textContent` straight off the element put a trailing "#" in every
+  // single-doc palette row (the same strip `toc-spy.js` does for its mobile chip).
+  /** @param {Element} h */
+  function headingText(h) {
+    var clone = /** @type {HTMLElement} */ (h.cloneNode(true));
+    clone.querySelectorAll(".tali-anchor").forEach(function (a) { a.remove(); });
+    return (clone.textContent || "").trim();
   }
 
   /** @param {Element} h @param {Element | undefined} next */
@@ -299,8 +352,8 @@
     return overlay && !overlay.hidden;
   }
 
-  // Bounded edit-distance-1: true iff `a` is within one substitution / insertion / deletion of
-  // `b` (Levenshtein <= 1). O(len), no matrix. Transpositions count as 2 (out of scope for v1).
+  // Bounded edit-distance-1: true iff `a` is within one substitution / insertion / deletion /
+  // ADJACENT TRANSPOSITION of `b` (Damerau-Levenshtein <= 1). O(len), no matrix.
   /** @param {string} a @param {string} b */
   function within1(a, b) {
     var la = a.length, lb = b.length;
@@ -309,6 +362,15 @@
     while (i < la && j < lb) {
       if (a.charCodeAt(i) === b.charCodeAt(j)) { i++; j++; continue; }
       if (++diff > 1) return false;
+      // Damerau: a swapped adjacent pair ("teh" for "the") is the single most common typo
+      // class, and plain Levenshtein charges it two edits — so it was the one real typo the
+      // fuzzy tier could never forgive. Only equal-length strings can differ by a pure swap;
+      // past the end charCodeAt is NaN, which compares false, so the bounds are safe.
+      if (la === lb &&
+          a.charCodeAt(i) === b.charCodeAt(j + 1) &&
+          a.charCodeAt(i + 1) === b.charCodeAt(j)) {
+        i += 2; j += 2; continue;
+      }
       if (la > lb) i++; // deletion from a
       else if (lb > la) j++; // insertion into a
       else { i++; j++; } // substitution
@@ -327,22 +389,34 @@
     return false;
   }
 
-  // Multi-term AND matcher. Every query term must hit some field (title or body) by exact
-  // substring or, for terms >= 4 chars, an edit-distance-1 typo against a word. Returns a
-  // field-boosted score (0 rejects). Title outranks body; bonuses reward all-title hits, a
-  // title-leading match, and an exact contiguous phrase. Single-term degenerates to the old
-  // prefix > contains > body ordering.
-  /** @param {SearchItem} item @param {string[]} terms */
-  function score(item, terms) {
+  // Multi-term matcher. Every query term hits some field (title or body) by exact substring
+  // or, for terms >= 4 chars, a Damerau-distance-1 typo against a word. Returns the
+  // field-boosted score plus the terms that hit NOTHING (`s` of 0 rejects). Title outranks
+  // body; bonuses reward all-title hits, a title-leading match, and an exact contiguous
+  // phrase. Single-term degenerates to the old prefix > contains > body ordering.
+  //
+  // `strict` keeps the original hard AND, and the command-palette actions are the reason it
+  // still exists: they are scored by this same function and pinned above content, so under
+  // relaxed AND a query about prose would surface "Toggle light / dark theme" (one stray
+  // keyword hit) above the section the reader asked for. Content relaxes; actions do not.
+  /** @typedef {{ s: number, missing: string[] }} Scored */
+  /** @param {SearchItem} item @param {string[]} terms @param {boolean} strict @returns {Scored} */
+  function score(item, terms, strict) {
     var t = item.tLow, b = item.bLow, total = 0, allTitle = true, leadPrefix = false;
+    /** @type {string[]} */
+    var missing = [];
     for (var k = 0; k < terms.length; k++) {
       var term = terms[k], pos = t.indexOf(term);
       if (pos >= 0) { total += 6; if (pos === 0) leadPrefix = true; }
       else if (b.indexOf(term) >= 0) { total += 3; allTitle = false; }
       else if (term.length >= 4 && fuzzyWord(term, t)) { total += 2; }
       else if (term.length >= 4 && fuzzyWord(term, b)) { total += 1; allTitle = false; }
-      else return 0; // AND: this term matched nothing -> reject the item
+      else if (strict) return { s: 0, missing: [] }; // hard AND: one miss rejects the item
+      else { missing.push(term); allTitle = false; }
     }
+    // Relaxed still rejects an item that matched *nothing*, so a nonsense query stays an
+    // honest "No matches" rather than scoring the whole book at its floor.
+    if (terms.length && missing.length === terms.length) return { s: 0, missing: [] };
     if (allTitle) total += 3;
     if (leadPrefix) total += 2;
     if (terms.length > 1) {
@@ -350,37 +424,124 @@
       if (t.indexOf(phrase) >= 0) total += 2;
       else if (b.indexOf(phrase) >= 0) total += 1;
     }
-    return total;
+    return { s: total, missing: missing };
   }
 
-  /** @param {string} query */
-  function render(query) {
+  /** One rendered row. `pick` rows are the listbox's real options (keyboard-selectable, in
+   * `matches`); a non-`pick` row is a chapter LABEL. `head` renders the row as a chapter
+   * rather than a section; `expand` makes it the "+N more" disclosure for that page url. */
+  /** @typedef {{ it: SearchItem, missing: string[], pick: boolean, s?: number, head?: boolean, expand?: string }} Row */
+
+  var PER_GROUP = 3; // matching sections shown per chapter before the "+N more" row
+  var MAX_RESULTS = 60; // relaxed AND has no natural bound, so cap the scored set
+  /** @type {Record<string, boolean>} pages the reader expanded; reset on every new query */
+  var expandedPages = {};
+  /** @type {string | null} */
+  var lastQuery = null;
+  // Whether results group by page: a site/book index carries `url` on every record, the
+  // single-doc DOM index does not, so there is nothing to group a single doc by.
+  var grouped = false;
+
+  /** @param {string} query @param {number} [keepSel] preserve the cursor across a re-render */
+  function render(query, keepSel) {
     var q = query.trim().toLowerCase();
     var terms = q ? q.split(/\s+/).filter(Boolean) : [];
     lastTerms = terms; // so go() can flash the matched term after navigating
+    if (q !== lastQuery) { expandedPages = {}; lastQuery = q; }
+    grouped = !!window.TALIESIN_SEARCH_INDEX;
     // Command-palette actions come first: all available ones when the query is empty (a
     // discoverable menu — the point of a palette), else those whose title/keywords match.
     var acts = availableActions();
     if (terms.length) {
-      acts = acts.filter(function (a) { return score(a, terms) > 0; });
+      acts = acts.filter(function (a) { return score(a, terms, true).s > 0; });
     }
-    /** @type {SearchItem[]} */
-    var content;
+    /** @type {Row[]} in DOM order, options and labels interleaved */
+    var view = acts.map(function (a) { return { it: a, missing: [], pick: true }; });
+
     if (!terms.length) {
-      // No query: a book shows its chapter list (the level-0 page entries) as a
-      // jump menu; a single doc shows its full heading outline.
-      content = window.TALIESIN_SEARCH_INDEX
-        ? index.filter(function (it) { return it.level === 0; })
-        : index.slice();
+      // No query: the whole-book OUTLINE — every page AND every section under it, in reading
+      // order (`page_fragment` emits them that way already), indented by heading level. This
+      // used to filter to `level === 0`, i.e. the same flat chapter list the drawer shows,
+      // leaving every section record in the index reachable only by typing a query that
+      // happened to match it. A single doc shows its heading list, as before.
+      index.forEach(function (it) {
+        view.push({ it: it, missing: [], pick: true, head: grouped && !it.level });
+      });
     } else {
-      content = index
-        .map(function (it) { return { it: it, s: score(it, terms) }; })
-        .filter(function (m) { return m.s > 0; })
-        .sort(function (a, b) { return b.s - a.s || (a.it.level || 0) - (b.it.level || 0); })
-        .map(function (m) { return m.it; });
+      /** @type {{ it: SearchItem, s: number, missing: string[] }[]} */
+      var scored = [];
+      for (var i = 0; i < index.length; i++) {
+        var m = score(index[i], terms, false);
+        if (m.s > 0) scored.push({ it: index[i], s: m.s, missing: m.missing });
+      }
+      // Full matches first, then partials by how much they miss, then by score. A partial is
+      // shown rather than dropped because hard AND meant one mistyped word annihilated the
+      // whole result set; it is ranked below every full match and says what it missed.
+      scored.sort(function (a, b) {
+        return a.missing.length - b.missing.length || b.s - a.s ||
+          (a.it.level || 0) - (b.it.level || 0);
+      });
+      if (scored.length > MAX_RESULTS) scored = scored.slice(0, MAX_RESULTS);
+      if (!grouped) {
+        scored.forEach(function (h) {
+          view.push({ it: h.it, missing: h.missing, pick: true, s: h.s });
+        });
+      } else {
+        // Group by page, pages in best-hit order, so one dense chapter can't monopolise the
+        // visible rows: each page shows its top few sections and offers the rest.
+        /** @type {string[]} */
+        var order = [];
+        /** @type {Record<string, { it: SearchItem, s: number, missing: string[] }[]>} */
+        var byPage = {};
+        scored.forEach(function (h) {
+          var key = h.it.url || "";
+          if (!byPage[key]) { byPage[key] = []; order.push(key); }
+          byPage[key].push(h);
+        });
+        order.forEach(function (key) {
+          var hits = byPage[key];
+          // If the page's OWN entry matched, that entry is the chapter row (one row, not a
+          // label plus a duplicate of it) and it is selectable; otherwise the row is a plain
+          // label, so Enter on the top result still lands on a section, never on a chapter
+          // the query never matched.
+          /** @type {{ it: SearchItem, s: number, missing: string[] } | null} */
+          var pageHit = null;
+          for (var k = 0; k < hits.length; k++) {
+            if (!hits[k].it.level) { pageHit = hits.splice(k, 1)[0]; break; }
+          }
+          var ref = pageHit ? pageHit.it : hits[0].it;
+          view.push({
+            it: pageHit ? pageHit.it : {
+              id: "", title: ref.page || ref.url || "", level: 0, body: "",
+              url: ref.url, page: ref.page, chapter: ref.chapter, tLow: "", bLow: "",
+            },
+            missing: pageHit ? pageHit.missing : [],
+            pick: !!pageHit,
+            s: pageHit ? pageHit.s : undefined,
+            head: true,
+          });
+          // The per-page cap exists to stop ONE dense chapter monopolising the visible rows.
+          // When every hit is on the same page there is nothing to balance against, so
+          // capping would only hide results the reader asked for.
+          var cap = order.length > 1 ? PER_GROUP : hits.length;
+          var show = expandedPages[key] ? hits.length : Math.min(hits.length, cap);
+          for (var s = 0; s < show; s++) {
+            view.push({ it: hits[s].it, missing: hits[s].missing, pick: true, s: hits[s].s });
+          }
+          if (show < hits.length) {
+            var n = hits.length - show;
+            view.push({
+              it: { id: "", title: "+" + n + " more in this chapter", level: 0, body: "",
+                    tLow: "", bLow: "" },
+              missing: [], pick: true, expand: key,
+            });
+          }
+        });
+      }
     }
-    matches = acts.concat(content);
-    sel = 0;
+
+    matches = view.filter(function (r) { return r.pick; });
+    sel = keepSel == null ? startRow(terms, acts.length) : Math.max(0, Math.min(keepSel, matches.length - 1));
     list.innerHTML = "";
     if (!matches.length) {
       var empty = document.createElement("li");
@@ -394,41 +555,102 @@
       input.removeAttribute("aria-activedescendant");
       return;
     }
-    matches.forEach(function (m, i) { list.appendChild(itemEl(m, terms, i)); });
+    // Option ids number the PICK rows only, so they stay parallel with `matches` (which is
+    // what markSel() indexes) no matter how many labels sit between them.
+    var opt = 0;
+    view.forEach(function (r) { list.appendChild(itemEl(r, terms, r.pick ? opt++ : -1)); });
     markSel();
   }
 
-  /** @param {SearchItem} item @param {string[]} terms @param {number} i */
-  function itemEl(item, terms, i) {
+  // Where the cursor starts. A chapter row sits at the top of its group for STRUCTURE, not
+  // because it scored best, so "first row" and "best match" came apart the moment results
+  // grouped: Enter must still land on the strongest match. Actions keep their pinned
+  // position (a matching command is what the reader asked for by typing its name).
+  /** @param {string[]} terms @param {number} actionCount */
+  function startRow(terms, actionCount) {
+    if (!terms.length || actionCount) return 0;
+    var best = 0, bestS = -1;
+    matches.forEach(function (r, i) {
+      if (r.s != null && r.s > bestS) { bestS = r.s; best = i; }
+    });
+    return best;
+  }
+
+  /** @param {Row} r @param {string[]} terms @param {number} i */
+  function itemEl(r, terms, i) {
+    var item = r.it;
     var li = document.createElement("li");
-    li.className = "tali-s-item" + (item.action ? " tali-s-action" : "");
-    li.setAttribute("role", "option");
-    li.id = "tali-s-opt-" + i;
+    var cls = r.pick ? "tali-s-item" : "tali-s-label";
+    if (item.action) cls += " tali-s-action";
+    if (r.head) cls += " tali-s-chapter";
+    if (r.expand) cls += " tali-s-more";
+    // Indent a section under its chapter by its depth within that chapter (see buildIndex),
+    // so the outline reads as one.
+    if (!r.head && !r.expand && !item.action && grouped && item.depth) {
+      cls += " tali-s-d" + Math.min(item.depth, 4);
+    }
+    li.className = cls;
+    if (r.pick) {
+      li.setAttribute("role", "option");
+      li.id = "tali-s-opt-" + i;
+    } else {
+      li.setAttribute("role", "presentation");
+    }
     var head = document.createElement("div");
     head.className = "tali-s-head";
+    // A book chapter leads with its number: the page-title record carries the bare title
+    // (the rendered numbers live on section headings), so without `c` the outline's chapter
+    // rows would be the only unnumbered thing in a numbered book.
+    if (r.head && item.chapter != null) {
+      var num = document.createElement("span");
+      num.className = "tali-s-num";
+      num.textContent = String(item.chapter);
+      head.appendChild(num);
+    }
     var title = document.createElement("span");
     title.className = "tali-s-title";
     highlight(title, item.title, terms);
     var sec = document.createElement("span");
     sec.className = "tali-s-sec";
-    // In a book, label a content result with its chapter; a heading with its level; an
-    // action with a plain "action" tag so it reads as a command, not a destination.
-    sec.textContent = item.action ? "action" : item.page || "H" + item.level;
+    // Label an action "action" so it reads as a command, not a destination; a grouped result
+    // gets its ancestor heading path (the chapter is already the row above it); an ungrouped
+    // single-doc result keeps its heading level.
+    if (item.action) sec.textContent = "action";
+    else if (!grouped) sec.textContent = item.page || "H" + item.level;
+    else if (terms.length && item.path) sec.textContent = item.path;
+    else sec.textContent = "";
     head.append(title, sec);
     li.appendChild(head);
+    // Say which terms did NOT match rather than silently returning a weaker result than the
+    // reader asked for: struck through, because that is the part of the query not honoured.
+    if (r.missing.length) {
+      var miss = document.createElement("div");
+      miss.className = "tali-s-miss";
+      miss.appendChild(document.createTextNode("Missing: "));
+      r.missing.forEach(function (term, k) {
+        if (k) miss.appendChild(document.createTextNode(", "));
+        var st = document.createElement("s");
+        st.textContent = term;
+        miss.appendChild(st);
+      });
+      li.appendChild(miss);
+    }
     // A body snippet when the body carries something the title doesn't already show. "In the
-    // title" matches score()'s notion (exact OR a >=4-char fuzzy hit), so a fuzzy-title match
-    // doesn't trigger an unmarkable body snippet. Actions never snippet (their "body" is just
-    // keyword synonyms for matching, not prose to show).
-    var everyInTitle = terms.every(function (term) {
+    // title" matches score()'s notion (exact OR a >=4-char fuzzy hit) over the terms that
+    // actually matched, so neither a fuzzy-title match nor a missing term triggers an
+    // unmarkable body snippet. Actions never snippet (their "body" is just keyword synonyms
+    // for matching, not prose to show).
+    var hit = terms.filter(function (term) { return r.missing.indexOf(term) < 0; });
+    var everyInTitle = hit.every(function (term) {
       return item.tLow.indexOf(term) >= 0 || (term.length >= 4 && fuzzyWord(term, item.tLow));
     });
-    if (!item.action && terms.length && !everyInTitle && item.body) {
+    if (!item.action && hit.length && !everyInTitle && item.body) {
       var snip = document.createElement("div");
       snip.className = "tali-s-snip";
-      snippet(snip, item.body, terms);
+      snippet(snip, item.body, hit);
       li.appendChild(snip);
     }
+    if (!r.pick) return li; // a label is not hoverable, selectable or clickable
     li.addEventListener("mousemove", function () {
       if (sel !== i) {
         sel = i;
@@ -436,7 +658,7 @@
       }
     });
     li.addEventListener("click", function () {
-      go(item);
+      go(r);
     });
     return li;
   }
@@ -668,8 +890,16 @@
     flashTimer = setTimeout(clearFlash, 1600);
   }
 
-  /** @param {SearchItem} item */
-  function go(item) {
+  /** @param {Row} r */
+  function go(r) {
+    // The "+N more in this chapter" row is a disclosure, not a destination: expand its page
+    // and re-render in place, keeping the cursor where the reader left it.
+    if (r.expand) {
+      expandedPages[r.expand] = true;
+      render(input.value, sel);
+      return;
+    }
+    var item = r.it;
     // A command-palette action runs its command and closes; a content result navigates.
     if (item.action && typeof item.run === "function") {
       close();

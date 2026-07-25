@@ -65,7 +65,10 @@ interface Window {
   taliSearchInstalled?: boolean;
   /** Inlined / lazy-loaded cross-page search index (site + book): raw serialized
    *  entries (i=anchor id, t=title, l=level [0 = a whole-page entry], b=body text,
-   *  u=page url, p=page label). A single doc builds its index from the live DOM instead. */
+   *  u=page url, p=page label, c=book chapter number, h=ancestor heading path).
+   *  `c` and `h` are absent outside a book / on a top-level heading, and are what let
+   *  the palette render the index as the book's outline rather than a flat row list.
+   *  A single doc builds its index from the live DOM instead. */
   TALIESIN_SEARCH_INDEX?: Array<{
     i: string;
     t: string;
@@ -73,6 +76,8 @@ interface Window {
     b?: string;
     u?: string;
     p?: string;
+    c?: number;
+    h?: string;
   }>;
   /** URL of the lazy-loaded cross-page index script (a site/book links to it rather
    *  than inlining the full-text index into every page). */

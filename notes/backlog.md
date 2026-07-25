@@ -8,7 +8,35 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: SKIM-1 shipped + four owner rulings recorded)
+## State (2026-07-25, latest: SKIM-2 Ship A shipped)
+
+**Branch `backlog/skim-batch`.** **Item 23's Ship A is done** (the Cmd-K empty state is now the whole-book
+outline; results group by chapter; partial matches survive with `Missing:`; `within1` is Damerau-aware;
+actions keep hard AND). Gates at landing: **1379 tests / 0 fail** across 85 binaries with all three gates
+and `--test-threads=1`; `cargo fmt --check`, `clippy --all-targets` (0 warnings) and both JS `tsc` gates
+clean; `check corpus/tarn`, `check docs/guide` and `check docs/internals` all report no problems. The three
+producer fixes were verified **by mutation**; the client was browser-verified at 1440x900 / 390x844 /
+900x1440 on a book, a plain website and a single doc, with 0 console errors.
+
+**Four causes the audit recorded wrong, re-derived from source** (the "entries rot" law, again):
+- **Ship A's stated dependency on 22b was false as written.** The audit said the index's heading text
+  "carries the rendered numbers". It carried **none**: `page_fragment` scoped the render (which numbers
+  floats and theorems) but never called `number_chapter_headings`, a *separate* step that only
+  `Site::finish_blocks` made. The dependency had to be created, not consumed.
+- **Indenting the outline by the record's `l` is wrong.** Absolute heading level depends on whether a
+  chapter emits a title block and where it roots, so a `###`-rooted chapter's top-level sections indented
+  three steps beside a `##`-rooted chapter's. Depth is measured per page against its own shallowest heading.
+- **Every untitled chapter's `# H1` was indexed twice** — the page record and a heading record, same
+  destination, same words, adjacent rows. Folded into the page record.
+- **The single-doc palette had been showing `Section title#`** since the anchor-links enhancer shipped: it
+  read `textContent` straight off the heading, including the hover `#` permalink. `toc-spy.js` already
+  strips it for its mobile chip; `search.js` now does the same.
+
+**`corpus/tarn` had zero nested headings**, so neither the `h` path nor the outline indent was exercised by
+anything. `grouping.tmd` gained two `###` subsections. Same standing lesson as SKIM-1, one level down: the
+fixture only covers the shapes you actually put in it.
+
+### Prior state (2026-07-25, earlier: SKIM-1 shipped + four owner rulings recorded)
 
 **Branch `backlog/skim-batch`, commit `29bc976`.** All of **item 22 (SKIM-1)** shipped: the
 corpus fixture (22a), all six heading-layer defects (22b), the docs one-liner (22c) and the
@@ -103,25 +131,27 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: branch `backlog/skim-batch` @ `29bc976`, NOT pushed** (the author pushes on request only).
-All gates green there: 1373 tests / 0 fail with the three gates + `--test-threads=1`, fmt + clippy +
-both JS `tsc` clean. Re-check with `git log --oneline origin/main..main` before trusting any of
-this — the author pushes mid-session with no signal here.
+**State: branch `backlog/skim-batch`, three commits, NOT pushed** (the author pushes on request only).
+All gates green there: 1379 tests / 0 fail with the three gates + `--test-threads=1`, fmt + clippy +
+both JS `tsc` clean. **Do not trust a SHA written here** — re-check with
+`git log --oneline origin/main..main`; the author pushes mid-session with no signal in this file.
 
-**Item 22 (SKIM-1) is gone; it shipped 2026-07-25**, and with it the last cluster of small,
-self-contained, verify-by-mutation code items. **Four owner rulings were also taken** (see the State
-block), which un-gates a large amount of previously-blocked work. What is left now sorts into:
+**Items 22 (SKIM-1) and 23's Ship A are gone; both shipped 2026-07-25.** **Four owner rulings were
+also taken** (see the prior-state block), which un-gated a large amount of previously-blocked work.
+What is left now sorts into:
 
 - **Build-ready TODAY, in this order:**
-  1. **23 Ship A** (S, pure client, zero Rust) — group Cmd-K's empty state by page so the 161
-     section records already in the index become a browsable whole-book outline. Its one dependency
-     (22b's numbering fix) has shipped. Highest value-per-token left in the file.
-  2. **23 session 2** (M) — delete `BODY_CAP`, split long sections into records on block boundaries;
+  1. **23 session 2** (M) — delete `BODY_CAP`, split long sections into records on block boundaries;
      `hidden="until-found"` for tab panels (four edits, see the item); bound runaway cell output in
-     CSS. Sequence **29's R1** with it (it rebuilds the index anyway).
-  3. **24a** (S) — the three-state `check` severity floor, now RULED yes. Gates 24b and 24c.
-  4. **28's (5)** (S) — viewport-driven overview column count. The only code left in item 28.
-  5. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A.
+     CSS. Sequence **29's R1** with it (it rebuilds the index anyway). *Ship A already changed the
+     index shape once, so re-measure the cap's real cost on a fresh build before quoting 18.3%.*
+  2. **24a** (S) — the three-state `check` severity floor, now RULED yes. Gates 24b and 24c.
+  3. **28's (5)** (S) — viewport-driven overview column count. The only code left in item 28.
+  4. **31** (S) — the contradictory book-chapter label rule, found while building Ship A. One-line
+     precedence flip, but it relabels chapters, so check the dogfood books first.
+  5. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
+     put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
+     specifically, not the outline as such.
 - **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
   are real: personas 1-3 found **0** interaction-bugs between them.
 - **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), 2 (deferred, revive on a
@@ -254,33 +284,40 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       traceback becomes uncopyable and absent from print); decide `.tali-output img` explicitly, and budget a
       **new** vertical fade, not a reuse (`base.css:625`'s `background` shorthand already resets the generic
       `pre` shadow).
-    - **Session 3, the outline, cheap half first.** There is **no whole-book outline below chapter
-      granularity on any reader surface**: drawer, landing Contents and Cmd-K's empty state are three
-      renderings of one flat chapter list, while 161 section records already sit in the built index reachable
-      only by typing. **Ship A** (highest value-per-token in the whole audit): `search.js:373` filters
-      `it.level === 0`; group by page instead. Pure client change, zero Rust, zero new artifact, **but it
-      depends on 22(b)'s numbering fix** (the index's heading text carries the rendered numbers). Pair it with
-      chapter-grouped results: add `c` (chapter number, already an argument to `page_fragment` and discarded)
-      and `h` (heading path), keep >=1-term matches below full matches with a struck-through `Missing: X`,
-      make `within1` Damerau-aware. Carve actions out of the relaxed AND (they are scored by the same
-      `score()`), and gate grouping to books (the single-doc DOM branch has no `url`). **Ship B** (the drawer
-      sidecar, L, genuinely new: mdBook, Docusaurus, GitBook, Starlight and Material all list author-declared
-      pages, never harvested headings) is an **owner appetite call**, not build-ready: it needs a per-page
-      outline fragment (measured: the body field is 87% of raw and 92% of gzipped index bytes, so an
-      outline-only sidecar is ~13x smaller gzipped) plus a `refresh_search_for_page`-shaped invalidation. Ship
-      B also decides whether a drawer type-ahead is wanted at all. **RULED 2026-07-25: ship A, then B.**
-      That supersedes the old "do not ship both" line, but the ORDER is load-bearing: A is a pure
-      client change and its only dependency (22b's numbering fix) has now shipped, so A is
-      build-ready today; B needs the per-page outline fragment + the invalidation first.
+    - ~~**Session 3, Ship A.**~~ **SHIPPED 2026-07-25.** The palette's empty state is now the whole-book
+      outline (every page + its sections, indented), results group by chapter with a "+N more" disclosure,
+      partial matches survive with a struck-through `Missing: X`, `within1` is Damerau-aware, and actions
+      keep hard AND. Producer gained `c` + `h` (omitted when empty, so a website's index is unchanged).
+      **Three things the audit got wrong, re-derived from source:**
+      (1) **Ship A's stated dependency on 22b was false as written.** The index's heading text carried
+      **no** section numbers at all: `page_fragment` scoped the render (which numbers floats + theorems)
+      but never called `number_chapter_headings`, which is a *separate* step `Site::finish_blocks` makes.
+      So the dependency had to be *created*, not consumed. (2) **Indenting by `l` is wrong** — absolute
+      level depends on whether a chapter emits a title block and where it roots, so a `###`-rooted chapter
+      indented three steps beside a `##`-rooted one. Depth is now measured against each page's own
+      shallowest heading, client-side. (3) **Every untitled chapter's `# H1` was indexed twice** (page
+      record + heading record, same destination, same words, adjacent rows); it is now folded into the
+      page record. None of the three is visible without rendering the outline, which is why the audit
+      missed them.
+    - **Ship B** (the drawer sidecar, L, genuinely new: mdBook, Docusaurus, GitBook, Starlight and Material
+      all list author-declared pages, never harvested headings). **RULED 2026-07-25: ship A, then B**, and A
+      has now shipped. It needs a per-page outline fragment (measured: the body field is 87% of raw and 92%
+      of gzipped index bytes, so an outline-only sidecar is ~13x smaller gzipped) plus a
+      `refresh_search_for_page`-shaped invalidation. Ship B also decides whether a drawer type-ahead is
+      wanted at all. **Re-scope it before building:** Ship A already put a browsable whole-book outline one
+      keystroke away, so B's remaining value is the *drawer* specifically, not the outline as such.
     **Pins:** `corpus/tarn` throughout — grown 2026-07-25, use it, do not mint a fixture (its
     over-`BODY_CAP` section is `filtering.tmd`'s "How nulls behave", whose distinctive term
     `null-dropping-filter` sits in its LAST paragraph, i.e. past the old cap; its 12 chapters for
     grouping); extend
     `corpus/tarn/install.tmd` for the tab attribute + the zero-intrinsic-size rule + the visible panel's
     first-child margin; new `corpus/layout/dense-output.tmd` (kernel-free: long `<pre>`, 200-row table, tall
-    image) asserting the bound, the print reset, **and that the horizontal `pre` shadow is unchanged**. Ship A
-    pins producer-side (assert the built index carries the `l` and `i` fields the grouping keys off); say
-    plainly that the grouping render itself is unpinned.
+    image) asserting the bound, the print reset, **and that the horizontal `pre` shadow is unchanged**.
+    *(Ship A's pins landed: `tarn.rs` asserts every record carries `u`/`i`/`l`, that a numbered chapter's
+    records carry `c` + a numbered `h` path, and that a website's carry no `c`; `render/tests.rs` pins the
+    three client behaviours against the bundled JS. `grouping.tmd` gained two `###` subsections because
+    tarn had **zero** nested headings, so neither `h` nor the outline indent was exercised at all. The
+    grouping render itself is unpinned, by design.)*
     **Invariants:** offline (no CDN, the index is a same-origin lazily-loaded subresource), read-only overlay,
     zero new config keys (no `search.boost`, no per-page `search.exclude`). Nothing here touches the frozen
     `exec_pool` LRU; at 60+ chapters a preview reader evicts constantly, and the consequence is **a slower
@@ -529,6 +566,23 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
       already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
       whole-site pass.
+
+31. **A book chapter's label follows two contradictory rules** (P3, S; found 2026-07-25 while building 23
+    Ship A, surfaced not fixed because it changes drawer labels project-wide). Measured on
+    `corpus/tarn/joins.tmd` (front matter `title: "Joining frames"`, body `# Join kinds`): the page's
+    `<title>` reads **"Joining frames"** while the drawer row and the search index read **"Join kinds"**.
+    Cause: `site/book.rs`'s `push_chapter` resolves `label` -> **first `# H1`** -> `fm.title` -> stem, while
+    `site/discovery.rs:50` resolves `fm.title` -> `# H1` and its comment explicitly claims "`<title>`,
+    og:title, listing cards, nav, and search — all of which read `Page.title` — agree". A **book** page's
+    `Page.title` comes from `book.rs:247` (the chapter label), not from `discovery.rs`, so the claimed
+    agreement is false for exactly the shape where the two sources differ. The fix is a one-line precedence
+    flip in `push_chapter` (prefer the explicit `title:` over the harvested H1, matching every other
+    surface), but it **relabels any chapter where they differ** — check `docs/guide` + `docs/internals`
+    before flipping, and add a corpus pin asserting the three surfaces agree. Do NOT "fix" it by editing
+    `joins.tmd`: that hides the defect the fixture just exposed.
+    *Adjacent, not filed as its own item:* `docs/internals/` still carries pre-rename `qmd*` names in
+    paragraphs untouched by the Ship A pass (`window.qmdOpenSearch`, `QMD_SEARCH_INDEX`, `search.json`,
+    `build_index_json` were corrected only where Ship A rewrote them). Sweep on the next internals edit.
 
 30. **Demand-probe persona 4 (analyst) artifact** (P3, M, mostly writing; spec
     `docs/superpowers/specs/2026-07-22-corpus-demand-probe-design.md` §4). The four-persona demand-probe

@@ -72,8 +72,17 @@ pub(super) fn page_fragment(
     let src = std::fs::read_to_string(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
     let mut doc = render::render_document_scoped_with_theorems(&src, base, chapter, book_theorems);
-    // Apply the registry exactly as the served page does, or index text the page never
-    // shows: this render leaves a cross-page `@fig-` as a marker link reading "Figure".
+    // Finish the blocks in the same ORDER the served page does (`Site::finish_blocks`:
+    // number, then resolve), or index text the page never shows. Scoping the render alone
+    // numbers floats and theorems but NOT headings — that is `number_chapter_headings` — so
+    // without this call every heading was indexed unnumbered while the page it points at
+    // reads "5.2 How nulls behave": the reader could not search the number they can see, and
+    // an outline built from the index would be the one unnumbered view of a numbered book.
+    // (The same argument this function already makes for `chapter`, applied to headings.)
+    if let Some(chapter) = chapter {
+        super::chapter::number_chapter_headings(&mut doc.blocks, chapter);
+    }
+    // Then the registry: this render leaves a cross-page `@fig-` as a marker reading "Figure".
     super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
     let page_title = page
         .title
@@ -81,32 +90,67 @@ pub(super) fn page_fragment(
         .or(doc.title)
         .unwrap_or_else(|| page.url.clone());
 
+    // `c` (the page's chapter number) and `h` (a heading's ancestor path) are what let the
+    // client render the index as the BOOK's outline rather than a flat row list: `c` numbers
+    // the group header (a page-title entry's `t` is the bare title — the rendered numbers
+    // live on section headings, not on it), and `h` says where a section sits inside its
+    // chapter. Both are omitted when empty, so a website's index is byte-identical to before.
+    let chapter_field = chapter.map(|c| format!(",\"c\":{c}")).unwrap_or_default();
     let mut entries: Vec<String> = Vec::new();
-    let mut push = |id: &str, level: u8, title: &str, body: &str| {
+    let mut push = |id: &str, level: u8, title: &str, body: &str, path: &str| {
+        let path_field = if path.is_empty() {
+            String::new()
+        } else {
+            format!(",\"h\":\"{}\"", json_str(path))
+        };
         entries.push(format!(
-            "{{\"u\":\"{}\",\"p\":\"{}\",\"i\":\"{}\",\"l\":{},\"t\":\"{}\",\"b\":\"{}\"}}",
+            "{{\"u\":\"{}\",\"p\":\"{}\",\"i\":\"{}\",\"l\":{},\"t\":\"{}\",\"b\":\"{}\"{}{}}}",
             json_str(&page.url),
             json_str(&page_title),
             json_str(id),
             level,
             json_str(title),
             json_str(body),
+            chapter_field,
+            path_field,
         ));
     };
 
     let body: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
     let hs = headings_with_pos(&body);
-    // The page itself: jump to its top; body = the intro before the first heading.
-    let intro_end = hs.first().map(|h| h.3).unwrap_or(body.len());
-    push("", 0, &page_title, &section_text(&body[..intro_end]));
+    // A page that emits no title block and opens at `# H1` has that heading as its OWN
+    // title, not a section — the same rule `ChapterNumbering` uses to decide the H1 takes
+    // the bare chapter number. Indexed as a heading it is a second record for the same
+    // destination as the page record, one line below it and reading the same words, and it
+    // would sit in every section's ancestor path as pure noise. Fold it into the page record
+    // instead (which is what the titled shape already does: a title block's text lands in
+    // the page record's body too).
+    let title_heading_is_first =
+        !render::emits_title_block(crate::frontmatter::front_matter_block(&src).unwrap_or(""))
+            && hs.first().is_some_and(|h| h.0 == 1);
+    let skip = usize::from(title_heading_is_first);
+    // The page itself: jump to its top; body = everything before the first real section.
+    let intro_end = hs.get(skip).map(|h| h.3).unwrap_or(body.len());
+    push("", 0, &page_title, &section_text(&body[..intro_end]), "");
     // Each anchored heading: body = text from its close to the next heading's open.
-    for (idx, (level, id, title, _open, close_end)) in hs.iter().enumerate() {
+    // `ancestors` is the open heading stack, so the path costs one pop-loop, not a rescan.
+    let mut ancestors: Vec<(u8, &str)> = Vec::new();
+    for (idx, (level, id, title, _open, close_end)) in hs.iter().enumerate().skip(skip) {
+        while ancestors.last().is_some_and(|(l, _)| *l >= *level) {
+            ancestors.pop();
+        }
         if title.is_empty() {
             continue;
         }
+        let path = ancestors
+            .iter()
+            .map(|(_, t)| *t)
+            .collect::<Vec<_>>()
+            .join(" > ");
         let sec_end = hs.get(idx + 1).map(|n| n.3).unwrap_or(body.len());
         let sec_body = section_text(body.get(*close_end..sec_end).unwrap_or(""));
-        push(id, *level, title, &sec_body);
+        push(id, *level, title, &sec_body, &path);
+        ancestors.push((*level, title));
     }
     Some(entries.join(","))
 }

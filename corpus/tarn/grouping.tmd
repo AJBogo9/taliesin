@@ -41,6 +41,33 @@ Order-dependent aggregates on an unsorted frame are the most common source of
 results that differ between runs, because the reader is free to return rows in
 whatever order is cheapest.
 
+### Counting distinct values {#sec-group-nunique}
+
+`n_unique` is the aggregate people reach for when `count` gives an answer that is
+too large: `count` counts rows, `n_unique` counts distinct values, and nulls are
+excluded from both.
+
+```python
+per_region = sales.group_by("region").agg(
+    tarn.col("customer_id").n_unique().alias("customers"),
+)
+```
+
+### Picking one row per group {#sec-group-first}
+
+`first` and `last` take a value from an endpoint of the group rather than
+combining the group, so they only mean something after an explicit `sort`. Sort
+before you group, not after: sorting the aggregated result reorders the output
+rows without changing which row each `first` picked.
+
+```python
+latest = (
+    sales.sort("date")
+    .group_by("region")
+    .agg(tarn.col("revenue").last().alias("latest_revenue"))
+)
+```
+
 ## Grouping on a derived value {#sec-group-derived}
 
 You do not need a real column to group on. Add one first with `with_column`, then

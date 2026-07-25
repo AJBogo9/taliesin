@@ -262,7 +262,7 @@ static build) uses to run the whole list.
 
 `search.js` is a self-contained command palette, opened with Cmd-K (Ctrl-K off Mac),
 by clicking any `[data-qmd-search]` control, or programmatically via
-`window.qmdOpenSearch()`. It injects its own themed overlay CSS and is *not* part of
+`window.taliOpenSearch()`. It injects its own themed overlay CSS and is *not* part of
 the type-checked `client.js` bundle.
 
 Its index has two sources:
@@ -271,19 +271,38 @@ Its index has two sources:
   anchored heading (`h1[id]`…`h4[id]`) and the body text that follows it up to the
   next heading. Building from the DOM means the index reflects live edits with no
   server round-trip.
-- **A site or book** reads `window.QMD_SEARCH_INDEX`, the cross-page index the build
-  emits (each entry is a page title plus its anchored headings, carrying the page's
-  url so a result can navigate across chapters). To keep that index from bloating
-  every page, the site links to it via `window.QMD_SEARCH_URL` and `search.js`
-  **lazy-loads `search.json` on first open** (a "Loading…" row shows meanwhile),
-  caching it onto `QMD_SEARCH_INDEX`.
+- **A site or book** reads `window.TALIESIN_SEARCH_INDEX`, the cross-page index the
+  build emits (each entry is a page title plus its anchored headings, carrying the
+  page's url so a result can navigate across chapters). To keep that index from
+  bloating every page, the site links to it via `window.TALIESIN_SEARCH_URL` and
+  `search.js` **lazy-loads `search-index.js` on first open** (a "Loading…" row shows
+  meanwhile), caching it onto `TALIESIN_SEARCH_INDEX`.
 
-Matching is a multi-term AND with a field-boosted score: a title hit outranks a body
-hit, with bonuses for an all-title match, a title-leading match, and an exact
-contiguous phrase. Terms of four or more characters also match by edit-distance-1
-typo (`within1`, a bounded no-matrix Levenshtein) against a whole word. Selecting a
-result on another page navigates there anchored to the heading; on the current page
-(or in a single doc) it scrolls in place.
+**With no query, a book shows its whole outline**, not just its chapters: every page
+followed by its sections, in reading order, each section indented by its depth *within
+that chapter* (never its absolute heading level, which varies with whether the chapter
+emits a title block and where it roots). That makes the section records already in the
+index reachable by browsing rather than only by typing.
+
+Matching is a multi-term score with field boosts: a title hit outranks a body hit,
+with bonuses for an all-title match, a title-leading match, and an exact contiguous
+phrase. Terms of four or more characters also match by edit-distance-1 typo
+(`within1`, a bounded no-matrix Damerau-Levenshtein, so an adjacent transposition is
+one edit and not two). An item that matches **some** terms is kept and ranked below
+every full match, with a struck-through `Missing: <term>` line saying what was not
+honoured. Command-palette **actions keep the old hard AND**: they are scored by the
+same function and pinned above content, so relaxing them would surface "Toggle light /
+dark theme" above the prose the reader asked for.
+
+Results on a site or book **group by page**, each group led by its chapter row and
+capped at a few sections with a "+N more in this chapter" disclosure, so one dense
+chapter cannot monopolise the visible rows. The cap lifts when every hit is on the
+same page (there is nothing to balance against). A chapter row is selectable only when
+that page's own record matched; otherwise it is an inert label, so <kbd>Enter</kbd>
+always lands on a real result. The cursor starts on the **best-scoring** row rather
+than the first, because a chapter row sits at the top of its group for structure, not
+because it scored best. Selecting a result on another page navigates there anchored to
+the heading; on the current page (or in a single doc) it scrolls in place.
 
 ## TOC scrollspy (`toc-spy.js`)
 

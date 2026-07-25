@@ -280,3 +280,91 @@ fn the_appendix_is_unnumbered_and_the_definitions_render() {
         "grouping.tmd carries two `{{.definition}}` blocks: {grouping}"
     );
 }
+
+// --- SKIM-2 Ship A: the fields the Cmd-K outline groups + labels by ------------------
+// The grouping render itself is client JS and is NOT pinned here (it is covered by the
+// `web-client` jsconfig type-check plus manual browser verification). What IS pinned is the
+// producer contract it keys off: every section record must carry the page url, the anchor,
+// the level, the chapter number and its ancestor heading path, or the palette silently falls
+// back to a flat list with no way to notice.
+
+/// Every `{…}` object in the built index, as raw JSON text.
+fn index_records(idx: &str) -> Vec<&str> {
+    idx.split("},{")
+        .map(|r| {
+            r.trim_start_matches(['[', '{'])
+                .trim_end_matches([']', '}'])
+        })
+        .collect()
+}
+
+#[test]
+fn every_index_record_carries_the_fields_the_outline_groups_by() {
+    let idx = tarn().search_index_json;
+    let records = index_records(&idx);
+    assert!(
+        records.len() > 40,
+        "a 12-chapter book should index far more than its chapters: {}",
+        records.len()
+    );
+    for r in &records {
+        // `u` groups the rows under a page, `i` is the anchor a row navigates to, `l` is the
+        // indent depth. A record missing any of the three cannot be placed in the outline.
+        for field in ["\"u\":", "\"i\":", "\"l\":"] {
+            assert!(r.contains(field), "record lacks {field}: {r}");
+        }
+    }
+}
+
+#[test]
+fn a_numbered_chapters_records_carry_its_number_and_the_heading_path() {
+    let idx = tarn().search_index_json;
+    let records = index_records(&idx);
+    let grouping: Vec<&&str> = records
+        .iter()
+        .filter(|r| r.contains("\"u\":\"grouping.html\""))
+        .collect();
+    assert!(
+        grouping.len() > 4,
+        "grouping.tmd has three sections and two subsections: {grouping:?}"
+    );
+    // `c` numbers the chapter row. The page-title record carries the BARE title (the rendered
+    // section numbers live on headings), so without `c` the outline's chapter rows would be
+    // the only unnumbered thing in a numbered book.
+    for r in &grouping {
+        assert!(r.contains("\"c\":6"), "grouping.tmd is chapter 6: {r}");
+    }
+    // The indexed heading text carries the number the PAGE shows. Scoping the render numbers
+    // floats and theorems but not headings, so this needs `number_chapter_headings` and
+    // without it a reader cannot search the "6.2" they can see.
+    assert!(
+        grouping
+            .iter()
+            .any(|r| r.contains("\"t\":\"6.2 Aggregates that are not sums\"")),
+        "indexed headings carry their rendered section number: {grouping:?}"
+    );
+    // `h` is the ancestor path: absent on a top-level section (so a flat page's index is
+    // byte-identical to before), and on a nested one it names the rendered parent heading.
+    let nested: Vec<&&&str> = grouping.iter().filter(|r| r.contains("\"h\":")).collect();
+    assert_eq!(
+        nested.len(),
+        2,
+        "exactly the two `###` subsections are nested: {grouping:?}"
+    );
+    for r in &nested {
+        assert!(
+            r.contains("\"h\":\"6.2 Aggregates that are not sums\""),
+            "an ancestor path names the rendered (numbered) parent heading: {r}"
+        );
+    }
+}
+
+#[test]
+fn a_websites_index_carries_no_chapter_number() {
+    // `c` is emitted only for a book chapter, so a plain website's records are unchanged.
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    assert!(
+        !site.search_index_json.contains("\"c\":"),
+        "a website has no chapters, so no record may claim one"
+    );
+}

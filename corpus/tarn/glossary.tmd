@@ -1,7 +1,3 @@
----
-title: "Glossary"
----
-
 # Glossary {.unnumbered}
 
 **Collect** — run a plan and materialise its result. The only operation that reads

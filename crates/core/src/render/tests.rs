@@ -4936,6 +4936,51 @@ fn the_scrollspy_derives_its_line_from_scroll_margin_not_the_website_navbar() {
 }
 
 #[test]
+fn the_palettes_empty_state_is_the_whole_book_outline_not_a_chapter_list() {
+    // SKIM-2 Ship A: with no query a book used to show only its level-0 page entries — the
+    // same flat chapter list the drawer already shows — leaving every section record in the
+    // index reachable only by typing a query that happened to match it.
+    // Match the CODE, not the word: the explanatory comment names the old filter.
+    assert!(
+        !SEARCH_JS.contains("it.level === 0"),
+        "the empty state must not filter the index down to page entries"
+    );
+    // The outline is only readable if a section indents under its chapter, and the indent
+    // must be relative to the PAGE's own shallowest heading: whether a chapter's sections
+    // land on h2, h3 or h4 depends on whether it emits a title block and where it roots.
+    assert!(
+        SEARCH_JS.contains("shallowest[it.url"),
+        "outline depth must be measured against the page's own shallowest heading"
+    );
+}
+
+#[test]
+fn the_palette_relaxes_and_for_content_but_never_for_actions() {
+    // One mistyped word used to annihilate the result set (`else return 0`). Content now
+    // keeps >=1-term matches and says what it missed; actions must NOT, because they are
+    // scored by the same function and pinned above content, so a relaxed action would put
+    // "Toggle light / dark theme" above the prose the reader asked for.
+    assert!(
+        SEARCH_JS.contains("score(a, terms, true)"),
+        "command-palette actions must be scored with hard AND"
+    );
+    assert!(
+        SEARCH_JS.contains("missing.push(term)"),
+        "content must record the terms it could not match instead of rejecting"
+    );
+}
+
+#[test]
+fn the_palettes_fuzzy_tier_forgives_a_transposition() {
+    // Plain Levenshtein charges an adjacent swap ("teh" for "the") two edits, so the single
+    // most common typo class was the one the `within1` tier could never forgive.
+    assert!(
+        SEARCH_JS.contains("charCodeAt(j + 1)") && SEARCH_JS.contains("charCodeAt(i + 1)"),
+        "within1 must compare the swapped pair, not just substitute/insert/delete"
+    );
+}
+
+#[test]
 fn toc_filter_is_relative_to_the_shallowest_heading() {
     // A titleless document whose sections start at <h2> (shallowest level = 2): the TOC
     // shows three levels (h2/h3/h4) and drops h5. This is the relative window, not the
