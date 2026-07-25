@@ -88,7 +88,7 @@ pub(crate) fn new_session_token() -> String {
 
 /// What the [`lan_token_guard`] does with a request.
 pub(crate) enum LanAccess {
-    /// Serve it (loopback peer, or a valid `qmd_token` cookie already present).
+    /// Serve it (loopback peer, or a valid `tali_token` cookie already present).
     Allow,
     /// Serve it and set the session cookie (a valid `?t=` token — e.g. the first load
     /// from the QR), so later same-origin asset/ws requests authenticate by cookie and
@@ -104,7 +104,7 @@ pub(crate) enum LanAccess {
 /// requests), `SameSite=Lax` + `Path=/` so it rides every same-origin asset/ws
 /// request from the page.
 fn session_cookie(token: &str) -> String {
-    format!("qmd_token={token}; Path=/; SameSite=Lax; HttpOnly; Max-Age=86400")
+    format!("tali_token={token}; Path=/; SameSite=Lax; HttpOnly; Max-Age=86400")
 }
 
 /// The `t=` value of a URL query string, if present.
@@ -112,15 +112,15 @@ fn query_token(query: &str) -> Option<&str> {
     query.split('&').find_map(|kv| kv.strip_prefix("t="))
 }
 
-/// The `qmd_token` value of a `Cookie` header, if present.
+/// The `tali_token` value of a `Cookie` header, if present.
 fn cookie_token(cookie: &str) -> Option<&str> {
     cookie
         .split(';')
-        .find_map(|kv| kv.trim_start().strip_prefix("qmd_token="))
+        .find_map(|kv| kv.trim_start().strip_prefix("tali_token="))
 }
 
 /// Decide LAN access for one request. Loopback is always allowed; a LAN peer must
-/// present the token in the `?t=` query (→ set a cookie) or the `qmd_token` cookie.
+/// present the token in the `?t=` query (→ set a cookie) or the `tali_token` cookie.
 pub(crate) fn lan_access(
     peer_loopback: bool,
     query: Option<&str>,
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn session_cookie_is_httponly_and_scoped() {
         let c = session_cookie("abc123");
-        assert!(c.contains("qmd_token=abc123"));
+        assert!(c.contains("tali_token=abc123"));
         assert!(c.contains("HttpOnly"), "cookie must be HttpOnly: {c}");
         assert!(c.contains("SameSite=Lax"));
         assert!(c.contains("Path=/"));
@@ -342,7 +342,7 @@ mod tests {
         ));
         // A LAN peer with the wrong token is rejected.
         assert!(matches!(
-            lan_access(false, Some("t=nope"), Some("qmd_token=nope"), tok),
+            lan_access(false, Some("t=nope"), Some("tali_token=nope"), tok),
             LanAccess::Deny
         ));
         // First load from the QR carries `?t=<token>` -> allowed, and we set the cookie.
@@ -357,12 +357,12 @@ mod tests {
         ));
         // Subsequent same-origin asset/ws requests carry the cookie -> allowed.
         assert!(matches!(
-            lan_access(false, None, Some("qmd_token=abc123"), tok),
+            lan_access(false, None, Some("tali_token=abc123"), tok),
             LanAccess::Allow
         ));
         // A cookie among other cookies still authenticates.
         assert!(matches!(
-            lan_access(false, None, Some("other=1; qmd_token=abc123"), tok),
+            lan_access(false, None, Some("other=1; tali_token=abc123"), tok),
             LanAccess::Allow
         ));
     }

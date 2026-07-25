@@ -1325,10 +1325,10 @@
         break;
       case "style": {
         // Hot-swap theme CSS in place (no reload): scroll + deck slide survive.
-        let s = document.getElementById("qmd-theme");
+        let s = document.getElementById("tali-theme");
         if (!s) {
           s = document.createElement("style");
-          s.id = "qmd-theme";
+          s.id = "tali-theme";
           (document.head || document.documentElement).appendChild(s);
         }
         s.textContent = msg.css;
@@ -1426,7 +1426,7 @@
     const doc = window.TALIESIN_DOC;
     if (!doc) return;
     if (inWebview) {
-      window.parent.postMessage({ type: "qmd-goto", source_file: file, sourcepos: line + ":1" }, "*");
+      window.parent.postMessage({ type: "tali-goto", source_file: file, sourcepos: line + ":1" }, "*");
       return;
     }
     const abs = file ? doc.baseDir.replace(/\/+$/, "") + "/" + file : doc.path;
@@ -1448,7 +1448,7 @@
     } else {
       const ref = blockRef(el);
       if (inWebview) {
-        window.parent.postMessage({ type: "qmd-goto", ...ref }, "*");
+        window.parent.postMessage({ type: "tali-goto", ...ref }, "*");
         return;
       }
       abs = ref.source_file ? doc.baseDir.replace(/\/+$/, "") + "/" + ref.source_file : doc.path;
@@ -1461,7 +1461,7 @@
       if (m) { line = m[1]; col = m[2]; }
     }
     if (inWebview) {
-      window.parent.postMessage({ type: "qmd-goto", source_file: src, sourcepos: line + ":" + col }, "*");
+      window.parent.postMessage({ type: "tali-goto", source_file: src, sourcepos: line + ":" + col }, "*");
       return;
     }
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
@@ -1591,7 +1591,7 @@
 
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m && m.type === "qmd-cursor") highlightAtLine(m.file, m.line);
+    if (m && m.type === "tali-cursor") highlightAtLine(m.file, m.line);
   });
 
   // `--host` puts the session token in the first URL (`?t=…`); the server has

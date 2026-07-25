@@ -9,11 +9,11 @@
 //   1. npm run compile-tests        # produce out/webview.js
 //   2. node scripts/relay-harness.cjs   # prints RELAY_PORT=<n>, serves on it
 //   3. In a browser, inject a stub before load:
-//        window.acquireVsCodeApi = () => ({ postMessage: m => (window.qmdToHost ??= []).push(m) });
+//        window.acquireVsCodeApi = () => ({ postMessage: m => (window.taliToHost ??= []).push(m) });
 //      navigate to http://127.0.0.1:<n>/ , then:
-//        - FORWARD: the stub iframe auto-posts a `qmd-goto`; assert window.qmdToHost has it.
-//        - REVERSE: window.postMessage({type:'qmd-cursor',file:null,line:9},'*');
-//          assert document.getElementById('qmd').contentWindow.qmdGot === that message.
+//        - FORWARD: the stub iframe auto-posts a `tali-goto`; assert window.taliToHost has it.
+//        - REVERSE: window.postMessage({type:'tali-cursor',file:null,line:9},'*');
+//          assert document.getElementById('tali-preview').contentWindow.taliGot === that message.
 //
 // Verified 2026-06-24 via the chrome-devtools MCP: both directions route correctly.
 const http = require("node:http");
@@ -21,15 +21,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { relayHtml } = require("../out/webview.js");
 
-const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "qmd-relay-"));
+const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "tali-relay-"));
 fs.writeFileSync(
   path.join(dir, "inner.html"),
   `<!doctype html><meta charset=utf-8><body><script>
-  window.qmdGot = null;
+  window.taliGot = null;
   window.addEventListener("message", function (e) {
-    if (e.data && e.data.type === "qmd-cursor") window.qmdGot = e.data;
+    if (e.data && e.data.type === "tali-cursor") window.taliGot = e.data;
   });
-  parent.postMessage({ type: "qmd-goto", source_file: null, sourcepos: "7:1" }, "*");
+  parent.postMessage({ type: "tali-goto", source_file: null, sourcepos: "7:1" }, "*");
 </script></body>`
 );
 

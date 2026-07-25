@@ -1938,7 +1938,7 @@ fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
 #[test]
 fn deck_bundles_the_mobile_feed() {
     // A3: on a phone / portrait screen a deck opens as a vertical scroll-feed of full-
-    // viewport slides (routed by aspect, with `?qmd=feed` / `?qmd=present` escape hatches).
+    // viewport slides (routed by aspect, with `?tali=feed` / `?tali=present` escape hatches).
     // Pin the machinery at the bundle level so it can't silently regress; the runtime
     // front-door behavior is covered by the ui-audit deck browser smoke.
     let page = render_html_page("---\nformat: deck\n---\n\n## A\n\n## B\n", "fallback");
@@ -1961,8 +1961,8 @@ fn deck_bundles_the_mobile_feed() {
         "deck.js must route the front door by aspect"
     );
     assert!(
-        page.contains("qmd === 'feed'"),
-        "deck.js must honour the ?qmd=feed escape hatch"
+        page.contains("tali === 'feed'"),
+        "deck.js must honour the ?tali=feed escape hatch"
     );
 }
 
@@ -2329,7 +2329,7 @@ fn assembled_page_ships_theme_picker() {
     // The pre-paint head script applies the reader's saved theme before paint (no flash),
     // so it must reference the theme preference key.
     assert!(
-        page.contains("qmd-theme"),
+        page.contains("tali-theme"),
         "pre-paint theme apply missing from the page head"
     );
 }
@@ -2348,13 +2348,13 @@ fn theme_head_separates_the_reader_choice_from_the_resolved_mode() {
     );
     assert!(
         head.contains("removeItem"),
-        "choosing `auto` must clear qmd-theme, not store an unrecognized value"
+        "choosing `auto` must clear tali-theme, not store an unrecognized value"
     );
     // The change event has to carry the choice too, or the picker cannot re-sync
     // its pressed state after an OS flip.
     assert!(
         head.contains("choice: choice()"),
-        "qmd:themechange must report the choice alongside the mode"
+        "tali:themechange must report the choice alongside the mode"
     );
 }
 
@@ -2537,7 +2537,7 @@ fn no_toc_when_not_requested() {
 fn toc_page_ships_read_state_marker() {
     // A page with a TOC ships the read-state scrollspy decoration: the script marks the
     // sections a reader has scrolled through (`.tali-toc-read`) and persists them in the
-    // reader's OWN localStorage (`qmd-read:<path>`). Reader-side, read-only.
+    // reader's OWN localStorage (`tali-read:<path>`). Reader-side, read-only.
     let toc_page = render_html_page(
         "---\ntitle: Doc\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
         "fb",
@@ -2547,7 +2547,7 @@ fn toc_page_ships_read_state_marker() {
         "read-state class/CSS missing from a TOC page"
     );
     assert!(
-        toc_page.contains("qmd-read:"),
+        toc_page.contains("tali-read:"),
         "read-state storage key missing from the TOC scrollspy"
     );
 
@@ -2556,7 +2556,7 @@ fn toc_page_ships_read_state_marker() {
     // unconditionally, so the storage key is the TOC-only discriminator.
     let plain = render_html_page("---\ntitle: Doc\n---\n\n# A\n", "fb");
     assert!(
-        !plain.contains("qmd-read:"),
+        !plain.contains("tali-read:"),
         "read-state logic should ship only with a TOC"
     );
 }
@@ -2746,7 +2746,7 @@ fn deck_theme_is_custom_and_head_gating() {
         "the deck exposes its theme choice for the segment"
     );
     assert!(
-        head.contains("removeItem('qmd-deck-theme')"),
+        head.contains("removeItem('tali-deck-theme')"),
         "a non-light/dark choice (Auto) clears the stored key -> OS-follow: {head}"
     );
     assert!(

@@ -74,7 +74,7 @@ pub fn theme_head(default_mode: &str) -> String {
     format!(
         r#"<script>
 (function(){{
-  // Resolution order for the active mode: a saved reader choice (qmd-theme) always
+  // Resolution order for the active mode: a saved reader choice (tali-theme) always
   // wins; else a front-matter-forced "light"/"dark" mode; else (an unspecified or
   // `darkly`-style default, i.e. "auto") follow the OS `prefers-color-scheme`,
   // falling back to light when the OS expresses no dark preference. DEFAULT is a
@@ -92,7 +92,7 @@ pub fn theme_head(default_mode: &str) -> String {
   // the key is what returns a page to following the OS.
   function choice(){{
     var v = null;
-    try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
+    try {{ v = localStorage.getItem("tali-theme"); }} catch(e) {{}}
     return (v === "light" || v === "dark" || v === "sepia") ? v : "auto";
   }}
   // The MODE that actually paints: never "auto".
@@ -124,7 +124,7 @@ pub fn theme_head(default_mode: &str) -> String {
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
     // render time) re-render on a toggle, and let the Settings picker re-sync its
     // pressed state: which tracks the choice, not the mode.
-    try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode, choice: choice() }} }})); }} catch(e) {{}}
+    try {{ window.dispatchEvent(new CustomEvent("tali:themechange", {{ detail: {{ mode: mode, choice: choice() }} }})); }} catch(e) {{}}
   }}
   apply();
   // Keep an "auto" page reactive to OS theme flips: re-apply only while the choice
@@ -144,8 +144,8 @@ pub fn theme_head(default_mode: &str) -> String {
   // OS listener above keys off exactly that.
   window.taliSetTheme = function(p){{
     try {{
-      if (p === "light" || p === "dark" || p === "sepia") localStorage.setItem("qmd-theme", p);
-      else localStorage.removeItem("qmd-theme");
+      if (p === "light" || p === "dark" || p === "sepia") localStorage.setItem("tali-theme", p);
+      else localStorage.removeItem("tali-theme");
     }} catch(e) {{}}
     apply();
   }};
@@ -182,7 +182,7 @@ pub fn theme_head(default_mode: &str) -> String {
         function sync(){{ var p = pref(); btn.innerHTML = ICONS[p] || ICONS.dark;
           btn.setAttribute("aria-label", "Theme: " + p + " (click to toggle light / dark)"); }}
         btn.addEventListener("click", function(){{ window.taliToggleTheme(); sync(); }});
-        window.addEventListener("qmd:themechange", sync);
+        window.addEventListener("tali:themechange", sync);
         sync();
       }})(btns[i]);
     }}
@@ -204,7 +204,7 @@ pub fn theme_head(default_mode: &str) -> String {
       }}
     }}
   }}
-  window.addEventListener("qmd:themechange", syncThemeVideos);
+  window.addEventListener("tali:themechange", syncThemeVideos);
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){{ window.taliWireThemeToggles(); syncThemeVideos(); }});
   else {{ window.taliWireThemeToggles(); syncThemeVideos(); }}
 }})();
@@ -236,6 +236,6 @@ pub(super) fn theme_style(theme_css: &str) -> String {
     } else {
         // The id lets the dev server hot-swap theme CSS in place (no reload) on a
         // `.css`/theme edit; absent in a build with no custom theme, which is fine.
-        format!("<style id=\"qmd-theme\">{theme_css}</style>")
+        format!("<style id=\"tali-theme\">{theme_css}</style>")
     }
 }

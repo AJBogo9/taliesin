@@ -99,11 +99,12 @@ function taliCleanCaptionText(node) {
 // A blocked or throwing localStorage must not silently cost a reader their shortcuts, so every
 // failure path returns true.
 //
-// Key: `tali-shortcuts`. This deliberately does NOT match its only two siblings, `qmd-theme`
-// (render/theme.rs) and `qmd-deck-theme`, which still carry the retired `qmd-` prefix. Those are
-// frozen: a storage key has no aliasing mechanism, so renaming one would silently reset every
-// existing reader's saved choice. A brand-new key carries no such burden and uses the owned
-// prefix. The mismatch is intentional; do not "fix" it.
+// Key: `tali-shortcuts`, matching its siblings `tali-theme` (render/theme.rs) and
+// `tali-deck-theme`. Those two were renamed off the retired `qmd-` prefix on 2026-07-25.
+// A storage key has no aliasing mechanism, so that rename discarded every existing
+// reader's saved theme choice. That was accepted deliberately (single-user tool); if a
+// key is ever renamed again, either accept the same reset or read the old key once and
+// migrate it forward.
 function taliShortcutsOn() {
   try { return localStorage.getItem('tali-shortcuts') !== 'off'; } catch (e) { return true; }
 }

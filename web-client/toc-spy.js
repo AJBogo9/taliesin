@@ -21,7 +21,7 @@
   /** @type {Record<string, number>} read[headingBlockId] = 1 once scrolled through */
   var read = {};
   var readHigh = 0; // forward-only high-water index of scrolled-through entries
-  var READ_KEY = "qmd-read:" + location.pathname;
+  var READ_KEY = "tali-read:" + location.pathname;
 
   function loadRead() {
     read = {};

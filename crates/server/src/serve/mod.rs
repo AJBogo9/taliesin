@@ -2030,7 +2030,7 @@ mod protocol_contract {
     fn blog_index_ships_toc_scrollspy_when_toc_enabled() {
         // The single-doc live preview must load toc-spy.js when the doc has a TOC, so
         // scrollspy highlighting + read-state TOC work in `taliesin preview <file>`
-        // (client.js rebuilds the nav, then calls window.taliInitTocSpy). The `qmd-read:`
+        // (client.js rebuilds the nav, then calls window.taliInitTocSpy). The `tali-read:`
         // storage key is unique to toc-spy.js — client.js only *calls* taliInitTocSpy —
         // so it discriminates "script loaded" from "script merely referenced".
         let includes = taliesin_core::render::PageIncludes::default();
@@ -2052,11 +2052,11 @@ mod protocol_contract {
             blog_index_html(&ctx)
         };
         assert!(
-            mk(true).contains("qmd-read:"),
+            mk(true).contains("tali-read:"),
             "a TOC preview must load toc-spy.js so scrollspy + read-state work live"
         );
         assert!(
-            !mk(false).contains("qmd-read:"),
+            !mk(false).contains("tali-read:"),
             "a no-TOC preview should not load the TOC scrollspy"
         );
     }

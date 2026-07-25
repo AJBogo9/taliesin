@@ -429,7 +429,7 @@ html.tali-feed .fragment.fade-out.tali-frag-visible {
 
 /* Presenter (speaker) window: a dark control surface with live current + next
    previews (iframes), the slide's notes, and a timer + clock. Built by deck.js
-   when the page is opened at ?qmd=speaker; stays in sync with the audience. */
+   when the page is opened at ?tali=speaker; stays in sync with the audience. */
 .tali-speaker {
   position: fixed;
   inset: 0;
