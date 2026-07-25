@@ -556,6 +556,14 @@ fn render_internal_impl(
     let mut sec_numbering = chapter.map(|ch| {
         crate::site::ChapterNumbering::new(ch, &chapter_heading_levels, emits_title_block_here)
     });
+    // How far every body heading moves so the page keeps exactly one `<h1>` (the title
+    // block's) with no gap under it. Shares `chapter_heading_levels` with the numbering
+    // above, which is the same set the walk demotes, so the two cannot disagree about the
+    // page's shape. `None` when this render emits no title block: then the document's own
+    // `#` is its `<h1>` and nothing shifts.
+    let heading_shift = emits_title_block_here
+        .then(|| heading_shift_for(&chapter_heading_levels))
+        .flatten();
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
@@ -1044,16 +1052,16 @@ fn render_internal_impl(
             // CommonMark leaves it literal, but Pandoc drops it. Match Pandoc.
             html = strip_trailing_hardbreak(&html);
         }
-        // One <h1> per page: when this render emits a visible title block, demote every
-        // body heading one level so sections nest beneath the title. `emits_title_block`
-        // is the title-block insertion condition (Html, not hidden, titled), computed
-        // once before the walk and shared with the section numbering above, so a demoted
-        // heading and its `@sec-` number can never disagree. A deck (Reveal) never
-        // satisfies it, so its slide-break machinery is untouched.
+        // One <h1> per page: when this render emits a visible title block, shift every body
+        // heading so its sections nest directly beneath the title. `emits_title_block` is
+        // the title-block insertion condition (Html, not hidden, titled), computed once
+        // before the walk and shared with the section numbering above, so a shifted heading
+        // and its `@sec-` number can never disagree. A deck (Reveal) never satisfies it, so
+        // its slide-break machinery is untouched.
         if let Some(level) = heading_level
-            && emits_title_block_here
+            && let Some(shift) = heading_shift
         {
-            html = demote_heading_html(&html, level);
+            html = shift_heading_html(&html, level, shift);
         }
         // A deck heading may set section-level attrs (`## T {background-image="..."}`,
         // `{auto-animate=true}`): emit them as data-* on the heading so the slide model
@@ -2483,12 +2491,31 @@ fn make_id(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     dedup_with_suffix(base, counts)
 }
 
-/// Demote a heading block's visible tag one level (`<hN>` -> `<h{N+1}>`, clamped at
-/// `<h6>`), leaving its attributes, `id`, `data-block-id`, `data-sourcepos` and text
+/// How far a titled page's body headings move so the shallowest one emits as `<h2>`:
+/// directly under the title block's `<h1>`, with no gap. `None` for a page with no
+/// headings, or when the shift is zero.
+///
+/// **Relative to the page, not an absolute `+1`** (AP7-1). An absolute `+1` is correct
+/// only for a `#`-rooted page. The house style of both dogfood books is `##`-rooted — a
+/// `#` would just restate the front-matter `title:` — so `+1` put their first section at
+/// `<h3>` under an `<h1>`, and a page opening at `###` landed at `<h4>`: 37 of 51 book
+/// pages emitted an outline with a hole in it, which is exactly what heading-level
+/// navigation walks. The on-page TOC already windowed relative to the shallowest heading
+/// present, so the two disagreed about the page's shape.
+///
+/// The shift can be negative (a `###`-rooted page promotes to `<h2>`); since every level
+/// is at least `base`, nothing can land above `<h2>` and collide with the title.
+fn heading_shift_for(levels: &[usize]) -> Option<i8> {
+    let base = levels.iter().copied().min()? as i8;
+    (base != 2).then_some(2 - base)
+}
+
+/// Move a heading block's visible tag by `shift` levels (`<hN>` -> `<h{N+shift}>`, clamped
+/// to 1..=6), leaving its attributes, `id`, `data-block-id`, `data-sourcepos` and text
 /// untouched. Used when a page renders a title-block `<h1 class="title">` so its body
 /// sections nest beneath the single page title: one `<h1>` per page (a11y + SEO).
-fn demote_heading_html(html: &str, level: u8) -> String {
-    let to = (level + 1).min(6);
+fn shift_heading_html(html: &str, level: u8, shift: i8) -> String {
+    let to = (level as i8 + shift).clamp(1, 6) as u8;
     if to == level {
         return html.to_string();
     }

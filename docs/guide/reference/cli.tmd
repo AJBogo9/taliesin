@@ -59,7 +59,7 @@ taliesin check . --errors-only            # …on errors alone; warnings neither
 taliesin check . --format json > problems.json
 ```
 
-### What fails the run
+## What fails the run
 
 There are three severities, and they exist to keep the gate honest: advice about how a
 sentence reads must not have the same power over CI as a broken cross-reference.
@@ -173,7 +173,7 @@ render in the browser, a `--bare` build empties them (and warns once per kind) r
 than shipping a broken placeholder, so reach for `--bare` on prose, math, and
 server-executed figures, not on pages built around live `{js}` or diagrams.
 
-### Portable, offline builds (email the whole thing as a zip)
+## Portable, offline builds (email the whole thing as a zip)
 
 A `--out <dir>` build (single doc, site, or book) is a **self-contained folder**: open
 `index.html` straight from disk (`file://`), or zip the folder and send it. Everything
@@ -190,7 +190,7 @@ copy of `mermaid.min.js` (copied into the folder) before building, or use `--bar
 server-rendered figures on pages that don't need live diagrams. (Everything else is
 already local.)
 
-### Publishing & sharing
+## Publishing & sharing
 
 A `--out <dir>` folder (a single doc, a site, or a book) is **plain static HTML** — no
 server runtime, no build step to reproduce, no database. So *any* way of serving static

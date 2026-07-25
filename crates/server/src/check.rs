@@ -1438,7 +1438,7 @@ mod tests {
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
         assert!(
-            has("heading level skips from h3 to h5"),
+            has("heading level skips from h2 to h4"),
             "heading skip: {diags:?}"
         );
         assert!(has("link has no accessible name"), "empty link: {diags:?}");
@@ -1484,7 +1484,7 @@ mod tests {
             "placeholder alt (alt=\"image\"): {diags:?}"
         );
         assert!(
-            has("heading level skips from h3 to h5"),
+            has("heading level skips from h2 to h4"),
             "heading skip: {diags:?}"
         );
         assert!(has("link has no accessible name"), "empty link: {diags:?}");

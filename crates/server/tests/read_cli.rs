@@ -26,7 +26,7 @@ fn read_projects_a_document_to_plain_text() {
     assert!(ok, "`read` should succeed; stderr: {stderr}");
     // Structured text: a heading keeps its level and a cross-reference is resolved.
     assert!(
-        stdout.contains("### Overview"),
+        stdout.contains("## Overview"),
         "heading projected:\n{stdout}"
     );
     assert!(

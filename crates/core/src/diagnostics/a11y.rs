@@ -186,6 +186,20 @@ pub(super) fn interactives(html: &str) -> Vec<Interactive<'_>> {
     out
 }
 
+/// The page title block read as a heading: it is `blocks[0]` and its `<h1 class="title">`
+/// is the page's only `<h1>`, so an outline scan that skips it is not scanning the outline
+/// a reader navigates.
+///
+/// AP7-1's second cause. [`heading_level`] requires a block's html to *start with* `<hN`,
+/// and the title block starts `<header class="tali-title-block">`, so `prev` stayed `0`
+/// through the first body heading — the one carrying the largest jump on the page. The
+/// single most common heading skip in the corpus was the one shape the rule was
+/// structurally incapable of reporting, and `check` printed "no problems found" on 37 of
+/// 51 book pages.
+fn title_block_level(html: &str) -> Option<u8> {
+    (html.starts_with("<header class=\"tali-title-block\"") && html.contains("<h1")).then_some(1)
+}
+
 /// Static accessibility checks ported from the live preview's `scanA11y`
 /// (`web-client/client.js`) into the kernel-free `check` channel, so a green `check`
 /// also vouches for the statically-knowable a11y subset. Read-only — reads only block
@@ -204,6 +218,9 @@ pub(super) fn interactives(html: &str) -> Vec<Interactive<'_>> {
 /// 3. **`<img>` without `alt`** — a raw/passthrough `<img>` with no `alt` attribute at
 ///    all. (`![]()` markdown always emits an `alt`, so this catches hand-written
 ///    `<img>` only.)
+///
+/// The heading scan counts the page's title block as its `<h1>` (see
+/// [`title_block_level`]), so the first body heading is compared against something.
 pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
     let mut out = Vec::new();
 
@@ -211,7 +228,7 @@ pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
     if format != DocFormat::Reveal {
         let mut prev = 0u8;
         for b in blocks {
-            let Some(lvl) = heading_level(&b.html) else {
+            let Some(lvl) = heading_level(&b.html).or_else(|| title_block_level(&b.html)) else {
                 continue;
             };
             if prev > 0 && lvl >= prev + 2 {

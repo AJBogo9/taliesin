@@ -5536,12 +5536,28 @@ fn demotion_preserves_anchor_id_and_source_keyed_block_id() {
 
 #[test]
 fn heading_demotion_clamps_at_h6() {
-    let doc = render_document("---\ntitle: T\n---\n\n###### Deep\n");
-    // A body <h6> has nowhere lower to go; it stays <h6> (never <h7>).
+    // The shift is relative to the page's shallowest heading (AP7-1), so a `#`-rooted page
+    // is the one that can push a body `######` past `<h6>`. It has nowhere lower to go, so
+    // it stays `<h6>` (never `<h7>`) and the deepest two levels collapse together.
+    let doc = render_document("---\ntitle: T\n---\n\n# Top\n\n###### Deep\n");
     assert!(
-        doc.blocks[1].html.starts_with("<h6 "),
+        doc.blocks[1].html.starts_with("<h2 "),
         "got: {}",
         doc.blocks[1].html
+    );
+    assert!(
+        doc.blocks[2].html.starts_with("<h6 "),
+        "got: {}",
+        doc.blocks[2].html
+    );
+    // A LONE `######` is that page's whole outline, so it is its top level and emits as
+    // `<h2>` under the title — the shift is negative here, which an absolute `+1` could
+    // never do (it left the page reading `h1` then `h6`).
+    let lone = render_document("---\ntitle: T\n---\n\n###### Deep\n");
+    assert!(
+        lone.blocks[1].html.starts_with("<h2 "),
+        "got: {}",
+        lone.blocks[1].html
     );
 }
 

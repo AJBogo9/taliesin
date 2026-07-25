@@ -609,7 +609,7 @@ pub(crate) fn new_files(
              y = x^2\n\
              $$\n\
              \n\
-             # References\n"
+             ## References\n"
         );
         let bib = "@article{knuth1984literate,\n\
              \x20 author  = {Knuth, Donald E.},\n\

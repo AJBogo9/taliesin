@@ -1,6 +1,6 @@
 Text projection
 
-### Overview
+## Overview
 
 A paragraph that points at Figure 1, so the projection must show the resolved
 figure number rather than the raw @-reference.
@@ -20,7 +20,7 @@ x = 1
 print(x)
 ```
 
-### Structured blocks
+## Structured blocks
 
 The projection keeps these apart instead of fusing them:
 
