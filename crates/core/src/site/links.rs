@@ -181,6 +181,21 @@ pub(super) fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
+/// Whether the site-root-relative `target_url` is served by one of `mounts`: the mount root
+/// itself (`docs/guide`), its index (`docs/guide/index.html`), or anything beneath it.
+///
+/// A mounted project resolves only when it is served (`preview`) or built in beside this one,
+/// so it is never part of this site's own page registry. Two different checkers have to ask
+/// this question — the site-aware cross-page checker and the STANDALONE single-file checker,
+/// which has no site at all — so they ask it here instead of each carrying a copy.
+pub(super) fn under_mount(mounts: &[Mount], target_url: &str) -> bool {
+    mounts.iter().any(|m| {
+        target_url == m.at
+            || target_url == format!("{}/index.html", m.at)
+            || target_url.starts_with(&format!("{}/", m.at))
+    })
+}
+
 /// `.html`→source-extension candidates on a url path (`x.html` → `x.tmd`, one per
 /// [`crate::ext::ACCEPTED_SOURCE_EXTS`]), so the checker can test whether a link target is
 /// backed by a source file on disk, in any accepted spelling. A non-`.html` path yields no

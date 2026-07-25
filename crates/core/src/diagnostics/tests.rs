@@ -50,6 +50,45 @@ fn local_links_flag_missing_relative_target_only() {
     assert!(ws.iter().all(|w| w.line.is_some()), "located: {ws:?}");
 }
 
+/// Item 17 F-04: a page inside a site may link a project that site MOUNTS. The mount
+/// resolves by URL prefix, so nothing named `gallery/course` exists under the document's own
+/// directory and the on-disk rule called it broken — while `check <dir>` on the very same
+/// page was clean. The disagreement reached the author through the editor companion, on every
+/// keystroke. The exemption must stay exactly as wide as the mount: a near-miss prefix, a
+/// sibling that is not a mount, and an ordinary missing file are all still broken.
+#[test]
+fn local_links_accept_a_link_to_an_enclosing_sites_mount() {
+    let dir = Tmp::new("links-mounts");
+    // A site whose `_site.yml` mounts two sibling projects, and a `.git` marker so the
+    // upward walk stops here rather than climbing into the real repo above the temp dir.
+    std::fs::create_dir_all(dir.0.join(".git")).unwrap();
+    std::fs::write(
+        dir.0.join("_site.yml"),
+        "title: S\nmounts:\n  gallery/course: ../elsewhere/course\n  docs/guide: ../elsewhere/guide\n",
+    )
+    .unwrap();
+    let doc = render_document(
+        "[mount root](gallery/course/) [deep in a mount](docs/guide/using/formats.html) \
+         [typo'd prefix](galery/course/) [not a mount](gallery/nope/) [plain](missing.tmd)\n",
+    );
+    let m = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 3, "only the three real breaks: {m:?}");
+    assert!(m.iter().any(|s| s.contains("`galery/course/`")), "{m:?}");
+    assert!(m.iter().any(|s| s.contains("`gallery/nope/`")), "{m:?}");
+    assert!(m.iter().any(|s| s.contains("`missing.tmd`")), "{m:?}");
+}
+
+/// The same links, with no enclosing site: the exemption must not fire on a bare directory of
+/// documents, or it would be a blanket amnesty for any path that happens to have two segments.
+#[test]
+fn local_links_still_flag_mount_shaped_paths_outside_a_site() {
+    let dir = Tmp::new("links-no-site");
+    std::fs::create_dir_all(dir.0.join(".git")).unwrap();
+    let doc = render_document("[looks mounted](gallery/course/) [also](docs/guide/x.html)\n");
+    let m = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 2, "no site, no mounts, no exemption: {m:?}");
+}
+
 #[test]
 fn local_links_skip_xref_links() {
     // A `@sec-`/`@fig-` cross-reference renders an `<a … data-tali-xref>`; it is

@@ -240,8 +240,62 @@ pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
     join_rel, join_rel_in_root, manual_local_links, resolve_href, sourcepos_start_line,
-    tmd_to_html,
+    tmd_to_html, under_mount,
 };
+
+/// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
+/// boundary or the filesystem root, so a tool handed ONE file can still find the project it
+/// belongs to. Returns the directory holding the `_site.yml`, if any. The `.git` stop keeps
+/// the walk from climbing out of the project the file lives in.
+pub fn enclosing_site_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.canonicalize().ok()?;
+    loop {
+        if dir.join("_site.yml").is_file() {
+            return Some(dir);
+        }
+        if dir.join(".git").exists() {
+            return None;
+        }
+        dir = dir.parent()?.to_path_buf();
+    }
+}
+
+/// Whether `link`, as written in a document at `doc_dir`, targets a project **mounted** by an
+/// enclosing site (`mounts:` in its `_site.yml`).
+///
+/// This is what a standalone single-file check needs and cannot otherwise know. A mounted
+/// project is served by the site under a URL prefix, so a card linking `gallery/course/` is
+/// correct — but nothing named `gallery/course` exists relative to the *document*, so the
+/// on-disk link rule calls it broken. `taliesin check <dir>` was clean on exactly the page
+/// `taliesin check <that page>` reported four errors on, which is the worst kind of
+/// disagreement: it reached the author through the editor companion, on every keystroke.
+///
+/// Resolution goes through the site root so a link from a subdirectory (`../gallery/x/`)
+/// resolves the same way the site resolves it, and the mount test itself is
+/// [`under_mount`] — the same predicate `validate_cross_page_links` applies, so the two
+/// checkers cannot drift on what a mount covers.
+pub fn link_targets_enclosing_mount(doc_dir: &Path, link: &str) -> bool {
+    let Some(root) = enclosing_site_root(doc_dir) else {
+        return false;
+    };
+    let mut warnings = Vec::new();
+    let mounts = config::load_config(&root, &mut warnings).mounts;
+    if mounts.is_empty() {
+        return false;
+    }
+    let Some(dir_rel) = doc_dir
+        .canonicalize()
+        .ok()
+        .and_then(|d| d.strip_prefix(&root).ok().map(Path::to_path_buf))
+    else {
+        return false;
+    };
+    // `join_rel_in_root` takes the linking FILE's site-relative path and reads the directory
+    // off it, so hand it a synthetic file name in this directory rather than reimplementing
+    // the `..`-aware join (and its climbing-above-the-root rejection) a second time.
+    let from = format!("{}/_", dir_rel.to_string_lossy().replace('\\', "/"));
+    join_rel_in_root(&from, link).is_some_and(|url| under_mount(&mounts, &url))
+}
 
 /// One outgoing local link found in a rendered page, kept with enough context to locate a
 /// warning back to the source line that wrote it.
@@ -927,12 +981,7 @@ impl Site {
                     // not in this site's own page registry, so it is not "broken". (build
                     // separately warns these links are preview-only.) Matches the mount
                     // root (`docs`), its index (`docs/index.html`), and anything beneath it.
-                    let under_mount = self.config.mounts.iter().any(|m| {
-                        target_url == m.at
-                            || target_url == format!("{}/index.html", m.at)
-                            || target_url.starts_with(&format!("{}/", m.at))
-                    });
-                    if under_mount
+                    if under_mount(&self.config.mounts, &target_url)
                         || self.decks.iter().any(|d| d.url == target_url)
                         || self.root.join(&target_url).is_file()
                         || html_to_tmd(&target_url)

@@ -14,8 +14,11 @@
 use crate::headless_js::{self, JsOutcome};
 use crate::log;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
+// The enclosing-`_site.yml` walk lives in core: the standalone link checker needs the same
+// walk to recognize a link into an enclosing site's `mounts:`, so there is one owner, not two.
+use taliesin_core::site::enclosing_site_root;
 
 pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
@@ -389,23 +392,6 @@ fn count_kernel_cells(blocks: &[taliesin_core::Block]) -> usize {
                 .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
         })
         .count()
-}
-
-/// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
-/// boundary or the filesystem root, so `read` of a file inside a book/site can render it
-/// the way the site does. Returns the directory that holds the `_site.yml`, if any.
-fn enclosing_site_root(start: &Path) -> Option<PathBuf> {
-    let mut dir = start.canonicalize().ok()?;
-    loop {
-        if dir.join("_site.yml").is_file() {
-            return Some(dir);
-        }
-        // Don't climb out of the repo/project the file lives in.
-        if dir.join(".git").exists() {
-            return None;
-        }
-        dir = dir.parent()?.to_path_buf();
-    }
 }
 
 /// Render a single file the way its enclosing site would: chapter-scoped numbering
