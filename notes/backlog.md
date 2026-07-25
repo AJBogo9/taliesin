@@ -145,19 +145,21 @@ in the batch that altered a daily-driver surface, and the one-line revert to the
 jump-menu was offered and declined. Do not re-litigate it; a collapsed-by-default variant was also
 considered and is not wanted (it is not a one-liner: it needs collapse state + keyboard handling).
 
-**The `qmd` purge is HALF DONE and has a written plan: resume at Task 3.** See the dedicated section
-[below](#the-qmd-purge-resume-at-task-3). Tasks 1 and 2 of nine are on `origin/main`; the remaining
-seven rewrite tokens across ~40 files and want a quiet tree (no parallel session editing
-`render/tests.rs`, `base.css` or `web-client/search.js`).
-
 **Items 22 (SKIM-1) and 23's Ship A are gone; both shipped 2026-07-25.** **Four owner rulings were
 also taken** (see the prior-state block), which un-gated a large amount of previously-blocked work.
 What is left now sorts into:
 
 - **Build-ready TODAY, in this order:**
-  1. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
+  1. **33 — finish the `qmd` purge, resume at Task 3** (M). **Take this first.** It is half landed:
+     Tasks 1 and 2 of nine are on `origin/main`, and the tree is green and self-consistent in that
+     state, but *nothing enforces finishing it* until Task 9 adds the repo-wide guard. Every task has
+     an exact file list, the commands and the expected output already written, so this is execution,
+     not design. Full brief: [below](#the-qmd-purge-resume-at-task-3). **Wants a quiet tree** — the
+     remaining tasks rewrite tokens across ~40 files, so do not run it beside a session editing
+     `render/tests.rs`, `base.css` or `web-client/search.js`.
+  2. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
      three-state floor) shipped 2026-07-25, so the lints in 24c are no longer gate-blocked either.
-  2. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
+  3. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
      put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
      specifically, not the outline as such.
 - **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
@@ -208,6 +210,9 @@ Working method is in "Standing constraints": branch per feature, verify by mutat
 ff-merge locally, delete the item here on landing.
 
 ## The `qmd` purge: resume at Task 3
+
+> **This is item 33, the top of the build-ready queue.** Half landed, plan written to the step,
+> and the only open item whose cost grows while it waits.
 
 **Goal: zero live `qmd` tokens.** Owner ruling 2026-07-25: purge everything **except**
 `docs/superpowers/` and `notes/`, which stay frozen as the pre-rename record (rewriting them would
@@ -317,6 +322,24 @@ Ranked highest user/product value first. Impact is not the same as buildability,
 gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
+
+33. **Finish the `qmd` purge (Tasks 3-9 of nine).** ⬅ **top of the queue.** Plan:
+    [2026-07-25-purge-qmd-naming.md](../docs/superpowers/plans/2026-07-25-purge-qmd-naming.md);
+    full brief and the traps in [The `qmd` purge](#the-qmd-purge-resume-at-task-3) above.
+    Tasks 1 (the regression net) and 2 (the contracts no Rust test can observe) are on
+    `origin/main` at `375ad81`. Remaining, in order: **3** `data-qmd-*` -> `data-tali-*`;
+    **4** script types + rename `qmd-js.js` + drop the `qmd` cell-API parameter + **bump
+    `FORMAT_VERSION` to 4**; **5** the 13 name collisions + delete the seven `window.qmd*`
+    aliases; **6** `_qmd_*` -> `_tali_*` in the injected Python prelude; **7**
+    corpus/docs/site/tools/CI + re-bless snapshots; **8** repackage the VS Code companion;
+    **9** the repo-wide `no_qmd.rs` guard + CLAUDE.md.
+    **Why it is high impact despite being a rename:** it is the only item whose *cost grows*
+    while it sits. Every new `data-qmd-*` attribute, storage key or script type added
+    meanwhile is another site to rewrite, and the half-done state has no guard holding it in
+    place. It is also cheap and low-risk now — the net exists, each task ends green, and the
+    plan is written to the step.
+    **Do not** attempt it as a blanket `sed`; see the brief for why that builds clean and
+    still breaks things.
 
 25. **Pre-public release checklist: one owner decision left** (detail:
     [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
