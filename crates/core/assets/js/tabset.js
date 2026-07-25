@@ -25,7 +25,13 @@
         tab.setAttribute('aria-selected', on ? 'true' : 'false');
         tab.tabIndex = on ? 0 : -1;
         var panel = document.getElementById(tab.getAttribute('aria-controls') || '');
-        if (panel) panel.hidden = !on;
+        // `setAttribute('hidden', 'until-found')`, NOT `panel.hidden = true`: the boolean IDL
+        // setter writes a bare `hidden`, so the first tab click would silently downgrade every
+        // inactive panel back to find-in-page-invisible — the exact bug this exists to fix.
+        if (panel) {
+          if (on) panel.removeAttribute('hidden');
+          else panel.setAttribute('hidden', 'until-found');
+        }
       });
       if (focus) tabs[i].focus();
     };

@@ -368,3 +368,61 @@ fn a_websites_index_carries_no_chapter_number() {
         "a website has no chapters, so no record may claim one"
     );
 }
+
+// --- SKIM-2 session 2: the index carries the WHOLE section ---------------------------
+
+#[test]
+fn a_long_sections_tail_is_searchable() {
+    // `filtering.tmd`'s "How nulls behave" runs past the old 1500-char BODY_CAP, and its
+    // most distinctive term sits in the LAST paragraph. Under the cap a reader searching a
+    // phrase they can see on the page got "No matches", with no signal to them or to the
+    // author that 15% of the book's prose was never indexed.
+    let idx = tarn().search_index_json;
+    assert!(
+        idx.contains("null-dropping-filter"),
+        "a term past the old cap must be indexed"
+    );
+    // Pin the shape, not just the term: the section's record is longer than the old cap, so
+    // a re-introduced cap fails here even if the term happened to move earlier.
+    let nulls = index_records(&idx)
+        .into_iter()
+        .find(|r| r.contains("\"i\":\"sec-filter-nulls\""))
+        .expect("the section is indexed");
+    let body = nulls
+        .split("\"b\":\"")
+        .nth(1)
+        .and_then(|b| b.split("\",\"").next())
+        .expect("record carries a body");
+    assert!(
+        body.chars().count() > 1500,
+        "the section's body is indexed whole ({} chars)",
+        body.chars().count()
+    );
+}
+
+#[test]
+fn an_inactive_tab_panel_is_findable_by_the_browsers_own_search() {
+    // `tarn.rs` asserts (above) that non-default tab content IS in the Cmd-K index. A bare
+    // `hidden` made that a half-truth: the text was indexed but invisible to the browser's
+    // own find-in-page, so the tool advertised a searchability Ctrl-F did not honour.
+    let install = tarn().render_page("install.tmd").expect("install renders");
+    // Match the panel's own attribute, `hidden="until-found">`, closing bracket included:
+    // the bundled CSS selector and the JS string both contain the bare phrase, so a loose
+    // count is inflated by three and passes whatever the emitter does.
+    let collapsed = install.matches("hidden=\"until-found\">").count();
+    assert_eq!(
+        collapsed, 4,
+        "two tabsets x (three panels - one active) = four collapsed panels, got {collapsed}"
+    );
+    // And none fell back to the bare attribute, which is what the boolean `hidden` IDL
+    // setter writes and what would silently undo this on the first tab click. Checked per
+    // OPEN TAG: the page has other legitimately-`hidden` elements (the drawer, the palette),
+    // so a whole-document substring search proves nothing about the panels.
+    for tag in install.split("<div class=\"tabset-panel\"").skip(1) {
+        let open = tag.split('>').next().unwrap_or("");
+        assert!(
+            !open.ends_with(" hidden") && !open.contains(" hidden "),
+            "a tab panel carries a bare `hidden`: <div class=\"tabset-panel\"{open}>"
+        );
+    }
+}

@@ -3478,6 +3478,136 @@ fn deck_key_sheet_lists_home_end_and_fit_map() {
     );
 }
 
+/// Cell output is bounded in CSS, so one runaway cell cannot take the page's scrollbar
+/// hostage. Three shapes, three deliberate decisions: a `<pre>` and a table SCROLL, an image
+/// is SCALED, and print lifts every bound (paper has no scrollbar, and a clipped traceback
+/// on paper is unrecoverable).
+#[test]
+fn cell_output_is_bounded_and_the_bound_lifts_in_print() {
+    let css = BASE_CSS;
+    // Per RULE, not "the token appears somewhere": three rules use it, so a whole-file
+    // search still passes with the `<pre>` bound deleted — which is the one that matters
+    // most (a runaway traceback is the case this exists for).
+    let pre_rule = css
+        .split(".tali-output > pre {")
+        .nth(1)
+        .and_then(|s| s.split("\n  .tali-output > table").next())
+        .expect("the output pre rule exists");
+    assert!(
+        pre_rule.contains("max-height: var(--tali-output-max);"),
+        "a runaway <pre> is bounded by the token, not a literal: {pre_rule}"
+    );
+    assert!(
+        css.contains(".tali-output > table { display: block; max-height: var(--tali-output-max); overflow: auto; }"),
+        "a long result table is bounded too, not just a <pre>"
+    );
+    assert!(
+        css.contains("max-height: var(--tali-output-max); object-fit: contain;"),
+        "an image is scaled to its bound, not scrolled"
+    );
+    // The bound must NOT be `hidden="until-found"`: its reveal is Chrome-only, and the
+    // fallback elsewhere is `display: none`, which makes a traceback uncopyable and drops it
+    // from print. Strip comments first — the rule's own comment explains that choice by
+    // naming the thing it rejects, and a raw substring search matches the explanation.
+    let declarations: String = css
+        .split("/*")
+        .map(|s| s.split_once("*/").map(|(_, rest)| rest).unwrap_or(s))
+        .collect();
+    let out_rules = declarations
+        .split(".tali-output")
+        .skip(1)
+        .collect::<String>();
+    assert!(
+        !out_rules.contains("until-found"),
+        "cell output must not be hidden with until-found"
+    );
+    assert!(
+        css.contains(".tali-output > pre, .tali-output > table, .tali-output img {\n      max-height: none; overflow: visible; }"),
+        "print lifts every output bound"
+    );
+}
+
+/// The output `<pre>`'s fade is a NEW vertical one. The generic `<pre>`'s horizontal
+/// scroll-shadow must be untouched by it — they are different axes on different elements,
+/// and the rule this replaced used the `background` shorthand, which had already reset the
+/// generic layers on an output `<pre>` anyway.
+#[test]
+fn the_output_fade_is_vertical_and_the_code_fade_stays_horizontal() {
+    let css = BASE_CSS;
+    let output = css
+        .split(".tali-output > pre {")
+        .nth(1)
+        .and_then(|s| s.split("\n  .tali-output > table").next())
+        .expect("the output pre rule exists");
+    assert!(
+        output.contains("linear-gradient(to bottom,") && output.contains("at top,"),
+        "the output fade runs top-to-bottom: {output}"
+    );
+    assert!(
+        output.contains("background-size: 100% 38px"),
+        "a vertical fade sizes its bands by height: {output}"
+    );
+    // The generic `pre` (code INPUT) keeps its horizontal shadow, unchanged.
+    let generic = css
+        .split("\n  pre { position: relative;")
+        .nth(1)
+        .and_then(|s| s.split("\n  code {").next())
+        .expect("the generic pre rule exists");
+    assert!(
+        generic.contains("linear-gradient(to right,") && generic.contains("at left,"),
+        "code input keeps its left/right scroll shadow: {generic}"
+    );
+    assert!(
+        generic.contains("background-size: 38px 100%"),
+        "…sized by width, i.e. still horizontal: {generic}"
+    );
+}
+
+/// `hidden="until-found"` only works if nothing else removes the panel from the box tree:
+/// a browser cannot reveal a `display: none` subtree, so the old blanket rule would have
+/// made the attribute inert while looking correct in the HTML.
+#[test]
+fn a_collapsed_tab_panel_is_hidden_without_display_none() {
+    let css = BASE_CSS;
+    assert!(
+        css.contains(".tabset-panel[hidden=\"until-found\"] { content-visibility: hidden;"),
+        "an until-found panel is hidden with content-visibility, not display"
+    );
+    assert!(
+        css.contains(".tabset-panel[hidden]:not([hidden=\"until-found\"]) { display: none; }"),
+        "display:none must be scoped to the bare-`hidden` case only"
+    );
+    // Without a zero intrinsic size a `content-visibility: hidden` box still reserves its
+    // last-rendered size, so switching tabs would leave a gap the width of the other panel.
+    assert!(
+        css.contains("contain-intrinsic-size: 0 0"),
+        "a collapsed panel must reserve no layout space"
+    );
+}
+
+/// The tab switcher must write the attribute as a STRING. `panel.hidden = true` is the
+/// boolean IDL setter and writes a bare `hidden`, so the first tab click would silently
+/// downgrade every inactive panel back to find-in-page-invisible.
+#[test]
+fn the_tab_switcher_preserves_until_found_across_a_click() {
+    let js = TABSET_JS;
+    assert!(
+        js.contains("setAttribute('hidden', 'until-found')"),
+        "the switcher must write the attribute as a string"
+    );
+    // Scan CODE lines only: the comment above the fix names the setter it warns against, so
+    // a whole-file substring search matches the explanation rather than the implementation.
+    let code: String = js
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !code.contains(".hidden ="),
+        "the boolean IDL setter would downgrade the attribute on the first click"
+    );
+}
+
 /// The overview's wrap column count is chosen for the WHOLE map, not per run. Per run,
 /// `ceil(sqrt(run.length))` makes each run individually square, and several squares stack
 /// into a map the overview has to zoom past — browser-measured on a 21-slide three-topic

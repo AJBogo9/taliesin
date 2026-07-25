@@ -890,6 +890,50 @@
     flashTimer = setTimeout(clearFlash, 1600);
   }
 
+  // Select the tab owning a collapsed panel, through the same click path a reader would use
+  // (so aria-selected + the roving tabindex stay correct).
+  /** @param {Element} panel */
+  function selectOwningTab(panel) {
+    if (!panel.id) return;
+    var tabs = document.querySelectorAll('[role="tab"][aria-controls]');
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].getAttribute("aria-controls") === panel.id) {
+        /** @type {HTMLElement} */ (tabs[i]).click();
+        return;
+      }
+    }
+  }
+
+  // The matched text can sit in a COLLAPSED tab panel. `hidden="until-found"` lets the
+  // browser reveal one for its own find-in-page, but a programmatic jump gets no such
+  // courtesy — and the index anchors a section to its HEADING, which is a sibling of the
+  // tabset rather than inside it, so walking ancestors alone finds nothing. Do both: reveal
+  // any collapsed panel the target is inside, then, within the landed section, reveal the
+  // one that actually contains a query term. Without this the reader lands on the right
+  // section with their phrase still hidden behind a tab, which is worse than not matching.
+  /** @param {Element | null} target @param {string[]} terms */
+  function revealFor(target, terms) {
+    if (!target) return;
+    /** @type {Element | null} */
+    var node = target;
+    for (; node; node = node.parentElement) {
+      if (node.getAttribute("hidden") === "until-found") selectOwningTab(node);
+    }
+    var low = terms.filter(Boolean).map(function (t) { return t.toLowerCase(); });
+    if (!low.length) return;
+    // Blocks are flat siblings, so the section runs from the heading to the next heading.
+    for (var el = target.nextElementSibling; el; el = el.nextElementSibling) {
+      if (/^H[1-6]$/.test(el.tagName)) break;
+      var panels = el.querySelectorAll('[hidden="until-found"]');
+      for (var i = 0; i < panels.length; i++) {
+        var text = (panels[i].textContent || "").toLowerCase();
+        for (var k = 0; k < low.length; k++) {
+          if (text.indexOf(low[k]) >= 0) { selectOwningTab(panels[i]); break; }
+        }
+      }
+    }
+  }
+
   /** @param {Row} r */
   function go(r) {
     // The "+N more in this chapter" row is a disclosure, not a destination: expand its page
@@ -927,6 +971,7 @@
     }
     var target = document.getElementById(item.id);
     if (!target) return;
+    revealFor(target, terms); // a hit behind a collapsed tab, before measuring anything
     if (history.replaceState) history.replaceState(null, "", "#" + item.id);
     target.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     flashTermsIn(target, terms);
@@ -947,8 +992,15 @@
     // `const` so the `if (!target) return` null-narrowing survives into the setTimeout closure.
     const target = id && document.getElementById(id);
     if (!target) return;
-    // Let the browser settle on the anchor first, then flash.
-    setTimeout(function () { flashTermsIn(target, terms); }, 60);
+    // Both the reveal and the flash run in a macrotask, not inline. `revealFor` clicks the
+    // owning tab so the reveal goes through tabset.js's own handler, and tabset.js registers
+    // that handler on DOMContentLoaded too — inline here, whichever listener happened to be
+    // added first would decide whether the click did anything. A timeout is after every
+    // DOMContentLoaded handler by construction, not by luck.
+    setTimeout(function () {
+      revealFor(target, terms); // the cross-page half of the same problem
+      flashTermsIn(target, terms);
+    }, 60);
   }
 
   document.addEventListener(

@@ -585,7 +585,15 @@
   .tabset-tab[aria-selected="true"] { color: var(--tali-link); border-bottom-color: var(--tali-accent); }
   /* The tab sits on the tablist's bottom border, so the shared ring is inset (-2px). */
   .tabset-tab:focus-visible { outline: var(--tali-focus); outline-offset: -2px; border-radius: var(--tali-radius-sm); }
-  .tabset-panel[hidden] { display: none; }
+  /* `display: none` would defeat `hidden="until-found"` (the browser cannot reveal a
+     display:none subtree), so hide the inactive panel with `content-visibility` instead and
+     scope the `display:none` to the bare-`hidden` case only. A zero `contain-intrinsic-size`
+     keeps the hidden panel from reserving layout space, so switching tabs does not jump. */
+  .tabset-panel[hidden="until-found"] { content-visibility: hidden; contain-intrinsic-size: 0 0; }
+  .tabset-panel[hidden]:not([hidden="until-found"]) { display: none; }
+  /* The visible panel's first child must not add a top margin under the tablist. Written
+     without `> :first-child` alone because a revealed until-found panel is still the same
+     element and needs the same rule. */
   .tabset-panel > :first-child { margin-top: 0; }
   @media (prefers-reduced-motion: no-preference) {
     .tabset-tab { transition: color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
@@ -626,10 +634,47 @@
       padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   }
   .tali-output { margin: 0 0 1rem; }
-  /* Code input and its output were two near-identical untokenised greys (#f5f5f5 / #fbfbfb).
+  /* Cell output is BOUNDED, in CSS. A cell that prints ten thousand lines, or returns a
+     10,000-row frame, otherwise pushes the rest of the document off the end of the page: the
+     reader's scrollbar stops describing the document and starts describing one runaway
+     output. `--tali-output-max` is the one knob; the print reset below lifts it, because a
+     printed page has no scrollbar and a clipped traceback on paper is unrecoverable.
+     Deliberately NOT `hidden="until-found"` (which the tab panels do use): its reveal is
+     Chrome-only today, and where it is unsupported the fallback is `display: none` — which
+     would make a traceback uncopyable and drop it from print entirely. A scroll box degrades
+     to "a tall box" everywhere instead.
+     Code input and its output were two near-identical untokenised greys (#f5f5f5 / #fbfbfb).
      One surface token; sepia + dark no longer need a manual patch. */
-  .tali-output > pre { background: var(--tali-code-bg); border-left: 3px solid var(--tali-border); }
-  .tali-output img { display: block; max-width: 100%; }
+  .tali-output > pre {
+    background-color: var(--tali-code-bg); border-left: 3px solid var(--tali-border);
+    max-height: var(--tali-output-max);
+    /* A NEW vertical fade, not the generic <pre> one reused: that one is horizontal, and the
+       rule this replaces used the `background` shorthand, so an output <pre> never carried it
+       anyway. Same local/scroll trick, rotated: the bg-coloured covers ride with the content
+       and mask the edge shadows until there is actually more to scroll toward. */
+    background-image:
+      linear-gradient(to bottom, var(--tali-code-bg) 30%, transparent),
+      linear-gradient(to top, var(--tali-code-bg) 30%, transparent),
+      radial-gradient(farthest-side at top, var(--tali-edge-shadow), transparent),
+      radial-gradient(farthest-side at bottom, var(--tali-edge-shadow), transparent);
+    background-position: center top, center bottom, center top, center bottom;
+    background-repeat: no-repeat;
+    background-size: 100% 38px, 100% 38px, 100% 13px, 100% 13px;
+    background-attachment: local, local, scroll, scroll; }
+  /* A wide result table is already its own horizontal scroll box; bound its height too, or
+     a 10,000-row frame is the same runaway in table clothing. */
+  .tali-output > table { display: block; max-height: var(--tali-output-max); overflow: auto; }
+  /* An image is SCALED, not scrolled — explicitly, because the other two are scrolled. A plot
+     you have to scroll to see the bottom half of is not a plot; `contain` keeps the whole
+     figure visible and never crops it. */
+  .tali-output img { display: block; max-width: 100%;
+    max-height: var(--tali-output-max); object-fit: contain; }
+  @media print {
+    /* Paper has no scrollbar: every bound lifts, or the tail of a traceback simply does not
+       exist in the printed record. */
+    .tali-output > pre, .tali-output > table, .tali-output img {
+      max-height: none; overflow: visible; }
+  }
   /* Theme-matched matplotlib figures: the kernel emits a light (near-black) and a
      dark (near-white) variant of each plot; show the one matching the active theme
      so axes/text match the page exactly. Same idea as the dual {{< video >}} clip.
