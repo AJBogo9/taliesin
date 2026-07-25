@@ -89,8 +89,26 @@ const TABLE: &[(&str, &str, &str)] = &[
     ),
     // Body constructs.
     ("unknown callout kind", "TAL-CALLOUT-KIND", WARNING),
+    // The `.callout-…` row's sibling: a near-miss of any other feature/theorem div class.
+    // Separate family because the fix is a different edit (the class, not the callout kind),
+    // and above the generic needles below because the message quotes the author's own class.
+    ("unknown div class", "TAL-DIV-CLASS", WARNING),
     ("unknown cell option", "TAL-CELL-OPTION", WARNING),
     ("unknown input type", "TAL-INPUT-TYPE", WARNING),
+    // A reactive control missing an attribute it cannot work without. Distinct from
+    // TAL-INPUT-TYPE (an unknown type): the type is fine, the declaration is incomplete.
+    ("needs a `name=` to feed", "TAL-INPUT-ATTR", WARNING),
+    ("needs `options=", "TAL-INPUT-ATTR", WARNING),
+    // A feature div that HAS content but is missing a part it cannot render without — the
+    // partial sibling of TAL-EMPTY-DIV, one row per container that can be built half-formed.
+    (
+        "has no headings, so it renders no tabs",
+        "TAL-DIV-PARTS",
+        WARNING,
+    ),
+    ("has no code block to show", "TAL-DIV-PARTS", WARNING),
+    ("has no sticky stage", "TAL-DIV-PARTS", WARNING),
+    ("has no `.step` divs", "TAL-DIV-PARTS", WARNING),
     // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
     // which a step's own comma-only parser silently focuses to zero lines.
     ("step separator", "TAL-STEP-LINES", WARNING),
@@ -105,6 +123,13 @@ const TABLE: &[(&str, &str, &str)] = &[
     ),
     // Cross-references + links + anchors.
     ("broken cross-reference", "TAL-XREF-UNDEF", ERROR),
+    // A `[@key]` with a bibliography present but no matching entry. Filed with the other
+    // reference families rather than with TAL-CITE-BIB because it is the same mistake as a
+    // broken `@fig-` (fix the key), not the missing-bibliography one (add the file) — and
+    // because it MUST outrank both `bibliography` and the link needles below: the message
+    // embeds the author's own key, and its no-suggestion variant literally ends "(not in the
+    // bibliography)", which is what previously split one family across two codes.
+    ("broken citation", "TAL-CITE-KEY", WARNING),
     // A DEFINITION no `@ref` can reach: a hidden cell's `label:` (the executor drops the
     // output that would carry the anchor) or a theorem id with no kind prefix. Distinct
     // from TAL-XREF-UNDEF, which is the reference site's complaint. Both messages embed
@@ -334,6 +359,31 @@ const EXPLANATIONS: &[Explanation] = &[
               e.g. `::: {.callout-important}`.",
     },
     Explanation {
+        code: "TAL-DIV-CLASS",
+        title: "a misspelled feature div class",
+        cause: "A `:::` fenced div carries a class that is a near-miss of one Taliesin \
+                implements (`.fragmnet` for `.fragment`, `.theorm` for `.theorem`), so the \
+                feature never dispatches and the div renders as a plain container. Div \
+                classes are an OPEN vocabulary — a genuinely custom class you style yourself \
+                is silent — so this fires only within edit distance 2 of a known name.",
+        fix: "Correct the class to the one the message suggests. If the class really is your \
+              own, rename it so it is not a near-miss of a built-in.",
+    },
+    Explanation {
+        code: "TAL-DIV-PARTS",
+        title: "a feature div is missing a part it needs",
+        cause: "A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not the \
+                part that makes it work: a tabset builds its tabs from `##` headings, a \
+                walkthrough pins a code block in its sticky panel, and a scrolly needs both \
+                a sticky stage (a figure or `{js}` cell) and `.step` divs to scroll past it. \
+                The container still renders, just half-formed — a tab strip with no tabs, an \
+                empty sticky panel, a scroller that drives nothing. Distinct from \
+                TAL-EMPTY-DIV, which is a feature div with no content at all.",
+        fix: "Add the missing part named in the message: `##` headings inside the tabset, a \
+              fenced code block inside the walkthrough, or a stage and `.step` blocks inside \
+              the scrolly.",
+    },
+    Explanation {
         code: "TAL-CELL-OPTION",
         title: "an unknown cell option",
         cause: "A `#|` / `//|` option line on a code cell uses a key Taliesin does not \
@@ -381,6 +431,17 @@ const EXPLANATIONS: &[Explanation] = &[
                 does not provide, so no control can be built for it.",
         fix: "Use a supported input type (the message suggests the nearest, e.g. \
               `slidr` -> `slider`).",
+    },
+    Explanation {
+        code: "TAL-INPUT-ATTR",
+        title: "a reactive input is missing a required attribute",
+        cause: "A `{{< input >}}` control declares a valid type but omits something it \
+                cannot work without: a `name=`, which is the control's identity in the \
+                reactive graph (without one no `{js}` cell can read it, so the control is \
+                inert), or, for `type=\"select\"`, the `options=` list that would fill the \
+                menu.",
+        fix: "Add the attribute the message names: `name=\"k\"` so cells can read the \
+              control, or `options=\"a,b,c\"` on a select.",
     },
     Explanation {
         code: "TAL-XREF-UNDEF",
@@ -480,6 +541,17 @@ const EXPLANATIONS: &[Explanation] = &[
                 information about it.",
         fix: "Add alt text that describes the image's content and purpose. Use `alt=\"\"` \
               only for a purely decorative image.",
+    },
+    Explanation {
+        code: "TAL-CITE-KEY",
+        title: "a citation key that is not in the bibliography",
+        cause: "A `[@key]` cites an entry the resolved `bibliography:` does not define, so \
+                the citation renders as a raw key and the reference list has no row for it. \
+                Distinct from TAL-CITE-BIB, which is the whole bibliography going missing: \
+                here the file is found and this one key is wrong. Nothing is reported when \
+                no bibliography resolves at all, since then every key would be `broken`.",
+        fix: "Fix the key to one the bibliography defines (the message suggests the nearest \
+              when there is one), or add the entry to your `.bib`.",
     },
     Explanation {
         code: "TAL-CITE-BIB",
@@ -704,6 +776,81 @@ mod tests {
         // No replacement exists, so no structured suggestion may be lifted: an agent must
         // not be handed a fix to apply.
         assert_eq!(extract_suggestion(&csl[0].message), None);
+    }
+
+    #[test]
+    fn a_broken_citation_is_one_family_whether_or_not_it_has_a_suggestion() {
+        // DIAG-1. These two are the SAME defect (a `[@key]` the bibliography does not
+        // define) and differ only in whether a near-miss was found. Before the needle
+        // existed they classified as two different codes at two different severities: the
+        // no-suggestion variant ends "(not in the bibliography)" and so hit the generic
+        // `bibliography` needle as TAL-CITE-BIB/warning, while the *more* actionable
+        // did-you-mean variant matched nothing and fell through to TAL-CHECK/**error**,
+        // failing `check`, `build --strict` and `publish` on a typo'd citation key.
+        assert_eq!(
+            classify("broken citation: @bishop2006patern (did you mean `@bishop2006pattern`?)"),
+            ("TAL-CITE-KEY", WARNING)
+        );
+        assert_eq!(
+            classify("broken citation: @nosuchkey (not in the bibliography)"),
+            ("TAL-CITE-KEY", WARNING),
+            "the trailing `bibliography` must not outrank the citation-key family"
+        );
+        // The missing-bibliography family is still its own thing: a different fix (add the
+        // file) for a different defect.
+        assert_eq!(
+            classify("citations are present but no bibliography resolves them").0,
+            "TAL-CITE-BIB"
+        );
+    }
+
+    #[test]
+    fn widget_and_div_families_outrank_the_needles_inside_the_authors_own_names() {
+        // DIAG-1's other half. Each of these embeds author-controlled text (a class name, an
+        // input name) or names a construct whose words collide with later generic needles, so
+        // they are ordered above them. Hostile spellings on purpose: `mathz` and `bibliografy`
+        // are exactly the near-misses this rule exists to catch, and both would classify as
+        // TAL-MATH / TAL-CITE-BIB if the div row sat below the citation/math needles.
+        assert_eq!(
+            classify("unknown div class `mathz` (did you mean `math`?)"),
+            ("TAL-DIV-CLASS", WARNING)
+        );
+        assert_eq!(
+            classify("unknown div class `fragmnet` (did you mean `fragment`?)"),
+            ("TAL-DIV-CLASS", WARNING)
+        );
+        // One family for "the container is half-built", one row per container.
+        for m in [
+            "`.panel-tabset` has no headings, so it renders no tabs (add `##` headings)",
+            "`.code-walkthrough` has no code block to show in the sticky panel",
+            "`.scrolly` has no sticky stage (add a figure or `{js}` cell)",
+            "`.scrolly` has no `.step` divs to scroll through",
+        ] {
+            assert_eq!(classify(m), ("TAL-DIV-PARTS", WARNING), "{m}");
+        }
+        // A missing attribute is not an unknown type: same surface, different edit.
+        assert_eq!(
+            classify("`.input` needs a `name=` to feed the reactive graph"),
+            ("TAL-INPUT-ATTR", WARNING)
+        );
+        assert_eq!(
+            classify("`.input type=select` needs `options=\"a,b,c\"`"),
+            ("TAL-INPUT-ATTR", WARNING)
+        );
+        assert_eq!(
+            classify("unknown input type `slidr` (did you mean `slider`?)").0,
+            "TAL-INPUT-TYPE",
+            "the unknown-type family keeps its own code"
+        );
+        // None of these may gate a release: every one is an authoring slip whose page still
+        // renders, which is what made the ERROR fall-through wrong rather than merely untidy.
+        for m in [
+            "unknown div class `fragmnet` (did you mean `fragment`?)",
+            "`.scrolly` has no `.step` divs to scroll through",
+            "`.input` needs a `name=` to feed the reactive graph",
+        ] {
+            assert_eq!(classify(m).1, WARNING, "{m}");
+        }
     }
 
     #[test]

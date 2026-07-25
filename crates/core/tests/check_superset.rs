@@ -335,3 +335,98 @@ fn corpus_link_text_fixture_fires_once_and_stays_silent_on_its_near_misses() {
         "link-text advice must never gate a build"
     );
 }
+
+/// Every diagnostic `check` would report for one document: the render warning channel plus
+/// the whole static superset, in the same combination `check::collect_file_diagnostics_from_src`
+/// uses (the server crate owns that fn; this mirrors it so the core crate can assert over it).
+fn all_diagnostics_for(path: &Path) -> Vec<taliesin_core::render::Warning> {
+    let src = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let doc = taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
+    let mut out: Vec<taliesin_core::render::Warning> = Vec::new();
+    if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
+        out.push(taliesin_core::render::Warning::new(message).at(None, line));
+    }
+    out.extend(doc.warnings.iter().cloned());
+    out.extend(taliesin_core::cite::validate_xrefs(&doc.blocks));
+    out.extend(diagnostics::validate_duplicate_heading_ids(&doc.blocks));
+    out.extend(diagnostics::validate_internal_anchors(&doc.blocks));
+    out.extend(diagnostics::validate_local_assets(&doc.blocks, base));
+    out.extend(diagnostics::validate_local_media(&doc.blocks, base));
+    out.extend(diagnostics::validate_local_links(&doc.blocks, base));
+    out.extend(diagnostics::validate_js_reactive_graph(&doc.blocks));
+    out.extend(diagnostics::validate_a11y(&doc.blocks, doc.format));
+    out.extend(diagnostics::validate_link_text_collisions(&doc.blocks));
+    out.extend(diagnostics::validate_document_shape(
+        &doc.blocks,
+        doc.format,
+    ));
+    out.extend(diagnostics::validate_math(&doc.blocks));
+    out.extend(diagnostics::validate_code_languages(&doc.blocks));
+    out.extend(diagnostics::citations_without_bibliography(
+        &src,
+        &doc.blocks,
+    ));
+    out.extend(diagnostics::bare_citation_key_not_rendered(
+        &src,
+        &doc.blocks,
+        base,
+    ));
+    out
+}
+
+#[test]
+fn no_real_diagnostic_falls_through_to_the_uncatalogued_code() {
+    // DIAG-1's guard, and the whole point of the fix: `classify` substring-matches the human
+    // message against a hand-maintained needle table, and anything unmatched returns
+    // (GENERIC, ERROR) — so a diagnostic's severity is decided by whether someone remembered
+    // to add a needle. That silently escalates advice to an ERROR that fails `check`,
+    // `build --strict` and `publish`, makes `check --explain` answer "an uncatalogued
+    // diagnostic", and ships the wrong `code`/`docs_url` on `--format json`.
+    //
+    // This has now bitten twice (the opt-in `prose-lint:` rules hit the identical fallback
+    // until 2026-07-25). The only pre-existing guard,
+    // `codes::tests::uncatalogued_message_gets_a_stable_generic_code`, pins that the fallback
+    // WORKS on a synthetic string; nothing pinned that no real message REACHES it. So this
+    // asserts over the emitted messages rather than over the table: every diagnostic the
+    // `corpus/diagnostics/` fixtures can produce must classify to a real family.
+    //
+    // Extending the fixtures is how you extend this test — a new validator whose message
+    // matches no needle fails here the moment its fixture trips it.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics");
+    let mut fixtures: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .expect("corpus/diagnostics exists")
+        .filter_map(|e| {
+            let p = e.ok()?.path();
+            (p.extension().is_some_and(|x| x == "tmd")).then_some(p)
+        })
+        .collect();
+    fixtures.sort();
+    assert!(
+        fixtures.len() >= 8,
+        "the fixture set should not have shrunk: {fixtures:?}"
+    );
+
+    let mut total = 0usize;
+    let mut uncatalogued: Vec<String> = Vec::new();
+    for path in &fixtures {
+        for w in all_diagnostics_for(path) {
+            total += 1;
+            if diagnostics::codes::classify(&w.message).0 == diagnostics::codes::GENERIC {
+                uncatalogued.push(format!("{}: {}", path.display(), w.message));
+            }
+        }
+    }
+    assert!(
+        total >= 30,
+        "the fixtures should still trip a broad diagnostic set, got {total}"
+    );
+    assert!(
+        uncatalogued.is_empty(),
+        "{} diagnostic(s) classify as {} at ERROR because no needle in `codes::TABLE` \
+         matches their wording. Add a row (and an `Explanation`) for each family:\n  {}",
+        uncatalogued.len(),
+        diagnostics::codes::GENERIC,
+        uncatalogued.join("\n  ")
+    );
+}

@@ -1,0 +1,59 @@
+---
+title: "Widget-shape diagnostics"
+---
+
+This document deliberately builds every interactive container **wrong**, so the widget
+validators in `render/validate.rs` have a fixture that actually trips them. The real corpus
+only ever builds these correctly, which is exactly why their diagnostics fell through
+`codes::classify` to the uncatalogued code at ERROR severity for as long as they did. It
+lives in `corpus/diagnostics/`, which is exempt from the corpus clean-render guards.
+
+## A tabset with no tabs
+
+A `.panel-tabset` gets its tabs from the `##` headings inside it. With none, it renders its
+content as one undifferentiated blob and no tab strip at all.
+
+::: {.panel-tabset}
+Prose, but no headings, so there is nothing to build a tab from.
+:::
+
+## A walkthrough with nothing to walk through
+
+A `.code-walkthrough` pins a code block in a sticky panel and drives its line focus from the
+steps beside it. With no code block the sticky panel is empty.
+
+::: {.code-walkthrough}
+::: {.step}
+A step with no code block to focus.
+:::
+:::
+
+## A scrolly missing each of its halves
+
+A `.scrolly` needs both a sticky stage (a figure or a `{js}` cell) and `.step` divs to
+scroll past it. Each half is missing once, because the two are separate diagnostics: any
+non-`.step` block counts as the stage, so one container cannot omit both.
+
+::: {.scrolly}
+::: {.step}
+A step with nothing pinned beside it to drive.
+:::
+:::
+
+::: {.scrolly}
+A stage with nothing scrolling past it.
+:::
+
+## Reactive controls that cannot feed the graph
+
+An anonymous control has no reactive identity, so nothing can read it:
+
+{{< input type="number" value="1" label="anonymous" >}}
+
+An unknown type has no control to build:
+
+{{< input name="w" type="slidr" value="1" label="w" >}}
+
+And a `select` with no options renders an empty menu:
+
+{{< input name="c" type="select" label="channel" >}}

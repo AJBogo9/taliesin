@@ -82,6 +82,14 @@ The document cites sources (`[@key]`) but no `bibliography:` resolves the keys, 
 
 To fix: Add a `bibliography:` pointing at your `.bib` and make sure each key exists in it. Wrap a citation you meant as one in brackets: `[@key]`.
 
+## TAL-CITE-KEY
+
+**a citation key that is not in the bibliography**
+
+A `[@key]` cites an entry the resolved `bibliography:` does not define, so the citation renders as a raw key and the reference list has no row for it. Distinct from TAL-CITE-BIB, which is the whole bibliography going missing: here the file is found and this one key is wrong. Nothing is reported when no bibliography resolves at all, since then every key would be `broken`.
+
+To fix: Fix the key to one the bibliography defines (the message suggests the nearest when there is one), or add the entry to your `.bib`.
+
 ## TAL-CODE-LANG
 
 **an unknown code language**
@@ -97,6 +105,22 @@ To fix: Use a recognized language tag, or leave the info string empty for an unh
 A `.columns` grid lays its `.column` children out in EQUAL columns, so a per-column `width=` (a reveal/Quarto habit, e.g. `::: {.column width="70%"}`) has no effect — the split is silently equalized.
 
 To fix: Remove the `width=` (the columns are equal), or set an explicit column count with `::: {.columns ncol=N}` or `::: {layout-ncol=N}`. Variable-width columns are not supported.
+
+## TAL-DIV-CLASS
+
+**a misspelled feature div class**
+
+A `:::` fenced div carries a class that is a near-miss of one Taliesin implements (`.fragmnet` for `.fragment`, `.theorm` for `.theorem`), so the feature never dispatches and the div renders as a plain container. Div classes are an OPEN vocabulary — a genuinely custom class you style yourself is silent — so this fires only within edit distance 2 of a known name.
+
+To fix: Correct the class to the one the message suggests. If the class really is your own, rename it so it is not a near-miss of a built-in.
+
+## TAL-DIV-PARTS
+
+**a feature div is missing a part it needs**
+
+A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not the part that makes it work: a tabset builds its tabs from `##` headings, a walkthrough pins a code block in its sticky panel, and a scrolly needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to scroll past it. The container still renders, just half-formed — a tab strip with no tabs, an empty sticky panel, a scroller that drives nothing. Distinct from TAL-EMPTY-DIV, which is a feature div with no content at all.
+
+To fix: Add the missing part named in the message: `##` headings inside the tabset, a fenced code block inside the walkthrough, or a stage and `.step` blocks inside the scrolly.
 
 ## TAL-DUP-ID
 
@@ -145,6 +169,14 @@ To fix: Remove the key. The behavior it configures in another tool is not part o
 The block between the opening and closing `---` is not valid YAML (an unterminated quote, bad indentation, or a stray tab), so the strict parse rejected it before any field could be read.
 
 To fix: Fix the YAML at the reported line: close the quote, align the indentation, or replace tabs with spaces. Every value after a parse error is lost, so the parse must succeed first.
+
+## TAL-INPUT-ATTR
+
+**a reactive input is missing a required attribute**
+
+A `{{< input >}}` control declares a valid type but omits something it cannot work without: a `name=`, which is the control's identity in the reactive graph (without one no `{js}` cell can read it, so the control is inert), or, for `type="select"`, the `options=` list that would fill the menu.
+
+To fix: Add the attribute the message names: `name="k"` so cells can read the control, or `options="a,b,c"` on a select.
 
 ## TAL-INPUT-TYPE
 
