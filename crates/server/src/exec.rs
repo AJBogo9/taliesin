@@ -42,9 +42,37 @@ use crate::kernel::{Kernel, KernelSpec, render_outputs};
 /// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
+/// Marks a `tali-error` block **the executor wrote itself**, about a cell that never ran
+/// (or never finished), as opposed to a traceback the interpreter raised about code that
+/// did. The two are deliberately the same HTML shape — a `tali-error` pre inside a
+/// `tali-output` div, so both are styled as errors and neither is ever cached — which left
+/// the only classifier keying on shape and reporting a missing interpreter to the console
+/// as "code cell raised an uncaught exception; its traceback is baked into the output"
+/// (AP11-1: both claims false). An extra attribute rather than an extra class, because
+/// several checks here and in `build.rs` match `class="tali-error"` literally, and
+/// uncacheability rides on one of them.
+///
+/// The value carries WHICH of the three (see the `NOT_RUN_*` consts) so the console can be
+/// specific without parsing the diagnostic's prose back out of the HTML — which is not
+/// reachable anyway once a `#| label:` cell wraps the block in a `<figure>`.
+pub(crate) const NOT_RUN_ATTR: &str = "data-tali-not-run";
+/// No kernel could be started for the cell's language (a missing/bad interpreter, a failed
+/// boot). The most likely setup failure there is.
+pub(crate) const NOT_RUN_UNAVAILABLE: &str = "kernel-unavailable";
+/// The kernel died mid-run, so this cell was skipped without being sent.
+pub(crate) const NOT_RUN_DIED: &str = "kernel-died";
+/// The execute request itself failed (a ZMQ/protocol error, an interrupt), so the
+/// interpreter returned no result.
+pub(crate) const NOT_RUN_REQUEST: &str = "request-failed";
+
+/// The `data-tali-not-run="<kind>"` attribute text, leading space included.
+pub(crate) fn not_run_mark(kind: &str) -> String {
+    format!(" {NOT_RUN_ATTR}=\"{kind}\"")
+}
+
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
 /// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
-const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+pub(crate) const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\" data-tali-not-run=\"kernel-died\">kernel exited before this cell ran; it will re-run on the next save</pre>";
 
 /// A callback the server hands the executor to stream build progress
 /// (`build-state` messages) to the previewing client: each call receives a
@@ -928,10 +956,7 @@ impl Executor {
             Ok(outs) => render_outputs(&outs),
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
-                format!(
-                    "<pre class=\"tali-error\">execution error: {}</pre>",
-                    esc(&e.to_string())
-                )
+                execution_error_html(&e.to_string())
             }
         }
     }
@@ -1178,14 +1203,26 @@ async fn probe_version(program: &Path, bound: Duration) -> Option<String> {
 /// styled as an error AND treated as uncacheable (never persisted to the freeze cache).
 /// The last kernel error (e.g. a ZMQ "address already in use" from a port-allocation
 /// race under concurrent starts) is appended when known, so the page names *why*.
-fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> String {
+pub(crate) fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> String {
     let detail = match last_error {
         Some(e) if !e.is_empty() => format!(" ({})", esc(e)),
         _ => String::new(),
     };
     format!(
-        "<pre class=\"tali-error\">{} kernel unavailable; this cell did not execute{detail}</pre>",
+        "<pre class=\"tali-error\"{}>{} kernel unavailable; this cell did not execute{detail}</pre>",
+        not_run_mark(NOT_RUN_UNAVAILABLE),
         esc(lang)
+    )
+}
+
+/// A cell whose execution *request* failed (a ZMQ/protocol error, an interrupt): the
+/// interpreter never returned a result, so like the two above this is the executor
+/// reporting, not the author's code raising.
+pub(crate) fn execution_error_html(err: &str) -> String {
+    format!(
+        "<pre class=\"tali-error\"{}>execution error: {}</pre>",
+        not_run_mark(NOT_RUN_REQUEST),
+        esc(err)
     )
 }
 

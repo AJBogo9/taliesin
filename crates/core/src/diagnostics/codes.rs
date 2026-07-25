@@ -153,6 +153,18 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("has no accessible name", "TAL-A11Y-NAME", WARNING),
     ("missing alt text", "TAL-A11Y-ALT", WARNING),
     ("looks like a placeholder", "TAL-A11Y-ALT", WARNING),
+    // Execution (`build`/`publish` only — `check` never runs a cell). Both messages embed
+    // the page label, so they sit above the generic needles like every other row that
+    // quotes author-controlled text: a page called `math.tmd` would otherwise be TAL-MATH.
+    // Two codes, not one, because the fix is in a different place: TAL-CELL-ERROR is the
+    // author's code raising, TAL-KERNEL is the environment failing to run it at all.
+    (
+        "code cell raised an uncaught exception",
+        "TAL-CELL-ERROR",
+        ERROR,
+    ),
+    ("code cell did not run", "TAL-KERNEL", ERROR),
+    ("code cell did not complete", "TAL-KERNEL", ERROR),
     // Citations, math, code, categories.
     ("citations are present", "TAL-CITE-BIB", WARNING),
     ("bibliography", "TAL-CITE-BIB", WARNING),
@@ -541,6 +553,31 @@ const EXPLANATIONS: &[Explanation] = &[
                 information about it.",
         fix: "Add alt text that describes the image's content and purpose. Use `alt=\"\"` \
               only for a purely decorative image.",
+    },
+    Explanation {
+        code: "TAL-CELL-ERROR",
+        title: "a code cell raised an uncaught exception",
+        cause: "A `{python}`/`{r}` cell ran and threw, so its traceback is baked into the \
+                built page where its output should be. The build still writes the page (the \
+                traceback is real output, and hiding it would ship a silently wrong \
+                document), but the page is not publishable as it stands. `check` never \
+                reports this: it does not execute cells.",
+        fix: "Fix the cell's code and rebuild. To see the failure without a browser, \
+              `taliesin read --run <file>` prints a `[cell error: …]` line per cell.",
+    },
+    Explanation {
+        code: "TAL-KERNEL",
+        title: "a code cell never ran",
+        cause: "The cell was not executed at all: no kernel could be started for its \
+                language (a missing or wrong interpreter path is the usual cause), the \
+                kernel exited mid-build, or the execute request itself failed. Nothing is \
+                wrong with the cell's code — this is an environment failure, and the page \
+                carries a visible diagnostic where the output would be rather than dropping \
+                it silently.",
+        fix: "Point Taliesin at a working interpreter (`TALIESIN_PYTHON` / `TALIESIN_R`, or \
+              `python:` / `r:` in `_site.yml`) and make sure its Jupyter kernel package is \
+              installed (`ipykernel` for Python, `IRkernel` for R). `taliesin doctor` \
+              reports what it can find.",
     },
     Explanation {
         code: "TAL-CITE-KEY",
