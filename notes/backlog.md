@@ -8,7 +8,43 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: the backlink-context + resume batch)
+## State (2026-07-25, latest: the AP7 accessibility audit, findings only, no code)
+
+**Branch `backlog/backlink-context-and-resume`, notes-only commit on top of the 13 unpushed
+commits below.** The owner ruling that sent the previous session to an audit was discharged: **AP7
+(deep accessibility) ran**, produced
+[2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md), a row in
+[AUDITS.md](AUDITS.md)'s round index, and **item 34** in band C. **No source file was touched** (the
+ruling forbade picking a feature); the tree was verified clean after the run.
+
+**What the round found:** the rendered *document* is sound, the rendered *application* is not. Every
+static one-shot surface came back healthy (several better than AP7's own entry claimed), and every
+defect is one shape: **content that changes without the reader operating a control is never
+announced.** The one exception, and the only reader-facing defect, is **AP7-1: 37 of 51 book pages
+emit a skipped heading level while `check` prints "no problems found"**, from two independent causes
+(absolute `+1` demotion; and `heading_level` needing the block html to *start with* `<hN`, which the
+`<header>`-wrapped title block does not, so the page's only `<h1>` never sets `prev`).
+
+**Four things this round got that the entry did not say:**
+- **A fourth premise was refuted, this one mine.** Off-screen deck slides are **not** leaked to AT:
+  they carry `inert`, so the full a11y tree holds 3 slide nodes, all "Slide 1 of 19". Checked
+  because the first probe *looked* like a carousel bug (`aria-hidden` absent on 18 of 18 slides):
+  `aria-hidden` was simply the wrong thing to count.
+- **The audit's most valuable output was nearly a wrong headline.** "34 invisible focus stops on a
+  chapter" was an artifact of reading `getComputedStyle().opacity` immediately after `Tab`:
+  `.tali-copy`/`.tali-anchor` are `opacity:0` + `:focus-visible{opacity:1}` **plus a
+  `transition: opacity var(--tali-dur)`**, and `--tali-dur` is `.12s`, so a synchronous read returns
+  the interpolated value. Settle past `--tali-dur` before judging any visibility/opacity/transform.
+  The real count is **0**. Two more of the round's own false leads (a regex matching inside
+  `data-block-id`; `interestingOnly:true` pruning 17 headings to 1) are in the doc.
+- **The chrome-devtools MCP was unusable**: a parallel session held
+  `~/.cache/chrome-devtools-mcp/chrome-profile`. The fallback that works is the project's own
+  `puppeteer-core` (`tools/ui-audit/node_modules`) with a private `userDataDir`. Assume AP6 needs
+  the same.
+- **`AUDITS.md`'s "six rounds have no ledger line" gap is already closed**: that file now opens
+  with a complete round-index table. Two places in this file still claimed otherwise; both fixed.
+
+### Prior state (2026-07-25, earlier: the backlink-context + resume batch)
 
 **Branch `backlog/backlink-context-and-resume`, 6 commits, NOT PUSHED** (off
 `backlog/book-outline-drawer`, which is itself 5 commits off `origin/main` at `994bcba` and
@@ -263,10 +299,11 @@ gaps + the fuzz harness), **27** (AP4's three cache follow-ups), **28** (deck-mo
 (the reduction pass's deferred R1/T2), **30** (demand-probe persona 4). Re-banded: **13, 20, 21 moved from
 C to B** — 20 and 21 were tagged P2 while sitting in a band headed "Low / hardening (P3)". Also corrected:
 the AP2 and AP4 entries in "Audit perspectives" still read as *unrun* though both produced findings on
-2026-07-22, so a future session could have re-run a done round. **Known notes-hygiene gap, not fixed here:**
-`AUDITS.md` has no ledger line for six rounds (AP2, AP4, the 2026-07-17 security audit, the 2026-07-24
-deck-motion audit, the CAD research, the companion version-skew bug) — the AP2 file carries a
-ready-to-paste one.
+2026-07-22, so a future session could have re-run a done round. **That notes-hygiene gap is since
+CLOSED** (confirmed 2026-07-25 while adding AP7's row): `AUDITS.md` now opens with a complete
+round-index table covering every dated findings doc, including the six rounds that had none (AP2,
+AP4, the 2026-07-17 security audit, the 2026-07-24 deck-motion audit, the CAD research, the
+companion version-skew bug).
 
 ### Prior state (2026-07-22)
 
@@ -289,22 +326,23 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-> ### OWNER RULING 2026-07-25: the next session runs an AUDIT, not a feature.
+> ### That audit ruling is DISCHARGED: AP7 ran 2026-07-25.
 >
-> Taken after the backlink-context batch emptied the last buildable band-C bullets. **Do not
-> pick a feature item.** Run **one** audit perspective, solo, per the working method in "Audit
-> perspectives" below: produce a dated findings doc in `notes/`, add a ledger line to
-> [AUDITS.md](AUDITS.md), and file the build-ready findings back into "Open work" with their
-> own prefix.
+> The owner ruled the previous session to an audit and picked **AP7 (deep accessibility)**. It
+> ran: findings in
+> [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md), ledger line
+> added, and the five findings are filed below as **item 34**. Nothing was implemented (the
+> ruling forbade picking a feature), so **item 34 is now the band-C work that band-C did not
+> have**. AP7-1 in particular is a real defect on 37 of 51 book pages.
 >
-> **Recommended: AP7 (deep accessibility).** Its entry below now carries a measured starting
-> brief — three of AP7's own stated premises are already refuted, and the do-not-re-find list
-> is long, so read it before writing a single probe. **Alternate: AP3 (concurrency)** if the
-> browser surface is contended or a parallel session owns it. AP6 and AP11 are the other two
-> live options and both remain unranked.
+> The ruling covered that one session only and is **not** a standing preference for audits over
+> features. AP3 (concurrency), AP6 (cross-browser) and AP11 (chaos) remain the unrun
+> perspectives, all stateful/solo and all unranked; there is no ruling that the next session
+> must take one.
 >
-> This ruling covers the *next* session only. It is not a standing preference for audits over
-> features; it exists because bands A-C currently have no buildable, unruled work left.
+> **Read AP7-1 before picking it up:** its two causes pull in opposite directions, and the
+> cheap half (making `check` *see* the defect) turns 37 currently-green pages red, which is a
+> visible change, not a silent fix.
 
 **State: TWO batches are stacked and NEITHER is pushed.** `backlog/book-outline-drawer`
 (5 commits off `origin/main` at `994bcba`) and `backlog/backlink-context-and-resume`
@@ -336,12 +374,13 @@ editor round-trip.
 **Four owner rulings were also taken** (see the prior-state block), which un-gated a large amount of
 previously-blocked work. What is left now sorts into:
 
-- **Build-ready TODAY: nothing in bands A-C is left that is both buildable and unruled**, which is
-  why the next session is **ruled to an audit** (the box at the top of this section). 24's
-  independent-medium set is down to the **"Part, Chapter" ribbon**, which is an owner call, not a
-  task (see item 24) — ask for that ruling if a code task in band C is ever wanted. The only other
-  non-audit picks are **item 30** (`corpus/analyst/`, writing not code) and the P3 residuals below,
-  each of which carries its own blocker.
+- **Build-ready TODAY: item 34 (AP7), filed 2026-07-25.** That band was empty, which is why the
+  previous session was ruled to an audit; the audit refilled it. **AP7-1 is the pick** (a measured
+  defect on 37 of 51 reader-facing book pages, unblocked, with both causes already re-derived from
+  source). AP7-2/3/4/5 are smaller and each stands alone. 24's independent-medium set is still down
+  to the **"Part, Chapter" ribbon**, an owner call rather than a task (see item 24). The other
+  non-audit picks remain **item 30** (`corpus/analyst/`, writing not code) and the P3 residuals
+  below, each of which carries its own blocker.
   - **23 is GONE, fully shipped 2026-07-25** (Ship B closed it). Two decisions in it are settled,
     not deferred: the **outline sidecar artifact is declined** (measured — the search index it
     would duplicate is 60 KB gzipped, already lazy-loaded on every page and already fetched by
@@ -417,16 +456,14 @@ carried a comment warning about exactly this, and it still recurred.)
 measurement". (Item 22 was NOT a re-open of it: demotion worked; the section-number counter had never been
 taught about it. Both shipped 2026-07-25.)
 
-- **This is the ruled pick: run one of the four remaining *audit perspectives*** ("Audit
-  perspectives" section below) — proactive, findings-generating angles the prior rounds structurally
-  could not see. **Done so far: AP1, AP2, AP4, AP5, AP8, AP9, AP10, AP12** (perf, fuzzing,
-  cache-correctness, i18n/sourcepos, codebase health, determinism, semantic HTML, offline-proof).
-  **Remaining: AP3 (concurrency), AP6 (cross-browser), AP7 (a11y), AP11 (chaos)** — all four are
-  *stateful/solo* (server/kernel/browser), so run one when no parallel session owns that surface.
-  Each is a fresh session that writes a dated findings doc and feeds build-ready items back here;
-  the author has credits queued for exactly this. **Take AP7 (deep a11y)**; its entry carries a
-  measured starting brief with three refuted premises and a do-not-re-find list. **AP3
-  (concurrency)** is the alternate if the browser surface is contended.
+- **The *audit perspectives* track** ("Audit perspectives" section below): proactive,
+  findings-generating angles the prior rounds structurally could not see. **Done so far: AP1, AP2,
+  AP4, AP5, AP7, AP8, AP9, AP10, AP12** (perf, fuzzing, cache-correctness, i18n/sourcepos, **a11y**,
+  codebase health, determinism, semantic HTML, offline-proof). **Remaining: AP3 (concurrency), AP6
+  (cross-browser), AP11 (chaos)**. All three are *stateful/solo* (server/kernel/browser), so run one
+  when no parallel session owns that surface, and all three are unranked. Each is a fresh session
+  that writes a dated findings doc and feeds build-ready items back here; the author has credits
+  queued for exactly this.
 
 Working method for an audit is in "Audit perspectives" (findings doc + `AUDITS.md` ledger line +
 items filed back here), not the feature method. For features it is in "Standing constraints":
@@ -474,17 +511,15 @@ landing.
 Ranked highest user/product value first. Impact is not the same as buildability, so each item carries a
 gating tag: a high-impact item can still be frozen or need a ruling.
 
-**Read that literally right now: bands A, B and C contain NO buildable, unruled work.** A's single
-item is an owner decision that was ruled deferred; both of B's need a device or a demand signal; and
-after the 2026-07-25 batches C is down to **24**'s "Part, Chapter" ribbon (an owner call), item
-**30** (writing, not code), and P3 residuals that each carry their own blocker — **17**'s F-01 needs
-a vendoring decision, **17**'s F-02 and **18**'s F-03 are WAI, **12** is demand-driven, **29**'s T2
-is explicitly "only if you are already in there", and **11**'s Semantics bullet needs a CSS-grid +
-filter-JS restructure. That is the ranking working as designed, not a stale file.
-
-**Which is why the next session is an audit, not a feature** (owner ruling 2026-07-25 — see "Next
-session: start here" above). Do not read this band list as a to-do queue; read it as the reason the
-queue is empty.
+**That changed on 2026-07-25 when AP7 ran: band C now has buildable work again, and it is item 34.**
+Before AP7 this list was genuinely empty of buildable, unruled tasks: A's single item is an owner
+decision ruled deferred; both of B's need a device or a demand signal; and C was down to **24**'s
+"Part, Chapter" ribbon (an owner call), item **30** (writing, not code), and P3 residuals that each
+carry their own blocker (**17**'s F-01 needs a vendoring decision, **17**'s F-02 and **18**'s F-03
+are WAI, **12** is demand-driven, **29**'s T2 is explicitly "only if you are already in there", and
+**11**'s Semantics bullet needs a CSS-grid + filter-JS restructure). **Item 34's AP7-1 is the one
+piece of unblocked, reader-facing, measured-defect work in the whole list**. Read its sequencing
+note before starting, because its two causes pull in opposite directions.
 
 ### A. High impact (build first)
 
@@ -523,6 +558,48 @@ queue is empty.
    were considered and left for later. Revive only on a real speaker ask.
 
 ### C. Low / hardening (P3)
+
+34. **AP7 accessibility findings** (detail:
+    [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md)). Five findings; the
+    doc also records what came back **sound** (deck `inert`, KaTeX MathML, tabsets, focus rings) and
+    three false leads, so re-derive from it before doubting any of this. **AP7-1 is the only one that
+    is a defect on shipped reader-facing pages.**
+    - **AP7-1 (medium-high, S+M): 37 of 51 book pages emit a skipped heading level while
+      `check` prints "no problems found".** Measured across `docs/guide` + `docs/internals` +
+      `corpus/tarn`: 35 pages `h1→h3`, 2 pages `h1→h4`; `h2` is empty on essentially every chapter of
+      both dogfood books. **Two independent causes, both re-derived from source:**
+      (1) `render/mod.rs:2490 demote_heading_html` is an absolute `+1`, right for a `#`-rooted chapter
+      and wrong for the `##`-rooted house style, while the build's TOC already windows relative to
+      the *shallowest heading present*, so the two disagree; (2) `diagnostics/a11y.rs:211` starts
+      `prev = 0` and `helpers.rs:47 heading_level` needs the block html to **start with** `<hN`, but
+      the title block is `blocks[0]` as `<header class="tali-title-block">…<h1>` (`render/mod.rs:1133`),
+      so the page's only `<h1>` is skipped and the largest jump on the page is never compared.
+      **Sequencing matters:** fixing (2) alone is cheap but turns 37 green pages red rather than
+      fixing them; fixing (1) changes emitted levels, which `site/chapter.rs` numbers *post*-demotion,
+      so the relative-demotion fix and `ChapterNumbering`'s per-site base must move together or
+      `@sec-` refs drift. Needs a minted pin: there is no `crates/core/tests/a11y*.rs`.
+    - **AP7-2 (medium, S): the reactive `{js}` graph rewrites the document silently.** Keyboard-driving
+      a `{{< input >}}` slider on built `corpus/reactive/inputs.tmd` changed six output regions
+      (`k=3 n=20` → `k=8 n=20`) with **every** live region empty; no `.tali-js-out` carries `aria-live`
+      or `role` (7 of 7), and `tali-js.js` has no `aria-live` at all. The control itself is correct
+      (real `<label for>`, keyboard-operable); only the consequence is unannounced.
+    - **AP7-3 (medium, M): `.scrolly` and `.code-walkthrough` carry no a11y semantics at all.**
+      Measured: 0 focusable steps, 0 steps with `aria`/`role`, 0 live regions, `null` root role, for
+      both. `scrolly.js`/`walkthrough.js` contain no `keydown`/`tabindex`/`role`/`aria`. The step
+      prose reads fine linearly; what is never conveyed is the **stage** each step drives (no
+      `aria-controls`/`aria-describedby`), and its state advances only as a consequence of visual
+      scrolling. *The audit did not manage to drive a state transition headlessly (the known
+      scroll-testing gotcha), so it reports the semantics, not the flip timing.*
+    - **AP7-4 (low-medium, S): a preview block swap strands keyboard focus.** Measured against a
+      live preview: focus **inside** the edited block → `<body>` (next Tab restarts at the top of the
+      document); focus in an **unrelated** block survives, so the block-level diff is already doing
+      its job. Nothing announced either way. `client.js:1276` `replaceWith` / `:1312` `remove` have no
+      focus handling. **Preview-only** (a built page has no swap), so this costs an author who works
+      keyboard-first or with AT, not a reader.
+    - **AP7-5 (low, S): the in-page TOC is tab stop 56 of 62** on a chapter, after all 48 content
+      stops, though it is a sticky sidebar visible the whole time. Screen-reader users are unaffected
+      (`role="doc-toc"` is exposed as a landmark, verified in the full a11y tree); this lands on
+      keyboard-only users not running AT. The skip link goes to `#tali-main` only.
 
 24. **SKIM-3: author-side structure tooling** (P3, M-L, **its severity-floor prerequisite shipped 2026-07-25**; detail:
     [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). `taliesin check` has 27 diagnostic
@@ -870,11 +947,11 @@ file (Do-NOT-touch freeze, verify-by-mutation, entries rot so re-derive from sou
 the priority: non-test code carries ~700 `unwrap()`/`expect()`/`panic!`/`unreachable!` sites, and
 `data-sourcepos` (the load-bearing invariant) is byte-offset based.
 
-**While you are in `AUDITS.md` writing your own ledger line, close the known gap:** six rounds still
-have none (AP2, AP4, the 2026-07-17 security audit, the 2026-07-24 deck-motion audit, the CAD
-research, the 2026-07-13 companion version-skew bug). The AP2 findings file carries a
-ready-to-paste line. It is five minutes for whoever is already editing that file, and it has been
-deferred twice.
+**That "six rounds have no ledger line" gap is CLOSED** (verified 2026-07-25 while adding AP7's
+line): `AUDITS.md` now opens with a complete round-index table covering every dated findings doc in
+`notes/`, including the six that were missing (AP2, AP4, the 2026-07-17 security audit, the
+2026-07-24 deck-motion audit, the CAD research, the companion version-skew bug). Just add your own
+row to that table the day you run a round.
 
 **Every audit's first job is to falsify its own entry.** Both of the last two rounds to be picked up
 found that the entry overstated or misnamed what it was pointing at (AP2's "the codebase is
@@ -887,12 +964,13 @@ The *stateful* ones (AP1, AP2, AP3, AP4, AP5, AP6, AP11) each build, fuzz, run t
 drive a browser, or spawn kernels, so they corrupt each other if run at once: keep them solo. Only the
 pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan out together in one
 Workflow. The recommended-first set (**AP1, AP2, AP4, AP5**) plus the one safe code-read pick (**AP10**) are
-now all RUN (see their entries below). **Everything remaining — AP3 (concurrency), AP6 (cross-browser), AP7
-(a11y), AP11 (chaos) — is stateful/solo** (server/kernel/browser/ports), so each needs a session where no
-parallel work owns that surface. **Owner ruling 2026-07-25: the next session runs one of these, and
-the pick is AP7 (deep a11y)**, with **AP3 (concurrency)** as the alternate if the browser surface is
-contended. AP7's entry below carries a measured starting brief; read it first, because three of its
-own stated premises are already refuted and its do-not-re-find list is long.
+now all RUN (see their entries below), and **AP7 was run 2026-07-25** under the owner ruling that
+picked it. **Everything remaining (AP3 concurrency, AP6 cross-browser, AP11 chaos) is
+stateful/solo** (server/kernel/browser/ports), so each needs a session where no parallel work owns
+that surface. All three are unranked. Note from AP7's run: the **chrome-devtools MCP was unusable
+because a parallel session held its Chrome profile**, and the fallback that worked is the project's
+own `puppeteer-core` under `tools/ui-audit/node_modules` with a private `userDataDir`. Assume any
+browser-driving perspective (AP6 especially) may need the same.
 
 ### Tier 1: genuinely untouched, highest expected yield
 
@@ -955,42 +1033,30 @@ own stated premises are already refuted and its do-not-re-find list is long.
 
 ### Tier 2: partially touched; a dedicated deep pass still pays
 
-- **AP7: Deep accessibility of the output. RECOMMENDED NEXT (owner ruling 2026-07-25).** The polish
-  rounds found chrome-level a11y holes one at a time; nobody has done a real screen-reader + keyboard
-  pass over rendered docs as *documents*. Overlaps item 11 pass (c) but should go deeper than
-  one-hole-per-surface. *Stateful, solo.*
-  **Three of this entry's own premises were measured on 2026-07-25 and are already false. Read this
-  before writing a probe, or a whole round goes into rediscovering shipped work:**
-  - **"live-region announcement on slide change"** — the deck already has one. `deck.js` builds a
-    polite live region (`liveRegion()`, `aria-live="polite"`) and `announce()`s the slide on every
-    change, the fragment step (`Step N of M`), and overview-map moves. Judge the *wording and
-    chattiness*, not its absence.
-  - **"`aria`" on the deck** — every slide is emitted `role="group" aria-roledescription="slide"`
-    (`render/deck.rs`) with a runtime "Slide N of M" `aria-label` (`updateSlideLabels`).
-  - **"KaTeX a11y"** — KaTeX runs in its default `htmlAndMathml` mode, so **MathML ships in the
-    built page** (verified: `<math xmlns=…>` is present in `docs/guide`'s built output). A screen
-    reader gets semantic math today. The open question is the *visible* `katex-html` twin being
-    read twice, not missing semantics.
-  **Do NOT re-find (all shipped, grep before doubting):** the three static rules
-  `TAL-A11Y-HEADING` / `-NAME` / `-ALT` (`diagnostics/a11y.rs`, incl. the placeholder-alt nudge);
-  the preview's live `scanA11y` (`web-client/client.js`); item 11 pass (c)'s announce/semantics
-  holes (`be9ebd6`); and item 11's a11y-interaction set B3/B5/B14/B15 + PA-B9 (`68bf5c8`) — the
-  mobile-TOC-sheet focus trap, the Cmd-K combobox Home/End binding, the menu's null-`relatedTarget`
-  rule and the sheet handle's label. Two facts recorded from that work: the pull-up handle
-  **ignores a synthetic `click()`** (use a real tap or Enter/Space), and **a site preview emits no
-  mobile-TOC sheet chrome at all**, so `client.js`'s copy of the sheet is reachable only in a
-  single-doc preview.
-  **Genuinely un-audited, so this is where the yield is:** a real screen-reader pass (not an axe
-  run) over a long book chapter and the deck; reading *order* versus visual order now that the
-  `#TOC` is emitted after `</main>`; whether the incremental block swap announces or strands focus
-  when a block is replaced mid-read (the moat feature nobody has audited with AT); tabsets,
-  callouts, theorem boxes and `{{< input >}}` controls as *composite widgets*; `.scrolly` /
-  `.code-walkthrough` for keyboard-only readers; and the reader-prefs / theme controls.
-  **Known adjacent, already filed:** item 11's Semantics bullet (`<ul>`/`role=list`, image-alt lint
-  nudge, deck `theme-color`/OG) and PA-B1 (the kernel-unavailable message tells headless callers to
-  click a Restart button that is not there — see item 10 / AP11).
-  **Corpus note:** `corpus/diagnostics/a11y.tmd` is the *lint* fixture, not a reader fixture; there
-  is no dedicated `crates/core/tests/a11y*.rs`, so a finding that deserves a pin needs one minted.
+- **AP7: Deep accessibility of the output. RUN 2026-07-25** (findings:
+  [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md); the five findings
+  are Open-work item **34**). Result: **the rendered *document* is sound; the rendered *application*
+  is not.** Every static one-shot surface came back healthy, and better than this entry claimed,
+  while every defect is one shape: **content that changes without the reader operating a control is
+  never announced**. AP7-1 (37 of 51 book pages emit a skipped heading level while `check` says "no
+  problems found", from two independent causes), AP7-2 (the reactive `{js}` graph rewrites six
+  regions silently), AP7-3 (`.scrolly` / `.code-walkthrough` carry zero aria/focusable steps/live
+  regions), AP7-4 (a preview block swap strands focus to `<body>`), AP7-5 (the TOC is tab stop 56 of
+  62). **Verified sound, do not re-audit:** non-current deck slides are `inert` (out of the a11y tree
+  *and* the focus order, only 3 slide nodes in the full tree); KaTeX ships `<math>` with the visual
+  twin `aria-hidden="true"`, so the "read twice" question is answered *no*; tabsets are the full APG
+  pattern; the closed drawer is `display:none` so its 19 links are not phantom tab stops; the
+  settings menu toggles `aria-expanded` and returns focus on Escape; and there are **0** invisible,
+  zero-size or unnamed focus stops across all 62 stops on a chapter. **The round's own three false
+  leads are recorded in the doc**: the most useful is that reading `getComputedStyle().opacity`
+  right after `Tab` returns the value mid-`--tali-dur` transition, which manufactured a headline
+  "34 invisible focus stops" that is really 0. **Not chased:** a real screen reader (this was
+  Chrome's a11y tree + computed style + keyboard driving), contrast (a documented `check` non-goal),
+  reduced-motion, and callouts/theorem boxes as driven widgets. *Was stateful/solo; run with the
+  project's own `puppeteer-core` because a parallel session held the chrome-devtools MCP profile.*
+  **Corpus note, still true:** `corpus/diagnostics/a11y.tmd` is the *lint* fixture, not a reader
+  fixture, and there is no `crates/core/tests/a11y*.rs`, so any AP7 fix that deserves a pin needs one
+  minted.
 - **AP8: Determinism / reproducibility. RUN 2026-07-22, findings shipped + closed** (findings:
   [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md); was Open-work item 15, now complete +
   removed). Covered
