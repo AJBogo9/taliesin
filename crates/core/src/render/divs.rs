@@ -619,8 +619,15 @@ fn build_container(
                         if sel { "0" } else { "-1" },
                     ));
                     panels.push_str(&format!(
+                        // `hidden="until-found"`, not a bare `hidden`: an inactive panel's
+                        // text is in the built HTML and IS in the Cmd-K index, but a bare
+                        // `hidden` makes it invisible to the browser's own find-in-page, so
+                        // the tool advertised a searchability Ctrl-F did not honour. With
+                        // `until-found` the browser reveals the panel and scrolls to the hit.
+                        // Engines without it fall back to plain `hidden` (today's behaviour),
+                        // so nothing regresses.
                         "<div class=\"tabset-panel\" role=\"tabpanel\" id=\"{panel_id}\" aria-labelledby=\"{tab_id}\"{}>{body}</div>",
-                        if sel { "" } else { " hidden" },
+                        if sel { "" } else { " hidden=\"until-found\"" },
                     ));
                 }
                 tablist.push_str("</div>");

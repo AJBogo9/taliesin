@@ -6,10 +6,6 @@
 
 use super::*;
 
-/// Per-section body text is capped so one long section (or a big code listing)
-/// can't blow up the index; matches/snippets come from the section's start.
-const BODY_CAP: usize = 1500;
-
 /// The per-page search fragments (page `rel` → that page's JSON entries, no
 /// surrounding brackets), in page order — one `{u,p,i,l,t,b}` object per page title
 /// and per anchored heading (`u`rl, `p`age title, anchor `i`d, `l`evel, heading
@@ -205,18 +201,20 @@ fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
     out
 }
 
-/// Plain text from inner HTML, capped so one section (or a big code listing) can't
-/// dominate the index. The extraction itself is [`render::indexable_text`], the same
-/// pass `taliesin read` and the TOC/slug path use, so a snippet reads exactly like the
-/// page it points at: KaTeX math indexed once (not MathML + raw TeX + glyphs), `&nbsp;`
-/// normalized so a reader can search the "Theorem 2.1" they can see, and entities
-/// decoded once. Do not re-derive it here.
+/// Plain text from inner HTML. The extraction is [`render::indexable_text`], the same pass
+/// `taliesin read` and the TOC/slug path use, so a snippet reads exactly like the page it
+/// points at: KaTeX math indexed once (not MathML + raw TeX + glyphs), `&nbsp;` normalized
+/// so a reader can search the "Theorem 2.1" they can see, and entities decoded once. Do not
+/// re-derive it here.
+///
+/// **Uncapped, deliberately.** A 1500-character cap used to truncate the body here, which
+/// took the tail off 18.7% of the Guide's section records and 25.9% of the Internals' —
+/// roughly 15% of each book's prose, silently: no signal to the reader searching for a
+/// phrase that is on the page, and none to the author. Uncapping grows the indexed text by
+/// only ~1.17x (measured on both books), and `score()` is `indexOf` scans over that text at
+/// well under a millisecond per keystroke, so the cap was never buying what it cost.
 fn section_text(html: &str) -> String {
-    let text = render::indexable_text(html);
-    match text.char_indices().nth(BODY_CAP) {
-        Some((i, _)) => text[..i].to_string(),
-        None => text,
-    }
+    render::indexable_text(html)
 }
 
 /// Escape a string for a JSON value inlined inside a `<script>` (so `</script>`
@@ -254,9 +252,17 @@ mod tests {
     }
 
     #[test]
-    fn section_text_caps_length() {
-        let long = format!("<p>{}</p>", "x ".repeat(2000));
-        assert!(section_text(&long).chars().count() <= BODY_CAP);
+    fn section_text_keeps_a_long_sections_tail() {
+        // The old 1500-char cap silently dropped the end of a long section, so a phrase the
+        // reader can SEE on the page matched nothing. A distinctive term past the old cap
+        // must survive into the index.
+        let long = format!("<p>{}needle-past-the-old-cap</p>", "filler ".repeat(400));
+        let text = section_text(&long);
+        assert!(text.chars().count() > 1500, "no truncation: {}", text.len());
+        assert!(
+            text.ends_with("needle-past-the-old-cap"),
+            "the tail of a long section is indexed"
+        );
     }
 
     #[test]

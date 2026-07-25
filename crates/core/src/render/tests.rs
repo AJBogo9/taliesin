@@ -3478,6 +3478,51 @@ fn deck_key_sheet_lists_home_end_and_fit_map() {
     );
 }
 
+/// `hidden="until-found"` only works if nothing else removes the panel from the box tree:
+/// a browser cannot reveal a `display: none` subtree, so the old blanket rule would have
+/// made the attribute inert while looking correct in the HTML.
+#[test]
+fn a_collapsed_tab_panel_is_hidden_without_display_none() {
+    let css = BASE_CSS;
+    assert!(
+        css.contains(".tabset-panel[hidden=\"until-found\"] { content-visibility: hidden;"),
+        "an until-found panel is hidden with content-visibility, not display"
+    );
+    assert!(
+        css.contains(".tabset-panel[hidden]:not([hidden=\"until-found\"]) { display: none; }"),
+        "display:none must be scoped to the bare-`hidden` case only"
+    );
+    // Without a zero intrinsic size a `content-visibility: hidden` box still reserves its
+    // last-rendered size, so switching tabs would leave a gap the width of the other panel.
+    assert!(
+        css.contains("contain-intrinsic-size: 0 0"),
+        "a collapsed panel must reserve no layout space"
+    );
+}
+
+/// The tab switcher must write the attribute as a STRING. `panel.hidden = true` is the
+/// boolean IDL setter and writes a bare `hidden`, so the first tab click would silently
+/// downgrade every inactive panel back to find-in-page-invisible.
+#[test]
+fn the_tab_switcher_preserves_until_found_across_a_click() {
+    let js = TABSET_JS;
+    assert!(
+        js.contains("setAttribute('hidden', 'until-found')"),
+        "the switcher must write the attribute as a string"
+    );
+    // Scan CODE lines only: the comment above the fix names the setter it warns against, so
+    // a whole-file substring search matches the explanation rather than the implementation.
+    let code: String = js
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !code.contains(".hidden ="),
+        "the boolean IDL setter would downgrade the attribute on the first click"
+    );
+}
+
 /// The overview's wrap column count is chosen for the WHOLE map, not per run. Per run,
 /// `ceil(sqrt(run.length))` makes each run individually square, and several squares stack
 /// into a map the overview has to zoom past — browser-measured on a 21-slide three-topic

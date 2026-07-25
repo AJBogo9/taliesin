@@ -585,7 +585,15 @@
   .tabset-tab[aria-selected="true"] { color: var(--tali-link); border-bottom-color: var(--tali-accent); }
   /* The tab sits on the tablist's bottom border, so the shared ring is inset (-2px). */
   .tabset-tab:focus-visible { outline: var(--tali-focus); outline-offset: -2px; border-radius: var(--tali-radius-sm); }
-  .tabset-panel[hidden] { display: none; }
+  /* `display: none` would defeat `hidden="until-found"` (the browser cannot reveal a
+     display:none subtree), so hide the inactive panel with `content-visibility` instead and
+     scope the `display:none` to the bare-`hidden` case only. A zero `contain-intrinsic-size`
+     keeps the hidden panel from reserving layout space, so switching tabs does not jump. */
+  .tabset-panel[hidden="until-found"] { content-visibility: hidden; contain-intrinsic-size: 0 0; }
+  .tabset-panel[hidden]:not([hidden="until-found"]) { display: none; }
+  /* The visible panel's first child must not add a top margin under the tablist. Written
+     without `> :first-child` alone because a revealed until-found panel is still the same
+     element and needs the same rule. */
   .tabset-panel > :first-child { margin-top: 0; }
   @media (prefers-reduced-motion: no-preference) {
     .tabset-tab { transition: color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
