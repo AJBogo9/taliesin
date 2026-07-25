@@ -96,14 +96,55 @@ fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + 
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                handle_request(connection, &docs, req)?;
+                // A panic in one request must not take the session down with it: without the
+                // guard it unwinds out of this loop and every later request from the editor
+                // goes unanswered, silently. Answer the offending request with an
+                // InternalError instead, so the client sees one failed call rather than a
+                // dead server. `id`/`method` are cloned because dispatch consumes `req`.
+                let (id, method) = (req.id.clone(), req.method.clone());
+                match crate::serve::guarded(|| handle_request(connection, &docs, req)) {
+                    Ok(sent) => sent?,
+                    Err(panic) => {
+                        crate::log::error(&format!("lsp: panic handling {method}: {panic}"));
+                        connection
+                            .sender
+                            .send(Message::Response(lsp_server::Response {
+                                id,
+                                result: None,
+                                // JSON-RPC InternalError.
+                                error: Some(lsp_server::ResponseError {
+                                    code: -32603,
+                                    message: format!("internal error handling {method}"),
+                                    data: None,
+                                }),
+                            }))?;
+                    }
+                }
             }
-            Message::Notification(notif) => handle_notification(connection, &mut docs, notif)?,
+            // Same guard for notifications, which is the higher-traffic half: `publish` →
+            // `buffer_diagnostics` renders the buffer on *every keystroke*. A notification
+            // has no reply channel, so a panic is logged and skipped.
+            Message::Notification(notif) => {
+                let method = notif.method.clone();
+                match crate::serve::guarded(|| handle_notification(connection, &mut docs, notif)) {
+                    Ok(handled) => handled?,
+                    Err(panic) => {
+                        crate::log::error(&format!("lsp: panic handling {method}: {panic}"))
+                    }
+                }
+            }
             Message::Response(_) => {}
         }
     }
     Ok(())
 }
+
+/// Test-only method name that panics inside the dispatch. Real input does not panic the
+/// renderer (AP2's fuzz round produced zero unexpected panics), so injecting one here is the
+/// only way to exercise the loop's panic boundary — the guard exists for the residual
+/// panic surface, not for a known repro. `#[cfg(test)]`, so it is absent from the binary.
+#[cfg(test)]
+pub(crate) const PANIC_PROBE_METHOD: &str = "taliesin/testPanic";
 
 /// Dispatch a text-document notification: keep the open-buffer store current and
 /// (re)publish diagnostics for the affected buffer.
@@ -119,6 +160,8 @@ fn handle_notification(
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     };
     let method = notif.method.as_str();
+    #[cfg(test)]
+    assert!(method != PANIC_PROBE_METHOD, "injected notification panic");
     if method == DidOpenTextDocument::METHOD {
         let p: DidOpenTextDocumentParams = serde_json::from_value(notif.params)?;
         if p.text_document.language_id == "taliesin" {
@@ -156,6 +199,8 @@ fn handle_request(
         CodeActionRequest, Completion, DocumentSymbolRequest, GotoDefinition, HoverRequest,
         PrepareRenameRequest, Rename, Request as _,
     };
+    #[cfg(test)]
+    assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
     let response = if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
@@ -1110,6 +1155,60 @@ mod tests {
                 other => panic!("expected response {id:?}, got {other:?}"),
             }
         }
+    }
+
+    // HEALTH-1: the resilience property that could not exist while the dispatch was
+    // unguarded. A panic in a request is answered as an InternalError, a panic in a
+    // notification is dropped, and in BOTH cases the session keeps serving — previously
+    // either one unwound out of `main_loop` and every later message went unanswered while
+    // the editor sat there believing it still had language intelligence. Mutation check:
+    // remove either `guarded` in `main_loop` and this test hangs on the timeout.
+    #[test]
+    fn a_panicking_message_does_not_kill_the_session() {
+        let (server, client) = Connection::memory();
+        let prior = std::panic::take_hook();
+        // Both panics below are injected on purpose; keep the backtraces out of the output.
+        std::panic::set_hook(Box::new(|_| {}));
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        // (1) A panicking REQUEST is answered, so the client never hangs waiting.
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(10),
+                method: PANIC_PROBE_METHOD.to_owned(),
+                params: serde_json::Value::Null,
+            }))
+            .unwrap();
+        let err = recv_response(&client, RequestId::from(10))
+            .error
+            .expect("a panicking request must be answered with an error, not silence");
+        assert_eq!(err.code, -32603, "JSON-RPC InternalError");
+
+        // (2) A panicking NOTIFICATION is skipped, and the buffer store still works after —
+        // this is the every-keystroke path (`publish` → `buffer_diagnostics`).
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: PANIC_PROBE_METHOD.to_owned(),
+                params: serde_json::Value::Null,
+            }))
+            .unwrap();
+
+        // (3) The session still answers real work after both panics.
+        let path = corpus("typos.tmd");
+        let uri = Url::from_file_path(&path).unwrap();
+        did_open(&client, &uri, std::fs::read_to_string(&path).unwrap());
+        let published = recv_publish(&client);
+        assert_eq!(
+            published.uri, uri,
+            "diagnostics still flow after two panics"
+        );
+
+        shutdown(&client);
+        std::panic::set_hook(prior);
+        thread.join().unwrap().expect("server loop should exit Ok");
     }
 
     // Drive a full initialize → shutdown → exit handshake against an in-process server.

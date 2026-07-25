@@ -233,6 +233,10 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .route("/", get(index))
         .route("/favicon.ico", get(favicon))
         .route("/ws", get(ws_handler))
+        // The vendored mermaid library, so a diagram in preview needs no network (OFF-2).
+        // Registered before the static fallback, which would otherwise look for a file of
+        // this name beside the document.
+        .route(taliesin_core::PREVIEW_MERMAID_PATH, get(mermaid_lib_js))
         // Anything else is a static asset (images, etc.) resolved relative to the
         // document's directory, so figures display in the live preview.
         .fallback(static_asset)
@@ -656,6 +660,25 @@ struct PageCtx<'a> {
 
 /// The preview favicon (also satisfies the browser's implicit `/favicon.ico`
 /// request, so the tab gets an icon and the console stays free of a 404).
+/// Serve the vendored mermaid library so a diagram in **preview** needs no network
+/// (OFF-2). `include_str!`-compiled into the binary, so this reads nothing from disk and
+/// cannot 404. Immutable-cached: the bytes only change when the binary does.
+async fn mermaid_lib_js() -> impl IntoResponse {
+    (
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/javascript; charset=utf-8",
+            ),
+            (
+                axum::http::header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable",
+            ),
+        ],
+        taliesin_core::mermaid_min_js(),
+    )
+}
+
 async fn favicon() -> impl IntoResponse {
     (
         [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
@@ -1040,6 +1063,14 @@ fn deck_index_html(ctx: &PageCtx) -> String {
 
 // --- WebSocket ----------------------------------------------------------
 
+/// Cap on a single *inbound* websocket frame. Traffic in this direction is control only —
+/// `{"type":"restart_kernel"}` and `{"type":"click_block",…}`, a few hundred bytes at most —
+/// so without a cap a peer that got past the origin check could make the server buffer an
+/// arbitrarily large frame it was only ever going to parse and discard. Outbound frames
+/// (full renders, op batches) are unaffected: this bounds what we accept, not what we send.
+/// 64 KB is ~100x the largest real message.
+pub(crate) const MAX_WS_MESSAGE_BYTES: usize = 64 * 1024;
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: axum::http::HeaderMap,
@@ -1052,7 +1083,8 @@ async fn ws_handler(
         )
             .into_response();
     }
-    ws.on_upgrade(move |socket| client_conn(socket, app))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| client_conn(socket, app))
         .into_response()
 }
 

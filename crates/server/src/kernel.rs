@@ -39,6 +39,50 @@ fn cell_timeout() -> Option<Duration> {
     })
 }
 
+/// The prefix of every notice this module appends when a cell's output hits a cap
+/// (`… at 4096 items]`, `… at 512 KB]`, `… at 8 MB of rich output]`). Defined once here,
+/// beside the emitters, because `exec::is_uncacheable` matches on it to keep a truncated
+/// output out of the freeze cache: two copies of the literal could drift apart silently and
+/// the only symptom would be a silently-cached truncated result.
+///
+/// Matched in this **bracketed** form on purpose. A bare `taliesin: output truncated` also
+/// matches a cell that merely *prints* the phrase, which refuses that cell the cache
+/// forever, exactly the false-positive the `tali-error` check was hardened against.
+pub(crate) const TRUNCATION_MARKER: &str = "[taliesin: output truncated at ";
+
+/// Total bytes of *rich* output (rendered `ExecuteResult`/`DisplayData`) one cell may
+/// accumulate.
+///
+/// The stream cap counts text bytes and the output cap counts item *count*, so a handful of
+/// very large rich outputs sailed under both: a few base64-encoded images are only a few
+/// items and no stream bytes at all, yet each is megabytes that then get cloned into the
+/// block model, the freeze cache, and the warm-state record, and pushed down every open
+/// websocket. 8 MB is far above a legitimate figure (a detailed matplotlib PNG is a few
+/// hundred KB base64) while still bounding the blast radius.
+const MAX_RICH_BYTES: usize = 8 * 1024 * 1024;
+
+/// Append one rich output, or the truncation notice if it would cross [`MAX_RICH_BYTES`].
+///
+/// Unlike a stream, a rich output cannot be cut to a prefix: half a data URI or half a
+/// `<table>` is broken markup. So an output that crosses the cap is dropped whole and the
+/// notice takes its place, which also keeps `is_uncacheable` honest (the truncated result is
+/// never frozen).
+fn push_rich(outputs: &mut Vec<Output>, rich_bytes: &mut usize, capped: &mut bool, html: String) {
+    if *rich_bytes + html.len() > MAX_RICH_BYTES {
+        outputs.push(Output::Stream {
+            stderr: true,
+            text: format!(
+                "\n{TRUNCATION_MARKER}{} MB of rich output]\n",
+                MAX_RICH_BYTES / (1024 * 1024)
+            ),
+        });
+        *capped = true;
+    } else {
+        *rich_bytes += html.len();
+        outputs.push(Output::Rich(html));
+    }
+}
+
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
 /// `<script type="qmd-define">` HTML output the native `{js}` runtime consumes
@@ -395,6 +439,14 @@ pub struct Kernel {
     shell: ClientShellConnection,
     iopub: ClientIoPubConnection,
     conn_dir: PathBuf,
+    /// This kernel's wall-clock cap on one cell, resolved once at start from
+    /// [`cell_timeout`]. Held per kernel rather than re-read per execution so a test can
+    /// set it directly: `cell_timeout` memoizes in a `OnceLock`, so a test that sets
+    /// `TALIESIN_CELL_TIMEOUT` only had any effect when it happened to be the first test in
+    /// the binary to reach that lock. That ordering dependence is what made
+    /// `kernel_executes_state_errors_and_interrupts_runaway_cell` "flaky under load": it
+    /// was never about load, it was about who initialised the lock first.
+    cell_cap: Option<Duration>,
 }
 
 /// Whether a kernel-start failure is worth retrying with a fresh port allocation.
@@ -665,6 +717,7 @@ impl Kernel {
             shell,
             iopub,
             conn_dir,
+            cell_cap: cell_timeout(),
         };
         // Language-specific startup (e.g. Python's `ojs_define` bridge + matplotlib
         // theme); each preamble runs once against the warm kernel.
@@ -698,12 +751,13 @@ impl Kernel {
         const MAX_STREAM_BYTES: usize = 512 * 1024;
         const MAX_OUTPUTS: usize = 4096;
         let mut stream_bytes = 0usize;
+        let mut rich_bytes = 0usize;
         let mut capped = false;
         // Total wall-clock cap (not per-message, so a *streaming* runaway cell is
         // still caught). On hitting it we SIGINT the kernel, then drain a short
         // grace window so the resulting KeyboardInterrupt + Idle resync the
         // channels and the *next* cell still works.
-        let cap = cell_timeout();
+        let cap = self.cell_cap;
         let deadline = cap.map(|d| Instant::now() + d);
         let mut grace_until: Option<Instant> = None;
         // Last time any iopub message arrived; drives the uncapped "no output for 60s"
@@ -793,7 +847,7 @@ impl Kernel {
             if !capped && accumulating && outputs.len() >= MAX_OUTPUTS {
                 outputs.push(Output::Stream {
                     stderr: true,
-                    text: format!("\n[taliesin: output truncated at {MAX_OUTPUTS} items]\n"),
+                    text: format!("\n{TRUNCATION_MARKER}{MAX_OUTPUTS} items]\n"),
                 });
                 capped = true;
             }
@@ -821,20 +875,23 @@ impl Kernel {
                         }
                         outputs.push(Output::Stream {
                             stderr: true,
-                            text: format!(
-                                "\n[taliesin: output truncated at {} KB]\n",
-                                MAX_STREAM_BYTES / 1024
-                            ),
+                            text: format!("\n{TRUNCATION_MARKER}{} KB]\n", MAX_STREAM_BYTES / 1024),
                         });
                         capped = true;
                     }
                 }
-                JupyterMessageContent::ExecuteResult(r) if !capped => {
-                    outputs.push(Output::Rich(render_media(&r.data)))
-                }
-                JupyterMessageContent::DisplayData(d) if !capped => {
-                    outputs.push(Output::Rich(render_media(&d.data)))
-                }
+                JupyterMessageContent::ExecuteResult(r) if !capped => push_rich(
+                    &mut outputs,
+                    &mut rich_bytes,
+                    &mut capped,
+                    render_media(&r.data),
+                ),
+                JupyterMessageContent::DisplayData(d) if !capped => push_rich(
+                    &mut outputs,
+                    &mut rich_bytes,
+                    &mut capped,
+                    render_media(&d.data),
+                ),
                 JupyterMessageContent::ErrorOutput(e) => outputs.push(Output::Error {
                     ename: e.ename,
                     evalue: e.evalue,
@@ -1339,16 +1396,20 @@ mod tests {
             );
             return;
         };
-        // Short per-cell cap so the runaway case below trips fast. Set before the
-        // first execute(), since `cell_timeout()` reads the env once.
-        // Safety: single-threaded test, before any threads observe the env.
-        unsafe { std::env::set_var("TALIESIN_CELL_TIMEOUT", "3") };
         let py = PathBuf::from(py);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
             let mut k = Kernel::start(&KernelSpec::python(&py), None)
                 .await
                 .expect("kernel should start");
+            // A short per-cell cap so the runaway case below trips fast. Set on the kernel,
+            // NOT via `TALIESIN_CELL_TIMEOUT`: `cell_timeout()` memoizes in a `OnceLock`, so
+            // the env var only ever took effect when this test happened to be the first in
+            // the binary to touch that lock. When it was not, the cap stayed at the 120 s
+            // default, the runaway ran for two minutes, and the 20 s assertion below failed —
+            // which read as "flaky under load" but was purely test-ordering. Nothing about
+            // the assertion is timing-sensitive once the cap is deterministic.
+            k.cell_cap = Some(Duration::from_secs(3));
 
             // stdout stream + a bare expression result
             let html = render_outputs(&k.execute("print('hello'); 6 * 7").await.unwrap());

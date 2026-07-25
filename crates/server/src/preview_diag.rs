@@ -35,18 +35,22 @@ pub(crate) fn static_diagnostics(
         .collect()
 }
 
-/// Cross-page relative-link + anchor existence for ONE page, resolved against the whole
-/// site registry (the site-aware counterpart to `validate_local_links`, which `InSite`
-/// omits). Runs the whole-site check (~27 ms) and keeps only this page's findings, so a
-/// link broken by an edit to a *different* page refreshes when that page next rebuilds.
+/// Cross-page relative-link + anchor existence for ONE page (the site-aware counterpart to
+/// `validate_local_links`, which `InSite` omits). A link broken by an edit to a *different*
+/// page refreshes when that page next rebuilds.
+///
+/// Scoped, not filtered. This used to run the whole-site check and discard every other
+/// page's findings, so each save of any page in a site or book paid a full-site render pass
+/// to keep one page's warnings (PERF-1). It renders the page plus the pages it links to
+/// instead, which is the same answer for a fraction of the work — and, unlike the old
+/// version, work that does not grow with the size of the book.
 pub(crate) fn cross_page_diagnostics(
     site: &taliesin_core::Site,
     page_rel: &str,
 ) -> Vec<Diagnostic> {
-    site.validate_cross_page_links()
-        .into_iter()
-        .filter(|(rel, _)| rel == page_rel)
-        .map(|(_, w)| located(&w))
+    site.validate_cross_page_links_for(page_rel)
+        .iter()
+        .map(located)
         .collect()
 }
 

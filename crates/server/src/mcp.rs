@@ -102,7 +102,7 @@ pub(crate) fn cmd_mcp(_args: &[String]) -> ExitCode {
         // A request has an `id`; a notification does not (and gets no response).
         let id = req.get("id").cloned();
         let method = req.get("method").and_then(Value::as_str).unwrap_or("");
-        let outcome = handle(method, &req);
+        let outcome = dispatch(method, &req);
         if let Some(id) = id {
             let msg = match outcome {
                 Ok(result) => json!({"jsonrpc": "2.0", "id": id, "result": result}).to_string(),
@@ -119,8 +119,24 @@ fn rpc_error(id: Value, code: i64, message: &str) -> String {
     json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}).to_string()
 }
 
+/// [`handle`] under a panic boundary. An MCP session is persistent: an unguarded panic
+/// unwinds out of the read loop and kills the server, so every *subsequent* tool call from
+/// the agent fails, not just the offending one. Turn it into a JSON-RPC InternalError and
+/// keep serving instead. Mirrors what `serve`/`build` already do around rendering.
+fn dispatch(method: &str, req: &Value) -> Result<Value, (i64, String)> {
+    match crate::serve::guarded(|| handle(method, req)) {
+        Ok(outcome) => outcome,
+        Err(panic) => {
+            crate::log::error(&format!("mcp: panic handling {method}: {panic}"));
+            Err((-32603, format!("internal error handling {method}")))
+        }
+    }
+}
+
 /// Dispatch a JSON-RPC method to its result (or a `(code, message)` error).
 fn handle(method: &str, req: &Value) -> Result<Value, (i64, String)> {
+    #[cfg(test)]
+    assert!(method != PANIC_PROBE_METHOD, "injected mcp panic");
     match method {
         "initialize" => Ok(json!({
             "protocolVersion": PROTOCOL_VERSION,
@@ -193,5 +209,39 @@ fn run_path_tool(
     match path {
         Some(p) => f(p),
         None => Err(format!("the `{tool}` tool requires a `path` argument")),
+    }
+}
+
+/// Test-only method name that panics inside [`handle`]. Real input does not panic the
+/// dispatch, so injecting one here is the only way to exercise the panic boundary.
+/// `#[cfg(test)]`, so it is absent from the shipped binary.
+#[cfg(test)]
+const PANIC_PROBE_METHOD: &str = "taliesin/testPanic";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The resilience property the unguarded loop could not have: a panicking method yields a
+    // JSON-RPC InternalError, and the *next* call still answers. Mutation check: drop the
+    // `guarded` in `dispatch` and this test aborts the harness thread instead of failing.
+    #[test]
+    fn a_panicking_method_becomes_an_error_and_the_next_call_still_answers() {
+        let prior = std::panic::take_hook();
+        // The injected panic is expected; don't spray a backtrace over the test output.
+        std::panic::set_hook(Box::new(|_| {}));
+        let panicked = dispatch(PANIC_PROBE_METHOD, &json!({}));
+        std::panic::set_hook(prior);
+
+        let (code, message) = panicked.expect_err("a panicking method must report an error");
+        assert_eq!(code, -32603, "JSON-RPC InternalError");
+        assert!(
+            message.contains(PANIC_PROBE_METHOD),
+            "names the method: {message}"
+        );
+
+        // The boundary's whole point: the dispatcher is still usable afterwards.
+        let after = dispatch("ping", &json!({})).expect("dispatch survives a prior panic");
+        assert_eq!(after, json!({}));
     }
 }

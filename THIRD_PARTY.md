@@ -17,10 +17,10 @@ Bundled so the tool works fully offline.
   Copyright 2020-2023 Observable, Inc.). The high-level chart library for `{js}`
   cells; depends on the vendored D3 above. License:
   <https://github.com/observablehq/plot/blob/main/LICENSE>.
-- **Mermaid** (`crates/core/assets/js/mermaid.min.js`, MIT, v11.4.1, Copyright (c)
+- **Mermaid** (`crates/core/assets/js/mermaid.min.js`, MIT, v11.16.0, Copyright (c)
   2014-2024 Knut Sveidqvist). The diagram engine. Inlined into a static build page
   that has a diagram so it renders fully offline (content-gated); the live preview
-  lazy-loads it instead (see the runtime note below). License:
+  lazy-loads this same vendored copy from a same-origin route. License:
   <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>.
 - **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
   glyph paths are embedded directly in source — the copy/check button in
@@ -52,18 +52,21 @@ The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
   (<https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar>).
   License: <https://creativecommons.org/publicdomain/zero/1.0/>.
 
-## Loaded at runtime from a CDN (live preview only)
+## Loaded at runtime
 
-Taliesin itself fetches nothing over the network in a **static build** — Mermaid is now
-vendored (above) and inlined into build pages that have a diagram, so a `--out` doc/book
-is fully offline. The one runtime fetch remaining is in the **live preview**:
+**Taliesin fetches nothing over the network, in any mode.** A static build inlines the
+vendored Mermaid into pages that have a diagram, and the live preview lazy-loads that same
+vendored copy from a **same-origin** route (`/_taliesin/mermaid.min.js`, served straight out
+of the binary). Preview uses a route rather than inlining because the page shell is
+re-served on every navigation, so a route is fetched once and then cached, and it keeps
+working when a document gains its first diagram mid-session.
 
-- **Mermaid loader.** In preview, `mermaid.js` lazy-loads the ~2.5 MB Mermaid library the
-  first time a diagram renders, from the pinned jsDelivr build (`TALIESIN_MERMAID_URL`
-  overrides the URL — e.g. to the vendored copy for offline dev). Inlining 2.5 MB on every
-  save would bloat the preview payload, so preview keeps the lazy loader; the *build* path
-  inlines it. When the library cannot load (offline or blocked), the diagram is replaced by
-  a **visible** `[data-mermaid-error]` banner with the source kept below, never a silent blank.
+- `TALIESIN_MERMAID_URL` overrides that URL if you want the library from somewhere else.
+  Setting it to a CDN is the only way to make Taliesin reach the network for its own assets.
+- When the library cannot load at all, the diagram is replaced by a **visible**
+  `[data-mermaid-error]` banner with the source kept below, never a silent blank.
+- Mermaid is initialised with an explicit `securityLevel: 'strict'` rather than whatever the
+  library's default happens to be, so an upgrade cannot silently loosen the sanitiser.
 
 Note that **author content can introduce its own CDN dependencies** outside
 Taliesin's control: a `{js}` cell may `import` from a CDN (e.g. the corpus

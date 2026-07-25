@@ -1494,7 +1494,16 @@ async fn build_site_async(
     // dropped at the end of this fn, killing the daemon + idle kernels. The pool boots
     // only for a concrete interpreter choice (not the bare python3 default), and each
     // page/deck executor resolves the same way.
-    let warm_pool = warm_pool::warm_pool_for_build(plan.warm_pool, &interp_python).await;
+    // ...and skip the pool entirely when this build will never run a cell. Under
+    // `--no-exec` / `TALIESIN_NO_EXEC` every executor renders cells as source, so a booted
+    // forkserver would spawn interpreter processes purely to be dropped unused at the end
+    // of the build. Hygiene rather than speed (measured at 0.25 s vs 0.27 s on a prose-only
+    // site), but "no-exec launched a python" is a surprising thing for the flag to do.
+    let warm_pool = if crate::exec::exec_disabled() {
+        None
+    } else {
+        warm_pool::warm_pool_for_build(plan.warm_pool, &interp_python).await
+    };
 
     // Count only the kernels that ACTUALLY exist. A pool that declined to boot (bare
     // `python3`) or failed to (`is_warm()` false) holds no kernels, so it costs no RAM,

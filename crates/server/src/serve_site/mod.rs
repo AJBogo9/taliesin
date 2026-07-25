@@ -120,6 +120,19 @@ fn resolve_project<'a>(app: &'a SiteApp, path: &'a str) -> (&'a Arc<Project>, &'
     }
 }
 
+/// The project source `rel` a client's `?page=` sub-key names, or `None` when it names no
+/// page in this project.
+///
+/// The `None` case is load-bearing: the ws handler refuses such a connection instead of
+/// creating a `PageState` for it. A `PageState` is a 256-slot broadcast ring and nothing
+/// evicts it, so allocating one per unrecognized key let any peer that can reach the socket
+/// grow the map without bound by reconnecting with fresh garbage. Nothing is lost by
+/// refusing: `build_page` already returns immediately for a key `Site::page` cannot resolve,
+/// so the entry could only ever hold an empty document.
+fn resolve_page_rel(project: &Project, sub: &str) -> Option<String> {
+    project.site.lock().page(sub).map(|p| p.rel.clone())
+}
+
 /// The `?page=` websocket key for a page: prefixed by the project's mount so the ws
 /// handler routes the client back to the owning project (the root uses the bare rel).
 fn ws_page_key(project: &Project, rel: &str) -> String {
@@ -294,6 +307,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
+        .route(taliesin_core::PREVIEW_MERMAID_PATH, get(mermaid_lib_js))
         .route("/search-index.js", get(search_index_js))
         .route("/hover-index.js", get(hover_index_js))
         .route("/ws", get(ws_handler))
@@ -415,6 +429,25 @@ async fn og_card_preview(
 /// `window.TALIESIN_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
 /// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
 /// under file:// for a built book opened from disk.
+/// Serve the vendored mermaid library so a diagram in **preview** needs no network
+/// (OFF-2). The library is `include_str!`-compiled into the binary, so this reads nothing
+/// from disk and cannot 404. Immutable-cached: the bytes only change when the binary does.
+async fn mermaid_lib_js() -> impl IntoResponse {
+    (
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/javascript; charset=utf-8",
+            ),
+            (
+                axum::http::header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable",
+            ),
+        ],
+        taliesin_core::mermaid_min_js(),
+    )
+}
+
 async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
     let json = { app.root.site.lock().search_index_json.clone() };
     let json = if json.is_empty() {
@@ -818,7 +851,8 @@ async fn ws_handler(
             .into_response();
     }
     let rel = q.get("page").cloned().unwrap_or_default();
-    ws.on_upgrade(move |socket| client_conn(socket, app, rel))
+    ws.max_message_size(crate::serve::MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| client_conn(socket, app, rel))
         .into_response()
 }
 
@@ -830,14 +864,23 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
     let (project, rel) = {
         let (project, sub) = resolve_project(&app, &page_key);
         let project = project.clone();
-        let rel = {
-            let site = project.site.lock();
-            match site.page(sub) {
-                Some(p) => p.rel.clone(),
-                None => sub.to_string(),
-            }
-        };
+        let rel = resolve_page_rel(&project, sub);
         (project, rel)
+    };
+
+    // A `?page=` the owning project cannot resolve names no page at all, so there is
+    // nothing to render, subscribe to, or rebuild — `build_page` already returns
+    // immediately on such a key. Allocating a `PageState` for it anyway (a 256-slot
+    // broadcast ring that is never evicted) let anyone who can reach this socket grow the
+    // map without bound just by reconnecting with a fresh bogus key, clearable only by
+    // restarting the preview. Refuse the key instead of allocating for it.
+    let Some(rel) = rel else {
+        let _ = sink
+            .send(Message::Text(
+                protocol::error(&format!("unknown page: {page_key}")).into(),
+            ))
+            .await;
+        return;
     };
 
     let (snapshot, mut rx, created) = {
@@ -1853,6 +1896,56 @@ mod project_tests {
         assert_eq!(
             match_mount(&nested, "gallery/course/em.html"),
             Some((1, "em.html"))
+        );
+    }
+
+    // dos-pages: only a key the site actually resolves may reach the `PageState`
+    // allocation. Everything else must come back `None`, which the ws handler refuses —
+    // otherwise each bogus `?page=` permanently costs a 256-slot broadcast ring that only a
+    // preview restart reclaims.
+    //
+    // This pins the *decision*; the socket path around it has no automated live-HTTP
+    // harness (a known bin-crate gap, backlog item 10), so it was browser-verified instead.
+    #[test]
+    fn only_a_resolvable_page_key_gets_a_page_state() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/tarn");
+        let project = Project {
+            key: ProjectKey(String::new()),
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
+            pages: parking_lot::Mutex::new(HashMap::new()),
+        };
+
+        // A real page resolves, by source rel and by output url alike.
+        assert_eq!(
+            resolve_page_rel(&project, "install.tmd").as_deref(),
+            Some("install.tmd")
+        );
+        assert_eq!(
+            resolve_page_rel(&project, "install.html").as_deref(),
+            Some("install.tmd"),
+            "a url key normalises to the source rel"
+        );
+
+        // Everything a hostile or stale client can send resolves to nothing.
+        for bogus in [
+            "",
+            "nope.tmd",
+            "nope.html",
+            "../../etc/passwd",
+            "install.tmd/extra",
+            "INSTALL.TMD",
+            "a-fresh-key-every-reconnect-0001",
+        ] {
+            assert_eq!(
+                resolve_page_rel(&project, bogus),
+                None,
+                "`{bogus}` names no page and must not earn a PageState"
+            );
+        }
+        assert!(
+            project.pages.lock().is_empty(),
+            "resolving a key must never allocate"
         );
     }
 

@@ -236,13 +236,25 @@
   //
   // Durations live here and are published as CSS custom properties at init, so the
   // stylesheet's tile and chrome transitions run off exactly the same numbers.
-  var CAM = { pan: 360, cut: 140, zoom: 460 };
+  //   MORPH — magic-move: matched code lines glide to their new position while new lines
+  //          fade in behind them. Its own primitive because it is an in-slide step, not a
+  //          camera move; it lives here so it is one shared number instead of a literal in
+  //          the JS hand-synchronised to a literal in the CSS and a third in a bare timer.
+  var CAM = {
+    pan: 360,
+    cut: 140,
+    zoom: 460,
+    morph: 450,
+    morphFade: 400,
+    morphFadeDelay: 120,
+  };
   var CUT_AT = 1.25; // screen-widths travelled; beyond this a pan reads as a strobe
   function publishMotionTokens() {
     var st = document.documentElement.style;
     st.setProperty('--tali-deck-pan', CAM.pan + 'ms');
     st.setProperty('--tali-deck-cut', CAM.cut + 'ms');
     st.setProperty('--tali-deck-zoom', CAM.zoom + 'ms');
+    st.setProperty('--tali-deck-morph', CAM.morph + 'ms');
   }
   var camRAF = /** @type {number | null} */ (null);
   function stopCamAnim() {
@@ -628,8 +640,29 @@
     else pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === target); });
     /** @type {any} */ (div).__mm = target;
   }
+  // Flush a magic-move div's in-flight morph, if any: clear the inline transition/transform/
+  // opacity it left on each line and cancel its pending timer. Stored PER DIV (not on
+  // `deck`) so two magic-moves on one slide can't flush each other.
+  /** @param {Element} div */
+  function settleMM(div) {
+    var d = /** @type {any} */ (div);
+    if (d.__mmSettle) d.__mmSettle();
+  }
+  /** Flush every magic-move on the deck — the mode switches (overview, feed) call this for
+   * the same reason they call `deck.aaSettle`: a mode change must not land on top of an
+   * in-flight morph. */
+  function settleAllMM() {
+    var rev = deckEl();
+    if (rev) rev.querySelectorAll('.magic-move').forEach(settleMM);
+  }
   /** @param {Element} div @param {HTMLElement[]} pres @param {number} from @param {number} to */
   function morphMM(div, pres, from, to) {
+    // Flush any morph still running on THIS div before measuring: the glide below reads
+    // `getBoundingClientRect()`, and mid-transition rects are wrong. Previously each line
+    // cleaned itself up with a naked `setTimeout` hand-synchronised to a CSS literal, with
+    // no way to cancel — so a rapid re-nav measured moving elements and raced the timers.
+    // Auto-animate got exactly this fix (`deck.aaSettle`); magic-move did not, until now.
+    settleMM(div);
     var blockFrom = pres[from], blockTo = pres[to];
     var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tali-deck-scale')) || 1;
     /** @type {Record<string, HTMLElement[]>} */
@@ -639,22 +672,34 @@
     });
     blockTo.classList.add('tali-mm-active');
     blockFrom.classList.remove('tali-mm-active'); // fades out (CSS opacity transition)
+    /** @type {CSSStyleDeclaration[]} */
+    var touched = [];
     /** @type {NodeListOf<HTMLElement>} */ (blockTo.querySelectorAll('.tali-hl-ln')).forEach(function (lt) {
       var list = byText[lineText(lt)], st = lt.style;
+      touched.push(st);
       if (list && list.length) { // matched line: glide from its old position
         var lf = /** @type {HTMLElement} */ (list.shift()), rf = lf.getBoundingClientRect(), rt = lt.getBoundingClientRect();
         st.transition = 'none';
         st.transform = 'translate(' + (rf.left - rt.left) / scale + 'px,' + (rf.top - rt.top) / scale + 'px)';
         void lt.offsetWidth;
-        st.transition = 'transform .45s cubic-bezier(.2,.8,.2,1)';
+        st.transition = 'transform ' + CAM.morph + 'ms cubic-bezier(.2,.8,.2,1)';
         st.transform = 'translate(0,0)';
-        setTimeout(function () { st.transition = ''; st.transform = ''; }, 480);
-      } else { // new line: fade in
+      } else { // new line: fade in behind the glide
         st.opacity = '0'; st.transition = 'none'; void lt.offsetWidth;
-        st.transition = 'opacity .4s ease .12s'; st.opacity = '1';
-        setTimeout(function () { st.transition = ''; st.opacity = ''; }, 560);
+        st.transition = 'opacity ' + CAM.morphFade + 'ms ease ' + CAM.morphFadeDelay + 'ms';
+        st.opacity = '1';
       }
     });
+    // ONE cancellable settle for the whole morph, on the same clock as the transitions
+    // above (derived, not hand-copied). A re-nav flushes it via `settleMM` instead of
+    // racing it, which is the auto-animate contract applied here.
+    var d = /** @type {any} */ (div);
+    var settle = d.__mmSettle = function () {
+      if (d.__mmTimer) { clearTimeout(d.__mmTimer); d.__mmTimer = null; }
+      d.__mmSettle = null;
+      touched.forEach(function (st) { st.transition = ''; st.transform = ''; st.opacity = ''; });
+    };
+    d.__mmTimer = setTimeout(settle, Math.max(CAM.morph, CAM.morphFade + CAM.morphFadeDelay) + 30);
   }
   // Highlight the lines named by `spec` ("3-5", "1,4", "all", "") in a code block,
   // washing them in the accent (the rest keep their contrast). "all"/empty clears the focus.
@@ -1014,9 +1059,19 @@
     var rev = deckEl();
     if (!rev) return;
     stopCamAnim();
+    settleAllMM(); // a mode change must not land on top of an in-flight magic-move morph
     var from = deck.cam; // where the camera is standing right now
     deck.overview = on;
+    // Toggling `.overview` flips every fragment and magic-move block to its complete state.
+    // Those flips have their own transitions, so without this they tween — one per fragment,
+    // one per magic-move — CONCURRENTLY with the zoom, which is the only remaining cost that
+    // scales with slide count. Suppress them for this frame so the content is simply already
+    // right when the camera starts moving, leaving the zoom as the one thing in motion.
+    rev.classList.add('tali-nofx');
     rev.classList.toggle('overview', on);
+    void rev.offsetWidth; // commit the new opacities while transitions are still off
+    var fxEl = rev;
+    requestAnimationFrame(function () { fxEl.classList.remove('tali-nofx'); });
     if (on && deck.blackout) toggleBlackout(false); // can't navigate a map you can't see
     if (on) markCurrentTile();
     else allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); });

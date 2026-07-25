@@ -14,13 +14,30 @@
 //! impossible *for the axes the key can see*: cell code, its upstream, and the
 //! interpreter's own version. There are no mtime heuristics: the content *is* the key.
 //!
-//! The one axis the key does **not** capture is the interpreter's *installed
-//! packages*. Upgrading a library in place (`pip install --upgrade …` / `install.packages()`
-//! — same interpreter, same `--version`) leaves every key unchanged, so a cell that now
-//! produces a different output can still restore the pre-upgrade one. This is the lone
-//! by-design stale-hit path; there is deliberately no package-fingerprint knob. Force a
-//! fresh run when a library upgrade matters: the dev-menu "Restart kernel"
-//! (re-executes and rewrites the cache) or `TALIESIN_NO_CACHE` (bypasses it entirely).
+//! ## The axis the key cannot see: out-of-band input
+//!
+//! The key folds in *code and interpreter identity only*. So the whole class it cannot see
+//! is **anything a cell reads that is not the code**:
+//!
+//! - a **data file** the cell opens (`pd.read_csv("data.csv")` — edit the CSV, the key is
+//!   unchanged, the old numbers restore),
+//! - an **environment variable** or a config file it reads,
+//! - a **network resource** it fetches,
+//! - the **wall clock** or anything else nondeterministic,
+//! - the interpreter's **installed packages**: upgrading a library in place
+//!   (`pip install --upgrade …` / `install.packages()`) is the same interpreter reporting
+//!   the same `--version`, so every key is unchanged.
+//!
+//! This was previously written as "the lone by-design stale-hit path = packages", which
+//! overclaims: packages are one member of the class, not the class. There is deliberately no
+//! fingerprint knob for any of it — fingerprinting arbitrary out-of-band input is not
+//! decidable from the source, and a knob that covered only some of it would be worse than an
+//! honest boundary.
+//!
+//! **Mark a cell with an out-of-band input `#| cache: false`** and it re-runs every time,
+//! along with everything downstream of it. To force one fresh run instead, use the dev-menu
+//! "Restart kernel" (re-executes and rewrites the cache) or `TALIESIN_NO_CACHE` (bypasses it
+//! entirely).
 //!
 //! ## What is (and isn't) stored
 //!
@@ -201,9 +218,22 @@ impl FreezeCache {
             crate::log::warn(&format!("cannot create {}: {e}", parent.display()));
             return;
         }
-        let tmp = path.with_extension("json.tmp");
+        // Unique per writer, not a fixed `<page>.json.tmp`. Two processes building the same
+        // page (two previews, a build beside a preview, a parallel CI job) otherwise share
+        // one temp path, so one can interleave a partial write into the other's rename. The
+        // rename itself is atomic, so this is not a stale-hit risk — a corrupt read starts
+        // empty — but it silently loses a whole cache generation. Same `<pid>_<uuid>` shape
+        // the kernel/warm-pool runtime dirs already use.
+        let tmp = path.with_extension(format!(
+            "json.{}_{}.tmp",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
         if let Err(e) = std::fs::write(&tmp, &json) {
             crate::log::warn(&format!("cannot write cache {}: {e}", tmp.display()));
+            // The name is unique per writer, so a failed write leaves litter behind rather
+            // than being overwritten by the next attempt. Clean it up here.
+            let _ = std::fs::remove_file(&tmp);
             return;
         }
         if let Err(e) = std::fs::rename(&tmp, &path) {

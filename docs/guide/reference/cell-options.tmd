@@ -129,15 +129,19 @@ The crucial distinctions:
   still runs. Use it when the reader should see a plot or a table but not the code
   that made it.
 - **`cache: false` always re-executes.** The cell never restores from the
-  `_freeze/` cache and its output is never written there. Reach for it when a cell
-  is nondeterministic (reads the clock, hits the network, samples without a fixed
-  seed) so a stale cached result would be wrong. Everything else caches by default,
-  keyed by a cumulative content hash, so an unchanged cell replays instead of
-  re-running.
+  `_freeze/` cache and its output is never written there, and everything downstream
+  of it re-runs too. Reach for it whenever a cell's result depends on something
+  that is not the cell's own code: a data file it reads, an environment variable, a
+  network resource, the clock, or a sample without a fixed seed. Everything else
+  caches by default, keyed by a cumulative content hash, so an unchanged cell
+  replays instead of re-running.
 
 ```python
 #| include: false
+#| cache: false
 # Runs for its side effects; nothing appears on the page.
+# `cache: false` because the result depends on data.csv, which the cache key
+# cannot see (see the note below).
 import pandas as pd
 df = pd.read_csv("data.csv")
 ```
@@ -154,6 +158,23 @@ df.plot()
 import datetime
 print(datetime.datetime.now())
 ```
+
+::: {.callout-important}
+## The cache key sees your code, not your data
+
+The `_freeze/` key is built from cell code, every upstream cell's code, and the
+interpreter's identity. That makes a stale hit impossible when you edit a cell or
+anything above it. It also means the key is blind to everything a cell reads that
+*is not* code: a CSV or Parquet file, an environment variable, a config file, a
+URL it fetches, the clock, an installed library you upgraded in place.
+
+Edit `data.csv` without touching a line of Python and the numbers on the page will
+not change, because as far as the cache is concerned nothing happened. Mark any
+cell with an out-of-band input `#| cache: false`, as in the example above.
+
+To force one fresh run without editing anything, use the dev-menu **Restart
+kernel** or run with `TALIESIN_NO_CACHE`.
+:::
 
 ::: {.callout-tip}
 ## `include: false` keeps state; it does not skip the cell

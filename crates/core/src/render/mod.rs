@@ -9,7 +9,7 @@ use crate::includes::LineOrigin;
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod model;
 pub(crate) use model::CellRole;
@@ -131,7 +131,7 @@ use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 /// assert!(doc.blocks[0].html.contains("<h1"));
 /// ```
 pub fn render_document(src: &str) -> RenderedDoc {
-    render_internal(src, None, None, None, None, None)
+    render_internal(src.to_owned(), None, None, None, None, None)
 }
 
 /// The languages Taliesin executes against a warm kernel, whose *output block* can
@@ -207,13 +207,15 @@ fn render_doc_with_includes_impl(
     // that no built-in declares is left verbatim but reported, so a typo'd shortcode
     // doesn't ship silently as literal text.
     let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
+    // Hands `expanded`/`origins` over rather than copying them: the watchdog needs owned
+    // inputs, and this path already owns both.
     let mut doc = render_internal(
-        &expanded,
-        Some(&origins),
-        Some(base_dir),
-        root,
+        expanded,
+        Some(origins),
+        Some(base_dir.to_path_buf()),
+        root.map(Path::to_path_buf),
         chapter,
-        book_theorems,
+        book_theorems.cloned(),
     );
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
@@ -232,38 +234,194 @@ fn render_doc_with_includes_impl(
     doc
 }
 
-/// Core render. Runs the actual work on a worker thread with a large stack:
-/// deeply nested input (blockquotes / lists) drives deep recursion in the Markdown
-/// parser and block emission, which on the default ~8 MB stack overflows and
-/// **aborts the whole process** (a single pathological document would crash `build`
-/// or take down the live preview server) at ~3000 levels. A big stack absorbs any
-/// realistic nesting; a panic is propagated to the caller unchanged.
-fn render_internal(
-    src: &str,
-    origins: Option<&[LineOrigin]>,
-    base_dir: Option<&Path>,
-    include_root: Option<&Path>,
-    chapter: Option<u32>,
-    book_theorems: Option<&TheoremConfig>,
-) -> RenderedDoc {
-    std::thread::scope(|scope| {
-        match std::thread::Builder::new()
-            .stack_size(256 * 1024 * 1024)
-            .spawn_scoped(scope, || {
-                render_internal_impl(src, origins, base_dir, include_root, chapter, book_theorems)
-            }) {
-            Ok(handle) => match handle.join() {
-                Ok(doc) => doc,
-                Err(payload) => std::panic::resume_unwind(payload),
-            },
-            // Spawning the big-stack worker can fail under a strict address-space
-            // limit (e.g. `ulimit -v`). Fall back to rendering inline on the current
-            // (default-stack) thread rather than panicking — same as before this guard.
-            Err(_) => {
-                render_internal_impl(src, origins, base_dir, include_root, chapter, book_theorems)
-            }
-        }
+/// The deepest block-container nesting Taliesin will parse ([`overlong_nesting`]).
+///
+/// A bigger stack only moves the cliff, it does not remove it: AP2 measured the 256 MB
+/// render stack aborting between 65k and 70k `>` levels in debug and around 900k in release
+/// (a ~900 KB line). Past the cliff the outcome is maximal and *uncatchable* — a stack
+/// overflow `abort()`s the process, so it sails through every `catch_unwind`, including the
+/// per-page site guard whose whole job is to stop one bad page killing a multi-page build.
+/// Bounding the depth before the parse converts that abort into a located diagnostic.
+///
+/// 1000 is ~100x the deepest nesting in the corpus and 65x below the *lowest* measured
+/// cliff, so it fires only on input that was never going to render.
+pub const MAX_NESTING_DEPTH: usize = 1000;
+
+/// The first line of `src` that opens more than [`MAX_NESTING_DEPTH`] block containers, as
+/// (1-based line, measured depth). `None` when the document is within bounds.
+///
+/// Nesting is measured per line because a container is only ever *opened* by a marker run at
+/// the start of a line, so the deepest line is the document's depth. Only the recursive
+/// containers are counted: `>` blockquotes (AP2's worst case) and `-`/`*`/`+` list bullets,
+/// which also nest one level per marker (`- - - x` is three nested lists). `:::` fenced divs
+/// are deliberately NOT counted: their fences are stripped by a flat line-preserving pass
+/// rather than parsed recursively, and AP2 measured 1M levels of them rendering fine.
+fn overlong_nesting(src: &str) -> Option<(usize, usize)> {
+    src.lines().enumerate().find_map(|(idx, line)| {
+        let depth = leading_container_depth(line);
+        (depth > MAX_NESTING_DEPTH).then_some((idx + 1, depth))
     })
+}
+
+/// How many nested block containers `line` opens. Walks the leading marker run, skipping the
+/// whitespace CommonMark allows between markers. A bullet must be followed by a space to
+/// count, which is what keeps a `---` thematic break or a `***` emphasis run from reading as
+/// three nested lists.
+fn leading_container_depth(line: &str) -> usize {
+    let mut depth = 0usize;
+    let mut rest = line.as_bytes();
+    loop {
+        let ws = rest
+            .iter()
+            .position(|b| !matches!(b, b' ' | b'\t'))
+            .unwrap_or(rest.len());
+        rest = &rest[ws..];
+        match rest {
+            [b'>', tail @ ..] => {
+                depth += 1;
+                rest = tail;
+            }
+            [b'-' | b'*' | b'+', b' ' | b'\t', tail @ ..] => {
+                depth += 1;
+                rest = tail;
+            }
+            _ => return depth,
+        }
+    }
+}
+
+/// How long a single render may take before it is abandoned, in seconds. Override with
+/// `TALIESIN_RENDER_TIMEOUT`; `0` disables the watchdog.
+///
+/// Rendering is not execution: a cell may legitimately run for minutes (hence
+/// `TALIESIN_CELL_TIMEOUT`'s 120 s default), but a render never does. The largest thing
+/// AP1 ever measured is an 8000-block document at 647 ms in release, so 30 s is ~50x the
+/// worst legitimate render and still turns AP2-2's multi-minute freeze into a bounded wait.
+const DEFAULT_RENDER_TIMEOUT_SECS: u64 = 30;
+
+/// The watchdog budget: `TALIESIN_RENDER_TIMEOUT` if it parses, else the default. `0` (or a
+/// value that overflows the wait) means "no watchdog", which is what a caller measuring a
+/// deliberately pathological document wants.
+fn render_budget() -> Option<std::time::Duration> {
+    let secs = match std::env::var("TALIESIN_RENDER_TIMEOUT") {
+        Ok(v) => v.trim().parse().unwrap_or(DEFAULT_RENDER_TIMEOUT_SECS),
+        Err(_) => DEFAULT_RENDER_TIMEOUT_SECS,
+    };
+    (secs > 0).then(|| std::time::Duration::from_secs(secs))
+}
+
+/// A well-formed but empty document carrying one located diagnostic. This is what a
+/// *refused* render returns: the failure surfaces on the same click-to-source warning
+/// channel as a broken ref, so the preview shows it, `check` exits non-zero, and a site
+/// build loses one page instead of the whole run.
+fn refused_render(warning: Warning) -> RenderedDoc {
+    let mut doc = render_internal_impl("", None, None, None, None, None);
+    doc.warnings.push(warning);
+    doc
+}
+
+/// Core render. Runs the actual work on a worker thread with a large stack, under a
+/// watchdog.
+///
+/// **The stack:** deeply nested input (blockquotes / lists) drives deep recursion in the
+/// Markdown parser and block emission, which on the default ~8 MB stack overflows and
+/// **aborts the whole process** at ~3000 levels. The big stack raises that ceiling but does
+/// not remove it, so [`MAX_NESTING_DEPTH`] bounds the input below the remaining cliff.
+///
+/// **The watchdog:** AP2-2 measured comrak 0.52's inline reference-link matcher going
+/// quadratic on balanced nested brackets (4.27 s at 128k in release, minutes by ~500k).
+/// That is neither a panic nor an abort — just unbounded CPU — so no `catch_unwind` and no
+/// depth guard can see it, and the warm preview loop simply freezes with no diagnostic. The
+/// worker is therefore *detached* rather than scoped, so a render that blows the budget can
+/// be abandoned and the caller answered with a located error. The abandoned thread keeps
+/// running to completion (there is no safe way to kill a thread mid-parse); it is a bounded
+/// leak on a document that was already unrenderable, and the diagnostic tells the author
+/// which one. A panic is still propagated to the caller unchanged.
+///
+/// Takes its inputs by value because a detached thread needs `'static`. This costs one
+/// `String` copy of the source on the [`render_document`] path; the include path already
+/// owns both its expanded source and its origins, so it hands them over rather than cloning.
+fn render_internal(
+    src: String,
+    origins: Option<Vec<LineOrigin>>,
+    base_dir: Option<PathBuf>,
+    include_root: Option<PathBuf>,
+    chapter: Option<u32>,
+    book_theorems: Option<TheoremConfig>,
+) -> RenderedDoc {
+    // Behind an `Arc` so the worker and the spawn-failure fallback can both reach it: a
+    // failed `Builder::spawn` drops its closure rather than handing it back, so the inputs
+    // cannot simply be moved in.
+    let input = std::sync::Arc::new(RenderInput {
+        src,
+        origins,
+        base_dir,
+        include_root,
+        chapter,
+        book_theorems,
+    });
+    let big_stack = || std::thread::Builder::new().stack_size(256 * 1024 * 1024);
+
+    let Some(budget) = render_budget() else {
+        // Watchdog disabled: keep the worker *scoped*, so nothing can outlive this call.
+        return std::thread::scope(|scope| {
+            match big_stack().spawn_scoped(scope, || input.render()) {
+                Ok(handle) => match handle.join() {
+                    Ok(doc) => doc,
+                    Err(payload) => std::panic::resume_unwind(payload),
+                },
+                Err(_) => input.render(),
+            }
+        });
+    };
+
+    // `sync_channel(1)` so an abandoned worker never blocks forever on its send.
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let worker = std::sync::Arc::clone(&input);
+    match big_stack().spawn(move || {
+        // Catch here rather than letting the thread unwind, so a panic reaches the caller
+        // as a payload to re-raise instead of being misreported as a timeout.
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker.render()));
+        let _ = tx.send(out);
+    }) {
+        Ok(_detached) => match rx.recv_timeout(budget) {
+            Ok(Ok(doc)) => doc,
+            Ok(Err(payload)) => std::panic::resume_unwind(payload),
+            Err(_) => refused_render(Warning::new(format!(
+                "render exceeded {}s and was abandoned (is this document pathological? \
+                 deeply nested brackets render quadratically); \
+                 raise or disable the limit with TALIESIN_RENDER_TIMEOUT",
+                budget.as_secs()
+            ))),
+        },
+        // Spawning the big-stack worker can fail under a strict address-space limit
+        // (e.g. `ulimit -v`). Render inline on the current thread rather than panicking.
+        Err(_) => input.render(),
+    }
+}
+
+/// The owned inputs to one render, so the worker thread can be `'static` (and therefore
+/// abandonable when it blows the watchdog budget).
+struct RenderInput {
+    src: String,
+    origins: Option<Vec<LineOrigin>>,
+    base_dir: Option<PathBuf>,
+    include_root: Option<PathBuf>,
+    chapter: Option<u32>,
+    book_theorems: Option<TheoremConfig>,
+}
+
+impl RenderInput {
+    fn render(&self) -> RenderedDoc {
+        render_internal_impl(
+            &self.src,
+            self.origins.as_deref(),
+            self.base_dir.as_deref(),
+            self.include_root.as_deref(),
+            self.chapter,
+            self.book_theorems.as_ref(),
+        )
+    }
 }
 
 fn render_internal_impl(
@@ -274,6 +432,25 @@ fn render_internal_impl(
     chapter: Option<u32>,
     book_theorems: Option<&TheoremConfig>,
 ) -> RenderedDoc {
+    // Bound nesting BEFORE the parse. Past the measured cliff the recursive descent
+    // overflows even this thread's 256 MB stack and *aborts the process* — uncatchable, and
+    // on a site build every other page dies with it. Refusing the one document with a
+    // located, click-to-source diagnostic keeps the failure proportional: the rest of the
+    // build survives, and the author is pointed at the line. The empty-source re-render
+    // supplies a well-formed doc to hang the warning on (`""` cannot recurse: no nesting).
+    if let Some((line, depth)) = overlong_nesting(src) {
+        let (file, mapped) = map_origin(origins, line);
+        let mut doc =
+            render_internal_impl("", None, base_dir, include_root, chapter, book_theorems);
+        doc.warnings.push(
+            Warning::new(format!(
+                "document nests {depth} levels deep at this line, over the {MAX_NESTING_DEPTH}-level limit; \
+                 not rendered (deeper nesting overflows the render stack and would abort the build)"
+            ))
+            .at(file, mapped as u32),
+        );
+        return doc;
+    }
     let arena = Arena::new();
     let options = parse_options();
     // fenced divs (`:::`) aren't CommonMark. Record their spans first,
@@ -1300,19 +1477,42 @@ pub(crate) const GENERATOR_BANNER: &str = concat!(
 //
 // OFFLINE: a static Build with a diagram INLINES the vendored library (`MERMAID_MIN_JS`,
 // ~2.5 MB, content-gated to pages that actually have a `pre.mermaid`), so a `--out` doc /
-// book renders diagrams with zero network. The live Preview instead keeps the lazy loader
-// pointed at the CDN default below (inlining 2.5 MB on every save would bloat the payload,
-// and dev-time network is fine); `TALIESIN_MERMAID_URL` overrides that Preview/loader URL
-// (e.g. to a self-hosted copy) and is also the loader's never-reached Build fallback if the
-// inlined global somehow isn't present. Either way a load failure is *visible* (a
-// `[data-mermaid-error]` banner), never a silent blank.
-const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
+// book renders diagrams with zero network. The live Preview points the lazy loader at
+// [`PREVIEW_MERMAID_PATH`], a same-origin route both dev servers serve from that same
+// vendored copy — so preview is offline too, without inlining 2.5 MB into the page shell.
+// `TALIESIN_MERMAID_URL` overrides the loader URL in either mode (e.g. to a self-hosted
+// copy) and is also the loader's never-reached Build fallback if the inlined global somehow
+// isn't present. Either way a load failure is *visible* (a `[data-mermaid-error]` banner),
+// never a silent blank.
+//
+// This CDN default is now reached only by a caller that renders in Build mode without
+// inlining (nothing in-tree does) — kept as a last-resort fallback, not a normal path.
+const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js";
 
-/// The URL the lazy mermaid loader fetches the diagram library from: the
-/// `TALIESIN_MERMAID_URL` override when set (and non-empty), else the pinned CDN default.
-fn mermaid_url() -> String {
+/// Same-origin path the live preview serves the vendored mermaid library from. Both dev
+/// servers route it (see `serve`/`serve_site`), which is what makes a diagram render in
+/// preview with **zero network** — previously the loader went to the CDN even though the
+/// library was already compiled into the binary, so the one load-bearing offline guarantee
+/// had a hole in exactly the mode the author spends all day in (OFF-2/AP12).
+///
+/// A path rather than an inline blob because the page shell is re-served on every
+/// navigation: inlining would add 2.5 MB to each, while a route is fetched once and then
+/// sits in the browser cache. It also keeps working when a document *gains* its first
+/// diagram mid-session, which content-gated inlining could not.
+pub const PREVIEW_MERMAID_PATH: &str = "/_taliesin/mermaid.min.js";
+
+/// The vendored mermaid library, for the dev servers to serve at [`PREVIEW_MERMAID_PATH`].
+pub fn mermaid_min_js() -> &'static str {
+    MERMAID_MIN_JS
+}
+
+/// The URL the lazy mermaid loader fetches the diagram library from. `TALIESIN_MERMAID_URL`
+/// wins when set and non-empty; otherwise Preview uses the same-origin
+/// [`PREVIEW_MERMAID_PATH`] and everything else falls back to the pinned CDN default.
+fn mermaid_url_for(mode: OutputMode) -> String {
     match std::env::var("TALIESIN_MERMAID_URL") {
         Ok(u) if !u.trim().is_empty() => u,
+        _ if mode == OutputMode::Preview => PREVIEW_MERMAID_PATH.to_string(),
         _ => MERMAID_DEFAULT.to_string(),
     }
 }
@@ -1353,7 +1553,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
     };
     let mermaid = format!(
         "{mermaid_lib}\n<script>{}</script>",
-        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url())
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url_for(mode))
     );
     // In Preview every gate is open; in Build a gate opens only when the rendered
     // body carries that enhancer's DOM marker.
@@ -1456,7 +1656,7 @@ const CODE_ENHANCE_JS: &str = concat!(
 /// (`if (window.taliEnhancers) return;`), so app.js's bundled copy no-ops on its later run.
 const REGISTRY_JS: &str = include_str!("../../assets/js/code-enhance/01-registry.js");
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
-/// The vendored Mermaid library (pinned mermaid@11.4.1, ~2.5 MB; sets `globalThis.mermaid`).
+/// The vendored Mermaid library (pinned mermaid@11.16.0, ~3.5 MB; sets `globalThis.mermaid`).
 /// Inlined into a static Build page that has a diagram so it renders with no CDN; the
 /// live Preview keeps the lazy loader instead (see `code_scripts_for`).
 const MERMAID_MIN_JS: &str = include_str!("../../assets/js/mermaid.min.js");
@@ -1511,7 +1711,7 @@ pub fn core_enhance_js() -> String {
 pub fn mermaid_bundle_js() -> String {
     format!(
         "{MERMAID_MIN_JS}\n;\n{}",
-        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url())
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url_for(OutputMode::Build))
     )
 }
 

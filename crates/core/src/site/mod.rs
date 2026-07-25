@@ -242,6 +242,26 @@ use links::{
     sourcepos_start_line,
 };
 
+/// One outgoing local link found in a rendered page, kept with enough context to locate a
+/// warning back to the source line that wrote it.
+struct LinkRef {
+    path: String,
+    frag: Option<String>,
+    line: Option<u32>,
+    source_file: Option<String>,
+}
+
+/// Everything one render of a page contributes to cross-page link validation: the ids it
+/// defines (link targets), whether it runs cells (a cell can emit an id at runtime, so its
+/// anchors are never reported missing), and the links it points outward.
+struct PageLinkFacts {
+    rel: String,
+    url: String,
+    ids: std::collections::HashSet<String>,
+    has_cells: bool,
+    links: Vec<LinkRef>,
+}
+
 impl Site {
     /// Discover the site rooted at `root` (published view): parse `_site.yml`, enumerate
     /// input `.tmd` pages, and compute their output URLs + ordering. `draft: true` pages
@@ -749,71 +769,134 @@ impl Site {
     /// network probe would make `check` nondeterministic). The anchor half is suppressed
     /// for a target page that runs executable cells (a cell can emit an id at runtime),
     /// mirroring `diagnostics::validate_internal_anchors`'s no-false-positive promise.
+    #[allow(rustdoc::private_intra_doc_links)]
     pub fn validate_cross_page_links(&self) -> Vec<(String, Warning)> {
-        // ONE render pass per page: build the id/cell registry AND capture every page's
-        // outgoing local links at the same time, so the resolution scan below reuses the
-        // captured links instead of rendering the whole site a SECOND time.
-        struct LinkRef {
-            path: String,
-            frag: Option<String>,
-            line: Option<u32>,
-            source_file: Option<String>,
-        }
-        let mut ids_by_url: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
-        let mut cells_by_url: HashMap<String, bool> = HashMap::new();
-        let mut pages_links: Vec<(String, String, Vec<LinkRef>)> = Vec::new();
-        for page in &self.pages {
-            let Ok(src) = std::fs::read_to_string(&page.input) else {
-                continue;
-            };
-            let base = page.input.parent().unwrap_or(&self.root);
-            let doc = render::render_document_with_includes(&src, base);
-            let mut ids = std::collections::HashSet::new();
-            let mut links = Vec::new();
-            for b in &doc.blocks {
-                collect_html_ids(&b.html, &mut ids);
-                let line = sourcepos_start_line(&b.sourcepos);
-                for (path, frag) in manual_local_links(&b.html) {
-                    links.push(LinkRef {
-                        path: path.to_string(),
-                        frag: frag.map(str::to_string),
-                        line,
-                        source_file: b.source_file.clone(),
-                    });
-                }
+        let facts: Vec<PageLinkFacts> = self
+            .pages
+            .iter()
+            .filter_map(|p| self.page_link_facts(p))
+            .collect();
+        self.resolve_link_warnings(&facts, &facts)
+    }
+
+    /// [`validate_cross_page_links`](Self::validate_cross_page_links) for ONE page, rendering
+    /// only that page and the pages it actually links to.
+    ///
+    /// The live preview re-runs this on every save of a site/book page, and it used to call
+    /// the whole-site version and throw away every other page's findings — an
+    /// O(pages x blocks-per-page) render of the entire site to keep the warnings of one page
+    /// (AP1/PERF-1: ~30 ms per pass on the 17-page `tech-blog`, extrapolating to ~350 ms at
+    /// 200 pages, with no cliff to notice it by). A page's own links can only be validated
+    /// against the pages they point at, so that is all this renders: one page plus a handful.
+    ///
+    /// Semantics are identical to filtering the whole-site result to `page_rel`. It renders
+    /// every *registered* page this one links to, so "no ids for this url" still means
+    /// exactly "not a page in this site" — the distinction the broken-link branch turns on.
+    pub fn validate_cross_page_links_for(&self, page_rel: &str) -> Vec<Warning> {
+        let Some(page) = self.page(page_rel) else {
+            return Vec::new();
+        };
+        let Some(source) = self.page_link_facts(page) else {
+            return Vec::new();
+        };
+        // The source page first (so it is also its own link target, for a `self.html#frag`),
+        // then one render per distinct registered page it points at.
+        let mut seen: std::collections::HashSet<String> =
+            std::iter::once(source.url.clone()).collect();
+        let targets: Vec<String> = source
+            .links
+            .iter()
+            .filter_map(|lk| self.link_target_url(&source.url, &lk.path))
+            .filter(|url| seen.insert(url.clone()))
+            .collect();
+        let mut rendered = vec![source];
+        for url in targets {
+            if let Some(target) = self.pages.iter().find(|p| p.url == url)
+                && let Some(facts) = self.page_link_facts(target)
+            {
+                rendered.push(facts);
             }
-            cells_by_url.insert(
-                page.url.clone(),
-                doc.blocks.iter().any(|b| b.cell.is_some()),
-            );
-            ids_by_url.insert(page.url.clone(), ids);
-            pages_links.push((page.rel.clone(), page.url.clone(), links));
         }
+        self.resolve_link_warnings(&rendered[..1], &rendered)
+            .into_iter()
+            .map(|(_, w)| w)
+            .collect()
+    }
+
+    /// Render one page once and take everything cross-page link validation needs from it:
+    /// the element ids it defines, whether it runs cells, and its outgoing local links.
+    /// One render, not three passes, so the ids and the links cannot disagree.
+    fn page_link_facts(&self, page: &Page) -> Option<PageLinkFacts> {
+        let src = std::fs::read_to_string(&page.input).ok()?;
+        let base = page.input.parent().unwrap_or(&self.root);
+        let doc = render::render_document_with_includes(&src, base);
+        let mut ids = std::collections::HashSet::new();
+        let mut links = Vec::new();
+        for b in &doc.blocks {
+            collect_html_ids(&b.html, &mut ids);
+            let line = sourcepos_start_line(&b.sourcepos);
+            for (path, frag) in manual_local_links(&b.html) {
+                links.push(LinkRef {
+                    path: path.to_string(),
+                    frag: frag.map(str::to_string),
+                    line,
+                    source_file: b.source_file.clone(),
+                });
+            }
+        }
+        Some(PageLinkFacts {
+            rel: page.rel.clone(),
+            url: page.url.clone(),
+            has_cells: doc.blocks.iter().any(|b| b.cell.is_some()),
+            ids,
+            links,
+        })
+    }
+
+    /// Resolve a page-relative link `path` (from the page at `from_url`) to a site-root
+    /// relative `.html` url. `None` for a link that climbs above the site root.
+    fn link_target_url(&self, from_url: &str, path: &str) -> Option<String> {
+        // `.tmd`→`.html`, then join against the linking page's directory. A link that
+        // climbs *above* the site root (`../other-book/…`, a mounted sibling) is
+        // unresolvable offline and deliberately skipped — only the marketing site that
+        // mounts both books can resolve it, so flagging it here would be a false positive
+        // (cross-book/mount links are written as relative `.html` by design).
+        let target_url = join_rel_in_root(from_url, &qmd_to_html(path))?;
+        // A directory-style link (`dir/`) targets that dir's index.
+        Some(if target_url.is_empty() || target_url.ends_with('/') {
+            format!("{target_url}index.html")
+        } else {
+            target_url
+        })
+    }
+
+    /// Judge every link carried by `sources` against the id/cell registry `rendered`
+    /// supplies. Split from the render so the whole-site and single-page entry points share
+    /// one copy of the resolution rules and cannot drift.
+    fn resolve_link_warnings(
+        &self,
+        sources: &[PageLinkFacts],
+        rendered: &[PageLinkFacts],
+    ) -> Vec<(String, Warning)> {
+        let ids_by_url: HashMap<&str, &std::collections::HashSet<String>> =
+            rendered.iter().map(|f| (f.url.as_str(), &f.ids)).collect();
+        let cells_by_url: HashMap<&str, bool> = rendered
+            .iter()
+            .map(|f| (f.url.as_str(), f.has_cells))
+            .collect();
 
         let mut out = Vec::new();
-        for (rel, url, links) in &pages_links {
+        for source in sources {
+            let (rel, url, links) = (&source.rel, &source.url, &source.links);
             for lk in links {
                 let path = lk.path.as_str();
                 let frag = lk.frag.as_deref();
                 let line = lk.line;
                 let source_file = &lk.source_file;
-                // Resolve to a site-root-relative `.html` url. `.tmd`→`.html`, then
-                // join against the page's directory. A link that climbs *above* the
-                // site root (`../other-book/…`, a mounted sibling) is unresolvable
-                // offline and deliberately skipped — only the marketing site that
-                // mounts both books can resolve it, so flagging it here would be a
-                // false positive (cross-book/mount links are written as relative
-                // `.html` by design; see docs/ CLAUDE.md).
-                let Some(target_url) = join_rel_in_root(url, &qmd_to_html(path)) else {
+                let Some(target_url) = self.link_target_url(url, path) else {
                     continue;
                 };
-                // A directory-style link (`dir/`) targets that dir's index.
-                let target_url = if target_url.is_empty() || target_url.ends_with('/') {
-                    format!("{target_url}index.html")
-                } else {
-                    target_url
-                };
-                let Some(target_ids) = ids_by_url.get(&target_url) else {
+                let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
                     // A target outside the page registry is only "broken" if nothing
                     // on disk backs it: an `{{< embed >}}`-referenced deck (built +
                     // served but kept out of nav/registry) and any source file that
@@ -854,7 +937,10 @@ impl Site {
                 // anchor is missing.
                 if let Some(frag) = frag
                     && !frag.is_empty()
-                    && !cells_by_url.get(&target_url).copied().unwrap_or(false)
+                    && !cells_by_url
+                        .get(target_url.as_str())
+                        .copied()
+                        .unwrap_or(false)
                     && !target_ids.contains(frag)
                 {
                     let w = Warning::new(format!(

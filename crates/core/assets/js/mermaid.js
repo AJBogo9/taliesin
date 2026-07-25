@@ -23,7 +23,16 @@ function taliMermaidConfig() {
   var el = document.documentElement;
   var dark = el.getAttribute('data-theme') === 'dark' || el.classList.contains('tali-deck-dark');
   /** @type {Record<string, any>} */
-  var cfg = { startOnLoad: false, theme: get('--tali-mermaid-theme') || (dark ? 'dark' : 'default') };
+  var cfg = {
+    startOnLoad: false,
+    theme: get('--tali-mermaid-theme') || (dark ? 'dark' : 'default'),
+    // Set EXPLICITLY, not left to the library's default. Diagram source is author text
+    // that reaches mermaid's parser and comes back as SVG injected into the page, so the
+    // sanitiser setting is ours to own: inheriting it means a mermaid upgrade could
+    // silently loosen it. 'strict' sanitises HTML in labels and disables click handlers,
+    // which no Taliesin diagram uses.
+    securityLevel: 'strict',
+  };
   /** @type {Record<string, string>} */
   var map = {
     background: '--tali-mermaid-bg',

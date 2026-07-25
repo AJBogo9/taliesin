@@ -144,6 +144,7 @@ const COMMANDS: &[&str] = &[
 const ENV_HELP: &str = "\
 ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_CELL_TIMEOUT (per-cell seconds; 0 disables),
+     TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
      TALIESIN_JS_TIMEOUT (read --run {js} headless-Chrome settle seconds; default 10),
      TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,
      TALIESIN_NO_CACHE (skip the _freeze/ execution cache),

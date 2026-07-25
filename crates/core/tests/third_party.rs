@@ -38,6 +38,51 @@ fn vendored_js_is_attributed() {
     }
 }
 
+/// The Mermaid version is claimed in three places that can drift apart silently: the
+/// attribution line, the CDN fallback URL, and the doc comment on the vendored blob. A
+/// stale attribution is the failure mode that matters — it is what a downstream consumer
+/// (or an audit) reads to decide whether a known CVE applies to this build.
+#[test]
+fn the_mermaid_version_claim_matches_the_vendored_library() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lib = std::fs::read_to_string(core.join("assets/js/mermaid.min.js"))
+        .expect("the vendored mermaid library should exist");
+    // Every esbuild mermaid bundle carries its own version string as `<ident>="11.x.y"`
+    // right before the `getVersion` accessor. Find it by anchoring on that accessor.
+    let anchor = lib
+        .find("\"getVersion\"")
+        .expect("the mermaid bundle should define getVersion");
+    let version = lib[..anchor]
+        .rmatch_indices('"')
+        .filter_map(|(i, _)| {
+            let rest = &lib[i + 1..];
+            let end = rest.find('"')?;
+            let candidate = &rest[..end];
+            let mut parts = candidate.split('.');
+            let ok = candidate.len() >= 5
+                && parts.clone().count() == 3
+                && parts.all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
+            ok.then(|| candidate.to_string())
+        })
+        .next()
+        .expect("the mermaid bundle should carry an x.y.z version string");
+
+    let doc = third_party_md();
+    assert!(
+        doc.contains(&format!("v{version}")),
+        "THIRD_PARTY.md claims a different Mermaid version than the vendored \
+         `mermaid.min.js`, which reports {version}. Update the attribution when you \
+         re-vendor the library."
+    );
+    let render = std::fs::read_to_string(core.join("src/render/mod.rs")).unwrap();
+    assert!(
+        render.contains(&format!("mermaid@{version}/dist")),
+        "the CDN fallback URL in render/mod.rs pins a different Mermaid version than the \
+         vendored library ({version}); a reader who hits the fallback would silently get \
+         a different build than the one this binary ships"
+    );
+}
+
 #[test]
 fn removed_deps_are_not_listed() {
     let doc = third_party_md();

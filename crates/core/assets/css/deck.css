@@ -255,6 +255,20 @@ body { background: transparent; }
 .tali-deck.overview .magic-move > pre { opacity: 0 !important; }
 .tali-deck.overview .magic-move > pre:last-of-type { opacity: 1 !important; }
 
+/* One gesture, one moving thing, one clock — the principle the camera rework adopted
+   everywhere else, applied to the last layer that ignored it. Entering or leaving the map
+   flips every fragment and every magic-move block to its "complete" state, and those flips
+   have their own transitions (.25s / .4s), so opening the overview used to run one fragment
+   tween PER FRAGMENT and one crossfade PER MAGIC-MOVE concurrently with the zoom. That is
+   the one cost that scales with slide count, which is exactly the wrong thing to have
+   moving while the camera is. deck.js stamps this class for the single frame in which the
+   flip happens, so the content is simply already correct when the zoom starts. */
+.tali-deck.tali-nofx .fragment,
+.tali-deck.tali-nofx .incremental > ul > li,
+.tali-deck.tali-nofx .incremental > ol > li,
+.tali-deck.tali-nofx .magic-move > pre,
+.tali-deck.tali-nofx .tali-hl-ln { transition: none !important; }
+
 /* Callouts on slides. The deck doesn't load base.css, so style them here with
    translucent fills (so they read on a light OR dark deck): an accent left border per
    kind + a tinted title bar. Matches the page/book callout structure. */

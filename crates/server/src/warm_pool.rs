@@ -750,6 +750,15 @@ async fn boot_pool(want: usize, python: &crate::interpreter::Resolved) -> Option
     if !should_warm(python.provenance) {
         return None;
     }
+    // CMD-01: name the fully-resolved interpreter, exactly as the cold kernel-start path
+    // does ("starting python (…)"). The pool is the one place an interpreter gets launched
+    // without ever being printed, so a `python:`/`r:` injected by a `_site.yml` was silently
+    // the thing running the author's code. Naming what you are about to execute against is
+    // not an escalation over executing against it — it just stops the choice being invisible.
+    crate::log::kernel(&format!(
+        "warming {want} python ({})",
+        python.path.display()
+    ));
     Some(Arc::new(WarmPool::new(&python.path, want).await))
 }
 

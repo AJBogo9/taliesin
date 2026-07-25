@@ -256,7 +256,7 @@ impl Executor {
             langs: HashMap::new(),
             freeze,
             force_next: false,
-            no_exec: std::env::var_os("TALIESIN_NO_EXEC").is_some(),
+            no_exec: exec_disabled(),
             work_dir: None,
             sink: None,
             page: None,
@@ -1056,6 +1056,13 @@ fn py_str_literal(s: &str) -> String {
     format!("'{escaped}'")
 }
 
+/// Whether `--no-exec` / `TALIESIN_NO_EXEC` is in force, i.e. code cells render as source
+/// and no interpreter is ever asked to run anything. Read here rather than inline so the
+/// *build* can consult the same answer before deciding whether to boot a warm pool.
+pub(crate) fn exec_disabled() -> bool {
+    std::env::var_os("TALIESIN_NO_EXEC").is_some()
+}
+
 /// Whether an output must not be cached: any execution error (a cell error, a
 /// timeout, or the mid-run kernel-died marker — all rendered as a `tali-error` block),
 /// so a transient failure is never replayed and the cell re-runs next time. Matches
@@ -1063,9 +1070,13 @@ fn py_str_literal(s: &str) -> String {
 /// cell whose output merely prints the text "tali-error" still caches. Also refuses to
 /// cache an output the kernel *truncated* at the size cap: if the cell completes
 /// cleanly (no KeyboardInterrupt error) the truncated result would otherwise be frozen
-/// and replayed silently. The marker text comes from `kernel.rs`'s output caps.
+/// and replayed silently. The marker text comes from `kernel.rs`'s output caps, and is
+/// matched in its **bracketed emitted form** (`[taliesin: output truncated at …`) for the
+/// same reason as the `tali-error` half beside it: a cell that merely *prints* the phrase
+/// (a doc about this feature, a log line) was otherwise refused the cache forever and
+/// re-ran on every single build.
 fn is_uncacheable(output: &str) -> bool {
-    output.contains("class=\"tali-error\"") || output.contains("taliesin: output truncated")
+    output.contains("class=\"tali-error\"") || output.contains(crate::kernel::TRUNCATION_MARKER)
 }
 
 /// How long `<program> --version` may take before the probe gives up. This sits
@@ -1302,6 +1313,37 @@ mod tests {
     //! the `#fig-` anchor that lets `@fig-x` resolve to the output.
     use super::*;
     use taliesin_core::render::Cell;
+
+    // AP4-3: `is_uncacheable` must match the *emitted* truncation notice, not the bare
+    // phrase. A cell that merely prints the phrase (a doc about output caps, a log line
+    // quoting one) was refused the cache forever and re-ran on every single build — the
+    // same false-positive the `tali-error` half was deliberately hardened against.
+    #[test]
+    fn only_a_real_truncation_notice_blocks_caching() {
+        // What `kernel.rs` actually emits when a cap fires.
+        let items = format!(
+            "<pre>\n{}4096 items]\n</pre>",
+            crate::kernel::TRUNCATION_MARKER
+        );
+        let bytes = format!("<pre>\n{}512 KB]\n</pre>", crate::kernel::TRUNCATION_MARKER);
+        assert!(is_uncacheable(&items), "the item cap must block caching");
+        assert!(is_uncacheable(&bytes), "the byte cap must block caching");
+        assert!(
+            is_uncacheable(r#"<div class="tali-error">boom</div>"#),
+            "an execution error must block caching"
+        );
+
+        // A successful cell whose output merely *talks about* truncation still caches.
+        assert!(
+            !is_uncacheable("<pre>taliesin: output truncated is the message it prints</pre>"),
+            "printing the phrase is not a truncation"
+        );
+        assert!(
+            !is_uncacheable("<pre>see the tali-error class for details</pre>"),
+            "printing the class name is not an error"
+        );
+        assert!(!is_uncacheable("<pre>42</pre>"), "ordinary output caches");
+    }
 
     #[test]
     fn kernel_unavailable_message_is_headless_safe_and_routes_to_doctor() {

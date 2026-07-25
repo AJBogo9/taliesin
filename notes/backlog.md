@@ -8,7 +8,52 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-22)
+## State (2026-07-25, later: the hardening batch landed)
+
+**Branch `backlog/hardening-batch`.** The whole build-ready hardening set from the sweep below
+shipped in one pass, each piece verified by mutation (restore the bug, watch the named test fail):
+**21** (lsp/mcp panic boundary), **26** (AP2: depth guard + render watchdog + the fuzz-regression
+harness), **27** (AP4 follow-ups), **13** (OFF-2), **20** (PERF-1), **25** except its owner decision,
+**28**'s two code residuals, and two bullets of **10**. Gates at landing: 1351 tests pass / 0 fail
+with all three gates set and `--test-threads=1`, `cargo fmt --check` clean, `clippy --all-targets`
+clean, both JS `tsc` gates clean; the mermaid, deck-overview and magic-move work was browser-verified
+through the chrome-devtools MCP.
+
+**Three recorded causes were wrong, re-derived from source (the "entries rot" law earning its keep):**
+- **The `kernel_executes_..._runaway_cell` flake was never load-sensitive.** `cell_timeout()`
+  memoizes in a `OnceLock`, so the test's `set_var("TALIESIN_CELL_TIMEOUT","3")` only took effect
+  when that test happened to be the first in the binary to touch the lock. When it was not, the cap
+  stayed at the 120 s default and the 20 s assertion failed. Fixed properly (a per-kernel `cell_cap`
+  the test sets directly); the full `--bin` suite went 155 s → 49 s as a side effect.
+- **OFF-2's premise ("inlining 2.5 MB on every save would bloat the payload") was false.** The page
+  shell is re-served per *navigation*, not per save; saves send block ops over the websocket. So the
+  fix was better than the one filed: a same-origin route serving the vendored copy, which also keeps
+  working when a doc gains its first diagram mid-session.
+- **F-01's fix does not exist as written.** `two-face` ships 199 syntaxes and **none** is PowerShell
+  (enumerated, not grepped), so "adding it to the bundled set" cannot close it. See item 17.
+
+**PERF-1 was solved by (b), which subsumes (a):** once the second pass stops being whole-site there
+is nothing left to share. Measured: whole-site → scoped is **20.1x** on `tech-blog` (46.9 → 2.3 ms),
+3.5x on `docs/guide`, and **51.7x on a synthetic 200-page book** (35.3 → 0.68 ms) — and the scoped
+cost is bounded by *one page's link count*, so it no longer grows with the book at all, which was the
+actual worry.
+
+### The 2026-07-25 audit sweep (earlier the same day)
+
+**2026-07-25 audit-sweep pass.** Every dated audit in `notes/` was re-read and its findings checked against
+source at `225a08a`; six items were filed that had been written up but never reached this file, and the
+whole open-work list was re-sorted by product impact. New: **25** (the security audit's deferred pre-public
+set — the one item with an external date, the repo goes public ~2026-08), **26** (AP2's two input-bound
+gaps + the fuzz harness), **27** (AP4's three cache follow-ups), **28** (deck-motion residuals), **29**
+(the reduction pass's deferred R1/T2), **30** (demand-probe persona 4). Re-banded: **13, 20, 21 moved from
+C to B** — 20 and 21 were tagged P2 while sitting in a band headed "Low / hardening (P3)". Also corrected:
+the AP2 and AP4 entries in "Audit perspectives" still read as *unrun* though both produced findings on
+2026-07-22, so a future session could have re-run a done round. **Known notes-hygiene gap, not fixed here:**
+`AUDITS.md` has no ledger line for six rounds (AP2, AP4, the 2026-07-17 security audit, the 2026-07-24
+deck-motion audit, the CAD research, the companion version-skew bug) — the AP2 file carries a
+ready-to-paste one.
+
+### Prior state (2026-07-22)
 
 v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates with
 DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync,
@@ -48,13 +93,21 @@ Do `grow-tarn` (22a) first: seven downstream items need one corpus book at book-
 pins nothing above 1,135 words. **Note item 22 is NOT a re-open of item 14**: heading demotion works, the
 section-number counter was never taught about it.
 
-The rest of the open work is the medium/low band, pick in priority order:
+**Then item 25 (pre-public release checklist), because it is the only item with a date.** The 2026-07-17
+security audit cleared the release and its four real findings shipped that day, but six hardening items were
+explicitly deferred "to the pre-public cleanup" and never filed here; the repo goes public **~2026-08**. All
+six are small and all six are still open.
 
-1. **OFF-2 mermaid-offline-preview (item 13)**: preview lazy-loads mermaid from a CDN despite the vendored
-   copy; protects the load-bearing offline invariant. Self-contained, no gating.
-2. Small persona findings (items 16-18): powershell syntax, book-level `theorems:`, inline-SVG figure theme.
-3. Deck mobile polish (item 4, P2, hard to verify without a device) and the P3 test-infra/polish residuals
-   (items 10, 11).
+**The hardening set is gone — it shipped 2026-07-25** (see the State block: 13, 20, 21, 25, 26, 27, 28's
+code half, two bullets of 10). What is left is deliberately not the same kind of work: it is **writing**
+(22a, 30), **owner rulings** (24, 25's oss-4, 28's three questions, 2), and **things that need a device or a
+demand signal** (4, Tier 3). Read top-down: band A is **22** (SKIM-1, start with 22a `grow-tarn`) then 25's
+one decision; band B is **23** (SKIM-2, after 22), **4** (deck mobile), **2** (deck presenter,
+owner-deferred); then band C top-down.
+
+**If you want code rather than prose, the honest answer is that the cheap correct work is done.** The
+remaining code items are P3 residuals on secondary surfaces (11, 12, 16, 17, 18, 29) or need a decision
+first.
 
 - **Or run one of the four remaining *audit perspectives* ("Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see. **Done so far:
@@ -92,7 +145,8 @@ ff-merge locally, delete the item here on landing.
   hard fail, not a skip). `cargo test` aborts the remaining binaries at the first failure, so re-run
   before trusting a total. **If an `exec` probe test fails, `--test-threads=1` before blaming your
   change** (there are two flake families: two load-sensitive *timing* tests, and two `exec::tests`
-  *concurrency-race* tests, both under P3 below).
+  *concurrency-race* tests, both under P3 below). **The runaway-cell one is fixed as of 2026-07-25 and
+  its recorded cause was wrong** — it was `OnceLock` memoization of `cell_timeout()`, not load; see item 10.
 - **Git:** do not trust a SHA written in notes. Check `git log --oneline origin/main..main` for what is
   unpushed and `git reflog show origin/main` before believing any "not pushed" claim; the author pushes
   mid-session with no signal here.
@@ -159,6 +213,24 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     **Honest residual:** `reference/cli.html` stays `16.0.1` (its first heading is deeper than its
     shallowest); that is arguably correct, do not quote it as an exemplar.
 
+25. **Pre-public release checklist: one owner decision left** (detail:
+    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
+    items shipped 2026-07-25 (`dos-pages`: a ws `?page=` the site cannot resolve no longer allocates
+    a never-evicted `PageState`; **DEP-03**: mermaid vendored at 11.16.0 with an explicit
+    `securityLevel: 'strict'`, `THIRD_PARTY.md` updated and now drift-locked by a test that reads the
+    version out of the bundle itself; `dos-rich`: an 8 MB cap on rich-output bytes, the axis the
+    stream-byte and output-count caps both missed; `dos-ws-size`: `max_message_size` on both ws
+    upgrades; **CMD-01**: the warm pool logs its resolved interpreter like the cold path already did).
+    **What remains is not a task:**
+    - **oss-4, an owner decision:** whether to prune `notes/` + `docs/superpowers/` before flipping
+      the repo public (~2026-08). No secret is exposed (the `--host` token design doc discloses only
+      a per-session UUID mechanism), but it is a curated bug roadmap, readable by anyone.
+    **Verified NOT open, do not re-scope:** `SECURITY.md` exists, the tracked `/home/bogo` paths are
+    scrubbed, and PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped 2026-07-17. Refuted by the
+    audit and not worth revisiting: `dos-yaml` (libyaml rejects the alias bomb in ~30 ms — the guard is
+    in the C library, so grepping our source for it correctly finds nothing) and NET-3
+    (non-constant-time token compare).
+
 ### B. Medium impact
 
 23. **SKIM-2: honest search, honest output, and the whole-book outline** (P2, M; sequenced after 22; detail:
@@ -206,14 +278,15 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     `exec_pool` LRU; at 60+ chapters a preview reader evicts constantly, and the consequence is **a slower
     cold chapter, not a correctness bug**.
 
+4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
+   deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
+   fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
+   opens the overview map, with a 250 ms hysteresis; see item 28 for what that left behind.)*
+
 2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
    publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
    `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"); the presenter pieces
    were considered and left for later. Revive only on a real speaker ask.
-
-4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
-   deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
-   fit-on-show refactor first).
 
 ### C. Low / hardening (P3)
 
@@ -293,6 +366,58 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     digest all produce near-empty output until an authoring pass happens; defer those three rather than
     building them into an empty registry.
 
+28. **Deck-motion: three open decisions, no code left** (detail:
+    [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)). Option A shipped
+    2026-07-24 and its **two residuals shipped 2026-07-25**: overview content flips are now instant
+    (a `.tali-nofx` frame suppresses the fragment and magic-move transitions while `.overview`
+    toggles, so the zoom is the one thing moving — browser-measured 4 concurrent content transitions
+    → **0**), and magic-move is resynced (`CAM.morph`/`morphFade`/`morphFadeDelay` replace the
+    hand-copied `.45s`/`.4s`/`480`/`560` literals, with one cancellable per-div settle mirroring
+    `deck.aaSettle`; hammering forward/back mid-morph now leaves **0** stranded inline styles where
+    it used to race naked timers). **What is left is for the author to rule on, not to build:**
+    (3) should an out-of-order arrival — menu pick, deep link, back/forward, click-to-source — *look*
+    different from a step? They cut when far but are not distinguished. (4) is the overview a real
+    navigator for 100+ slide decks (which would eventually mean Option C, the shared-element FLIP
+    rewrite) or a glance at a 20-slide talk? The readability floor closed most of the gap C was for.
+    (5) wrap width: each run wraps to `ceil(sqrt(n))`, right per run but it stacks five topic blocks
+    into a tall narrow column; choosing the column count from the viewport would do better.
+    **Two LOW tradeoffs flagged to the author and left as-is, not defects:** ctrl+wheel-*down* claims
+    browser page-zoom-out over the deck (that *is* the approved gesture), and it also fires inside an
+    embedded deck on a scrollable page.
+    *Option B (mode-invariant serpentine grid) and Option C are costed in the audit and were not
+    chosen; the overview work is identical under A and B, so nothing shipped is wasted if B is ever
+    revisited.*
+
+17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
+    [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
+    A realistic library documentation site (`corpus/tarn/`, corpus-pinned by `tarn.rs` + a `/gallery/tarn`
+    marketing-site exhibit) probed the tabsets × full-text-search × API-reference cluster. The *stacked*
+    interactions (book × Guide/Reference parts × two `.panel-tabset`s per page × `.code-walkthrough` ×
+    guide→reference `.tmd#anchor` cross-page links × chapter-scoped `@sec-` refs × Cmd-K search spanning the
+    book incl. tabset-hidden content × version/deprecation callouts × mount) ALL work — 0 interaction-bugs.
+    Four P3 findings, all on secondary surfaces. **Highest-placed of the P3 demand-probe set because F-01 is
+    the only one a reader sees on the page:**
+    - **F-01 (friction, P3) — SYMPTOM REAL, RECORDED FIX WRONG (re-derived 2026-07-25).** The symptom
+      stands: `powershell` and `ps1` both render as unstyled plain text with a `TAL-CODE-LANG` warning
+      (`bash` highlights fine). But the filed one-liner cannot work: **`two-face` has no PowerShell
+      syntax at all.** Enumerated, not grepped — its set is 199 syntaxes and PowerShell is not among
+      them, and no feature flag adds one. (The "ordering trap" the old entry warned about is moot too:
+      `resolve()` already consults the bundled set first and falls back to the extras, so a syntax in
+      either set would already resolve.)
+      **A real fix means vendoring a grammar**, which is a decision, not a drive-by: the upstream
+      PowerShell/EditorSyntax grammar is a 43 KB `.tmLanguage` plist (needs syntect's `plist-load`
+      feature, which is not enabled) and its `LICENSE.txt` 404s, so its terms need establishing before
+      anything is vendored — particularly with the repo about to go public (item 25). Left to the
+      author with that groundwork done. A cheap alias to another language is NOT an option: it would
+      mean confidently wrong highlighting instead of honestly absent highlighting.
+    - **F-04 (friction, P3):** single-file `check` (the editor companion) false-positives a `site/gallery.tmd`
+      card's `mounts:` link as broken, because single-file mode lacks site/mount context; whole-site
+      `taliesin check site` is clean and the build is unaffected. Candidate: treat an unknown-prefix link
+      matching an enclosing site's `mounts:` entry as valid in single-file mode. Related to item 10's
+      "`mounts:` live serve untested" + item 16's F-04.
+    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
+      the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
+
 10. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
       kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
@@ -303,10 +428,16 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       the pure `match_mount`/`resolve_project`/`classify_change` helpers, and live mount serving is
       browser-verified. What remains is only the bin-crate gap of an end-to-end live-HTTP serve test (no
       `reqwest`/`TcpListener` harness). Low-value (mounts are preview-only), demand-driven.
-    - **Two load-sensitive timing tests:**
-      `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
-      `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load; both
-      assert on timing. Fix: wait on a **state signal**, not a duration.
+    - **The "two load-sensitive timing tests" were one bug and one false alarm (settled 2026-07-25).**
+      `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` was **not** load-
+      sensitive: `cell_timeout()` memoizes in a `OnceLock`, so its `set_var("TALIESIN_CELL_TIMEOUT","3")`
+      only bit when it happened to be the first test in the binary to reach that lock; otherwise the cap
+      stayed at 120 s and the 20 s assertion failed. **Fixed** — the cap is now a per-kernel `cell_cap`
+      the test sets directly, so it is deterministic regardless of test order (the full `--bin` suite
+      also dropped 155 s → 49 s). `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state`
+      does **not** assert on elapsed time at all: it polls `pool.ready_len()` — already the "wait on a
+      state signal" shape this bullet asked for — bounded at 10 s. Nothing to fix unless that bound is
+      ever seen to trip.
     - **Two `exec::tests` concurrency-race tests** (NOT timing):
       `a_successful_probe_pins_the_freeze_key_format` +
       `a_failed_interp_probe_is_not_memoized_for_the_process_lifetime`. On pristine `main` they fail
@@ -317,11 +448,10 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       write-then-exec race across tokio threads. **Do not fix from this note** (exec/kernel zone,
       unproven): the cheap first move is to make `probe_version` log *why* it returned `None`, then
       re-run the full suite until it trips.
-    - **`build.rs:926` warms the pool before knowing any page needs a kernel**, even under
-      `TALIESIN_NO_EXEC=1`. Hygiene, not perf (0.25s vs 0.27s on a prose-only site).
-    - **Mermaid `<script>` SRI + `crossorigin`:** deferred (only live Preview lazy-loads from the CDN; a
-      build inlines the vendored copy). Needs a hash pinned to the CDN build; `integrity`+`crossorigin`
-      would break a non-CORS `TALIESIN_MERMAID_URL` override.
+    - **Mermaid `<script>` SRI + `crossorigin`: now moot by construction.** Nothing fetches mermaid
+      from a CDN any more — build inlines the vendored copy and preview serves it from a same-origin
+      route (OFF-2) — so there is no cross-origin subresource left to pin. It would only come back if
+      someone points `TALIESIN_MERMAID_URL` at a CDN, which is an explicit opt-out.
     - **Perf (low):** protocol-level op-message batching (one WS message per save, not per-op). Worst
       case: an edit near the top of a long doc where every downstream block emits a `SetMeta`
       (`diff.rs` `anchor_op`). Client + server ship together, no wire-compat constraint.
@@ -342,25 +472,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     - **CLI docs (CLI1/2/3):** `--help` drift (undocumented `preview --port` / `read --run` / hand-written
       usage). Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
 
-12. **i18n / Unicode multibyte correctness: DONE bar a demand-driven residual.** The LSP UTF-16 encoding
-    fix shipped 2026-07-22 (folded from AP5; detail:
-    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)): the stdio
-    LSP advertises `positionEncoding: utf-16` and converts at every boundary (I18N-2/3/4/5); I18N-1 was
-    resolved as documentation (block start columns are always ASCII-prefixed, so the client conversion was
-    unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
-    layout, CJK line-breaking, non-ASCII heading-slug collisions.*
-
-13. **Offline-guarantee: OFF-2 mermaid preview** (P3; detail:
-    [2026-07-22-offline-guarantee-audit.md](2026-07-22-offline-guarantee-audit.md), AP12). **OFF-1 shipped
-    2026-07-22**: `build` and the site build now emit one located, informational warning per view-time
-    external reference left in a `--out`/site output (never fails the build; see "Already shipped";
-    deferred follow-ups: CSS `url()`/`@import` hosts, surfacing in `check` / `--format json`). **OFF-2
-    (S-M, open):** live preview lazy-loads mermaid from a CDN despite the vendored copy, so inline the
-    vendored library on mermaid pages (gated like the build path) or surface the network load. Overlaps
-    item 10. `render/mod.rs:1292-1311`.
-    *Verified offline (do not re-audit): fonts, KaTeX, d3/Plot, mermaid-in-build, the reveal/jsdelivr guard.*
-
-
 16. **Demand-probe (course pilot) findings** (P2/P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-course-author.md](2026-07-22-corpus-demand-probe-course-author.md)).
     A realistic lecturer's course (`corpus/course/`, corpus-pinned by `course.rs` + a `/gallery/course`
@@ -371,25 +482,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     both shipped 2026-07-22, see "Already shipped"):
     - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
       `.code-walkthrough` (steps + code concatenate) is lossy.
-
-17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
-    [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
-    A realistic library documentation site (`corpus/tarn/`, corpus-pinned by `tarn.rs` + a `/gallery/tarn`
-    marketing-site exhibit) probed the tabsets × full-text-search × API-reference cluster. The *stacked*
-    interactions (book × Guide/Reference parts × two `.panel-tabset`s per page × `.code-walkthrough` ×
-    guide→reference `.tmd#anchor` cross-page links × chapter-scoped `@sec-` refs × Cmd-K search spanning the
-    book incl. tabset-hidden content × version/deprecation callouts × mount) ALL work — 0 interaction-bugs.
-    Four P3 findings, all on secondary surfaces:
-    - **F-01 (friction, P3):** `powershell` is not in the bundled syntect set, so a Windows install snippet
-      renders as unstyled plain text + a `TAL-CODE-LANG` warning (`bash` highlights fine). `two-face` ships a
-      PowerShell syntax; adding it to the bundled set closes it. Edits `crates/core/src/highlight.rs`.
-    - **F-04 (friction, P3):** single-file `check` (the editor companion) false-positives a `site/gallery.tmd`
-      card's `mounts:` link as broken, because single-file mode lacks site/mount context; whole-site
-      `taliesin check site` is clean and the build is unaffected. Candidate: treat an unknown-prefix link
-      matching an enclosing site's `mounts:` entry as valid in single-file mode. Related to item 10's
-      "`mounts:` live serve untested" + item 16's F-04.
-    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
-      the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
 
 18. **Demand-probe (interactive-explainer, persona #3) findings** (P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)).
@@ -411,48 +503,38 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       paint. Gate teardown on `invalidation`, not DOM attachment. WAI but a sharp edge — candidate: a doc
       line in the `{js}`-cell reference, or an optional post-mount hook.
 
-20. **PERF-1: warm site-preview does two redundant full-site render passes per keystroke** (P2, from AP1;
-    detail: [2026-07-23-ap1-performance-scale-audit.md](2026-07-23-ap1-performance-scale-audit.md)). AP1
-    found performance otherwise healthy (no quadratic anywhere; 8000-block doc in 647 ms, 400-page build in
-    874 ms, diff is O(n log n) by construction). The one degradation: every `.tmd` save in a **site/book**
-    preview runs `refresh_xrefs()` (per save, `serve_site/mod.rs:1441`) **and** `validate_cross_page_links()`
-    (per open tab, via `cross_page_diagnostics` in `build_page`) — two *independent* full-site sequential
-    render passes, each rebuilding every page from disk. Cost is linear in (pages × blocks-per-page); the
-    source comments (`serve_site/mod.rs:1107,1430`) enshrine it as a fixed "~27 ms" measured at 20 pages, but
-    the real 17-page `tech-blog` already pays **~60 ms/keystroke** (~30 ms/pass), extrapolating to ~360 ms at
-    100 content-rich pages, ~700 ms at 200 — the moat degrading, invisibly (linear, no cliff). **Not a
-    correctness bug** and DX1 rightly OK'd the debounced re-derive at corpus size; the fix is to stop paying
-    it *twice*. Build-ready, cheapest first: **(a)** share ONE whole-site render/registry across the two
-    passes within a rebuild (`refresh_xrefs` already builds the anchor/number registry;
-    `validate_cross_page_links` mostly needs each page's id-set + outgoing links, capturable in the same
-    pass) → ~halves it; **(b)** `validate_cross_page_links` renders all N pages to keep only the current
-    page's warnings (`preview_diag.rs:47` filters the rest away) — scope it to the current page's links
-    resolved against the shared registry; **(c)** debounce/coalesce the whole-site passes ONLY if a real
-    >100-page book appears (demand-driven; perfect-default lens says don't add machinery first). Touches
-    `serve_site` + `site::{refresh_xrefs, validate_cross_page_links}` only — NOT the diff, block model, or
-    the Do-NOT-touch `exec_pool` LRU. No natural corpus pin (corpus has no 100-page book); verify with the
-    AP1 harness pattern (`scratchpad/perfbench/`: time the passes before/after on a generated large book) +
-    existing `serve_site` tests green.
+29. **Reduction-audit residuals** (P3, dev-facing; detail:
+    [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). Phase 2 + T1 + R2 shipped and
+    the codebase is lean; two items were explicitly deferred and never filed here. Both re-verified open:
+    - **R1 — two divergent text extractors.** The pass tried to unify them and the equivalence gate
+      **failed**: `text_content` (which feeds `llms.txt`) decodes `&#8217;`/`&nbsp;`, `render::indexable_text`
+      (which feeds Cmd-K) does not, so naively reusing one would leak raw entities into `llms.txt`. The
+      divergence is pinned by a passing test, so it is a conscious fork, not a bug — but aligning them
+      **changes the search index**, which is why it was carved out. Sequence it with item 23 (which rebuilds
+      the index anyway) rather than as its own change.
+    - **T2 — three site modules each run their own raw-source pre-scan** (`site/xref.rs`, `site/book.rs`,
+      `site/discovery.rs` each `read_to_string` the page and re-implement a slice of the include/parse
+      pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
+      already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
+      whole-site pass.
 
-21. **HEALTH-1: the persistent stdio servers (`lsp`, `mcp`) have no per-request panic boundary** (P2, from
-    AP10; detail: [2026-07-23-ap10-codebase-health-audit.md](2026-07-23-ap10-codebase-health-audit.md)). AP10
-    found the codebase healthy (dead code nil; ~708-panic surface dominated by guarded/structural sites). The
-    one finding: `lsp::main_loop` (`lsp.rs:93`) dispatches each notification/request with `?` (propagates a
-    `Result` error, NOT a panic) and `publish()`→`check::buffer_diagnostics` renders the buffer **unguarded on
-    every keystroke**; `mcp::cmd_mcp` (`mcp.rs:105`) calls `handle` unguarded. A catchable panic there unwinds
-    out of the loop and **kills the server for the whole session** (LSP: all editor intelligence dies
-    silently; MCP: every subsequent tool call fails). Inconsistent with the `serve`/`build` paths (AP2-verified
-    `catch_unwind`) and with the LSP's OWN `render_buffer` (`lsp.rs:722`), which already wraps its render in
-    `crate::serve::guarded` "so a malformed buffer yields `None` rather than crashing the request loop" — the
-    guard is on hover/completion but not the every-keystroke diagnostics path. **Fix:** wrap the per-message
-    dispatch in `main_loop` (and `handle` in `mcp`) in the existing `serve::guarded` — a panicking request →
-    error response, a panicking notification → log + skip so the loop survives; pin with a "malformed buffer
-    keeps the server answering" test (the resilience test that can't exist while unguarded). Surface:
-    `lsp.rs` (loop + `publish`) + `mcp.rs` (loop); reuses `serve::guarded`; touches no core render/diff/block
-    model. **Explicitly NOT fixed by this** (route to the AP2 items): the deep-`>` stack-overflow **abort**
-    (AP2-1) and the O(n²) nested-bracket **hang** (AP2-2) also crash/hang these servers and neither is
-    `catch_unwind`-catchable — **AP10 raises AP2-1/AP2-2 from "dev-server 500" to "editor/agent-server death",
-    which is the strongest case for shipping the pre-parse depth guard + render watchdog.**
+30. **Demand-probe persona 4 (analyst) artifact** (P3, M, mostly writing; spec
+    `docs/superpowers/specs/2026-07-22-corpus-demand-probe-design.md` §4). The four-persona demand-probe
+    program ships each persona as one artifact in three roles — a green corpus pin, a findings doc, and a
+    `/gallery/<name>` exhibit. Personas 1-3 landed (`corpus/course/`, `corpus/tarn/`, `corpus/descent/`, all
+    pushed) and their findings are items 16-18. **Persona 4's `corpus/analyst/` was never authored**
+    (confirmed absent), so the program is 3 of 4 and its slate is the only remaining un-probed shape.
+    Diminishing returns are real and should set the priority: personas 1-3 each stacked the interactions the
+    corpus had never combined and found **0 interaction-bugs** between them, only P3 friction on secondary
+    surfaces. Worth finishing for corpus coverage, not because a fourth probe is likely to find a defect.
+
+12. **i18n / Unicode multibyte correctness: DONE bar a demand-driven residual.** The LSP UTF-16 encoding
+    fix shipped 2026-07-22 (folded from AP5; detail:
+    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)): the stdio
+    LSP advertises `positionEncoding: utf-16` and converts at every boundary (I18N-2/3/4/5); I18N-1 was
+    resolved as documentation (block start columns are always ASCII-prefixed, so the client conversion was
+    unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
+    layout, CJK line-breaking, non-ASCII heading-slug collisions.*
 
 ### D. Gated, not actionable now (kept visible, do not spin up)
 
@@ -513,23 +595,38 @@ parallel work owns that surface. Highest-yield of the four: **AP7 (deep a11y)** 
   corpus size); the fix is to stop paying it twice. Refuted: `site.clone()` O(pages²) (it is `Arc`), hover-index
   quadratic, render quadratic. Residuals not chased: kernel RSS drift, multi-hour warm RSS. *Was stateful/solo;
   done as a release-binary measurement + a `taliesin-core` path-dep harness.*
-- **AP2: Robustness / adversarial input (fuzzing).** ~700 panic sites, zero fuzz coverage. Feed the
-  parse to render pipeline malformed `.tmd`: unbalanced `:::` fences, thousands-deep nesting, circular
-  `{{< include >}}`, garbage YAML front-matter, pathological Unicode, truncated files. Every panic (which
-  500s the dev server) or hang is a finding. Start: `cargo-fuzz`, or `proptest` + `arbitrary` over
-  parse+render. *Stateful, solo. Recommended first.*
+- **AP2: Robustness / adversarial input (fuzzing). RUN 2026-07-22** (findings:
+  [2026-07-22-ap2-robustness-fuzzing-audit.md](2026-07-22-ap2-robustness-fuzzing-audit.md); build-ready
+  AP2-1/2/3 folded into Open-work item 26). Run in an isolated worktree with a subprocess-isolated harness
+  that makes a panic, a stack-overflow **abort** and a **hang** all separately observable (an in-process
+  fuzzer cannot — an abort kills it too): 133 hand-crafted hostile `.tmd` + 7,500 generative mutations over
+  both the doc and full-page paths + targeted include/KaTeX/site-config/deck/`check` probes through the real
+  binary. Result: **the premise was overstated and is corrected** — every server/CLI render entry already
+  wraps rendering in `catch_unwind`, the core render already runs on a 256 MB worker stack, and the round
+  produced **zero unexpected panics**. The two real gaps both bypass that armor via one root cause (no
+  size/depth/time bound): AP2-1 deep nesting → an uncatchable `abort()` that defeats even the per-page site
+  isolation, AP2-2 balanced nested brackets → a comrak-0.52 inline O(n²) render hang. Plus AP2-3, the
+  still-true "zero fuzz coverage" half. Refuted: the four grep-flagged reachable `unwrap` sites (all correct
+  code). *Was stateful/solo.*
 - **AP3: Concurrency / race conditions.** The server multiplexes a `notify` file watcher, websocket
   handlers, a warm ZMQ kernel, the exec pool, the `MAX_WARM_PAGES` LRU, and `_freeze/` writes across N
   browser clients. Rust stops data races, not logic races: save-while-executing, file-change-mid-build,
   two clients on one preview, concurrent freeze writes, eviction interleaving. Start: a stress driver plus
   a code read of shared-state ordering in `serve_site/exec_pool.rs` (respect the M6a freeze: observe, do
   not retune). *Stateful, solo.*
-- **AP4: Cache-correctness (adversarial freeze).** The `_freeze/` cache promises "no stale hits, nothing to
-  clear by hand." Nobody has tried to break that promise. Attack it: interpreter swap mid-session, partial
-  write or crash during a freeze write, clock skew, an upstream cell edited then reverted, `#| cache: false`
-  boundaries. One stale hit is a credibility bug for the core design. Start: enumerate the cumulative-hash
-  inputs in `crates/server/src/freeze.rs` and construct a change that is NOT reflected in the key. *Stateful,
-  solo. Recommended first.*
+- **AP4: Cache-correctness (adversarial freeze). RUN 2026-07-22** (findings:
+  [2026-07-22-cache-correctness-audit.md](2026-07-22-cache-correctness-audit.md); AP4-1 shipped, AP4-2/3/4
+  folded into Open-work item 27). Covered BOTH halves — the read hunt (enumerate every input the cumulative
+  key folds in, then find a change it cannot see) and the empirical half (construct that change and prove a
+  stale hit against a real `ipykernel` 7.3.0 in a throwaway dir). Result: the design is sound on every axis
+  the key is *supposed* to see, but the promise is worded as near-absolute ("the **lone** by-design stale-hit
+  path = packages") and that overclaims. **AP4-1 (medium, reproduced and FIXED the same day):** a cacheable
+  cell downstream of a `#| cache: false` cell restored a stale output **on a cold build** — one rendered doc
+  printing `A: 890903` and `B: 859248` for the same variable — because `plan()` capped only the warm prefix,
+  not the disk-tail restore. Shipped the correctness fix (option 2: force the whole downstream tail to
+  re-run) over the audit's own doc-only lean, because the stale hit was observed in practice and option 1
+  would have left "nothing to clear by hand" false. Refuted: options-stripped-code staleness, FNV chain
+  ambiguity, interpreter-swap invalidation, atomic-write crash safety. *Was stateful/solo.*
 - **AP5: i18n / Unicode / multibyte sourcepos. RUN 2026-07-22** (findings:
   [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md); folded into Open-work
   item 12). The starting hypothesis (byte-based sourcepos breaks Alt-click on any CJK/accent doc) was mostly
@@ -600,7 +697,16 @@ Per the PMF audit ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md)) the highe
   recommend cell-language extensions via `.vscode/extensions.json`); **marketplace packaging hygiene**
   (`.vscodeignore` misses `.vscode-test/` (1.8 GB), `test-fixtures/`, `scripts/`, `out/test/`,
   `out/e2e/`; no top-level `icon`/`repository`/`license`/`keywords`; `"private": true` blocks publish);
-  `symbolCache` only invalidates on save (`completions.ts`, low).
+  `symbolCache` only invalidates on save (`completions.ts`, low). **Two release-hygiene residuals from the
+  2026-07-13 version-skew bug** ([2026-07-13-companion-check-unexpected-output-bug.md](2026-07-13-companion-check-unexpected-output-bug.md)):
+  the extension version is still `0.1.0`, so a stale install silently shadows a fixed build instead of being
+  visible at a glance — bump it on every repackage; and `editor/vscode/` carries **two untracked `.vsix`
+  build artifacts** (`taliesin-companion.vsix` from Jul 13, `taliesin-companion-0.1.0.vsix` from Jul 21),
+  neither in `git ls-files`, so they are a stale trap unless release regenerates them. *The reported bug
+  itself is closed: the CLI moved from a bare array to `{diagnostics, environment}` and the packaged parser
+  lagged, producing a false "check produced unexpected output" on line 1 of every file; the parser fix
+  (`b40ec0e`) is now present in the installed bundle (verified). Also worth a design call if the CLI's JSON
+  shape ever moves again: a `"schema"` field the parser can branch on, or a pinned/bundled CLI.*
 - **LaTeX hover-preview in the VS Code editor** (Companion Phase 2, a sub-case of the LSP item below):
   hover `$…$`/`$$…$$` to see a rendered preview. Math is already grammar-recognized
   (`tmd.injection.tmLanguage.json:15-37`), but the extension has **no HoverProvider** yet
@@ -677,6 +783,29 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
+- **The 2026-07-25 hardening batch** (branch `backlog/hardening-batch`; was items 13, 20, 21, 25, 26, 27,
+  28's code half, two bullets of 10). Grep before doubting any of it:
+  - `serve::guarded` now wraps the per-message dispatch in `lsp::main_loop` **and** `mcp::dispatch`, so a
+    panicking request answers with JSON-RPC `-32603` and a panicking notification is logged and skipped
+    instead of killing the session. Pinned by `a_panicking_message_does_not_kill_the_session` +
+    `a_panicking_method_becomes_an_error_and_the_next_call_still_answers` (both use a `#[cfg(test)]`
+    `PANIC_PROBE_METHOD`, since real input does not panic — AP2 proved that).
+  - `MAX_NESTING_DEPTH` (1000) + `overlong_nesting()` bound blockquote/list nesting **before** the parse,
+    turning AP2-1's uncatchable SIGABRT into a located diagnostic (verified: exit 134 → exit 1).
+  - `TALIESIN_RENDER_TIMEOUT` (default 30 s, `0` disables) is a watchdog on a now-**detached** big-stack
+    render worker, so AP2-2's comrak O(n²) bracket hang returns a diagnostic instead of freezing. The
+    worker takes owned inputs for `'static`; the include path hands over its existing `String`/`Vec`.
+  - `crates/server/tests/hostile_input.rs` is the AP2-3 regression net: a trimmed hostile battery through
+    the real binary, classifying panic / abort / hang as three distinct outcomes.
+  - `_freeze/` temp files are `<page>.json.<pid>_<uuid>.tmp`; `is_uncacheable` matches
+    `kernel::TRUNCATION_MARKER` (the bracketed emitted form, single-sourced beside the emitters).
+  - Mermaid is vendored at **11.16.0**, initialised `securityLevel: 'strict'`, and served in preview from
+    the same-origin `PREVIEW_MERMAID_PATH` (`/_taliesin/mermaid.min.js`) — **nothing fetches it from a CDN
+    in any mode now**. `the_mermaid_version_claim_matches_the_vendored_library` drift-locks the version.
+  - `Site::validate_cross_page_links_for(page_rel)` renders one page plus its link targets; the preview
+    uses it instead of running the whole-site check and discarding the rest.
+  - `.tali-nofx` (deck.css) + `CAM.morph`/`morphFade`/`morphFadeDelay` + a per-div `__mmSettle`.
+  - `Kernel.cell_cap` replaces the `OnceLock`-memoized `cell_timeout()` read per execution.
 - **Book-level `theorems:`** (was item 16 F-01; shipped 2026-07-23, landed to local `main`, unpushed): a
   book-wide theorem-numbering policy in `_site.yml` (`theorems:`), inherited by any chapter with no
   `theorems:` block of its own and overridden wholesale by one that declares its own. `theorems` is now a
@@ -829,6 +958,19 @@ claim that one of these is "missing"):
 
 ## Decided against / do-not-re-litigate
 
+- **CAD-as-code (`{openscad}` / CadQuery cell → live 3-D preview): researched 2026-07-23, NOT built**
+  (detail: [2026-07-23-cad-as-code-research.md](2026-07-23-cad-as-code-research.md); two background research
+  passes, feasibility + market). Technically **feasible and a clean fit** (user-installed `openscad`
+  subprocess → STL → bundled MIT three.js, the same shape as the shipped `graphics3d` viewer) and
+  commercially **legally green** (an arm's-length CLI call is FSF "mere aggregation"; the models are the
+  user's own). Killed on **demand**: wrong audience, tiny niche, and the peer group (Quarto, Jupyter Book,
+  mdBook) ships nothing like it with zero requests for it. **Do not bundle openscad-wasm (GPL).** Five
+  named revisit triggers, any one of which reopens it: (1) *author-pull* — you actually want to write a
+  `.tmd` that is better with a live parametric model (a 3-D-printing build log, a mechanism tutorial); under
+  corpus-plus-roadmap that alone is sufficient, just name the pin doc; (2) the peer group ships embedded
+  CAD; (3) notebook-CAD usage multiplies materially; (4) text-to-CAD becomes reliable *and* moves
+  in-document; (5) a concrete external ask (course, client, grant scope). The implementation path is
+  pre-decided in the doc so a revival needs no re-research.
 - **2026-07-22 rulings** (owner, this session): **DX16 update-nudge = SKIP** — a version check is network
   egress that undercuts the offline-first identity; drop it (was item 7). **Cross-ref labels i18n = DEFER** —
   no corpus doc demands it and full i18n is a real scope question; minimal-config says don't add speculative
