@@ -10,12 +10,18 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-25)
 
-**Branch `backlog/band-a-diagnostics`: 15 commits** at the end of the band-B batch, stacked on
-`backlog/backlink-context-and-resume` (19 commits ahead of `origin/main`), so **33 unpushed in
-total**. **Nothing is pushed** — the author pushes on request only. **Do not trust any SHA *or
-count* written here** (see Git under "Standing constraints"; this count was itself written one
-commit stale, then corrected): verify with `git log --oneline origin/main..HEAD` and
-`git log --oneline backlog/backlink-context-and-resume..HEAD`.
+**Branch `backlog/band-a-diagnostics`**, stacked on `backlog/backlink-context-and-resume`, which is
+itself stacked on `origin/main`. **Nothing is pushed** — the author pushes on request only.
+
+**No commit counts are recorded here, deliberately.** They were wrong twice in one session: the
+first was written one commit stale, and the correction then mis-added the two branches' totals —
+because any count written *into* this file is invalidated by the commit that writes it. Same rule
+as a SHA (see Git under "Standing constraints"). Count them instead:
+
+```sh
+git log --oneline origin/main..HEAD                              # everything unpushed
+git log --oneline backlog/backlink-context-and-resume..HEAD      # just this branch
+```
 
 **Bands A and B are both empty as of the 2026-07-25 band-B batch.** It closed items **11**
 (PA-M3 list semantics, PA-M13 image-alt lint, PA-H1's deck theme-color + social meta), **29**
