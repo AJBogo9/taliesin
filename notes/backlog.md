@@ -27,10 +27,11 @@ Five audit rounds then ran, **findings only**: **AP7** (accessibility) = item **
 and two non-AP lenses = items **37** (diagnostics) and **38** (docs drift). **All twelve AP slots are
 now run.**
 
-**Build-ready now, both measured and unblocked:** **AP7-1** (37 of 51 book pages emit a skipped
-heading level while `check` prints "no problems found") and **AP3-1** (a page with no code cells
-hot-reloads in 0.11s alone, 12.15s when an unrelated page is executing). Each item records its own
-fix-shape constraint; read it before starting.
+**Build-ready now: the whole of band A** (items 34, 37, 35, 36, 38), ranked and grouped into three
+batches at the top of "Open work" so a session can take one and stay in one area. The two largest are
+**AP7-1** (37 of 51 book pages emit a skipped heading level while `check` prints "no problems found")
+and **AP3-1** (a page with no code cells hot-reloads in 0.11s alone, 12.15s when an unrelated page is
+executing). Each item records its own fix-shape constraint; read it before starting.
 
 **Owed by the author, not by a session:** the in-editor click-to-source round-trip check from the
 naming purge (Task 8 Step 5). The companion was repackaged and reinstalled and the relay harness
@@ -108,150 +109,37 @@ their own prefix. No ruling requires the next session to take one.
   the most valuable one (it fired on 11.8% of the corpus, essentially all false positives) and one
   whose stated justification did not exist in the tree.
 
-## Open work (priority order: product impact)
+## Open work (priority order: take from the top)
 
-Ranked highest user/product value first. Impact is not the same as buildability, so each item carries a
-gating tag: a high-impact item can still be frozen or need a ruling.
+**Ranked for implementation, not by theme.** Band A is buildable today; B is buildable but not
+worth a session alone; C and D are blocked and are listed so they are not re-scoped. **Item numbers
+are stable** and referenced from the findings docs and [AUDITS.md](AUDITS.md), so they are NOT
+renumbered when the order changes.
 
-**Five audit rounds on 2026-07-25 refilled this list: items 34 (AP7), 35 (AP3), 36 (AP11), 37 and
-38 (the diagnostics + docs-drift lenses).** Before them it was
-genuinely empty of buildable, unruled work, which is why a session was ruled to an audit: A's single
-item is an owner decision ruled deferred; both of B's need a device or a demand signal; and C was
-down to **24**'s two owner calls, item **30** (writing, not code), and P3 residuals that each carry
-their own blocker (**17**'s F-01 needs a vendoring decision, **17**'s F-02 and **18**'s F-03 are WAI,
-**12** is demand-driven, **29**'s T2 is "only if you are already in there", **11**'s Semantics bullet
-needs a CSS-grid + filter-JS restructure).
+**Standing rule for a batch:** branch per batch, verify each fix by *mutation* (restore the bug,
+watch the named test fail), browser-verify anything client-side, and **delete the item from this
+file when it lands**. Read "Standing constraints" first; several of these have a recorded trap.
 
-**The two picks are AP7-1 and AP3-1**, the only unblocked, measured-defect work in the list. Both
-have a fix-shape constraint recorded in their item; read it before starting.
+### A. Build now: measured, unblocked, and each one has its fix shape recorded
 
-### A. High impact (build first)
+**This is the batch pool. Take from the top, or take a whole batch.** Every item here is a defect
+someone measured, with no owner call and no missing device in front of it. The three batch groupings
+are by *what code they touch*, so a session stays in one area:
 
-25. **Pre-public release checklist: one owner decision left** (detail:
-    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
-    items shipped 2026-07-25 (`dos-pages`: a ws `?page=` the site cannot resolve no longer allocates
-    a never-evicted `PageState`; **DEP-03**: mermaid vendored at 11.16.0 with an explicit
-    `securityLevel: 'strict'`, `THIRD_PARTY.md` updated and now drift-locked by a test that reads the
-    version out of the bundle itself; `dos-rich`: an 8 MB cap on rich-output bytes, the axis the
-    stream-byte and output-count caps both missed; `dos-ws-size`: `max_message_size` on both ws
-    upgrades; **CMD-01**: the warm pool logs its resolved interpreter like the cold path already did).
-    **What remains is not a task:**
-    - **oss-4 — RULED 2026-07-25: deferred, and the public flip with it.** The owner is not
-      going public yet ("I'll do it at the end of summer; before that I want to hone the tool
-      to its final form"). So this is not a task and not a blocker: nothing here gates any
-      other work. Re-ask when a flip date is actually set. The question when it is: whether to
-      prune `notes/` + `docs/superpowers/`. No secret is exposed (the `--host` token design doc
-      discloses only a per-session UUID mechanism), but it is a curated bug roadmap.
-    **Verified NOT open, do not re-scope:** `SECURITY.md` exists, the tracked `/home/bogo` paths are
-    scrubbed, and PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped 2026-07-17. Refuted by the
-    audit and not worth revisiting: `dos-yaml` (libyaml rejects the alias bomb in ~30 ms — the guard is
-    in the C library, so grepping our source for it correctly finds nothing) and NET-3
-    (non-constant-time token compare).
+| Batch | Items | Why it batches |
+|---|---|---|
+| **Diagnostics + messages** | **37**, **36**, **38** | all three live in the `check`/`build` message layer, all small, and 37's fix (a test) also guards 36 |
+| **Reader-facing a11y** | **34** | one item, but AP7-1 alone is the largest measured defect open |
+| **Dev loop** | **35** | server-side; touches the builder queue, so keep it out of a batch that edits diagnostics |
 
-### B. Medium impact
-
-4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
-   deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
-   fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
-   opens the overview map, with a 250 ms hysteresis. What that left behind is all shipped or ruled —
-   see "Deck-motion: the whole item is closed" under "Decided against", formerly item 28.)*
-
-2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
-   publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
-   `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"); the presenter pieces
-   were considered and left for later. Revive only on a real speaker ask.
-
-### C. Low / hardening (P3)
-
-37. **DIAG-1: six live diagnostics fall through to the uncatalogued code, at ERROR** (P3, S+test;
-    detail: [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
-    `classify` (`diagnostics/codes.rs:141`) substring-matches the human message against `TABLE`;
-    anything unmatched returns `(GENERIC, ERROR)`. **Measured over 23 corpus/dogfood targets plus a
-    purpose-built fixture**, these six reach the fallback today: `broken citation: @X (did you
-    mean …)`, ``unknown div class `X` (did you mean …)``, ``.scrolly` has no `.step` divs``,
-    ``.panel-tabset` has no headings``, ``.input` needs a `name=` ``, ``.input type=select` needs
-    `options=` ``. **Three real consequences:** severity is decided by whether someone remembered a
-    needle (an unknown *callout kind* is a WARNING, an unknown *div class* is an ERROR that fails
-    `check` / `build --strict` / `publish`); `check --explain` answers "an uncatalogued diagnostic"
-    for all six, five of which carry a ``did you mean`` hint and are the most fixable diagnostics
-    the tool has; and `--format json` emits the same wrong code + `docs_url`.
-    **This is a recurrence, not a new bug:** the opt-in `prose-lint:` rules hit the identical
-    fallback until 2026-07-25, where a green gate cost you the rule. That was fixed by adding three
-    needles, so the *instance* was fixed and the *failure mode* was not.
-    **The fix is the test, not the needles:** the only existing guard
-    (`uncatalogued_message_gets_a_stable_generic_code`, `codes.rs:709`) asserts the fallback works on
-    a synthetic string; nothing asserts no real message reaches it. Add a test that renders the
-    diagnostics fixtures (plus a new one for the four widget-validation families) and asserts **zero**
-    `GENERIC` classifications. Adding needles alone just resets the clock. Ordering constraint already
-    documented: shape rows must precede prose rows in `TABLE`.
-
-38. **DOCS-1: two user-facing env knobs are undocumented** (P3, XS; detail:
-    [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
-    The user guide documents nine `TALIESIN_*` variables; **`TALIESIN_RENDER_TIMEOUT`**
-    (`render/mod.rs:295`, the render watchdog, `0` disables) and **`TALIESIN_JS_TIMEOUT`**
-    (`headless_js.rs:211`, the headless `{js}` settle budget) appear nowhere in it. Both shipped with
-    feature work (AP2 hardening, DX17b) that never touched the reference page, which is the same
-    drift shape the CLI-flag gate exists to catch. Consider extending that mechanical gate to env
-    vars. **Do not re-derive the other seven apparent drifts:** they are refuted in the doc
-    (`TALIESIN_BOOT`/`SSR_GEN`/`SEARCH_LOAD_FAILED`/`LABELS` are `window.*` globals, not env vars;
-    `COLD_REAP_CHILD` is an internal child marker; `BIN` belongs to the test harnesses;
-    `EDITOR_URI` exists only in a historical spec).
-
-36. **AP11 chaos finding** (detail:
-    [2026-07-25-ap11-chaos-audit.md](2026-07-25-ap11-chaos-audit.md)). One finding; the round's
-    main result is a **positive bill of health** on failure handling, listed in the doc so it is not
-    re-audited (corrupt `_freeze` self-heals in all three corruption shapes; an unwritable `_freeze`
-    warns and completes; an **unwritable output dir exits 1 with nothing half-written**; a missing
-    interpreter renders cells as source with a precise page diagnostic and **fails under `--strict`**;
-    a killed server leaves the client in a visible `reconnecting…` state with a boot-id-forced
-    re-mount). **PA-B1 was already fixed**, so AP11's only seed is closed.
-    - **AP11-1 (low-medium, S): a missing interpreter is reported to the console as an author code
-      exception.** With a bogus `TALIESIN_PYTHON`, the build logs `cell error … code cell raised an
-      uncaught exception; its traceback is baked into the output`. Both claims are false: the kernel
-      never launched and no traceback exists. **Cause:** `build.rs:380 is_cell_error_output`
-      classifies a crashed cell purely by HTML shape (`<div class="tali-output"` containing
-      `class="tali-error"`), and the kernel-unavailable diagnostic is emitted with exactly that
-      shape, so `cell_error_message` (`build.rs:478`) asserts an exception unconditionally. Reaches
-      `--format json` too, via `cell_error_diagnostics` (`build.rs:493`). The rendered **page is
-      correct**; only the console and the structured diagnostics are wrong. Matters because a wrong
-      interpreter path is plausibly the most common setup failure. **Fix shape:** distinguish at the
-      source of truth (a distinct class on the unavailable diagnostic, or an executor-set marker),
-      not by HTML shape.
-
-35. **AP3 concurrency findings** (detail:
-    [2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md)). The round **refuted
-    every race it went looking for** (see the perspective entry); what it found is a queueing
-    property. Read the "Verified sound" list before touching any of this.
-    - **AP3-1 (medium-high, M): one slow cell anywhere stalls hot reload everywhere.** Measured on a
-      two-page preview with a warm pool: a **cell-free** page's trivial prose edit lands in **0.11s**
-      alone and **12.15s** (110x) when an unrelated page is 1.2s into a 12s `{python}` cell.
-      `spawn_builder` (`serve_site/mod.rs:1006-1053`) is one task consuming one channel for the whole
-      server, **root and every mount alike**, awaiting each `build_page_guarded` to completion. It
-      serializes on the wrong predicate: a page with no cells needs no kernel and is queued behind
-      kernel work it will never use. Matters concretely because the marketing site `mounts:` both
-      dogfood books and the corpus has genuinely slow cells. **Do not "fix" by simply parallelising
-      the builder:** serialization is what makes the shared warm pool and the task-owned `ExecPool`
-      race-free (and `ExecPool` is under the M6a freeze), so the safe shape is a bypass for
-      cell-free/no-exec rebuilds, not concurrent executors. Preview-only; degrades latency, never
-      correctness.
-    - **AP3-2 (low, observation not defect): the build queue has no dedupe.** `build_tx` is a bare
-      `UnboundedSender` with no in-flight tracking, so every 80ms debounce window enqueues another
-      build for an open page. **Measured before filing it as a bug, and the visible cost is nil:** 5
-      distinct edits during one 12s build produced **1** `update` line and the correct final state,
-      because builds 2..5 render byte-identical HTML and the block diff emits no ops. The residual is
-      wasted CPU (per AP1, two full-site passes each), which was **not** measured. Only becomes real
-      if AP3-1 is fixed by parallelising.
-    - **AP3-3 (low): `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` still
-      flakes 1 run in 13.** Item 10 records it as fixed 2026-07-25 and deterministic (per-kernel
-      `cell_cap` replacing `OnceLock` memoization of `cell_timeout()`). The rate is clearly far lower
-      than before but is not zero, so either the cap has a second order-dependence or the interrupt
-      path has an unrelated timing edge. **The assertion text was not captured** (the failing run was
-      under a summary-only harness); loop the detail-capturing harness to catch it.
-    - **Correction to item 10, verified:** its "two `exec::tests` concurrency-race tests fail ~2 runs
-      in 3 in a full `--bins` run" is **0 failures in 13 full runs** with all three gates at full
-      parallelism. The `ETXTBSY` hypothesis was never reproduced, so do not spend a session on it;
-      note also that `probe_interp_id` memoizes only an *answer*, so a failed ask is genuinely
-      retried and `interp_id_settled`'s 5s loop already absorbs a transient exec refusal.
+**Sequencing warnings that are easy to miss:**
+- **34**'s two causes pull in opposite directions, and the cheap half (teaching `check` to *see* the
+  defect) turns thirty-seven currently-green pages red without fixing any of them.
+- **35** must NOT be fixed by parallelising the builder: serialization is what makes the shared warm
+  pool and the task-owned `ExecPool` race-free, and `ExecPool` is under the M6a freeze. The safe
+  shape is a bypass for cell-free rebuilds.
+- **37**'s fix is the *test* (assert zero `GENERIC` classifications), not the needles. Adding needles
+  alone fixes six instances and resets the clock on a bug class that has now bitten twice.
 
 34. **AP7 accessibility findings** (detail:
     [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md)). Five findings; the
@@ -295,66 +183,126 @@ have a fix-shape constraint recorded in their item; read it before starting.
       (`role="doc-toc"` is exposed as a landmark, verified in the full a11y tree); this lands on
       keyboard-only users not running AT. The skip link goes to `#tali-main` only.
 
-24. **SKIM-3 residue: two owner calls, no build-ready task** (P3; detail:
-    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). The severity floor,
-    `taliesin skim`, the `TAL-SHAPE-*` lints and four of the five independent-medium items all
-    shipped 2026-07-25. What is left is not code:
-    - **`book-breadcrumb`, a static "Part, Chapter" ribbon: OWNER CALL.** It adds a fourth
-      persistent top element, and the dwell-time evidence says the first viewport is the screening
-      surface. The audit itself downgraded it to "cheap and mildly orienting" and notes it must be
-      argued as a reversal of D114's "no breadcrumbs", not as an unexamined gap.
-    - **`section-extents`: OWNER RULING.** The DOM has no section boundaries (zero `<section>`
-      wrapping content headings on 17 of 19 built guide pages; repo-wide `<section>` comes only from
-      `render/deck.rs` and the footnotes block), which blocks four proposals.
-      **Recommendation: option (b), a `data-section-end` marker computed from the walk
-      `lsp_outline.rs` already does** (purely additive, invisible to the diff and the corpus
-      invariants). Option (a), a real wrapper, would also unlock `content-visibility: auto` and
-      sticky section headings, but it changes the parent/child shape the incremental diff mounts,
-      which is a design question. Pin: `corpus/layout/structure.tmd` (named by `FEATURE-IDEAS` #26,
-      still does not exist).
-    **Invariants for anything in this area:** the finding lands in the CLI or the editor and the
-    **author** edits the `.tmd` (no preview gesture, no auto-fix, no write-back); no LLM anywhere
-    (byte-identical build output is actively pinned, and `include_str!` cannot carry model weights);
-    zero new YAML keys.
-    **Deferred, do not schedule:** a reading-density fold (three unbuilt prerequisites, premise
-    measurably overstated); `content-visibility: auto` (needs option (a)); the `:~:text=` half of
-    deep links (669 of 876 dogfood paragraphs contain inline code, so fragments miss exactly the
-    identifier queries they exist for; the `?h=` half ships alone); `changed-since`; read-aloud
-    (out on cost, not principle).
-    **Killed by verification, do not re-scope:** section hover previews (built and deleted at
-    `318f22f`, pinned by three tests), a TOC entry budget (the depth window is already relative),
-    margin footnotes (two real footnotes exist in the whole repo), and `taliesin split` (it would
-    repair 0 references on the chapter it was designed for).
-    **Note for the author, no code in it:** roughly half the measured problem is *content*. Zero of
-    37 dogfood pages set `description:`, 8 xref links exist across 19 chapters, 0 backlink lines
-    render, and `docs/internals` is 60,208 words with zero `{.definition}` blocks. A glossary, a term
-    index and a float digest all produce near-empty output until an authoring pass happens.
+37. **DIAG-1: six live diagnostics fall through to the uncatalogued code, at ERROR** (P3, S+test;
+    detail: [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
+    `classify` (`diagnostics/codes.rs:141`) substring-matches the human message against `TABLE`;
+    anything unmatched returns `(GENERIC, ERROR)`. **Measured over 23 corpus/dogfood targets plus a
+    purpose-built fixture**, these six reach the fallback today: `broken citation: @X (did you
+    mean …)`, ``unknown div class `X` (did you mean …)``, ``.scrolly` has no `.step` divs``,
+    ``.panel-tabset` has no headings``, ``.input` needs a `name=` ``, ``.input type=select` needs
+    `options=` ``. **Three real consequences:** severity is decided by whether someone remembered a
+    needle (an unknown *callout kind* is a WARNING, an unknown *div class* is an ERROR that fails
+    `check` / `build --strict` / `publish`); `check --explain` answers "an uncatalogued diagnostic"
+    for all six, five of which carry a ``did you mean`` hint and are the most fixable diagnostics
+    the tool has; and `--format json` emits the same wrong code + `docs_url`.
+    **This is a recurrence, not a new bug:** the opt-in `prose-lint:` rules hit the identical
+    fallback until 2026-07-25, where a green gate cost you the rule. That was fixed by adding three
+    needles, so the *instance* was fixed and the *failure mode* was not.
+    **The fix is the test, not the needles:** the only existing guard
+    (`uncatalogued_message_gets_a_stable_generic_code`, `codes.rs:709`) asserts the fallback works on
+    a synthetic string; nothing asserts no real message reaches it. Add a test that renders the
+    diagnostics fixtures (plus a new one for the four widget-validation families) and asserts **zero**
+    `GENERIC` classifications. Adding needles alone just resets the clock. Ordering constraint already
+    documented: shape rows must precede prose rows in `TABLE`.
 
+35. **AP3 concurrency findings** (detail:
+    [2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md)). The round **refuted
+    every race it went looking for** (see the perspective entry); what it found is a queueing
+    property. Read the "Verified sound" list before touching any of this.
+    - **AP3-1 (medium-high, M): one slow cell anywhere stalls hot reload everywhere.** Measured on a
+      two-page preview with a warm pool: a **cell-free** page's trivial prose edit lands in **0.11s**
+      alone and **12.15s** (110x) when an unrelated page is 1.2s into a 12s `{python}` cell.
+      `spawn_builder` (`serve_site/mod.rs:1006-1053`) is one task consuming one channel for the whole
+      server, **root and every mount alike**, awaiting each `build_page_guarded` to completion. It
+      serializes on the wrong predicate: a page with no cells needs no kernel and is queued behind
+      kernel work it will never use. Matters concretely because the marketing site `mounts:` both
+      dogfood books and the corpus has genuinely slow cells. **Do not "fix" by simply parallelising
+      the builder:** serialization is what makes the shared warm pool and the task-owned `ExecPool`
+      race-free (and `ExecPool` is under the M6a freeze), so the safe shape is a bypass for
+      cell-free/no-exec rebuilds, not concurrent executors. Preview-only; degrades latency, never
+      correctness.
+    - **AP3-2 (low, observation not defect): the build queue has no dedupe.** `build_tx` is a bare
+      `UnboundedSender` with no in-flight tracking, so every 80ms debounce window enqueues another
+      build for an open page. **Measured before filing it as a bug, and the visible cost is nil:** 5
+      distinct edits during one 12s build produced **1** `update` line and the correct final state,
+      because builds 2..5 render byte-identical HTML and the block diff emits no ops. The residual is
+      wasted CPU (per AP1, two full-site passes each), which was **not** measured. Only becomes real
+      if AP3-1 is fixed by parallelising.
+    - **AP3-3 (low): `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` still
+      flakes 1 run in 13.** Item 10 records it as fixed 2026-07-25 and deterministic (per-kernel
+      `cell_cap` replacing `OnceLock` memoization of `cell_timeout()`). The rate is clearly far lower
+      than before but is not zero, so either the cap has a second order-dependence or the interrupt
+      path has an unrelated timing edge. **The assertion text was not captured** (the failing run was
+      under a summary-only harness); loop the detail-capturing harness to catch it.
+    - **Correction to item 10, verified:** its "two `exec::tests` concurrency-race tests fail ~2 runs
+      in 3 in a full `--bins` run" is **0 failures in 13 full runs** with all three gates at full
+      parallelism. The `ETXTBSY` hypothesis was never reproduced, so do not spend a session on it;
+      note also that `probe_interp_id` memoizes only an *answer*, so a failed ask is genuinely
+      retried and `interp_id_settled`'s 5s loop already absorbs a transient exec refusal.
 
-17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
-    [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
-    A realistic library documentation site (`corpus/tarn/`, corpus-pinned by `tarn.rs` + a `/gallery/tarn`
-    marketing-site exhibit) probed the tabsets × full-text-search × API-reference cluster. The *stacked*
-    interactions (book × Guide/Reference parts × two `.panel-tabset`s per page × `.code-walkthrough` ×
-    guide→reference `.tmd#anchor` cross-page links × chapter-scoped `@sec-` refs × Cmd-K search spanning the
-    book incl. tabset-hidden content × version/deprecation callouts × mount) ALL work — 0 interaction-bugs.
-    Four P3 findings, all on secondary surfaces. **Highest-placed of the P3 demand-probe set because F-01 is
-    the only one a reader sees on the page:**
-    - **F-01 (friction, P3) — SYMPTOM REAL, RECORDED FIX WRONG (re-derived 2026-07-25).** The symptom
-      stands: `powershell` and `ps1` both render as unstyled plain text with a `TAL-CODE-LANG` warning
-      (`bash` highlights fine). But the filed one-liner cannot work: **`two-face` has no PowerShell
-      syntax at all.** Enumerated, not grepped — its set is 199 syntaxes and PowerShell is not among
-      them, and no feature flag adds one. (The "ordering trap" the old entry warned about is moot too:
-      `resolve()` already consults the bundled set first and falls back to the extras, so a syntax in
-      either set would already resolve.)
-      **A real fix means vendoring a grammar**, which is a decision, not a drive-by: the upstream
-      PowerShell/EditorSyntax grammar is a 43 KB `.tmLanguage` plist (needs syntect's `plist-load`
-      feature, which is not enabled) and its `LICENSE.txt` 404s, so its terms need establishing before
-      anything is vendored — particularly with the repo about to go public (item 25). Left to the
-      author with that groundwork done. A cheap alias to another language is NOT an option: it would
-      mean confidently wrong highlighting instead of honestly absent highlighting.
-    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
-      the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
+36. **AP11 chaos finding** (detail:
+    [2026-07-25-ap11-chaos-audit.md](2026-07-25-ap11-chaos-audit.md)). One finding; the round's
+    main result is a **positive bill of health** on failure handling, listed in the doc so it is not
+    re-audited (corrupt `_freeze` self-heals in all three corruption shapes; an unwritable `_freeze`
+    warns and completes; an **unwritable output dir exits 1 with nothing half-written**; a missing
+    interpreter renders cells as source with a precise page diagnostic and **fails under `--strict`**;
+    a killed server leaves the client in a visible `reconnecting…` state with a boot-id-forced
+    re-mount). **PA-B1 was already fixed**, so AP11's only seed is closed.
+    - **AP11-1 (low-medium, S): a missing interpreter is reported to the console as an author code
+      exception.** With a bogus `TALIESIN_PYTHON`, the build logs `cell error … code cell raised an
+      uncaught exception; its traceback is baked into the output`. Both claims are false: the kernel
+      never launched and no traceback exists. **Cause:** `build.rs:380 is_cell_error_output`
+      classifies a crashed cell purely by HTML shape (`<div class="tali-output"` containing
+      `class="tali-error"`), and the kernel-unavailable diagnostic is emitted with exactly that
+      shape, so `cell_error_message` (`build.rs:478`) asserts an exception unconditionally. Reaches
+      `--format json` too, via `cell_error_diagnostics` (`build.rs:493`). The rendered **page is
+      correct**; only the console and the structured diagnostics are wrong. Matters because a wrong
+      interpreter path is plausibly the most common setup failure. **Fix shape:** distinguish at the
+      source of truth (a distinct class on the unavailable diagnostic, or an executor-set marker),
+      not by HTML shape.
+
+38. **DOCS-1: two user-facing env knobs are undocumented** (P3, XS; detail:
+    [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
+    The user guide documents nine `TALIESIN_*` variables; **`TALIESIN_RENDER_TIMEOUT`**
+    (`render/mod.rs:295`, the render watchdog, `0` disables) and **`TALIESIN_JS_TIMEOUT`**
+    (`headless_js.rs:211`, the headless `{js}` settle budget) appear nowhere in it. Both shipped with
+    feature work (AP2 hardening, DX17b) that never touched the reference page, which is the same
+    drift shape the CLI-flag gate exists to catch. Consider extending that mechanical gate to env
+    vars. **Do not re-derive the other seven apparent drifts:** they are refuted in the doc
+    (`TALIESIN_BOOT`/`SSR_GEN`/`SEARCH_LOAD_FAILED`/`LABELS` are `window.*` globals, not env vars;
+    `COLD_REAP_CHILD` is an internal child marker; `BIN` belongs to the test harnesses;
+    `EDITOR_URI` exists only in a historical spec).
+
+### B. Buildable, but low yield on its own
+
+Unblocked, but none of these earns a session by itself. Good filler at the end of a batch, or fold
+into a batch that is already in the same file.
+
+11. **2026-07-22 polish-audit residuals** (P3 hardening + a11y + "feels finished"; detail:
+    [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md); [AUDITS.md](AUDITS.md) records the round).
+    **Passes (a)-(f) all shipped** (design-system single-source, scaffold `<h1>`/`<time>`, `<article>`
+    landmark, announce/focus holes, CLI/diagnostics, reduced-motion+print, emitted-markup a11y; see
+    "Already shipped"). **The tokens, a11y-interaction and CLI-docs bullets all shipped 2026-07-25**
+    (see below). One bullet is left:
+    - **Semantics (M3/M13, H1):** `<ul>`/`role=list` (needs a CSS-grid + category-filter-JS restructure +
+      browser verify), hero/card image-alt lint nudge, deck `theme-color`/OG (PA-H1 residual).
+      Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
+
+29. **Reduction-audit residuals** (P3, dev-facing; detail:
+    [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). Phase 2 + T1 + R2 shipped and
+    the codebase is lean; two items were explicitly deferred and never filed here. Both re-verified open:
+    - **R1 — two divergent text extractors.** *Half closed 2026-07-25:* the Cmd-K side no longer has
+      an extractor of its own — `search::section_text` was `indexable_text` **plus a 1500-char cap**,
+      and with the cap gone it is exactly `render::indexable_text`. What remains is the original
+      divergence: `text_content` (which feeds `llms.txt`) decodes `&#8217;`/`&nbsp;`,
+      `render::indexable_text` does not, so naively reusing one would leak raw entities into
+      `llms.txt`. That fork is pinned by a passing test, so it is conscious, not a bug. Its stated
+      sequencing hook is spent (item 23 has shipped); revisit only if a consumer needs them equal.
+    - **T2 — three site modules each run their own raw-source pre-scan** (`site/xref.rs`, `site/book.rs`,
+      `site/discovery.rs` each `read_to_string` the page and re-implement a slice of the include/parse
+      pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
+      already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
+      whole-site pass.
 
 10. **Reliability / test-infra long tail** (P3, dev-facing):
     - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
@@ -391,15 +339,106 @@ have a fix-shape constraint recorded in their item; read it before starting.
     - **Audit long-tail:** a tens-of-MB cell output blocks ZMQ receive before the cap fires
       (`kernel.rs`, do-not-touch).
 
-11. **2026-07-22 polish-audit residuals** (P3 hardening + a11y + "feels finished"; detail:
-    [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md); [AUDITS.md](AUDITS.md) records the round).
-    **Passes (a)-(f) all shipped** (design-system single-source, scaffold `<h1>`/`<time>`, `<article>`
-    landmark, announce/focus holes, CLI/diagnostics, reduced-motion+print, emitted-markup a11y; see
-    "Already shipped"). **The tokens, a11y-interaction and CLI-docs bullets all shipped 2026-07-25**
-    (see below). One bullet is left:
-    - **Semantics (M3/M13, H1):** `<ul>`/`role=list` (needs a CSS-grid + category-filter-JS restructure +
-      browser verify), hero/card image-alt lint nudge, deck `theme-color`/OG (PA-H1 residual).
-      Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
+### C. Blocked on an owner ruling or decision (not a task until then)
+
+Do not start these as code. Each needs a call from the author first; the item records what the
+question is and what the evidence says.
+
+25. **Pre-public release checklist: one owner decision left** (detail:
+    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
+    items shipped 2026-07-25 (`dos-pages`: a ws `?page=` the site cannot resolve no longer allocates
+    a never-evicted `PageState`; **DEP-03**: mermaid vendored at 11.16.0 with an explicit
+    `securityLevel: 'strict'`, `THIRD_PARTY.md` updated and now drift-locked by a test that reads the
+    version out of the bundle itself; `dos-rich`: an 8 MB cap on rich-output bytes, the axis the
+    stream-byte and output-count caps both missed; `dos-ws-size`: `max_message_size` on both ws
+    upgrades; **CMD-01**: the warm pool logs its resolved interpreter like the cold path already did).
+    **What remains is not a task:**
+    - **oss-4 — RULED 2026-07-25: deferred, and the public flip with it.** The owner is not
+      going public yet ("I'll do it at the end of summer; before that I want to hone the tool
+      to its final form"). So this is not a task and not a blocker: nothing here gates any
+      other work. Re-ask when a flip date is actually set. The question when it is: whether to
+      prune `notes/` + `docs/superpowers/`. No secret is exposed (the `--host` token design doc
+      discloses only a per-session UUID mechanism), but it is a curated bug roadmap.
+    **Verified NOT open, do not re-scope:** `SECURITY.md` exists, the tracked `/home/bogo` paths are
+    scrubbed, and PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped 2026-07-17. Refuted by the
+    audit and not worth revisiting: `dos-yaml` (libyaml rejects the alias bomb in ~30 ms — the guard is
+    in the C library, so grepping our source for it correctly finds nothing) and NET-3
+    (non-constant-time token compare).
+
+24. **SKIM-3 residue: two owner calls, no build-ready task** (P3; detail:
+    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). The severity floor,
+    `taliesin skim`, the `TAL-SHAPE-*` lints and four of the five independent-medium items all
+    shipped 2026-07-25. What is left is not code:
+    - **`book-breadcrumb`, a static "Part, Chapter" ribbon: OWNER CALL.** It adds a fourth
+      persistent top element, and the dwell-time evidence says the first viewport is the screening
+      surface. The audit itself downgraded it to "cheap and mildly orienting" and notes it must be
+      argued as a reversal of D114's "no breadcrumbs", not as an unexamined gap.
+    - **`section-extents`: OWNER RULING.** The DOM has no section boundaries (zero `<section>`
+      wrapping content headings on 17 of 19 built guide pages; repo-wide `<section>` comes only from
+      `render/deck.rs` and the footnotes block), which blocks four proposals.
+      **Recommendation: option (b), a `data-section-end` marker computed from the walk
+      `lsp_outline.rs` already does** (purely additive, invisible to the diff and the corpus
+      invariants). Option (a), a real wrapper, would also unlock `content-visibility: auto` and
+      sticky section headings, but it changes the parent/child shape the incremental diff mounts,
+      which is a design question. Pin: `corpus/layout/structure.tmd` (named by `FEATURE-IDEAS` #26,
+      still does not exist).
+    **Invariants for anything in this area:** the finding lands in the CLI or the editor and the
+    **author** edits the `.tmd` (no preview gesture, no auto-fix, no write-back); no LLM anywhere
+    (byte-identical build output is actively pinned, and `include_str!` cannot carry model weights);
+    zero new YAML keys.
+    **Deferred, do not schedule:** a reading-density fold (three unbuilt prerequisites, premise
+    measurably overstated); `content-visibility: auto` (needs option (a)); the `:~:text=` half of
+    deep links (669 of 876 dogfood paragraphs contain inline code, so fragments miss exactly the
+    identifier queries they exist for; the `?h=` half ships alone); `changed-since`; read-aloud
+    (out on cost, not principle).
+    **Killed by verification, do not re-scope:** section hover previews (built and deleted at
+    `318f22f`, pinned by three tests), a TOC entry budget (the depth window is already relative),
+    margin footnotes (two real footnotes exist in the whole repo), and `taliesin split` (it would
+    repair 0 references on the chapter it was designed for).
+    **Note for the author, no code in it:** roughly half the measured problem is *content*. Zero of
+    37 dogfood pages set `description:`, 8 xref links exist across 19 chapters, 0 backlink lines
+    render, and `docs/internals` is 60,208 words with zero `{.definition}` blocks. A glossary, a term
+    index and a float digest all produce near-empty output until an authoring pass happens.
+
+17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
+    [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
+    A realistic library documentation site (`corpus/tarn/`, corpus-pinned by `tarn.rs` + a `/gallery/tarn`
+    marketing-site exhibit) probed the tabsets × full-text-search × API-reference cluster. The *stacked*
+    interactions (book × Guide/Reference parts × two `.panel-tabset`s per page × `.code-walkthrough` ×
+    guide→reference `.tmd#anchor` cross-page links × chapter-scoped `@sec-` refs × Cmd-K search spanning the
+    book incl. tabset-hidden content × version/deprecation callouts × mount) ALL work — 0 interaction-bugs.
+    Four P3 findings, all on secondary surfaces. **Highest-placed of the P3 demand-probe set because F-01 is
+    the only one a reader sees on the page:**
+    - **F-01 (friction, P3) — SYMPTOM REAL, RECORDED FIX WRONG (re-derived 2026-07-25).** The symptom
+      stands: `powershell` and `ps1` both render as unstyled plain text with a `TAL-CODE-LANG` warning
+      (`bash` highlights fine). But the filed one-liner cannot work: **`two-face` has no PowerShell
+      syntax at all.** Enumerated, not grepped — its set is 199 syntaxes and PowerShell is not among
+      them, and no feature flag adds one. (The "ordering trap" the old entry warned about is moot too:
+      `resolve()` already consults the bundled set first and falls back to the extras, so a syntax in
+      either set would already resolve.)
+      **A real fix means vendoring a grammar**, which is a decision, not a drive-by: the upstream
+      PowerShell/EditorSyntax grammar is a 43 KB `.tmLanguage` plist (needs syntect's `plist-load`
+      feature, which is not enabled) and its `LICENSE.txt` 404s, so its terms need establishing before
+      anything is vendored — particularly with the repo about to go public (item 25). Left to the
+      author with that groundwork done. A cheap alias to another language is NOT an option: it would
+      mean confidently wrong highlighting instead of honestly absent highlighting.
+    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
+      the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
+
+2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
+   publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
+   `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"); the presenter pieces
+   were considered and left for later. Revive only on a real speaker ask.
+
+### D. Blocked on a device, a real user, or is working-as-intended
+
+Kept visible so they are not re-scoped. Revive on a real signal, not on capacity.
+
+4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
+   deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
+   fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
+   opens the overview map, with a 250 ms hysteresis. What that left behind is all shipped or ruled —
+   see "Deck-motion: the whole item is closed" under "Decided against", formerly item 28.)*
 
 18. **Demand-probe (interactive-explainer, persona #3) findings** (P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)).
@@ -421,21 +460,13 @@ have a fix-shape constraint recorded in their item; read it before starting.
       paint. Gate teardown on `invalidation`, not DOM attachment. WAI but a sharp edge — candidate: a doc
       line in the `{js}`-cell reference, or an optional post-mount hook.
 
-29. **Reduction-audit residuals** (P3, dev-facing; detail:
-    [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). Phase 2 + T1 + R2 shipped and
-    the codebase is lean; two items were explicitly deferred and never filed here. Both re-verified open:
-    - **R1 — two divergent text extractors.** *Half closed 2026-07-25:* the Cmd-K side no longer has
-      an extractor of its own — `search::section_text` was `indexable_text` **plus a 1500-char cap**,
-      and with the cap gone it is exactly `render::indexable_text`. What remains is the original
-      divergence: `text_content` (which feeds `llms.txt`) decodes `&#8217;`/`&nbsp;`,
-      `render::indexable_text` does not, so naively reusing one would leak raw entities into
-      `llms.txt`. That fork is pinned by a passing test, so it is conscious, not a bug. Its stated
-      sequencing hook is spent (item 23 has shipped); revisit only if a consumer needs them equal.
-    - **T2 — three site modules each run their own raw-source pre-scan** (`site/xref.rs`, `site/book.rs`,
-      `site/discovery.rs` each `read_to_string` the page and re-implement a slice of the include/parse
-      pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
-      already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
-      whole-site pass.
+12. **i18n / Unicode multibyte correctness: DONE bar a demand-driven residual.** The LSP UTF-16 encoding
+    fix shipped 2026-07-22 (folded from AP5; detail:
+    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)): the stdio
+    LSP advertises `positionEncoding: utf-16` and converts at every boundary (I18N-2/3/4/5); I18N-1 was
+    resolved as documentation (block start columns are always ASCII-prefixed, so the client conversion was
+    unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
+    layout, CJK line-breaking, non-ASCII heading-slug collisions.*
 
 30. **Demand-probe persona 4 (analyst) artifact** (P3, M, mostly writing; spec
     `docs/superpowers/specs/2026-07-22-corpus-demand-probe-design.md` §4). The four-persona demand-probe
@@ -447,15 +478,7 @@ have a fix-shape constraint recorded in their item; read it before starting.
     corpus had never combined and found **0 interaction-bugs** between them, only P3 friction on secondary
     surfaces. Worth finishing for corpus coverage, not because a fourth probe is likely to find a defect.
 
-12. **i18n / Unicode multibyte correctness: DONE bar a demand-driven residual.** The LSP UTF-16 encoding
-    fix shipped 2026-07-22 (folded from AP5; detail:
-    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)): the stdio
-    LSP advertises `positionEncoding: utf-16` and converts at every boundary (I18N-2/3/4/5); I18N-1 was
-    resolved as documentation (block start columns are always ASCII-prefixed, so the client conversion was
-    unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
-    layout, CJK line-breaking, non-ASCII heading-slug collisions.*
-
-### D. Gated, not actionable now (kept visible, do not spin up)
+### E. Gated, not actionable now (kept visible, do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
   Eviction drops the executor and kills its kernel child processes, so this is kernel lifecycle, not a
@@ -508,7 +531,7 @@ narrow round, but it targets the warm-server moat. The docs lens also left its e
 untouched: *behavioural* claims in the two dogfood books (what a flag does, not whether it exists).
 
 
-## Tier 3: demand-driven (band E; build only when a real user asks)
+## Tier 3: demand-driven (below every band above; build only when a real user asks)
 
 **Waits on demand, not on capacity.** The PMF audit's verdict is that what is missing is
 **real users, not more features**, so nothing here is scheduled. One line each; the reasoning lives
