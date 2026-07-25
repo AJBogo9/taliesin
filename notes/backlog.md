@@ -149,9 +149,7 @@ What is left now sorts into:
      index shape once, so re-measure the cap's real cost on a fresh build before quoting 18.3%.*
   2. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
      three-state floor) shipped 2026-07-25, so the lints in 24c are no longer gate-blocked either.
-  3. **31** (S) — the contradictory book-chapter label rule, found while building Ship A. One-line
-     precedence flip, but it relabels chapters, so check the dogfood books first.
-  4. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
+  3. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
      put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
      specifically, not the outline as such.
 - **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
@@ -592,23 +590,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     (that is how the 28(5) refinement went wrong). Pin: none exists — the overview is client JS with
     no server-rendered output, so this needs a browser measurement, not a corpus doc.
 
-31. **A book chapter's label follows two contradictory rules** (P3, S; found 2026-07-25 while building 23
-    Ship A, surfaced not fixed because it changes drawer labels project-wide). Measured on
-    `corpus/tarn/joins.tmd` (front matter `title: "Joining frames"`, body `# Join kinds`): the page's
-    `<title>` reads **"Joining frames"** while the drawer row and the search index read **"Join kinds"**.
-    Cause: `site/book.rs`'s `push_chapter` resolves `label` -> **first `# H1`** -> `fm.title` -> stem, while
-    `site/discovery.rs:50` resolves `fm.title` -> `# H1` and its comment explicitly claims "`<title>`,
-    og:title, listing cards, nav, and search — all of which read `Page.title` — agree". A **book** page's
-    `Page.title` comes from `book.rs:247` (the chapter label), not from `discovery.rs`, so the claimed
-    agreement is false for exactly the shape where the two sources differ. The fix is a one-line precedence
-    flip in `push_chapter` (prefer the explicit `title:` over the harvested H1, matching every other
-    surface), but it **relabels any chapter where they differ** — check `docs/guide` + `docs/internals`
-    before flipping, and add a corpus pin asserting the three surfaces agree. Do NOT "fix" it by editing
-    `joins.tmd`: that hides the defect the fixture just exposed.
-    *Adjacent, not filed as its own item:* `docs/internals/` still carries pre-rename `qmd*` names in
-    paragraphs untouched by the Ship A pass (`window.qmdOpenSearch`, `QMD_SEARCH_INDEX`, `search.json`,
-    `build_index_json` were corrected only where Ship A rewrote them). Sweep on the next internals edit.
-
 30. **Demand-probe persona 4 (analyst) artifact** (P3, M, mostly writing; spec
     `docs/superpowers/specs/2026-07-22-corpus-demand-probe-design.md` §4). The four-persona demand-probe
     program ships each persona as one artifact in three roles — a green corpus pin, a findings doc, and a
@@ -1047,6 +1028,19 @@ claim that one of these is "missing"):
   shipped.
 
 ## Decided against / do-not-re-litigate
+
+- **Flipping a book chapter's label to prefer `title:` over its `# H1`** (raised + resolved
+  2026-07-25 while building 23's Ship A). The symptom is real — a chapter's drawer / Contents /
+  Cmd-K label can differ from its `<title>` — but **measured across every book in the repo only 3
+  of 48 chapters differ, and in 2 of them the `# H1` is the BETTER nav label** (`docs/guide`'s
+  preface is `title: Taliesin` opening `# Why Taliesin`; `docs/internals`' is `title: Taliesin
+  Internals` opening `# How Taliesin works`). Flipping the precedence would relabel those to the
+  duller name to fix a divergence the author created on purpose. **The evidence I first filed was
+  overstated**: the "all these surfaces agree" claim I cited is a comment on a *website*-page test
+  and is true in the case it describes; a book chapter simply has a nav label distinct from its
+  page title. Resolved as documentation (a note in `docs/internals/sites.tmd` + a corrected comment
+  at `site/mod.rs`'s website-title test), not code. Nothing is searchable-only-by-one-name: the
+  page record's body carries the rendered title block, so both names find the page in Cmd-K.
 
 - **CAD-as-code (`{openscad}` / CadQuery cell → live 3-D preview): researched 2026-07-23, NOT built**
   (detail: [2026-07-23-cad-as-code-research.md](2026-07-23-cad-as-code-research.md); two background research

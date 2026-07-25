@@ -149,6 +149,22 @@ needed; the shape of the config decides. A `chapters:` entry is a bare path, a
 `{ part:, chapters: }` group, or a `{ file:, text: }` mapping whose `text:`
 overrides the chapter label (otherwise the label is the chapter's first `# H1`).
 
+::: {.callout-note}
+## A chapter's **nav label** and its **page title** are different things
+
+A book chapter's label — in the drawer, the landing Contents and the Cmd-K outline —
+resolves `text:` → first `# H1` → front-matter `title:` → the file stem. Its `<title>`
+and social metadata come from the document's own `title:`. So a chapter that sets both
+a `title:` and a different opening `# H1` deliberately shows two names, and that is the
+supported way to give a chapter a short nav label and a longer page title (the guide's
+preface is titled "Taliesin" and opens `# Why Taliesin`).
+
+The rule differs from a **website** page, whose `Page.title` resolves `title:` → `# H1`,
+title-first. That asymmetry is deliberate: a website page has no nav label distinct from
+its title, and a book chapter does. Measured across every book in the repo, 3 of 48
+chapters currently differ, all of them on purpose.
+:::
+
 ## Front-matter primitives
 
 Three front-matter blocks turn a page into something structured, and all three
