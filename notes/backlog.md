@@ -47,9 +47,13 @@ gates and `--test-threads=1`; `cargo fmt --check`, `clippy --workspace --all-tar
 band-A batch additionally browser-verified every client-side change (the chrome-devtools MCP profile
 was held by a parallel session, so via the project's own `puppeteer-core` harness, as AP7 itself did).
 
-**Owed by the author, not by a session:** the in-editor click-to-source round-trip check from the
-naming purge (Task 8 Step 5). The companion was repackaged and reinstalled and the relay harness
-passes both directions, but nothing automated covers the real editor round-trip.
+**Nothing is owed by the author.** The one item that was — the in-editor click-to-source round-trip
+from the naming purge (Task 8 Step 5) — was **verified working by the author on 2026-07-25**, which
+closes the naming purge outright. It needed a human because nothing automated covers the real editor
+round-trip: the companion was repackaged and reinstalled and the relay harness passes both
+directions, but the harness stops at the relay and cannot see whether the editor actually lands the
+cursor. That gap is still there, so a future change to the relay or the companion re-opens the same
+manual check.
 
 **Every AP slot is now run.** The only audit work with code left in it is **AP1's unchased
 residuals** (kernel RSS drift, multi-hour warm RSS) and the *behavioural* half of the docs lens.
