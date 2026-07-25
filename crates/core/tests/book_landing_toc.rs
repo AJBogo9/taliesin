@@ -78,7 +78,7 @@ fn a_non_book_website_landing_has_no_book_toc() {
 /// stylesheet are INLINED into every page's `<head>`, so `contains("data-tali-continue")`
 /// and `contains("tali-book-continue")` are both satisfied by a page that renders no slot
 /// at all (the JS carries the selector, the CSS carries the rule).
-const CONTINUE_SLOT: &str = r#"<p class="tali-book-continue" data-tali-continue hidden></p>"#;
+const CONTINUE_SLOT: &str = r#"<p class="tali-book-continue" data-tali-continue hidden data-block-id="tali-book-continue"></p>"#;
 
 /// The `tali-book-toc` block's own HTML, without the page chrome and (crucially) without
 /// the inlined enhancer bundle: `15-reading-progress.js` ships the literal
@@ -99,16 +99,29 @@ fn the_landing_emits_an_inert_continue_slot_and_the_book_carries_a_stable_identi
     // empty, hidden slot the client fills. Pinned on `corpus/tarn`, the multi-part book.
     let site = Site::discover(&corpus_dir().join("tarn"));
     let landing = site.render_page("index.tmd").expect("renders");
-    let block = landing_toc_block(&landing);
     assert!(
-        block.contains(CONTINUE_SLOT),
-        "the landing's Continue slot must ship inert and empty: {block}"
+        landing.contains(CONTINUE_SLOT),
+        "the landing's Continue slot must ship inert and empty: {landing}"
     );
     // No reader state may leak into the artifact — no stored path, no chapter name, nothing
-    // that would differ between two readers or two builds.
+    // that would differ between two readers or two builds. Scoped to the Contents block
+    // because the ENHANCER BUNDLE, inlined in every page's <head>, ships the literal
+    // "Continue reading" it writes at runtime.
     assert!(
-        !block.contains("Continue reading"),
-        "the Continue label is written by the client, never baked into the build: {block}"
+        !landing_toc_block(&landing).contains("Continue reading"),
+        "the Continue label is written by the client, never baked into the build"
+    );
+    // Above the fold, not buried. Shipped inside the Contents nav first, which measured
+    // 3,120 px down a 4,109 px `docs/guide` landing — an affordance whose whole job is
+    // "get me back in" cannot sit three viewports below the fold. It is the first block
+    // after the title block, so this asserts ORDER, not just presence.
+    let slot_at = landing.find(CONTINUE_SLOT).expect("slot present");
+    let toc_at = landing
+        .find(r#"data-block-id="tali-book-toc""#)
+        .expect("toc present");
+    assert!(
+        slot_at < toc_at,
+        "the Continue slot must precede the Contents list, not live inside it"
     );
 
     // The book's identity for that state is its landing href. NOT the title: a retitled

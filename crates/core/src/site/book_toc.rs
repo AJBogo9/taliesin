@@ -32,16 +32,10 @@ pub(super) fn render_book_toc(
     // Depth-relative prefix, like the drawer: the landing is at the site root
     // (`index.html`), so this is empty in practice, but keep the general form.
     let up = "../".repeat(current_url.matches('/').count());
-    // The Continue slot is emitted INERT and empty: which chapter a reader left off in is
-    // reader-local state that exists only in their browser, so the server has nothing to
-    // put here and a built page is identical for every reader. `15-reading-progress.js`
-    // fills it in and unhides it; with JS off it stays a hidden empty element and the
-    // Contents below is the whole navigation, exactly as before.
     let mut s = String::from(
         "<nav class=\"tali-book-landing-toc\" aria-labelledby=\"tali-btoc-h\" \
          data-block-id=\"tali-book-toc\">\
          <h2 id=\"tali-btoc-h\" class=\"tali-btoc-title\">Contents</h2>\
-         <p class=\"tali-book-continue\" data-tali-continue hidden></p>\
          <ul class=\"tali-btoc-list\">",
     );
     for e in entries {
@@ -121,7 +115,43 @@ impl Site {
                 html,
                 cell: None,
             });
+            self.attach_book_continue(blocks);
         }
+    }
+
+    /// The book-scoped "Continue reading" slot, emitted INERT and empty near the TOP of the
+    /// landing page. Which chapter a reader left off in is reader-local state that exists
+    /// only in their browser, so the server has nothing to put here and a built page stays
+    /// identical for every reader; `15-reading-progress.js` fills it in and unhides it.
+    ///
+    /// **Position was measured, not chosen.** It first shipped inside the Contents nav,
+    /// which put it 3,120 px down a 4,109 px landing page on `docs/guide` — 76% of the way
+    /// through, three viewports below the fold. An affordance whose entire job is "get me
+    /// back in" cannot live below the fold. It goes after the title block instead (before
+    /// it, the page would open on chrome rather than its own name).
+    ///
+    /// It is not persistent chrome and does not spend the screening viewport of a reader
+    /// who has not earned it: with no stored position it stays `hidden` and occupies
+    /// nothing. Only attached when a Contents list exists, since the client reads the
+    /// chapter's number and title out of that list.
+    fn attach_book_continue(&self, blocks: &mut Vec<Block>) {
+        let at = usize::from(
+            blocks
+                .first()
+                .is_some_and(|b| b.html.contains("class=\"tali-title-block\"")),
+        );
+        blocks.insert(
+            at,
+            Block {
+                id: "tali-book-continue".to_string(),
+                sourcepos: String::new(),
+                source_file: None,
+                html: "<p class=\"tali-book-continue\" data-tali-continue hidden \
+                       data-block-id=\"tali-book-continue\"></p>"
+                    .to_string(),
+                cell: None,
+            },
+        );
     }
 }
 
