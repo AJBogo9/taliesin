@@ -10,7 +10,9 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-25, latest: the P3 residual batch)
 
-**Branch `backlog/p3-residual-batch`, 5 commits, UNPUSHED.** Cleared **item 32** (gone), **item 17's
+**Branch `backlog/p3-residual-batch`, 6 commits, PUSHED** (fast-forwarded onto `origin/main`,
+`4c97071..8aad995`; re-verified immediately before the push, and the pre-push hook passed).
+Cleared **item 32** (gone), **item 17's
 F-04**, and **three of item 11's four remaining bullets** (tokens incl. PA-C5, a11y interaction
 B3/B5/B14/B15, CLI docs CLI1/2/3) plus **PA-B9** as an adjacent find. Item 11 is down to its
 Semantics bullet. Gates at landing, re-run not trusted from this file: **1450 tests / 0 fail across
@@ -169,8 +171,9 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: the P3 residual batch is on branch `backlog/p3-residual-batch` and is NOT pushed** (5
-commits; gates in the State block above). Before anything else, check what is actually where:
+**State: the P3 residual batch is PUSHED** (branch `backlog/p3-residual-batch`, 6 commits
+fast-forwarded onto `origin/main`; gates in the State block above). Before anything else, check what
+is actually where:
 `git log --oneline origin/main..main` and `git branch -v`. **Do not trust a SHA written here** — the
 author pushes mid-session with no signal in this file. The SKIM batch and the naming purge were both
 pushed earlier the same day.
