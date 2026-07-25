@@ -8,7 +8,43 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: SKIM-2 fully shipped + SKIM-3a + deck-motion (5))
+## State (2026-07-25, latest: the P3 residual batch)
+
+**Branch `backlog/p3-residual-batch`, 5 commits, UNPUSHED.** Cleared **item 32** (gone), **item 17's
+F-04**, and **three of item 11's four remaining bullets** (tokens incl. PA-C5, a11y interaction
+B3/B5/B14/B15, CLI docs CLI1/2/3) plus **PA-B9** as an adjacent find. Item 11 is down to its
+Semantics bullet. Gates at landing, re-run not trusted from this file: **1450 tests / 0 fail across
+88 binaries** with all three gates and `--test-threads=1`; `cargo fmt --check`,
+`clippy --workspace --all-targets -D warnings` (0 warnings) and both JS `tsc` gates clean; `check`
+reports no problems on `corpus/tarn`, `docs/guide`, `docs/internals` and `site`. Every fix is
+mutation-verified; the client work is browser-verified against a real build, a real single-doc
+preview and a real deck, 0 console errors.
+
+**Four things this batch got that the entries did not say** (the "entries rot" law, again):
+- **Three of the four token bullets had already shipped** before the entry listing them was
+  written. Grep the token before scheduling the work.
+- **The generic CLI gate found 9 undocumented flags where the audit filed 2**, and the drift ran
+  in BOTH directions: `preview`'s hand-written usage line advertised a `--port` its help omitted,
+  while `check`'s dropped five flags its help documented. One assertion per flag is what let that
+  sit; read the parser's own `*_FLAGS` const and compare the lists mechanically.
+- **Item 32's recorded cause was wrong.** It blamed `roomy` for computing false when the map
+  "measurably fits". `roomy` reads the deck STAGE, which is letterboxed to 16:9 — at a 1100x1000
+  window the stage is 1100x619, so a 626 px map genuinely does not fit. The audit measured the
+  window. The real defect was the fallback: "follow the current tile" centres row 0 and wastes half
+  the stage above it, and `clampOv` permitted it because it never looked at the stage or the scale.
+- **Three of six a11y pins were vacuous and mutation caught all three.** A bare
+  `contains("focusout")` on the concatenated enhancer bundle passes with the fix deleted (three
+  other fragments listen for it); `contains("taliFocusTrap")` passes with the call deleted (the
+  feature-detect guard names it). Needle the element-scoped registration AND the handler body.
+
+**Two gaps found and NOT closed, recorded so they are not rediscovered as bugs:**
+- **No corpus page renders a "Cite this" box at all.** It needs title + date + author and nothing
+  in the corpus sets an author, so that whole surface is unit-tested only. PA-B5 was verified
+  against a throwaway site built with an `author:`.
+- **A site preview emits no mobile-TOC sheet chrome**, so `client.js`'s copy of the sheet is
+  reachable only in a single-doc preview. Worth knowing before testing anything about that sheet.
+
+### Prior state (2026-07-25, earlier: SKIM-2 fully shipped + SKIM-3a + deck-motion (5))
 
 **Branch `backlog/skim-batch`.** Three items landed after SKIM-1: **23's Ship A**, **24a** (the
 three-state `check` severity floor) and **28's (5)** (the overview column count), which empties item
@@ -133,12 +169,11 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: the whole SKIM batch is PUSHED** (2026-07-25, 8 commits fast-forwarded onto `origin/main`,
-`c964436..10e4a4b`). Re-verified immediately before the push, not trusted from this file: 1394 tests /
-0 fail across 85 binaries with the three gates + `--test-threads=1`; `cargo fmt --check`,
-`clippy --all-targets` (0 warnings) and both JS `tsc` gates clean; `check` reports no problems on
-`corpus/tarn`, `docs/guide` and `docs/internals`. **Do not trust a SHA written here** — re-check with
-`git log --oneline origin/main..main`; the author pushes mid-session with no signal in this file.
+**State: the P3 residual batch is on branch `backlog/p3-residual-batch` and is NOT pushed** (5
+commits; gates in the State block above). Before anything else, check what is actually where:
+`git log --oneline origin/main..main` and `git branch -v`. **Do not trust a SHA written here** — the
+author pushes mid-session with no signal in this file. The SKIM batch and the naming purge were both
+pushed earlier the same day.
 
 **Owner ruling 2026-07-25: the Cmd-K empty state stays the whole-book outline.** It was the one change
 in the batch that altered a daily-driver surface, and the one-line revert to the flat chapter
@@ -174,7 +209,10 @@ previously-blocked work. What is left now sorts into:
   are real: personas 1-3 found **0** interaction-bugs between them.
 - **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), 2 (deferred, revive on a
   real speaker ask), band D (the standing freeze), Tier 3 (waits on real users).
-- **P3 residuals on secondary surfaces** — 11, 12, 16, 17, 18, 29's T2. Real, small, low reward.
+- **P3 residuals on secondary surfaces** — what is LEFT after the 2026-07-25 batch: **11**'s
+  Semantics bullet only (the `<ul>`/`role=list` restructure, the image-alt lint nudge, the deck
+  `theme-color`/OG residual), **12**, **16**'s F-03, **17**'s F-01 (needs a vendoring decision, not
+  a one-liner — see the correction below) and F-02 (WAI), **18**, **29**'s T2. Item **32 is gone**.
 
 **`grow-tarn` is done and is now the fixture the scale-sensitive items were waiting on.**
 `corpus/tarn` is 12 numbered chapters across 3 parts + a nested part, and it deliberately carries the
@@ -526,11 +564,16 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       anything is vendored — particularly with the repo about to go public (item 25). Left to the
       author with that groundwork done. A cheap alias to another language is NOT an option: it would
       mean confidently wrong highlighting instead of honestly absent highlighting.
-    - **F-04 (friction, P3):** single-file `check` (the editor companion) false-positives a `site/gallery.tmd`
-      card's `mounts:` link as broken, because single-file mode lacks site/mount context; whole-site
-      `taliesin check site` is clean and the build is unaffected. Candidate: treat an unknown-prefix link
-      matching an enclosing site's `mounts:` entry as valid in single-file mode. Related to item 10's
-      "`mounts:` live serve untested" + item 16's F-04.
+    - ~~**F-04 (friction, P3).**~~ **SHIPPED 2026-07-25.** A single-file check now walks up for an
+      enclosing `_site.yml` and accepts a link that resolves under its `mounts:` — asked only on a link
+      already about to be reported broken, so the common path costs nothing. The mount test is
+      `under_mount`, **lifted out of `resolve_link_warnings` rather than reimplemented**, so the
+      standalone and site-aware checkers cannot drift on what a mount covers; same for the upward walk,
+      which core now owns and `query.rs` uses instead of keeping a second copy. The exemption is exactly
+      as wide as the mount, verified not assumed: a typo'd prefix, a sibling that is not a mount and an
+      ordinary missing file all still error, and with no enclosing site nothing is exempt. Watch the
+      mutant choice here — the obvious "treat `doc_dir` as the root" mutant is *equivalent* (no
+      `_site.yml` there means no mounts either) and passes without proving anything.
     - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
       the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
 
@@ -578,15 +621,47 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md); [AUDITS.md](AUDITS.md) records the round).
     **Passes (a)-(f) all shipped** (design-system single-source, scaffold `<h1>`/`<time>`, `<article>`
     landmark, announce/focus holes, CLI/diagnostics, reduced-motion+print, emitted-markup a11y; see
-    "Already shipped"). Only low/opportunistic leftovers remain:
-    - **Tokens (F2/C5/F4/S3):** a `--tali-scrim` token folding 3 divergent overlay alphas (PA-F2),
-      per-slide-bg hex drift-lock (PA-C5), px/rem breakpoints (PA-F4), base.css's own `.15s` uses (PA-S3).
-    - **a11y interaction (B3/B5/B14/B15):** mobile-TOC focus-trap, cite-tabs roving-tabindex, Cmd-K
-      Home/End, menu tab-out-close.
+    "Already shipped"). **The tokens, a11y-interaction and CLI-docs bullets all shipped 2026-07-25**
+    (see below). One bullet is left:
     - **Semantics (M3/M13, H1):** `<ul>`/`role=list` (needs a CSS-grid + category-filter-JS restructure +
       browser verify), hero/card image-alt lint nudge, deck `theme-color`/OG (PA-H1 residual).
-    - **CLI docs (CLI1/2/3):** `--help` drift (undocumented `preview --port` / `read --run` / hand-written
-      usage). Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
+      Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
+    - ~~**Tokens (F2/C5/F4/S3).**~~ **CLOSED 2026-07-25, and three of the four had already shipped**
+      before this entry was written: `--tali-scrim` exists (PA-F2), the `.15s` transitions are gone
+      (PA-S3, the one `1.15s` left is an animation duration) and the breakpoints are `40rem` (PA-F4).
+      Only **PA-C5** was real; it is now drift-locked, in two places rather than the one filed. Both
+      sets of hexes are literals *by necessity* — a per-slide background must force the OPPOSITE
+      theme's ink (so `var(--tali-link)` is exactly wrong), and the pre-paint canvas map runs before
+      any stylesheet parses — so the fix is a lock, not a token substitution. The token reader takes a
+      selector as well as a name, because `tokens.css` defines `--tali-bg` twice (light root + sepia)
+      and a first-match scan silently measures the wrong palette.
+    - ~~**a11y interaction (B3/B5/B14/B15).**~~ **SHIPPED 2026-07-25**, browser-verified against a real
+      build + a real deck, 0 console errors. **B14's gate is the design, not a shortcut:** Cmd-K is an
+      aria-activedescendant combobox, so focus never leaves the input and with a query typed Home/End
+      are the CARET's keys — the list binding is allowed only when the input is empty, where it takes
+      nothing away and where the list is longest (the outline). **B15 must not dismiss on a null
+      `relatedTarget`**: that is what a window blur delivers, so closing there drops the menu when the
+      reader switches apps. **B3 needed both copies of the sheet** (`toc-sheet.js` and the preview's own
+      in `client.js`) and a release on leaving sheet mode, or a widen leaves Tab trapped in the desktop
+      sidebar. Two facts for whoever tests this next: the pull-up handle opens on a tap or Enter/Space
+      and **ignores a synthetic `click()`**, and client.js's copy is reachable **only in a single-doc
+      preview** — a site preview emits no sheet chrome at all. **PA-B9 went with it** (a deletion: the
+      handle read "Conclusion (read)" because the sheet wrote the label from the TOC *link*, which
+      carries toc-spy's sr-only suffix, while toc-spy already writes it from the heading).
+      **Three of the six pins were vacuous and mutation caught all three** —
+      `CODE_ENHANCE_JS.contains("focusout")` passes with the fix deleted (three other fragments listen
+      for it) and `contains("taliFocusTrap")` passes with the call deleted (the feature-detect guard
+      mentions it). Needle the element-scoped registration AND the body.
+    - ~~**CLI docs (CLI1/2/3).**~~ **SHIPPED 2026-07-25.** Ten subcommands hand-wrote their
+      missing-positional `usage:` line; all now derive it from their `--help` synopsis via
+      `usage_line(cmd)`. `command_synopsis` no longer takes `lines().next()`: a wrapped synopsis
+      continues on an indented line, and `check`'s `--require-kernel`/`--stdin`/`--explain` lived
+      there, so `taliesin check` with no path advertised **two of its seven flags**. The generic gate
+      (`every_parsed_flag_is_documented_in_its_subcommand_help`, which reads each parser's own
+      `*_FLAGS` const out of the sources) found **nine** undocumented flags where the audit filed two:
+      also `init --json`/`--format`/`--yes`, `new --format`, `publish --strict`. Each verified accepted
+      before being documented — and `publish --strict` is **last-wins** with `--no-strict`, which is
+      what its test pins, not "`--strict` wins" as the first draft of that help line said.
 
 16. **Demand-probe (course pilot) findings** (P2/P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-course-author.md](2026-07-22-corpus-demand-probe-course-author.md)).
@@ -634,19 +709,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
       already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
       whole-site pass.
-
-32. **The overview map is framed low, with dead space above it** (P3, S; measured 2026-07-25 while
-    verifying 28's (5), and **pre-existing** — it reproduces identically on a build from before that
-    change, so it is not a regression from it). On a 21-slide three-topic deck at 1100x1000 the map
-    is 626 px tall in a 1000 px viewport (it would fit centred) yet opens at `mapTop` **459 px**, so
-    ~460 px of empty stage sits above it and the last row is clipped 85 px below. The old column
-    count showed the same offset (`mapTop` 439). Suspect `fitOverview`'s `roomy` test
-    (`deck.js`: `all >= floor` → centre on `gw/2, gh/2`, else follow the current tile): the map
-    measurably fits, so `roomy` should be true and it is not — either `gridDims` reports more rows
-    than are placed, or `presentScale()` is read at a moment when it is not yet meaningful. **Trust
-    the symptom, re-derive the cause**; instrument `deck.ov` rather than reasoning from the formula
-    (that is how the 28(5) refinement went wrong). Pin: none exists — the overview is client JS with
-    no server-rendered output, so this needs a browser measurement, not a corpus doc.
 
 30. **Demand-probe persona 4 (analyst) artifact** (P3, M, mostly writing; spec
     `docs/superpowers/specs/2026-07-22-corpus-demand-probe-design.md` §4). The four-persona demand-probe
