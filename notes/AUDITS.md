@@ -44,9 +44,45 @@ AP12, the 2026-07-19 polish audit, the 2026-07-18 vacuous-test audit, the 2026-0
 audit, and the 2026-07-07 multi-surface deep audit.
 
 **All twelve AP slots are run**, and as of 2026-07-25 **every build-ready finding any of them produced
-has shipped**. The only audit work with code left in it is AP1's unchased residuals (kernel RSS drift,
-multi-hour warm RSS) and the *behavioural* half of the docs lens (what a flag does, not whether it
-exists); neither has been started.
+has shipped** — bands A *and* B of [backlog.md](backlog.md) are both empty. The only audit work with
+code left in it is AP1's unchased residuals (kernel RSS drift, multi-hour warm RSS) and the
+*behavioural* half of the docs lens (what a flag does, not whether it exists); neither has been
+started.
+
+### The 2026-07-25 band-B batch (AP3-3 + PA-M3 + PA-M13 + PA-H1's residuals)
+
+Band B emptied too, which leaves **no code in Open work at all**. Two of the three items closed on
+evidence rather than on code, and the one lesson worth carrying forward is about *how a defect gets
+recorded*:
+
+- **A flake entry named the wrong test AND the wrong cause, and survived a "fix" because of it.**
+  The record said `kernel_executes_..._runaway_cell` flaked ~1 run in 13 on a timing edge in the
+  interrupt path. Looping the real condition (the full `--bin` binary, not the one test) reproduced
+  it 3 times in 37 runs — the recorded *rate* was right — and captured three **different** tests
+  failing: `cold_kernel_self_reaps_...` on `Address already in use`, the runaway-cell test on
+  `ConnectionReset` **at `Kernel::start`, not at its interrupt assertion**, and the pooled-warm test
+  on a missed 10 s poll bound. One cause: `prepare_connection` peeks ports by binding-then-releasing,
+  and the re-roll that survives that race lived in the *callers*, so the three test-side callers of
+  the raw primitive inherited it. Which test lost the race on a given run was chance, so the entry
+  had faithfully recorded one sample as if it were the phenomenon. **The method that worked was to
+  loop the real condition and capture the failure, not to reason from the symptom** — and the entry's
+  own instruction ("the assertion text has never been captured") was the correct one all along.
+  Also falsified in passing: the note that the pooled-warm test "asserts on no elapsed time at all"
+  — a bounded poll *is* a wall-clock assertion.
+- **A first-draft pin passed against a build with its fix deliberately removed.** The deck
+  theme-color test asserted `contains("theme-color")`, which the *mutation marker comment* satisfied.
+  This is the [inlined-asset needle trap] one level in: needle the mechanism
+  (`setAttribute('name', 'theme-color')`), never the phrase. Mutation testing is what caught it, and
+  only because the mutation was run before the fix was trusted.
+- **Calibrating a lint before writing it changed its implementation, not just its threshold.** The
+  proposed `image:`-without-`image-alt:` rule fires on 6 pages by line-scan but only 4 by parsed
+  front matter: two `docs/` hits are `image:` inside a YAML *example* in prose. The measurement is
+  what forced it to read parsed front matter, and the four genuine hits were fixed rather than
+  excused.
+- **Declining on measurement needs the measurement, not the intuition.** WS op-batching was declined
+  with its worst case *confirmed* (55 ops, 53 `SetMeta`, one frame each) and the reason recorded
+  next to it: warm edit is 32.2 ms against a 0.94 ms diff, so framing is 0.7% of a payload and never
+  the critical path. T2 was declined after finding its "three modules" premise partly rotted.
 
 ### The 2026-07-25 band-A batch (AP7 + AP3-1 + AP11-1 + DIAG-1 + DOCS-1)
 

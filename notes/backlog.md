@@ -10,10 +10,17 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-25)
 
-**Branch `backlog/band-a-diagnostics`: 7 commits**, stacked on
+**Branch `backlog/band-a-diagnostics`: 13 commits**, stacked on
 `backlog/backlink-context-and-resume` (19 commits ahead of `origin/main`). **Do not trust any SHA
 written here** (see Git under "Standing constraints"); verify with
 `git log --oneline origin/main..HEAD`.
+
+**Bands A and B are both empty as of the 2026-07-25 band-B batch.** It closed items **11**
+(PA-M3 list semantics, PA-M13 image-alt lint, PA-H1's deck theme-color + social meta), **29**
+(R1 + T2, both closed on evidence rather than built), and emptied item **10** of everything
+actionable (AP3-3 fixed; the rest split between won't-fix — which stays as item 10 in band D —
+demand-driven, and declined-on-measurement). Nothing in "Open work" is buildable today; the next
+entries come from the next audit round.
 
 **Band A is empty. Every build-ready audit finding has shipped**, so the backlog is clear for the
 next round of audits. The 2026-07-25 band-A batch closed items **34** (AP7, all five findings),
@@ -64,12 +71,19 @@ their own prefix. No ruling requires the next session to take one.
   `TALIESIN_REQUIRE_NODE=1` (JS-equivalence guard), `TALIESIN_R=R TALIESIN_REQUIRE_R=1` (R kernel),
   `TALIESIN_PYTHON=… TALIESIN_REQUIRE_KERNEL=1` (pool-booted `--jobs` path; a missing interpreter is a
   hard fail, not a skip). `cargo test` aborts the remaining binaries at the first failure, so re-run
-  before trusting a total. **Flake status, re-measured by AP3 over 13 full `--bins` runs
-  (2026-07-25):** the two `exec::tests` "concurrency-race" tests failed **0 times**, so the recorded
-  "~2 runs in 3" is wrong and `ETXTBSY` was never reproduced; what still flakes is
-  `kernel_executes_..._runaway_cell` at **1 run in 13**, despite item 10 recording it as fixed and
-  deterministic. So a red `exec`/`kernel` probe is worth one re-run, but is no longer a reason to
-  reach for `--no-verify` by default. The surviving flake is tracked in item 10 (it was AP3-3).
+  before trusting a total. **Flake status: FIXED 2026-07-25, and the entry that described it was
+  wrong in both its test and its cause.** Looping the `--bin` binary reproduced the flake 3 times in
+  37 runs (matching the recorded ~1 in 13) and captured what had never been captured: **three
+  different tests** failing, from **one** root cause. `prepare_connection` peeks free ports by
+  binding then releasing them, so concurrent starts can be handed the same port and the loser exits
+  at startup — `Address already in use`, or `ConnectionReset`, or (for the pooled-warm test) a
+  missed 10 s poll bound. The re-roll that survives this lived in the *callers*, so the three
+  test-side callers of the raw `Kernel::start` inherited it; which test failed on a given run was
+  chance, which is why it was mis-attributed to `kernel_executes_..._runaway_cell` and "fixed"
+  against a theory of interrupt timing that was never the cause. The re-roll now lives on
+  `Kernel::start_with_retry` and `crates/server/tests/kernel_start_is_retried.rs` fails if any
+  caller reaches the un-retried primitive again. **Verified 0 failures in 45 post-fix runs** under
+  the same load. A red `exec`/`kernel` probe is now a real signal, not a coin flip.
 - **Git:** do not trust a SHA written in notes. Check `git log --oneline origin/main..main` for what is
   unpushed and `git reflog show origin/main` before believing any "not pushed" claim; the author pushes
   mid-session with no signal here.
@@ -119,9 +133,11 @@ their own prefix. No ruling requires the next session to take one.
 
 ## Open work (priority order: take from the top)
 
-**Ranked for implementation, not by theme.** Band A is what a session can build today and is
-currently **empty**; B is buildable but not worth a session alone; C and D are blocked and are listed
-so they are not re-scoped. **Item numbers are stable** and referenced from the findings docs and
+**Ranked for implementation, not by theme.** Band A is what a session can build today and B is
+buildable but not worth a session alone; **both are currently empty**, so there is no code here to
+take — the next session either runs an audit (see "Audit perspectives") or takes an owner ruling
+from C. C and D are blocked and are listed so they are not re-scoped. **Item numbers are stable**
+and referenced from the findings docs and
 [AUDITS.md](AUDITS.md), so they are NOT renumbered when the order changes, and a closed item's number
 is never reused.
 
@@ -135,82 +151,26 @@ file when it lands**. Read "Standing constraints" first; several of these have a
 shipped; the 2026-07-25 band-A batch closed the last five (items 34, 35, 36, 37, 38 — deleted from
 this file, as the rule below requires). The next entries here come from the next audit round.
 
-**Two residuals were deliberately NOT closed with them, and are recorded where they belong rather
-than left looking open:**
-- **AP3-3**, `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` still flaking
-  1 run in 13, is test-infra and lives in item **10**. It needs a detail-capturing harness looped
-  until it reproduces, not a fix — the assertion text has still never been captured.
+**One residual is deliberately NOT closed, and is recorded where it belongs rather than left
+looking open:**
 - **AP7's "not chased" list** (a real screen reader, colour contrast, callouts/theorems as composite
   widgets, the mobile TOC sheet, reduced-motion across the scroll features) is scope the round
   declared out, not work it left undone. It is in
   [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md).
 
+*(**AP3-3 is closed**, 2026-07-25: it was neither the test nor the cause on file. See the flake
+paragraph under "Standing constraints" — the entry is kept there because the *method* it teaches,
+loop the real condition and capture the failure rather than theorize from the symptom, is what the
+recorded version got wrong.)*
+
 ### B. Buildable, but low yield on its own
 
-Unblocked, but none of these earns a session by itself. Good filler at the end of a batch, or fold
-into a batch that is already in the same file.
-
-11. **2026-07-22 polish-audit residuals** (P3 hardening + a11y + "feels finished"; detail:
-    [2026-07-22-polish-audit.md](2026-07-22-polish-audit.md); [AUDITS.md](AUDITS.md) records the round).
-    **Passes (a)-(f) all shipped** (design-system single-source, scaffold `<h1>`/`<time>`, `<article>`
-    landmark, announce/focus holes, CLI/diagnostics, reduced-motion+print, emitted-markup a11y; see
-    "Already shipped"). **The tokens, a11y-interaction and CLI-docs bullets all shipped 2026-07-25**
-    (see below). One bullet is left:
-    - **Semantics (M3/M13, H1):** `<ul>`/`role=list` (needs a CSS-grid + category-filter-JS restructure +
-      browser verify), hero/card image-alt lint nudge, deck `theme-color`/OG (PA-H1 residual).
-      Owner design-Qs (deck copy-button, card whole-`<a>`) are parked in the doc, not build-ready.
-
-29. **Reduction-audit residuals** (P3, dev-facing; detail:
-    [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). Phase 2 + T1 + R2 shipped and
-    the codebase is lean; two items were explicitly deferred and never filed here. Both re-verified open:
-    - **R1 — two divergent text extractors.** *Half closed 2026-07-25:* the Cmd-K side no longer has
-      an extractor of its own — `search::section_text` was `indexable_text` **plus a 1500-char cap**,
-      and with the cap gone it is exactly `render::indexable_text`. What remains is the original
-      divergence: `text_content` (which feeds `llms.txt`) decodes `&#8217;`/`&nbsp;`,
-      `render::indexable_text` does not, so naively reusing one would leak raw entities into
-      `llms.txt`. That fork is pinned by a passing test, so it is conscious, not a bug. Its stated
-      sequencing hook is spent (item 23 has shipped); revisit only if a consumer needs them equal.
-    - **T2 — three site modules each run their own raw-source pre-scan** (`site/xref.rs`, `site/book.rs`,
-      `site/discovery.rs` each `read_to_string` the page and re-implement a slice of the include/parse
-      pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
-      already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
-      whole-site pass.
-
-10. **Reliability / test-infra long tail** (P3, dev-facing):
-    - **R cold-kernel orphan residual:** IRkernel has no `ParentPollerUnix` equivalent, so R cold
-      kernels still orphan on ungraceful parent death; there is no clean fix (PDEATHSIG is the only
-      lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
-      warm-pool, cold-Python and `/tmp`-sweep halves all landed.)
-    - **`mounts:` live serve/discovery: only an automated live-HTTP test is missing** (the live-executor-mounts
-      branch LANDED): the F-04 work reworked `serve_site` mount discovery/serving and unit-pins
-      the pure `match_mount`/`resolve_project`/`classify_change` helpers, and live mount serving is
-      browser-verified. What remains is only the bin-crate gap of an end-to-end live-HTTP serve test (no
-      `reqwest`/`TcpListener` harness). Low-value (mounts are preview-only), demand-driven.
-    - **Test flakes, re-measured by AP3 over 13 full `--bins` runs (2026-07-25). The numbers in this
-      bullet's previous version were wrong:** the two `exec::tests`
-      (`a_successful_probe_pins_the_freeze_key_format`,
-      `a_failed_interp_probe_is_not_memoized_for_the_process_lifetime`) were recorded as failing
-      "~2 runs in 3"; they failed **0 of 13**. The `ETXTBSY` write-then-exec hypothesis was never
-      reproduced, so **do not spend a session on it**; note also that `probe_interp_id` memoizes only
-      an *answer*, so a failed ask is genuinely retried and `interp_id_settled`'s 5 s loop already
-      absorbs a transient exec refusal. What **does** still flake is
-      `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell`, **1 run in 13**,
-      even though it was fixed 2026-07-25 (a per-kernel `cell_cap` replacing `OnceLock` memoization
-      of `cell_timeout()`, which also dropped the `--bin` suite 155 s → 49 s). So either the cap has
-      a second order-dependence or the interrupt path has an unrelated timing edge. **The assertion
-      text has never been captured**; loop a detail-capturing harness to get it. This is AP3-3, and
-      item 35 having shipped, this bullet is now its only home.
-      `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` asserts on no
-      elapsed time at all (it polls `pool.ready_len()`, bounded at 10 s): nothing to fix there.
-    - **Mermaid `<script>` SRI + `crossorigin`: now moot by construction.** Nothing fetches mermaid
-      from a CDN any more — build inlines the vendored copy and preview serves it from a same-origin
-      route (OFF-2) — so there is no cross-origin subresource left to pin. It would only come back if
-      someone points `TALIESIN_MERMAID_URL` at a CDN, which is an explicit opt-out.
-    - **Perf (low):** protocol-level op-message batching (one WS message per save, not per-op). Worst
-      case: an edit near the top of a long doc where every downstream block emits a `SetMeta`
-      (`diff.rs` `anchor_op`). Client + server ship together, no wire-compat constraint.
-    - **Audit long-tail:** a tens-of-MB cell output blocks ZMQ receive before the cap fires
-      (`kernel.rs`, do-not-touch).
+**Empty.** The 2026-07-25 band-B batch cleared the last three: items **11** and **29** are closed and
+deleted, and item **10** is reduced to its two no-clean-fix kernel limitations and moved to band D.
+Two of the three closed
+on *evidence* rather than on code, which is the outcome this band is most likely to produce and is
+worth stating plainly: an item here is cheap to build and therefore easy to build without asking
+whether it should be. See "Decided against" for what was declined and on what measurement.
 
 ### C. Blocked on an owner ruling or decision (not a task until then)
 
@@ -307,6 +267,18 @@ question is and what the evidence says.
 
 Kept visible so they are not re-scoped. Revive on a real signal, not on capacity.
 
+10. **Two kernel limitations with no clean fix** (P3, dev-facing; the rest of the old
+    "reliability / test-infra long tail" is closed — AP3-3 fixed 2026-07-25, the mermaid-SRI
+    bullet was moot by construction, the `mounts:` live-HTTP test moved to Tier 3, and the
+    op-batching bullet is in "Decided against" with its measurement):
+    - **R cold kernels still orphan on ungraceful parent death.** IRkernel has no
+      `ParentPollerUnix` equivalent, so there is nothing to arm; PDEATHSIG is the only other
+      lever and is hazardous. R is rarely the cold single-doc path, and the warm-pool,
+      cold-Python and `/tmp`-sweep halves all landed. `kernel.rs`.
+    - **A tens-of-MB cell output blocks ZMQ receive before the cap fires.** `kernel.rs`.
+      (The old note called this file do-not-touch; that was the completed rewrite-scoping
+      list, not a freeze — see CLAUDE.md. It is still unfixed, just not forbidden.)
+
 4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
    deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
    fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
@@ -385,7 +357,7 @@ run; only **AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS) i
 |---|---|---|
 | [AP1 perf/scale](2026-07-23-ap1-performance-scale-audit.md) | no quadratic anywhere; the one tax is two full-site passes per warm save | PERF-1, shipped |
 | [AP2 fuzzing](2026-07-22-ap2-robustness-fuzzing-audit.md) | zero unexpected panics; two input-bound gaps (uncatchable abort, comrak O(n²) hang) | item 26, shipped |
-| [AP3 concurrency](2026-07-25-ap3-concurrency-audit.md) | every predicted race refuted; the cost is head-of-line blocking (0.11s → 12.15s) | AP3-1 shipped; AP3-3 flake in item 10 |
+| [AP3 concurrency](2026-07-25-ap3-concurrency-audit.md) | every predicted race refuted; the cost is head-of-line blocking (0.11s → 12.15s) | AP3-1 shipped; AP3-3 fixed 2026-07-25 (wrong test AND wrong cause on file) |
 | [AP4 cache/freeze](2026-07-22-cache-correctness-audit.md) | design sound; one real cold-build stale hit | AP4-1 shipped, rest shipped |
 | [AP5 i18n/sourcepos](2026-07-22-i18n-unicode-sourcepos-audit.md) | premise mostly refuted; the real find is three position encodings in the LSP | item 12 |
 | [AP7 a11y](2026-07-25-ap7-accessibility-audit.md) | document sound, application not; defects are all "content changes silently" | all five shipped |
@@ -410,6 +382,10 @@ untouched: *behavioural* claims in the two dogfood books (what a flag does, not 
 **real users, not more features**, so nothing here is scheduled. One line each; the reasoning lives
 in the linked audits.
 
+- **An end-to-end live-HTTP test for `mounts:` serving** (was item 10's second bullet). The F-04 work
+  landed and unit-pins the pure `match_mount`/`resolve_project`/`classify_change` helpers, and live
+  mount serving is browser-verified; what is missing is only the bin-crate gap of a real
+  `reqwest`/`TcpListener` harness. Mounts are preview-only, so this waits for a reason to exist.
 - **Companion (Phase 2):** editor commands (`.tmd`-buffer text transforms only, never preview gestures);
 - **LaTeX hover-preview in the VS Code editor** (Companion Phase 2, a sub-case of the LSP item below):
 - **`.tmd` format-on-save** (open question): a source pretty-printer must preserve `data-sourcepos` line
@@ -443,6 +419,17 @@ A compact **do not re-add / re-scope** guard, not a changelog: each line names w
 finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
 than re-expanding this list.
 
+- **The 2026-07-25 band-B batch** — the last three low-yield items, two of them closed on evidence
+  rather than code. **AP3-3** (item 10): the flake was neither the test nor the cause on file; the
+  port re-roll moved off the callers onto `Kernel::start_with_retry`, with a source-level guard
+  against a caller reaching the raw `Kernel::start` again. **PA-M3** (item 11): a listing is a `<ul>`
+  of `<li>`-wrapped cards with an explicit `role="list"` (WebKit drops list semantics under
+  `list-style: none`); the filter hides the item, not the card. **PA-M13**: `image:` without
+  `image-alt:` warns, reading parsed front matter so a YAML example in prose cannot trip it — and the
+  four real corpus omissions it found are fixed with described alt text. **PA-H1's residuals**: a
+  deck keeps `<meta name="theme-color">` with its canvas, and a standalone built deck emits the same
+  social block a standalone page does (a site deck's richer block still wins). **Items 29 and 10's
+  remaining bullets** were closed without code — see "Decided against".
 - **The 2026-07-25 band-A batch** — every build-ready audit finding: AP7-1 (relative heading
   demotion + a title-block-aware heading rule), AP7-2 (a reactive `{js}` sink announces its output
   when that output is text, and stays silent when it is a chart), AP7-3 (`.scrolly` /
@@ -479,6 +466,26 @@ than re-expanding this list.
 
 ## Decided against / do-not-re-litigate
 
+- **WS op-message batching** (was item 10's perf bullet; declined 2026-07-25 **on measurement, and
+  the premise was right**). `tools/live-edit-bench` on `corpus/posts/em-algorithm/index.tmd` confirms
+  the worst case exactly as filed: an insert near the top emits **55 ops, 53 of them `SetMeta`**, one
+  WebSocket frame each. It is still not worth the protocol churn, because the same run says where the
+  time actually goes: **warm edit 32.2 ms, of which the diff is 0.94 ms**. Batching would save ~4
+  bytes of framing per message (~220 bytes against a 32,303-byte payload, 0.7%) and 54 client
+  handler dispatches, none of it on the critical path. Reopen only if the render cost drops far
+  enough that framing is measurable, or if a profile shows the client's per-message work dominating.
+- **Item 29's two reduction-audit residuals, R1 and T2** (closed 2026-07-25 without code). **R1** —
+  the remaining fork between `text_content` (which decodes `&#8217;`/`&nbsp;` for `llms.txt`) and
+  `render::indexable_text` (which does not) is deliberate, pinned by a passing test, and its
+  sequencing hook is spent; equalizing them would leak raw entities into `llms.txt`. It is a
+  documented decision, not an open task. **T2** — "three site modules each run their own raw-source
+  pre-scan" is *partly rotted*: `site/book.rs` does not want a resolved source at all (it reads the
+  chapter's own leading `# H1`) and its own comment records that it already reads each file once.
+  The real duplication is a six-line read-then-`includes::resolve` idiom in **two** places
+  (`site/xref.rs`, `site/discovery.rs`), and the divergence that looked like a latent bug — xref
+  falling back to `Path::new(".")` where discovery falls back to `root` — is unreachable, because
+  `page.input` is always `root.join(rel)` and so always has a parent. That is below the bar the item
+  set for itself ("not as a standalone refactor").
 - **Deck-motion: the whole item is closed** (was Open-work item 28, lifted out 2026-07-25 because it
   had no code left in it and "only open tasks live here"; detail:
   [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)). Option A shipped 2026-07-24;
