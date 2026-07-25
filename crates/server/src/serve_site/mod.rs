@@ -1522,7 +1522,7 @@ fn rebuild_project(
                 .values()
                 .chain(backlinks_before.values())
                 .flatten()
-                .map(String::as_str)
+                .map(|r| r.url.as_str())
                 .collect();
             for rel in &open {
                 if !to_rebuild.contains(rel)

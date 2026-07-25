@@ -911,7 +911,14 @@ fn build_project_map(site: &taliesin_core::Site) -> ProjectMap {
             XrefEntry {
                 url: target.url.clone(),
                 number: target.number.clone(),
-                backlinks: site.backlinks.get(anchor).cloned().unwrap_or_default(),
+                // Urls only: the reverse index also carries each referrer's citing
+                // sentence now, but `map`'s JSON is a machine contract and a page url
+                // is what a consumer resolves against `pages`.
+                backlinks: site
+                    .backlinks
+                    .get(anchor)
+                    .map(|refs| refs.iter().map(|r| r.url.clone()).collect())
+                    .unwrap_or_default(),
             },
         );
     }

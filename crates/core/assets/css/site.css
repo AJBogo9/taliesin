@@ -391,6 +391,10 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-backref {
   color: var(--tali-muted); text-decoration: none; border-bottom: 1px solid var(--tali-border); }
 .tali-backref:hover { color: var(--tali-link); border-bottom-color: currentColor; }
+/* The citing sentence beside a referrer: the proximal cue a bare page title cannot
+   carry. Italic (not a second colour) so it reads as a quotation from that page
+   without competing with the link it annotates. */
+.tali-backref-cite { font-style: italic; }
 @media (forced-colors: active) {
   .tali-backref { border-bottom: 1px solid LinkText; }
 }

@@ -47,8 +47,11 @@ fn same_page_reference_is_not_a_backlink() {
         .split("</div>")
         .next()
         .unwrap();
+    // `class="tali-backref"` exactly, not a bare `tali-backref` substring: the citing
+    // sentence beside each referrer is a `tali-backref-cite` span, so the loose needle
+    // counts two per referrer and this assertion would pass for the wrong reason.
     assert_eq!(
-        block.matches("tali-backref").count(),
+        block.matches(r#"class="tali-backref""#).count(),
         1,
         "thm-kl should have exactly one (cross-page) referrer, not the same page too"
     );
@@ -63,12 +66,60 @@ fn a_page_that_defines_no_referenced_targets_has_no_backrefs() {
     // property results.tmd used to have. Referring is not defining: a referrer gets no
     // backref block of its own.
     let summary = site.render_page("summary.tmd").expect("summary renders");
-    // Check for the backref BLOCK (its `tali-backref-` block id), not the class name
-    // `tali-backrefs` — the latter also appears in the inlined `.tali-backrefs` CSS
-    // rule in every page's <head>, so it is not a reliable "no backref line" signal.
+    // Check for the backref BLOCK by its full `data-block-id="tali-backref-` opener, not
+    // by any class-name substring — `.tali-backrefs` AND `.tali-backref-cite` are both
+    // inlined in every page's <head>, so `tali-backrefs` and even `tali-backref-` match
+    // the stylesheet on a page with no backlink line at all.
     assert!(
-        !summary.contains("tali-backref-"),
+        !summary.contains(r#"data-block-id="tali-backref-"#),
         "summary.tmd defines no referenced-to anchors, so it shows no backref block"
+    );
+}
+
+#[test]
+fn a_backlink_quotes_the_sentence_the_reference_is_made_in() {
+    // The default-output half of `link-text-self-describing`: a bare page title is a weak
+    // proximal cue, the citing sentence is the strongest one available. Pinned end to end
+    // because the sentence is harvested during discovery, from the *resolved* block —
+    // "Theorem 2.1", the text results.html actually shows, not cite's bare "Theorem".
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    let methods = site.render_page("methods.tmd").expect("methods renders");
+    let line = methods
+        .split(r#"data-block-id="tali-backref-thm-kl""#)
+        .nth(1)
+        .expect("thm-kl backref block present")
+        .split("</div>")
+        .next()
+        .unwrap();
+    assert!(
+        line.contains(
+            r#"<span class="tali-backref-cite">“It also leans on Theorem 2.1 from the methods chapter.”</span>"#
+        ),
+        "thm-kl's backlink should quote results.tmd's citing sentence with the resolved \
+         number, got: {line}"
+    );
+    // Adjacent to the link, never inside it: the sentence carries the reference's own
+    // `<a>` on the referring page, and an anchor inside an anchor is invalid HTML.
+    assert!(line.contains(r#"</a> <span class="tali-backref-cite">"#));
+}
+
+#[test]
+fn a_backlink_quotes_only_the_sentence_containing_the_reference() {
+    // results.tmd's first paragraph is two sentences; `@thm-kl` is in the second. A
+    // whole-paragraph excerpt would pass every "contains the sentence" assertion above,
+    // so pin what must be ABSENT: the neighbouring sentence.
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    let methods = site.render_page("methods.tmd").expect("methods renders");
+    let line = methods
+        .split(r#"data-block-id="tali-backref-thm-kl""#)
+        .nth(1)
+        .expect("thm-kl backref block present")
+        .split("</div>")
+        .next()
+        .unwrap();
+    assert!(
+        !line.contains("What we found"),
+        "the preceding sentence of the same paragraph must not be quoted: {line}"
     );
 }
 

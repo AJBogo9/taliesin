@@ -216,7 +216,11 @@ fn layers_in(html: &str) -> Vec<Layer> {
 /// "equal-length columns , each" wherever a sentence ends on inline code or emphasis. The
 /// fix belongs on this side: the index is keyed on that exact text and matched by `indexOf`,
 /// so normalizing it upstream would change what a search finds.
-fn plain(html: &str) -> String {
+///
+/// `pub(super)` because `backlinks.rs` reads the same reading-form text to pull a citing
+/// sentence out of a referring block. Two extractors that "both strip tags" is exactly the
+/// R1 divergence this codebase already carries once; one is enough.
+pub(super) fn plain(html: &str) -> String {
     let text = render::indexable_text(html);
     let mut out = String::with_capacity(text.len());
     for (i, c) in text.char_indices() {
@@ -433,6 +437,29 @@ pub fn first_sentence(text: &str) -> Option<String> {
         idx = end;
     }
     Some(text.to_string())
+}
+
+/// The sentence of `text` containing byte offset `at`, walking [`first_sentence`] forward
+/// so the two can never disagree on where a sentence ends. Used by the backlink line to
+/// quote the sentence a cross-reference is made in.
+///
+/// An `at` past the end returns the last sentence rather than `None`: the caller's offset
+/// comes from a marker in the same string, so it is always in range, and clamping is the
+/// harmless reading of a would-be-impossible input.
+pub(super) fn sentence_at(text: &str, at: usize) -> Option<String> {
+    let mut start = 0usize;
+    loop {
+        let rest = text[start..].trim_start();
+        let off = text.len() - rest.len(); // `rest` is a suffix, so this is its offset
+        let sentence = first_sentence(rest)?;
+        let end = off + sentence.len();
+        // `end >= text.len()` also covers the trailing-whitespace case, where the last
+        // sentence ends before the string does and no further sentence exists.
+        if at < end || end >= text.len() {
+            return Some(sentence);
+        }
+        start = end;
+    }
 }
 
 #[cfg(test)]
