@@ -61,8 +61,7 @@ located diagnostics, CSS hot-swap, Cmd-K search). The editor language intelligen
 go-to-definition, outline, hover, completion, quick-fix code actions, rename) now ships editor-agnostically
 as the `taliesin lsp` stdio server: the **E1-E7 editor-DevX initiative is complete** (see "Already
 shipped"). **Most of the backlog has already shipped.** Through item 19 everything is pushed (`origin/main`
-at `cc45af4`); the live-executor-mounts F-04 fix landed to **local `main` after that (unpushed, the author
-pushes)**. A large **2026-07-22 (late) backlog-clearing pass**
+at `cc45af4`); the live-executor-mounts F-04 fix landed after that. A large **2026-07-22 (late) backlog-clearing pass**
 shipped: focus-mode/fullscreen split (was item 3); a Vite-user
 hint banner (item 9); deck `footer:`/`logo:` (item 2); a per-book offline `<book>.zip` (item 6); the
 cross-page duplicate-label warning is now located (item 5); DX16 update-nudge ruled **skip**; item 8 i18n
@@ -70,44 +69,53 @@ labels **assessed → defer**; and all six item-11 polish passes (a)-(f). **DX17
 2026-07-22** (the last high-impact feature); the AP8 determinism guards (was item 15) are complete and
 that item is now removed. **The machine-facing `read` projection (was item 19) shipped + pushed 2026-07-22**
 (structure-preserving lists/steps/inputs + book-aware chapter/cross-page scoping + whole-book `read <dir>`;
-see "Already shipped"). **The live-executor-mounts F-04 fix also landed** (local `main`, unpushed). What
+see "Already shipped"). **The live-executor-mounts F-04 fix also landed.** What
 remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-Tree is green across all gates. Both branch features landed to local `main`: structure-preserving `read`
-(item 19, also pushed) and the live-executor-mounts F-04 fix (unpushed, the author pushes). No open branches
-remain. **Item 14 (heading-demotion) was found already shipped** (2026-07-12, `7e60f6c`) when picked up
+**State: `main` == `origin/main` @ `a842007`, everything pushed, no open branches, all gates green**
+(1351 tests / 0 fail with the three gates + `--test-threads=1`, fmt + clippy + both JS `tsc` clean).
+Re-check with `git log --oneline origin/main..main` before trusting that — the author pushes mid-session.
+
+**The build-ready hardening set is gone; it shipped 2026-07-25** (items 13, 20, 21, 25's code half, 26,
+27, 28's code half, two bullets of 10 — see the State block above). That matters for planning: what is
+left is deliberately **not** the same kind of work. There is no longer a queue of small, self-contained,
+verify-by-mutation code items waiting. What remains sorts into four piles:
+
+- **Writing, not code** — 22a (`grow-tarn`), 30 (`corpus/analyst/`). 22a **blocks seven downstream
+  items** and is the single highest-leverage thing in the file, because the regression net currently
+  pins nothing above 1,135 words and every scale-sensitive item otherwise mints its own fixture.
+- **Owner rulings you must make before anyone can build** — 24 (gated on *two*), 25's `oss-4`, 28's
+  three questions, 2. Their first step is asking you, not opening an editor.
+- **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), band D (the standing
+  freeze), Tier 3 (waits on real users).
+- **P3 residuals on secondary surfaces** — 11, 12, 16, 17, 18, 29. Real, small, low reward.
+
+**So the recommended order is: 22a first (it unblocks the most), then 22b's six defects, then 23.**
+If you want to grind code rather than prose, take the 22b defects — they are six independent, small,
+default-on fixes with a corpus pin each, and they are the last cluster of that shape in the file.
+
+**Two live corrections a fresh session should not re-learn the hard way:**
+- **Item 17's F-01 cannot be fixed as written** — `two-face` has no PowerShell syntax at all (199
+  syntaxes, enumerated). Don't spend a session on the "one-liner".
+- **The `kernel_executes_..._runaway_cell` flake is fixed and its cause was never load** (it was
+  `OnceLock` memoization of `cell_timeout()`). `--no-verify` is no longer the move for a pre-push
+  failure there; a failure now means something real.
+
+**Item 14 (heading-demotion) was found already shipped** (2026-07-12, `7e60f6c`) when picked up
 2026-07-22: AP9's "12 sibling `<h1>`" was a stale-artifact false lead (it measured a gitignored pre-fix
 `corpus/bayesian-website/_site/index.html`; a fresh render/build emits exactly one `<h1>`). See "Refuted by
-measurement".
+measurement". **Item 22 is NOT a re-open of it**: heading demotion works, the section-number counter was
+never taught about it.
 
-**2026-07-24: band A is no longer empty. Start with item 22 (SKIM-1).** A skimmability audit
-([2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)) found six small, verified defects in the
-heading layer that a reader of a long book meets on every page: malformed section numbers (`4.0.1`) on 31 of 32
-numbered dogfood chapters, a nested `{part:, chapters:}` group that silently deletes its own chapters with
-`check` exiting 0, whole-book Cmd-K search absent on any chapter under `MIN_TOC_HEADINGS` while the search
-button still renders, a scrollspy that lags by one section on every book page, `h5`/`h6` rendered dimmer than
-body text, and a printed TOC showing 2 of 8 entries. All six re-verified by the main session at `5c25d00`.
-Do `grow-tarn` (22a) first: seven downstream items need one corpus book at book-ish scale and the net currently
-pins nothing above 1,135 words. **Note item 22 is NOT a re-open of item 14**: heading demotion works, the
-section-number counter was never taught about it.
-
-**Then item 25 (pre-public release checklist), because it is the only item with a date.** The 2026-07-17
-security audit cleared the release and its four real findings shipped that day, but six hardening items were
-explicitly deferred "to the pre-public cleanup" and never filed here; the repo goes public **~2026-08**. All
-six are small and all six are still open.
-
-**The hardening set is gone — it shipped 2026-07-25** (see the State block: 13, 20, 21, 25, 26, 27, 28's
-code half, two bullets of 10). What is left is deliberately not the same kind of work: it is **writing**
-(22a, 30), **owner rulings** (24, 25's oss-4, 28's three questions, 2), and **things that need a device or a
-demand signal** (4, Tier 3). Read top-down: band A is **22** (SKIM-1, start with 22a `grow-tarn`) then 25's
-one decision; band B is **23** (SKIM-2, after 22), **4** (deck mobile), **2** (deck presenter,
-owner-deferred); then band C top-down.
-
-**If you want code rather than prose, the honest answer is that the cheap correct work is done.** The
-remaining code items are P3 residuals on secondary surfaces (11, 12, 16, 17, 18, 29) or need a decision
-first.
+**Item 22 (SKIM-1) in one paragraph.** A 2026-07-24 skimmability audit
+([2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)) found six small, verified defects in
+the heading layer that a reader of a long book meets on every page: malformed section numbers (`4.0.1`) on
+31 of 32 numbered dogfood chapters, a nested `{part:, chapters:}` group that silently deletes its own
+chapters with `check` exiting 0, whole-book Cmd-K search absent on any chapter under `MIN_TOC_HEADINGS`
+while the search button still renders, a scrollspy that lags by one section on every book page, `h5`/`h6`
+rendered dimmer than body text, and a printed TOC showing 2 of 8 entries. All six re-verified at `5c25d00`.
 
 - **Or run one of the four remaining *audit perspectives* ("Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see. **Done so far:
@@ -424,7 +432,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       lever and is hazardous), and R is rarely the cold single-doc path. `kernel.rs`. (The
       warm-pool, cold-Python and `/tmp`-sweep halves all landed.)
     - **`mounts:` live serve/discovery: only an automated live-HTTP test is missing** (the live-executor-mounts
-      branch LANDED to local `main`): the F-04 work reworked `serve_site` mount discovery/serving and unit-pins
+      branch LANDED): the F-04 work reworked `serve_site` mount discovery/serving and unit-pins
       the pure `match_mount`/`resolve_project`/`classify_change` helpers, and live mount serving is
       browser-verified. What remains is only the bin-crate gap of an end-to-end live-HTTP serve test (no
       `reqwest`/`TcpListener` harness). Low-value (mounts are preview-only), demand-driven.
@@ -806,7 +814,7 @@ claim that one of these is "missing"):
     uses it instead of running the whole-site check and discarding the rest.
   - `.tali-nofx` (deck.css) + `CAM.morph`/`morphFade`/`morphFadeDelay` + a per-div `__mmSettle`.
   - `Kernel.cell_cap` replaces the `OnceLock`-memoized `cell_timeout()` read per execution.
-- **Book-level `theorems:`** (was item 16 F-01; shipped 2026-07-23, landed to local `main`, unpushed): a
+- **Book-level `theorems:`** (was item 16 F-01; shipped 2026-07-23): a
   book-wide theorem-numbering policy in `_site.yml` (`theorems:`), inherited by any chapter with no
   `theorems:` block of its own and overridden wholesale by one that declares its own. `theorems` is now a
   recognized `_site.yml` key (`NATIVE_KEYS`), parsed into `SiteConfig.theorems: Option<TheoremConfig>` and
@@ -822,8 +830,7 @@ claim that one of these is "missing"):
   tests; existing books (no `_site.yml theorems:`) render byte-identically (the `None` path is inert, no
   snapshot churn). Whole-config override, not per-field (YAGNI). Spec/plan:
   `docs/superpowers/{specs,plans}/2026-07-22-book-level-theorems*`.
-- **Live-executor mounts (F-04 full fix)** (was item 16 F-04; shipped 2026-07-22, landed to local `main`,
-  unpushed): a mounted sub-project now serves through the **same live per-page path** as the root, so its
+- **Live-executor mounts (F-04 full fix)** (was item 16 F-04; shipped 2026-07-22): a mounted sub-project now serves through the **same live per-page path** as the root, so its
   `{python}`/`{r}` cells execute live in the host `preview` (not only in the static `build`). Engine is all
   in `serve_site/mod.rs`: `Project`/`MountPoint`/`ProjectKey` + pure `match_mount`/`resolve_project`/
   `classify_change` (unit-pinned) + **one `ExecPool` per project** (the frozen `exec_pool.rs` byte-unchanged,

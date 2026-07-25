@@ -4,6 +4,43 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+## Round index — every dated findings doc in `notes/`
+
+**Check here before starting an audit.** This file carries narrative entries for the recent deep
+rounds (below); this table is the complete list, so a session can tell at a glance whether a lens has
+already been run. Nineteen rounds had no ledger line at all until 2026-07-25, which is exactly the gap
+that let *completed* rounds (AP2, AP4) read as "recommended first" in the backlog. Add a row the day
+you run one.
+
+| Round (doc) | What it was | Where its work went |
+|---|---|---|
+| [2026-07-08-ui-audit-findings](2026-07-08-ui-audit-findings.md) | UI-audit sweep | landed; see section E |
+| [2026-07-09-polish-audit-findings](2026-07-09-polish-audit-findings.md) | polish / productivity | landed; see section E |
+| [2026-07-09-ui-audit-findings](2026-07-09-ui-audit-findings.md) | UI-audit sweep | landed; see section E |
+| [2026-07-11-website-design-audit](2026-07-11-website-design-audit.md) | website/brand ("Marginalia"), 99 findings | standing constraint in backlog.md; many landed |
+| [2026-07-12-ai-native-backlog](2026-07-12-ai-native-backlog.md) | AI-native authoring | **closed**, section G |
+| [2026-07-13-companion-check-bug](2026-07-13-companion-check-unexpected-output-bug.md) | companion JSON version-skew bug | **closed** (`b40ec0e`, verified in the installed bundle 2026-07-25); release-hygiene residuals in Tier 3 |
+| [2026-07-16-machine-facing-audit](2026-07-16-machine-facing-audit.md) | machine-facing output | landed |
+| [2026-07-17-backlog-truth-sweep](2026-07-17-backlog-truth-sweep.md) | backlog-vs-source truth sweep | method, not findings; source of the "entries rot" law |
+| [2026-07-17-reduction-audit-map](2026-07-17-reduction-audit-map.md) | simplification / reduction | Phase 2 + T1 + R2 landed; R1 + T2 = item **29** |
+| [2026-07-17-security-release-audit](2026-07-17-security-release-audit.md) | pre-open-source security + supply chain | 4 findings landed same day; the deferred set shipped 2026-07-25; `oss-4` = item **25** |
+| [2026-07-18-pmf-audit](2026-07-18-pmf-audit.md) | product-market fit | the Tier 3 band ("real users, not more features") |
+| [2026-07-21-vscode-devx-audit](2026-07-21-vscode-devx-audit.md) | VS Code companion DevX | Tier 3 Companion (Phase 2) |
+| [2026-07-22-ap2-robustness-fuzzing-audit](2026-07-22-ap2-robustness-fuzzing-audit.md) | **AP2** fuzzing / hostile input | AP2-1/2/3 all shipped 2026-07-25 |
+| [2026-07-22-cache-correctness-audit](2026-07-22-cache-correctness-audit.md) | **AP4** adversarial freeze | AP4-1 shipped 07-22; AP4-2/3/4 shipped 07-25 |
+| [2026-07-22-demand-probe-course-author](2026-07-22-corpus-demand-probe-course-author.md) | demand probe, persona 1 | item **16** (F-03 open) |
+| [2026-07-22-demand-probe-docs-maintainer](2026-07-22-corpus-demand-probe-docs-maintainer.md) | demand probe, persona 2 | item **17** (F-01 corrected 07-25, F-04 open) |
+| [2026-07-22-demand-probe-interactive-explainer](2026-07-22-corpus-demand-probe-interactive-explainer.md) | demand probe, persona 3 | item **18** (F-02, F-03 open) |
+| [2026-07-23-cad-as-code-research](2026-07-23-cad-as-code-research.md) | CAD-as-code feasibility + market | **decided against** (feasible + legally green, no demand); 5 revisit triggers in the doc |
+| [2026-07-24-deck-motion-audit](2026-07-24-deck-motion-audit.md) | deck overview + every animation | Option A + both residuals shipped; 3 owner decisions = item **28** |
+
+Rounds with their own narrative entry below (and so already in the ledger): AP1, AP5, AP8, AP9, AP10,
+AP12, the 2026-07-19 polish audit, the 2026-07-18 vacuous-test audit, the 2026-07-24 skimmability
+audit, and the 2026-07-07 multi-surface deep audit.
+
+**Perspectives not yet run: AP3 (concurrency), AP6 (cross-browser), AP7 (a11y), AP11 (chaos)** — all
+four stateful/solo. Highest-yield: AP7 and AP3. Everything else in AP1-AP12 is done.
+
 **Skimmability audit (reader experience at book scale), 2026-07-24** →
 [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md). Author-prompted, not an AP slot: "how do I
 make a tool that helps writers create documents that are easily skimmable, and what makes Taliesin better for
