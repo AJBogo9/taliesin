@@ -22,8 +22,8 @@ below. Gates at the last code landing, **re-run before trusting them**: 1481 tes
 `clippy --workspace --all-targets -D warnings` and both JS `tsc` gates clean; `check` clean on
 `corpus/tarn`, `docs/guide`, `docs/internals` and `site`.
 
-Two audits then ran, **findings only, no code**: **AP7** (accessibility) = item **34**, **AP3**
-(concurrency) = item **35**.
+Three audits then ran, **findings only, no code**: **AP7** (accessibility) = item **34**, **AP3**
+(concurrency) = item **35**, **AP11** (chaos) = item **36**.
 
 **Build-ready now, both measured and unblocked:** **AP7-1** (37 of 51 book pages emit a skipped
 heading level while `check` prints "no problems found") and **AP3-1** (a page with no code cells
@@ -34,8 +34,10 @@ fix-shape constraint; read it before starting.
 naming purge (Task 8 Step 5). The companion was repackaged and reinstalled and the relay harness
 passes both directions, but nothing automated covers the real editor round-trip.
 
-**Audit perspectives left: AP6 (cross-browser) and AP11 (chaos)**, both stateful/solo, both
-unranked. Working method is in "Audit perspectives": a dated findings doc, a row in
+**One audit perspective is left: AP6 (cross-browser)**, stateful/solo. Three non-AP lenses are also
+proposed and unrun (see "Audit perspectives"), and they are probably the better use of a session:
+AP11 returned only one low-medium finding because the failure paths are genuinely well-built.
+Working method is in "Audit perspectives": a dated findings doc, a row in
 [AUDITS.md](AUDITS.md)'s round index, and the build-ready findings filed into "Open work" under
 their own prefix. No ruling requires the next session to take one.
 
@@ -110,7 +112,7 @@ their own prefix. No ruling requires the next session to take one.
 Ranked highest user/product value first. Impact is not the same as buildability, so each item carries a
 gating tag: a high-impact item can still be frozen or need a ruling.
 
-**Two audits on 2026-07-25 refilled this list: items 34 (AP7) and 35 (AP3).** Before them it was
+**Three audits on 2026-07-25 refilled this list: items 34 (AP7), 35 (AP3) and 36 (AP11).** Before them it was
 genuinely empty of buildable, unruled work, which is why a session was ruled to an audit: A's single
 item is an owner decision ruled deferred; both of B's need a device or a demand signal; and C was
 down to **24**'s two owner calls, item **30** (writing, not code), and P3 residuals that each carry
@@ -158,6 +160,27 @@ have a fix-shape constraint recorded in their item; read it before starting.
    were considered and left for later. Revive only on a real speaker ask.
 
 ### C. Low / hardening (P3)
+
+36. **AP11 chaos finding** (detail:
+    [2026-07-25-ap11-chaos-audit.md](2026-07-25-ap11-chaos-audit.md)). One finding; the round's
+    main result is a **positive bill of health** on failure handling, listed in the doc so it is not
+    re-audited (corrupt `_freeze` self-heals in all three corruption shapes; an unwritable `_freeze`
+    warns and completes; an **unwritable output dir exits 1 with nothing half-written**; a missing
+    interpreter renders cells as source with a precise page diagnostic and **fails under `--strict`**;
+    a killed server leaves the client in a visible `reconnecting…` state with a boot-id-forced
+    re-mount). **PA-B1 was already fixed**, so AP11's only seed is closed.
+    - **AP11-1 (low-medium, S): a missing interpreter is reported to the console as an author code
+      exception.** With a bogus `TALIESIN_PYTHON`, the build logs `cell error … code cell raised an
+      uncaught exception; its traceback is baked into the output`. Both claims are false: the kernel
+      never launched and no traceback exists. **Cause:** `build.rs:380 is_cell_error_output`
+      classifies a crashed cell purely by HTML shape (`<div class="tali-output"` containing
+      `class="tali-error"`), and the kernel-unavailable diagnostic is emitted with exactly that
+      shape, so `cell_error_message` (`build.rs:478`) asserts an exception unconditionally. Reaches
+      `--format json` too, via `cell_error_diagnostics` (`build.rs:493`). The rendered **page is
+      correct**; only the console and the structured diagnostics are wrong. Matters because a wrong
+      interpreter path is plausibly the most common setup failure. **Fix shape:** distinguish at the
+      source of truth (a distinct class on the unavailable diagnostic, or an executor-set marker),
+      not by HTML shape.
 
 35. **AP3 concurrency findings** (detail:
     [2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md)). The round **refuted
@@ -423,7 +446,7 @@ one perspective per session, solo; write a dated findings doc in `notes/`; add a
 prefix. **Every audit's first job is to falsify its own entry:** the last four rounds each found
 their entry overstated, misnamed, or already-shipped, so budget the first hour for that.
 
-**Ten of twelve are RUN. Two remain: AP6 and AP11**, both stateful/solo, both unranked.
+**Eleven of twelve are RUN. One remains: AP6**, stateful/solo.
 
 | Round | Result | Work went to |
 |---|---|---|
@@ -436,6 +459,7 @@ their entry overstated, misnamed, or already-shipped, so budget the first hour f
 | [AP8 determinism](2026-07-22-determinism-audit.md) | positive bill of health; byte-identical across processes | closed |
 | [AP9 semantic HTML](2026-07-22-semantic-html-audit.md) | strong positive; its one finding was a stale-artifact false lead | closed |
 | [AP10 codebase health](2026-07-23-ap10-codebase-health-audit.md) | healthy; dead code ~nil; lsp/mcp lacked a panic boundary | item 21, shipped |
+| [AP11 chaos](2026-07-25-ap11-chaos-audit.md) | failure paths well-built; the defect is wording (a missing interpreter reported as an author exception) | item **36** |
 | [AP12 offline](2026-07-22-offline-guarantee-audit.md) | own assets genuinely offline; gap is author-introduced external refs | item 13 |
 
 **AP6: Cross-browser / cross-platform.** CLAUDE.md mandates the chrome-devtools MCP and development
@@ -447,13 +471,6 @@ grep the Rust for `\`-vs-`/` path assumptions and Linux-only syscalls. **Setup c
 Playwright dependency. **Concrete exposure named by AP7:** `hidden="until-found"` on tabset panels,
 `inert` on deck slides, `:focus-visible` opacity reveals, IntersectionObserver trigger lines.
 *Stateful, solo.* Highest risk before the public flip (~end of summer), least certain yield.
-
-**AP11: Chaos / failure-injection UX.** Kill the kernel mid-cell, fill the disk during a build, drop
-the websocket, SIGKILL the server: how graceful is each degradation and what does the author actually
-see? DX touched error loops; nobody has injected real failures. Seed finding already filed: PA-B1
-(the kernel-unavailable message tells headless callers to click a Restart button that is not there).
-*Stateful, solo.* Cheapest to run of the two, and it targets dynamic behaviour, which is where this
-codebase's defects have consistently lived.
 
 **Lenses that were never AP-shaped** (proposed 2026-07-25, none run): **diagnostics-message quality**
 (27+ `check` families with `title`/`fix` fields; nobody has audited whether each message names the
