@@ -57,6 +57,11 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("repeats the page title", "TAL-SHAPE-ECHO", SUGGESTION),
     ("has no content under it", "TAL-SHAPE-HOLLOW", SUGGESTION),
     ("caption is only its label", "TAL-SHAPE-CAPTION", SUGGESTION),
+    // Link-text advice, up here for the same reason: the message quotes the author's own
+    // link text, so a link reading "math" or "bibliography" would classify as TAL-MATH /
+    // TAL-CITE-BIB. Also ahead of `broken link`, whose needle it contains as a substring
+    // ("ambiguous link text" does not, but a link whose TEXT is "broken link" would).
+    ("ambiguous link text", "TAL-LINK-TEXT", SUGGESTION),
     // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and ahead of every
     // catalogued family on purpose: the needles below include ones as generic as
     // `("math", …)`, and a weasel-word message naming a word that contains a generic needle
@@ -235,6 +240,21 @@ const EXPLANATIONS: &[Explanation] = &[
                 the reference unreadable too.",
         fix: "Write what the figure shows (`![Fatality rate by manufacturer, 1990-2020](f.png){#fig-rates}`). \
               If it genuinely needs no caption, drop the `{#fig-…}` id so it is not numbered.",
+    },
+    Explanation {
+        code: "TAL-LINK-TEXT",
+        title: "two links on one page read the same but go elsewhere",
+        cause: "Two links on this page have the same accessible name and different \
+                destinations, so neither one says where it goes. A screen reader can list \
+                a page's links out of context, where the text is all the reader gets — and \
+                a sighted reader scanning for the link they already followed cannot tell \
+                the two apart either. Destinations are compared ignoring the `#fragment`, \
+                so two deep links into one page are deliberately NOT flagged.",
+        fix: "Make the link text name its own destination (`the execution model` rather \
+              than a second `this chapter`). Do not paper over it with `aria-label`: a \
+              label that disagrees with the visible text breaks voice control (WCAG 2.5.3, \
+              Label in Name). This is advice, severity `suggestion`, so it never fails \
+              `check`, `build --strict` or `publish` unless you ask with `check --strict`.",
     },
     Explanation {
         code: "TAL-PROSE-WEASEL",

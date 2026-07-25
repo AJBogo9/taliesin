@@ -137,6 +137,104 @@ fn local_links_accept_html_link_with_tmd_source() {
 }
 
 #[test]
+fn link_text_collision_fires_on_same_words_different_destination() {
+    let doc = render_document(
+        "See [the docs](one.tmd) and also [the docs](two.tmd).\n\n\
+         And [the docs](one.tmd) once more, plus [something else](two.tmd).\n",
+    );
+    let m = msgs(&validate_link_text_collisions(&doc.blocks));
+    assert_eq!(
+        m.len(),
+        1,
+        "one finding per colliding phrase, not one per link: {m:?}"
+    );
+    assert!(m[0].contains("ambiguous link text `the docs`"), "{m:?}");
+}
+
+#[test]
+fn link_text_collision_ignores_two_deep_links_into_one_document() {
+    // The trim that makes this rule shippable. Compared on the whole href these are two
+    // destinations and this fires; compared modulo fragment they are one.
+    let doc = render_document(
+        "[chapter four](exec.tmd#sec-plan) and [chapter four](exec.tmd#sec-replay), \
+         plus [top](#a) and [top](#b).\n",
+    );
+    assert!(
+        validate_link_text_collisions(&doc.blocks).is_empty(),
+        "{:?}",
+        msgs(&validate_link_text_collisions(&doc.blocks))
+    );
+}
+
+#[test]
+fn link_text_collision_ignores_repetition_to_one_place() {
+    let doc = render_document("[the guide](guide.tmd) and again [the guide](guide.tmd).\n");
+    assert!(validate_link_text_collisions(&doc.blocks).is_empty());
+}
+
+#[test]
+fn link_text_collision_exempts_generated_cross_reference_labels() {
+    // Two references to two *unnumbered* theorems both render a bare "Theorem": generated
+    // text the author cannot reword without abandoning `@`-refs. The exemption has to be
+    // checked on hand-built blocks, since a corpus doc cannot produce a collision the
+    // numbering scheme prevents. The same pair WITHOUT the xref class must still fire, or
+    // this test would pass with the exemption deleted for the wrong reason.
+    let xrefs = crate::render::Block {
+        id: "b".into(),
+        sourcepos: "1:1-1:1".into(),
+        source_file: None,
+        html: "<p><a href=\"a.html#thm-a\" class=\"tali-xref\">Theorem</a> and \
+               <a href=\"b.html#thm-b\" class=\"tali-xref\">Theorem</a></p>"
+            .into(),
+        cell: None,
+    };
+    assert!(
+        validate_link_text_collisions(std::slice::from_ref(&xrefs)).is_empty(),
+        "cross-reference labels are generated, so they are exempt"
+    );
+    let authored = crate::render::Block {
+        html: xrefs.html.replace(" class=\"tali-xref\"", ""),
+        ..xrefs
+    };
+    assert_eq!(
+        validate_link_text_collisions(std::slice::from_ref(&authored)).len(),
+        1,
+        "the same pair written by hand is exactly what the rule exists to catch"
+    );
+}
+
+#[test]
+fn link_text_collision_reads_aria_label_over_visible_text() {
+    // `aria-label` is what assistive tech announces, so it is the name that must match —
+    // in both directions: distinguishing labels clear a visible-text collision, and
+    // colliding labels create one out of distinct visible text.
+    let block = |html: &str| crate::render::Block {
+        id: "b".into(),
+        sourcepos: "1:1-1:1".into(),
+        source_file: None,
+        html: html.into(),
+        cell: None,
+    };
+    let labelled = block(
+        "<p><a href=\"one.html\" aria-label=\"read the intro\">more</a> \
+         <a href=\"two.html\" aria-label=\"read the appendix\">more</a></p>",
+    );
+    assert!(
+        validate_link_text_collisions(std::slice::from_ref(&labelled)).is_empty(),
+        "distinguishing aria-labels resolve a visible-text collision"
+    );
+    let collided = block(
+        "<p><a href=\"one.html\" aria-label=\"read on\">intro</a> \
+         <a href=\"two.html\" aria-label=\"read on\">appendix</a></p>",
+    );
+    assert_eq!(
+        validate_link_text_collisions(std::slice::from_ref(&collided)).len(),
+        1,
+        "colliding aria-labels are a collision even when the visible text differs"
+    );
+}
+
+#[test]
 fn local_media_flags_missing_video() {
     let dir = Tmp::new("video");
     std::fs::write(dir.0.join("there.mp4"), "x").unwrap();

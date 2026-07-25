@@ -1,6 +1,8 @@
-//! Local relative cross-file link existence validation.
+//! Local relative cross-file link existence validation, plus the link-text collision
+//! lint (two links on a page that read the same but go somewhere different).
 
-use super::helpers::{is_local_ref, start_line, tag_attr};
+use super::a11y::interactives;
+use super::helpers::{is_local_ref, start_line, strip_tags, tag_attr};
 use crate::render::{Block, Warning};
 use std::path::Path;
 
@@ -97,6 +99,89 @@ pub fn validate_local_links(blocks: &[Block], base: &Path) -> Vec<Warning> {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,
             });
+        }
+    }
+    out
+}
+
+/// A link's accessible name, normalized for comparison: its visible text (or its
+/// `aria-label`, which overrides the text), lowercased and whitespace-collapsed.
+///
+/// `aria-label` wins because that is what assistive tech announces — and a page whose
+/// two "Read more" links carry distinguishing `aria-label`s has already solved this.
+fn link_name(open: &str, inner: &str) -> String {
+    let raw = tag_attr(open, "aria-label=\"")
+        .map(str::to_string)
+        .unwrap_or_else(|| strip_tags(inner));
+    raw.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Two links in one document that read the same but point somewhere different — the
+/// reader (and a screen-reader user pulling up a links list, where the link text is
+/// *all* they get) cannot tell which is which.
+///
+/// Compared **modulo fragment**: two `#`-deep links into the same document are one
+/// destination for this purpose. That is the whole difference between this rule and a
+/// false-positive factory, and it is the reason the audit gave for trimming it. It is
+/// also what silences footnote back-references, measured rather than assumed: every one
+/// on a page reads "Back to content" (an `aria-label`) and points at a *bare* fragment,
+/// so they all share one destination here. (The audit's proposed `data-footnote-ref` /
+/// `data-footnote-backref` exemption would have been dead code — this project emits
+/// `role="doc-noteref"` and `class="tali-fn-back"`, not comrak's attributes.)
+///
+/// **Cross-references are exempt** because the author does not write their text: an
+/// *unnumbered* theorem renders every reference to it as a bare "Theorem", so two refs
+/// to two different unnumbered theorems collide on text the author cannot reword without
+/// abandoning `@`-references.
+///
+/// **Scope is the document's own blocks**, so site chrome (navbar, footer, TOC, pager)
+/// is out of view by construction. That is correct for a lint whose fix is "edit your
+/// prose": the author does not write the TOC's link text, and a `#`-deep TOC has one
+/// destination under this rule anyway.
+///
+/// The "here"/"read more" stop-list from the same audit finding is deliberately NOT
+/// here: it fires zero times across all corpus + docs files, and `crate::prose` is this
+/// project's existing style linter and is opt-in behind `prose-lint:` on purpose.
+pub fn validate_link_text_collisions(blocks: &[Block]) -> Vec<Warning> {
+    use std::collections::{HashMap, HashSet};
+    let mut seen: HashMap<String, String> = HashMap::new(); // name → destination, sans fragment
+    let mut reported: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for b in blocks {
+        for el in interactives(&b.html) {
+            if el.kind != "link" || el.open.contains("tali-xref") {
+                continue;
+            }
+            let Some(href) = tag_attr(el.open, "href=\"") else {
+                continue;
+            };
+            let dest = &href[..href.find('#').unwrap_or(href.len())];
+            let name = link_name(el.open, el.inner);
+            if name.is_empty() {
+                continue; // an unnamed link is `validate_a11y`'s finding, not this one
+            }
+            match seen.get(&name) {
+                // Reported once per phrase, and `seen` keeps the FIRST destination: a
+                // third copy of the same text is the same defect, and three findings on
+                // one phrase is noise, not three times the signal.
+                Some(first) if first != dest && reported.insert(name.clone()) => {
+                    let w = Warning::new(format!(
+                        "ambiguous link text `{name}`: another link on this page reads the same \
+                         but points somewhere else, so neither one says where it goes"
+                    ));
+                    out.push(match start_line(&b.sourcepos) {
+                        Some(l) => w.at(b.source_file.clone(), l),
+                        None => w,
+                    });
+                }
+                Some(_) => {}
+                None => {
+                    seen.insert(name, dest.to_string());
+                }
+            }
         }
     }
     out

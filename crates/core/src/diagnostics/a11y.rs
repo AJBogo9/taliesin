@@ -58,13 +58,16 @@ fn has_accessible_name(inner: &str) -> bool {
 
 /// One interactive element to audit for an accessible name: the `<a>`/`<button>` open
 /// tag (for `aria-label`/`title`) plus the inner HTML up to its close tag.
-struct Interactive<'a> {
+///
+/// `pub(super)` because `links.rs` scans the same elements for its link-text collision
+/// rule; one nesting-aware scan, not two.
+pub(super) struct Interactive<'a> {
     /// `"link"` or `"button"`, for the message.
-    kind: &'a str,
+    pub(super) kind: &'a str,
     /// The open tag's attributes (everything inside `<…>`).
-    open: &'a str,
+    pub(super) open: &'a str,
     /// The HTML between the open and matching close tag.
-    inner: &'a str,
+    pub(super) inner: &'a str,
 }
 
 /// Every element carrying `role="button" | "link" | "tab"` that is NOT itself a native
@@ -154,7 +157,7 @@ fn matching_inner<'a>(html: &'a str, name: &str, inner_start: usize) -> &'a str 
 /// tag + inner HTML so the caller can test for an accessible name. Nested same-type
 /// elements are rare in content; the first close tag wins (a conservative scan, never a
 /// false *positive*).
-fn interactives(html: &str) -> Vec<Interactive<'_>> {
+pub(super) fn interactives(html: &str) -> Vec<Interactive<'_>> {
     let mut out = Vec::new();
     for (open_pat, close_pat, kind, require_href) in [
         ("<a ", "</a>", "link", true),

@@ -312,3 +312,26 @@ fn corpus_shape_fixture_trips_each_shape_code_exactly_once() {
         ws.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn corpus_link_text_fixture_fires_once_and_stays_silent_on_its_near_misses() {
+    // `TAL-LINK-TEXT` fires NOWHERE in the real 14-project corpus (measured, both in this
+    // modulo-fragment form and in the naive whole-href one), so the fixture is the only
+    // thing standing between "the rule works" and "the rule does nothing". It carries the
+    // near-misses in the same document on purpose: a rule that lost its fragment trim, its
+    // same-destination check or its footnote silence reports 2+ here instead of 1.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics");
+    let src = std::fs::read_to_string(dir.join("link-text.tmd")).unwrap();
+    let doc = taliesin_core::render_document_with_includes(&src, &dir);
+    let ws = diagnostics::validate_link_text_collisions(&doc.blocks);
+    let m: Vec<&String> = ws.iter().map(|w| &w.message).collect();
+    assert_eq!(m.len(), 1, "exactly one finding on the fixture: {m:?}");
+    assert!(m[0].contains("`the prose fixture`"), "{m:?}");
+    let (code, severity) = diagnostics::codes::classify(&ws[0].message);
+    assert_eq!(code, "TAL-LINK-TEXT");
+    assert_eq!(
+        severity,
+        diagnostics::codes::SUGGESTION,
+        "link-text advice must never gate a build"
+    );
+}

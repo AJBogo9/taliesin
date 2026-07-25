@@ -215,6 +215,7 @@ pub(crate) fn page_static_diagnostics(
     }
     out.extend(dx::validate_js_reactive_graph(blocks));
     out.extend(dx::validate_a11y(blocks, format));
+    out.extend(dx::validate_link_text_collisions(blocks));
     out.extend(dx::validate_document_shape(blocks, format));
     out.extend(dx::validate_math(blocks));
     out.extend(dx::validate_code_languages(blocks));

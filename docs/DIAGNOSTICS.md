@@ -170,6 +170,14 @@ A link to `other.html#fragment` (or `other.tmd#fragment`) resolves to a real pag
 
 To fix: Fix the fragment to a real anchor on the target page, or add the id there.
 
+## TAL-LINK-TEXT
+
+**two links on one page read the same but go elsewhere**
+
+Two links on this page have the same accessible name and different destinations, so neither one says where it goes. A screen reader can list a page's links out of context, where the text is all the reader gets — and a sighted reader scanning for the link they already followed cannot tell the two apart either. Destinations are compared ignoring the `#fragment`, so two deep links into one page are deliberately NOT flagged.
+
+To fix: Make the link text name its own destination (`the execution model` rather than a second `this chapter`). Do not paper over it with `aria-label`: a label that disagrees with the visible text breaks voice control (WCAG 2.5.3, Label in Name). This is advice, severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
+
 ## TAL-MATH
 
 **a math expression could not be rendered**
