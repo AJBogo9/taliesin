@@ -363,6 +363,12 @@ ff-merge locally, delete the item here on landing.
 Ranked highest user/product value first. Impact is not the same as buildability, so each item carries a
 gating tag: a high-impact item can still be frozen or need a ruling.
 
+**Read that literally right now: bands A and B contain NO buildable work.** A's single item is an
+owner decision that was ruled deferred, and both of B's need a device or a demand signal. Every
+build-ready thing in this file is in **band C** — chiefly what is left of **24**'s independent-medium
+set. That is the ranking working as designed, not a stale file; "Next session: start here" above
+names the actual picks.
+
 ### A. High impact (build first)
 
 25. **Pre-public release checklist: one owner decision left** (detail:
@@ -391,7 +397,8 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
    deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
    fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
-   opens the overview map, with a 250 ms hysteresis; see item 28 for what that left behind.)*
+   opens the overview map, with a 250 ms hysteresis. What that left behind is all shipped or ruled —
+   see "Deck-motion: the whole item is closed" under "Decided against", formerly item 28.)*
 
 2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
    publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
@@ -523,39 +530,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     `docs/internals` is 60,208 words with zero `{.definition}` blocks. A glossary, a term index and a float
     digest all produce near-empty output until an authoring pass happens; defer those three rather than
     building them into an empty registry.
-
-28. **Deck-motion: decided, no code left** (detail:
-    [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)). Option A shipped
-    2026-07-24 and its **two residuals shipped 2026-07-25**: overview content flips are now instant
-    (a `.tali-nofx` frame suppresses the fragment and magic-move transitions while `.overview`
-    toggles, so the zoom is the one thing moving — browser-measured 4 concurrent content transitions
-    → **0**), and magic-move is resynced (`CAM.morph`/`morphFade`/`morphFadeDelay` replace the
-    hand-copied `.45s`/`.4s`/`480`/`560` literals, with one cancellable per-div settle mirroring
-    `deck.aaSettle`; hammering forward/back mid-morph now leaves **0** stranded inline styles where
-    it used to race naked timers). **RULED 2026-07-25** (owner delegated the call: "use your own best judgement"):
-    - **(3) no-change.** An out-of-order arrival stays visually identical to a step. Distinguishing
-      them buys a cue the reader has no vocabulary for, and every arrival path already cuts when far.
-    - **(4) the overview is a glance at a ~20-slide talk, NOT a navigator for 100+.** So **Option C
-      (the shared-element FLIP rewrite) is declined** — the readability floor closed most of the gap
-      it existed for, and a 100+-slide deck is not a shape this tool is being built for. Record it as
-      decided, not deferred, so it is not re-costed a third time.
-    - ~~**(5)**~~ **SHIPPED 2026-07-25.** One wrap count for the whole map, chosen by measuring
-      the map at each candidate count and taking the one whose whole-map fit is largest — rows
-      counted from the REAL run lengths, because `n/cols` under-counts (a run boundary rounds up)
-      and picks a count that then does not fit. **Measured, because the premise needed checking:**
-      on `corpus/deck.tmd` the change is a **no-op at every viewport tested** (that deck's runs
-      already wrap optimally), so the item's shape had to be built to see it. On a 21-slide
-      three-topic deck at 1100x1000 the overview now shows **23 of 25 slides against 13**, at 145 px
-      tiles instead of 218 px — which is the right trade for a glance surface. A
-      coverage-weighted refinement that also modelled the readability-floor fallback was tried
-      and measured **worse** (15 of 25); it is out, and the comment says so. Do not re-refine
-      without measuring.
-    **Two LOW tradeoffs flagged to the author and left as-is, not defects:** ctrl+wheel-*down* claims
-    browser page-zoom-out over the deck (that *is* the approved gesture), and it also fires inside an
-    embedded deck on a scrollable page.
-    *Option B (mode-invariant serpentine grid) and Option C are costed in the audit and were not
-    chosen; the overview work is identical under A and B, so nothing shipped is wasted if B is ever
-    revisited.*
 
 17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
@@ -1179,6 +1153,23 @@ claim that one of these is "missing"):
 
 ## Decided against / do-not-re-litigate
 
+- **Deck-motion: the whole item is closed** (was Open-work item 28, lifted out 2026-07-25 because it
+  had no code left in it and "only open tasks live here"; detail:
+  [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)). Option A shipped 2026-07-24;
+  its two residuals (instant overview content flips via a `.tali-nofx` frame, magic-move resynced
+  onto `CAM.morph`/`morphFade`/`morphFadeDelay`) and **(5)** (one viewport-driven wrap count for the
+  whole overview map) shipped 2026-07-25. The owner delegated the remaining calls and they were
+  **ruled, not deferred**: **(3) no-change** — an out-of-order arrival stays visually identical to a
+  step, and distinguishing them buys a cue the reader has no vocabulary for; **(4) Option C (the
+  shared-element FLIP rewrite) is declined** — the overview is a glance at a ~20-slide talk, not a
+  navigator for 100+, and the readability floor closed most of the gap it existed for. **Do not
+  re-cost Option C a third time.** A coverage-weighted refinement of (5) was tried and measured
+  *worse* (15 of 25 slides against 23 of 25); the comment in the source says so — do not re-refine
+  without measuring. Two LOW tradeoffs were flagged to the author and left as-is, not defects:
+  ctrl+wheel-*down* claims browser page-zoom-out over the deck (that is the approved gesture), and
+  it also fires inside an embedded deck on a scrollable page. *(Option B, the mode-invariant
+  serpentine grid, is costed in the audit and was not chosen; the overview work is identical under
+  A and B, so nothing shipped is wasted if B is ever revisited.)*
 - **A separate per-page outline artifact for the book drawer** (`book-outline-artifact` Ship B's
   own spec, declined 2026-07-25 while building it). Measured rather than argued: the search index
   the sidecar would duplicate is **172 KB raw / 60 KB gzipped** on `docs/internals` (146 KB / 50 KB
