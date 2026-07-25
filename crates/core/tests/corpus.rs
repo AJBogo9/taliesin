@@ -444,6 +444,37 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
         page.contains("role=\"doc-toc\"") && page.contains("aria-label=\"Table of contents\""),
         "TOC landmark must carry role + an aria-label"
     );
+    // AP7-5: and it is REACHABLE from the keyboard without walking the whole chapter. The
+    // TOC is a sticky sidebar visible the whole time, but it is emitted after the reading
+    // column, so on a real chapter it was tab stop 58 of 72 — behind every heading anchor
+    // and every code copy button. The landmark rotor already covered screen-reader users;
+    // this is for keyboard-only users not running AT, for whom the skip link is the only
+    // mechanism. `tabindex="-1"` so the link lands focus IN the nav (as `<main>` does)
+    // rather than merely near it, without adding a tab stop.
+    assert!(
+        page.contains("href=\"#TOC\"") && page.contains("Skip to table of contents"),
+        "a page with a TOC must offer a skip link to it"
+    );
+    assert!(
+        page.contains("<nav id=\"TOC\" tabindex=\"-1\""),
+        "the TOC landmark must be programmatically focusable for that link to land in it"
+    );
+
+    // ...and a page WITHOUT a TOC offers only the one link: a skip link to a target that
+    // does not exist is worse than no skip link, since it spends a tab stop going nowhere.
+    let no_toc = taliesin_core::render_doc_to_page(
+        &taliesin_core::render_document("---\ntitle: \"T\"\n---\n\nbody only\n"),
+        "fallback",
+        taliesin_core::OutputMode::Build,
+    );
+    assert!(
+        no_toc.contains("href=\"#tali-main\""),
+        "the skip-to-content link is unconditional"
+    );
+    assert!(
+        !no_toc.contains("href=\"#TOC\""),
+        "no TOC on the page means no skip link to one"
+    );
 }
 
 #[test]

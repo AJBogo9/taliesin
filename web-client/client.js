@@ -1025,6 +1025,59 @@
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
   };
 
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+    'textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+
+  // Apply a mutation that may detach the element holding keyboard focus, and land focus
+  // somewhere sensible afterwards (AP7-4).
+  //
+  // Measured against a live preview before this existed: with focus INSIDE the edited
+  // block, a save dropped focus to `<body>`, so the next Tab restarted at the top of the
+  // document; with focus in an unrelated block it survived, which is the block-level diff
+  // already doing its job. `el.replaceWith(node)` / `el.remove()` had no focus handling at
+  // all. Preview-only (a built page has no swap), so this costs an author who works
+  // keyboard-first or with AT, not a reader.
+  //
+  // The restore is by INDEX among the block's focusables, not by identity: the incoming
+  // node is a fresh render of the same block, so the nth link is almost always the same
+  // link, and a prose edit that leaves the links alone keeps focus exactly where it was.
+  // When the index no longer resolves (the edit deleted that control, or the whole block
+  // went away) focus falls back to the block itself, made programmatically focusable the
+  // same way `<main tabindex="-1">` is — off the tab ring, but a valid place for Tab to
+  // resume from, which is the whole point.
+  //
+  // `fn` returns the element that replaced the outgoing one, or null for a removal.
+  const keepFocus = (
+    /** @type {Element | null} */ outgoing,
+    /** @type {() => Element | null} */ fn,
+  ) => {
+    const active = document.activeElement;
+    const held = !!(
+      outgoing &&
+      active &&
+      active !== document.body &&
+      outgoing.contains(active)
+    );
+    const idx = held
+      ? [...outgoing.querySelectorAll(FOCUSABLE)].indexOf(/** @type {Element} */ (active))
+      : -1;
+    // A surviving neighbour to fall back to when the block is removed outright.
+    const neighbour = held
+      ? outgoing.previousElementSibling || outgoing.nextElementSibling
+      : null;
+    const incoming = fn();
+    if (!held) return;
+    const landing = incoming && incoming.isConnected ? incoming : neighbour;
+    if (!landing || !landing.isConnected) return;
+    const same = idx >= 0 ? landing.querySelectorAll(FOCUSABLE)[idx] : null;
+    const target = /** @type {HTMLElement} */ (same || landing);
+    if (!same && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+    // `preventScroll`: `keepScroll` has already pinned the viewport, and focusing a node
+    // it just restored would scroll it back.
+    target.focus({ preventScroll: true });
+  };
+
   // Tear down any `{js}` cells inside `el` (a block about to be detached on
   // update/remove): tali-js resolves the cell's `invalidation`, so the author's
   // `invalidation.then(() => renderer.dispose() / cancelAnimationFrame(...))` cleanup
@@ -1273,7 +1326,10 @@
         const node = fragment(msg.html);
         if (el && node) {
           teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
-          keepScroll(() => el.replaceWith(node));
+          keepFocus(el, () => {
+            keepScroll(() => el.replaceWith(node));
+            return node;
+          });
           pulse(node, "tali-flash");
           if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         }
@@ -1309,7 +1365,10 @@
         const el = elById(msg.target_id);
         if (el) {
           teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
-          keepScroll(() => el.remove());
+          keepFocus(el, () => {
+            keepScroll(() => el.remove());
+            return null;
+          });
           if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         }
         scheduleAfterChange();

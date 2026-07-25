@@ -170,10 +170,24 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     // `<main id="tali-main">` (build + site pages always do; the live `#tali-root`
     // mount does not — the runtime `taliInitSkipLink` synthesizes the pair there).
     // Bare output is link-only chrome but keeps the skip link (it's pure HTML/CSS).
-    let skip_link = if p.body.contains("id=\"tali-main\"") {
-        "<a class=\"tali-skip\" href=\"#tali-main\">Skip to content</a>\n"
-    } else {
-        ""
+    // A second link to the in-page TOC, on pages that have one (AP7-5). The TOC is a
+    // sticky sidebar visible the whole time, but it is emitted AFTER the reading column so
+    // it lands at tab stop 56 of 62 on a chapter: a keyboard user has to traverse a
+    // 10,000 px chapter — every heading anchor and every code copy button — to put focus
+    // in a list of links that never left the screen. Screen-reader users already had a way
+    // (the `doc-toc` landmark is in the rotor); this is for keyboard-only users who are
+    // not running AT, where the skip link is the only mechanism there is. Ordered after
+    // "Skip to content" because reading is the common intent.
+    let skip_link = match (
+        p.body.contains("id=\"tali-main\""),
+        p.body.contains("id=\"TOC\""),
+    ) {
+        (true, true) => {
+            "<a class=\"tali-skip\" href=\"#tali-main\">Skip to content</a>\n\
+             <a class=\"tali-skip tali-skip-toc\" href=\"#TOC\">Skip to table of contents</a>\n"
+        }
+        (true, false) => "<a class=\"tali-skip\" href=\"#tali-main\">Skip to content</a>\n",
+        _ => "",
     };
     // The head CSS block + framework script tags differ by asset mode; the body frame,
     // skip link, theme bootstrap, and passed-in pre/post scripts are identical.
@@ -470,9 +484,11 @@ fn html_page_inner(
     // `<nav>`s (navbar / post-nav). `toc_html` already gives it `role="doc-toc"`; the
     // accessible name is added here (its builder lives in mod.rs).
     let toc = if doc.toc {
+        // `tabindex="-1"`, like `<main>`, so the skip link below can move focus INTO the
+        // landmark rather than merely near it (AP7-5). Not a tab stop.
         toc_html(&doc.blocks).replacen(
             "<nav id=\"TOC\"",
-            "<nav id=\"TOC\" aria-label=\"Table of contents\"",
+            "<nav id=\"TOC\" tabindex=\"-1\" aria-label=\"Table of contents\"",
             1,
         )
     } else {

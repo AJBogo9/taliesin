@@ -178,6 +178,10 @@
     background: var(--tali-fg); color: var(--tali-bg); padding: .5rem .8rem;
     border-radius: var(--tali-radius-md); font: 600 .9rem var(--tali-font-head); text-decoration: none; }
   .tali-skip:focus { top: .5rem; }
+  /* The second skip link (to the in-page TOC) sits beside the first, not on top of it:
+     both are pinned, and only one is focused at a time, but tabbing between them should
+     not look like the same link twice. */
+  .tali-skip-toc:focus { left: 13rem; }
   @media (prefers-reduced-motion: no-preference) { .tali-skip { transition: top var(--tali-dur) ease; } }
 
   /* One consistent keyboard-focus ring across every interactive control (the
