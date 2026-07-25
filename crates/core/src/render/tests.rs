@@ -3668,6 +3668,43 @@ fn the_overview_wraps_at_one_count_for_the_whole_map() {
     );
 }
 
+/// The overview map is clamped against the STAGE, not against the grid plus a spare cell.
+/// The old clamp never looked at the stage or the scale, so when the map missed fitting —
+/// by 7 px on a 21-slide three-topic deck at 1100x1000 — `fitOverview` fell back to "follow
+/// the current tile", and for a slide in the FIRST row that centres row 0 in the stage.
+/// Browser-measured there: 269 px of empty stage above the map, the last rows clipped 276 px
+/// below, and 9 of 25 tiles on screen where every other viewport showed 25. With the clamp:
+/// 5 px above (the tile's own gutter inset), 12 px clipped, 23 of 25 on screen — and the
+/// viewports that already fitted are unchanged, because the clamp centres a span that fits.
+///
+/// The audit filed this as `roomy` wrongly computing false. It does not: it reads the DECK
+/// STAGE, which is letterboxed to 16:9, so at a 1100x1000 window the stage is 1100x619 and a
+/// 626 px map really does not fit. The recorded cause measured the window instead.
+#[test]
+fn the_overview_map_is_clamped_against_the_stage_not_the_grid() {
+    let js = super::deck::DECK_JS;
+    // Match the CODE, not the word: the explanatory comment names the old rule.
+    assert!(
+        !js.contains("Math.min(deck.ov.cx, gw + W)"),
+        "the clamp must not allow a spare cell of void past the grid"
+    );
+    assert!(
+        js.contains("function clampAxis"),
+        "the clamp is per axis, in world units"
+    );
+    // The two halves of the rule: centre a span that fits, and pin a larger span's edge to
+    // the stage's edge. `half` is half the stage converted to world units by the scale —
+    // which is the input the old clamp did not have at all.
+    assert!(
+        js.contains("stage / (2 * s)") && js.contains("span <= 2 * half"),
+        "a span that fits the stage is centred; one that does not is edge-clamped"
+    );
+    assert!(
+        js.contains("Math.max(half, Math.min(c, span - half))"),
+        "a larger span's edges must never come inside the stage's edges"
+    );
+}
+
 /// PL17: a theorem led by a heading adopts it as the parenthetical title (the same gesture
 /// that names a callout), instead of rendering the heading as body. A hoisted heading keeps
 /// an xref anchor on the title span, and an explicit `title="..."` still wins.

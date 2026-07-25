@@ -1016,14 +1016,30 @@
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     return { sw: sw, sh: sh, maxScale: Math.min(sw / W, sh / H) };
   }
-  // Keep the map from drifting into the void: clamp the centred point to the grid
-  // plus a one-cell margin on every side.
+  // Keep the map from drifting into the void. Per axis: a span that FITS the stage is
+  // centred (there is no pan to make, and any offset shows as a dead band); a span LARGER
+  // than the stage is clamped so the map's edge never comes inside the stage's edge.
+  //
+  // The old rule allowed a whole cell of void past the grid on every side and never looked
+  // at the stage or the scale at all, which is what framed the map low: with the map 7 px
+  // taller than the stage, `fitOverview` falls back to "follow the current tile", and for a
+  // slide in the FIRST row that centres row 0 in the stage — browser-measured at 1100x1000,
+  // 269 px of empty stage above the map, the last rows clipped 276 px below, and 9 of 25
+  // tiles on screen where every other viewport showed 25. The current tile is inside the
+  // map, so clamping toward the map's centre can never push it off screen.
+  /** @param {number} c @param {number} span @param {number} stage @param {number} s */
+  function clampAxis(c, span, stage, s) {
+    if (!(s > 0)) return span / 2;
+    var half = stage / (2 * s);              // half the stage, in world units
+    if (span <= 2 * half) return span / 2;   // fits: centre it
+    return Math.max(half, Math.min(c, span - half));
+  }
   function clampOv() {
-    if (!deck.ov) return;
+    if (!deck.ov || !deckEl()) return;
     var W = deck.config.width, H = deck.config.height;
-    var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
-    deck.ov.cx = Math.max(-W, Math.min(deck.ov.cx, gw + W));
-    deck.ov.cy = Math.max(-H, Math.min(deck.ov.cy, gh + H));
+    var g = gridDims(), st = ovStage(), s = deck.ov.scale;
+    deck.ov.cx = clampAxis(deck.ov.cx, g.cols * W, st.sw, s);
+    deck.ov.cy = clampAxis(deck.ov.cy, g.rows * H, st.sh, s);
   }
   // Zoom the overview to scale `ns`, keeping the stage-point (px,py) fixed under the
   // anchor (px/py are relative to the deck element's top-left). Shared by wheel zoom
