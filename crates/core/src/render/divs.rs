@@ -358,6 +358,96 @@ fn first_step_state(inner: &[Block]) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
+/// Give every `.step` in `steps` the semantics its container implies, and point it at the
+/// sticky stage it drives (AP7-3).
+///
+/// A `.scrolly` and a `.code-walkthrough` were measured carrying **no** accessibility
+/// semantics at all: 0 steps with `aria`/`role`, `null` root role, nothing associating a
+/// step with the thing it advances. The step prose reads fine linearly, so a screen-reader
+/// user gets the words; what they never got is the **stage** — the sticky visual, or the
+/// highlighted code lines — whose state moves only as a consequence of *visual scrolling*.
+///
+/// Two facts the renderer already has and threw away: the step's ordinal, and (in a
+/// walkthrough) the `lines=` range it focuses. A labelled `group` carries both without
+/// injecting text into the document: an `aria-label` on a bare `<div>` is ignored by AT,
+/// but on a `role="group"` it is announced, and unlike a visually-hidden span it stays out
+/// of `indexable_text`, so the Cmd-K index and `llms.txt` are unchanged.
+///
+/// Steps are deliberately NOT made focusable. They are prose, a keyboard user reads them by
+/// scrolling like anyone else, and putting `tabindex` on paragraphs would add tab stops
+/// without adding any capability.
+fn label_steps(steps: &str, stage_id: &str, lines_in_label: bool) -> String {
+    const OPEN: &str = "<div class=\"step\"";
+    let total = steps.matches(OPEN).count();
+    if total == 0 {
+        return steps.to_string();
+    }
+    let mut out = String::with_capacity(steps.len() + total * 80);
+    let mut rest = steps;
+    let mut n = 0usize;
+    while let Some(i) = rest.find(OPEN) {
+        n += 1;
+        out.push_str(&rest[..i + OPEN.len()]);
+        rest = &rest[i + OPEN.len()..];
+        // The step's own attributes run to the end of its opening tag; read `data-cw-lines`
+        // out of them so the label can name the range this step highlights.
+        let tag_end = rest.find('>').unwrap_or(0);
+        let label = match lines_in_label
+            .then(|| attr_value(&rest[..tag_end], "data-cw-lines"))
+            .flatten()
+        {
+            Some(spec) => format!("Step {n} of {total}, highlighting {}", spoken_lines(&spec)),
+            None => format!("Step {n} of {total}"),
+        };
+        out.push_str(&format!(
+            " role=\"group\" aria-label=\"{label}\" aria-controls=\"{stage_id}\""
+        ));
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A `.step lines=` spec written for speech: `"3-4"` -> `"lines 3 to 4"`, `"1"` ->
+/// `"line 1"`, `"3-5,8"` -> `"lines 3 to 5, 8"`. The raw spec is a machine value that a
+/// screen reader reads as "three dash four" or "three minus four"; this is the one place it
+/// becomes something a person hears, so it is spelled out.
+fn spoken_lines(spec: &str) -> String {
+    let parts: Vec<String> = spec
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| match p.split_once('-') {
+            Some((a, b)) if !a.is_empty() && !b.is_empty() => format!("{a} to {b}"),
+            _ => p.to_string(),
+        })
+        .collect();
+    // Plural unless it is exactly one bare line number ("lines 3 to 4" is still plural).
+    let one = parts.len() == 1 && !parts[0].contains(" to ");
+    format!(
+        "{} {}",
+        if one { "line" } else { "lines" },
+        parts.join(", ")
+    )
+}
+
+/// The container's own `data-block-id`, read back out of the `data` attribute string the
+/// caller is about to interpolate. Used to mint a stage id that is unique per container and
+/// stable across re-renders of unchanged source (the block id is a content hash), so the
+/// `aria-controls` wiring cannot collide between two walkthroughs on one page.
+fn block_id_of(data: &str) -> Option<String> {
+    attr_value(data, "data-block-id")
+}
+
+/// The value of `name="…"` inside an already-emitted opening tag, or `None`. The value is
+/// left exactly as emitted (already attribute-escaped), like [`first_step_state`].
+fn attr_value(tag: &str, name: &str) -> Option<String> {
+    let key = format!("{name}=\"");
+    let i = tag.find(&key)? + key.len();
+    let rest = &tag[i..];
+    let end = rest.find('"')?;
+    (!rest[..end].is_empty()).then(|| rest[..end].to_string())
+}
+
 /// Bundled inline icon for a callout `kind` (GitHub Octicons, MIT — see THIRD_PARTY.md;
 /// `fill="currentColor"` so it takes the kind's accent). Empty for an unknown kind, which
 /// is already flagged by `validate_callout_kind`. Keyed by the same vocabulary as
@@ -541,8 +631,17 @@ fn build_container(
                     .enumerate()
                     .filter_map(|(j, b)| (j != i).then_some(b.html.as_str()))
                     .collect();
+                // AP7-3: name the region and tie each step to the code panel it drives. The
+                // stage id is derived from the container's own block id, so it is unique per
+                // walkthrough and stable across re-renders of unchanged source.
+                let stage_id = format!("{}-stage", block_id_of(&data).unwrap_or_default());
+                let steps = label_steps(&steps, &stage_id, true);
                 format!(
-                    "<div class=\"code-walkthrough\"{data}><div class=\"cw-steps\">{steps}</div><div class=\"cw-stage\"><div class=\"cw-code\">{panel}</div></div></div>"
+                    "<div class=\"code-walkthrough\" role=\"group\" aria-label=\"Code walkthrough\"{data}>\
+                     <div class=\"cw-steps\">{steps}</div>\
+                     <div class=\"cw-stage\" id=\"{stage_id}\" role=\"group\" \
+                     aria-label=\"The code these steps walk through\">\
+                     <div class=\"cw-code\">{panel}</div></div></div>"
                 )
             }
             None => {
@@ -673,8 +772,17 @@ fn build_container(
             }
             _ => (String::new(), String::new()),
         };
+        // AP7-3, the same treatment as `.code-walkthrough`: name the region, and tie each
+        // step to the sticky stage whose state it advances. A scrolly step has no `lines=`
+        // to name (its `state=` is an author token for `scrolly.js`, not reader prose), so
+        // its label is the ordinal alone.
+        let stage_id = format!("{}-stage", block_id_of(&data).unwrap_or_default());
+        let steps = label_steps(&steps, &stage_id, false);
         format!(
-            "<div class=\"tali-scrolly\"{data}{name_attr}>{hidden}<div class=\"scrolly-steps\">{steps}</div><div class=\"scrolly-stage\">{stage}</div></div>"
+            "<div class=\"tali-scrolly\" role=\"group\" aria-label=\"Scroll-driven walkthrough\"{data}{name_attr}>\
+             {hidden}<div class=\"scrolly-steps\">{steps}</div>\
+             <div class=\"scrolly-stage\" id=\"{stage_id}\" role=\"group\" \
+             aria-label=\"The graphic these steps drive\">{stage}</div></div>"
         )
     } else if let Some(kind) = attrs.theorem_kind() {
         if kind == "proof" {
