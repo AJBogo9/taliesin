@@ -704,6 +704,44 @@ mod cli_microcopy_tests {
         }
     }
 
+    /// Every variable in [`ENV_HELP`] is also in the user guide's Environment table. The
+    /// third link in the chain: `env_help_lists_every_runtime_env_var` ties the code to
+    /// `--help`, and this ties `--help` to the docs, so a knob cannot ship half-documented.
+    ///
+    /// DOCS-1 measured the gap it closes: `TALIESIN_RENDER_TIMEOUT` and `TALIESIN_JS_TIMEOUT`
+    /// both reached `--help` with the feature work that added them (AP2 hardening, DX17b) and
+    /// neither reached the guide, which is the surface a user actually reads. Same drift
+    /// shape as the CLI flags, which is why that gate exists — it just did not extend here.
+    #[test]
+    fn every_documented_env_var_is_in_the_user_guide() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/guide/reference/cli.tmd");
+        let guide = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        // Anchor on the table, not the whole page: a passing mention in prose elsewhere is
+        // not a reference entry, and this is exactly where a reader looks the knob up.
+        let table = guide
+            .split_once("## Environment")
+            .expect("cli.tmd has an Environment section")
+            .1;
+        let mut missing: Vec<String> = Vec::new();
+        for (i, _) in ENV_HELP.match_indices("TALIESIN_") {
+            let name: String = ENV_HELP[i..]
+                .chars()
+                .take_while(|c| c.is_ascii_uppercase() || *c == '_')
+                .collect();
+            if !table.contains(&name) {
+                missing.push(name);
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "documented in `taliesin --help` but missing from the guide's Environment table \
+             ({}): {missing:?}",
+            path.display()
+        );
+    }
+
     /// `taliesin help <cmd>` is the same request as `taliesin <cmd> --help`. It used to
     /// print top-level usage, because the `help` verb matched before the subcommand was
     /// looked at.

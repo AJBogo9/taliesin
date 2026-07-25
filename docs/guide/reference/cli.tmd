@@ -471,6 +471,8 @@ See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 | `TALIESIN_PYTHON` | Python with `ipykernel` for `{python}` cells (default `python3`) |
 | `TALIESIN_R` | R with `IRkernel` for `{r}` cells (default `R`) |
 | `TALIESIN_CELL_TIMEOUT` | Per-cell wall-clock cap in seconds before interrupt (default 120; `0` disables the cap, but a per-output silent-hang backstop still applies) |
+| `TALIESIN_RENDER_TIMEOUT` | Per-render wall-clock cap in seconds (default 30; `0` disables it). Rendering is not execution: it never legitimately takes seconds, so this is a watchdog against a pathological document, not a budget to tune. A render that exceeds it is abandoned with a located diagnostic instead of hanging the preview |
+| `TALIESIN_JS_TIMEOUT` | How long `read --run` waits for a page's `{js}` cells to settle in headless Chrome, in seconds (default 10). Separate from `TALIESIN_CELL_TIMEOUT` so a long kernel budget doesn't also stretch the browser wait |
 | `TALIESIN_HOST` | Same as `--host` (expose on the LAN) |
 | `TALIESIN_OPEN` | Same as `--open` (launch a browser) |
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
