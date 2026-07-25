@@ -2471,6 +2471,37 @@ fn theme_head_ships_a_toggle_theme_global() {
     );
 }
 
+/// Tab / Shift-Tab move the palette's selection, as the arrow keys do.
+///
+/// Tab did not previously *escape* the overlay — the shared modal trap in `04-focus-trap.js`
+/// already confines it — it was inert, because the input is the palette's only focusable
+/// element, so the trap simply cycled focus back to it. Browser-verified on a built book:
+/// Tab advances, Shift-Tab reverses, both wrap, and Enter still follows the selection.
+#[test]
+fn search_js_navigates_results_with_tab_and_shift_tab() {
+    // Scan CODE lines only. The comment on the handler explains the Tab behaviour at
+    // length, so a whole-file search for `"Tab"` matches the prose rather than the
+    // implementation — the exact trap three pins fell into last session.
+    let code: String = super::SEARCH_JS
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        code.contains("e.key === \"Tab\" && !e.shiftKey"),
+        "Tab must advance the palette selection"
+    );
+    assert!(
+        code.contains("e.key === \"Tab\" && e.shiftKey"),
+        "Shift-Tab must move the palette selection backwards"
+    );
+    // The hint bar is the only discovery surface for this, so it must advertise it.
+    assert!(
+        super::SEARCH_JS.contains("<kbd>tab</kbd> navigate"),
+        "the palette hint must advertise tab alongside the arrows"
+    );
+}
+
 #[test]
 fn search_js_localizes_the_kbd_hint_off_mac() {
     // The kbd badge is server-rendered with the Mac glyph (⌘K); the shipped client JS must

@@ -303,7 +303,7 @@
       'placeholder="Search or run a command…" aria-label="Search or run a command" ' +
       'aria-controls="tali-s-results" />' +
       '<ul class="tali-s-results" id="tali-s-results" role="listbox" aria-label="Search results"></ul>' +
-      '<div class="tali-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
+      '<div class="tali-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd><kbd>tab</kbd> navigate</span>' +
       "<span><kbd>↵</kbd> go to</span><span><kbd>esc</kbd> close</span></div>";
     document.body.appendChild(overlay);
     // These three nodes are in the innerHTML just set, so the casts are sound.
@@ -762,20 +762,31 @@
     });
   }
 
+  /**
+   * Move the selection by `step`, wrapping. No-op when there is nothing to move through.
+   * @param {number} step
+   */
+  function move(step) {
+    if (!matches.length) return;
+    sel = (sel + step + matches.length) % matches.length;
+    markSel();
+  }
+
   /** @param {KeyboardEvent} e */
   function onKey(e) {
-    if (e.key === "ArrowDown") {
+    // Tab / Shift-Tab move the selection exactly as the arrows do, because that is what a
+    // reader's hands expect in a palette.
+    //
+    // Tab was not *escaping* the overlay before this (the shared modal trap in
+    // `04-focus-trap.js` already confines it on a capture listener) — it was simply inert:
+    // the input is the palette's only focusable element, so the trap kept cycling focus
+    // back to it and the key did nothing at all. Browser-measured, not assumed.
+    if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
       e.preventDefault();
-      if (matches.length) {
-        sel = (sel + 1) % matches.length;
-        markSel();
-      }
-    } else if (e.key === "ArrowUp") {
+      move(1);
+    } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
       e.preventDefault();
-      if (matches.length) {
-        sel = (sel - 1 + matches.length) % matches.length;
-        markSel();
-      }
+      move(-1);
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (matches[sel]) go(matches[sel]);
