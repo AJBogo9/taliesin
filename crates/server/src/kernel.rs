@@ -607,6 +607,42 @@ async fn connect_handshake(
 }
 
 impl Kernel {
+    /// [`Kernel::start`], re-rolling the port allocation on a *transient* failure.
+    ///
+    /// [`prepare_connection`] peeks free ports by binding then immediately releasing
+    /// them, so two kernels starting concurrently can be handed the same loopback port
+    /// and the loser exits with `zmq.error.ZMQError: Address already in use`. Every
+    /// caller needs that re-roll, so it lives with the primitive that allocates the
+    /// ports rather than in the callers: `exec.rs` and `warm_pool.rs` each grew a
+    /// private copy, and the one caller without one — the child half of
+    /// `cold_kernel_self_reaps_on_ungraceful_parent_death`, which cold-starts a kernel
+    /// in a re-spawned test binary — inherited the race and flaked. Captured
+    /// 2026-07-25 by looping the `--bin` suite; before that the flake was recorded
+    /// against an unrelated interrupt test and theorized as a timing edge, which is
+    /// why it survived a "fix".
+    ///
+    /// A permanent failure (missing interpreter or kernel module) returns at once:
+    /// retrying cannot help and would only delay the honest error.
+    pub async fn start_with_retry(spec: &KernelSpec, cwd: Option<&Path>) -> io::Result<Kernel> {
+        const ATTEMPTS: usize = 4;
+        let mut attempt = 1;
+        loop {
+            match Kernel::start(spec, cwd).await {
+                Ok(k) => return Ok(k),
+                Err(e) if attempt < ATTEMPTS && start_error_is_transient(&e.to_string()) => {
+                    crate::log::warn(&format!(
+                        "{} kernel start hit a transient failure ({e}); retrying ({attempt}/{ATTEMPTS})",
+                        spec.kernel_name
+                    ));
+                    // Attempt-scaled backoff: let the peer that won the port bind first.
+                    tokio::time::sleep(Duration::from_millis(40 * attempt as u64)).await;
+                    attempt += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
     /// Spawn the kernel described by `spec` (Python ipykernel or R IRkernel) and
     /// connect to it. The kernel stays warm for the lifetime of this value.
     ///
@@ -1399,7 +1435,7 @@ mod tests {
         let py = PathBuf::from(py);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let mut k = Kernel::start(&KernelSpec::python(&py), None)
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
                 .await
                 .expect("kernel should start");
             // A short per-cell cap so the runaway case below trips fast. Set on the kernel,
@@ -1640,7 +1676,11 @@ mod tests {
             );
             let rt = tokio::runtime::Runtime::new().unwrap();
             rt.block_on(async move {
-                let k = Kernel::start(&KernelSpec::python(&py), None)
+                // `start_with_retry`, not `start`: the suite runs many kernel starts at
+                // once, so this child can lose the `peek_ports` race and exit with
+                // "Address already in use". That is what made this test flake ~1 run in
+                // 13 — the parent then timed out and blamed its own 30 s wait.
+                let k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
                     .await
                     .expect("cold kernel should start in child mode");
                 let pid = k.proc.pid().expect("an owned kernel has a pid");

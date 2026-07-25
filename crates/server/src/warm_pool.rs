@@ -1394,9 +1394,11 @@ for line in sys.stdin:
                 pool.take().await.is_none(),
                 "inert pool must return None so the caller falls back"
             );
-            // The fallback the caller uses (Kernel::start with a real python) still
-            // produces a working kernel — behaviour is no worse than before.
-            let mut k = Kernel::start(&KernelSpec::python(&py), None)
+            // The fallback the caller uses (a cold start with a real python) still
+            // produces a working kernel — behaviour is no worse than before. Via
+            // `start_with_retry`, which is the fallback the caller actually takes, so
+            // this does not lose the `peek_ports` race against the rest of the suite.
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
                 .await
                 .expect("cold fallback kernel should start");
             let html = render_outputs(&k.execute("print(1 + 1)").await.unwrap());

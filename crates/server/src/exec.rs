@@ -899,28 +899,11 @@ impl Executor {
             ),
         );
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
-        // Retry a transient start failure with a fresh port allocation. Under
-        // concurrent builds `peek_ports` can hand two kernels the same loopback port
-        // (it tests-then-releases each), so the loser exits with "address already in
-        // use" and — before this — silently rendered its cells as source. A re-roll
-        // almost always lands free ports; the short, attempt-scaled backoff lets the
-        // colliding peer finish binding first. A permanent failure (missing
-        // interpreter/module) breaks out at once so the honest error isn't delayed.
-        const START_ATTEMPTS: usize = 4;
-        let mut started = Kernel::start(&spec, work_dir.as_deref()).await;
-        let mut attempt = 1;
-        while let Err(e) = &started {
-            if attempt >= START_ATTEMPTS || !crate::kernel::start_error_is_transient(&e.to_string())
-            {
-                break;
-            }
-            crate::log::warn(&format!(
-                "{lang} kernel start hit a transient failure ({e}); retrying ({attempt}/{START_ATTEMPTS})"
-            ));
-            tokio::time::sleep(Duration::from_millis(40 * attempt as u64)).await;
-            started = Kernel::start(&spec, work_dir.as_deref()).await;
-            attempt += 1;
-        }
+        // Retry a transient start failure with a fresh port allocation. That re-roll now
+        // lives on the primitive that allocates the ports (`Kernel::start_with_retry`),
+        // because every caller needs it and the one that lacked it flaked; before it
+        // existed here, a lost port race silently rendered this doc's cells as source.
+        let started = Kernel::start_with_retry(&spec, work_dir.as_deref()).await;
         let state = self.langs.entry(lang).or_default();
         match started {
             Ok(k) => {
@@ -2278,15 +2261,27 @@ mod tests {
             );
             // Let the pool pre-warm at least one kernel so `take` is a hit, not a miss
             // (a miss would legitimately fall back to a cold start + warming signal).
+            //
+            // The bound is deliberately far longer than pre-warming needs (it is well
+            // under a second idle). This test was recorded as asserting "on no elapsed
+            // time at all", but a bounded poll IS a wall-clock assertion, and at the old
+            // 10 s it failed under the full parallel `--bin` suite, where forking a
+            // kernel that preloads numpy + matplotlib competes with every other kernel
+            // test on the box. What the assertion is actually for is "the pool pre-warms
+            // in the background at all", so a generous bound still catches the real
+            // regression (it never warms) without failing on a loaded machine.
             let mut ready = false;
-            for _ in 0..100 {
+            for _ in 0..600 {
                 if pool.ready_len().await > 0 {
                     ready = true;
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            assert!(ready, "warm pool should pre-warm a kernel within 10s");
+            assert!(
+                ready,
+                "warm pool should pre-warm a kernel in the background"
+            );
 
             let (sink, captured) = capturing_sink();
             let mut ex = Executor::new();
