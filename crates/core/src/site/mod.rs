@@ -1306,7 +1306,7 @@ impl Site {
         // way its own page will render it, and read the citing sentence out of that. It
         // reuses `resolve_blocks`' rewriter rather than a private copy, so a backlink
         // quotes exactly the text its referring page shows.
-        let per_page: Vec<(String, Vec<(String, Option<String>)>)> = per_page
+        let per_page: Vec<backlinks::PageRefs> = per_page
             .into_iter()
             .map(|(url, htmls)| {
                 let up = "../".repeat(url.matches('/').count());

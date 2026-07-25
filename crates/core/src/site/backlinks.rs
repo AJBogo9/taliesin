@@ -21,6 +21,10 @@ pub struct Backref {
     pub context: Option<String>,
 }
 
+/// One page's cross-page references as harvested: `(page url, [(anchor, citing
+/// sentence)])`, in site page order.
+pub(super) type PageRefs = (String, Vec<(String, Option<String>)>);
+
 /// Build the reverse index from each page's cross-page reference markers: for every
 /// known target `A` a page references, record that page's url + citing sentence under
 /// `A`. `per_page` is `(page url, that page's `(anchor, citing sentence)` pairs)` in
@@ -30,7 +34,7 @@ pub struct Backref {
 /// meets first), and a marker whose anchor is not a known target (a dangling reference)
 /// contributes nothing.
 pub(super) fn build_backlink_index(
-    per_page: &[(String, Vec<(String, Option<String>)>)],
+    per_page: &[PageRefs],
     targets: &HashMap<String, XrefTarget>,
 ) -> HashMap<String, Vec<Backref>> {
     let mut map: HashMap<String, Vec<Backref>> = HashMap::new();
