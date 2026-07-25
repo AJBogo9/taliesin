@@ -50,6 +50,8 @@ struct SiteApp {
     mounts: Vec<MountPoint>,
     /// Page rel-paths queued for a (re)build by the executor worker.
     build_tx: mpsc::UnboundedSender<BuildMsg>,
+    /// The bypass lane for pages that need no kernel (AP3-1). See [`SiteApp::queue_build`].
+    fast_tx: mpsc::UnboundedSender<BuildMsg>,
     /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
     /// loopback *origin* may open the control-channel ws (see [`origin_allowed`]).
     loopback_bound: bool,
@@ -67,6 +69,46 @@ impl SiteApp {
                 .find(|m| m.prefix == key.0)
                 .map(|m| &m.project)
         }
+    }
+
+    /// Queue a page rebuild on the lane that fits it (AP3-1).
+    ///
+    /// **The defect.** One builder task consumed the whole server's build queue — root and
+    /// every mount alike — awaiting each page to completion. It serialized on the wrong
+    /// predicate: a page with **no code cells** needs no kernel, yet it queued behind
+    /// kernel work it would never use. Measured on a two-page preview with a warm pool, a
+    /// cell-free page's trivial prose edit landed in **0.11 s** alone and **12.15 s**
+    /// (110x) when an unrelated page was 1.2 s into a 12 s `{python}` cell. That is the
+    /// normal shape of this tool's own site, which `mounts:` both dogfood books beside a
+    /// corpus that has genuinely slow cells.
+    ///
+    /// **Why not just parallelise the builder.** Serialization is what makes the shared
+    /// warm pool and the task-owned `ExecPool` race-free, and `ExecPool` is under the M6a
+    /// freeze. So there are two *serial* lanes, not concurrent executors: the exec lane
+    /// owns every pool and is unchanged, and the fast lane owns nothing and never touches
+    /// a pool. Neither lane gains any concurrency of its own.
+    ///
+    /// **Routing, and why it cannot race.** A page's lane is decided by what its LAST
+    /// completed build found (`PageDoc::needs_kernel`, which starts `true` so an unbuilt
+    /// page takes the safe lane). That flag is written only at the end of a build, so
+    /// while a build of page P is in flight the flag still holds the value that routed it,
+    /// and every queued message for P routes to the same lane. Both lanes being serial,
+    /// P's builds stay totally ordered and the two lanes can never build P at once.
+    ///
+    /// The one cost is the edit that adds a page's *first* code cell: it routes to the fast
+    /// lane, which renders, discovers cells, and hands the message to the exec lane —
+    /// one wasted render, once, and the flag is right from then on.
+    fn queue_build(&self, key: ProjectKey, rel: String) {
+        let cell_free = self
+            .project(&key)
+            .and_then(|p| p.pages.lock().get(&rel).map(|ps| ps.doc.cell_free))
+            .unwrap_or(false);
+        let tx = if cell_free {
+            &self.fast_tx
+        } else {
+            &self.build_tx
+        };
+        let _ = tx.send(BuildMsg::Build(key, rel));
     }
 }
 
@@ -200,6 +242,11 @@ struct PageDoc {
     /// the initial exec pass made stale before the websocket connected. Mirrors
     /// `serve::DocState::generation`; see [`protocol::full_render`].
     generation: u64,
+    /// Whether this page's LAST completed build found no kernel-executing cell, so its
+    /// next rebuild can take the bypass lane (AP3-1). See [`SiteApp::queue_build`] for why
+    /// this is read from the last build rather than the current source, and why that cannot
+    /// race. Deliberately `false` by default: an unbuilt page takes the safe lane.
+    cell_free: bool,
 }
 
 impl PageDoc {
@@ -280,6 +327,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         ));
     }
     let (build_tx, build_rx) = mpsc::unbounded_channel();
+    let (fast_tx, fast_rx) = mpsc::unbounded_channel();
     let app = Arc::new(SiteApp {
         root: Arc::new(Project {
             key: ProjectKey(String::new()),
@@ -289,10 +337,12 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         }),
         mounts,
         build_tx,
+        fast_tx,
         loopback_bound: !expose,
     });
 
     spawn_builder(app.clone(), build_rx);
+    spawn_fast_builder(app.clone(), fast_rx);
     spawn_watcher(app.clone());
 
     // With --host the whole site is LAN-reachable; gate non-loopback access behind a
@@ -585,9 +635,7 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
             .lock()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
-        let _ = app
-            .build_tx
-            .send(BuildMsg::Build(project.key.clone(), rel.clone()));
+        app.queue_build(project.key.clone(), rel.clone());
     }
     site_page_html(project, page)
 }
@@ -637,6 +685,9 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         diagnostics,
         errored: false,
         generation: 0, // first paint; the exec pass bumps it when it splices outputs
+        // The first-paint render never runs cells, so it learns nothing about this page's
+        // lane: leave it on the safe one until a real build reports back (AP3-1).
+        cell_free: false,
     }
 }
 
@@ -893,9 +944,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
         (full_render_json(&ps.doc), ps.tx.subscribe(), created)
     };
     if created {
-        let _ = app
-            .build_tx
-            .send(BuildMsg::Build(project.key.clone(), rel.clone()));
+        app.queue_build(project.key.clone(), rel.clone());
     }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
@@ -1030,7 +1079,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                 BuildMsg::Build(key, rel) => {
                     let project = app.project(&key).cloned();
                     if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
-                        build_page_guarded(&project, &rel, pool).await;
+                        build_page_guarded(&project, &rel, Some(pool)).await;
                     }
                 }
                 BuildMsg::Restart(key, rel) => {
@@ -1039,7 +1088,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                     let project = app.project(&key).cloned();
                     if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
                         pool.restart(&rel);
-                        build_page_guarded(&project, &rel, pool).await;
+                        build_page_guarded(&project, &rel, Some(pool)).await;
                         // A fresh kernel means fresh outputs — including any `ojs_define`
                         // values. Reload the page so the `{js}` cells re-bind to the fresh
                         // `tali-define` blobs from a clean module scope.
@@ -1053,36 +1102,102 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
     });
 }
 
+/// The bypass lane (AP3-1): rebuilds for pages whose last build found no kernel cell.
+///
+/// Serial, exactly like the exec builder — it just owns no `ExecPool` and can therefore
+/// never wait on one. A page routed here that turns out to HAVE kernel cells (the edit
+/// that adds the first one) is handed to the exec lane instead; that is the one wasted
+/// render this design costs, and it happens once per page.
+fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<BuildMsg>) {
+    tokio::spawn(async move {
+        while let Some(BuildMsg::Build(key, rel) | BuildMsg::Restart(key, rel)) =
+            fast_rx.recv().await
+        {
+            let Some(project) = app.project(&key).cloned() else {
+                continue;
+            };
+            if build_page_guarded(&project, &rel, None).await == BuildOutcome::NeedsKernel {
+                let _ = app.build_tx.send(BuildMsg::Build(key, rel));
+            }
+        }
+    });
+}
+
+/// Whether a rendered page needs no kernel, and so belongs on the bypass lane (AP3-1).
+///
+/// Asked of the RENDERED blocks, not of the source: this is exactly the set the executor
+/// would run, `{{< include >}}` resolved and cell options applied, so the routing decision
+/// and the work it routes around cannot disagree about what a cell is.
+///
+/// `executes_to_kernel` is the shared predicate the render pass and the executor already
+/// agree on (`exec::tests::kernel_lang_agrees_with_cores_executable_set` pins them equal),
+/// which is what makes a `{js}` page cell-free here: `{js}` runs in the browser, so a page
+/// full of reactive cells needs the kernel lane exactly as much as a prose page does.
+fn is_cell_free(blocks: &[Block]) -> bool {
+    !blocks.iter().any(|b| {
+        b.cell
+            .as_ref()
+            .is_some_and(|c| taliesin_core::render::executes_to_kernel(&c.lang))
+    })
+}
+
+/// What a build pass concluded about the page's lane.
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum BuildOutcome {
+    Done,
+    /// Only ever returned by the bypass lane: this page has kernel cells after all, so the
+    /// pass stopped before executing anything and the exec lane must take it.
+    NeedsKernel,
+}
+
 /// Run [`build_page`], catching any panic in the render/exec path so one bad
 /// page can't kill the shared builder task (which would silently stop hot-reload
 /// for *every* page). The panic is logged and surfaced to that page's clients;
 /// the next good save recovers.
-async fn build_page_guarded(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
+async fn build_page_guarded(
+    project: &Arc<Project>,
+    rel: &str,
+    pool: Option<&mut ExecPool>,
+) -> BuildOutcome {
     use futures_util::FutureExt;
     let outcome = std::panic::AssertUnwindSafe(build_page(project, rel, pool))
         .catch_unwind()
         .await;
-    if let Err(payload) = outcome {
-        let msg = crate::serve::panic_msg(&*payload);
-        crate::log::error(&format!(
-            "render panicked on {rel} (preview kept alive): {msg}"
-        ));
-        let mut pages = project.pages.lock();
-        if let Some(ps) = pages.get_mut(rel) {
-            ps.doc.errored = true;
-            let _ = ps
-                .tx
-                .send(protocol::error(&format!("internal render error: {msg}")));
+    match outcome {
+        Ok(outcome) => outcome,
+        Err(payload) => {
+            let msg = crate::serve::panic_msg(&*payload);
+            crate::log::error(&format!(
+                "render panicked on {rel} (preview kept alive): {msg}"
+            ));
+            let mut pages = project.pages.lock();
+            if let Some(ps) = pages.get_mut(rel) {
+                ps.doc.errored = true;
+                let _ = ps
+                    .tx
+                    .send(protocol::error(&format!("internal render error: {msg}")));
+            }
+            // A panicked pass says nothing about the page's lane; leave the routing flag
+            // where it was rather than bouncing the page between queues.
+            BuildOutcome::Done
         }
     }
 }
 
 /// Re-render a page's markdown, run its code cells (on the page's own executor),
 /// then diff against its live blocks and broadcast the changes to its subscribers.
-async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
+///
+/// `pool` is `None` on the bypass lane (AP3-1), which owns no executor. A page routed
+/// there that turns out to have kernel cells returns [`BuildOutcome::NeedsKernel`] without
+/// publishing anything, and the exec lane rebuilds it.
+async fn build_page(
+    project: &Arc<Project>,
+    rel: &str,
+    pool: Option<&mut ExecPool>,
+) -> BuildOutcome {
     let page = { project.site.lock().page(rel).cloned() };
     let Some(page) = page else {
-        return;
+        return BuildOutcome::Done;
     };
     let Ok(src) = std::fs::read_to_string(&page.input) else {
         let mut pages = project.pages.lock();
@@ -1093,7 +1208,7 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
                 page.input.display()
             )));
         }
-        return;
+        return BuildOutcome::Done;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
     let (chapter, book_theorems) = {
@@ -1107,12 +1222,24 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
         book_theorems.as_ref(),
     );
 
-    let exec = pool.get(rel, &base);
-    // Stream this page's code-cell execution progress (`build-state`) onto its own
-    // broadcast, tagged with the page rel so the client knows which page it's about.
-    // The page's `Sender` is created on first visit (before this build is queued), so
-    // it's normally present; if it isn't yet, we just don't stream this pass.
-    {
+    // Which lane this page actually belongs on, decided from the rendered blocks rather
+    // than a guess about the source: exactly the cells the executor would run.
+    let cell_free = is_cell_free(&doc.blocks);
+    if pool.is_none() && !cell_free {
+        // The bypass lane picked this page up (its last build had no cells) and the edit
+        // has just added one. Publish nothing — the exec lane redoes this pass with a
+        // pool — but record the lane so it is the last time this page comes here.
+        if let Some(ps) = project.pages.lock().get_mut(rel) {
+            ps.doc.cell_free = false;
+        }
+        return BuildOutcome::NeedsKernel;
+    }
+    let exec = pool.map(|pool| {
+        let exec = pool.get(rel, &base);
+        // Stream this page's code-cell execution progress (`build-state`) onto its own
+        // broadcast, tagged with the page rel so the client knows which page it's about.
+        // The page's `Sender` is created on first visit (before this build is queued), so
+        // it's normally present; if it isn't yet, we just don't stream this pass.
         let tx = project.pages.lock().get(rel).map(|ps| ps.tx.clone());
         let sink: crate::exec::ProgressSink = tx.map(|tx| {
             std::sync::Arc::new(move |m: String| {
@@ -1120,7 +1247,8 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
             }) as std::sync::Arc<dyn Fn(String) + Send + Sync>
         });
         exec.set_progress(sink, Some(rel.to_string()));
-    }
+        exec
+    });
     // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
     // cross-page check below covers those). Collected now, pushed after `diags` is built.
     let static_diags = crate::preview_diag::static_diagnostics(
@@ -1130,7 +1258,10 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
         doc.format,
         crate::check::Scope::InSite,
     );
-    doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
+    let mut exec = exec;
+    if let Some(exec) = exec.as_mut() {
+        doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
+    }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
     // whole site, so it needs the site lock.
@@ -1145,7 +1276,7 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
             site.page_title(&page, &doc),
         )
     };
-    let mut diags = page_diagnostics(&page.input, exec);
+    let mut diags = page_diagnostics(&page.input, exec.as_deref());
     diags.extend(static_diags);
     // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
     // re-renders the whole site (~27 ms), so scope the site lock tightly.
@@ -1212,6 +1343,11 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
     if !ops.is_empty() {
         crate::log::update(ops.len());
     }
+    // Record which lane this page belongs on, for `SiteApp::queue_build` to read on the
+    // NEXT save. Written last, after everything this pass publishes, so a routing decision
+    // that sees the new value is always looking at a finished build (AP3-1).
+    ps.doc.cell_free = cell_free;
+    BuildOutcome::Done
 }
 
 /// Per-page diagnostics: a framed front-matter parse error + kernel availability.
@@ -1220,7 +1356,10 @@ async fn build_page(project: &Arc<Project>, rel: &str, pool: &mut ExecPool) {
 /// emits a located `IncludeWarning` on the directive's own line, which reaches this same
 /// channel through `doc.warnings`; checking again produced two diagnostics for one defect,
 /// and the extra one had no line to click.
-fn page_diagnostics(input: &Path, exec: &crate::exec::Executor) -> Vec<Diagnostic> {
+/// `exec` is `None` on the bypass lane (AP3-1), which has no executor — and needs none:
+/// the only thing it contributes is the kernel-availability notice, which is about cells
+/// this page does not have.
+fn page_diagnostics(input: &Path, exec: Option<&crate::exec::Executor>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
         // Broken front matter: a located, framed error (same as the single-doc server).
@@ -1233,7 +1372,7 @@ fn page_diagnostics(input: &Path, exec: &crate::exec::Executor) -> Vec<Diagnosti
             );
         }
     }
-    if let Some(message) = exec.diagnostic() {
+    if let Some(message) = exec.and_then(|e| e.diagnostic()) {
         diags.push(Diagnostic::warn(message));
     }
     diags
@@ -1585,7 +1724,7 @@ fn rebuild_project(
         }
     }
     for rel in to_rebuild {
-        let _ = app.build_tx.send(BuildMsg::Build(project.key.clone(), rel));
+        app.queue_build(project.key.clone(), rel);
     }
 }
 
@@ -1979,5 +2118,48 @@ mod project_tests {
             classify_change(&nested, Path::new("/site/sub/p.tmd")),
             Some((ProjectKey("sub".into()), PathBuf::from("p.tmd")))
         );
+    }
+
+    #[test]
+    fn only_a_page_with_kernel_cells_takes_the_exec_lane() {
+        // AP3-1's routing predicate. One builder task consumed the whole server's queue,
+        // root and every mount alike, awaiting each page to completion — so it serialized
+        // on the wrong thing: a page with no code cells needs no kernel, yet queued behind
+        // kernel work it would never use. Measured on a two-page preview with a warm pool,
+        // a cell-free page's prose edit landed in 0.11 s alone and 12.15 s (110x) when an
+        // unrelated page was 1.2 s into a 12 s `{python}` cell.
+        let render =
+            |src: &str| taliesin_core::render_document_with_includes(src, Path::new(".")).blocks;
+        assert!(is_cell_free(&render("---\ntitle: T\n---\n\nJust prose.\n")));
+        assert!(!is_cell_free(&render(
+            "---\ntitle: T\n---\n\n```{python}\nprint(1)\n```\n"
+        )));
+        assert!(!is_cell_free(&render(
+            "---\ntitle: T\n---\n\n```{r}\nprint(1)\n```\n"
+        )));
+        // `{js}` runs in the BROWSER, so a page full of reactive cells needs the kernel
+        // lane exactly as much as a prose page does — which is most of what makes this
+        // worth doing, since the explorable-explanation pages are the `{js}`-heavy ones.
+        assert!(is_cell_free(&render(
+            "---\ntitle: T\n---\n\n```{js}\nreturn 1;\n```\n"
+        )));
+        // A non-executing fenced block is not a cell at all.
+        assert!(is_cell_free(&render(
+            "---\ntitle: T\n---\n\n```python\nprint(1)\n```\n"
+        )));
+        // A hidden cell still runs, so it still needs the lane that can run it.
+        assert!(!is_cell_free(&render(
+            "---\ntitle: T\n---\n\n```{python}\n#| include: false\nprint(1)\n```\n"
+        )));
+    }
+
+    #[test]
+    fn an_unbuilt_page_routes_to_the_safe_lane() {
+        // The routing flag is read from the LAST COMPLETED build, so its default decides
+        // where a page goes before anything is known about it. `false` (= "not known to be
+        // cell-free") must send it to the exec lane: the bypass lane cannot run a cell, and
+        // guessing wrong there costs a wasted render, while guessing wrong the other way
+        // would publish a page with its outputs missing.
+        assert!(!PageDoc::default().cell_free);
     }
 }
