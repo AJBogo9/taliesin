@@ -602,3 +602,149 @@ fn no_bibliography_declared_means_no_scan() {
 // The `csl:` recognized-but-unsupported tests moved to `frontmatter::tests` with the rule
 // itself, which now runs on the render path so the preview is not silent. This module is
 // check-only, so testing it here would have pinned the wrong surface.
+
+// ---- document-shape lints (item 24c) -------------------------------------------------
+//
+// Every threshold-bearing candidate was cut after measuring it against the corpus with
+// `taliesin skim`; what survives is binary and threshold-free. The rules were calibrated
+// on the real 14-project corpus, and the cases below pin both what they catch and, just
+// as importantly, what they must not.
+
+fn shape(src: &str) -> Vec<String> {
+    msgs(&validate_document_shape(
+        &render_document(src).blocks,
+        DocFormat::Html,
+    ))
+}
+
+#[test]
+fn shape_lints_do_not_run_on_a_deck() {
+    // Every rule inverts on a deck, so the family is exempt wholesale. Two slides sharing a
+    // title is the `{auto-animate=true}` magic-move idiom (`corpus/deck.tmd:92`/`:96` do
+    // exactly this on purpose) — it was a live false positive before the format gate. A
+    // titleless slide is image-only; a title-only slide is a section divider.
+    let src =
+        "---\ntitle: T\nformat: deck\n---\n\n## One idea\n\na\n\n## One idea\n\nb\n\n## Divider\n";
+    let doc = render_document(src);
+    assert_eq!(doc.format, DocFormat::Reveal, "fixture really is a deck");
+    assert!(
+        validate_document_shape(&doc.blocks, doc.format).is_empty(),
+        "decks are exempt: {:?}",
+        msgs(&validate_document_shape(&doc.blocks, doc.format))
+    );
+    // The same source as an ordinary page is not exempt, so the gate is what silences it.
+    assert!(
+        !validate_document_shape(&doc.blocks, DocFormat::Html).is_empty(),
+        "the exemption must come from the format, not from the content"
+    );
+}
+
+#[test]
+fn shape_flags_a_heading_with_neither_text_nor_subsections() {
+    // Same level: `Alpha` has no prose and no subsection, so the section is empty.
+    let m = shape("# Alpha\n\n# Beta\n\ntext\n");
+    assert_eq!(m.len(), 1, "only Alpha is hollow: {m:?}");
+    assert!(
+        m[0].contains("`Alpha`") && m[0].contains("no content under it"),
+        "{m:?}"
+    );
+    // Last heading on the page, nothing after it at all.
+    let m = shape("# Alpha\n\ntext\n\n## Trailing\n");
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].contains("`Trailing`"), "{m:?}");
+}
+
+#[test]
+fn shape_does_not_flag_a_grouping_parent_heading() {
+    // A heading followed by DEEPER headings has content in the document tree; demanding an
+    // intro paragraph there is a style opinion, not a defect. Measured before narrowing:
+    // the broad form fired 13 times across the 14 corpus projects and every one was an
+    // ordinary grouping parent, so the broad rule was pure noise on real documents.
+    let m = shape("# Parent\n\n## Child\n\ntext\n");
+    assert!(m.is_empty(), "a grouping parent is legitimate: {m:?}");
+}
+
+#[test]
+fn shape_does_not_call_a_list_or_code_section_hollow() {
+    // The false positive that killed the `skim`-projection draft of this rule: `skim`
+    // reads the first `<p>`, and a `<ul>` / fenced block / table is not a `<p>`, so 55
+    // real sections (11.8% of the corpus) read as "contentless". Content is any block.
+    for body in [
+        "- one\n- two\n",
+        "```python\nx = 1\n```\n",
+        "| a | b |\n| - | - |\n| 1 | 2 |\n",
+        "> quoted\n",
+    ] {
+        let m = shape(&format!("# Alpha\n\n{body}"));
+        assert!(
+            m.is_empty(),
+            "a section whose body is {body:?} has content: {m:?}"
+        );
+    }
+}
+
+#[test]
+fn shape_flags_two_headings_that_read_the_same_and_an_empty_one() {
+    let m = shape("# Same\n\na\n\n## Same\n\nb\n");
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(
+        m[0].contains("duplicate heading text") && m[0].contains("`Same`"),
+        "{m:?}"
+    );
+
+    let m = shape("# \n\ntext\n");
+    assert_eq!(m.len(), 1, "an unnamed heading: {m:?}");
+    assert!(m[0].contains("empty heading"), "{m:?}");
+    // An empty heading is reported once, not also as a duplicate of the next empty one.
+    let m = shape("# \n\na\n\n## \n\nb\n");
+    assert_eq!(m.len(), 2, "two empties, no duplicate report: {m:?}");
+    assert!(m.iter().all(|s| s.contains("empty heading")), "{m:?}");
+}
+
+#[test]
+fn shape_flags_a_body_title_echo_but_never_the_leading_heading() {
+    // The landing-page idiom: front-matter title, then a heading that restates it. Four of
+    // the 14 corpus projects do this deliberately, including both dogfood books, so
+    // flagging it would fire on house style alone.
+    let lead = "---\ntitle: Why Taliesin\n---\n\n## Why Taliesin\n\ntext\n";
+    assert!(
+        shape(lead).is_empty(),
+        "leading echo is the idiom: {:?}",
+        shape(lead)
+    );
+
+    let body = "---\ntitle: Why Taliesin\n---\n\n## Intro\n\ntext\n\n## Why Taliesin\n\nmore\n";
+    let m = shape(body);
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].contains("repeats the page title"), "{m:?}");
+
+    // With no title block there is no title to echo, so the rule is silent (a repeat is
+    // already TAL-SHAPE-DUP's business).
+    let m = shape("# Why Taliesin\n\na\n\n## Other\n\nb\n");
+    assert!(
+        !m.iter().any(|s| s.contains("repeats the page title")),
+        "{m:?}"
+    );
+}
+
+#[test]
+fn shape_flags_a_numbered_figure_whose_caption_is_only_its_label() {
+    let m = shape("# H\n\n![](b.png){#fig-b}\n");
+    assert_eq!(m.len(), 1, "{m:?}");
+    assert!(m[0].contains("caption is only its label"), "{m:?}");
+
+    // A real caption, and an unnumbered image with no figcaption at all, are both clean.
+    assert!(shape("# H\n\n![A real caption](a.png){#fig-a}\n").is_empty());
+    assert!(shape("# H\n\n![](c.png)\n").is_empty());
+}
+
+#[test]
+fn shape_is_silent_on_a_well_formed_document() {
+    // The anti-vacuous guard: the rules above must not be firing on everything.
+    let m = shape(
+        "---\ntitle: A title\n---\n\n## First section\n\nSome prose here.\n\n\
+         ## Second section\n\n![A described figure](f.png){#fig-f}\n\n\
+         ### A subsection\n\n- a list item\n",
+    );
+    assert!(m.is_empty(), "well-shaped document must be clean: {m:?}");
+}

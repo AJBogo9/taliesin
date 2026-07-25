@@ -1,7 +1,7 @@
 //! Static document-lint validators for `taliesin check` (the "check-superset").
 //!
 //! **What:** one read-only validator per family — headings, anchors, bibliography,
-//! assets, media, links, reactive graph, a11y, math-render — each takes the rendered block model
+//! assets, media, links, reactive graph, a11y, math-render, document shape — each takes the rendered block model
 //! (and, where needed, the doc base dir) and returns located [`Warning`]s on the same
 //! click-to-source channel as render-time diagnostics, so a green `check` means the
 //! document is publishable.
@@ -27,6 +27,7 @@ mod links;
 mod math_render;
 mod media;
 mod reactive;
+mod shape;
 
 #[cfg(test)]
 mod tests;
@@ -41,3 +42,4 @@ pub use links::validate_local_links;
 pub use math_render::validate_math;
 pub use media::validate_local_media;
 pub use reactive::validate_js_reactive_graph;
+pub use shape::validate_document_shape;

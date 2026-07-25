@@ -160,14 +160,16 @@ editor round-trip.
 **Four owner rulings were also taken** (see the prior-state block), which un-gated a large amount of
 previously-blocked work. What is left now sorts into:
 
-- **Build-ready TODAY, in this order:**
-  1. **24c** (M) — the trimmed `skim-shape-lints`. Both prerequisites are now down: 24a (the
-     three-state severity floor) and 24b (`skim`, the instrument the thresholds are calibrated
-     against), both shipped 2026-07-25. **Calibrate against `taliesin skim` output, not intuition** —
-     that is what it was built for, and running it already killed three of its own assumptions.
-  2. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
+- **Build-ready TODAY:**
+  1. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
      put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
      specifically, not the outline as such.
+  - **24c shipped 2026-07-25** (see item 24). The standing lesson repeats one level further down:
+    calibrating against real `skim`/`check` output killed **four** of that entry's own prescriptions,
+    including its most valuable rule (`contentless` off the `skim` projection fired on 11.8% of the
+    corpus, essentially all false positives) and one whose stated justification — a TOC-DROP residual
+    on `cli.html` — does not exist in the tree at all. **Measure the rule against the corpus before
+    writing it, not after.**
 - **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
   are real: personas 1-3 found **0** interaction-bugs between them.
 - **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), 2 (deferred, revive on a
@@ -385,16 +387,48 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       the projection byte-identical on both `corpus/tarn` and `docs/guide`. Cost measured, not assumed:
       `map --json` on `docs/internals` went 0.33 s → 0.42 s (debug) because it now renders every page.
       Pins: `crates/server/tests/skim_cli.rs` (13), `first_sentence` unit tests (11), one LSP `detail` test.
-    - **`skim-shape-lints`, heavily trimmed (M).** Ship only the threshold-free binary rules: HEADING
-      (duplicate, empty, contentless, title-echo, near-duplicate first-two-words), CAPTION (empty,
-      label-only, uncaptioned float that an xref points at), TOC-DROP (a heading the shared `toc_items` filter
-      discards; natural home for 22's `cli.html` residual), and NO-DESC (**depends on a derived first-sentence
-      gist**, else it degenerates into "you did not set `description:`" and fires on 100% of the corpus).
-      **Cut RUN, DENSITY, EMPHASIS, FANOUT, SKELETON, FORWARD:** measured against the corpus none has a
-      defensible threshold (the flagship RUN rule fires on exactly **one** of 36 dogfood pages and that one is
-      a false positive; the headline "1,832-word run" is 1,021 words of table cells). Nothing resembling a
-      readability grade, and never a rule about heading *form* (Sanchez/Lorch: no differential effect). Watch
-      `codes.rs::classify`, which matches by ordered substring with needles as generic as `("math", …)`.
+    - ~~**`skim-shape-lints`, heavily trimmed (M).**~~ **SHIPPED 2026-07-25.**
+      `crates/core/src/diagnostics/shape.rs`, five `TAL-SHAPE-*` codes, all `SUGGESTION` so advice
+      never gates `build --strict` / `publish`: `-EMPTY` (unnamed heading), `-DUP` (two headings on a
+      page reading the same), `-ECHO` (a *body* heading restating `title:`), `-HOLLOW` (a heading with
+      neither text nor subsections), `-CAPTION` (a numbered float whose caption is empty or only
+      `Figure 2:`). `heading_level`/`strip_tags` moved to `diagnostics/helpers.rs` rather than becoming
+      a third copy. **Calibrated against real `taliesin skim` + `check` output over all 14 site
+      projects (91 pages, 468 sections), which killed four of this entry's own prescriptions:**
+      (1) **`contentless` off the `skim` projection is a false-positive factory** — it fired on
+      **55 sections (11.8%)**, essentially all wrong, because `skim` reads the first `<p>` and a `<ul>`
+      / fenced block / table / figure is not a `<p>` (`## Similar Projects` in
+      `corpus/bayesian-website` is a bullet list). Rebuilt on the block model, where any non-heading
+      block counts. (2) **`near-duplicate first-two-words` is a strict subset of exact-duplicate** on
+      real data — all 5 of its hits were already `-DUP`, so it adds zero signal and was cut.
+      (3) **TOC-DROP has nothing to catch and its justification is not reproducible**: the repo's
+      deepest heading anywhere is `h4` (4 occurrences in 3 files), max section depth is 2, and
+      `cli.tmd` is `h2`/`h3` only — there is no "`cli.html` residual". Cut. (4) **`title-echo` as
+      specced fires on house style**: all 4 hits were landing pages whose leading heading restates the
+      title, including both dogfood books, so the leading heading is exempt and only a *body* echo
+      counts. NO-DESC stays cut (it needs a derived gist, else it degenerates). (5) **Decks invert
+      every rule and are exempt wholesale** — found by running the lints over every `.tmd` in the tree
+      rather than only the site projects: `corpus/deck.tmd:92`/`:96` deliberately repeat a slide title
+      under `{auto-animate=true}` (the magic-move idiom), and a titleless slide is image-only while a
+      title-only slide is a section divider. A deck has no TOC, so "this heading does not earn its TOC
+      row" is not a question that applies to it. **`-HOLLOW` was
+      narrowed after measuring**: the broad "next thing is another heading" form fired 13 times and
+      every one was an ordinary grouping parent, so a heading followed by *deeper* headings is exempt —
+      demanding an intro paragraph there is a style opinion, not a defect. **Net: 5 fires across the
+      whole corpus, all true positives, all `-DUP` in `corpus/bayesian-website`**; the other four rules
+      are latent guards, which is exactly why the fixture pin below is load-bearing. `classify` needed
+      the shape rows placed **first** in `TABLE` (ahead of the prose rows): every shape message quotes
+      the author's own heading back, so a section titled "Math" or "Bibliography" would otherwise
+      classify as TAL-MATH / TAL-CITE-BIB — pinned by
+      `a_shape_diagnostic_outranks_a_needle_inside_the_authors_own_heading`.
+      **The "extend `check_cli.rs` with the three-state cases" pin was already satisfied** by 24a
+      (`strict_gates_on_advice_and_errors_only_hides_it` over `corpus/diagnostics/prose.tmd`); what was
+      genuinely missing, and is now added, is a suggestion-only doc that does not have to opt into
+      `prose-lint:`. **Cut RUN, DENSITY, EMPHASIS, FANOUT, SKELETON, FORWARD:** measured against the
+      corpus none has a defensible threshold (the flagship RUN rule fires on exactly **one** of 36
+      dogfood pages and that one is a false positive; the headline "1,832-word run" is 1,021 words of
+      table cells). Nothing resembling a readability grade, and never a rule about heading *form*
+      (Sanchez/Lorch: no differential effect).
     - **Independent medium items, no ordering constraint:** per-chapter prose length in the drawer and landing
       Contents (absolute units, never a normalized bar; do not touch `is_article`, it is test-pinned); the
       preview/build TOC selector divergence (`client.js:847` selects by absolute tag, the build filters

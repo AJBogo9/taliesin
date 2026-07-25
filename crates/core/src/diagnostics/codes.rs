@@ -47,10 +47,20 @@ pub const GENERIC: &str = "TAL-CHECK";
 /// specific needle must precede a more general one (`broken link anchor` before
 /// `broken link`).
 const TABLE: &[(&str, &str, &str)] = &[
-    // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and FIRST in the
-    // table on purpose: the needles below include ones as generic as `("math", …)`, and a
-    // weasel-word message naming a word that contains a generic needle ("weasel word
-    // `mathematically`") would otherwise be classified as a math diagnostic.
+    // Document-shape lints — structural advice, so SUGGESTION, and FIRST in the table for
+    // the same reason the prose rules are: every one of these messages quotes the author's
+    // own heading or caption text back, so a section literally titled "Math" or
+    // "Bibliography" would otherwise classify as TAL-MATH / TAL-CITE-BIB. Pinned by
+    // `a_shape_diagnostic_outranks_a_needle_inside_the_authors_own_heading`.
+    ("empty heading", "TAL-SHAPE-EMPTY", SUGGESTION),
+    ("duplicate heading text", "TAL-SHAPE-DUP", SUGGESTION),
+    ("repeats the page title", "TAL-SHAPE-ECHO", SUGGESTION),
+    ("has no content under it", "TAL-SHAPE-HOLLOW", SUGGESTION),
+    ("caption is only its label", "TAL-SHAPE-CAPTION", SUGGESTION),
+    // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and ahead of every
+    // catalogued family on purpose: the needles below include ones as generic as
+    // `("math", …)`, and a weasel-word message naming a word that contains a generic needle
+    // ("weasel word `mathematically`") would otherwise be classified as a math diagnostic.
     ("weasel word", "TAL-PROSE-WEASEL", SUGGESTION),
     ("repeated word", "TAL-PROSE-REPEAT", SUGGESTION),
     ("banned term", "TAL-PROSE-BANNED", SUGGESTION),
@@ -173,6 +183,57 @@ const EXPLANATIONS: &[Explanation] = &[
                 tripped.",
         fix: "Read the message and its location, then act on what it names. If one kind of \
               problem keeps surfacing this way, that family is a candidate for its own code.",
+    },
+    Explanation {
+        code: "TAL-SHAPE-EMPTY",
+        title: "a heading with no text",
+        cause: "A heading opens a section but carries no words, so the table of contents, \
+                the book outline and any cross-reference to it all render a blank row. \
+                Usually a heading whose text was cut without cutting the `#` line.",
+        fix: "Give the heading a name, or delete the line. This is advice, not a defect: it \
+              is severity `suggestion`, so it never fails `check`, `build --strict` or \
+              `publish` unless you ask with `check --strict`.",
+    },
+    Explanation {
+        code: "TAL-SHAPE-DUP",
+        title: "two headings on one page read the same",
+        cause: "Two headings on the same page have identical text, so the table of contents \
+                shows two rows a reader cannot tell apart and neither one says which is \
+                which. Distinct from TAL-DUP-ID, which is about the emitted anchor rather \
+                than the words.",
+        fix: "Make the second heading say what actually distinguishes it (`Model summary` \
+              and `Model summary (pooled)`), or merge the two sections if they are one.",
+    },
+    Explanation {
+        code: "TAL-SHAPE-ECHO",
+        title: "a body heading repeats the page title",
+        cause: "A heading below the first one restates the document's own `title:`, so it \
+                adds a table-of-contents row that tells a reader nothing new. The page's \
+                *leading* heading is deliberately exempt — opening a landing page with a \
+                heading that matches its title is an ordinary idiom, not a defect.",
+        fix: "Name the section for what that section covers, or drop the heading and let the \
+              title carry it.",
+    },
+    Explanation {
+        code: "TAL-SHAPE-HOLLOW",
+        title: "a heading with nothing under it",
+        cause: "The next thing on the page after this heading is another heading, so the \
+                section has no content at all: it is a table-of-contents row that leads \
+                nowhere. Any content counts — a list, a code cell, a figure or a table, not \
+                just a paragraph.",
+        fix: "Write the section, or delete the heading and let the sub-headings stand on \
+              their own. A heading used purely as a grouping label is better expressed as \
+              the parent of real sections.",
+    },
+    Explanation {
+        code: "TAL-SHAPE-CAPTION",
+        title: "a numbered figure whose caption is only its label",
+        cause: "The figure is numbered and can be cross-referenced, but its caption is empty \
+                or reads only `Figure 2:`. A caption is the most-read text on a page after \
+                the heading, and a cross-reference to a figure that describes nothing makes \
+                the reference unreadable too.",
+        fix: "Write what the figure shows (`![Fatality rate by manufacturer, 1990-2020](f.png){#fig-rates}`). \
+              If it genuinely needs no caption, drop the `{#fig-…}` id so it is not numbered.",
     },
     Explanation {
         code: "TAL-PROSE-WEASEL",
@@ -505,6 +566,40 @@ mod tests {
             classify("local asset not found: `x.png`"),
             ("TAL-ASSET", ERROR)
         );
+    }
+
+    #[test]
+    fn a_shape_diagnostic_outranks_a_needle_inside_the_authors_own_heading() {
+        // Every shape message quotes the author's heading back verbatim, and `classify` is
+        // first-hit-wins over the whole string. A section titled "Math" or "Bibliography"
+        // is entirely ordinary, so without the shape rows sitting ahead of the generic
+        // needles these would classify as TAL-MATH / TAL-CITE-BIB. Hostile headings on
+        // purpose.
+        assert_eq!(
+            classify(
+                "heading `Math` has no content under it: the next thing on the page is \
+                 another heading, so the section is a TOC row that leads nowhere"
+            ),
+            ("TAL-SHAPE-HOLLOW", SUGGESTION)
+        );
+        assert_eq!(
+            classify(
+                "duplicate heading text `Bibliography`: an earlier heading on this page \
+                 reads the same, so the TOC shows two rows a reader cannot tell apart"
+            ),
+            ("TAL-SHAPE-DUP", SUGGESTION)
+        );
+        assert_eq!(
+            classify(
+                "heading `Broken link` repeats the page title: it adds a TOC row that tells \
+                 a reader nothing the title did not already say"
+            ),
+            ("TAL-SHAPE-ECHO", SUGGESTION)
+        );
+        // Advice, never a gate: none of these may reach the `build --strict` / `publish` floor.
+        for (_, code, sev) in TABLE.iter().filter(|(_, c, _)| c.starts_with("TAL-SHAPE-")) {
+            assert_eq!(*sev, SUGGESTION, "{code} must stay advisory");
+        }
     }
 
     #[test]

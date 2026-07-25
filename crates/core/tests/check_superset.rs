@@ -265,3 +265,50 @@ fn external_and_anchor_refs_are_not_treated_as_local_assets() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn corpus_shape_fixture_trips_each_shape_code_exactly_once() {
+    // Item 24c's pin. Four of the five shape rules fire NOWHERE in the real 14-project
+    // corpus (they are guards for defects the author does not currently commit), so
+    // without this fixture a rule that silently stopped working would look exactly like a
+    // rule with nothing to report. The clean sibling is the other half: it is built from
+    // the *correct* form of every defect here, so a rule that started over-firing on
+    // ordinary structure fails there instead of sailing through a green suite.
+    use std::collections::BTreeMap;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics");
+
+    let src = std::fs::read_to_string(dir.join("skim-shape.tmd")).unwrap();
+    let doc = taliesin_core::render_document_with_includes(&src, &dir);
+    let mut got: BTreeMap<&str, usize> = BTreeMap::new();
+    for w in diagnostics::validate_document_shape(&doc.blocks, doc.format) {
+        let (code, severity) = diagnostics::codes::classify(&w.message);
+        assert_eq!(
+            severity,
+            diagnostics::codes::SUGGESTION,
+            "shape lints are advice and must never gate a build: {} / {code}",
+            w.message
+        );
+        *got.entry(code).or_default() += 1;
+    }
+    let want = [
+        "TAL-SHAPE-CAPTION",
+        "TAL-SHAPE-DUP",
+        "TAL-SHAPE-ECHO",
+        "TAL-SHAPE-EMPTY",
+        "TAL-SHAPE-HOLLOW",
+    ];
+    let expected: BTreeMap<&str, usize> = want.iter().map(|c| (*c, 1)).collect();
+    assert_eq!(
+        got, expected,
+        "every shape code must fire exactly once on the fixture (no misses, no doubles)"
+    );
+
+    let clean_src = std::fs::read_to_string(dir.join("skim-shape-clean.tmd")).unwrap();
+    let clean = taliesin_core::render_document_with_includes(&clean_src, &dir);
+    let ws = diagnostics::validate_document_shape(&clean.blocks, clean.format);
+    assert!(
+        ws.is_empty(),
+        "the well-shaped document must be clean: {:?}",
+        ws.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+}

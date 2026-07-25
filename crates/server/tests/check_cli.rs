@@ -416,3 +416,38 @@ fn build_strict_ships_a_document_whose_only_findings_are_advice() {
     assert!(out.exists(), "the page was written: {stderr}");
     let _ = std::fs::remove_file(&out);
 }
+
+#[test]
+fn a_suggestion_only_document_passes_until_strict() {
+    // The third state of 24a's severity floor, now reachable without opting into the prose
+    // lint: two headings reading the same is a SUGGESTION, so it is advice everywhere
+    // except under `--strict`. This is the case the exit-code tests were missing — before
+    // the shape lints the only suggestion source was `prose-lint:`, which a document has
+    // to ask for.
+    let doc = tmp_doc(
+        "suggestion-only",
+        "---\ntitle: T\n---\n\n## Same\n\na\n\n## Same\n\nb\n",
+    );
+    let path = doc.to_str().unwrap();
+
+    let (ok_default, stdout, _e) = run(&["check", path]);
+    assert!(
+        ok_default,
+        "advice alone does not fail the default gate (exit 0): {stdout}"
+    );
+    let (ok_errors_only, _o, _e) = run(&["check", path, "--errors-only"]);
+    assert!(ok_errors_only, "advice alone passes --errors-only too");
+    let (ok_strict, _o, stderr) = run(&["check", path, "--strict"]);
+    assert!(
+        !ok_strict,
+        "--strict is the one floor that gates on advice: {stderr}"
+    );
+
+    // And it really is the shape lint that is being counted, at suggestion severity.
+    let (_ok, json, _e) = run(&["check", path, "--format", "json"]);
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let ds = parsed["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(ds.len(), 1, "exactly one diagnostic: {json}");
+    assert_eq!(ds[0]["code"], "TAL-SHAPE-DUP");
+    assert_eq!(ds[0]["severity"], "suggestion");
+}

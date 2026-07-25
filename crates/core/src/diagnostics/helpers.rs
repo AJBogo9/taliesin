@@ -41,6 +41,38 @@ pub(crate) fn is_local_ref(v: &str) -> bool {
         && !v.starts_with("javascript:")
 }
 
+/// The heading level (1..=6) of a block whose HTML opens with `<h1>`..`<h6>`, else
+/// `None`. Reads only the second byte of the tag (`<hN`), the same shape the heading-id
+/// check keys off.
+pub(crate) fn heading_level(html: &str) -> Option<u8> {
+    if !html.starts_with("<h") {
+        return None;
+    }
+    let d = html.as_bytes().get(2)?;
+    if d.is_ascii_digit() && (b'1'..=b'6').contains(d) {
+        Some(d - b'0')
+    } else {
+        None
+    }
+}
+
+/// The visible text content of an HTML fragment, i.e. everything outside `<...>` tags
+/// with runs of whitespace collapsed. Used to decide whether an interactive element has
+/// a non-empty accessible name from its text alone, and to read heading / caption text.
+pub(crate) fn strip_tags(html: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0u32;
+    for ch in html.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            c if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// The value of attribute `attr` (e.g. `"src=\""`) on the tag opened at the start of
 /// `tag` (everything before the first `>`), if present. Used to read `src`/`poster` off
 /// a `<video>`/`<source>` tag.

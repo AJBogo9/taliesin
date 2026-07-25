@@ -218,6 +218,46 @@ An `{js}` reactive cell either reads an input that no cell or `{{< input >}}` de
 
 To fix: Define the missing input (or fix its name; the message suggests the nearest), or break the cycle so the graph is acyclic.
 
+## TAL-SHAPE-CAPTION
+
+**a numbered figure whose caption is only its label**
+
+The figure is numbered and can be cross-referenced, but its caption is empty or reads only `Figure 2:`. A caption is the most-read text on a page after the heading, and a cross-reference to a figure that describes nothing makes the reference unreadable too.
+
+To fix: Write what the figure shows (`![Fatality rate by manufacturer, 1990-2020](f.png){#fig-rates}`). If it genuinely needs no caption, drop the `{#fig-…}` id so it is not numbered.
+
+## TAL-SHAPE-DUP
+
+**two headings on one page read the same**
+
+Two headings on the same page have identical text, so the table of contents shows two rows a reader cannot tell apart and neither one says which is which. Distinct from TAL-DUP-ID, which is about the emitted anchor rather than the words.
+
+To fix: Make the second heading say what actually distinguishes it (`Model summary` and `Model summary (pooled)`), or merge the two sections if they are one.
+
+## TAL-SHAPE-ECHO
+
+**a body heading repeats the page title**
+
+A heading below the first one restates the document's own `title:`, so it adds a table-of-contents row that tells a reader nothing new. The page's *leading* heading is deliberately exempt — opening a landing page with a heading that matches its title is an ordinary idiom, not a defect.
+
+To fix: Name the section for what that section covers, or drop the heading and let the title carry it.
+
+## TAL-SHAPE-EMPTY
+
+**a heading with no text**
+
+A heading opens a section but carries no words, so the table of contents, the book outline and any cross-reference to it all render a blank row. Usually a heading whose text was cut without cutting the `#` line.
+
+To fix: Give the heading a name, or delete the line. This is advice, not a defect: it is severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
+
+## TAL-SHAPE-HOLLOW
+
+**a heading with nothing under it**
+
+The next thing on the page after this heading is another heading, so the section has no content at all: it is a table-of-contents row that leads nowhere. Any content counts — a list, a code cell, a figure or a table, not just a paragraph.
+
+To fix: Write the section, or delete the heading and let the sub-headings stand on their own. A heading used purely as a grouping label is better expressed as the parent of real sections.
+
 ## TAL-STEP-LINES
 
 **a `.step lines=` uses a step separator**
