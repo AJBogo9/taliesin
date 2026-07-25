@@ -44,7 +44,7 @@ H -2.9346 2.1021 -0.8849`;
 //| name: molecules
 //| echo: false
 
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 
 // --- element display data -------------------------------------------------
 const CPK = { H: 0xffffff, C: 0x222222, N: 0x3050f8, O: 0xff0d0d, P: 0xff8000 };
@@ -157,7 +157,7 @@ function parseXYZ(text) {
 const MOLECULES = {
   water:    { label: "Water (H₂O)",     build: water },
   benzene:  { label: "Benzene (C₆H₆)",  build: benzene },
-  caffeine: { label: "Caffeine",        build: () => parseXYZ(qmd.get("caffeineXYZ")) },
+  caffeine: { label: "Caffeine",        build: () => parseXYZ(tali.get("caffeineXYZ")) },
   dna:      { label: "DNA (schematic)", build: () => dna() },
   c60:      { label: "Buckyball (C₆₀)", build: buckyball },
 };

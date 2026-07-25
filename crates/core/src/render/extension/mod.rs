@@ -217,7 +217,7 @@ fn shortcode_named(args: &[String], key: &str) -> Option<String> {
 
 /// The built-in `{{< input name="k" type="slider" … >}}` reactive control: a static,
 /// keyboard-accessible labeled control whose value feeds the `{js}` reactive graph
-/// (qmd-js.js registers `[data-tali-input]` and reuses the same `registerInput`/`scheduleFrom`
+/// (tali-js.js registers `[data-tali-input]` and reuses the same `registerInput`/`scheduleFrom`
 /// path as `//| viewof` cells). Five types (slider/range, number, checkbox, text, select);
 /// the slider gets a live `<output>` readout. Emits located diagnostics (missing name,
 /// unknown type with a did-you-mean, select without options) via `validate_input`. Raw-HTML,

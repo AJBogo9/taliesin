@@ -8,7 +8,7 @@ use std::path::Path;
 const OWN_JS: &[&str] = &[
     "deck.js",
     "mermaid.js",
-    "qmd-js.js",
+    "tali-js.js",
     "walkthrough.js",
     "tabset.js",
     "scrolly.js",

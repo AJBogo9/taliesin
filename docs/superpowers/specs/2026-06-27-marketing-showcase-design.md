@@ -65,7 +65,7 @@ Model the tabset structure on `corpus/layout/panels.qmd`.
   (e.g. *detail*, *twist*, *amplitude*) reshape the geometry live.
 - **Real features:** a `{js}` cell that `await import()`s Three.js + `OrbitControls`
   from `esm.sh` (exactly as `corpus/_includes/three-scene.qmd` and the globe in
-  `docs/guide/using/code.qmd` already do), reading `qmd.value("detail")` etc. and
+  `docs/guide/using/code.qmd` already do), reading `tali.value("detail")` etc. and
   re-running on `//| input: detail, twist, amplitude` (the reactive graph).
 - **Subject:** a tasteful parametric surface (a morphing wave-interference mesh or a
   supershape/torus-knot), not a gimmick. Must look intentional and calm, not noisy.
@@ -79,7 +79,7 @@ Model the tabset structure on `corpus/layout/panels.qmd`.
   drive a post, a deck, and a book.*
 - **Real feature:** `::: {.scrolly name="stage"}` with a stage block and `.step`
   divs carrying `state="..."`; the stage is a `{js}` cell that reads the active
-  step (via the reactive `name` / `qmd.value("stage")`) and animates between states.
+  step (via the reactive `name` / `tali.value("stage")`) and animates between states.
   Model on `corpus/explorable/scrolly.qmd`.
 - **Source revealed:** the `.scrolly` markdown skeleton + the stage `{js}` cell.
 

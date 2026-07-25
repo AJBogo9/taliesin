@@ -925,8 +925,8 @@ fn cell_option_lines_are_dropped() {
         "js cell should be a live placeholder: {jh}"
     );
     assert!(
-        jh.contains("type=\"application/qmd-js\"") && jh.contains("data-name=\"x\""),
-        "js cell missing the qmd-js script / parsed option: {jh}"
+        jh.contains("type=\"application/tali-js\"") && jh.contains("data-name=\"x\""),
+        "js cell missing the tali-js script / parsed option: {jh}"
     );
     assert!(
         !jh.contains("//| name"),
@@ -1264,7 +1264,7 @@ fn table_caption_is_numbered_folded_and_referenceable() {
 #[test]
 fn js_cell_emits_native_wire_format_with_options() {
     // A native `{js}` cell is a live placeholder: a target div + an
-    // `application/qmd-js` script carrying the source, with `//|` options as data-*.
+    // `application/tali-js` script carrying the source, with `//|` options as data-*.
     let d = render_document("```{js}\n//| name: signalX\nreturn [1, 2, 3];\n```\n");
     let h = &d.blocks[0].html;
     assert!(
@@ -1272,8 +1272,8 @@ fn js_cell_emits_native_wire_format_with_options() {
         "js placeholder: {h}"
     );
     assert!(
-        h.contains("<script type=\"application/qmd-js\"") && h.contains("data-name=\"signalX\""),
-        "qmd-js script + name option: {h}"
+        h.contains("<script type=\"application/tali-js\"") && h.contains("data-name=\"signalX\""),
+        "tali-js script + name option: {h}"
     );
     assert!(!h.contains("ojs"), "no OJS vocabulary remains: {h}");
 
@@ -3371,7 +3371,7 @@ fn build_mode_content_gates_separate_enhancers() {
     );
     assert!(
         !prose.contains("a tiny enhancer that replaces the vendored"),
-        "no qmd-js.js on a prose page"
+        "no tali-js.js on a prose page"
     );
 
     // A page that actually contains a tabset gets tabset.js in a build (but still not
@@ -5352,9 +5352,9 @@ fn core_enhance_js_has_our_scripts_not_the_big_libs() {
     // `new AsyncFunction`, whose `import()` resolves against the calling script, so folding
     // it into the shared `/_assets/app.js` would break a cell's page-relative
     // `import("./helper.js")`. It stays inline on the page instead (page.rs `qmd_js_inline`).
-    // `"qmd-js cell error:"` is a literal unique to qmd-js.js.
+    // `"tali-js cell error:"` is a literal unique to tali-js.js.
     assert!(
-        !js.contains("qmd-js cell error:"),
+        !js.contains("tali-js cell error:"),
         "the {{js}}-cell runtime must stay inline, not in the shared app.js"
     );
 }
@@ -5372,7 +5372,7 @@ fn js_cell_error_hides_the_stack_trace_in_built_output() {
         "the {{js}}-cell error box must degrade to a terse message when not in the live preview"
     );
     assert!(
-        js.contains("console.error(\"qmd-js cell error:\", e)")
+        js.contains("console.error(\"tali-js cell error:\", e)")
             && js.contains("String((e && e.stack) || e)"),
         "the full stack must remain in console.error + the preview branch"
     );

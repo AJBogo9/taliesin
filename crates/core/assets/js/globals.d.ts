@@ -1,5 +1,5 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check the bundled browser
-// scripts under `assets/js/` (the code-enhance/ fragments, deck.js, qmd-js.js,
+// scripts under `assets/js/` (the code-enhance/ fragments, deck.js, tali-js.js,
 // mermaid.js, scrolly/tabset/walkthrough). NOT shipped or embedded — the server
 // `include_str!`s the .js sources verbatim; this file only teaches the checker
 // about the globals these scripts share with each other, with the web-client
@@ -27,9 +27,9 @@ interface Window {
     toggle: () => void;
   };
 
-  // --- {js} reactive runtime (qmd-js.js) -------------------------------------
+  // --- {js} reactive runtime (tali-js.js) -------------------------------------
   /** Internal per-page state bag for the `{js}` runtime (cell registry, teardown
-   *  handles, observers). Private to qmd-js.js; typed loosely. */
+   *  handles, observers). Private to tali-js.js; typed loosely. */
   __talijs?: any;
   /** Back-compat alias for `taliJs` kept during the qmd->tali rename. */
   qmdJs?: Window['taliJs'];

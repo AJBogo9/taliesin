@@ -15,7 +15,7 @@ the wings appear and collapse.
 //| name: lorenz
 //| echo: false
 
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 
 const P = { sigma: 10, rho: 28, beta: 8 / 3 };
 const N = 8000, dt = 0.006, SCALE = 0.14;

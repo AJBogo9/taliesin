@@ -182,9 +182,9 @@ fn code_fold_defaults_to_code_label() {
     );
 }
 
-/// `{js}` cells render as live placeholders (run client-side by the qmd-js
+/// `{js}` cells render as live placeholders (run client-side by the tali-js
 /// enhancer), not static highlighted source. Each emits a target div + an
-/// `application/qmd-js` script, and `//|` option lines are stripped.
+/// `application/tali-js` script, and `//|` option lines are stripped.
 #[test]
 fn js_cells_render_as_live_placeholders() {
     let html = render_post("posts/fourier-transform/index.tmd");
@@ -193,8 +193,8 @@ fn js_cells_render_as_live_placeholders() {
         "js cell not emitted as a live placeholder"
     );
     assert!(
-        html.contains("<script type=\"application/qmd-js\""),
-        "js cell missing its qmd-js script"
+        html.contains("<script type=\"application/tali-js\""),
+        "js cell missing its tali-js script"
     );
     assert!(
         !html.contains("ojs-module-contents"),
@@ -524,7 +524,7 @@ fn site_404_page_is_self_contained_with_absolute_links() {
 }
 
 /// Every `{js}` cell across the interactive posts is a live placeholder whose
-/// target div id matches its `application/qmd-js` script's `data-target`.
+/// target div id matches its `application/tali-js` script's `data-target`.
 #[test]
 fn every_js_cell_has_matching_target_and_script() {
     for post in [
@@ -534,14 +534,14 @@ fn every_js_cell_has_matching_target_and_script() {
     ] {
         let html = render_post(post);
         let cells = html.matches("class=\"cell tali-js-cell\"").count();
-        let scripts = html.matches("<script type=\"application/qmd-js\"").count();
+        let scripts = html.matches("<script type=\"application/tali-js\"").count();
         assert!(cells > 0, "{post}: no live js cells emitted");
         assert_eq!(cells, scripts, "{post}: cell/script count mismatch");
-        // every target div id is the data-target of a qmd-js script
+        // every target div id is the data-target of a tali-js script
         for id in js_target_ids(&html) {
             assert!(
-                html.contains(&format!("data-target=\"qmd-js-{id}\"")),
-                "{post}: qmd-js-{id} has no matching script"
+                html.contains(&format!("data-target=\"tali-js-{id}\"")),
+                "{post}: tali-js-{id} has no matching script"
             );
         }
     }
@@ -648,11 +648,11 @@ fn post_pages_link_back_to_their_listing() {
     }
 }
 
-/// Pull the block ids out of `id="qmd-js-<id>"` target divs.
+/// Pull the block ids out of `id="tali-js-<id>"` target divs.
 fn js_target_ids(html: &str) -> Vec<String> {
-    html.match_indices("id=\"qmd-js-")
+    html.match_indices("id=\"tali-js-")
         .filter_map(|(i, _)| {
-            let rest = &html[i + "id=\"qmd-js-".len()..];
+            let rest = &html[i + "id=\"tali-js-".len()..];
             rest.split('"').next().map(str::to_string)
         })
         .collect()

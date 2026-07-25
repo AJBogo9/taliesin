@@ -146,13 +146,13 @@ native `viewof` inputs and vendored `Plot` + `d3` all work, and a cell re-runs
 when an input it declares changes. A cell tags
 itself with `//| viewof: NAME` to publish a control, and a consuming cell lists
 `//| input: NAME` to re-run when that control changes (read the current value with
-`qmd.value("NAME")`).
+`tali.value("NAME")`).
 
 The reactive surface is small and worth knowing exactly:
 
-- `qmd.value("NAME")` reads the live value of an input (a `//| viewof` cell or an
+- `tali.value("NAME")` reads the live value of an input (a `//| viewof` cell or an
   `{{< input >}}` control) or, failing that, a `define` value of that name.
-- `qmd.defines.NAME` reads a value published from Python by `define`.
+- `tali.defines.NAME` reads a value published from Python by `define`.
 - `//| input: A, B` takes a **comma-separated list** of names; the cell re-runs
   when any one of them (input *or* define) changes. There is also
   `//| name: NAME` to publish this cell's return value under `NAME` for other cells
@@ -178,7 +178,7 @@ return wrap;
 ```{js}
 //| input: harmonics
 //| echo: false
-const harmonics = qmd.value("harmonics");
+const harmonics = tali.value("harmonics");
 return Plot.lineY(
   Array.from({length: 500}, (_, t) =>
     d3.range(1, harmonics + 1).reduce(
@@ -193,7 +193,7 @@ return Plot.lineY(
 in Python and render reactively in the browser**. Its signature is keyword-only,
 `define(name=value, ...)`: each keyword becomes a published name, and each
 value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
-cell then reads the value as `qmd.defines.NAME` (or `qmd.value("NAME")`, which
+cell then reads the value as `tali.defines.NAME` (or `tali.value("NAME")`, which
 falls back to defines when no live input owns that name). In live preview the
 Python cell executes *after* the page loads, so its values arrive a moment after
 the `{js}` cells; a `{js}` cell reads them and re-runs automatically when they land
@@ -211,7 +211,7 @@ define(signal=signal)
 
 ```{js}
 //| echo: false
-const signal = qmd.defines.signal;
+const signal = tali.defines.signal;
 if (!signal) return;
 return Plot.plot({
   height: 180, marginLeft: 36,

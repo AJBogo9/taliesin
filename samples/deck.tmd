@@ -162,7 +162,7 @@ return label;
 
 ```{js}
 //| input: churn
-const churn = qmd.value("churn");
+const churn = tali.value("churn");
 const retained = Math.pow(1 - churn, 60);
 const arr = Math.round(2400 * retained);
 const pct = (100 * retained).toFixed(0);

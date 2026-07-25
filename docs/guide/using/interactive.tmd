@@ -22,8 +22,8 @@ directives (they must come before any code):
 - `//| name: NAME` publishes the cell's return value under `NAME`.
 - `//| input: A, B` consumes those names; the cell re-runs when any of them change.
 
-Inside a cell, read values through the injected `qmd` API: `qmd.value("k")` returns
-a control's current value, and `qmd.get("squared")` returns the last value a
+Inside a cell, read values through the injected `qmd` API: `tali.value("k")` returns
+a control's current value, and `tali.get("squared")` returns the last value a
 `//| name` cell published. A first cell publishes a slider as `n`:
 
 ```js
@@ -39,19 +39,19 @@ chain `n` to `squared` to the readout stays in sync transitively:
 ```js
 //| name: squared
 //| input: n
-return qmd.value("n") ** 2;
+return tali.value("n") ** 2;
 ```
 
 ```js
 //| input: squared
-return document.createTextNode("n squared = " + qmd.get("squared"));
+return document.createTextNode("n squared = " + tali.get("squared"));
 ```
 
 When an input changes, Taliesin re-runs exactly the cells downstream of it, once
 each, in dependency order, following `//| name` edges. This is one controlled pass,
 not a continuously-recomputing dataflow engine: cycles are detected and shown as an
 error rather than run. `Plot` and `d3` are available as globals for drawing; a cell
-returns a DOM node (mounted for you) or builds into `qmd.container`, and an
+returns a DOM node (mounted for you) or builds into `tali.container`, and an
 `invalidation` promise lets long-running cells (animations, WebGL) tear down before
 a re-run.
 
@@ -70,9 +70,9 @@ control-building code. Five types are available:
 ```
 
 `name` is required (it is the reactive node); `type` defaults to `slider`; `label`
-defaults to the name. `qmd.value()` returns a number for slider and number, a
+defaults to the name. `tali.value()` returns a number for slider and number, a
 boolean for checkbox, and a string for text and select. A consuming cell is then just
-a `{js}` cell with `//| input: k` that reads `qmd.value("k")`.
+a `{js}` cell with `//| input: k` that reads `tali.value("k")`.
 
 **`slider` is an alias of `range`.** Both render the same HTML `<input type="range">`
 and both get a live `<output>` readout that updates as you drag, so the reader always
@@ -93,7 +93,7 @@ then reacts to it:
 
 ```js
 //| input: palette
-const name = qmd.value("palette");          // "viridis" | "magma" | "cividis"
+const name = tali.value("palette");          // "viridis" | "magma" | "cividis"
 return Plot.plot({ color: { scheme: name }, marks: [/* … */] });
 ```
 
@@ -221,11 +221,11 @@ than printing markup, you can attach controls, an `OrbitControls` from three.js,
 
 The data can come from a `{python}` or `{r}` cell. Compute coordinates or a mesh in
 the kernel, `define()` them, and read them back in the `{js}` cell with
-`qmd.get("...")`: the numbers come from your kernel, the rendering is browser-native.
+`tali.get("...")`: the numbers come from your kernel, the rendering is browser-native.
 
 ```js
 // {python} cell:  define(points=my_array.tolist())
-const points = qmd.get("points");   // in the {js} cell
+const points = tali.get("points");   // in the {js} cell
 ```
 
 The **Live 3-D graphics** gallery exhibit is built entirely this way: a molecule

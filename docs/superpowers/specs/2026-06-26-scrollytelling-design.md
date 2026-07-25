@@ -14,7 +14,7 @@ IntersectionObserver + active-step contract) from "focus code lines" to "drive a
 
 The active step feeds the **already-shipped reactive graph**: with `name="scene"`, the
 `.scrolly` drives a hidden `data-qmd-input` whose value is the active step's `state=`, so a
-sticky `{js}` cell reacts via `//| input: scene` (`qmd.value("scene")`) with zero boilerplate
+sticky `{js}` cell reacts via `//| input: scene` (`tali.value("scene")`) with zero boilerplate
 and **no new runtime code**. It also sets `data-scrolly-state` on the root for pure-CSS layer
 swaps. This makes scrollytelling, conceptually, *a reactive input driven by scroll position
 instead of a slider* — coherent with the `{input}` controls shipped the same day.
@@ -65,7 +65,7 @@ instead of a slider* — coherent with the `{input}` controls shipped the same d
 ::: {.scrolly name="scene"}
 ```{js}
 //| input: scene
-return drawChart(qmd.value("scene"));    // sticky stage = first non-.step block
+return drawChart(tali.value("scene"));    // sticky stage = first non-.step block
 ```
 ::: {.step state="trend"}
 First, the overall upward trend.
@@ -154,7 +154,7 @@ renders. Mirrors `validate_walkthrough`.
 ## Corpus pin
 
 `corpus/explorable/scrolly.qmd`: a `:::{.scrolly name="scene"}` whose stage is a `{js}` cell
-drawing an Observable Plot that changes appearance by `qmd.value("scene")`, with 3 `.step`s
+drawing an Observable Plot that changes appearance by `tali.value("scene")`, with 3 `.step`s
 (`state="a"|"b"|"c"`). A short intro paragraph above documents the feature. (`corpus/explorable/`
 is a new corpus subdir; the corpus walk picks it up automatically.)
 
@@ -167,7 +167,7 @@ is a new corpus subdir; the corpus walk picks it up automatically.)
 2. **Corpus invariants** (auto): the pin doc renders; unique block ids; valid sourcepos.
 3. **Browser (chrome-devtools MCP)** against the live preview: `scrollIntoView` the 2nd/3rd
    `.step` → `data-scrolly-state` flips and the sticky `{js}` cell re-runs reading the new
-   `qmd.value` (assert the rendered stage changed); first step active on load; 0 console
+   `tali.value` (assert the rendered stage changed); first step active on load; 0 console
    errors. Fallback if headless scroll is unreliable: directly set the hidden input value +
    dispatch `input` to prove the reactive wiring, and assert the IO observes the steps.
 

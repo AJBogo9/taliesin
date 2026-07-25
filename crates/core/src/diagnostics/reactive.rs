@@ -15,7 +15,7 @@ struct JsNode {
     label: String,
 }
 
-/// Static mirror of `qmd-js.js`'s `buildGraph`: flag (a) a `//| input: x` referencing a
+/// Static mirror of `tali-js.js`'s `buildGraph`: flag (a) a `//| input: x` referencing a
 /// name that no cell/`{{< input >}}` *defines*, and (b) a dependency cycle among `{js}`
 /// cells (Kahn's topo-sort over `define -> consumer` edges; any cell left undrained is in
 /// a cycle). Read-only — never touches the reactive runtime.

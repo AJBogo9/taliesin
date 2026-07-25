@@ -144,7 +144,7 @@ through.
 
 Emits a labelled, keyboard-accessible control whose value becomes a node in the
 [reactive `{js}` graph](../using/interactive.tmd). A `{js}` cell reads it with
-`//| input: NAME` and `qmd.value("NAME")`, so you get an input with no
+`//| input: NAME` and `tali.value("NAME")`, so you get an input with no
 control-building code. It is the same wiring a `//| viewof` cell uses; the control
 just carries a `data-tali-input="NAME"` attribute that the runtime registers.
 
@@ -159,7 +159,7 @@ just carries a `data-tali-input="NAME"` attribute that the runtime registers.
 
 `slider` and `range` are aliases: both render the same `<input type="range">`
 with a live `<output>` readout beside it (only `number` differs, dropping the
-readout for a numeric field). `qmd.value()` hands a consuming cell the right type:
+readout for a numeric field). `tali.value()` hands a consuming cell the right type:
 a number for `slider`, `range`, and `number`; a boolean for `checkbox`; a string
 for `text` and `select`.
 

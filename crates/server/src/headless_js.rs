@@ -294,7 +294,7 @@ async fn observe_page(
         .new_page("about:blank")
         .await
         .map_err(|e| format!("new page: {e}"))?;
-    // Flip qmd-js.js into full-error mode for THIS observation only: a built page hides the
+    // Flip tali-js.js into full-error mode for THIS observation only: a built page hides the
     // real error behind a terse reader message unless `window.taliOpenPageSource` is defined
     // (the live preview defines it for real). A no-op has no other effect in a built page,
     // and gives the agent the actual error instead of "couldn't load".
@@ -335,9 +335,9 @@ fn unique_profile_dir() -> PathBuf {
     ))
 }
 
-/// The in-page async snippet: wait until every `application/qmd-js` script is stamped
+/// The in-page async snippet: wait until every `application/tali-js` script is stamped
 /// `data-tali-done` (or the deadline), then return one facts object per cell. Keyed off the
-/// script's `data-target` (`qmd-js-<block_id>`), so it joins to the block model for both a
+/// script's `data-target` (`tali-js-<block_id>`), so it joins to the block model for both a
 /// plain `{js}` cell and a numbered `{js}` figure (both emit the same script + target div).
 fn build_observe_script(deadline_ms: u64) -> String {
     format!(
@@ -346,7 +346,7 @@ fn build_observe_script(deadline_ms: u64) -> String {
   const clock = () => ((self.performance && performance.now) ? performance.now() : Date.now());
   const start = clock();
   const scripts = () => Array.prototype.slice.call(
-    document.querySelectorAll('script[type="application/qmd-js"]'));
+    document.querySelectorAll('script[type="application/tali-js"]'));
   while (clock() - start < deadline) {{
     const all = scripts();
     if (all.length === 0) break;
@@ -355,7 +355,7 @@ fn build_observe_script(deadline_ms: u64) -> String {
   }}
   return scripts().map(function (s) {{
     const target = s.getAttribute('data-target') || '';
-    const blockId = target.replace(/^qmd-js-/, '');
+    const blockId = target.replace(/^tali-js-/, '');
     const out = target ? document.getElementById(target) : null;
     const errEl = out ? out.querySelector('.tali-js-error') : null;
     const svg = out ? out.querySelector('svg') : null;
@@ -598,10 +598,13 @@ mod tests {
     #[test]
     fn observe_script_joins_on_data_target_and_waits_on_done() {
         let s = build_observe_script(10_000);
-        assert!(s.contains("application/qmd-js"), "selects js cell scripts");
+        assert!(s.contains("application/tali-js"), "selects js cell scripts");
         assert!(s.contains("data-tali-done"), "waits on the settle signal");
+        // Key on the ANCHORED prefix-strip, not a bare `tali-js-` substring: after the
+        // qmd -> tali rename the loose form is also satisfied by the `.tali-js-error`
+        // selector further down this same script, which made the assertion vacuous.
         assert!(
-            s.contains("qmd-js-") && s.contains("data-target"),
+            s.contains("/^tali-js-/") && s.contains("data-target"),
             "derives block id from the script's data-target"
         );
         assert!(

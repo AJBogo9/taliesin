@@ -22,7 +22,7 @@ The next cell publishes a derived value, `squared`, that consumes the slider `n`
 ```{js}
 //| name: squared
 //| input: n
-return qmd.value("n") ** 2;
+return tali.value("n") ** 2;
 ```
 
 This cell consumes `squared` — a derived `//| name`, not the slider itself — so it stays
@@ -31,7 +31,7 @@ in sync only because the change propagates transitively (`n → squared → here
 ```{js}
 //| input: squared
 const p = document.createElement("p");
-p.textContent = "n squared = " + qmd.get("squared");
+p.textContent = "n squared = " + tali.get("squared");
 return p;
 ```
 
@@ -50,6 +50,6 @@ return wrap;
 ```{js}
 //| input: m
 const p = document.createElement("p");
-p.textContent = "m doubled = " + (qmd.value("m") * 2);
+p.textContent = "m doubled = " + (tali.value("m") * 2);
 return p;
 ```

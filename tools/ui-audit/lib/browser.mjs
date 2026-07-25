@@ -124,7 +124,7 @@ export async function settle(page, { timeout = 6000 } = {}) {
             // publisher returns a Number; an `//| input:` effect returns undefined),
             // so child-count alone reports those cells as never-settled forever.
             // `data-tali-done` is stamped when the cell's run() resolves.
-            const s = c.querySelector('script[type="application/qmd-js"]');
+            const s = c.querySelector('script[type="application/tali-js"]');
             if (s && s.hasAttribute('data-tali-done')) return true;
             // Fallback for pages built by a binary predating that signal, and for
             // cells excluded from the run (a dependency cycle paints a diagnostic).

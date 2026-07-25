@@ -120,8 +120,8 @@ define(std_pts = X.tolist())
 //| label: fig-std-3d
 //| fig-cap: "The same 220 players after standardisation. Each axis now has mean 0 and variance 1. The elongated shape is preserved. Drag to rotate, scroll to zoom."
 
-const std_pts = qmd.defines.std_pts; if (!std_pts) return;
-const makeScene3D = qmd.get("makeScene3D");
+const std_pts = tali.defines.std_pts; if (!std_pts) return;
+const makeScene3D = tali.get("makeScene3D");
 
 return makeScene3D((scene, THREE, { O, spriteLabel }) => {
   const flat = new Float32Array(std_pts.flatMap(p => p));
@@ -253,9 +253,9 @@ define(
 //| label: fig-3d-pca
 //| fig-cap: "Three-dimensional point cloud of standardised player measurements. Arrows show the three principal components scaled by their standard deviation √λ. Colour: PC1 (orange) explains the most variance, PC2 (green) the next, PC3 (blue) the least. The translucent plane is the PC1–PC2 subspace. Drag to rotate, scroll to zoom."
 
-const pts = qmd.defines.pts; if (!pts) return;
-const { pcs, evr, eigs } = qmd.defines;
-const makeScene3D = qmd.get("makeScene3D");
+const pts = tali.defines.pts; if (!pts) return;
+const { pcs, evr, eigs } = tali.defines;
+const makeScene3D = tali.get("makeScene3D");
 
 return makeScene3D((scene, THREE, { O, spriteLabel }) => {
   // ── Point cloud ─────────────────────────────────────────────────────────
@@ -397,7 +397,7 @@ const radios = options.map((v, i) => {
   return input;
 });
 // Expose a numeric `.value` so the runtime registers `wrap` as the control and
-// `qmd.value("k_dim")` returns the checked radio's number; bubble an `input`
+// `tali.value("k_dim")` returns the checked radio's number; bubble an `input`
 // event from the wrapper when any radio changes so sinks re-run.
 Object.defineProperty(wrap, "value", {
   get() {
@@ -416,10 +416,10 @@ return wrap;
 //| input: k_dim
 //| label: fig-recon-3d
 //| fig-cap: "Dimensionality reduction round-trip. Faint blue: original standardised players. Orange: reconstructed from k PCs. Grey lines: projection error."
-const pts = qmd.defines.pts; if (!pts) return;
-const { pcs, eigs } = qmd.defines;
-const makeScene3D = qmd.get("makeScene3D");
-const k_dim = qmd.value("k_dim");
+const pts = tali.defines.pts; if (!pts) return;
+const { pcs, eigs } = tali.defines;
+const makeScene3D = tali.get("makeScene3D");
+const k_dim = tali.value("k_dim");
 
 const dot = (a, b) => a.reduce((s, ai, i) => s + ai * b[i], 0);
 

@@ -128,7 +128,7 @@ spliced out of the `{js}` runtime's registry. Without this, editing a Three.js c
 (whose content-hash id changes, so the block is replaced wholesale) would leak a
 WebGL context and an animation-frame loop on every save. A wholesale re-mount calls
 `resetJs()` first, tearing down *every* cell so the runtime rebuilds clean. Both are
-no-ops when `qmd-js.js` is not loaded (a deck or a page with no `{js}` cells).
+no-ops when `tali-js.js` is not loaded (a deck or a page with no `{js}` cells).
 :::
 
 ## Reverse sync: `highlightAtLine`
@@ -243,7 +243,7 @@ indistinguishable from core's. The notable ones:
 - **Copy buttons** (`qmdCopyButtons`) on every `pre > code`, using a clipboard
   helper that falls back to a hidden-textarea `execCommand` in insecure contexts
   (`file://`, a plain-HTTP `--host` LAN preview).
-- **`{js}` cells** (`qmd-js.js`): finds each `<script type="application/qmd-js">`,
+- **`{js}` cells** (`tali-js.js`): finds each `<script type="application/tali-js">`,
   runs the author's code with a small scope, and mounts the result into its sibling
   target `<div>`. It is idempotent through a `data-tali-ran` guard and drives the
   reactive graph; the [interactive cells chapter](../guide/using/interactive.tmd)

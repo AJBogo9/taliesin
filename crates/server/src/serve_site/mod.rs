@@ -1042,7 +1042,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                         build_page_guarded(&project, &rel, pool).await;
                         // A fresh kernel means fresh outputs — including any `ojs_define`
                         // values. Reload the page so the `{js}` cells re-bind to the fresh
-                        // `qmd-define` blobs from a clean module scope.
+                        // `tali-define` blobs from a clean module scope.
                         if let Some(ps) = project.pages.lock().get(&rel) {
                             let _ = ps.tx.send(protocol::reload());
                         }

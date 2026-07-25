@@ -13,13 +13,13 @@ Every control's value is also captured in the page URL, so a link restores the e
 ```{js}
 //| name: doubled
 //| input: k
-return qmd.value("k") * 2;
+return tali.value("k") * 2;
 ```
 
 ```{js}
 //| input: doubled
 const p = document.createElement("p");
-p.textContent = "k doubled (transitively) = " + qmd.get("doubled");
+p.textContent = "k doubled (transitively) = " + tali.get("doubled");
 return p;
 ```
 
@@ -30,7 +30,7 @@ A number, a checkbox, a text box, and a dropdown, each driving their own cell:
 ```{js}
 //| input: n
 const p = document.createElement("p");
-p.textContent = "n = " + qmd.value("n");
+p.textContent = "n = " + tali.value("n");
 return p;
 ```
 
@@ -39,7 +39,7 @@ return p;
 ```{js}
 //| input: on
 const p = document.createElement("p");
-p.textContent = qmd.value("on") ? "enabled" : "disabled";
+p.textContent = tali.value("on") ? "enabled" : "disabled";
 return p;
 ```
 
@@ -48,7 +48,7 @@ return p;
 ```{js}
 //| input: q
 const p = document.createElement("p");
-p.textContent = "query: " + qmd.value("q");
+p.textContent = "query: " + tali.value("q");
 return p;
 ```
 
@@ -57,7 +57,7 @@ return p;
 ```{js}
 //| input: c
 const p = document.createElement("p");
-p.textContent = "channel: " + qmd.value("c");
+p.textContent = "channel: " + tali.value("c");
 return p;
 ```
 
@@ -66,6 +66,6 @@ One cell reading several inputs at once:
 ```{js}
 //| input: k, n, on
 const p = document.createElement("p");
-p.textContent = `k=${qmd.value("k")} n=${qmd.value("n")} on=${qmd.value("on")}`;
+p.textContent = `k=${tali.value("k")} n=${tali.value("n")} on=${tali.value("on")}`;
 return p;
 ```

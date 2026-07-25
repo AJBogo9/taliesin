@@ -160,11 +160,11 @@ return wrap;
 //| echo: false
 //| fig-cap: "Each dot is one of the 45 patients, coloured by protocol. Drag to 1: each pain score is replaced by its rank in the pooled dataset, spreading the dots uniformly. The pooled row fades in to show all 45 ranks in sequence."
 
-const pain_groups = qmd.defines.pain_groups;
-const pain_labels = qmd.defines.pain_labels;
+const pain_groups = tali.defines.pain_groups;
+const pain_labels = tali.defines.pain_labels;
 if (!pain_groups || !pain_labels) return;
 
-const transform_t = qmd.value("transform_t");
+const transform_t = tali.value("transform_t");
 
 const rt_colors = ["steelblue", "darkorange", "mediumseagreen"];
 const N_rt = pain_groups.flat().length;

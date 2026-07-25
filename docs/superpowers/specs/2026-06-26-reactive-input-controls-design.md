@@ -33,7 +33,7 @@ explorable-document primitive. v1 ships five control types: **slider** (range), 
 
 - `::: {.input name="k" type="slider" min=1 max=10 value=3}` renders a labeled range
   control whose value is the reactive node `k`.
-- A `{js}` cell with `//| input: k` reading `qmd.value("k")` re-runs when `k` changes,
+- A `{js}` cell with `//| input: k` reading `tali.value("k")` re-runs when `k` changes,
   including transitively (`k → derived → consumer`), via the existing scheduler.
 - Five control types, each emitting the matching native control: slider, number,
   checkbox, text, select.
@@ -108,7 +108,7 @@ wrapper, with `data-qmd-input="name"` on the control and NO `<output>`:
 - `select`  → `<select><option [selected]>opt</option>…</select>` from `options=`
 
 All attribute values are HTML-escaped (`escape_attr` / `html_escape`). The `for`/`id`
-pair derives from the container's block id (unique + stable). `qmd.value(name)` returns,
+pair derives from the container's block id (unique + stable). `tali.value(name)` returns,
 via the existing `readValue`: number (range/number → `valueAsNumber`), boolean (checkbox →
 `checked`), or string (text/select → `value`).
 

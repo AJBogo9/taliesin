@@ -200,7 +200,7 @@ fn tech_blog_shares_one_hashed_css_across_pages() {
         "a {{js}} page still links the shared jslibs bundle"
     );
     assert!(
-        !post.contains("_assets/qmd-js") && !post.contains("_assets/qmdjs"),
+        !post.contains("_assets/tali-js") && !post.contains("_assets/talijs"),
         "the {{js}}-cell runtime must not be externalized into an _assets/ file"
     );
 

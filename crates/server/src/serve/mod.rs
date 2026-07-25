@@ -1396,7 +1396,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             }
             rebuild_guarded(&app, &mut executor).await;
             // A fresh kernel means fresh outputs — including any `ojs_define`
-            // values. Reload so the `{js}` cells re-bind to the fresh `qmd-define`
+            // values. Reload so the `{js}` cells re-bind to the fresh `tali-define`
             // blobs from a clean module scope.
             if restarted {
                 let _ = app.tx.send(protocol::reload());

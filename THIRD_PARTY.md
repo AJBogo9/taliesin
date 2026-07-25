@@ -41,7 +41,7 @@ Bundled so the tool works fully offline.
   <https://github.com/productiontype/Newsreader>.
 
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
-`mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are Taliesin's own (MIT).
+`mermaid.js`, `tali-js.js`, `walkthrough.js`, `tabset.js`) are Taliesin's own (MIT).
 
 ### Sample 3-D models (corpus content)
 

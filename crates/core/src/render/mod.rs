@@ -1023,7 +1023,7 @@ fn render_internal_impl(
                 }
             }
         } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "js") {
-            // Native interactive `{js}` cell: the qmd-js enhancer runs it
+            // Native interactive `{js}` cell: the tali-js enhancer runs it
             // client-side (no Observable runtime).
             html.push_str(&emit_js_cell(&c.code, &id, &c.js, &attrs));
         } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
@@ -1587,13 +1587,13 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{qmdjs_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{walk_s}{tabset_s}{scrolly_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
             String::new()
         },
-        qmdjs_s = gate(has_js_cells(body), TALIESIN_JS),
+        talijs_s = gate(has_js_cells(body), TALIESIN_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
@@ -1632,12 +1632,12 @@ pub fn search_scripts() -> String {
 pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
 // Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the
-// cells draw with, shipped only when a page has `{js}` cells. The small enhancer (`qmd-js.js`)
+// cells draw with, shipped only when a page has `{js}` cells. The small enhancer (`tali-js.js`)
 // ships unconditionally in `code_scripts()` (it registers and no-ops without cells,
 // like mermaid); only these heavy libs are gated on `has_js_cells`.
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
 const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
-const TALIESIN_JS: &str = include_str!("../../assets/js/qmd-js.js");
+const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
 
 /// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. Emit
 /// only when a page actually has `{js}` cells (gated on [`has_js_cells`]). The
@@ -1648,7 +1648,7 @@ pub(crate) fn js_cell_head() -> String {
 
 /// True if a rendered body contains native `{js}` cells (gates the Plot/d3 libs).
 pub fn has_js_cells(body: &str) -> bool {
-    body.contains("application/qmd-js")
+    body.contains("application/tali-js")
 }
 
 // `code-enhance.js` is authored as ordered per-feature fragments under
@@ -1692,7 +1692,7 @@ const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// live Preview keeps the lazy loader instead (see `code_scripts_for`).
 const MERMAID_MIN_JS: &str = include_str!("../../assets/js/mermaid.min.js");
 /// Scroll-driven line-range highlighter for `::: {.code-walkthrough}`. Registers
-/// through `taliEnhancers`, no-ops without a walkthrough (like mermaid/qmd-js), so it
+/// through `taliEnhancers`, no-ops without a walkthrough (like mermaid/tali-js), so it
 /// rides unconditionally in [`code_scripts`].
 const WALKTHROUGH_JS: &str = include_str!("../../assets/js/walkthrough.js");
 /// ARIA tabs interaction for `::: {.panel-tabset}` (click + arrow-key tab switching).

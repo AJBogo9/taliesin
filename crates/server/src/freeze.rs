@@ -58,12 +58,19 @@ use serde::{Deserialize, Serialize};
 /// Bumped if the on-disk format or hashing scheme changes — or if the *bundled
 /// output format* of a cached cell changes (the cell code is unchanged, so the
 /// cumulative key wouldn't move on its own). A mismatch makes the loader treat the
-/// file as empty (and the next save rewrites it fresh). v2: the Python bridge
-/// emits `<script type="qmd-define">` (was `ojs-define`) for native `{js}` cells.
-/// v3: a dual-theme figure emits `tali-fig-light` / `tali-fig-dark` (was `qmd-fig-*`);
-/// entries cached before that rename still hold the old classes, which no current CSS
-/// rule hides, so both variants would render stacked.
-const FORMAT_VERSION: u32 = 3;
+/// file as empty (and the next save rewrites it fresh). v2: the Python bridge stopped
+/// emitting `ojs-define` for native `{js}` cells and switched to its own define-blob
+/// script type. v3: a dual-theme figure switched to the `tali-fig-light` /
+/// `tali-fig-dark` classes; entries cached before that rename still hold the old
+/// classes, which no current CSS rule hides, so both variants would render stacked.
+/// v4: the `{js}` runtime script types became `application/tali-js` / `tali-define`
+/// and the cell target id became `tali-js-<block_id>`; entries cached before that
+/// rename carry the old names, which the current runtime's exact-match selectors
+/// never ingest, so `{js}` cells would silently receive no data.
+///
+/// (The v2/v3 notes deliberately describe the *change* rather than spelling the
+/// retired prefix, which `crates/core/tests/no_qmd.rs` keeps out of the tree.)
+const FORMAT_VERSION: u32 = 4;
 
 /// Per-page entry cap. Entries beyond the live set are kept (so toggling an edit
 /// back and forth restores instantly instead of re-running) up to this bound, then
@@ -363,8 +370,8 @@ mod tests {
     /// rename shipped without a bump and needed a follow-up fix commit, because
     /// every test runs against a clean tree and no test has a stale `_freeze/`.
     const CACHED_OUTPUT_TOKENS: &[&str] = &[
-        "application/qmd-js",
-        "qmd-define",
+        "application/tali-js",
+        "tali-define",
         "tali-fig-light",
         "tali-fig-dark",
     ];
@@ -374,7 +381,7 @@ mod tests {
         let digest = format!("{:016x}", fnv1a(&CACHED_OUTPUT_TOKENS.join("\u{1f}")));
         assert_eq!(
             (digest.as_str(), FORMAT_VERSION),
-            ("b5cdb009fef70b53", 3),
+            ("71f1fe21dc878fcd", 4),
             "the cached-output token vocabulary changed. Bump FORMAT_VERSION, then \
              update BOTH values here. Skipping the bump makes every existing _freeze/ \
              entry replay markup the current runtime cannot read."

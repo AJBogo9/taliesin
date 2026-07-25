@@ -275,7 +275,7 @@ The slider steps through the iterations of the EM algorithm. The top plot shows 
 //| echo: false
 // Slider over EM iterations; its range comes from the Python `history` length
 // (the cell re-runs when that define lands). Returns a labeled range input.
-const n = (qmd.defines.history || []).length || 1;
+const n = (tali.defines.history || []).length || 1;
 const wrap = document.createElement("label");
 wrap.className = "qmd-input";
 wrap.append("EM iteration ");
@@ -304,10 +304,10 @@ return wrap;
 
 const { gaussPDF, makeCurve, makeResp, linspace } = await import("./em-helpers.js");
 
-const history = qmd.defines.history;
+const history = tali.defines.history;
 if (!history) return; // the Python define hasn't landed yet (cold preview)
-const { X_data, true_labels, true_mu } = qmd.defines;
-const iter = qmd.value("iter"), showTrue = qmd.value("showTrue");
+const { X_data, true_labels, true_mu } = tali.defines;
+const iter = tali.value("iter"), showTrue = tali.value("showTrue");
 
 // Snapshot for the current slider value
 const snap = history[iter - 1];
@@ -389,9 +389,9 @@ return fig;
 //| fig-cap: "Log-likelihood across iterations. It can only ever increase."
 
 const { makeLLData } = await import("./em-helpers.js");
-const history = qmd.defines.history;
+const history = tali.defines.history;
 if (!history) return;
-const iter = qmd.value("iter");
+const iter = tali.value("iter");
 
 const ll_data = makeLLData(history);
 

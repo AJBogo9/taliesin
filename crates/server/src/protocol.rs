@@ -124,7 +124,7 @@ pub fn diagnostics(diags: &[Diagnostic]) -> String {
 }
 
 /// Tell the client to do a full page reload (used after a kernel restart, so
-/// `{js}` cells re-bind to freshly-defined `qmd-define` values).
+/// `{js}` cells re-bind to freshly-defined `tali-define` values).
 pub fn reload() -> String {
     serde_json::json!({ "type": "reload" }).to_string()
 }

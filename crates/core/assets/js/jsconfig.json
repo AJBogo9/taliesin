@@ -1,5 +1,5 @@
 {
-  "//": "Dev-only: type-checks the bundled browser scripts under assets/js/ (mirrors web-client/jsconfig.json). Not embedded — the server include_str!s the .js sources verbatim. The code-enhance/ fragments are concatenated into ONE inline <script> at render time (render/mod.rs CODE_ENHANCE_JS), so they are checked as scripts sharing one global scope, matching the runtime. The vendored/minified bundles (d3.min.js, plot.umd.min.js, mermaid.min.js) are excluded. useUnknownInCatchVariables is off (classic any-typed catch bindings) since qmd-js.js reads err.stack off a caught throw and a render/tests.rs drift pin locks that exact expression. Run: cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json",
+  "//": "Dev-only: type-checks the bundled browser scripts under assets/js/ (mirrors web-client/jsconfig.json). Not embedded — the server include_str!s the .js sources verbatim. The code-enhance/ fragments are concatenated into ONE inline <script> at render time (render/mod.rs CODE_ENHANCE_JS), so they are checked as scripts sharing one global scope, matching the runtime. The vendored/minified bundles (d3.min.js, plot.umd.min.js, mermaid.min.js) are excluded. useUnknownInCatchVariables is off (classic any-typed catch bindings) since tali-js.js reads err.stack off a caught throw and a render/tests.rs drift pin locks that exact expression. Run: cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json",
   "compilerOptions": {
     "checkJs": true,
     "strict": true,
@@ -32,7 +32,7 @@
     "code-enhance/16-scroll-a11y.js",
     "code-enhance/17-cite-box.js",
     "deck.js",
-    "qmd-js.js",
+    "tali-js.js",
     "mermaid.js",
     "scrolly.js",
     "tabset.js",

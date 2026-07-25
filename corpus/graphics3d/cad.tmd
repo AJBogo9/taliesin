@@ -17,7 +17,7 @@ other is geometry the page derives.
 ```{js}
 //| name: cad-viewer
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const MODEL_FILE = "assets/ToyCar.glb";
 const el = document.createElement("div");
 makeScene3D(async (scene, THREE, ctx) => {
@@ -37,7 +37,7 @@ return el;
 ```{js}
 //| name: cad-gear
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const P = { module: 0.5, teeth: 18, pressure: 20 };
 
 // One involute spur-gear cross-section, extruded into a 3-D gear.

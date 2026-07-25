@@ -139,7 +139,7 @@ shared address reopens the exact slide *and* this control's state.
 ```{js}
 //| input: rate
 const p = document.createElement("p");
-const r = qmd.value("rate");
+const r = tali.value("rate");
 p.textContent = "at " + r + "% growth, 100 becomes " + (100 * (1 + r / 100)).toFixed(1);
 return p;
 ```

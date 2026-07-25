@@ -28,7 +28,7 @@ so it follows the page theme, and the whole thing is the `{js}` cell in the
 
 ```{js}
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const host = document.createElement("div");
 host.style.minHeight = "460px";
@@ -47,9 +47,9 @@ const build = async () => {
       ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
       onFrame: () => {
         if (!S) return;
-        const n = Math.round(qmd.value("detail") ?? 48);
-        const twist = +(qmd.value("twist") ?? 2);
-        const amp = +(qmd.value("amplitude") ?? 0.7);
+        const n = Math.round(tali.value("detail") ?? 48);
+        const twist = +(tali.value("twist") ?? 2);
+        const amp = +(tali.value("amplitude") ?? 0.7);
         if (n !== lastN) {
           lastN = n; lastT = NaN;
           if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
@@ -95,7 +95,7 @@ return host;
 
 ```js
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const host = document.createElement("div");
 host.style.minHeight = "460px";
@@ -114,9 +114,9 @@ const build = async () => {
       ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
       onFrame: () => {
         if (!S) return;
-        const n = Math.round(qmd.value("detail") ?? 48);
-        const twist = +(qmd.value("twist") ?? 2);
-        const amp = +(qmd.value("amplitude") ?? 0.7);
+        const n = Math.round(tali.value("detail") ?? 48);
+        const twist = +(tali.value("twist") ?? 2);
+        const amp = +(tali.value("amplitude") ?? 0.7);
         if (n !== lastN) {
           lastN = n; lastT = NaN;
           if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
@@ -174,7 +174,7 @@ reactive value (`stage`), so the sticky `{js}` cell re-runs as you scroll. The w
 ```{js}
 //| input: stage
 //| echo: false
-const stage = qmd.value("stage") || "one-source";
+const stage = tali.value("stage") || "one-source";
 const wrap = document.createElement("div");
 wrap.style.cssText = "min-height:300px;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center";
 const tile = (t, hi) => {
@@ -217,7 +217,7 @@ return wrap;
 ```{js}
 //| input: stage
 //| echo: false
-const stage = qmd.value("stage") || "one-source";
+const stage = tali.value("stage") || "one-source";
 const wrap = document.createElement("div");
 wrap.style.cssText = "min-height:300px;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center";
 const tile = (t, hi) => {
@@ -265,7 +265,7 @@ $$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
 ```{js}
 //| input: harmonics
 //| echo: false
-const N = qmd.value("harmonics");
+const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
 return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
@@ -277,7 +277,7 @@ return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
 ```js
 //| input: harmonics
 //| echo: false
-const N = qmd.value("harmonics");
+const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
 return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
@@ -296,7 +296,7 @@ framework's `.code-walkthrough` feature, a sticky code panel beside scrolling st
 
 ```js
 //| input: harmonics
-const N = qmd.value("harmonics");
+const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce(
     (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
@@ -307,7 +307,7 @@ return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
 The `//| input: harmonics` directive subscribes this cell to the `harmonics` control. Taliesin re-runs the cell, and only this cell, whenever that value changes.
 :::
 ::: {.step lines="2"}
-`qmd.value("harmonics")` reads the slider's current number out of the reactive scope.
+`tali.value("harmonics")` reads the slider's current number out of the reactive scope.
 :::
 ::: {.step lines="3-5"}
 Build the partial sum: for each of 500 sample points, add up the first `N` odd harmonics.
@@ -325,7 +325,7 @@ Return an Observable Plot chart. A `{js}` cell mounts whatever DOM node it retur
 ::: {.code-walkthrough}
 ```js
 //| input: harmonics
-const N = qmd.value("harmonics");
+const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce(
     (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
@@ -353,7 +353,7 @@ in the **Source** tab.
 ```{js}
 //| echo: false
 
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 
 const P = { sigma: 10, rho: 28, beta: 8 / 3 };
 const N = 8000, dt = 0.006, SCALE = 0.14;
@@ -419,7 +419,7 @@ return el;
 ```js
 //| echo: false
 
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 
 const P = { sigma: 10, rho: 28, beta: 8 / 3 };
 const N = 8000, dt = 0.006, SCALE = 0.14;

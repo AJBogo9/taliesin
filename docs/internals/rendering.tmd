@@ -171,8 +171,8 @@ so they can't drift apart. The same block list backs all three outputs (see
 ## Interactive cells (`{js}`)
 
 `{js}` cells are client-side, not kernel-executed, so they sit outside the
-[execution](execution.tmd) path. A small native enhancer (`qmd-js.js`)
-runs each cell's source against a small per-cell scope (`qmd.get`/`set`/`value`,
+[execution](execution.tmd) path. A small native enhancer (`tali-js.js`)
+runs each cell's source against a small per-cell scope (`tali.get`/`set`/`value`,
 `onInput`, `container`, `invalidation`); it is a small scheduler, not a full
 reactive VM. Cell kinds come from `//|` options: `//| viewof: name` returns a DOM
 input registered under `name`, `//| name: x` publishes the return value into a
@@ -185,7 +185,7 @@ algorithm. When an input fires, `scheduleFrom` re-runs exactly the cell's
 rather than cascading listener fires. The initial run is a single document-order
 (producer-before-consumer) awaited pass; cells left over after Kahn's are in a cycle
 and show a diagnostic instead of running. A Python cell's `define(...)` bridges
-values across via a `<script type="qmd-define">` blob the enhancer ingests,
+values across via a `<script type="tali-define">` blob the enhancer ingests,
 re-running dependents when it lands after first paint.
 
 Two decisions keep this cheap and robust. The page assembler ships the vendored

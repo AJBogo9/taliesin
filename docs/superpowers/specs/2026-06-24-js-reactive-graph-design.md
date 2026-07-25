@@ -33,7 +33,7 @@ derived `//| name` (not a DOM input), so nothing fires its consumers and it neve
 
 The closure governs the **input-change path** (frequent/interactive). The **define-landing
 path (`bindDefines`) stays a full rebuild, unchanged** — define landing is rare (cold load /
-kernel restart) and some cells read `qmd.defines.X` without declaring `//| input: X`
+kernel restart) and some cells read `tali.defines.X` without declaring `//| input: X`
 (fourier-transform); a closure there would regress those implicit readers. Full-rebuild is
 correct and safe.
 

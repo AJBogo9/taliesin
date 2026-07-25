@@ -20,7 +20,7 @@ exactly as they were. No cold start, no full-page flash, no waiting.
 
 ```{js}
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const host = document.createElement("div");
 host.style.minHeight = "440px";

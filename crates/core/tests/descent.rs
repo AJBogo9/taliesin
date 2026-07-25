@@ -36,10 +36,10 @@ fn headline_is_a_once_cell_that_drags_and_subscribes() {
     let h = page();
     // The load-bearing combination: the headline cell is a "once" cell (it declares
     // no `//| input:`, so the DAG never tears it down), yet it stays live by
-    // subscribing with qmd.onInput AND owns a pointer-drag. If any of these three
+    // subscribing with tali.onInput AND owns a pointer-drag. If any of these three
     // regress, sliders and drag can no longer coexist without state loss.
     assert!(
-        h.contains("qmd.onInput([\"lr\", \"beta\", \"steps\"], redraw)"),
+        h.contains("tali.onInput([\"lr\", \"beta\", \"steps\"], redraw)"),
         "the headline cell subscribes to the sliders via onInput (redraw without teardown): {h}"
     );
     assert!(
@@ -49,7 +49,7 @@ fn headline_is_a_once_cell_that_drags_and_subscribes() {
     // Pin the once-ness structurally: the `<script>` that carries the onInput call
     // must declare no data-inputs, else the DAG would re-run (and rebuild) it on every
     // slider move, throwing away the dragged start point.
-    let at = h.find("qmd.onInput").expect("the headline cell is present");
+    let at = h.find("tali.onInput").expect("the headline cell is present");
     let script_open = h[..at]
         .rfind("<script")
         .expect("onInput sits inside a <script>");

@@ -85,7 +85,7 @@ fn push_rich(outputs: &mut Vec<Output>, rich_bytes: &mut usize, capped: &mut boo
 
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
-/// `<script type="qmd-define">` HTML output the native `{js}` runtime consumes
+/// `<script type="tali-define">` HTML output the native `{js}` runtime consumes
 /// (the Python -> JS bridge). `define` is the native and only author API.
 const OJS_DEFINE_PREAMBLE: &str = r#"
 def define(**kwargs):
@@ -106,7 +106,7 @@ def define(**kwargs):
             return dict((k, v) for (k, v) in zip(j["index"], j["data"]))
         return v
     v = dict(contents=list(dict(name=key, value=convert(value)) for (key, value) in kwargs.items()))
-    display(HTML('<script type="qmd-define">' + json.dumps(v) + '</script>'), metadata=dict(qmd_define=True))
+    display(HTML('<script type="tali-define">' + json.dumps(v) + '</script>'), metadata=dict(tali_define=True))
 globals()["define"] = define
 "#;
 

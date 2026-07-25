@@ -430,7 +430,7 @@ active step drives a reactive value (`scene`), so the sticky `{js}` cell re-runs
 ::: {.scrolly name="scene"}
 ```{js}
 //| input: scene
-const scene = qmd.value("scene");
+const scene = tali.value("scene");
 const xs = [1, 2, 3, 4, 5, 6];
 const data = xs.map((x) => ({ x, y: scene === "spike" ? x * x : x * 2 }));
 return Plot.plot({
@@ -487,7 +487,7 @@ inp.value = "spike"; inp.dispatchEvent(new Event('input', {bubbles:true}));
 await new Promise(r=>setTimeout(r,120));
 return document.querySelector('.scrolly-stage svg') ? 're-ran' : 'no svg';
 ```
-Expected: `"re-ran"` (the cell re-executed reading `qmd.value("scene")` = "spike").
+Expected: `"re-ran"` (the cell re-executed reading `tali.value("scene")` = "spike").
 
 Then `list_console_messages` → 0 errors. Take a screenshot.
 

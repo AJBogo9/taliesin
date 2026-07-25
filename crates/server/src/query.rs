@@ -345,7 +345,7 @@ fn observe_js(
     if !headless_js::chrome_available() {
         return skip_all_js(js_ids, "chrome unavailable");
     }
-    // The page the cells actually run in: a self-contained build page (D3/Plot + the qmd-js
+    // The page the cells actually run in: a self-contained build page (D3/Plot + the tali-js
     // runtime inlined, no network), written to a temp `.html`.
     let stem = doc_path
         .file_stem()

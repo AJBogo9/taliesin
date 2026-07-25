@@ -42,12 +42,12 @@ pub(crate) fn numbered_caption(label: &str, num: &str, caption: Option<&str>) ->
 }
 
 /// Emit a native interactive `{js}` cell: an output target div plus an
-/// `application/qmd-js` script carrying the author source verbatim (only `</script`
+/// `application/tali-js` script carrying the author source verbatim (only `</script`
 /// escaped, so it is readable in devtools — no base64). The `data-*` attrs tell the
-/// `qmd-js` enhancer how to wire the cell (shared-scope name, named input, re-run
+/// `tali-js` enhancer how to wire the cell (shared-scope name, named input, re-run
 /// inputs). Block data attrs ride on the wrapper for click-to-source.
 pub(super) fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: &str) -> String {
-    let target = format!("qmd-js-{block_id}");
+    let target = format!("tali-js-{block_id}");
     let mut data = format!(" data-target=\"{target}\"");
     if let Some(n) = js.name.as_deref() {
         data.push_str(&format!(" data-name=\"{}\"", escape_attr(n)));
@@ -66,7 +66,7 @@ pub(super) fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: 
     let safe_src = src.replace("</script", "<\\/script");
     format!(
         "<div{block_attrs} class=\"cell tali-js-cell\"><div class=\"tali-js-out\" id=\"{target}\"></div>\
-         <script type=\"application/qmd-js\"{data}>{safe_src}</script></div>"
+         <script type=\"application/tali-js\"{data}>{safe_src}</script></div>"
     )
 }
 

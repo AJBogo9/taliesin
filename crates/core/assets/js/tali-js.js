@@ -1,6 +1,6 @@
 // Native interactive `{js}` cells — a tiny enhancer that replaces the vendored
 // 440 KB Observable runtime. Each `{js}` cell is emitted (render/mod.rs) as a
-// `<script type="application/qmd-js">` carrying the author's JS plus a sibling
+// `<script type="application/tali-js">` carrying the author's JS plus a sibling
 // target `<div>`; this enhancer runs the source with a small scope and mounts a
 // returned DOM node into the target. Plot + d3 are vendored globals (window.Plot,
 // window.d3); Three.js is dynamically `import()`ed by the cell itself.
@@ -131,19 +131,19 @@
       // Re-run the transitive-downstream closure of this input, in dependency order
       // (the cells that consume `name`, then whatever consumes their derived names).
       scheduleFrom(r, name);
-      // Still fire any callbacks registered manually via the public `qmd.onInput` API.
+      // Still fire any callbacks registered manually via the public `tali.onInput` API.
       var set = r.listeners[name];
       if (set) set.forEach(function (fn) { fn(); });
     });
   }
 
-  // Ingest `<script type="qmd-define">` blobs (the Python ojs_define bridge): set
+  // Ingest `<script type="tali-define">` blobs (the Python ojs_define bridge): set
   // the named values, then re-run every non-input cell — a define can land after
   // the cells first ran (live preview executes Python after the page mounts).
   function bindDefines() {
     var r = rt();
     var changed = false;
-    document.querySelectorAll('script[type="qmd-define"]:not([data-tali-bound])').forEach(function (s) {
+    document.querySelectorAll('script[type="tali-define"]:not([data-tali-bound])').forEach(function (s) {
       s.setAttribute("data-tali-bound", "1");
       try {
         var obj = JSON.parse(s.textContent || "{}");
@@ -157,7 +157,7 @@
         pairs.forEach(function (p) { r.defines[p.name] = p.value; });
         changed = true;
       } catch (e) {
-        console.error("qmd-js: malformed define blob", e);
+        console.error("tali-js: malformed define blob", e);
       }
     });
     // Defines usually land once (cold load) or on kernel restart; re-run every
@@ -219,20 +219,18 @@
       return currentInv;
     }
     var api = makeApi(r, container, function () { return currentInv; });
-    // `tali` is the current name for the cell API; `qmd` is kept as a back-compat
-    // alias (same object) so pre-rename `{js}` cells keep working.
     var fn = new AsyncFunction(
-      "tali", "qmd", "Plot", "d3", "container", "invalidation",
+      "tali", "Plot", "d3", "container", "invalidation",
       src
     );
 
     // `run` is async and AWAITED by the processing loops, so a `//| name:` helper's
-    // value is in the shared scope before a later cell reads it via qmd.get() — the
+    // value is in the shared scope before a later cell reads it via tali.get() — the
     // cross-cell contract OJS got from its module graph, without a reactive engine.
     async function run() {
       freshInv();
       try {
-        var node = await fn(api, api, window.Plot, window.d3, container, currentInv);
+        var node = await fn(api, window.Plot, window.d3, container, currentInv);
         // The returned value is arbitrary author output; `na` reads its duck-typed
         // `.value` / `.querySelector` (an input control, a wrapper, or neither).
         var na = /** @type {any} */ (node);
@@ -249,7 +247,7 @@
           r.scope[name] = (node instanceof Node && na.value !== undefined) ? na.value : node;
         }
       } catch (e) {
-        console.error("qmd-js cell error:", e);
+        console.error("tali-js cell error:", e);
         var pre = document.createElement("pre");
         pre.className = "tali-js-error";
         // In the live preview (client.js defines taliOpenPageSource) show the full stack so the
@@ -306,7 +304,7 @@
     r.cells.forEach(function (c) {
       var inside = c.container && (c.container === node || (node.contains && node.contains(c.container)));
       if (inside) {
-        try { if (c.dispose) c.dispose(); } catch (e) { console.error("qmd-js: cell teardown failed", e); }
+        try { if (c.dispose) c.dispose(); } catch (e) { console.error("tali-js: cell teardown failed", e); }
         if (c.defines && r.inputs[c.defines] && c.container.contains(r.inputs[c.defines])) {
           delete r.inputs[c.defines];
         }
@@ -328,7 +326,7 @@
     var r = /** @type {TaliJsRuntime | null} */ (window.__talijs);
     if (!r) return;
     (r.cells || []).forEach(function (c) {
-      try { if (c.dispose) c.dispose(); } catch (e) { console.error("qmd-js: cell teardown failed", e); }
+      try { if (c.dispose) c.dispose(); } catch (e) { console.error("tali-js: cell teardown failed", e); }
     });
     window.__talijs = null;
   }
@@ -381,11 +379,11 @@
     }
     var cyclic = cells.filter(function (c) { return order.indexOf(c) < 0; });
     cyclic.forEach(function (c) {
-      console.error("qmd-js: dependency cycle involving", c.defines || "(unnamed cell)");
+      console.error("tali-js: dependency cycle involving", c.defines || "(unnamed cell)");
       if (c.container) {
         var pre = document.createElement("pre");
         pre.className = "tali-js-error";
-        pre.textContent = "qmd-js: dependency cycle involving `" + (c.defines || "this cell") + "`";
+        pre.textContent = "tali-js: dependency cycle involving `" + (c.defines || "this cell") + "`";
         c.container.replaceChildren(pre);
       }
     });
@@ -452,7 +450,7 @@
     /** @type {TaliJsCell[]} */
     var fresh = [];
     /** @type {NodeListOf<HTMLElement>} */ (
-      (root || document).querySelectorAll('script[type="application/qmd-js"]:not([data-tali-ran])')
+      (root || document).querySelectorAll('script[type="application/tali-js"]:not([data-tali-ran])')
     ).forEach(function (s) {
       s.setAttribute("data-tali-ran", "1");
       var c = setupCell(s);

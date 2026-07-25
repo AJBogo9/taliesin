@@ -200,7 +200,7 @@ return wrap;
 //| echo: false
 
 // ── A* demo (built once; mounted here; exposes s/draw/resetSearch for the
-//    slider watcher cell below via qmd.set) ────────────────────────────────────
+//    slider watcher cell below via tali.set) ────────────────────────────────────
 
 // ── constants ────────────────────────────────────────────────────────────────
 const COLS = 19;
@@ -645,7 +645,7 @@ root.append(svg.node(), btnRow, iterDisplay);
 draw();
 
 // expose to the slider-watcher cell below (set synchronously, before that cell runs)
-qmd.set("astar", { s, draw, resetSearch });
+tali.set("astar", { s, draw, resetSearch });
 
 return root;
 ```
@@ -655,14 +655,14 @@ return root;
 //| echo: false
 
 // ── watcher: slider changes re-run only this cell; the app is never rebuilt ────
-const astar = qmd.get("astar");
+const astar = tali.get("astar");
 if (!astar) return;
 const { s, draw, resetSearch } = astar;
 
 // fall back to current state when an input isn't registered yet (initial load)
-const h = qmd.value("heuristic"); if (h !== undefined) s.heuristic = h;
-const w = qmd.value("weight");    if (w !== undefined) s.weight    = w;
-const sp = qmd.value("speed");    if (sp !== undefined) s.speed    = sp;
+const h = tali.value("heuristic"); if (h !== undefined) s.heuristic = h;
+const w = tali.value("weight");    if (w !== undefined) s.weight    = w;
+const sp = tali.value("speed");    if (sp !== undefined) s.speed    = sp;
 
 if (!s.animating) {
   resetSearch(s);

@@ -1008,12 +1008,12 @@
   };
 
   // Tear down any `{js}` cells inside `el` (a block about to be detached on
-  // update/remove): qmd-js resolves the cell's `invalidation`, so the author's
+  // update/remove): tali-js resolves the cell's `invalidation`, so the author's
   // `invalidation.then(() => renderer.dispose() / cancelAnimationFrame(...))` cleanup
   // runs, and splices the cell out of its push-only registry. Without this, editing a
   // `{js}`/Three.js cell (which changes its content-hash block id, so we replaceWith a
-  // fresh node) would leak a WebGL context + RAF loop on every edit. No-op when qmd-js
-  // isn't loaded (decks/pages with no `{js}` cells). `window.taliJs` is set by qmd-js.js
+  // fresh node) would leak a WebGL context + RAF loop on every edit. No-op when tali-js
+  // isn't loaded (decks/pages with no `{js}` cells). `window.taliJs` is set by tali-js.js
   // and declared on the shared `Window` type in globals.d.ts.
   const teardownJs = (/** @type {Element|null} */ el) => {
     const q = window.taliJs;
@@ -1225,7 +1225,7 @@
           // Any other case (non-deck, first mount, unrecognizable body) falls back to the
           // wholesale swap: tear down ALL prior `{js}` cells first (resolving every
           // outstanding `invalidation`) so their WebGL contexts + RAF loops are released
-          // and the qmd-js runtime is rebuilt fresh, rather than re-pushing duplicate cells
+          // and the tali-js runtime is rebuilt fresh, rather than re-pushing duplicate cells
           // onto a never-reset registry.
           const reconciled =
             isDeck &&

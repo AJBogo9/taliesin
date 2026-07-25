@@ -208,10 +208,10 @@ return wrap;
 //| echo: false
 //| fig-cap: "VI convergence: the variational q approaches the true posterior. Drag the slider to step through iterations. Dashed blue line is the true posterior; solid orange line is the current q."
 
-const history = qmd.defines.history; if (!history) return;
-const mu_post = qmd.defines.mu_post;
-const sig_post = qmd.defines.sig_post;
-const iter = qmd.value("iter");
+const history = tali.defines.history; if (!history) return;
+const mu_post = tali.defines.mu_post;
+const sig_post = tali.defines.sig_post;
+const iter = tali.value("iter");
 
 const snap = history[iter - 1];
 
@@ -272,8 +272,8 @@ return Plot.plot({
 //| echo: false
 //| fig-cap: "ELBO rises monotonically during VI optimisation."
 
-const history = qmd.defines.history; if (!history) return;
-const iter = qmd.value("iter");
+const history = tali.defines.history; if (!history) return;
+const iter = tali.value("iter");
 
 const ll_data = history.slice(0, 40).map(d => ({ iter: d.iter, elbo: d.elbo }));
 

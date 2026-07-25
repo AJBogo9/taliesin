@@ -862,12 +862,12 @@ fn same_file(a: &Path, b: &Path) -> bool {
     matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
-/// Bodies of the `<script type="application/qmd-js">…</script>` cells in `html` (the
+/// Bodies of the `<script type="application/tali-js">…</script>` cells in `html` (the
 /// author's `{js}` source, where relative `import()`/`fetch()` specifiers live —
 /// invisible to the `src=`/`href=` scan). `</script` is server-escaped in the source, so
 /// the next `</script>` reliably ends the body.
 fn qmd_js_cell_sources(html: &str) -> Vec<&str> {
-    let needle = "type=\"application/qmd-js\"";
+    let needle = "type=\"application/tali-js\"";
     let mut out = Vec::new();
     let mut i = 0;
     while let Some(pos) = html[i..].find(needle) {
@@ -2402,7 +2402,7 @@ mod mirror_tests {
     fn external_refs_flags_remote_and_bare_js_imports_not_relative() {
         let html = concat!(
             "<div data-sourcepos=\"8:1-11:3\" class=\"cell tali-js-cell\">",
-            "<script type=\"application/qmd-js\" data-target=\"x\">",
+            "<script type=\"application/tali-js\" data-target=\"x\">",
             "const three = await import(\"https://esm.sh/three@0.163.0\");\n",
             "const local = await import(\"./helper.js\");\n",
             "const bare = await import('lodash-es');\n",
@@ -2434,7 +2434,7 @@ mod mirror_tests {
             "<p data-sourcepos=\"1:1-1:10\"><img src=\"fig.png\"><a href=\"https://ok.test\">x</a></p>",
             "<img src=\"data:image/svg+xml,%3Csvg/%3E\">",
             "<link href=\"style.css\" rel=\"stylesheet\">",
-            "<div class=\"cell tali-js-cell\"><script type=\"application/qmd-js\">",
+            "<div class=\"cell tali-js-cell\"><script type=\"application/tali-js\">",
             "const m = await import(\"./mod.js\");\n</script></div>",
         );
         assert_eq!(external_refs(html), Vec::new());
@@ -2706,7 +2706,7 @@ mod mirror_tests {
         // A {js} cell importing a local helper + a remote module; plus a normal image.
         let html = concat!(
             "<img src=\"pic.png\">",
-            "<script type=\"application/qmd-js\" data-target=\"c\">\n",
+            "<script type=\"application/tali-js\" data-target=\"c\">\n",
             "const lib = await import(\"./helper.js\");\n",
             "const three = await import(\"https://esm.sh/three@0.163.0\");\n",
             "</script>"

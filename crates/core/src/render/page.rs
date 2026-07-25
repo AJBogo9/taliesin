@@ -258,7 +258,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             //     `01-registry` copy hits `if (window.taliEnhancers) return;` and no-ops, while
             //     its feature scripts (02-16) register into the already-created list.
             //   * On DOMContentLoaded, STATIC_ENHANCE calls `taliEnhanceCode` = registry.run,
-            //     running every registered enhancer (core + qmd-js + any extension); the deferred
+            //     running every registered enhancer (core + tali-js + any extension); the deferred
             //     jslibs (d3/Plot) have executed by then, so `{js}` cells still run correctly.
             let framework_scripts = format!(
                 "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{qmd_js_inline}{mermaid}",
@@ -455,7 +455,7 @@ fn html_page_inner(
     escape_html(title, &mut t);
     let body = doc.body_html();
     // Bare output must contain zero `<script>`; a `{js}` cell's runtime payload is a
-    // `<script type="application/qmd-js">` in the body, so strip those (the cell is
+    // `<script type="application/tali-js">` in the body, so strip those (the cell is
     // inert without its browser runtime; the build warns separately).
     let body = if mode == OutputMode::Bare {
         strip_qmd_js_scripts(&body)
@@ -678,14 +678,14 @@ pub(super) fn default_favicon() -> String {
     )
 }
 
-/// Remove `<script type="application/qmd-js">…</script>` blocks (a `{js}` cell's
+/// Remove `<script type="application/tali-js">…</script>` blocks (a `{js}` cell's
 /// runtime payload) from a rendered body, leaving the empty output container behind.
 /// Used only for `--bare` output, whose contract is zero `<script>`; a `{js}` cell is
 /// inert without its browser runtime. The author source escapes any `</script` to
 /// `<\/script` (see `emit_js_cell`), so the first `</script>` after the opening tag
 /// is always the real terminator.
 fn strip_qmd_js_scripts(body: &str) -> String {
-    const OPEN: &str = "<script type=\"application/qmd-js\"";
+    const OPEN: &str = "<script type=\"application/tali-js\"";
     const CLOSE: &str = "</script>";
     let mut out = String::with_capacity(body.len());
     let mut rest = body;
@@ -711,10 +711,10 @@ mod tests {
 
     // Same base.css marker literal Task 1 confirmed present (see render/tests.rs).
     const MARKER_BASE: &str = ".tali-reader-seg";
-    // A literal unique to qmd-js.js (the `{js}`-cell runtime); its presence in the page
+    // A literal unique to tali-js.js (the `{js}`-cell runtime); its presence in the page
     // proves the runtime shipped INLINE (in External mode all other framework JS is a
     // `<script src=...>` link, so raw runtime text in the page == an inline `<script>`).
-    const MARKER_QMDJS: &str = "qmd-js cell error:";
+    const MARKER_TALIJS: &str = "tali-js cell error:";
 
     #[test]
     fn page_parts_defaults_assemble_a_minimal_page() {
@@ -761,10 +761,10 @@ mod tests {
         // A page WITH a `{js}` cell: the runtime ships inline so `new AsyncFunction`'s
         // `import()` anchors to the page (not `/_assets/`), yet app.js + jslibs stay external.
         let js_html = assemble(
-            "<main id=\"tali-main\"><script type=\"application/qmd-js\">1</script></main>",
+            "<main id=\"tali-main\"><script type=\"application/tali-js\">1</script></main>",
         );
         assert!(
-            js_html.contains(MARKER_QMDJS),
+            js_html.contains(MARKER_TALIJS),
             "{{js}}-cell runtime must be inlined on a {{js}} page in External mode"
         );
         // The inline runtime is a bare `<script>` (no `src`, no `defer`): the whole
@@ -784,7 +784,7 @@ mod tests {
         // A page WITHOUT `{js}` cells does NOT inline the runtime (but still links app.js).
         let prose_html = assemble("<main id=\"tali-main\"><p>prose only</p></main>");
         assert!(
-            !prose_html.contains(MARKER_QMDJS),
+            !prose_html.contains(MARKER_TALIJS),
             "no {{js}}-cell runtime on a {{js}}-free page"
         );
         assert!(
@@ -804,7 +804,7 @@ mod tests {
         };
         let body = "<main id=\"tali-main\"><span class=\"katex\">x</span>\
                     <pre class=\"mermaid\">g</pre>\
-                    <script type=\"application/qmd-js\">1</script></main>";
+                    <script type=\"application/tali-js\">1</script></main>";
         let html = assemble_html_page(&PageParts {
             mode: OutputMode::Build,
             title: "T",

@@ -219,14 +219,14 @@ renders only its output container; its source is never shown as a listing, so th
 is nothing for `echo` to hide.
 
 - `//| viewof: NAME` makes the cell return a DOM control and registers its value
-  under `NAME`. Other cells read it with `qmd.value("NAME")`.
+  under `NAME`. Other cells read it with `tali.value("NAME")`.
 - `//| name: NAME` publishes the cell's return value under `NAME` for other cells.
-  Other cells read it with `qmd.get("NAME")`.
+  Other cells read it with `tali.get("NAME")`.
 - `//| input: A, B` re-runs the cell whenever input `A`, input `B`, or a matching
   Python `define` value changes.
 
-The two readers are not interchangeable. `qmd.value("NAME")` reads an input value: a
-`viewof`, an `{{< input >}}` control, or a `define` value. `qmd.get("NAME")` reads
+The two readers are not interchangeable. `tali.value("NAME")` reads an input value: a
+`viewof`, an `{{< input >}}` control, or a `define` value. `tali.get("NAME")` reads
 a value published by another cell's `//| name:`.
 
 A `//| input:` that names something no cell, `viewof`, or `{{< input >}}` control

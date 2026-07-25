@@ -886,9 +886,9 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
         "KaTeX math renders without JS"
     );
 
-    // The {js} cell's runtime `<script type="application/qmd-js">` is stripped.
+    // The {js} cell's runtime `<script type="application/tali-js">` is stripped.
     assert!(
-        !bare.contains("application/qmd-js"),
+        !bare.contains("application/tali-js"),
         "bare drops the {{js}} cell script block"
     );
 
@@ -929,7 +929,7 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
         "a normal build still ships scripts"
     );
     assert!(
-        build.contains("application/qmd-js"),
+        build.contains("application/tali-js"),
         "a normal build keeps the {{js}} cell"
     );
 }

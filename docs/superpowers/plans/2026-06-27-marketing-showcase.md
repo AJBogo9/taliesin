@@ -112,7 +112,7 @@ A parametric wave-interference surface the visitor orbits; three sliders reshape
 ```{js}
 //| input: detail, twist, amplitude
 //| echo: false
-const detail = qmd.value("detail"), twist = qmd.value("twist"), amp = qmd.value("amplitude");
+const detail = tali.value("detail"), twist = tali.value("twist"), amp = tali.value("amplitude");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // lazy mount: build the scene only when scrolled into view
@@ -163,7 +163,7 @@ the mesh rebuilds live. The whole thing is the cell in the **Source** tab.
 ```js
 //| input: detail, twist, amplitude
 //| echo: false
-const detail = qmd.value("detail"), twist = qmd.value("twist"), amp = qmd.value("amplitude");
+const detail = tali.value("detail"), twist = tali.value("twist"), amp = tali.value("amplitude");
 // ... (identical to the Result cell above; the verifier confirms the two match) ...
 ```
 
@@ -206,7 +206,7 @@ git commit -m "feat(site): reactive 3D hero demo (showcase + index)"
 
 **Interfaces:** Produces reactive name `stage` (from the `.scrolly`).
 
-- [ ] **Step 1: Author the scrolly demo**, modeled exactly on `corpus/explorable/scrolly.qmd`. Stage is a `{js}` Plot (or light canvas) cell reading `qmd.value("stage")`; four `.step`s carry `state="one-source" | "blocks" | "diff" | "many-outputs"` and narrate the value prop. Wrap in the `Result`/`Source` panel-tabset.
+- [ ] **Step 1: Author the scrolly demo**, modeled exactly on `corpus/explorable/scrolly.qmd`. Stage is a `{js}` Plot (or light canvas) cell reading `tali.value("stage")`; four `.step`s carry `state="one-source" | "blocks" | "diff" | "many-outputs"` and narrate the value prop. Wrap in the `Result`/`Source` panel-tabset.
 
 ````markdown
 ## One source, watched as you scroll
@@ -219,7 +219,7 @@ git commit -m "feat(site): reactive 3D hero demo (showcase + index)"
 ```{js}
 //| input: stage
 //| echo: false
-const stage = qmd.value("stage") || "one-source";
+const stage = tali.value("stage") || "one-source";
 // render a simple, legible diagram per stage with Plot/d3 or DOM;
 // e.g. blocks stacking, one block highlighting (the diff), three output icons.
 // ... full cell body ...
@@ -284,7 +284,7 @@ Drag $N$ and watch the sum sharpen toward the square.
 ```{js}
 //| input: harmonics
 //| echo: false
-const N = qmd.value("harmonics");
+const N = tali.value("harmonics");
 const ys = Array.from({length: 500}, (_, t) =>
   d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2*Math.PI*(2*k-1)*t/500)/(2*k-1), 0));
 return Plot.lineY(ys, {curve: "basis", stroke: "var(--qmd-accent)"})

@@ -38,7 +38,7 @@ cargo test                                                      # full suite bef
 - Create: `site/_includes/three-scene.tmd` will be **overwritten** with the same extended content in Task 7 (keep them byte-identical). For this task, only create the exhibit copy.
 
 **Interfaces:**
-- Produces: `qmd.get("makeScene3D")` → `async makeScene3D(buildScene, invalidation, opts)`.
+- Produces: `tali.get("makeScene3D")` → `async makeScene3D(buildScene, invalidation, opts)`.
   - `buildScene(scene, THREE, ctx)` where `ctx = { O, spriteLabel, ctrl, camera, renderer, scene, rebuild, frameObject, loadGLTF }`. `buildScene` **may be async**.
   - `opts` adds `controls` (array) to the existing `width,height,cameraPos,fov,far,bgColor,alpha,target,minDistance,maxDistance,ambientIntensity,onFrame`.
   - `ctx.loadGLTF(url)` → `Promise<THREE.Object3D>` (adds to scene + auto-frames camera).
@@ -330,7 +330,7 @@ git commit -m "feat(graphics3d): exhibit scaffold + landing page"
 - Create: `corpus/graphics3d/molecules.tmd`
 
 **Interfaces:**
-- Consumes: `qmd.get("makeScene3D")` from the include (Task 1), using `ctx.rebuild`, `ctx.frameObject`, and `opts.controls`.
+- Consumes: `tali.get("makeScene3D")` from the include (Task 1), using `ctx.rebuild`, `ctx.frameObject`, and `opts.controls`.
 - Produces: a self-contained page; no exported symbols.
 
 Data model per molecule: `{ atoms: [{el, pos:[x,y,z]}], bonds: [[i,j], ...] }`. `el` is an element symbol keyed into `CPK` (color) and `RADII` (Å-ish display radius).
@@ -354,7 +354,7 @@ the `{js}` cell below.
 //| name: molecules
 //| echo: false
 
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 
 // --- element display data -------------------------------------------------
 const CPK = { H:0xffffff, C:0x222222, N:0x3050f8, O:0xff0d0d, P:0xff8000 };
@@ -486,7 +486,7 @@ function dist(a, b) {
 
 // Caffeine coordinates (Ångström), sourced from PubChem CID 2519 (public domain).
 // See Task 3 Step 2 for how this block was obtained.
-const CAFFEINE_XYZ = qmd.get("caffeineXYZ");
+const CAFFEINE_XYZ = tali.get("caffeineXYZ");
 
 const MOLECULES = {
   water:    { label:"Water (H₂O)",       build: water },
@@ -635,7 +635,7 @@ the wings appear and collapse.
 //| name: lorenz
 //| echo: false
 
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 
 const P = { sigma: 10, rho: 28, beta: 8/3 };
 const N = 8000, dt = 0.006, SCALE = 0.14;
@@ -988,7 +988,7 @@ regenerates. One is data you bring; the other is geometry the page derives.
 ```{js}
 //| name: cad-viewer
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const MODEL_FILE = "assets/2CylinderEngine.glb";  // set to the vendored file (Step 1)
 const el = document.createElement("div");
 makeScene3D(async (scene, THREE, ctx) => {
@@ -1008,7 +1008,7 @@ return el;
 ```{js}
 //| name: cad-gear
 //| echo: false
-const makeScene3D = qmd.get("makeScene3D");
+const makeScene3D = tali.get("makeScene3D");
 const P = { module: 0.5, teeth: 18, pressure: 20 };
 
 // involute spur-gear cross-section → extruded 3-D gear
@@ -1202,7 +1202,7 @@ return container;   // the cell mounts whatever node you return
 ```
 
 Data can come from a `{python}` cell: compute coordinates or a mesh in Python,
-`define()` them, and read them in the `{js}` cell with `qmd.get(...)`, exactly like
+`define()` them, and read them in the `{js}` cell with `tali.get(...)`, exactly like
 the [PCA post](https://andreasbogossian.com) pairs a NumPy computation with a
 three.js scatter. The rendering is browser-native; the data can be whatever your
 kernel produces.

@@ -1,7 +1,7 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check client.js.
 // NOT shipped or embedded — the server only `include_str!`s client.js itself.
 // These declare the globals client.js shares with the server-injected inline
-// scripts (theme_head, deck client, qmd-js cells) and page flags.
+// scripts (theme_head, deck client, tali-js cells) and page flags.
 
 interface Window {
   /** Absolute doc + base-dir (+ site root) paths for click-to-source `vscode://` links. */
@@ -27,7 +27,7 @@ interface Window {
 
   /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
   TaliesinDeck?: any;
-  /** `{js}` reactive runtime API (defined by qmd-js.js): teardown a removed cell
+  /** `{js}` reactive runtime API (defined by tali-js.js): teardown a removed cell
    *  subtree and reset the whole runtime on a full re-mount, to avoid leaking
    *  WebGL contexts / RAF loops across edits + reconnects. */
   taliJs?: { teardown?: (n: Element) => void; reset?: () => void };

@@ -4,7 +4,7 @@
 
 **Goal:** A declarative `::: {.input name="k" type="slider" …}` fenced div that emits a static, keyboard-accessible labeled control feeding the already-shipped `{js}` reactive graph — "drag the slider, the chart updates" with no `//| viewof` boilerplate.
 
-**Architecture:** A new `build_container` arm in `divs.rs` emits a static `.qmd-input` control tagged `data-qmd-input="name"`; an additive scan in `qmd-js.js` `enhance` (before the cell scan) registers it via the existing `registerInput`, so consumer cells read `qmd.value("name")` and the existing `scheduleFrom` re-runs the transitive-downstream closure. A `validate_input` helper emits located warnings. Five types: slider, number, checkbox, text, select.
+**Architecture:** A new `build_container` arm in `divs.rs` emits a static `.qmd-input` control tagged `data-qmd-input="name"`; an additive scan in `qmd-js.js` `enhance` (before the cell scan) registers it via the existing `registerInput`, so consumer cells read `tali.value("name")` and the existing `scheduleFrom` re-runs the transitive-downstream closure. A `validate_input` helper emits located warnings. Five types: slider, number, checkbox, text, select.
 
 **Tech Stack:** Rust (render module, edition 2024), vanilla JS (the bundled `qmd-js.js`, ES5-style), native form controls, the CSS Custom-property theme system. Tests: Rust unit + corpus + chrome-devtools.
 
@@ -329,7 +329,7 @@ Register each static `[data-qmd-input]` control into the reactive runtime, befor
 
 **Interfaces:**
 - Consumes: existing `rt()`, `registerInput(r, name, el)`, `readValue(el)`.
-- Produces: registered inputs so `qmd.value(name)` works + the control's `input` event fires `scheduleFrom`.
+- Produces: registered inputs so `tali.value(name)` works + the control's `input` event fires `scheduleFrom`.
 
 - [ ] **Step 1: Add the static-input scan**
 
@@ -398,13 +398,13 @@ lists the name in `//| input:` re-runs when the control changes — including tr
 ```{js}
 //| name: doubled
 //| input: k
-return qmd.value("k") * 2;
+return tali.value("k") * 2;
 ```
 
 ```{js}
 //| input: doubled
 const p = document.createElement("p");
-p.textContent = "k doubled (transitively) = " + qmd.get("doubled");
+p.textContent = "k doubled (transitively) = " + tali.get("doubled");
 return p;
 ```
 
@@ -416,7 +416,7 @@ A number, a checkbox, a text box, and a dropdown, each driving their own cell:
 ```{js}
 //| input: n
 const p = document.createElement("p");
-p.textContent = "n = " + qmd.value("n");
+p.textContent = "n = " + tali.value("n");
 return p;
 ```
 
@@ -426,7 +426,7 @@ return p;
 ```{js}
 //| input: on
 const p = document.createElement("p");
-p.textContent = qmd.value("on") ? "enabled" : "disabled";
+p.textContent = tali.value("on") ? "enabled" : "disabled";
 return p;
 ```
 
@@ -436,7 +436,7 @@ return p;
 ```{js}
 //| input: q
 const p = document.createElement("p");
-p.textContent = "query: " + qmd.value("q");
+p.textContent = "query: " + tali.value("q");
 return p;
 ```
 
@@ -446,7 +446,7 @@ return p;
 ```{js}
 //| input: c
 const p = document.createElement("p");
-p.textContent = "channel: " + qmd.value("c");
+p.textContent = "channel: " + tali.value("c");
 return p;
 ```
 
@@ -455,7 +455,7 @@ One cell reading several inputs at once:
 ```{js}
 //| input: k, n, on
 const p = document.createElement("p");
-p.textContent = `k=${qmd.value("k")} n=${qmd.value("n")} on=${qmd.value("on")}`;
+p.textContent = `k=${tali.value("k")} n=${tali.value("n")} on=${tali.value("on")}`;
 return p;
 ```
 ````

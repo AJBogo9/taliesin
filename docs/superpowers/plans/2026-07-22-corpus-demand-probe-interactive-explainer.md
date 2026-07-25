@@ -55,12 +55,12 @@ Anisotropic quadratic bowl (the classic "narrow valley" that motivates both η a
 - `{{< input name="lr" type="slider" min=.. max=.. step=.. value=.. label=".." >}}` emits a
   reactive control; its value rides the URL fragment (shareable state).
 - A `{js}` cell body gets `(tali, qmd, Plot, d3, container, invalidation)`; `qmd`≡`tali`.
-- `qmd.value(n)` reads a control's live value even if the cell did **not** declare `//| input:`.
+- `tali.value(n)` reads a control's live value even if the cell did **not** declare `//| input:`.
 - A cell with **no** `//| input:` is a "once" cell: built once, never torn down by the DAG.
-- `qmd.onInput(names, cb)` subscribes cb to input changes — redraw **in place**, no teardown.
+- `tali.onInput(names, cb)` subscribes cb to input changes — redraw **in place**, no teardown.
 - `invalidation.then(cleanup)` runs on re-run/unmount — remove any window/document drag listeners
   there (SVG-local listeners GC with the node).
-- `.scrolly name="scene"` + inner `{js}` `//| input: scene` reading `qmd.value("scene")`;
+- `.scrolly name="scene"` + inner `{js}` `//| input: scene` reading `tali.value("scene")`;
   `::: {.step state="..."}` blocks drive the scene value as they scroll into view.
 
 ## File structure
@@ -88,8 +88,8 @@ paragraph), findings-doc skeleton. Verify `taliesin build corpus/descent` produc
 **Files:** modify `corpus/descent/index.tmd`.
 - Three `{{< input >}}` sliders: `lr` (η), `beta` (momentum), `steps`.
 - One **"once"** `{js}` cell: builds an SVG (nested iso-loss ellipses + origin marker +
-  descent-path polyline + a draggable start circle), reads sliders via `qmd.value`, redraws the
-  path on drag and on `qmd.onInput(["lr","beta","steps"], redraw)`, cleans up on `invalidation`.
+  descent-path polyline + a draggable start circle), reads sliders via `tali.value`, redraws the
+  path on drag and on `tali.onInput(["lr","beta","steps"], redraw)`, cleans up on `invalidation`.
 - A short caption line reflecting the live end-loss (a second small `//| input:` cell or in-cell
   text node) so the reactive chain is visible.
 

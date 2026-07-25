@@ -197,7 +197,7 @@ return {
 //| name: drawSignalPanel
 //| echo: false
 return (svg, { x, components, compColors, compAlpha, wind_f, isMatch, N }) => {
-  const layout = qmd.get("layout");
+  const layout = tali.get("layout");
   const { W, flatH } = layout;
   const xMax = d3.max(x, v => Math.abs(v));
   const xPad = N * 0.10;
@@ -250,7 +250,7 @@ return (svg, { x, components, compColors, compAlpha, wind_f, isMatch, N }) => {
 //| name: drawWindingPanel
 //| echo: false
 return (svg, { wound, cm_x, cm_y, wind_f }) => {
-  const { W, flatH, gapY, circD } = qmd.get("layout");
+  const { W, flatH, gapY, circD } = tali.get("layout");
   const circY0 = flatH + gapY;
   const margin = 18;
   const R      = (circD - 2 * margin) / 2;
@@ -293,7 +293,7 @@ return (svg, { wound, cm_x, cm_y, wind_f }) => {
 //| name: drawSpectrumPanel
 //| echo: false
 return (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
-  const { W, flatH, gapY, circD, gapY2, specH } = qmd.get("layout");
+  const { W, flatH, gapY, circD, gapY2, specH } = tali.get("layout");
   const specY0     = flatH + gapY + circD + gapY2;
   const specFm     = { l: 36, r: 14, t: 18, b: 32 };
   const specMaxMag = d3.max(specK, d => d.mag);
@@ -369,13 +369,13 @@ return (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
 //| input: wind_f
 //| echo: false
 //| fig-cap: "Three-panel interactive: signal x[n] (top), signal wound around a circle at frequency k (middle), full spectrum |X[k]| (bottom). Drag the slider to k = 3, 7, or 12 and watch the winding bunch up while the orange dot in the spectrum jumps to a peak."
-const N          = qmd.defines.winding_N;
-const comp_freqs = qmd.defines.winding_freqs;
-const comp_amps  = qmd.defines.winding_amps;
-const layout     = qmd.get("layout");
-const drawSignalPanel   = qmd.get("drawSignalPanel");
-const drawWindingPanel  = qmd.get("drawWindingPanel");
-const drawSpectrumPanel = qmd.get("drawSpectrumPanel");
+const N          = tali.defines.winding_N;
+const comp_freqs = tali.defines.winding_freqs;
+const comp_amps  = tali.defines.winding_amps;
+const layout     = tali.get("layout");
+const drawSignalPanel   = tali.get("drawSignalPanel");
+const drawWindingPanel  = tali.get("drawWindingPanel");
+const drawSpectrumPanel = tali.get("drawSpectrumPanel");
 if (!N || !comp_freqs || !comp_amps || !layout ||
     !drawSignalPanel || !drawWindingPanel || !drawSpectrumPanel) return;
 
@@ -393,7 +393,7 @@ const specK = Array.from({length: 21}, (_, k) => {
   return { k, mag: Math.sqrt(re * re + im * im) / N };
 });
 
-const wind_f = qmd.value("wind_f");
+const wind_f = tali.value("wind_f");
 const compColors = ["#7eb8f7", "#6ddc8b", "#f0956a"];
 
 const wound  = signalX.map((v, n) => ({
