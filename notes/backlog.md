@@ -133,10 +133,17 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: branch `backlog/skim-batch`, three commits, NOT pushed** (the author pushes on request only).
-All gates green there: 1379 tests / 0 fail with the three gates + `--test-threads=1`, fmt + clippy +
-both JS `tsc` clean. **Do not trust a SHA written here** — re-check with
+**State: the whole SKIM batch is PUSHED** (2026-07-25, 8 commits fast-forwarded onto `origin/main`,
+`c964436..10e4a4b`). Re-verified immediately before the push, not trusted from this file: 1394 tests /
+0 fail across 85 binaries with the three gates + `--test-threads=1`; `cargo fmt --check`,
+`clippy --all-targets` (0 warnings) and both JS `tsc` gates clean; `check` reports no problems on
+`corpus/tarn`, `docs/guide` and `docs/internals`. **Do not trust a SHA written here** — re-check with
 `git log --oneline origin/main..main`; the author pushes mid-session with no signal in this file.
+
+**Owner ruling 2026-07-25: the Cmd-K empty state stays the whole-book outline.** It was the one change
+in the batch that altered a daily-driver surface, and the one-line revert to the flat chapter
+jump-menu was offered and declined. Do not re-litigate it; a collapsed-by-default variant was also
+considered and is not wanted (it is not a one-liner: it needs collapse state + keyboard handling).
 
 **Items 22 (SKIM-1) and 23's Ship A are gone; both shipped 2026-07-25.** **Four owner rulings were
 also taken** (see the prior-state block), which un-gated a large amount of previously-blocked work.
