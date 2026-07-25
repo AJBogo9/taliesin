@@ -217,13 +217,14 @@ const EXPLANATIONS: &[Explanation] = &[
     Explanation {
         code: "TAL-SHAPE-HOLLOW",
         title: "a heading with nothing under it",
-        cause: "The next thing on the page after this heading is another heading, so the \
-                section has no content at all: it is a table-of-contents row that leads \
-                nowhere. Any content counts — a list, a code cell, a figure or a table, not \
-                just a paragraph.",
-        fix: "Write the section, or delete the heading and let the sub-headings stand on \
-              their own. A heading used purely as a grouping label is better expressed as \
-              the parent of real sections.",
+        cause: "This heading has neither text nor subsections beneath it, so the section is \
+                empty on any reading: a table-of-contents row that leads nowhere. Any \
+                content counts — a list, a code cell, a figure or a table, not just a \
+                paragraph. A heading followed by DEEPER headings is an ordinary grouping \
+                parent and is deliberately exempt: it does have content in the document \
+                tree, so asking for an intro paragraph there would be a style opinion.",
+        fix: "Write the section, or delete the heading. If it was meant to group other \
+              sections, give it real subsections (deeper headings) rather than siblings.",
     },
     Explanation {
         code: "TAL-SHAPE-CAPTION",
