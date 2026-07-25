@@ -844,10 +844,16 @@
       /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   const buildToc = () => {
     if (!tocEl) return;
-    const heads = [...root.querySelectorAll("h1[id], h2[id], h3[id]")];
-    if (!heads.length) { tocEl.innerHTML = ""; return; }
+    // Match the build's `render::toc_items` exactly: every ANCHORED heading, then a
+    // window of two levels below the shallowest one present. Selecting `h1,h2,h3` by tag
+    // instead dropped the third level from any page whose sections start below `<h1>` —
+    // a title-block page (sections at h2) listed h2/h3 in the preview and h2/h3/h4 in the
+    // build, so the author was tuning navigation against a TOC no reader ever sees.
     const lvl = (/** @type {Element} */ h) => +h.tagName[1];
-    const base = Math.min(...heads.map(lvl));
+    const anchored = [...root.querySelectorAll("h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]")];
+    if (!anchored.length) { tocEl.innerHTML = ""; return; }
+    const base = Math.min(...anchored.map(lvl));
+    const heads = anchored.filter((h) => lvl(h) - base <= 2);
     let html = "<ul>";
     let level = base;
     let openLi = false;

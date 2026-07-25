@@ -1979,6 +1979,35 @@ mod protocol_contract {
         );
     }
 
+    /// The preview REBUILDS `<nav id="TOC">` on every change while the build emits it from
+    /// `render::toc_items`, so the same selection rule is written twice, in two languages,
+    /// with nothing forcing them to agree. They did not: the client took `h1,h2,h3` by tag
+    /// while the build takes a window of two levels below the shallowest heading PRESENT, so
+    /// every page whose sections start below `<h1>` (any page with a title block) lost its
+    /// third level in the preview only — the author tunes navigation against a TOC readers
+    /// never see, and the suite is green either way.
+    ///
+    /// Pinned as a needle pair, not as an equivalence test: `buildToc` closes over `root` and
+    /// `tocEl` inside client.js's single IIFE, so it cannot be called from Node without
+    /// splitting the bundle (which `js-modularization` deliberately did not do). The Rust
+    /// half of the rule is pinned behaviourally by `render::tests::
+    /// toc_filter_is_relative_to_the_shallowest_heading`.
+    #[test]
+    fn the_previews_toc_uses_the_same_relative_window_as_the_build() {
+        assert!(
+            !CLIENT_JS.contains("h1[id], h2[id], h3[id]"),
+            "the preview must not select TOC headings by absolute tag"
+        );
+        assert!(
+            CLIENT_JS.contains("lvl(h) - base <= 2"),
+            "the preview must filter to two levels below the shallowest anchored heading"
+        );
+        assert!(
+            CLIENT_JS.contains("h4[id],h5[id],h6[id]"),
+            "…which needs the deeper headings selected in the first place"
+        );
+    }
+
     #[test]
     fn client_and_status_css_ship_the_cache_legibility_surface() {
         // DX9: the ⚡ cached badge + the muted cached-cell border are include_str!'d JS/CSS,
