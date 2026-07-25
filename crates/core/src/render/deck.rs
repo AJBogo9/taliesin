@@ -19,6 +19,11 @@ pub(super) const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 pub struct DeckParts<'a> {
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
+    /// Pre-built `description`/OpenGraph/Twitter `<meta>` block, or `""`. A standalone
+    /// build fills this from the deck's own front matter; the live preview passes `""`
+    /// (nothing scrapes a localhost deck), and a site deck already carries the richer
+    /// URL-aware block on `include-in-header`.
+    pub social: &'a str,
     /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
     pub lang: &'a str,
     /// A pre-built `<link rel="icon" …>`. The standalone build passes the bundled
@@ -78,11 +83,12 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n\
          <meta name=\"referrer\" content=\"no-referrer\" />\n\
          <meta name=\"generator\" content=\"Taliesin\" />\n\
-         <title>{title}</title>\n{favicon}{deck_theme}<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
+         <title>{title}</title>{social}\n{favicon}{deck_theme}<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
          </head>\n<body>\n{before_body}<div class=\"tali-deck\">\n<div class=\"tali-slides\"{slides_attr}>\n{slides}</div>\n{overlay}</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
         title = p.title,
+        social = p.social,
         favicon = p.favicon,
         deck_theme = deck_theme_head(p.theme_default, p.theme_is_custom),
         theme = theme_style(p.theme_css),
@@ -147,8 +153,23 @@ pub(super) fn deck_page_from_doc(
     // route / the site's configured mark) and reach `assemble_deck_page` directly.
     let favicon = super::page::default_favicon();
     let overlay = deck_overlay_html(doc.footer.as_deref(), doc.logo.as_deref());
+    // A shared deck link deserves the same preview a shared page link gets (PA-H1). This is
+    // the context-free block a standalone page uses — no `og:url`/`og:image`, because a
+    // single file has no site URL to absolutize against.
+    //
+    // A deck built inside a SITE has already had the richer, URL-aware block pushed onto
+    // `include-in-header` (`site::meta::deck_social_head`, which also has the branded
+    // card), and it reaches this same function. Emitting the basic set unconditionally
+    // would give that deck two `og:title`s, so the richer block wins by suppressing this
+    // one rather than by ordering.
+    let social = if doc.includes.in_header.contains("og:title") {
+        String::new()
+    } else {
+        social_meta_head(Some(title), doc.description.as_deref(), false)
+    };
     assemble_deck_page(&DeckParts {
         title: &t,
+        social: &social,
         lang: doc.lang.as_deref().unwrap_or("en"),
         favicon: &favicon,
         theme_default: &doc.theme_default,
@@ -194,6 +215,11 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
         r#"<script>
 (function(){{
   var DEFAULT = "{mode}";
+  // The deck canvas per mode: light is deck.css's `html {{ background }}`, dark is the
+  // `--tali-bg` token `html.tali-deck-dark` resolves to. Literals because this script runs
+  // BEFORE deck.css parses (a computed read would see the UA default), so
+  // `the_decks_pre_paint_script_keeps_theme_color_with_its_canvas` pins them to the CSS.
+  var BG = {{ dark: '#16181d', light: '#ffffff' }};
   var embedded = window.self !== window.top;
   function osDark(){{ try {{ return matchMedia('(prefers-color-scheme: dark)').matches; }} catch(e){{ return false; }} }}
   function hostTheme(){{ try {{ var t = window.top.document.documentElement.getAttribute('data-theme'); return (t==='dark'||t==='light') ? t : (t==='sepia' ? 'light' : null); }} catch(e){{ return null; }} }}
@@ -207,6 +233,11 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
   window.taliDeckEmbedded = embedded;
   window.taliDeckThemeManaged = true;
   window.taliDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; var prev = window.__taliDeckMode; window.__taliDeckMode = m; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m;
+    // Keep the mobile browser-chrome tint with the canvas, as the page's pre-paint script
+    // does — without this a dark deck sat under a white status bar (PA-H1). Created here
+    // rather than emitted statically so the value can never be a stale literal, and so it
+    // follows the deck's own toggle rather than only the OS.
+    try {{ var hd = document.head || document.getElementsByTagName('head')[0]; var mc = document.querySelector('meta[name="theme-color"]'); if (!mc && hd) {{ mc = document.createElement('meta'); mc.setAttribute('name', 'theme-color'); hd.appendChild(mc); }} if (mc) mc.setAttribute('content', BG[m] || '#ffffff'); }} catch(e) {{}}
     // A live light/dark flip must re-render mermaid (it bakes colours into the SVG at
     // run() time); the page fires this same event, so a deck reuses it. Skip the first
     // apply (prev undefined) — the initial diagram render already reads the resolved mode.

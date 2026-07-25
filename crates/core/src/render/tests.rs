@@ -1882,6 +1882,47 @@ fn deck_page_carries_native_scaffolding() {
     );
 }
 
+/// PA-H1's other residual: a STANDALONE built deck emitted no `description`/OG at all, so
+/// a shared deck link previewed as a bare URL while every page previewed richly.
+///
+/// It gets the same context-free block a standalone page gets (`social_meta_head`), not a
+/// second implementation — a deck built inside a SITE already receives the richer,
+/// URL-aware block on `include-in-header`, and that one must keep winning rather than
+/// being duplicated.
+#[test]
+fn a_standalone_deck_gets_social_meta_but_a_site_deck_is_not_duplicated() {
+    let deck = render_html_page(
+        "---\ntitle: My Talk\ndescription: A talk about ports.\nformat: deck\n---\n\n## Slide\n",
+        "fallback",
+    );
+    for needle in [
+        r#"<meta name="description" content="A talk about ports.">"#,
+        r#"<meta property="og:title" content="My Talk">"#,
+        r#"<meta property="og:description" content="A talk about ports.">"#,
+        r#"<meta property="og:type" content="website">"#,
+    ] {
+        assert!(
+            deck.contains(needle),
+            "a standalone deck must emit {needle}"
+        );
+    }
+
+    // A site deck arrives with the richer block already on `include-in-header`. Simulated
+    // here with the same shape `site::meta::deck_social_head` emits; the basic set must
+    // then stay out of the way instead of emitting a second og:title.
+    let site_deck = render_html_page(
+        "---\ntitle: My Talk\ndescription: A talk about ports.\nformat: deck\n\
+         include-in-header:\n  text: |\n    \
+         <meta property=\"og:title\" content=\"My Talk\">\n---\n\n## Slide\n",
+        "fallback",
+    );
+    assert_eq!(
+        site_deck.matches("property=\"og:title\"").count(),
+        1,
+        "the richer site block must win outright, not stack with the basic one: {site_deck}"
+    );
+}
+
 #[test]
 fn deck_viewport_allows_pinch_zoom() {
     // B5-1 (WCAG 1.4.4/1.4.10, pairs with the A3 mobile feed): a deck is a reading
@@ -3775,6 +3816,76 @@ fn the_pre_paint_canvas_map_tracks_the_theme_tokens() {
             head.to_ascii_lowercase().contains(&entry),
             "the pre-paint BG map must read `{entry}` (from `--tali-bg`); it does not"
         );
+    }
+}
+
+/// PA-H1's residual: a DECK keeps `<meta name="theme-color">` in step with its canvas too.
+///
+/// The page has done this since PA-C5, but a deck never did: it runs an entirely separate
+/// pre-paint script (`deck_theme_head`), so a dark deck sat under a white mobile status
+/// bar. The audit filed this as "the deck `<head>` is bare"; favicon and `generator` were
+/// fixed then, theme-color was the piece left.
+///
+/// The values are literals for exactly the reason the page's are (PA-C5, half two): this
+/// script runs BEFORE the deck stylesheet parses, so reading the computed background would
+/// get the UA default. That is what makes a drift pin necessary rather than optional.
+#[test]
+fn the_decks_pre_paint_script_keeps_theme_color_with_its_canvas() {
+    let head = deck_theme_head("auto", false);
+    // Needle the mechanism, not the phrase: a bare `contains("theme-color")` is satisfied
+    // by any *comment* naming it, which is how the first draft of this pin passed against
+    // a build with the fix deliberately removed.
+    assert!(
+        head.contains(r#"setAttribute('name', 'theme-color')"#),
+        "the deck's pre-paint script must create a theme-color meta; it does not"
+    );
+    assert!(
+        head.contains("mc.setAttribute('content', BG[m]"),
+        "the deck's theme-color must be set from the BG map, so it follows the toggle"
+    );
+
+    // Dark: the deck canvas is `html.tali-deck-dark { background: var(--tali-bg) }`, so
+    // the literal must track the same token the page's dark entry does.
+    let dark = token_hex_in(TOKENS_DARK_CSS, ":root", "--tali-bg");
+    let dark_entry = format!("dark: '{dark}'");
+    assert!(
+        head.to_ascii_lowercase().contains(&dark_entry),
+        "the deck's BG map must read `{dark_entry}` (from `--tali-bg`); it does not"
+    );
+
+    // Light: the deck canvas is deck.css's own `html { background: … }`, which is a bare
+    // literal rather than a token — so read it from the stylesheet and normalise `#fff`
+    // to the 6-digit form the script uses.
+    let rule = deck_css_html_canvas();
+    let light_entry = format!("light: '{rule}'");
+    assert!(
+        head.to_ascii_lowercase().contains(&light_entry),
+        "the deck's BG map must read `{light_entry}` (from deck.css's `html` rule); it does not"
+    );
+}
+
+/// deck.css's `html { background: … }` canvas colour, as a lowercase 6-digit hex.
+fn deck_css_html_canvas() -> String {
+    let deck_css = include_str!("../../assets/css/deck.css");
+    let rule = deck_css
+        .split("html {")
+        .nth(1)
+        .expect("deck.css must carry an `html {` canvas rule");
+    let at = rule
+        .find('#')
+        .expect("deck.css's `html` canvas rule must be a hex literal");
+    let hex: String = rule[at + 1..]
+        .chars()
+        .take_while(|c| c.is_ascii_hexdigit())
+        .collect();
+    let hex = hex.to_ascii_lowercase();
+    match hex.len() {
+        // `#fff` and `#ffffff` are the same colour; the script spells it in full.
+        3 => {
+            let c: Vec<char> = hex.chars().collect();
+            format!("#{0}{0}{1}{1}{2}{2}", c[0], c[1], c[2])
+        }
+        _ => format!("#{hex}"),
     }
 }
 

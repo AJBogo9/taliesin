@@ -1034,6 +1034,9 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         boot = protocol::boot_id(),
     );
     taliesin_core::assemble_deck_page(&taliesin_core::DeckParts {
+        // No social meta for a live preview: nothing scrapes a localhost deck, and the
+        // built deck is where a shared link actually comes from.
+        social: "",
         title: "taliesin",
         // The preview page chrome is English ("taliesin"); the built artifact honours
         // the doc's front-matter `lang:`.
