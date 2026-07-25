@@ -602,7 +602,10 @@ fn build_page_executing(
             log::warn(&locate(w, fallback));
             diagnostics.push(crate::check::diag_from(w, fallback));
         }
-        problems += doc.warnings.len();
+        // Advice (severity `suggestion`) is reported but never blocks: a rule that suggests
+        // a reword must not fail a build, or the only way to keep CI green is to leave the
+        // rule off. Same classification `check` gates on, so the two cannot disagree.
+        problems += crate::check::blocking(&doc.warnings);
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
         // embedded target beside the page. A single-doc build ships the iframe but
         // not its target, so the embed would 404 — warn (and count it toward `--strict`,
@@ -646,7 +649,7 @@ fn build_page_executing(
             log::warn(&locate(w, fallback));
             diagnostics.push(crate::check::diag_from(w, fallback));
         }
-        problems += statics.len();
+        problems += crate::check::blocking(&statics);
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
@@ -1099,7 +1102,7 @@ async fn build_one_page(
         doc.format,
         crate::check::Scope::InSite,
     );
-    problems += statics.len();
+    problems += crate::check::blocking(&statics);
     for w in &statics {
         warnings.push(locate(w, &page.rel));
         diagnostics.push(crate::check::diag_from(w, &page.rel));
@@ -1158,7 +1161,7 @@ async fn build_one_page(
         warnings.push(locate(w, &page.rel));
         diagnostics.push(crate::check::diag_from(w, &page.rel));
     }
-    problems += render_warnings.len();
+    problems += crate::check::blocking(&render_warnings);
     // Offline-guarantee, per page: flag any external reference this page keeps, exactly like the
     // single-doc build, so the common multi-page deploy (`build <dir>`) is covered too.
     // Informational — deferred into the page's warnings, never counted in `problems`/`--strict`.

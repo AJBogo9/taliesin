@@ -18,7 +18,7 @@ title: "CLI reference"
 | `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 | `vocab` | Emit the editor autocomplete vocabulary as JSON (the companion consumes it) |
-| `check <file.tmd\|dir> [--format human\|json]` | List every located diagnostic and exit non-zero if any (a CI / pre-publish gate) |
+| `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
 | `init [dir]` | Scaffold a minimal previewable site (`_site.yml` + `index.tmd`) in `dir` (default `.`); refuses to overwrite |
 | `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
 | `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
@@ -49,12 +49,35 @@ and deterministic, so runtime cell errors stay in `preview`/`build`). Output is 
 greppable `path:line: severity[CODE]: message` linter line by default, closed by a
 per-severity summary (`3 problems (1 error, 2 warnings)`) and a `taliesin check
 --explain <CODE>` footer; or a `{ "diagnostics": [{file, line, message, code, severity,
-docs_url}], "environment": [...] }` object with `--format json`. It exits `0` when clean
-and `1` when any diagnostic is found, so it drops straight into CI or a pre-commit hook:
+docs_url}], "environment": [...] }` object with `--format json`. It exits `0` when
+nothing above the severity floor fired, so it drops straight into CI or a pre-commit hook:
 
 ```sh
-taliesin check .                          # fails (exit 1) if any page has a diagnostic
+taliesin check .                          # fails (exit 1) on any error or warning
+taliesin check . --strict                 # …and on suggestions too
+taliesin check . --errors-only            # …on errors alone; warnings neither shown nor gated
 taliesin check . --format json > problems.json
+```
+
+### What fails the run
+
+There are three severities, and they exist to keep the gate honest: advice about how a
+sentence reads must not have the same power over CI as a broken cross-reference.
+
+| Severity | Means | Fails `check` |
+|---|---|---|
+| `error` | The document is wrong: a broken ref, a dead link, unparseable YAML | always |
+| `warning` | Something will silently not work: an unknown key, a missing `alt` | by default; not under `--errors-only` |
+| `suggestion` | Advice you may decline: the opt-in `prose-lint:` findings | never, unless you pass `--strict` |
+
+A suggestion is always **printed**; only the exit code changes. `build --strict` and
+`publish` (strict by default) use the same rule, so a style suggestion can never block a
+release, and the summary says so rather than reporting advice as a problem beside an
+exit `0`:
+
+```
+doc.tmd:6: suggestion[TAL-PROSE-WEASEL]: weasel word `simply` (consider cutting)
+1 suggestion (advice; nothing here fails the run)
 ```
 
 `--format json` stays valid JSON even when `check` itself can't run: an unreadable or
@@ -81,15 +104,16 @@ At a glance, here is everything `check` looks at, grouped by what it protects:
 | **Local media** | Missing local images (`src`/`href`) and `{{< video >}}`/`<video>` files |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt`, a mid-document heading-level skip (decks exempt), an `<a>`/`<button>` with no accessible name |
-| **Opt-in** | `prose-lint:` banned-word findings |
+| **Opt-in** | `prose-lint:` findings (weasel words, repeated words, your own banned list) — all severity `suggestion` |
 
 External `http(s)://` links are never fetched (`check` stays offline and
 deterministic), and it never executes code cells. On its own, `check` exits `1` if it
-finds **anything** in any of those categories; it is the kernel-free gate.
+finds an error or a warning in any of those categories; it is the kernel-free gate.
 
-`--strict` is a separate flag on **`build`** (not on `check`). It promotes a normally
-non-fatal build into a hard failure: the page is still written, but `build` exits
-non-zero if **any located warning** fired or **any code cell errored** at runtime.
+`--strict` also exists on **`build`**, where it means the same thing one step further
+along: it promotes a normally non-fatal build into a hard failure, so the page is still
+written but `build` exits non-zero if **any located warning** fired or **any code cell
+errored** at runtime. Advice is exempt there too.
 Because `build` does run cells, `--strict` adds the one thing `check` structurally
 can't see (a cell that *throws*) on top of the located diagnostics, which makes
 `taliesin check . && taliesin build . --strict` a thorough two-stage CI gate: `check`

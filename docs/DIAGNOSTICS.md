@@ -186,6 +186,30 @@ A `{{< video clip.mp4 >}}` (or similar) names a local media file that does not e
 
 To fix: Correct the path or add the file. Remote media URLs are not checked.
 
+## TAL-PROSE-BANNED
+
+**a term this document's own banned list forbids**
+
+The document's `prose-lint: {banned: [...]}` list names this term, so the lint flagged it. The list is yours; nothing is banned by default.
+
+To fix: Use the wording you decided on instead, or drop the term from the `banned` list if the ban no longer applies.
+
+## TAL-PROSE-REPEAT
+
+**the same word twice in a row**
+
+The opt-in prose lint found a word immediately repeated (`the the`, `a a`). Almost always an editing artefact left by a rewritten sentence, and one of the few prose defects that is genuinely objective.
+
+To fix: Delete the duplicate. If the repetition is deliberate (a quoted stutter, a literal), the rule has no exception list — reword or turn the lint off for that document.
+
+## TAL-PROSE-WEASEL
+
+**a hedging word the sentence does not need**
+
+The opt-in prose lint (`prose-lint:` in front matter) found one of a small closed list of hedges — `very`, `simply`, `obviously`, `basically` and friends. They read as emphasis but carry no information, and `obviously` additionally tells a reader who did not find it obvious that they should have.
+
+To fix: Cut the word and read the sentence again; it almost always survives unchanged. This is advice, not a defect: it is severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
+
 ## TAL-REACTIVE
 
 **a broken reactive graph**

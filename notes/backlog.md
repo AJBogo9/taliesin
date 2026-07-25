@@ -145,7 +145,8 @@ What is left now sorts into:
      `hidden="until-found"` for tab panels (four edits, see the item); bound runaway cell output in
      CSS. Sequence **29's R1** with it (it rebuilds the index anyway). *Ship A already changed the
      index shape once, so re-measure the cap's real cost on a fresh build before quoting 18.3%.*
-  2. **24a** (S) — the three-state `check` severity floor, now RULED yes. Gates 24b and 24c.
+  2. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
+     three-state floor) shipped 2026-07-25, so the lints in 24c are no longer gate-blocked either.
   3. **28's (5)** (S) — viewport-driven overview column count. The only code left in item 28.
   4. **31** (S) — the contradictory book-chapter label rule, found while building Ship A. One-line
      precedence flip, but it relabels chapters, so check the dogfood books first.
@@ -335,19 +336,22 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### C. Low / hardening (P3)
 
-24. **SKIM-3: author-side structure tooling** (P3, M-L, **two owner rulings gate it**; detail:
+24. **SKIM-3: author-side structure tooling** (P3, M-L, **its severity-floor prerequisite shipped 2026-07-25**; detail:
     [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). `taliesin check` has 27 diagnostic
     families and **none** concerns document structure: it prints "no problems found" on a 32,600-word book
     with a 4,077-word chapter behind 9 headings and a broken number scheme on every page. Genuine market gap
     (measured from source: Vale/Google 2 of 31 rules structural, Microsoft 4 of 39, proselint 0 of 26,
     markdownlint's are syntactic). Dependency order is strict:
-    - **`skim-suggestion-severity` first (S).** `check` exits non-zero on ANY diagnostic, so a structural lint
-      turns a green gate red for advice. Smaller than it looks: `check.rs:818`'s `at_severity_floor` already
-      exists for `--errors-only` and becomes a three-state floor (printed output keeps showing everything, the
-      **exit** default moves to errors+warnings). Must also teach `build --strict` (`build.rs:649`/`:1102`)
-      and `publish.rs:58`, or a default-on suggestion still blocks publish. **RULED 2026-07-25: yes, ship the three-state floor.** (The same
-      plumbing was declined 2026-07-10 for TODO surfacing; the owner reversed that here.) So the
-      "only four binary rules, red gate" fallback is dead — build the floor first, as written.
+    - ~~**`skim-suggestion-severity` first (S).**~~ **SHIPPED 2026-07-25.** `Floor` is three-state
+      (`--errors-only` / default / `--strict`); `codes::SUGGESTION` + `severity_rank` + `gates_at` own the
+      ordering so no two commands can disagree; `check --strict` is new; `build --strict` and `publish`
+      count only `check::blocking(...)`, so advice never blocks a release. **The audit understated it:
+      this was not just plumbing for a future lint.** The opt-in `prose-lint:` rules were classified
+      `TAL-CHECK`/**ERROR** by the `classify` fallback, so `weasel word \`simply\` (consider cutting)`
+      already failed `check`, `build --strict` and `publish` — a green gate cost you the rule. They are
+      now `TAL-PROSE-WEASEL`/`-REPEAT`/`-BANNED` at `suggestion`, placed **first** in `TABLE` because the
+      needles below include `("math", …)` and "weasel word \`mathematically\`" would have classified as a
+      math diagnostic. The summary no longer calls advice a "problem" beside an exit 0.
     - **`taliesin skim` + `machine-shape-projections` BEFORE the lints, not after** (you cannot calibrate a
       structural lint against a corpus you cannot measure). `skim` prints the layer-cake projection (headings
       + numbers, first sentences, captions, callout titles, theorem statements) as one linear stream across a

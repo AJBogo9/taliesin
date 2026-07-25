@@ -205,7 +205,7 @@ fn usage() {
     println!();
     println!("Inspect");
     println!(
-        "  check <file|dir> [--format human|json] [--errors-only] [--require-kernel] [--explain <CODE>]"
+        "  check <file|dir> [--format human|json] [--errors-only|--strict] [--require-kernel] [--explain <CODE>]"
     );
     println!("                             list located diagnostics; exits non-zero if any");
     println!(
@@ -287,17 +287,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin build . --jobs 4\n"
         }
         "check" => {
-            "taliesin check <file.tmd | dir> [--format human|json] [--errors-only]\n\
+            "taliesin check <file.tmd | dir> [--format human|json] [--errors-only|--strict]\n\
              \x20                            [--require-kernel] [--stdin] [--explain <CODE>]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
-             are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
+             ERROR or WARNING is found (a CI / pre-publish gate). A SUGGESTION is advice:\n\
+             it is printed and never fails the run unless you ask with --strict. Does NOT\n\
+             execute code cells.\n\
              \n\
              Flags:\n\
              \x20 --format human   path:line: message lines to stderr (default)\n\
              \x20 --format json    {diagnostics:[{code,docs_url,severity,file,line,message,\n\
              \x20                     suggestion?}], environment:[...]} object to stdout (jq)\n\
              \x20 --errors-only    report + gate on errors only; warnings no longer fail\n\
+             \x20 --strict         also fail on suggestions (the strictest gate)\n\
              \x20 --require-kernel also fail if a used language's Jupyter kernel isn't ready\n\
              \x20                  (interpreter + ipykernel/IRkernel); off by default\n\
              \x20 --stdin          lint the buffer piped on stdin as if it were <file.tmd>,\n\

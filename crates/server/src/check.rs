@@ -138,6 +138,20 @@ pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str)
     d
 }
 
+/// Whether a render warning is **advice** rather than a defect (severity `suggestion`), so
+/// `build --strict` and `publish` must report it and not fail on it. The classification is
+/// the same one `check` uses, derived from the message, so the three commands cannot
+/// disagree about what blocks a release.
+pub(crate) fn is_advice(w: &taliesin_core::render::Warning) -> bool {
+    use taliesin_core::diagnostics::codes;
+    codes::classify(&w.message).1 == codes::SUGGESTION
+}
+
+/// How many of `warnings` block a `--strict` build (i.e. all but the advice).
+pub(crate) fn blocking(warnings: &[taliesin_core::render::Warning]) -> usize {
+    warnings.iter().filter(|w| !is_advice(w)).count()
+}
+
 /// Serialize just the diagnostics as `{ "diagnostics": [...] }` — the shape `build`/`publish`
 /// emit under `--format json` (no `environment`; a build already runs kernels, and the
 /// agent consuming a failing build wants the problems, not the interpreter probe). Reuses
@@ -509,6 +523,10 @@ fn human_summary(diags: &[Diagnostic]) -> String {
         .iter()
         .filter(|d| d.severity == codes::WARNING)
         .count();
+    let suggestions = diags
+        .iter()
+        .filter(|d| d.severity == codes::SUGGESTION)
+        .count();
     let mut parts = Vec::new();
     if errors > 0 {
         parts.push(format!("{errors} error{}", plural(errors)));
@@ -516,11 +534,24 @@ fn human_summary(diags: &[Diagnostic]) -> String {
     if warnings > 0 {
         parts.push(format!("{warnings} warning{}", plural(warnings)));
     }
-    let n = diags.len();
-    let mut s = format!("{n} problem{}", plural(n));
-    if !parts.is_empty() {
-        s.push_str(&format!(" ({})", parts.join(", ")));
+    if suggestions > 0 {
+        parts.push(format!("{suggestions} suggestion{}", plural(suggestions)));
     }
+    let n = diags.len();
+    // Don't call advice a "problem". When nothing above `suggestion` fired, the run passed;
+    // saying "3 problems" and then exiting 0 reads like the exit code is broken.
+    let mut s = if errors + warnings == 0 && suggestions > 0 {
+        format!(
+            "{suggestions} suggestion{} (advice; nothing here fails the run)",
+            plural(suggestions)
+        )
+    } else {
+        let mut s = format!("{n} problem{}", plural(n));
+        if !parts.is_empty() {
+            s.push_str(&format!(" ({})", parts.join(", ")));
+        }
+        s
+    };
     s.push('\n');
     s.push_str(
         "\nFor more information about a diagnostic, try `taliesin check --explain <CODE>`.\n",
@@ -607,6 +638,7 @@ const CHECK_FLAGS: &[&str] = &[
     "--json",
     "--explain",
     "--errors-only",
+    "--strict",
     "--require-kernel",
     "--stdin",
 ];
@@ -642,10 +674,10 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     let mut format = "human";
     let mut explain = false;
     let mut explain_code: Option<&str> = None;
-    // DX18 exit-gating knobs (both default off, so the default `check` is byte-identical):
-    // `--errors-only` drops warnings from the output + exit decision; `--require-kernel`
+    // DX18 exit-gating knobs. `--errors-only` narrows the floor to errors (dropping warnings
+    // from the output too); `--strict` widens it to include advice; `--require-kernel`
     // promotes a missing kernel for a used language from informational to a failure.
-    let mut errors_only = false;
+    let mut floor = Floor::Warnings;
     let mut require_kernel = false;
     // `--stdin`: lint the editor buffer piped on stdin, not the last-saved file (E2 on-type).
     let mut stdin = false;
@@ -659,7 +691,8 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             }
             // `--json`: clig.dev shorthand for `--format json`.
             "--json" => format = "json",
-            "--errors-only" => errors_only = true,
+            "--errors-only" => floor = Floor::Errors,
+            "--strict" => floor = Floor::All,
             "--require-kernel" => require_kernel = true,
             "--stdin" => stdin = true,
             // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next
@@ -755,7 +788,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         Vec::new()
     };
     // `--errors-only` drops warnings from what is shown AND from the exit decision.
-    let diags = at_severity_floor(diags, errors_only);
+    let diags = at_severity_floor(diags, floor);
     let kernel_fail = kernel_gate_fails(&environment, require_kernel);
     if format == "json" {
         // JSON to stdout only, so it pipes cleanly.
@@ -803,20 +836,48 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             );
         }
     }
-    // Fail on any reported diagnostic (at the chosen severity floor) OR, under
-    // `--require-kernel`, a used language whose kernel isn't ready.
-    if diags.is_empty() && !kernel_fail {
+    // Fail on any reported diagnostic AT OR ABOVE the chosen severity floor (so advice is
+    // printed and does not fail the run) OR, under `--require-kernel`, a used language whose
+    // kernel isn't ready.
+    if gating(&diags, floor).next().is_none() && !kernel_fail {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
 }
 
-/// The diagnostics `check` reports + gates on at the requested severity floor. With
-/// `--errors-only`, warnings are dropped from both the output and the exit decision; the
-/// default keeps every diagnostic. Pure, so the DX18 gate is unit-testable.
-fn at_severity_floor(diags: Vec<Diagnostic>, errors_only: bool) -> Vec<Diagnostic> {
-    if errors_only {
+/// Which severities fail the run. Three states, because two could not express "print the
+/// advice but do not fail on it": with only `--errors-only` and the default, a rule whose
+/// whole point is to suggest a rewrite turned a green gate red, so the only way to keep CI
+/// green was to leave the rule off. Printed output is unaffected except under
+/// `--errors-only`, which has always narrowed what it shows as well.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Floor {
+    /// `--errors-only`: report and fail on errors alone.
+    Errors,
+    /// The default: report everything, fail on errors and warnings (never on advice).
+    Warnings,
+    /// `--strict`: report everything and fail on all of it, advice included.
+    All,
+}
+
+impl Floor {
+    /// The severity string this floor gates at (see `codes::gates_at`).
+    fn severity(self) -> &'static str {
+        use taliesin_core::diagnostics::codes;
+        match self {
+            Floor::Errors => codes::ERROR,
+            Floor::Warnings => codes::WARNING,
+            Floor::All => codes::SUGGESTION,
+        }
+    }
+}
+
+/// The diagnostics `check` **reports**. `--errors-only` drops warnings from the output as
+/// well as the gate (its long-standing behaviour); every other floor shows everything,
+/// because advice you cannot see is advice you cannot act on. Pure, so it is unit-testable.
+fn at_severity_floor(diags: Vec<Diagnostic>, floor: Floor) -> Vec<Diagnostic> {
+    if floor == Floor::Errors {
         diags
             .into_iter()
             .filter(|d| d.severity == taliesin_core::diagnostics::codes::ERROR)
@@ -824,6 +885,16 @@ fn at_severity_floor(diags: Vec<Diagnostic>, errors_only: bool) -> Vec<Diagnosti
     } else {
         diags
     }
+}
+
+/// The reported diagnostics that actually **fail** the run at this floor. Separate from
+/// [`at_severity_floor`] on purpose: a suggestion is printed and does not gate, which is
+/// the whole point of the third state.
+fn gating(diags: &[Diagnostic], floor: Floor) -> impl Iterator<Item = &Diagnostic> {
+    let at = floor.severity();
+    diags
+        .iter()
+        .filter(move |d| taliesin_core::diagnostics::codes::gates_at(d.severity, at))
 }
 
 /// Whether `--require-kernel` should fail the run: it is set AND some used language's
@@ -1637,7 +1708,7 @@ mod tests {
         assert!(
             matches!(
                 parsed["diagnostics"][0]["severity"].as_str(),
-                Some("error" | "warning")
+                Some("error" | "warning" | "suggestion")
             ),
             "each diagnostic carries a severity: {json}"
         );
@@ -1817,17 +1888,82 @@ mod tests {
         )
     }
 
+    fn suggestion_diag() -> Diagnostic {
+        // Classifies as TAL-PROSE-WEASEL / SUGGESTION.
+        Diagnostic::new(
+            "a.tmd".into(),
+            Some(1),
+            "weasel word `simply` (consider cutting)".into(),
+        )
+    }
+
     #[test]
     fn errors_only_drops_warnings_but_keeps_the_default_inclusive() {
         let both = vec![error_diag(), warning_diag()];
         // Default: every diagnostic is reported + gated on.
-        assert_eq!(at_severity_floor(both.clone(), false).len(), 2);
+        assert_eq!(at_severity_floor(both.clone(), Floor::Warnings).len(), 2);
         // --errors-only: warnings vanish from the reported (and thus gated) set.
-        let errs = at_severity_floor(both, true);
+        let errs = at_severity_floor(both, Floor::Errors);
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].severity, taliesin_core::diagnostics::codes::ERROR);
         // A warning-only doc becomes empty under --errors-only (so the run passes).
-        assert!(at_severity_floor(vec![warning_diag()], true).is_empty());
+        assert!(at_severity_floor(vec![warning_diag()], Floor::Errors).is_empty());
+    }
+
+    #[test]
+    fn advice_is_always_printed_and_only_gates_under_strict() {
+        let all = vec![error_diag(), warning_diag(), suggestion_diag()];
+        // Printed: the default and --strict both show everything. Advice you cannot see is
+        // advice you cannot act on, so the third state changes the GATE, not the output.
+        assert_eq!(at_severity_floor(all.clone(), Floor::Warnings).len(), 3);
+        assert_eq!(at_severity_floor(all.clone(), Floor::All).len(), 3);
+        // Gated: default = error + warning; --strict = all three; --errors-only = the error.
+        assert_eq!(gating(&all, Floor::Warnings).count(), 2);
+        assert_eq!(gating(&all, Floor::All).count(), 3);
+        assert_eq!(gating(&all, Floor::Errors).count(), 1);
+    }
+
+    #[test]
+    fn an_advice_only_document_passes_the_default_gate_but_fails_strict() {
+        // The whole point of the third state: a rule that suggests a reword must not turn a
+        // green CI gate red, or the only way to stay green is to leave the rule off.
+        let advice = vec![suggestion_diag(), suggestion_diag()];
+        assert_eq!(at_severity_floor(advice.clone(), Floor::Warnings).len(), 2);
+        assert_eq!(gating(&advice, Floor::Warnings).count(), 0);
+        assert_eq!(gating(&advice, Floor::All).count(), 2);
+        // …and the summary says so rather than calling advice a "problem" beside an exit 0.
+        let s = human_summary(&advice);
+        assert!(s.contains("2 suggestions"), "counts the advice: {s}");
+        assert!(
+            s.contains("nothing here fails the run"),
+            "explains the exit code: {s}"
+        );
+        assert!(!s.contains("problem"), "advice is not a problem: {s}");
+    }
+
+    #[test]
+    fn an_unclassified_severity_still_gates() {
+        // A diagnostic nobody catalogued is not something to silently stop failing on.
+        use taliesin_core::diagnostics::codes;
+        assert!(codes::gates_at("nonsense-severity", codes::WARNING));
+        assert_eq!(
+            codes::severity_rank("nonsense-severity"),
+            codes::severity_rank(codes::ERROR)
+        );
+    }
+
+    #[test]
+    fn build_strict_counts_defects_and_ignores_advice() {
+        use taliesin_core::render::Warning;
+        let ws = vec![
+            Warning::new("broken cross-reference: @fig-x".to_string()),
+            Warning::new("weasel word `simply` (consider cutting)".to_string()),
+            Warning::new("repeated word `the`".to_string()),
+        ];
+        // `--strict` (and `publish`, which is strict by default) fail on the broken ref and
+        // nothing else: advice is logged by the build and never blocks a release.
+        assert_eq!(blocking(&ws), 1);
+        assert!(is_advice(&ws[1]) && is_advice(&ws[2]) && !is_advice(&ws[0]));
     }
 
     fn env_fixture(runs: bool, kernel_pkg_ok: bool) -> EnvEntry {

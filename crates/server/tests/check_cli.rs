@@ -53,7 +53,10 @@ fn check_json_diagnostics_carry_codes_and_suggestions() {
         let code = d["code"].as_str().unwrap_or("");
         assert!(code.starts_with("TAL-"), "stable code, got: {d}");
         let sev = d["severity"].as_str().unwrap_or("");
-        assert!(sev == "error" || sev == "warning", "severity, got: {d}");
+        assert!(
+            sev == "error" || sev == "warning" || sev == "suggestion",
+            "severity, got: {d}"
+        );
     }
 
     // The `treme` front-matter typo carries the structured replacement.
@@ -328,4 +331,88 @@ fn check_json_front_matter_typo_carries_a_column_span() {
         xref.get("end_col").is_none(),
         "un-columned diag omits end_col: {xref}"
     );
+}
+
+// --- the three-state severity floor (SKIM-3a) ---------------------------------------
+// `check` used to exit non-zero on ANY diagnostic, which made an advice-shaped rule
+// impossible: `prose.tmd`'s "weasel word `very` (consider cutting)" was reported as an
+// ERROR and failed `check`, `build --strict` and `publish` (strict by default). The floor
+// is now three-state, so advice is printed and gates only when asked for.
+
+#[test]
+fn advice_is_reported_at_severity_suggestion_and_passes_the_default_gate() {
+    let (ok, stdout, _e) = run(&[
+        "check",
+        &corpus("diagnostics/prose.tmd"),
+        "--format",
+        "json",
+    ]);
+    assert!(
+        ok,
+        "a document whose only findings are advice passes: {stdout}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    assert!(
+        !diags.is_empty(),
+        "prose.tmd still trips the lint: {stdout}"
+    );
+    // Reported, not swallowed — and every one of them is advice, so nothing gates.
+    assert!(
+        diags.iter().all(|d| d["severity"] == "suggestion"),
+        "every prose-lint finding is advice: {stdout}"
+    );
+    // Each carries its own family code, not the generic fallback.
+    assert!(
+        diags.iter().all(|d| d["code"]
+            .as_str()
+            .is_some_and(|c| c.starts_with("TAL-PROSE-"))),
+        "prose findings carry their own codes: {stdout}"
+    );
+}
+
+#[test]
+fn strict_gates_on_advice_and_errors_only_hides_it() {
+    let path = corpus("diagnostics/prose.tmd");
+    // --strict: the same advice now fails the run (the opt-in strictest gate).
+    let (ok_strict, _o, _e) = run(&["check", &path, "--strict"]);
+    assert!(!ok_strict, "--strict fails on advice");
+    // --errors-only: advice is below the floor, so it is neither shown nor gated.
+    let (ok_eo, stdout, _e2) = run(&["check", &path, "--errors-only", "--format", "json"]);
+    assert!(ok_eo, "--errors-only passes an advice-only document");
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+    assert!(
+        v["diagnostics"].as_array().expect("array").is_empty(),
+        "--errors-only reports nothing here: {stdout}"
+    );
+}
+
+#[test]
+fn the_human_summary_does_not_call_advice_a_problem() {
+    let (ok, _o, stderr) = run(&["check", &corpus("diagnostics/prose.tmd")]);
+    assert!(ok, "advice-only passes");
+    assert!(
+        stderr.contains("suggestion") && stderr.contains("nothing here fails the run"),
+        "the summary explains the exit code: {stderr}"
+    );
+    assert!(
+        !stderr.contains("problem"),
+        "advice is not reported as a problem beside an exit 0: {stderr}"
+    );
+}
+
+#[test]
+fn build_strict_ships_a_document_whose_only_findings_are_advice() {
+    // The failure this whole floor exists to prevent: `publish` is strict by default, so an
+    // ERROR-severity style suggestion blocked releasing a document over a word choice.
+    let out = std::env::temp_dir().join(format!("tali-advice-build-{}.html", std::process::id()));
+    let (ok, _o, stderr) = run(&[
+        "build",
+        &corpus("diagnostics/prose.tmd"),
+        out.to_str().unwrap(),
+        "--strict",
+    ]);
+    assert!(ok, "--strict must not fail on advice: {stderr}");
+    assert!(out.exists(), "the page was written: {stderr}");
+    let _ = std::fs::remove_file(&out);
 }

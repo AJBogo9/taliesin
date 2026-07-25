@@ -9,10 +9,35 @@
 //! keyed on stable message prefixes; `check_cli.rs` pins representative codes so a wording
 //! change that would silently reclassify a family fails a test.
 
-/// Severity strings (an agent triages on these; `check` still exits non-zero on ANY
-/// diagnostic regardless of severity — the severity only ranks them).
+/// Severity strings (an agent triages on these). They also decide the **exit** gate:
+/// `check` fails on an error or a warning by default, `--errors-only` narrows that to
+/// errors, and `--strict` widens it to everything. See [`gates_at`].
 pub const ERROR: &str = "error";
 pub const WARNING: &str = "warning";
+/// Advice, not a defect: printed like any other diagnostic but **never** fails a gate
+/// unless the run asks for it (`check --strict`). This is what lets an opt-in style rule
+/// ("weasel word `simply` (consider cutting)") exist at all — as an error it made
+/// `check`, `build --strict` and `publish` (strict by default) fail on a suggestion to
+/// reword a sentence, so the only way to keep a green gate was to not turn the rule on.
+pub const SUGGESTION: &str = "suggestion";
+
+/// How severe a diagnostic is, as a number: **higher is more severe**. The one ordering
+/// both crates use, so a gate cannot disagree with a summary about what outranks what.
+/// An unknown severity string ranks with [`ERROR`], because a diagnostic nobody
+/// classified is not something to silently stop failing on.
+pub fn severity_rank(severity: &str) -> u8 {
+    match severity {
+        SUGGESTION => 0,
+        WARNING => 1,
+        _ => 2,
+    }
+}
+
+/// Whether a diagnostic of `severity` fails a run whose floor is `floor_severity`.
+/// Both are severity strings, compared by [`severity_rank`].
+pub fn gates_at(severity: &str, floor_severity: &str) -> bool {
+    severity_rank(severity) >= severity_rank(floor_severity)
+}
 
 /// The fallback code for a diagnostic whose family isn't catalogued yet. Non-empty and
 /// stable, so `.diagnostics[].code` is always a usable string.
@@ -22,6 +47,13 @@ pub const GENERIC: &str = "TAL-CHECK";
 /// specific needle must precede a more general one (`broken link anchor` before
 /// `broken link`).
 const TABLE: &[(&str, &str, &str)] = &[
+    // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and FIRST in the
+    // table on purpose: the needles below include ones as generic as `("math", …)`, and a
+    // weasel-word message naming a word that contains a generic needle ("weasel word
+    // `mathematically`") would otherwise be classified as a math diagnostic.
+    ("weasel word", "TAL-PROSE-WEASEL", SUGGESTION),
+    ("repeated word", "TAL-PROSE-REPEAT", SUGGESTION),
+    ("banned term", "TAL-PROSE-BANNED", SUGGESTION),
     // Front matter.
     ("not valid YAML", "TAL-FM-YAML", ERROR),
     ("valid YAML", "TAL-FM-YAML", ERROR),
@@ -141,6 +173,36 @@ const EXPLANATIONS: &[Explanation] = &[
                 tripped.",
         fix: "Read the message and its location, then act on what it names. If one kind of \
               problem keeps surfacing this way, that family is a candidate for its own code.",
+    },
+    Explanation {
+        code: "TAL-PROSE-WEASEL",
+        title: "a hedging word the sentence does not need",
+        cause: "The opt-in prose lint (`prose-lint:` in front matter) found one of a small \
+                closed list of hedges — `very`, `simply`, `obviously`, `basically` and \
+                friends. They read as emphasis but carry no information, and `obviously` \
+                additionally tells a reader who did not find it obvious that they should \
+                have.",
+        fix: "Cut the word and read the sentence again; it almost always survives unchanged. \
+              This is advice, not a defect: it is severity `suggestion`, so it never fails \
+              `check`, `build --strict` or `publish` unless you ask with `check --strict`.",
+    },
+    Explanation {
+        code: "TAL-PROSE-REPEAT",
+        title: "the same word twice in a row",
+        cause: "The opt-in prose lint found a word immediately repeated (`the the`, `a a`). \
+                Almost always an editing artefact left by a rewritten sentence, and one of \
+                the few prose defects that is genuinely objective.",
+        fix: "Delete the duplicate. If the repetition is deliberate (a quoted stutter, a \
+              literal), the rule has no exception list — reword or turn the lint off for \
+              that document.",
+    },
+    Explanation {
+        code: "TAL-PROSE-BANNED",
+        title: "a term this document's own banned list forbids",
+        cause: "The document's `prose-lint: {banned: [...]}` list names this term, so the \
+                lint flagged it. The list is yours; nothing is banned by default.",
+        fix: "Use the wording you decided on instead, or drop the term from the `banned` \
+              list if the ban no longer applies.",
     },
     Explanation {
         code: "TAL-FM-YAML",
