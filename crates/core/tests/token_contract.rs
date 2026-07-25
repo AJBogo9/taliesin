@@ -23,15 +23,15 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-cw-lines",
     "data-inputs",
     "data-name",
-    "data-qmd-input",
-    "data-qmd-out",
-    "data-qmd-theorem-kind",
-    "data-qmd-xref",
     "data-scrolly-name",
     "data-slide-anchor",
     "data-source-file",
     "data-sourcepos",
     "data-state",
+    "data-tali-input",
+    "data-tali-out",
+    "data-tali-theorem-kind",
+    "data-tali-xref",
     "data-target",
     "data-viewof",
 ];
@@ -41,7 +41,7 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
 /// A block-level corpus render only reaches a fraction of the vocabulary: site
 /// chrome, the page shell, and attributes JS stamps at runtime (`data-*-ran`,
 /// `data-*-bound`) never appear in it. Measured 2026-07-25: the render census sees
-/// 4 of the 13 `data-qmd-*` names the browser code references. This second pin
+/// 4 of the 13 `data-tali-*` names the browser code references. This second pin
 /// covers the rest, so a rename cannot move one side and leave the other.
 ///
 /// Entries ending in `-` are attribute name PREFIXES built by string concatenation
@@ -80,21 +80,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-nav-wired",
     "data-playing",
     "data-processed",
-    "data-qmd-bound",
-    "data-qmd-cell-source",
-    "data-qmd-cell-state",
-    "data-qmd-done",
-    "data-qmd-drawer-close",
-    "data-qmd-input",
-    "data-qmd-input-bound",
-    "data-qmd-lb",
-    "data-qmd-out",
-    "data-qmd-ran",
-    "data-qmd-search",
-    "data-qmd-src",
-    "data-qmd-theme-toggle",
-    "data-qmd-theorem-kind",
-    "data-qmd-xref",
     "data-script-secs",
     "data-scroll-a11y",
     "data-scrolly-init",
@@ -107,8 +92,23 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-src-",
     "data-state",
     "data-tabset-init",
+    "data-tali-bound",
+    "data-tali-cell-source",
+    "data-tali-cell-state",
+    "data-tali-done",
+    "data-tali-drawer-close",
+    "data-tali-input",
+    "data-tali-input-bound",
+    "data-tali-lb",
     "data-tali-n",
+    "data-tali-out",
+    "data-tali-ran",
+    "data-tali-search",
     "data-tali-settings",
+    "data-tali-src",
+    "data-tali-theme-toggle",
+    "data-tali-theorem-kind",
+    "data-tali-xref",
     "data-target",
     "data-theme",
     "data-theme-choice",
@@ -121,11 +121,11 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
 /// rename moved the emitter and forgot the consumer".
 const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
     (
-        "data-qmd-theorem-kind",
+        "data-tali-theorem-kind",
         "build-time only: render/mod.rs:2188 scans for it as a Rust string needle while numbering theorems",
     ),
     (
-        "data-qmd-xref",
+        "data-tali-xref",
         "build-time only: cite/validate.rs:15 scans for it as a Rust string needle to report unresolved cross-references",
     ),
     (
@@ -135,7 +135,7 @@ const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
     (
         "data-scrolly-name",
         "DEAD as of 2026-07-25: emitted by divs.rs:660 and read by nothing. scrolly.js takes the \
-         name from the hidden input's data-qmd-input instead, and no Rust reads it either. Left in \
+         name from the hidden input's data-tali-input instead, and no Rust reads it either. Left in \
          place rather than removed, since deleting an emitted attribute is a behaviour change, not \
          part of a rename.",
     ),
@@ -165,7 +165,7 @@ enum Scan {
     Html,
     /// Source code: `data-` need only start a token, because attributes appear
     /// inside strings as `querySelectorAll("[data-x]")` or `'[data-x]'`. The
-    /// whitespace rule finds 1 of the 13 `data-qmd-*` names in the browser sources,
+    /// whitespace rule finds 1 of the 13 `data-tali-*` names in the browser sources,
     /// and a census that cannot see a name cannot notice it being renamed.
     Source,
 }
@@ -251,13 +251,13 @@ fn census() -> BTreeSet<String> {
 /// browser assets, the preview client, and any Rust file carrying inline `<script>`
 /// (the book drawer, the theme runtime, the deck runtime, the search UI, ...).
 ///
-/// The Rust half is found by content, not by a hand-written list: `data-qmd-drawer-close`
+/// The Rust half is found by content, not by a hand-written list: `data-tali-drawer-close`
 /// lives only inside a `<script>` string literal in `site/chrome.rs`, so a list that
 /// happened to omit that file would silently drop the attribute from the census.
 /// Browser-side files ONLY: the bundled assets and the preview client. Deliberately
 /// excludes Rust, because Rust is where attributes are *emitted*; counting it as a
 /// consumer makes the orphan check vacuous. (Measured 2026-07-25: renaming
-/// `data-qmd-out` in the Rust emitter alone left the orphan check passing, because
+/// `data-tali-out` in the Rust emitter alone left the orphan check passing, because
 /// the new name appeared in the very file that had just been edited.)
 fn browser_sources() -> String {
     let root = repo_root();

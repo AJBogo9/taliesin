@@ -638,7 +638,7 @@ fn build_container(
         // Scrollytelling: a sticky visual stage (the non-.step inner blocks) beside a
         // scrolling column of `.step` divs. The active step (scrolly.js, IntersectionObserver)
         // sets `data-scrolly-state` on the root for CSS, and — when `name=` is set — drives a
-        // hidden `data-qmd-input` so a sticky `{js}` cell reacts via `//| input:` through the
+        // hidden `data-tali-input` so a sticky `{js}` cell reacts via `//| input:` through the
         // shipped reactive graph. Read-only: scroll is reader interaction, never a source write.
         let is_step = |b: &Block| b.html.trim_start().starts_with("<div class=\"step\"");
         let steps: String = inner
@@ -666,7 +666,7 @@ fn build_container(
                 (
                     format!(" data-scrolly-name=\"{}\"", escape_attr(n)),
                     format!(
-                        "<input type=\"hidden\" class=\"tali-scrolly-input\" data-qmd-input=\"{}\" value=\"{first_state}\">",
+                        "<input type=\"hidden\" class=\"tali-scrolly-input\" data-tali-input=\"{}\" value=\"{first_state}\">",
                         escape_attr(n)
                     ),
                 )
@@ -728,7 +728,7 @@ fn build_container(
             };
             let body = concat(&inner);
             format!(
-                "<div class=\"tali-theorem tali-theorem-{kind} tali-thm-style-{style}\"{id_attr} data-qmd-theorem-kind=\"{kind}\"{data}><p class=\"tali-theorem-head\"><span class=\"tali-theorem-label\">{name}<span class=\"tali-theorem-number\"></span></span>{title}</p><div class=\"tali-theorem-body\">{body}</div></div>"
+                "<div class=\"tali-theorem tali-theorem-{kind} tali-thm-style-{style}\"{id_attr} data-tali-theorem-kind=\"{kind}\"{data}><p class=\"tali-theorem-head\"><span class=\"tali-theorem-label\">{name}<span class=\"tali-theorem-number\"></span></span>{title}</p><div class=\"tali-theorem-body\">{body}</div></div>"
             )
         }
     } else {

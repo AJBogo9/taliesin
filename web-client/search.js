@@ -1026,10 +1026,10 @@
   );
 
   // A visible search control (the navbar / book-sidebar button) carries
-  // `data-qmd-search`; clicking it opens the same palette as Cmd-K. Delegated, so
+  // `data-tali-search`; clicking it opens the same palette as Cmd-K. Delegated, so
   // it works no matter when the control entered the DOM.
   document.addEventListener("click", function (e) {
-    if (e.target instanceof Element && e.target.closest("[data-qmd-search]")) {
+    if (e.target instanceof Element && e.target.closest("[data-tali-search]")) {
       e.preventDefault();
       isOpen() ? close() : open();
     }

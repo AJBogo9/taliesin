@@ -7,7 +7,7 @@ use super::*;
 
 /// Build the reverse index from each page's cross-page reference markers: for every
 /// known target `A` a page references, record that page's url under `A`. `per_page`
-/// is `(page url, that page's `data-qmd-xref` anchors)` in **site page order**, so
+/// is `(page url, that page's `data-tali-xref` anchors)` in **site page order**, so
 /// each target's referrer list comes out in document order. Referrers are deduped
 /// per page (a page that cites `@fig-x` three times is one referrer), and a marker
 /// whose anchor is not a known target (a dangling reference) contributes nothing.

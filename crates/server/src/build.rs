@@ -2138,7 +2138,7 @@ fn local_refs(html: &str) -> Vec<String> {
             };
             let val = &html[start..start + len];
             i = start + len;
-            // The match must *begin* an attribute name, not end one: `data-qmd-src="…"`
+            // The match must *begin* an attribute name, not end one: `data-tali-src="…"`
             // (the click-to-source attribute on listing cards) contains `src="`, and
             // harvesting it published every post's `.tmd` source into `_site/`. Only a
             // tag opener or whitespace can precede an attribute name; a multi-byte lead
@@ -2293,7 +2293,7 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
             };
             let val = &html[start..start + len];
             i = start + len;
-            // The match must *begin* an attribute name, so `data-qmd-src="…"` (click-to-source)
+            // The match must *begin* an attribute name, so `data-tali-src="…"` (click-to-source)
             // is not harvested — mirrors `local_refs`.
             if at > 0 && bytes[at - 1] != b'<' && !bytes[at - 1].is_ascii_whitespace() {
                 continue;
@@ -2358,8 +2358,8 @@ mod mirror_tests {
             "<p data-sourcepos=\"7:1-7:20\"><img src=\"local.png\"></p>",
             "<link href=\"//cdn.test/x.css\" rel=\"stylesheet\">",
             "<img src=\"data:image/png;base64,AAAA\">",
-            // data-qmd-src=\"…\" contains `src=\"` but must NOT be harvested (click-to-source attr).
-            "<div data-qmd-src=\"post.tmd:1\"></div>",
+            // data-tali-src=\"…\" contains `src=\"` but must NOT be harvested (click-to-source attr).
+            "<div data-tali-src=\"post.tmd:1\"></div>",
         );
         let refs = external_refs(html);
         let urls: Vec<&str> = refs.iter().map(|r| r.url.as_str()).collect();
@@ -2385,7 +2385,7 @@ mod mirror_tests {
         );
         assert!(
             !urls.iter().any(|u| u.contains("post.tmd")),
-            "data-qmd-src must not be read as a resource ref: {refs:?}"
+            "data-tali-src must not be read as a resource ref: {refs:?}"
         );
         let img = refs
             .iter()
@@ -2488,14 +2488,14 @@ mod mirror_tests {
 
     #[test]
     fn local_refs_matches_whole_attributes_not_substrings() {
-        // `data-qmd-src="…"` (the click-to-source attribute on listing cards) *contains*
+        // `data-tali-src="…"` (the click-to-source attribute on listing cards) *contains*
         // the substring `src="`, so a bare search harvested each post's `.tmd` and
         // `deploy_referenced_sources` published the sources into `_site/`.
         let refs = local_refs(
-            r#"<a class="card" data-qmd-src="posts/a/index.tmd" href="posts/a/index.html">
+            r#"<a class="card" data-tali-src="posts/a/index.tmd" href="posts/a/index.html">
                  <img src="posts/a/thumb.png" alt="">
                </a>
-               <div data-qmd-src="_site.yml"></div>
+               <div data-tali-src="_site.yml"></div>
                <p>A <a href="notes.md">note</a> you may download.</p>
                <img
                  src="wrapped.png">"#,
@@ -2513,14 +2513,14 @@ mod mirror_tests {
     #[test]
     fn deploy_referenced_sources_ships_a_linked_source_but_not_a_card_target() {
         // The function exists to ship a *linked* source (a `.md` download, a `.scss`
-        // offered for inspection). A listing card's `data-qmd-src` is not a link.
+        // offered for inspection). A listing card's `data-tali-src` is not a link.
         let dir = tmp_dir("deploy-refs");
         let out = dir.join("out");
         fs::create_dir_all(&out).unwrap();
         fs::write(dir.join("index.tmd"), "x").unwrap();
         fs::write(dir.join("notes.md"), "y").unwrap();
 
-        let html = r#"<a data-qmd-src="index.tmd" href="index.html">card</a>
+        let html = r#"<a data-tali-src="index.tmd" href="index.html">card</a>
                       <a href="notes.md">the source</a>"#;
         let copied = deploy_referenced_sources(html, &dir, &out);
 

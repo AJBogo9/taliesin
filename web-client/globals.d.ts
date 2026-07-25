@@ -37,7 +37,7 @@ interface Window {
   taliSetTheme?: (choice: 'auto' | 'light' | 'dark' | 'sepia') => void;
   taliGetThemePref?: () => 'light' | 'dark' | 'sepia';
   taliGetThemeChoice?: () => 'auto' | 'light' | 'dark' | 'sepia';
-  /** Wires every `[data-qmd-theme-toggle]` button (defined in theme_head). */
+  /** Wires every `[data-tali-theme-toggle]` button (defined in theme_head). */
   taliWireThemeToggles?: () => void;
   /** Flip light <-> dark (defined in theme_head; ships on every page). The Cmd-K palette's
    *  "Toggle theme" action and the dev-menu button share it. */

@@ -22,12 +22,12 @@ const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementBy
 /// not a permanent rail but an off-canvas drawer summoned from the topbar's "Chapters"
 /// button at every width. This wires that button: toggle `aria-expanded` + reveal the
 /// `#tali-book-drawer` overlay (which starts `hidden`), move focus into it on open, and
-/// close it on Escape, on a backdrop / close-button click (`[data-qmd-drawer-close]`), or
+/// close it on Escape, on a backdrop / close-button click (`[data-tali-drawer-close]`), or
 /// after a chapter link is followed (restoring focus to the opener). `data-drawer-wired`
 /// keeps it idempotent across hot-reload re-injects.
-const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';var panel=d.querySelector('.tali-book-drawer-panel')||d,release=null;function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.tali-book-chapter[aria-current]')||d.querySelector('.tali-book-chapter,a,button');if(window.taliFocusTrap){release=window.taliFocusTrap(panel,f);}else if(f){f.focus();}}else if(release){release();release=null;}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-qmd-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
+const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';var panel=d.querySelector('.tali-book-drawer-panel')||d,release=null;function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.tali-book-chapter[aria-current]')||d.querySelector('.tali-book-chapter,a,button');if(window.taliFocusTrap){release=window.taliFocusTrap(panel,f);}else if(f){f.focus();}}else if(release){release();release=null;}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-tali-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
 
-/// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
+/// A search control that opens the Cmd-K palette. It carries `data-tali-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
 /// book sidebar.
@@ -36,7 +36,7 @@ fn search_button() -> String {
     // accessible name (WCAG 2.5.3 Label-in-Name). The icon-only button names itself with
     // aria-label.
     format!(
-        "<button class='tali-search-btn' type='button' data-qmd-search aria-label='Search' \
+        "<button class='tali-search-btn' type='button' data-tali-search aria-label='Search' \
          aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}\
          <kbd class='tali-search-kbd' aria-hidden='true'>\u{2318}K</kbd></button>"
     )
@@ -69,7 +69,7 @@ impl Site {
             .clone()
             .unwrap_or_else(|| "Home".to_string());
         let mut s = String::from(
-            "<header class=\"tali-site-nav\" data-qmd-src=\"_site.yml\"><nav class=\"tali-nav-inner\" aria-label=\"Primary\">",
+            "<header class=\"tali-site-nav\" data-tali-src=\"_site.yml\"><nav class=\"tali-nav-inner\" aria-label=\"Primary\">",
         );
         s.push_str(&format!(
             "<a class=\"tali-nav-brand\" href=\"{up}index.html\">{}</a>",
@@ -202,7 +202,7 @@ impl Site {
             g
         };
         format!(
-            "<footer class=\"tali-site-footer\" data-qmd-src=\"_site.yml\"><div class=\"tali-foot-inner\">\
+            "<footer class=\"tali-site-footer\" data-tali-src=\"_site.yml\"><div class=\"tali-foot-inner\">\
              <div class=\"tali-foot-left\">{}</div>\
              <div class=\"tali-foot-center\">{}</div>\
              <div class=\"tali-foot-right\">{}</div>\
@@ -229,7 +229,7 @@ impl Site {
         let mut s = String::new();
         // --- slim sticky topbar: Chapters launcher · brand · search · Settings gear ---
         s.push_str(
-            "<header class=\"tali-book-topbar\" data-qmd-src=\"_site.yml\">\
+            "<header class=\"tali-book-topbar\" data-tali-src=\"_site.yml\">\
              <div class=\"tali-book-topbar-inner\">",
         );
         s.push_str(
@@ -269,13 +269,13 @@ impl Site {
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
         s.push_str(
             "<div class=\"tali-book-drawer\" id=\"tali-book-drawer\" hidden>\
-             <div class=\"tali-book-drawer-backdrop\" data-qmd-drawer-close></div>\
+             <div class=\"tali-book-drawer-backdrop\" data-tali-drawer-close></div>\
              <div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\">",
         );
         // The `tali-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
         // inside the drawer panel rather than a left rail.
         s.push_str(
-            "<nav class=\"tali-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\">",
+            "<nav class=\"tali-book-sidebar\" data-tali-src=\"_site.yml\" aria-label=\"Chapters\">",
         );
         s.push_str("<div class=\"tali-book-sidebar-head\">");
         if let Some(t) = &book.title {
@@ -285,7 +285,7 @@ impl Site {
             ));
         }
         s.push_str(
-            "<button type=\"button\" class=\"tali-book-drawer-close\" data-qmd-drawer-close \
+            "<button type=\"button\" class=\"tali-book-drawer-close\" data-tali-drawer-close \
              aria-label=\"Close chapters\">\u{2715}</button>",
         );
         s.push_str("</div>");

@@ -225,7 +225,7 @@ function taliInitLightbox() {
 
 // Keyboard affordance (WCAG 2.1.1): the lightbox otherwise opens only via a delegated mouse
 // click, so decoratable media is unreachable by keyboard. This per-mount, idempotent pass
-// (guard `data-qmd-lb`) makes each zoomable element a focusable button that opens on
+// (guard `data-tali-lb`) makes each zoomable element a focusable button that opens on
 // Enter/Space. The capture-phase click delegation, focus-trap-on-open, Escape, and the ←/→
 // gallery nav inside taliInitLightbox are untouched; this only adds the keyboard entry point.
 /** @param {ParentNode | null} [root] */
@@ -239,7 +239,7 @@ function taliDecorateLightbox(root) {
   // resolves to KeyboardEvent (plain Element's event map lacks keydown).
   var els = /** @type {NodeListOf<HTMLElement>} */ (scope.querySelectorAll('figure img, img.lightbox, pre.mermaid'));
   els.forEach(function (el) {
-    if (el.getAttribute('data-qmd-lb')) return; // idempotent: decorate once per element
+    if (el.getAttribute('data-tali-lb')) return; // idempotent: decorate once per element
     var isMermaid = el.matches && el.matches('pre.mermaid');
     // A decorative image (author set an explicit empty alt) stays out of the tab
     // order — forcing it to a focusable "zoom" button contradicts the author's
@@ -247,7 +247,7 @@ function taliDecorateLightbox(root) {
     if (el.tagName === 'IMG' && el.getAttribute('alt') === '' && !el.classList.contains('lightbox')) {
       return;
     }
-    el.setAttribute('data-qmd-lb', '1');
+    el.setAttribute('data-tali-lb', '1');
     el.setAttribute('tabindex', '0');
     // Don't collapse a mermaid diagram into a `role="button"` LEAF — that hides its
     // SVG title/desc from assistive tech. `role="figure"` keeps the diagram content

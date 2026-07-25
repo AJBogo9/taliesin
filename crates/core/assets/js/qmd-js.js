@@ -16,7 +16,7 @@
 //
 // Cell scope: { get(n), set(n,v), value(n), defines, onInput(names,cb), container,
 // invalidation }. Registered through the same taliEnhancers registry as mermaid;
-// idempotent (a `data-qmd-ran` guard) so it is safe to re-run after every mount.
+// idempotent (a `data-tali-ran` guard) so it is safe to re-run after every mount.
 (function () {
   "use strict";
   var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -47,7 +47,7 @@
    */
 
   // Per-page singleton. Reset implicitly on navigation/reload; on a full re-mount
-  // the fresh DOM has no `data-qmd-ran` guards, so every cell re-runs and rebuilds.
+  // the fresh DOM has no `data-tali-ran` guards, so every cell re-runs and rebuilds.
   /** @returns {TaliJsRuntime} */
   function rt() {
     if (!window.__talijs) {
@@ -102,8 +102,8 @@
   function syncInputFragment() {
     /** @type {string[]} */
     var parts = [];
-    document.querySelectorAll("[data-qmd-input]").forEach(function (el) {
-      var n = el.getAttribute("data-qmd-input");
+    document.querySelectorAll("[data-tali-input]").forEach(function (el) {
+      var n = el.getAttribute("data-tali-input");
       if (n) parts.push(encodeURIComponent(n) + "=" + encodeURIComponent(String(readValue(el))));
     });
     var q = parts.join("&");
@@ -143,8 +143,8 @@
   function bindDefines() {
     var r = rt();
     var changed = false;
-    document.querySelectorAll('script[type="qmd-define"]:not([data-qmd-bound])').forEach(function (s) {
-      s.setAttribute("data-qmd-bound", "1");
+    document.querySelectorAll('script[type="qmd-define"]:not([data-tali-bound])').forEach(function (s) {
+      s.setAttribute("data-tali-bound", "1");
       try {
         var obj = JSON.parse(s.textContent || "{}");
         // The Python bridge emits Observable's `{contents:[{name,value}]}` shape;
@@ -261,12 +261,12 @@
           : "This interactive element couldn't load.";
         /** @type {HTMLElement} */ (container).replaceChildren(pre);
       } finally {
-        // A finished run, whether or not it painted. `data-qmd-ran` is stamped at
+        // A finished run, whether or not it painted. `data-tali-ran` is stamped at
         // registration (before the cell body runs), and a cell may legitimately emit
         // no DOM (a `//| name:` value publisher, an `//| input:` effect), so neither
         // that attribute nor "the output div has children" says the cell is done.
         // This one does, which is what a screenshot harness has to wait on.
-        script.setAttribute("data-qmd-done", "1");
+        script.setAttribute("data-tali-done", "1");
       }
     }
 
@@ -423,17 +423,17 @@
   function enhance(root) {
     bindDefines(); // ingest any define blobs already present before running cells
     var r = rt();
-    // Register declarative `{{< input >}}` controls (static HTML tagged data-qmd-input) as
+    // Register declarative `{{< input >}}` controls (static HTML tagged data-tali-input) as
     // named reactive inputs, BEFORE cells run so their value is available on first run.
     // Reuses the same registerInput path as `//| viewof` cells; the change event fires the
     // existing scheduleFrom (transitive-downstream re-run). Live-swap re-registers via the
-    // :not(...) guard. A sibling [data-qmd-out] (the slider readout) tracks the value.
+    // :not(...) guard. A sibling [data-tali-out] (the slider readout) tracks the value.
     var frag = parseInputFragment();
     /** @type {NodeListOf<HTMLElement>} */ (
-      (root || document).querySelectorAll("[data-qmd-input]:not([data-qmd-input-bound])")
+      (root || document).querySelectorAll("[data-tali-input]:not([data-tali-input-bound])")
     ).forEach(function (el) {
-        el.setAttribute("data-qmd-input-bound", "1");
-        var name = el.getAttribute("data-qmd-input");
+        el.setAttribute("data-tali-input-bound", "1");
+        var name = el.getAttribute("data-tali-input");
         if (!name) return;
         // Hydrate from the URL fragment BEFORE cells run, so a shared link restores the
         // control (and its downstream cells) on first paint.
@@ -442,7 +442,7 @@
         // Persist to the fragment on every change (shareable/deep-linkable state).
         el.addEventListener("input", syncInputFragment);
         // const so the null-guard survives into the `upd` input closure.
-        const out = el.parentNode && el.parentNode.querySelector("[data-qmd-out]");
+        const out = el.parentNode && el.parentNode.querySelector("[data-tali-out]");
         if (out) {
           var upd = function () { out.textContent = readValue(el); };
           el.addEventListener("input", upd);
@@ -452,9 +452,9 @@
     /** @type {TaliJsCell[]} */
     var fresh = [];
     /** @type {NodeListOf<HTMLElement>} */ (
-      (root || document).querySelectorAll('script[type="application/qmd-js"]:not([data-qmd-ran])')
+      (root || document).querySelectorAll('script[type="application/qmd-js"]:not([data-tali-ran])')
     ).forEach(function (s) {
-      s.setAttribute("data-qmd-ran", "1");
+      s.setAttribute("data-tali-ran", "1");
       var c = setupCell(s);
       if (c) fresh.push(c);
     });

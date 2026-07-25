@@ -58,7 +58,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     }
 
     // Every statically-known define name: js-cell names/viewofs plus declarative
-    // `{{< input name="k" >}}` controls (which emit `data-qmd-input="k"`).
+    // `{{< input name="k" >}}` controls (which emit `data-tali-input="k"`).
     let mut defined: std::collections::HashSet<String> = std::collections::HashSet::new();
     for n in &nodes {
         for d in &n.defines {
@@ -67,7 +67,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     }
     for b in blocks {
         let mut vals = std::collections::HashSet::new();
-        collect_attr_values(&b.html, "data-qmd-input=\"", &mut vals);
+        collect_attr_values(&b.html, "data-tali-input=\"", &mut vals);
         for v in vals {
             defined.insert(v.to_string());
         }

@@ -159,7 +159,7 @@ fn manual_anchor_is_not_flagged_when_doc_has_executable_cells() {
 
 #[test]
 fn xref_placeholder_anchor_is_not_flagged_as_broken_internal_link() {
-    // `@sec-elsewhere` lowers to href="#sec-elsewhere" data-qmd-xref="sec-elsewhere"; it is
+    // `@sec-elsewhere` lowers to href="#sec-elsewhere" data-tali-xref="sec-elsewhere"; it is
     // an xref (validate_xrefs' job + resolved cross-page by the site layer), not a manual
     // in-page link, so the anchor check must skip it — no double-flag.
     let src = "---\ntitle: T\n---\n\nSee @sec-elsewhere for details.\n";

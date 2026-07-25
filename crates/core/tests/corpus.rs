@@ -365,7 +365,7 @@ fn corpus_deck_pins_every_kept_rich_feature() {
     // A reactive `{{< input >}}` control + a `{js}` cell that consumes it: the deck's
     // live "what if?" surface, whose state rides the deep-link (C-ADD-3).
     assert!(
-        slides.contains("data-qmd-input=\"rate\""),
+        slides.contains("data-tali-input=\"rate\""),
         "deck corpus must exercise a reactive {{< input >}} control"
     );
     // A vertical stack: an h1 lead slide wrapping its h2 children.
@@ -563,7 +563,7 @@ fn footnote_lis_are_locatable() {
     // pin the nested units directly.
     //
     // `data-block-id` is load-bearing and not decorative here: client.js `locatable()`
-    // matches `closest("[data-qmd-src], [data-block-id]")`, so without it an Alt-click
+    // matches `closest("[data-tali-src], [data-block-id]")`, so without it an Alt-click
     // walks past the note up to the section, which has no sourcepos, and `openSource`
     // falls back to line 1 of the document — silently the wrong line, not a no-op.
     let mut files = Vec::new();
@@ -600,7 +600,7 @@ fn footnote_lis_are_locatable() {
 fn gathered_sections_stay_unlocatable() {
     // The other half of the contract `footnote_lis_are_locatable` pins, and the reason
     // that test can trust its `<li>`s. client.js `locatable()` resolves an Alt-click to
-    // `closest("[data-qmd-src], [data-block-id]")` but SKIPS a block whose sourcepos is
+    // `closest("[data-tali-src], [data-block-id]")` but SKIPS a block whose sourcepos is
     // not usable (`^[1-9]\d*:\d+`), walking on to a usable ancestor or resolving to
     // nothing at all. That guard is the only thing standing between a gathered section
     // and `openSource()`'s line-1 default, which is silently the wrong line rather than
@@ -611,7 +611,7 @@ fn gathered_sections_stay_unlocatable() {
     // sail past the block-level checks above, and quietly restore the line-1 landing on
     // every reference and on the footnote section's own chrome. Pin the emptiness.
     //
-    // They must also carry no `data-qmd-src`: that attribute is the OTHER way to be
+    // They must also carry no `data-tali-src`: that attribute is the OTHER way to be
     // locatable (an explicit file, for site chrome), and neither section has one.
     let mut files = Vec::new();
     collect_qmd(&corpus_dir(), &mut files);
@@ -644,7 +644,7 @@ fn gathered_sections_stay_unlocatable() {
             };
             let start = html[..i].rfind('<').unwrap_or(0);
             let tag = &html[start..start + html[start..].find('>').unwrap_or(0)];
-            if tag.contains("data-sourcepos=\"") || tag.contains("data-qmd-src=") {
+            if tag.contains("data-sourcepos=\"") || tag.contains("data-tali-src=") {
                 offenders.push(format!("{label}: {tag}>"));
             }
         }
@@ -1041,7 +1041,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     // (a screen reader can tell the chapter list from the pager).
     assert!(
         methods.contains(
-            "class=\"tali-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\""
+            "class=\"tali-book-sidebar\" data-tali-src=\"_site.yml\" aria-label=\"Chapters\""
         ) && methods.contains("class=\"tali-postnav tali-book-postnav\" aria-label=\"Pagination\""),
         "book nav landmarks must be aria-labelled"
     );
@@ -1089,7 +1089,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     );
     // No unresolved marker should leak into the output once a target is known.
     assert!(
-        !results.contains("data-qmd-xref=\"sec-methods\""),
+        !results.contains("data-tali-xref=\"sec-methods\""),
         "resolved cross-ref still carries its marker"
     );
     // A cross-PAGE theorem ref resolves to the defining chapter WITH its number: a
@@ -1102,7 +1102,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         "cross-chapter theorem ref not numbered: {results}"
     );
     assert!(
-        !results.contains("data-qmd-xref=\"thm-kl\""),
+        !results.contains("data-tali-xref=\"thm-kl\""),
         "resolved theorem cross-ref still carries its broken marker"
     );
 }
@@ -1218,7 +1218,7 @@ fn book_chapter_scopes_float_numbers_across_chapters() {
         "the cross-chapter ref resolves to the intro's chapter-scoped number: {methods}"
     );
     assert!(
-        !methods.contains("data-qmd-xref=\"fig-structure\""),
+        !methods.contains("data-tali-xref=\"fig-structure\""),
         "resolved cross-chapter figure ref still carries its broken marker: {methods}"
     );
 }

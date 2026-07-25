@@ -875,16 +875,16 @@ pub(crate) const STATUS_CSS: &str = "\
       background: color-mix(in srgb, currentColor 15%, transparent); flex: none; } \
     .tali-prog-fill { display: block; height: 100%; border-radius: 2px; \
       background: #4c8dff; transition: width .15s linear; } \
-    [data-qmd-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
-    [data-qmd-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
-    [data-qmd-cell-state=\"running\"] { border-left-color: #4c8dff; } \
-    [data-qmd-cell-state=\"done\"] { border-left-color: #2bb673; } \
-    [data-qmd-cell-state=\"error\"] { border-left-color: #cc3333; } \
-    [data-qmd-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, #2bb673 40%, transparent); } \
-    [data-qmd-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
+    [data-tali-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
+    [data-tali-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
+    [data-tali-cell-state=\"running\"] { border-left-color: #4c8dff; } \
+    [data-tali-cell-state=\"done\"] { border-left-color: #2bb673; } \
+    [data-tali-cell-state=\"error\"] { border-left-color: #cc3333; } \
+    [data-tali-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, #2bb673 40%, transparent); } \
+    [data-tali-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
     .tali-cell-badge { font: 11px/1 var(--tali-mono, monospace); opacity: .75; margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
-      [data-qmd-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
+      [data-tali-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
       @keyframes tali-pulse { 50% { opacity: .35; } } \
     } \
     .tali-hint-nudge { position: absolute; bottom: calc(100% + .45rem); left: 0; width: 14rem; \
@@ -1970,11 +1970,11 @@ mod protocol_contract {
             "client.js must render the ⚡ cached badge for a cache replay"
         );
         assert!(
-            CLIENT_JS.contains("data-qmd-cell-source"),
+            CLIENT_JS.contains("data-tali-cell-source"),
             "client.js must tag the block with its cache provenance"
         );
         assert!(
-            STATUS_CSS.contains("data-qmd-cell-source=\"cache\""),
+            STATUS_CSS.contains("data-tali-cell-source=\"cache\""),
             "STATUS_CSS must style the cached-cell border distinctly from a fresh run"
         );
     }

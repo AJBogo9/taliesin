@@ -2830,7 +2830,7 @@ fn footnote_li_is_the_locatable_unit_for_click_to_source() {
     // lines, so no single block-level sourcepos can point at "the" note. The locatable
     // unit is therefore each `<li>`: it carries its own definition's `data-sourcepos`
     // plus a `data-block-id`, because client.js `locatable()` resolves an Alt-click via
-    // `closest("[data-qmd-src], [data-block-id]")` — a `data-sourcepos` alone would be
+    // `closest("[data-tali-src], [data-block-id]")` — a `data-sourcepos` alone would be
     // walked past, landing on the section (and, with no sourcepos there, on line 1).
     // Definitions sit on lines 7 and 11, scattered between prose rather than bunched
     // at the end, so a first-note-wins block sourcepos could not serve both.
@@ -2929,11 +2929,11 @@ fn input_slider_shortcode_emits_reactive_control() {
     );
     let h = doc.body_html();
     assert!(h.contains("class=\"tali-input\""), "wrapper: {h}");
-    assert!(h.contains("data-qmd-input=\"k\""), "named input: {h}");
+    assert!(h.contains("data-tali-input=\"k\""), "named input: {h}");
     assert!(h.contains("type=\"range\""), "range control: {h}");
     assert!(h.contains("min=\"1\"") && h.contains("max=\"10\"") && h.contains("value=\"3\""));
     assert!(
-        h.contains("<output class=\"tali-input-out\" for=\"qin-k\" data-qmd-out>3</output>"),
+        h.contains("<output class=\"tali-input-out\" for=\"qin-k\" data-tali-out>3</output>"),
         "slider readout, tied to its control via for= (PA-M9): {h}"
     );
     assert!(h.contains(">k</label>"), "label: {h}");
@@ -2996,7 +2996,7 @@ fn input_shortcode_other_types_emit_their_native_control() {
         render_document_with_includes("{{< input name=\"n\" type=\"number\" step=\"0.1\" >}}\n", p)
             .body_html();
     assert!(num.contains("type=\"number\"") && num.contains("step=\"0.1\""));
-    assert!(!num.contains("data-qmd-out"), "no readout on number: {num}");
+    assert!(!num.contains("data-tali-out"), "no readout on number: {num}");
 
     let cb = render_document_with_includes(
         "{{< input name=\"on\" type=\"checkbox\" value=\"true\" >}}\n",
@@ -3226,7 +3226,7 @@ fn scrolly_arm_emits_stage_steps_and_reactive_input() {
     assert!(h.contains("data-scrolly-name=\"scene\""), "name attr: {h}");
     assert!(
         h.contains(
-            "<input type=\"hidden\" class=\"tali-scrolly-input\" data-qmd-input=\"scene\" value=\"a\">"
+            "<input type=\"hidden\" class=\"tali-scrolly-input\" data-tali-input=\"scene\" value=\"a\">"
         ),
         "hidden reactive input with first step's state: {h}"
     );
@@ -3246,7 +3246,7 @@ fn scrolly_without_name_omits_hidden_input() {
     let h = doc.body_html();
     assert!(h.contains("class=\"tali-scrolly\""));
     assert!(
-        !h.contains("data-qmd-input"),
+        !h.contains("data-tali-input"),
         "no hidden input without name=: {h}"
     );
     assert!(!h.contains("data-scrolly-name"), "no name attr: {h}");
@@ -3475,7 +3475,7 @@ fn theorem_div_emits_styled_block_with_number_slot() {
         h.contains("class=\"tali-theorem tali-theorem-theorem tali-thm-style-plain\""),
         "got: {h}"
     );
-    assert!(h.contains("data-qmd-theorem-kind=\"theorem\""), "got: {h}");
+    assert!(h.contains("data-tali-theorem-kind=\"theorem\""), "got: {h}");
     assert!(
         h.contains(" id=\"thm-pyth\""),
         "author anchor on container: {h}"
@@ -3821,7 +3821,7 @@ fn nested_theorem_is_numbered_and_referenceable() {
         "no theorem left with an empty number slot: {body}"
     );
     assert!(
-        !body.contains("data-qmd-xref"),
+        !body.contains("data-tali-xref"),
         "no ref left dangling: {body}"
     );
 }
@@ -4117,7 +4117,7 @@ fn unnumbered_theorem_ref_resolves_to_bare_label_not_broken() {
         "unnumbered theorem ref resolves to a bare label: {body}"
     );
     assert!(
-        !body.contains("data-qmd-xref=\"thm-x\""),
+        !body.contains("data-tali-xref=\"thm-x\""),
         "the ref must not be left as a broken-ref marker: {body}"
     );
 }
@@ -4864,7 +4864,7 @@ fn heading_consumed_as_callout_title_keeps_its_anchor_id() {
             || body.contains("id=\"sec-note\" class=\"callout-title\""),
         "callout title must keep the consumed heading's #id, got: {body}"
     );
-    // And the ref resolves (it was registered) — not a dangling data-qmd-xref marker.
+    // And the ref resolves (it was registered) — not a dangling data-tali-xref marker.
     assert!(
         body.contains("class=\"tali-xref\">Section&nbsp;1</a>"),
         "the @sec-note ref should resolve to Section 1, got: {body}"

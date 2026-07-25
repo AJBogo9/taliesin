@@ -3,7 +3,7 @@
 lists the name in <code>//| input:</code> re-runs when the control changes, including transitively.</p>
 <p data-block-id="b-aa17a4b5d143" data-sourcepos="8:1-9:86">Every control’s value is also captured in the page URL, so a link restores the exact view
 (and its downstream cells): change a control and copy the address to share that state.</p>
-<div class="tali-input" data-block-id="b-db75e75f852f" data-sourcepos="11:1-11:262"><label class="tali-input-label" for="qin-k">k</label><input id="qin-k" class="tali-input-control" data-qmd-input="k" type="range" min="1" max="10" step="1" value="3"><output class="tali-input-out" for="qin-k" data-qmd-out>3</output></div>
+<div class="tali-input" data-block-id="b-700f3d4ce6f0" data-sourcepos="11:1-11:264"><label class="tali-input-label" for="qin-k">k</label><input id="qin-k" class="tali-input-control" data-tali-input="k" type="range" min="1" max="10" step="1" value="3"><output class="tali-input-out" for="qin-k" data-tali-out>3</output></div>
 
 <div data-block-id="b-7835c62a2fb5" data-sourcepos="13:1-17:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-7835c62a2fb5"></div><script type="application/qmd-js" data-target="qmd-js-b-7835c62a2fb5" data-name="doubled" data-inputs="k">return qmd.value("k") * 2;
 </script></div>
@@ -12,25 +12,25 @@ p.textContent = "k doubled (transitively) = " + qmd.get("doubled");
 return p;
 </script></div>
 <p data-block-id="b-3941f083fd9f" data-sourcepos="26:1-26:78">A number, a checkbox, a text box, and a dropdown, each driving their own cell:</p>
-<div class="tali-input" data-block-id="b-67ee3953e9e1" data-sourcepos="28:1-28:199"><label class="tali-input-label" for="qin-n">n</label><input id="qin-n" class="tali-input-control" data-qmd-input="n" type="number" min="0" max="100" step="5" value="20"></div>
+<div class="tali-input" data-block-id="b-1693e866f08c" data-sourcepos="28:1-28:200"><label class="tali-input-label" for="qin-n">n</label><input id="qin-n" class="tali-input-control" data-tali-input="n" type="number" min="0" max="100" step="5" value="20"></div>
 
 <div data-block-id="b-e3e617600a1f" data-sourcepos="30:1-35:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-e3e617600a1f"></div><script type="application/qmd-js" data-target="qmd-js-b-e3e617600a1f" data-inputs="n">const p = document.createElement("p");
 p.textContent = "n = " + qmd.value("n");
 return p;
 </script></div>
-<div class="tali-input" data-block-id="b-55409215d731" data-sourcepos="37:1-37:180"><label class="tali-input-label" for="qin-on">enabled</label><input id="qin-on" class="tali-input-control" data-qmd-input="on" type="checkbox" checked></div>
+<div class="tali-input" data-block-id="b-3b7ad0858b37" data-sourcepos="37:1-37:181"><label class="tali-input-label" for="qin-on">enabled</label><input id="qin-on" class="tali-input-control" data-tali-input="on" type="checkbox" checked></div>
 
 <div data-block-id="b-1ccf03f8b853" data-sourcepos="39:1-44:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-1ccf03f8b853"></div><script type="application/qmd-js" data-target="qmd-js-b-1ccf03f8b853" data-inputs="on">const p = document.createElement("p");
 p.textContent = qmd.value("on") ? "enabled" : "disabled";
 return p;
 </script></div>
-<div class="tali-input" data-block-id="b-ccd9d4a4ce76" data-sourcepos="46:1-46:177"><label class="tali-input-label" for="qin-q">query</label><input id="qin-q" class="tali-input-control" data-qmd-input="q" type="text" value="hello"></div>
+<div class="tali-input" data-block-id="b-dffb7563cb0c" data-sourcepos="46:1-46:178"><label class="tali-input-label" for="qin-q">query</label><input id="qin-q" class="tali-input-control" data-tali-input="q" type="text" value="hello"></div>
 
 <div data-block-id="b-66a7c11eadac" data-sourcepos="48:1-53:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-66a7c11eadac"></div><script type="application/qmd-js" data-target="qmd-js-b-66a7c11eadac" data-inputs="q">const p = document.createElement("p");
 p.textContent = "query: " + qmd.value("q");
 return p;
 </script></div>
-<div class="tali-input" data-block-id="b-d6d9c8f89988" data-sourcepos="55:1-55:237"><label class="tali-input-label" for="qin-c">channel</label><select id="qin-c" class="tali-input-control" data-qmd-input="c"><option>alpha</option><option selected>beta</option><option>gamma</option></select></div>
+<div class="tali-input" data-block-id="b-200b523bb395" data-sourcepos="55:1-55:238"><label class="tali-input-label" for="qin-c">channel</label><select id="qin-c" class="tali-input-control" data-tali-input="c"><option>alpha</option><option selected>beta</option><option>gamma</option></select></div>
 
 <div data-block-id="b-ec56c8d5cfc6" data-sourcepos="57:1-62:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-ec56c8d5cfc6"></div><script type="application/qmd-js" data-target="qmd-js-b-ec56c8d5cfc6" data-inputs="c">const p = document.createElement("p");
 p.textContent = "channel: " + qmd.value("c");

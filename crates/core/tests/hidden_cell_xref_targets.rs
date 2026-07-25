@@ -68,7 +68,7 @@ fn xref_link_text(body: &str, anchor: &str) -> Option<String> {
 fn an_include_false_figure_cell_registers_no_phantom_anchor() {
     // The bug's signature was a CONFIDENT ref: `@fig-hidden` resolved to "Figure 1"
     // from the registry while no element carried `id="fig-hidden"`. Unregistered, the
-    // ref must instead stay unresolved — no number, and `cite`'s `data-qmd-xref` marker
+    // ref must instead stay unresolved — no number, and `cite`'s `data-tali-xref` marker
     // still on it (the site layer consumes that for genuine cross-page refs, and
     // `validate_xrefs` reports it when nothing does).
     let body = doc(hidden_then_shown_figures()).body_html();
@@ -79,7 +79,7 @@ fn an_include_false_figure_cell_registers_no_phantom_anchor() {
          ever carries `id=\"fig-hidden\"`; got:\n{body}"
     );
     assert!(
-        body.contains(r##"data-qmd-xref="fig-hidden""##),
+        body.contains(r##"data-tali-xref="fig-hidden""##),
         "an unresolvable ref must keep its unresolved marker, or nothing reports it:\n{body}"
     );
 }
@@ -145,7 +145,7 @@ fn an_include_false_table_cell_registers_no_phantom_anchor() {
          would carry `id=\"tbl-hidden\"`; got:\n{body}"
     );
     assert!(
-        body.contains(r##"data-qmd-xref="tbl-hidden""##),
+        body.contains(r##"data-tali-xref="tbl-hidden""##),
         "an unresolvable ref must keep its unresolved marker:\n{body}"
     );
 }

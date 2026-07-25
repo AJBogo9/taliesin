@@ -217,7 +217,7 @@ fn shortcode_named(args: &[String], key: &str) -> Option<String> {
 
 /// The built-in `{{< input name="k" type="slider" … >}}` reactive control: a static,
 /// keyboard-accessible labeled control whose value feeds the `{js}` reactive graph
-/// (qmd-js.js registers `[data-qmd-input]` and reuses the same `registerInput`/`scheduleFrom`
+/// (qmd-js.js registers `[data-tali-input]` and reuses the same `registerInput`/`scheduleFrom`
 /// path as `//| viewof` cells). Five types (slider/range, number, checkbox, text, select);
 /// the slider gets a live `<output>` readout. Emits located diagnostics (missing name,
 /// unknown type with a did-you-mean, select without options) via `validate_input`. Raw-HTML,
@@ -279,7 +279,7 @@ fn input_shortcode(
                 })
                 .collect();
             format!(
-                "<select id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\">{opts}</select>"
+                "<select id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\">{opts}</select>"
             )
         }
         "checkbox" => {
@@ -289,18 +289,18 @@ fn input_shortcode(
                 ""
             };
             format!(
-                "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\" type=\"checkbox\"{checked}>"
+                "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" type=\"checkbox\"{checked}>"
             )
         }
         "text" => format!(
-            "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\" type=\"text\"{}>",
+            "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" type=\"text\"{}>",
             num_attr("value")
         ),
         other => {
             // slider/range/number: numeric, sharing min/max/step/value
             let html_type = if other == "number" { "number" } else { "range" };
             format!(
-                "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\" type=\"{html_type}\"{}{}{}{}>",
+                "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" type=\"{html_type}\"{}{}{}{}>",
                 num_attr("min"),
                 num_attr("max"),
                 num_attr("step"),
@@ -311,7 +311,7 @@ fn input_shortcode(
     let readout = if kind == "slider" || kind == "range" {
         // `for` ties the readout to the control it reflects, so AT announces them together.
         format!(
-            "<output class=\"tali-input-out\" for=\"{ctrl_id}\" data-qmd-out>{}</output>",
+            "<output class=\"tali-input-out\" for=\"{ctrl_id}\" data-tali-out>{}</output>",
             html_escape(value.as_deref().unwrap_or(""))
         )
     } else {
@@ -486,7 +486,7 @@ mod a11y_tests {
             "sanity: the control carries its id: {html}"
         );
         assert!(
-            html.contains("for=\"qin-freq\" data-qmd-out"),
+            html.contains("for=\"qin-freq\" data-tali-out"),
             "the <output> readout must be tied to its control via for=: {html}"
         );
     }

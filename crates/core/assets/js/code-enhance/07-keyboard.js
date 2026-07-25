@@ -14,7 +14,7 @@ function taliInitKeyboard() {
     // Only list shortcuts that actually do something on THIS page: `/` needs a search
     // (a website/book has one, a chrome-less single doc does not), and ←/→ needs the
     // book prev/next anchors. Advertising a dead key is a small but real papercut.
-    var hasSearch = !!document.querySelector('[data-qmd-search]');
+    var hasSearch = !!document.querySelector('[data-tali-search]');
     var hasChapters = !!document.querySelector('.tali-book-prev, .tali-book-next');
     var dl = document.createElement('dl');
     dl.className = 'tali-keys-list';

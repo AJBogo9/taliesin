@@ -1074,7 +1074,7 @@ impl Site {
     }
 
     /// Resolve cross-*page* references in place: a `@sec-x` whose anchor lives on
-    /// another page (left marked `data-qmd-xref` by `cite`) is rewritten to link to
+    /// another page (left marked `data-tali-xref` by `cite`) is rewritten to link to
     /// that page and carry its number ("Section 2.1"). Same-page refs were already
     /// resolved by `cite`; an anchor unknown project-wide is left as a label link.
     /// Called by both the static build and the live preview.
@@ -1141,7 +1141,7 @@ impl Site {
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
     ///
     /// The same all-pages render also builds the reverse index [`Site::backlinks`]
-    /// (anchor → referring pages) from each page's `data-qmd-xref` markers — cite emits
+    /// (anchor → referring pages) from each page's `data-tali-xref` markers — cite emits
     /// that marker only for a reference whose target is on another page, so a marker is
     /// by construction a cross-page reference. Riding this existing render keeps it to
     /// no extra traversal.
@@ -1166,7 +1166,7 @@ impl Site {
             );
             let mut refs: Vec<String> = Vec::new();
             for b in &doc.blocks {
-                if b.html.contains("data-qmd-xref=\"") {
+                if b.html.contains("data-tali-xref=\"") {
                     refs.extend(
                         xref::xref_markers_in(&b.html)
                             .into_iter()
@@ -1571,10 +1571,10 @@ impl Site {
         // No delimited `data-categories` list: the client filter reads each card's
         // own `.tali-cat[data-cat]` badges (exact names), so a category name
         // containing a comma still matches.
-        // `data-qmd-src` lets the click-to-source locator jump to the post's source
+        // `data-tali-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
-            "<a class=\"tali-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
+            "<a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
              <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a>",
             src = esc(&p.rel)
         )
@@ -1629,13 +1629,13 @@ impl Site {
         // slot existed. With an image (the blog homepage): a two-column media layout.
         match hero.image.as_deref() {
             None => format!(
-                "<header class=\"hero\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">{inner}</header>"
+                "<header class=\"hero\" data-block-id=\"qmd-title-block\" data-tali-src=\"{src}\">{inner}</header>"
             ),
             Some(image) => {
                 let image = esc(image);
                 let alt = esc(hero.image_alt.as_deref().unwrap_or(""));
                 format!(
-                    "<header class=\"hero hero-has-media\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
+                    "<header class=\"hero hero-has-media\" data-block-id=\"qmd-title-block\" data-tali-src=\"{src}\">\
                      <div class=\"hero-body\">{inner}</div>\
                      <img class=\"hero-media\" src=\"{image}\" alt=\"{alt}\"></header>"
                 )

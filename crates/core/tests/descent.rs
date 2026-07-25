@@ -24,7 +24,7 @@ fn three_reactive_input_sliders_emit() {
     let h = page();
     for (name, max) in [("lr", "0.35"), ("beta", "0.9"), ("steps", "60")] {
         assert!(
-            h.contains(&format!("data-qmd-input=\"{name}\""))
+            h.contains(&format!("data-tali-input=\"{name}\""))
                 && h.contains(&format!("max=\"{max}\"")),
             "reactive slider {name} (max {max}) emits as a range control: {h}"
         );

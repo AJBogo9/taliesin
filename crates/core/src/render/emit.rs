@@ -214,7 +214,7 @@ fn is_safe_data_image(url: &str) -> bool {
 /// real source range. It therefore carries its own `data-sourcepos` (+ `data-source-file`
 /// when the definition came from an `{{< include >}}`d file) AND a `data-block-id` —
 /// client.js `locatable()` resolves an Alt-click with
-/// `closest("[data-qmd-src], [data-block-id]")`, so a `data-sourcepos` alone would be
+/// `closest("[data-tali-src], [data-block-id]")`, so a `data-sourcepos` alone would be
 /// walked straight past. The id is namespaced `fn-…`, which cannot collide with a
 /// content-hashed block id (`make_id` emits `b-…`).
 pub(crate) fn footnote_def_li<'a>(

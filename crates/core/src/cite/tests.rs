@@ -153,7 +153,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         id: "x".into(),
         sourcepos: "1:1-1:1".into(),
         source_file: None,
-        html: "<a href=\"#fig-gone\" class=\"tali-xref\" data-qmd-xref=\"fig-gone\">Figure</a>"
+        html: "<a href=\"#fig-gone\" class=\"tali-xref\" data-tali-xref=\"fig-gone\">Figure</a>"
             .into(),
         cell: None,
     }];
@@ -214,7 +214,7 @@ fn broken_xref_suggests_the_nearest_anchor_of_the_same_kind() {
     let blocks = vec![
         block("<figure id=\"fig-results\"><img src=\"x.png\"></figure>"),
         block("<h2 id=\"sec-summary\">Summary</h2>"),
-        block("<p>see <a href=\"#fig-reslts\" data-qmd-xref=\"fig-reslts\">Figure</a></p>"),
+        block("<p>see <a href=\"#fig-reslts\" data-tali-xref=\"fig-reslts\">Figure</a></p>"),
     ];
     let w = validate_xrefs(&blocks);
     assert_eq!(w.len(), 1, "got: {w:?}");
@@ -230,7 +230,7 @@ fn a_broken_xref_never_suggests_an_anchor_of_a_different_kind() {
     // `sec-results` is one edit from `fig-reslts`'s stem, but a Figure is not a Section.
     let blocks = vec![
         block("<h2 id=\"sec-results\">Results</h2>"),
-        block("<p>see <a href=\"#fig-reslts\" data-qmd-xref=\"fig-reslts\">Figure</a></p>"),
+        block("<p>see <a href=\"#fig-reslts\" data-tali-xref=\"fig-reslts\">Figure</a></p>"),
     ];
     let w = validate_xrefs(&blocks);
     assert_eq!(w.len(), 1, "got: {w:?}");
@@ -248,7 +248,7 @@ fn short_or_distant_anchor_names_get_no_suggestion() {
     let blocks = vec![
         block("<figure id=\"fig-a\"></figure>"),
         block("<figure id=\"fig-appendix\"></figure>"),
-        block("<p><a data-qmd-xref=\"fig-c\">F</a><a data-qmd-xref=\"fig-zzzzzzz\">F</a></p>"),
+        block("<p><a data-tali-xref=\"fig-c\">F</a><a data-tali-xref=\"fig-zzzzzzz\">F</a></p>"),
     ];
     let w = validate_xrefs(&blocks);
     assert_eq!(w.len(), 2, "got: {w:?}");
@@ -269,7 +269,7 @@ fn the_anchor_scan_never_harvests_a_data_block_id() {
     // `results` at equal edit distance), so a regression cannot pass this by accident.
     let blocks = vec![
         block("<figure data-block-id=\"fig-reslts2\" id=\"fig-results\"></figure>"),
-        block("<p><a data-qmd-xref=\"fig-reslts\">Figure</a></p>"),
+        block("<p><a data-tali-xref=\"fig-reslts\">Figure</a></p>"),
     ];
     let w = validate_xrefs(&blocks);
     assert_eq!(w.len(), 1, "got: {w:?}");
@@ -294,7 +294,7 @@ fn crossref_becomes_labelled_link() {
     // Unresolved here: linked label, marked for cross-page resolution by a site.
     assert!(
         blocks[0].html.contains(
-            "<a href=\"#fig-scree\" class=\"tali-xref\" data-qmd-xref=\"fig-scree\">Figure</a>"
+            "<a href=\"#fig-scree\" class=\"tali-xref\" data-tali-xref=\"fig-scree\">Figure</a>"
         ),
         "got: {}",
         blocks[0].html

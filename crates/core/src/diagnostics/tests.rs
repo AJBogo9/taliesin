@@ -52,7 +52,7 @@ fn local_links_flag_missing_relative_target_only() {
 
 #[test]
 fn local_links_skip_xref_links() {
-    // A `@sec-`/`@fig-` cross-reference renders an `<a … data-qmd-xref>`; it is
+    // A `@sec-`/`@fig-` cross-reference renders an `<a … data-tali-xref>`; it is
     // validated by `validate_xrefs`, so the link checker must not double-flag it.
     let doc = render_document("## Sec {#sec-a}\n\nSee @sec-a.\n");
     let ws = validate_local_links(&doc.blocks, Path::new("."));

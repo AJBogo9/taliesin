@@ -523,11 +523,11 @@
     // The dev menu carries its own quick light/dark toggle (wired by the shared theme_head)
     // so the author can flip theme during preview without opening the reader Settings gear.
     // Guarded so we never add a second one.
-    if (!document.querySelector("[data-qmd-theme-toggle]")) {
+    if (!document.querySelector("[data-tali-theme-toggle]")) {
       const themeBtn = document.createElement("button");
       themeBtn.className = "tali-dev-ctl tali-dev-theme";
       themeBtn.type = "button";
-      themeBtn.setAttribute("data-qmd-theme-toggle", "");
+      themeBtn.setAttribute("data-tali-theme-toggle", "");
       panel.appendChild(themeBtn);
       if (window.taliWireThemeToggles) window.taliWireThemeToggles();
     }
@@ -615,10 +615,10 @@
   function applyCellState(/** @type {CellStateMsg} */ msg) {
     var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
     if (!out) return;
-    out.setAttribute("data-qmd-cell-state", msg.state);
+    out.setAttribute("data-tali-cell-state", msg.state);
     // Provenance (DX9): a `done` cell is either freshly run or a cache replay. Tagging the
     // block lets CSS mute a cached cell's border so it reads as "available, not just run".
-    out.setAttribute("data-qmd-cell-source", msg.source || "");
+    out.setAttribute("data-tali-cell-source", msg.source || "");
     var badge = out.querySelector(":scope > .tali-cell-badge") || (function () {
       var b = document.createElement("span"); b.className = "tali-cell-badge";
       out.insertBefore(b, out.firstChild); return b;
@@ -1391,7 +1391,7 @@
   const usableSourcepos = (/** @type {HTMLElement} */ el) =>
     /^[1-9]\d*:\d+/.test(el.dataset.sourcepos || "");
 
-  // The nearest locatable ancestor: a `data-qmd-src` element (cards, about block,
+  // The nearest locatable ancestor: a `data-tali-src` element (cards, about block,
   // navbar/footer → an explicit source file) or a `data-block-id` block that carries
   // a USABLE sourcepos (the page's own prose/headings/code). Whichever is closer wins.
   //
@@ -1409,11 +1409,11 @@
   // sourcepos and stays click-to-source-able inside a section that is not. This only
   // ever makes FEWER things resolve; it adds no path back to the source.
   const locatable = (/** @type {Element} */ t) => {
-    const sel = "[data-qmd-src], [data-block-id]";
+    const sel = "[data-tali-src], [data-block-id]";
     /** @type {Element|null} */
     let el = t.closest(sel);
     while (el instanceof HTMLElement) {
-      if (el.hasAttribute("data-qmd-src") || usableSourcepos(el)) return el;
+      if (el.hasAttribute("data-tali-src") || usableSourcepos(el)) return el;
       el = el.parentElement ? el.parentElement.closest(sel) : null;
     }
     return null;
@@ -1433,13 +1433,13 @@
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":1";
   };
 
-  // Open the source for an element: an explicit `data-qmd-src` (site-root-relative,
+  // Open the source for an element: an explicit `data-tali-src` (site-root-relative,
   // `rel` or `rel:line`) wins; else the block's sourcepos on the current page (or an
   // included file). In the webview, relay to the host; in a browser, `vscode://`.
   const openSource = (/** @type {HTMLElement} */ el) => {
     const doc = window.TALIESIN_DOC;
     if (!doc) return;
-    const src = el.getAttribute("data-qmd-src");
+    const src = el.getAttribute("data-tali-src");
     let abs, line = "1", col = "1";
     if (src && doc.root) {
       const i = src.indexOf(":");

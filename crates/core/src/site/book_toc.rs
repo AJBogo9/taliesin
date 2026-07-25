@@ -9,7 +9,7 @@
 //!
 //! It is a generated content block (`qmd-book-toc`, no sourcepos) appended in
 //! `finish_blocks`, exactly like `attach_backlinks`/`attach_cite_this` — NOT a chrome
-//! slot, so it cannot collide with the drawer's `[data-qmd-drawer-close]` markup. The
+//! slot, so it cannot collide with the drawer's `[data-tali-drawer-close]` markup. The
 //! class prefix is deliberately `tali-btoc-*`, never the drawer's `.tali-book-chapter`.
 
 use super::{Block, BookEntry, Page, Site};

@@ -36,12 +36,12 @@ fn cross_page_ref_to_a_cell_labelled_figure_resolves_to_its_page_and_number() {
 
 #[test]
 fn a_resolved_cell_label_leaves_no_broken_xref_marker() {
-    // `cite` emits `data-qmd-xref` for a target it can't see on the current page; the
+    // `cite` emits `data-tali-xref` for a target it can't see on the current page; the
     // site rewrite consumes the marker. A leftover marker means the ref stayed broken.
     let site = Site::discover(&corpus_dir().join("demo-book"));
     let summary = site.render_page("summary.tmd").expect("summary renders");
     assert!(
-        !summary.contains(r#"data-qmd-xref="fig-stages""#),
+        !summary.contains(r#"data-tali-xref="fig-stages""#),
         "fig-stages still carries the unresolved cross-page marker"
     );
 }

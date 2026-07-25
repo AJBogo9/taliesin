@@ -1,6 +1,6 @@
 //! Project-wide cross-reference registry: scan each page's source for `{#sec-}`/
 //! `{#fig-}`/… anchors (+ a section number for numbered book sections) and rewrite
-//! `data-qmd-xref`-marked links to the right page. `use super::*` reaches Page,
+//! `data-tali-xref`-marked links to the right page. `use super::*` reaches Page,
 //! Book, section_number, Block.
 
 use super::*;
@@ -174,13 +174,13 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
     .any(|p| id.starts_with(p))
 }
 /// Every cross-page-reference anchor in a block's HTML: the value of each
-/// `data-qmd-xref="…"` marker, in document order (with duplicates, if a block refers
+/// `data-tali-xref="…"` marker, in document order (with duplicates, if a block refers
 /// to the same anchor twice). `cite` emits this marker *only* for a reference whose
 /// target is not on the current page (`cite/render.rs`), so a marker is by
 /// construction a cross-page reference — the raw material for the reverse
 /// (anchor → referring pages) index.
 pub(super) fn xref_markers_in(html: &str) -> Vec<&str> {
-    let marker = "data-qmd-xref=\"";
+    let marker = "data-tali-xref=\"";
     let mut out = Vec::new();
     let mut pos = 0;
     while let Some(rel) = html[pos..].find(marker) {
@@ -210,13 +210,13 @@ pub(super) fn resolve_blocks(
     }
     let up = "../".repeat(current_url.matches('/').count());
     for b in blocks.iter_mut() {
-        if b.html.contains("data-qmd-xref=\"") {
+        if b.html.contains("data-tali-xref=\"") {
             b.html = rewrite_cross_refs(&b.html, targets, current_url, &up);
         }
     }
 }
 
-/// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
+/// Rewrite the `data-tali-xref`-marked links in one block's HTML: a marker whose
 /// anchor is a known cross-page target becomes a link to that page (with its
 /// number); an unknown anchor is left as the bare-label link `cite` emitted.
 pub(super) fn rewrite_cross_refs(
@@ -252,7 +252,7 @@ fn rewrite_one_xref(
     current_url: &str,
     up: &str,
 ) -> String {
-    let marker = "data-qmd-xref=\"";
+    let marker = "data-tali-xref=\"";
     let (Some(ms), Some(gt)) = (link.find(marker), link.find('>')) else {
         return link.to_string();
     };
@@ -330,8 +330,8 @@ mod tests {
         // Two cross-page markers on the block, plus a same-page `tali-xref` link with
         // no marker (must be ignored) and an ordinary link (ignored).
         let html = concat!(
-            r##"See <a href="#fig-a" class="tali-xref" data-qmd-xref="fig-a">Figure</a> and "##,
-            r##"<a href="#thm-b" class="tali-xref" data-qmd-xref="thm-b">Theorem</a>; "##,
+            r##"See <a href="#fig-a" class="tali-xref" data-tali-xref="fig-a">Figure</a> and "##,
+            r##"<a href="#thm-b" class="tali-xref" data-tali-xref="thm-b">Theorem</a>; "##,
             r##"local <a href="#sec-here" class="tali-xref">Section&nbsp;1</a> and "##,
             r##"<a href="https://x">out</a>."##,
         );

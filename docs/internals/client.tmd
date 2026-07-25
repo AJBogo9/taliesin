@@ -176,7 +176,7 @@ parent frame can use it.
 | parent → client | `qmd-cursor` | `file`, `line` | The editor cursor moved; highlight/scroll to the covering block. |
 
 `block_id` rides along only on the `data-block-id` click path; a located-diagnostic
-click and a `data-qmd-src` click post just `{ source_file, sourcepos }`. The host
+click and a `data-tali-src` click post just `{ source_file, sourcepos }`. The host
 needs only the file and line, so the field is informational.
 
 The client decides which transport to use from whether it is framed
@@ -200,7 +200,7 @@ Forward click-to-source is a modifier *gesture*, not a mode: a plain click alway
 browses normally, and holding Alt (Option on Mac) turns the cursor into a pointer
 over every source-mapped block (`html.tali-alt`) and outlines the exact block a click
 would resolve to. Both the affordance and the click resolve the target through the
-same `locatable()` helper (nearest `[data-qmd-src]` or `[data-block-id]` ancestor),
+same `locatable()` helper (nearest `[data-tali-src]` or `[data-block-id]` ancestor),
 so the highlight and the jump can never drift apart.
 
 ## The enhancer registry
@@ -245,7 +245,7 @@ indistinguishable from core's. The notable ones:
   (`file://`, a plain-HTTP `--host` LAN preview).
 - **`{js}` cells** (`qmd-js.js`): finds each `<script type="application/qmd-js">`,
   runs the author's code with a small scope, and mounts the result into its sibling
-  target `<div>`. It is idempotent through a `data-qmd-ran` guard and drives the
+  target `<div>`. It is idempotent through a `data-tali-ran` guard and drives the
   reactive graph; the [interactive cells chapter](../guide/using/interactive.tmd)
   covers the runtime.
 - **Mermaid** (`mermaid.js`): renders `{mermaid}` cells, lazy-loading the Mermaid
@@ -261,7 +261,7 @@ static build) uses to run the whole list.
 ## Cmd-K search (`search.js`)
 
 `search.js` is a self-contained command palette, opened with Cmd-K (Ctrl-K off Mac),
-by clicking any `[data-qmd-search]` control, or programmatically via
+by clicking any `[data-tali-search]` control, or programmatically via
 `window.taliOpenSearch()`. It injects its own themed overlay CSS and is *not* part of
 the type-checked `client.js` bundle.
 

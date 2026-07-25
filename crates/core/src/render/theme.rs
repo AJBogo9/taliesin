@@ -166,7 +166,7 @@ pub fn theme_head(default_mode: &str) -> String {
     }});
     window.addEventListener("afterprint", apply);
   }} catch(e) {{}}
-  // Wire any `[data-qmd-theme-toggle]` button (the dev
+  // Wire any `[data-tali-theme-toggle]` button (the dev
   // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
   // Shipped here (not in the preview client) so the toggle works in `build` too.
   var ICONS = {{ light: "{sun_icon}", dark: "{moon_icon}" }};
@@ -174,7 +174,7 @@ pub fn theme_head(default_mode: &str) -> String {
   // Cmd-K command palette (web-client/search.js) and the dev-menu button share one path.
   window.taliToggleTheme = function(){{ window.taliSetTheme(pref() === "dark" ? "light" : "dark"); }};
   window.taliWireThemeToggles = function(){{
-    var btns = document.querySelectorAll("[data-qmd-theme-toggle]");
+    var btns = document.querySelectorAll("[data-tali-theme-toggle]");
     for (var i = 0; i < btns.length; i++) {{
       (function(btn){{
         if (btn.getAttribute("data-wired")) return;

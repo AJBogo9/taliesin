@@ -720,7 +720,7 @@
      Dashed distinguishes this "click to open source" hover from the solid .tali-hl that
      marks the editor-cursor sync. Outline (not border) so tracking never reflows the
      page; no animation, because continuous hover feedback must read as instantaneous. */
-  html.tali-alt [data-block-id], html.tali-alt [data-qmd-src] { cursor: pointer; }
+  html.tali-alt [data-block-id], html.tali-alt [data-tali-src] { cursor: pointer; }
   .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
   figure.tali-figure { margin: 1.5rem 0; }
   figure.tali-figure img { max-width: 100%; height: auto; }

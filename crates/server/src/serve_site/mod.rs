@@ -702,7 +702,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     let base_dir = base_dir
         .canonicalize()
         .unwrap_or_else(|_| base_dir.to_path_buf());
-    // `root` lets the locator resolve site-root-relative `data-qmd-src` targets
+    // `root` lets the locator resolve site-root-relative `data-tali-src` targets
     // (a card → its post's source, the navbar/footer → _site.yml, etc.).
     let doc_global = format!(
         "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",

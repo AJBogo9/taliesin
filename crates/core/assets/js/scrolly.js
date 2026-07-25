@@ -4,7 +4,7 @@
 // per scene) beside a sticky `.scrolly-stage`. As the reader scrolls, the step nearest the
 // viewport centre becomes active: its `data-state` is mirrored to `data-scrolly-state` on
 // the root (for pure-CSS effects) and, when the `.scrolly` was given a `name=`, pushed into
-// a hidden `.tali-scrolly-input[data-qmd-input]` (value + an `input` event) so the shipped
+// a hidden `.tali-scrolly-input[data-tali-input]` (value + an `input` event) so the shipped
 // reactive graph re-runs the sticky `{js}` cell via `//| input:`. Read-only / scroll-only.
 //
 // Activation is a scroll-driven trigger line (not an IntersectionObserver band, which cannot

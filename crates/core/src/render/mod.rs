@@ -2173,7 +2173,7 @@ fn unreferenceable_nonexec_label(
 /// Assign continuous, per-kind theorem numbers in document order (Theorem 1, 2, …;
 /// Lemma 1, 2, … independently), fill each theorem's number slot, and register its
 /// `#thm-`/`#lem-`/… anchor so `@thm-x` resolves. Runs after `apply_table_captions`
-/// and before `cite::process`. `proof` carries no `data-qmd-theorem-kind`, so it is
+/// and before `cite::process`. `proof` carries no `data-tali-theorem-kind`, so it is
 /// skipped (unnumbered, unreferenceable). Top-level theorems only — a theorem nested
 /// inside another container is embedded in the parent block's HTML (same limitation as
 /// table captions). The container id is read from the OPENING tag only (via `tag_end`)
@@ -2181,11 +2181,11 @@ fn unreferenceable_nonexec_label(
 /// Every theorem div inside `html`, in document order, as `(kind, id)`. Scans the
 /// whole string (not just the opening tag) so a `::: {.theorem}` nested inside another
 /// fenced div — which collapses into the parent's one block — is still found, numbered,
-/// and registered as a ref target. Each `data-qmd-theorem-kind` occurrence is paired
+/// and registered as a ref target. Each `data-tali-theorem-kind` occurrence is paired
 /// with the `id` on its own opening `<div>`, bounded to that tag so a sibling div's id
 /// can't leak in.
 fn theorem_divs(html: &str) -> Vec<(String, Option<String>)> {
-    const NEEDLE: &str = "data-qmd-theorem-kind=\"";
+    const NEEDLE: &str = "data-tali-theorem-kind=\"";
     let mut out = Vec::new();
     let mut from = 0;
     while let Some(rel) = html[from..].find(NEEDLE) {

@@ -275,7 +275,7 @@ fn rewrite_text(
         {
             // A locally-resolved number renders "Figure&nbsp;3". An anchor not in
             // this document's registry may live on another page: emit it with a
-            // `data-qmd-xref` marker so a site can resolve it to that page (and its
+            // `data-tali-xref` marker so a site can resolve it to that page (and its
             // number); if nothing resolves it, it degrades to a bare-label link.
             out.push_str(&xref_anchor_link(&anchor, label, xrefs));
             i += len;
@@ -291,7 +291,7 @@ use super::is_cite_key_char;
 
 /// A cross-reference link to `anchor`, labelled by kind. A locally-resolved number
 /// renders "Figure&nbsp;3"; an anchor unknown to this document's registry emits a
-/// `data-qmd-xref` marker (so a site can resolve it cross-page) and degrades to a
+/// `data-tali-xref` marker (so a site can resolve it cross-page) and degrades to a
 /// bare-label link. Shared by the bracketed (`[@fig-x]`) and bare (`@fig-x`) paths.
 fn xref_anchor_link(anchor: &str, label: &str, xrefs: &HashMap<String, String>) -> String {
     let (text, marker) = match xrefs.get(anchor) {
@@ -301,7 +301,7 @@ fn xref_anchor_link(anchor: &str, label: &str, xrefs: &HashMap<String, String>) 
         Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
         None => (
             label.to_string(),
-            format!(" data-qmd-xref=\"{}\"", esc(anchor)),
+            format!(" data-tali-xref=\"{}\"", esc(anchor)),
         ),
     };
     format!(

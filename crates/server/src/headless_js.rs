@@ -57,7 +57,7 @@ impl JsKind {
 }
 
 /// The raw DOM facts the in-page snippet returns for one `{js}` cell. Only meaningful when
-/// `done` (a cell whose script never stamped `data-qmd-done` is reported timed-out, not
+/// `done` (a cell whose script never stamped `data-tali-done` is reported timed-out, not
 /// classified from a half-run DOM).
 #[derive(Debug, Clone, serde::Deserialize)]
 pub(crate) struct JsNode {
@@ -336,7 +336,7 @@ fn unique_profile_dir() -> PathBuf {
 }
 
 /// The in-page async snippet: wait until every `application/qmd-js` script is stamped
-/// `data-qmd-done` (or the deadline), then return one facts object per cell. Keyed off the
+/// `data-tali-done` (or the deadline), then return one facts object per cell. Keyed off the
 /// script's `data-target` (`qmd-js-<block_id>`), so it joins to the block model for both a
 /// plain `{js}` cell and a numbered `{js}` figure (both emit the same script + target div).
 fn build_observe_script(deadline_ms: u64) -> String {
@@ -350,7 +350,7 @@ fn build_observe_script(deadline_ms: u64) -> String {
   while (clock() - start < deadline) {{
     const all = scripts();
     if (all.length === 0) break;
-    if (all.every(s => s.hasAttribute('data-qmd-done'))) break;
+    if (all.every(s => s.hasAttribute('data-tali-done'))) break;
     await new Promise(r => setTimeout(r, 50));
   }}
   return scripts().map(function (s) {{
@@ -368,7 +368,7 @@ fn build_observe_script(deadline_ms: u64) -> String {
     }}
     return {{
       blockId: blockId,
-      done: s.hasAttribute('data-qmd-done'),
+      done: s.hasAttribute('data-tali-done'),
       error: errEl ? (errEl.textContent || '').trim() : null,
       hasSvg: !!svg, hasCanvas: !!canvas,
       hasOther: out ? out.childElementCount > 0 : false,
@@ -599,14 +599,14 @@ mod tests {
     fn observe_script_joins_on_data_target_and_waits_on_done() {
         let s = build_observe_script(10_000);
         assert!(s.contains("application/qmd-js"), "selects js cell scripts");
-        assert!(s.contains("data-qmd-done"), "waits on the settle signal");
+        assert!(s.contains("data-tali-done"), "waits on the settle signal");
         assert!(
             s.contains("qmd-js-") && s.contains("data-target"),
             "derives block id from the script's data-target"
         );
         assert!(
-            !s.contains("data-qmd-ran"),
-            "must NOT gate on data-qmd-ran (the ui-audit false-settle lesson)"
+            !s.contains("data-tali-ran"),
+            "must NOT gate on data-tali-ran (the ui-audit false-settle lesson)"
         );
     }
 }

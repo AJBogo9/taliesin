@@ -146,7 +146,7 @@ Emits a labelled, keyboard-accessible control whose value becomes a node in the
 [reactive `{js}` graph](../using/interactive.tmd). A `{js}` cell reads it with
 `//| input: NAME` and `qmd.value("NAME")`, so you get an input with no
 control-building code. It is the same wiring a `//| viewof` cell uses; the control
-just carries a `data-qmd-input="NAME"` attribute that the runtime registers.
+just carries a `data-tali-input="NAME"` attribute that the runtime registers.
 
 | Argument | Required | Default | Effect |
 |---|---|---|---|

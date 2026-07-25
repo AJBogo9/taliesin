@@ -189,7 +189,7 @@ Two related rewrites stitch the pages together:
   it and the output links correctly.
 - **Cross-page cross-references** (`xref.rs`). A project-wide registry scans every
   page for `{#sec-}` / `{#fig-}` / … anchors (plus a section number for numbered book
-  sections), then rewrites `data-qmd-xref`-marked links to point at the right page.
+  sections), then rewrites `data-tali-xref`-marked links to point at the right page.
   So a `@fig-` in one chapter resolves, with its number, to its figure in another.
 
 The cross-page resolution is a deliberate **three pass** design, because a `@fig-`
@@ -228,11 +228,11 @@ reference can point at a label defined on a page that has not been rendered yet:
    `build`, `preview`, and `check` all resolve identically.
 
 3. **Rewrite during page render.** When a page is rendered, `cite::process` has already
-   turned each `@sec-` reference into a bare-label link that carries a `data-qmd-xref`
+   turned each `@sec-` reference into a bare-label link that carries a `data-tali-xref`
    marker naming the anchor:
 
    ```html
-   <a href="#sec-intro" data-qmd-xref="sec-intro">Section</a>
+   <a href="#sec-intro" data-tali-xref="sec-intro">Section</a>
    ```
 
    `rewrite_cross_refs` then scans that HTML for those markers: a marker whose anchor
