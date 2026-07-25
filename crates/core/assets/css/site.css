@@ -301,6 +301,12 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-active { color: var(--tali-link); font-weight: 600; }
 .tali-chap-num { color: var(--tali-muted); margin-right: .25rem; }
 .tali-book-active .tali-chap-num { color: var(--tali-link); }
+/* Per-chapter prose length: the cost of opening a chapter, where the decision is made.
+   Absolute units as plain text (never a normalised bar), quiet enough that the chapter
+   title stays the thing being scanned. No `opacity` on the text: the theme's contrast
+   pins measure the token, and an opacity multiplier silently defeats them. */
+.tali-chap-words { display: block; font-size: .74rem; color: var(--tali-muted);
+  font-variant-numeric: tabular-nums; }
 /* The per-chapter section outline (code-enhance/19-book-outline.js). Created client-side
    once the shared search index loads, so with JS off none of this matches and the drawer
    is the flat chapter list it has always been. */
@@ -348,6 +354,14 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-btoc-num { flex: 0 0 auto; min-width: 1.4em; color: var(--tali-muted);
   font-variant-numeric: tabular-nums; }
 .tali-btoc-link:hover .tali-btoc-num { color: var(--tali-link); }
+/* The same cost signal the drawer shows. Inline here (the Contents row is a single
+   baseline-aligned line with room to spare) and never the link's hover colour: it is
+   metadata about the chapter, not part of its name. (`--tali-font-body` carries a size
+   and line-height, so it can never go in a `font:` shorthand; the row's own head family
+   is inherited instead.) */
+.tali-btoc-words { flex: 0 0 auto; color: var(--tali-muted);
+  font-weight: 400; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.tali-btoc-link:hover .tali-btoc-words { color: var(--tali-muted); }
 .tali-btoc-desc { margin: .15rem 0 0 1.9em; color: var(--tali-muted); font-size: .92rem; line-height: 1.45; }
 .tali-btoc-draft .tali-btoc-link { color: var(--tali-muted); }
 @media (forced-colors: active) {

@@ -106,7 +106,14 @@ function taliBookOutline(list) {
       b.className = 'tali-book-expand';
       b.setAttribute('aria-expanded', 'false');
       b.setAttribute('aria-controls', panel.id);
-      b.setAttribute('aria-label', 'Sections of ' + (link.textContent || '').trim());
+      // The chapter link also carries its prose-length span; a verbatim textContent would
+      // announce the expander as "Sections of 1 Installation 431 words". Clone-strip-read,
+      // the same trick the caption reader uses, leaves the read-only original intact.
+      var label = link.cloneNode(true);
+      if (label instanceof Element) {
+        label.querySelectorAll('.tali-chap-words').forEach(function (x) { x.remove(); });
+      }
+      b.setAttribute('aria-label', 'Sections of ' + (label.textContent || '').trim());
       // A static chevron, exactly like the drawer launcher's own icon: no untrusted text
       // reaches innerHTML here (every section title goes through textContent below).
       b.innerHTML =

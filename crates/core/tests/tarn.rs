@@ -385,6 +385,86 @@ fn a_below_toc_gate_chapters_sections_reach_the_drawer_outline() {
 }
 
 #[test]
+fn the_navs_prose_length_agrees_with_the_skim_projection() {
+    // Three surfaces now report a chapter's length — the drawer, the landing Contents, and
+    // `skim`/`map`'s `words` (which the LSP outline and any agent read). They must be one
+    // number. `skim` counted the RAW source while the nav counts the include-EXPANDED one,
+    // which agrees on every chapter that has no include and silently disagrees on the ones
+    // that do; this pins them equal across a whole real book.
+    let site = tarn();
+    let book = site.book.as_ref().expect("tarn is a book");
+    let skimmed: std::collections::HashMap<String, usize> =
+        site.skim().into_iter().map(|p| (p.url, p.words)).collect();
+    let mut checked = 0;
+    for e in book.entries.iter().filter(|e| e.part.is_none()) {
+        let Some(&words) = skimmed.get(&e.url) else {
+            continue; // a page skim can decline (the 404 chrome page)
+        };
+        assert_eq!(
+            e.words, words,
+            "the nav and the skim projection disagree on {}",
+            e.url
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 12,
+        "every chapter should be compared, got {checked}"
+    );
+}
+
+#[test]
+fn both_chapter_nav_surfaces_print_the_same_prose_length() {
+    // The drawer and the landing Contents are two renderers over one `Book.entries` list,
+    // so the cost signal must come from one `words_label` or they will print different
+    // numbers for the same chapter. Pinned on a chapter whose count is stable and whose
+    // body is prose, not code.
+    let site = tarn();
+    let drawer_page = site.render_page("grouping.tmd").expect("grouping renders");
+    let landing_page = site.render_page("index.tmd").expect("the landing renders");
+    // Scope each read to the surface it names. The landing page carries BOTH surfaces (the
+    // drawer rides on every book page), so a whole-page search for the row found the
+    // drawer's span on both sides and the equality assertion compared the drawer with
+    // itself — it passed with the Contents' span deleted. Caught by mutation.
+    let region = |page: &str, open: &str| -> String {
+        let at = page
+            .find(open)
+            .unwrap_or_else(|| panic!("no {open} on this page"));
+        page[at..].to_string()
+    };
+    let label = |region: &str| -> String {
+        // The row for `filtering.html`, then the words span inside its link.
+        let at = region.find("filtering.html").expect("the row exists");
+        let rest = &region[at..];
+        let start = rest.find("-words\">").expect("a words span follows") + "-words\">".len();
+        rest[start..start + rest[start..].find('<').expect("the span closes")].to_string()
+    };
+    let in_drawer = label(&region(&drawer_page, "id=\"tali-book-chapters\""));
+    let in_contents = label(&region(&landing_page, "class=\"tali-book-landing-toc\""));
+    assert!(
+        in_drawer.ends_with(" words")
+            && in_drawer.chars().next().is_some_and(|c| c.is_ascii_digit()),
+        "the drawer must print an absolute word count, not a bar or a time: {in_drawer}"
+    );
+    assert_eq!(
+        in_drawer, in_contents,
+        "the drawer and the landing Contents must agree on a chapter's length"
+    );
+    // Prose only: `filtering.tmd` is the longest chapter by prose, and counting its fenced
+    // Python as words would put it somewhere else entirely.
+    let words: usize = in_drawer
+        .trim_end_matches(" words")
+        .replace(',', "")
+        .parse()
+        .expect("a plain number");
+    let raw = std::fs::read_to_string(corpus_dir().join("tarn/filtering.tmd")).unwrap();
+    assert!(
+        words < raw.split_whitespace().count(),
+        "prose-only must be strictly under the raw token count ({words} vs raw)"
+    );
+}
+
+#[test]
 fn the_drawer_renders_flat_with_no_dead_toggle_when_js_is_off() {
     // The outline is client-hydrated (the section data lives in the lazily-loaded index, not
     // on the page), so the SERVER must not emit an expander it cannot fill: with JS off the

@@ -72,10 +72,15 @@ pub(super) fn render_book_toc(
             .filter(|d| !d.trim().is_empty())
             .map(|d| format!("<p class=\"tali-btoc-desc\">{}</p>", esc(&d)))
             .unwrap_or_default();
+        // Same cost signal the drawer shows, from the same `words_label`, so the two
+        // renderers over one entry list cannot print different numbers for one chapter.
+        let words = super::book::words_label(e.words)
+            .map(|w| format!("<span class=\"tali-btoc-words\">{w}</span>"))
+            .unwrap_or_default();
         s.push_str(&format!(
             "<li class=\"tali-btoc-item{item_cls}\">\
              <a class=\"tali-btoc-link\" href=\"{up}{url}\">\
-             {num}<span class=\"tali-btoc-chap\">{title}</span>{badge}</a>{desc}</li>",
+             {num}<span class=\"tali-btoc-chap\">{title}</span>{badge}{words}</a>{desc}</li>",
             url = e.url,
             title = esc(&e.title),
         ));
@@ -127,6 +132,7 @@ mod tests {
             rel: format!("{}.tmd", url.trim_end_matches(".html")),
             url: url.to_string(),
             draft: false,
+            words: 0,
         }
     }
     fn part(name: &str) -> BookEntry {
@@ -237,6 +243,7 @@ mod tests {
             url: "appendix.html".into(),
             draft: true,
             depth: 0,
+            words: 0,
         });
         let html = render_book_toc(&entries, "index.html", |_| None).unwrap();
         assert!(

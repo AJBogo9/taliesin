@@ -42,7 +42,42 @@ pub struct BookEntry {
     /// inside another, and so on. Always 0 for a chapter entry. Lets the drawer indent a
     /// sub-part instead of flattening it into its parent.
     pub depth: u8,
+    /// The chapter's prose length in words ([`crate::prose::word_count`] over the
+    /// include-expanded source), shown in the drawer and the landing Contents so the
+    /// "which chapter do I open" decision is made with its cost visible. 0 for a part
+    /// header. **Prose only:** front matter, fenced code and `:::` fences are excluded,
+    /// which is the same selection `lint`/`skim`/`map`/the reading-time estimate use — so
+    /// a code-heavy chapter is understated, and the label says "words", never a time.
+    pub words: usize,
 }
+/// A chapter's prose length as the visible text both nav surfaces print: `"1,204 words"`.
+/// `None` for a chapter with no prose at all (a figure-only or stub chapter), where
+/// "0 words" reads as a bug rather than as information.
+///
+/// **Words, never a time.** `word_count` excludes fenced code and math, so a code-heavy
+/// chapter is understated — and reading code is slower than reading prose, so a "~N min"
+/// label would be wrong in the same direction, twice over, on exactly the chapters this
+/// tool exists for. A word count states what was measured and claims nothing about the
+/// reader. Absolute units, never a normalised bar: a bar's full width is 8 words in one
+/// book and 4,077 in another, which misleads exactly where it claims to help.
+pub(super) fn words_label(words: usize) -> Option<String> {
+    if words == 0 {
+        return None;
+    }
+    let digits = words.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    Some(format!(
+        "{grouped} word{}",
+        if words == 1 { "" } else { "s" }
+    ))
+}
+
 impl Book {
     /// The chapters in reading order (part headers dropped), for prev/next.
     pub(super) fn chapters(&self) -> Vec<&BookEntry> {
@@ -177,7 +212,15 @@ fn push_chapter(
 ) {
     let input = root.join(file);
     let rel = file.to_string();
-    let (h1, unnumbered) = chapter_heading(&input);
+    let src = std::fs::read_to_string(&input).unwrap_or_default();
+    let (h1, unnumbered) = chapter_heading_in(&src);
+    // The cost signal, from the same read. `word_count`'s contract is an include-EXPANDED
+    // source: a chapter assembled from partials would otherwise be measured at the length
+    // of its own directive lines, so the longest chapters in a book would read as the
+    // shortest. Expanding here costs one pass over the (already-read) source plus a read of
+    // each partial, at discovery, once per build.
+    let base_dir = input.parent().unwrap_or(root);
+    let words = crate::prose::word_count(&crate::includes::resolve(&src, base_dir).0);
     // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
     // warnings: `book_pages` re-parses this file with the real sink, so a
     // listing-without-contents warning here would just duplicate it.
@@ -213,6 +256,7 @@ fn push_chapter(
         rel,
         draft: fm.draft,
         depth: 0, // only a part header nests; a chapter is always a leaf
+        words,
     });
 }
 /// A page's leading `# H1` text (attributes stripped) and whether that heading is
@@ -222,9 +266,14 @@ pub(super) fn chapter_heading(input: &Path) -> (Option<String>, bool) {
     let Ok(src) = std::fs::read_to_string(input) else {
         return (None, false);
     };
+    chapter_heading_in(&src)
+}
+/// [`chapter_heading`] against an already-read source, so `push_chapter` (which also needs
+/// the text for its prose count) reads each chapter file once rather than twice.
+fn chapter_heading_in(src: &str) -> (Option<String>, bool) {
     // `content_lines` skips front matter + fenced code (so a `# comment` inside ```yaml/```sh
     // isn't mistaken for the chapter's H1); take the first real `# ` heading.
-    for t in content_lines(&src) {
+    for t in content_lines(src) {
         if let Some(rest) = t.strip_prefix("# ") {
             let unnumbered = rest.contains(".unnumbered") || rest.contains("{-}");
             let title = rest.split('{').next().unwrap_or(rest).trim().to_string();
@@ -290,6 +339,81 @@ mod tests {
         let book = build_book(&dir, &config, DraftMode::Include, &mut Vec::new());
         std::fs::remove_dir_all(&dir).ok();
         book
+    }
+
+    /// Build a book whose chapter files carry the given bodies (not the empty `# a.tmd`
+    /// stub `book_of` writes), so a test can assert on their contents.
+    fn book_of_bodies(yaml: &str, files: &[(&str, &str)]) -> Book {
+        let dir = std::env::temp_dir().join(format!(
+            "tali-book-body-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (f, body) in files {
+            let path = dir.join(f);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(path, body).unwrap();
+        }
+        let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let config = SiteConfig {
+            chapters: value
+                .get("chapters")
+                .and_then(|v| v.as_sequence())
+                .cloned()
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        let book = build_book(&dir, &config, DraftMode::Include, &mut Vec::new());
+        std::fs::remove_dir_all(&dir).ok();
+        book
+    }
+
+    #[test]
+    fn a_chapters_prose_length_excludes_code_and_front_matter() {
+        // The cost signal in the drawer and the landing Contents is `prose::word_count`,
+        // the same selection `lint`, `skim`, `map` and the reading-time estimate use — so
+        // front matter, fenced code and `:::` fences are all out. Counting raw words would
+        // report a code-heavy chapter as the longest thing in the book.
+        let book = book_of_bodies(
+            "chapters:\n  - a.tmd\n",
+            &[(
+                "a.tmd",
+                "---\ntitle: \"Counted out\"\nsubtitle: \"also out\"\n---\n\n\
+                 # Heading\n\n\
+                 one two three four five\n\n\
+                 ```python\nnot counted at all in here friend\n```\n\n\
+                 six seven\n",
+            )],
+        );
+        assert_eq!(
+            book.chapters()[0].words,
+            8,
+            "`Heading` (1) + 5 + 2 prose words, with front matter and the fence excluded"
+        );
+    }
+
+    #[test]
+    fn an_include_built_chapters_prose_counts_what_the_reader_will_read() {
+        // `prose::word_count`'s contract is an include-EXPANDED source. A chapter assembled
+        // from partials is otherwise reported at the length of its own directive lines,
+        // i.e. the longest chapters in a book read as the shortest.
+        let book = book_of_bodies(
+            "chapters:\n  - a.tmd\n",
+            &[
+                ("a.tmd", "# Assembled\n\n{{< include _part.tmd >}}\n"),
+                ("_part.tmd", "one two three four five six seven eight\n"),
+            ],
+        );
+        assert_eq!(
+            book.chapters()[0].words,
+            9,
+            "`# Assembled` (1) + the 8 words the include pulls in"
+        );
     }
 
     #[test]

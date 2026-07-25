@@ -158,7 +158,15 @@ pub(super) fn page_skim(
         url: page.url.clone(),
         title,
         chapter,
-        words: crate::prose::word_count(&src),
+        // Include-expanded, which is `word_count`'s documented contract and what the book
+        // drawer's cost signal counts: `render_finished` hands back the RAW source (it
+        // expands internally, for the render), so counting that directly reported an
+        // include-assembled chapter at the length of its own directive lines. `skim`, `map`
+        // and the drawer must agree, or a reader and an agent read different books.
+        words: crate::prose::word_count(
+            &crate::includes::resolve(&src, page.input.parent().unwrap_or_else(|| Path::new(".")))
+                .0,
+        ),
         intro,
         sections,
     })
@@ -430,6 +438,54 @@ pub fn first_sentence(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The nav's cost signal and `skim`/`map`'s `words` must be one number, and the only
+    /// shape that can tell them apart is a chapter assembled from `{{< include >}}`.
+    /// `corpus/tarn` has no such chapter — nor does any book in the repo — so the
+    /// cross-surface pin over tarn passes with this fix deleted (checked: it does).
+    /// Mint the missing shape here rather than leave the guard vacuous.
+    #[test]
+    fn an_include_built_chapter_skims_at_the_length_a_reader_will_read() {
+        let dir = std::env::temp_dir().join(format!(
+            "tali-skim-include-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: \"Inc\"\nchapters:\n  - a.tmd\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("a.tmd"), "# Assembled\n\n{{< include _p.tmd >}}\n").unwrap();
+        std::fs::write(
+            dir.join("_p.tmd"),
+            "one two three four five six seven eight\n",
+        )
+        .unwrap();
+        let site = crate::site::Site::discover(&dir);
+        let skimmed = site.skim();
+        let entry = site
+            .book
+            .as_ref()
+            .and_then(|b| b.chapters().first().copied().cloned())
+            .expect("the book has one chapter");
+        std::fs::remove_dir_all(&dir).ok();
+        let page = skimmed
+            .iter()
+            .find(|p| p.url == "a.html")
+            .expect("the chapter skims");
+        assert_eq!(
+            page.words, 9,
+            "`Assembled` (1) + the 8 words the include pulls in"
+        );
+        assert_eq!(
+            page.words, entry.words,
+            "the skim projection and the nav's cost signal must be one number"
+        );
+    }
 
     #[test]
     fn a_plain_sentence_stops_at_its_period() {

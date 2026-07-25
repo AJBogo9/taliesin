@@ -323,8 +323,15 @@ impl Site {
             } else {
                 ""
             };
+            // The cost of opening this chapter, where the decision to open it is made.
+            // Inside the `<a>` so a screen reader announces it with the chapter rather
+            // than as a stray row; the section-outline enhancer strips this span before
+            // building its toggle's label (`19-book-outline.js`).
+            let words = super::book::words_label(e.words)
+                .map(|w| format!(" <span class=\"tali-chap-words\">{w}</span>"))
+                .unwrap_or_default();
             s.push_str(&format!(
-                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}</a></li>",
+                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}{words}</a></li>",
                 e.url,
                 esc(&e.title)
             ));

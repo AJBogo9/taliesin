@@ -264,6 +264,13 @@ opening it first. The chapter you are reading is expanded already. Nothing to
 configure: the section list is read from the same search index <kbd>Cmd/Ctrl-K</kbd>
 uses, loaded the first time you open the drawer.
 
+Each chapter also shows its **prose length in words**, in the drawer and in the landing
+page's Contents, so the cost of opening a chapter is visible where that decision is
+made. It is a word count and not a reading time on purpose: the count excludes fenced
+code and math, so a code-heavy chapter is understated, and a minutes label would carry
+that error into a promise about your time. Includes are resolved first, so a chapter
+assembled from partials is measured at what you will actually read.
+
 ```yaml
 title: "My Book"
 toc: true
