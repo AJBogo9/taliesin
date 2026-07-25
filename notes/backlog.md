@@ -8,7 +8,58 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: the P3 residual batch)
+## State (2026-07-25, latest: the book-wayfinding batch)
+
+**Branch `backlog/book-outline-drawer`, 3 commits, NOT PUSHED** (off `origin/main` at `994bcba`).
+Cleared **item 23 entirely** (Ship B was its last piece, so the item is gone) and **two of item
+24's independent-medium bullets** (the preview/build TOC divergence, per-chapter prose length).
+Gates at landing, re-run not trusted from this file: **1460 tests / 0 fail across 88 binaries**
+with all three gates and `--test-threads=1`; `cargo fmt --check`,
+`clippy --workspace --all-targets -D warnings` (0 warnings) and both JS `tsc` gates clean;
+`check` reports no problems on `corpus/tarn`, `docs/guide`, `docs/internals` and `site`. Every
+fix is mutation-verified; the client work is browser-verified against a real build, a real
+mounted book in a live preview and a real live re-render, at 1440x900 / 390x844 / 900x1440 in
+light and dark, 0 console errors.
+
+**What this batch shipped**
+- **23 Ship B, re-scoped on measurement.** The Chapters drawer expands each chapter into its
+  own numbered section outline (active chapter open, indented by depth, parts get no expander).
+  The audit specced a **second per-page build artifact**; that was declined after measuring —
+  see the correction below.
+- **The preview/build TOC divergence** (24's independent set). The preview rebuilt `#TOC` from
+  `h1,h2,h3` by absolute tag while the build takes two levels below the *shallowest heading
+  present*, so any page with a title block lost its third level in the preview only.
+- **Per-chapter prose length** in the drawer and the landing Contents, from one shared
+  `words_label`. Words, never a time; absolute units, never a bar.
+
+**Five things this batch got that the entries did not say:**
+- **Ship B's second artifact does not pay for itself.** Measured: the search index is 172 KB
+  raw / 60 KB gzipped on `docs/internals` (146 KB / 50 KB on `docs/guide`), it is already
+  lazy-loaded on every page via `TALIESIN_SEARCH_URL`, and Cmd-K pulls it anyway. An
+  outline-only sidecar saves ~55 KB gzipped in exchange for a second copy of
+  `search::page_fragment`'s render-then-number-then-resolve recipe, a second whole-project
+  assembly, a second `refresh_*_for_page`, a second serve route and a second build write. The
+  drawer reads the same index through the same loader (`search.js` now exports
+  `window.taliLoadSearchIndex`). **Do not re-cost the sidecar; it is decided against, not
+  deferred.**
+- **`drawer-typeahead` is decided against with it**, not deferred: Cmd-K plus a collapsible
+  outline covers it, and the audit itself flagged a second search-like box beside a Search
+  button as a discoverability smell.
+- **The `tsc` gate reads an EXPLICIT include list, and `18-media.js` was outside it** —
+  shipping type-unchecked since it landed while the gate reported success. Fixed, plus
+  `every_code_enhance_fragment_is_in_the_type_check_gate`, which reads the fragment directory
+  mechanically. Same lesson as the CLI-help gate: compare the lists, don't assert one per file.
+- **`skim`/`map`'s `words` violated `word_count`'s documented contract.** It counts the RAW
+  source (`render_finished` expands internally but returns the raw text), so an include-built
+  chapter reported **1 word where a reader reads 9**. Fixed alongside, because otherwise the
+  new nav count would have disagreed with what an agent reads.
+- **Two of the new pins were vacuous and mutation caught both.** No book in the repo has an
+  include-built chapter at all, so the cross-surface skim pin passed with the fix deleted (that
+  shape is now minted in a temp-dir test). And the drawer-vs-Contents pin compared the drawer
+  **with itself**: the landing page carries both surfaces, so a whole-page search found the
+  drawer's span on each side. Scope every read to the surface it names.
+
+### Prior state (2026-07-25, earlier: the P3 residual batch)
 
 **Branch `backlog/p3-residual-batch`, 6 commits, PUSHED** (fast-forwarded onto `origin/main`,
 `4c97071..8aad995`; re-verified immediately before the push, and the pre-push hook passed).
@@ -46,7 +97,7 @@ preview and a real deck, 0 console errors.
 - **A site preview emits no mobile-TOC sheet chrome**, so `client.js`'s copy of the sheet is
   reachable only in a single-doc preview. Worth knowing before testing anything about that sheet.
 
-### Prior state (2026-07-25, earlier: SKIM-2 fully shipped + SKIM-3a + deck-motion (5))
+### Prior state (2026-07-25, earlier still: SKIM-2 sessions 2-3 + SKIM-3a + deck-motion (5))
 
 **Branch `backlog/skim-batch`.** Three items landed after SKIM-1: **23's Ship A**, **24a** (the
 three-state `check` severity floor) and **28's (5)** (the overview column count), which empties item
@@ -171,9 +222,9 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: the P3 residual batch is PUSHED** (branch `backlog/p3-residual-batch`, 6 commits
-fast-forwarded onto `origin/main`; gates in the State block above). Before anything else, check what
-is actually where:
+**State: the book-wayfinding batch is on branch `backlog/book-outline-drawer` and is NOT PUSHED**
+(3 commits off `origin/main` at `994bcba`; gates in the State block above). The P3 residual batch
+before it IS pushed. Before anything else, check what is actually where:
 `git log --oneline origin/main..main` and `git branch -v`. **Do not trust a SHA written here** — the
 author pushes mid-session with no signal in this file. The SKIM batch and the naming purge were both
 pushed earlier the same day.
@@ -183,7 +234,7 @@ in the batch that altered a daily-driver surface, and the one-line revert to the
 jump-menu was offered and declined. Do not re-litigate it; a collapsed-by-default variant was also
 considered and is not wanted (it is not a one-liner: it needs collapse state + keyboard handling).
 
-**Items 22 (SKIM-1), 23's Ship A and 33 (the naming purge) are gone; all shipped 2026-07-25.**
+**Items 22 (SKIM-1), 23 (all three ships) and 33 (the naming purge) are gone; all shipped 2026-07-25.**
 The purge is finished end to end and is now enforced by `crates/core/tests/retired_names.rs`, so
 the retired brand cannot come back silently. **It is also PUSHED** (2026-07-25, 7 commits
 fast-forwarded onto `origin/main`, `6bef1d7..7721432`), re-verified immediately before the push:
@@ -198,10 +249,14 @@ editor round-trip.
 **Four owner rulings were also taken** (see the prior-state block), which un-gated a large amount of
 previously-blocked work. What is left now sorts into:
 
-- **Build-ready TODAY:**
-  1. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
-     put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
-     specifically, not the outline as such.
+- **Build-ready TODAY:** what is left of **24's independent-medium set** — a citing-sentence
+  backlink line, book-scoped resume, and the "Part, Chapter" ribbon (that one is an owner call).
+  Everything else in the band needs a device, a demand signal, or a ruling.
+  - **23 is GONE, fully shipped 2026-07-25** (Ship B closed it). Two decisions in it are settled,
+    not deferred: the **outline sidecar artifact is declined** (measured — the search index it
+    would duplicate is 60 KB gzipped, already lazy-loaded on every page and already fetched by
+    Cmd-K), and **`drawer-typeahead` is declined with it** (Cmd-K plus the collapsible drawer
+    outline covers it). Do not re-cost either.
   - **24c shipped 2026-07-25** (see item 24). The standing lesson repeats one level further down:
     calibrating against real `skim`/`check` output killed **four** of that entry's own prescriptions,
     including its most valuable rule (`contentless` off the `skim` projection fired on 11.8% of the
@@ -232,6 +287,15 @@ demotion** — while 32 of 32 dogfood chapters do. A bug lived on every dogfood 
 suite. The dogfood books (`docs/guide`, `docs/internals`) are NOT in the test net, so any shape only
 they have is a shape the suite structurally cannot see. When a defect is reported on a dogfood page,
 first ask whether the corpus has that shape at all.
+
+**A second missing shape, measured 2026-07-25: NO book in the repo has an include-built chapter.**
+Enumerated, not grepped — 9 files carry a real block `{{< include >}}` directive and exactly one of
+them (`docs/guide/reference/shortcodes.tmd`) is a book chapter, where both directives sit inside
+fenced code documenting the syntax. So any rule that reads a chapter's *source* (word counts,
+`skim`, prose lints) passes vacuously over the whole corpus whether or not it expands includes,
+and a bug there is invisible. `crates/core/src/site/skim.rs`'s tests now mint that shape in a temp
+dir; anything else source-reading needs the same treatment (or a corpus fixture, which was NOT
+added here — `corpus/tarn` is a documentation book and gaining a partial would muddy it).
 
 **Two live corrections a fresh session should not re-learn the hard way:**
 - **Item 17's F-01 cannot be fixed as written** — `two-face` has no PowerShell syntax at all (199
@@ -324,64 +388,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### B. Medium impact
 
-23. **SKIM-2: honest search, honest output, and the whole-book outline** (P2, M; **22 has shipped, so this is unblocked**; detail:
-    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). Two sessions, in order:
-    - ~~**Session 2, honest output.**~~ **SHIPPED 2026-07-25.** `BODY_CAP` is gone (re-measured
-      first: it truncated **18.7%** of Guide and **25.9%** of Internals section records;
-      uncapping costs **1.20x** indexed chars / **1.17x** index bytes, and 3.2-10.5 ms per
-      keystroke INCLUDING the full result re-render). **Not split into per-block records**,
-      which the audit also proposed: the record count is exactly what Ship A's outline
-      renders, so splitting would put duplicate rows in it, and the measured growth gives
-      splitting nothing to fix. `section_text` is now exactly `render::indexable_text`, which
-      also closes **29's R1** on the Cmd-K side. Tab panels ship `hidden="until-found"` with
-      all four edits, **plus a fifth the audit named but understated**: walking ancestors from
-      the target finds nothing, because the index anchors a section to its HEADING and the
-      tabset is a SIBLING of it — `revealFor` also reveals the panel in the landed section
-      that contains a query term. And it must run in a macrotask: inline it raced tabset.js's
-      own DOMContentLoaded registration (measured — the click did nothing). Cell output is
-      bounded in CSS via `--tali-output-max` with a NEW vertical fade, a `<pre>`/table scroll
-      + image `object-fit: contain` split, and a print reset; new fixture
-      `corpus/layout/dense-output.tmd` (kernel-free) drops that page from ~19,000 px to
-      2,275 px.
-    - ~~**Session 3, Ship A.**~~ **SHIPPED 2026-07-25.** The palette's empty state is now the whole-book
-      outline (every page + its sections, indented), results group by chapter with a "+N more" disclosure,
-      partial matches survive with a struck-through `Missing: X`, `within1` is Damerau-aware, and actions
-      keep hard AND. Producer gained `c` + `h` (omitted when empty, so a website's index is unchanged).
-      **Three things the audit got wrong, re-derived from source:**
-      (1) **Ship A's stated dependency on 22b was false as written.** The index's heading text carried
-      **no** section numbers at all: `page_fragment` scoped the render (which numbers floats + theorems)
-      but never called `number_chapter_headings`, which is a *separate* step `Site::finish_blocks` makes.
-      So the dependency had to be *created*, not consumed. (2) **Indenting by `l` is wrong** — absolute
-      level depends on whether a chapter emits a title block and where it roots, so a `###`-rooted chapter
-      indented three steps beside a `##`-rooted one. Depth is now measured against each page's own
-      shallowest heading, client-side. (3) **Every untitled chapter's `# H1` was indexed twice** (page
-      record + heading record, same destination, same words, adjacent rows); it is now folded into the
-      page record. None of the three is visible without rendering the outline, which is why the audit
-      missed them.
-    - **Ship B** (the drawer sidecar, L, genuinely new: mdBook, Docusaurus, GitBook, Starlight and Material
-      all list author-declared pages, never harvested headings). **RULED 2026-07-25: ship A, then B**, and A
-      has now shipped. It needs a per-page outline fragment (measured: the body field is 87% of raw and 92%
-      of gzipped index bytes, so an outline-only sidecar is ~13x smaller gzipped) plus a
-      `refresh_search_for_page`-shaped invalidation. Ship B also decides whether a drawer type-ahead is
-      wanted at all. **Re-scope it before building:** Ship A already put a browsable whole-book outline one
-      keystroke away, so B's remaining value is the *drawer* specifically, not the outline as such.
-    **Pins:** `corpus/tarn` throughout — grown 2026-07-25, use it, do not mint a fixture (its
-    over-`BODY_CAP` section is `filtering.tmd`'s "How nulls behave", whose distinctive term
-    `null-dropping-filter` sits in its LAST paragraph, i.e. past the old cap; its 12 chapters for
-    grouping); extend
-    `corpus/tarn/install.tmd` for the tab attribute + the zero-intrinsic-size rule + the visible panel's
-    first-child margin; new `corpus/layout/dense-output.tmd` (kernel-free: long `<pre>`, 200-row table, tall
-    image) asserting the bound, the print reset, **and that the horizontal `pre` shadow is unchanged**.
-    *(Ship A's pins landed: `tarn.rs` asserts every record carries `u`/`i`/`l`, that a numbered chapter's
-    records carry `c` + a numbered `h` path, and that a website's carry no `c`; `render/tests.rs` pins the
-    three client behaviours against the bundled JS. `grouping.tmd` gained two `###` subsections because
-    tarn had **zero** nested headings, so neither `h` nor the outline indent was exercised at all. The
-    grouping render itself is unpinned, by design.)*
-    **Invariants:** offline (no CDN, the index is a same-origin lazily-loaded subresource), read-only overlay,
-    zero new config keys (no `search.boost`, no per-page `search.exclude`). Nothing here touches the frozen
-    `exec_pool` LRU; at 60+ chapters a preview reader evicts constantly, and the consequence is **a slower
-    cold chapter, not a correctness bug**.
-
 4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
    deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
    fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
@@ -470,13 +476,19 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       dogfood pages and that one is a false positive; the headline "1,832-word run" is 1,021 words of
       table cells). Nothing resembling a readability grade, and never a rule about heading *form*
       (Sanchez/Lorch: no differential effect).
-    - **Independent medium items, no ordering constraint:** per-chapter prose length in the drawer and landing
-      Contents (absolute units, never a normalized bar; do not touch `is_article`, it is test-pinned); the
-      preview/build TOC selector divergence (`client.js:847` selects by absolute tag, the build filters
-      relative to the shallowest, so the author tunes navigation against a TOC readers never see; `base` is
-      already correct, do not "fix" it); a citing-sentence backlink line; book-scoped resume; a static "Part,
-      Chapter" ribbon (**owner call**: it adds a fourth persistent top element, and the dwell-time evidence
-      says the first viewport is the screening surface).
+    - **Independent medium items, no ordering constraint.** ~~Per-chapter prose length~~ and ~~the
+      preview/build TOC selector divergence~~ **both SHIPPED 2026-07-25** (see the State block). Left:
+      a citing-sentence backlink line; book-scoped resume; a static "Part, Chapter" ribbon (**owner
+      call**: it adds a fourth persistent top element, and the dwell-time evidence says the first
+      viewport is the screening surface).
+      *Two facts from shipping the first two, so they are not re-learned:* the TOC entry's recorded
+      cause was **right** for once (absolute tag vs. relative window, and `base` was indeed already
+      correct) — but there is no equivalence test between the two implementations and one cannot be
+      written cheaply, because `buildToc` closes over `root`/`tocEl` inside client.js's single IIFE;
+      it is pinned by a needle pair instead. And the prose-length entry did not mention that
+      `skim`/`map`'s `words` **violated `word_count`'s include-expanded contract** (1 word reported
+      where a reader reads 9), which had to be fixed in the same change or the new nav count would
+      have disagreed with what an agent reads.
     - **`section-extents` is an owner ruling, not a task.** The DOM has no section boundaries (zero
       `<section>` wrapping content headings on 17 of 19 built guide pages; `using/code.html` is 47 flat
       siblings; repo-wide `<section>` is emitted only by `render/deck.rs` and the footnotes block at
@@ -978,6 +990,21 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
+- **The 2026-07-25 book-wayfinding batch** (branch `backlog/book-outline-drawer`; was 23's Ship B
+  and two of 24's independent-medium bullets). Grep before doubting any of it:
+  - The **chapter drawer's per-chapter section outline**: `code-enhance/19-book-outline.js` hydrates
+    `#tali-book-chapters` from the shared `search-index.js` on drawer open (expander per chapter with
+    sections, active chapter open, indent relative to each page's own shallowest heading, parts and
+    section-less chapters get no expander). Nothing server-side, so JS-off is the flat list it was.
+    `search.js` exports its loader as `window.taliLoadSearchIndex` — **one loader, two readers**.
+  - The **preview's live `#TOC` uses the build's relative window** (`lvl(h) - base <= 2` over every
+    anchored heading), not `h1,h2,h3` by tag. Pinned by
+    `the_previews_toc_uses_the_same_relative_window_as_the_build`.
+  - **Per-chapter prose length** in the drawer (`.tali-chap-words`) and the landing Contents
+    (`.tali-btoc-words`), both from `site::book::words_label`; `BookEntry.words` is
+    `prose::word_count` over the **include-expanded** source, and `skim`/`map` now expand too.
+  - `every_code_enhance_fragment_is_in_the_type_check_gate` reads `assets/js/code-enhance/` and
+    asserts each file is in `jsconfig.json`'s explicit include list (`18-media.js` was not).
 - **The 2026-07-25 hardening batch** (branch `backlog/hardening-batch`; was items 13, 20, 21, 25, 26, 27,
   28's code half, two bullets of 10). Grep before doubting any of it:
   - `serve::guarded` now wraps the per-message dispatch in `lsp::main_loop` **and** `mcp::dispatch`, so a
@@ -1152,6 +1179,25 @@ claim that one of these is "missing"):
 
 ## Decided against / do-not-re-litigate
 
+- **A separate per-page outline artifact for the book drawer** (`book-outline-artifact` Ship B's
+  own spec, declined 2026-07-25 while building it). Measured rather than argued: the search index
+  the sidecar would duplicate is **172 KB raw / 60 KB gzipped** on `docs/internals` (146 KB / 50 KB
+  on `docs/guide`), it is already lazy-loaded on every page via `TALIESIN_SEARCH_URL`, and Cmd-K
+  fetches it anyway — so a ~13x-smaller sidecar buys ~55 KB gzipped on one cached subresource in
+  exchange for a second copy of `search::page_fragment`'s render-then-number-then-resolve recipe, a
+  second whole-project assembly, a second `refresh_*_for_page` invalidation, a second serve route
+  and a second build write. The drawer reads the same index through the same loader
+  (`window.taliLoadSearchIndex`). Revisit only if the index ever grows past the point where loading
+  it on a drawer open is felt — and measure again before believing it has.
+- **`drawer-typeahead`, a filter box in the chapter drawer** (declined 2026-07-25 with the above).
+  The audit named the cheaper alternative itself: Cmd-K plus the drawer's collapsible outline
+  covers the need, and a second search-like box beside a Search button is a discoverability smell.
+- **A "~N min read" label on a book chapter** (decided 2026-07-25 while shipping the cost signal).
+  `prose::word_count` excludes fenced code and math, so a code-heavy chapter is understated — and
+  reading code is *slower* than reading prose, so a minutes label carries that error into a promise
+  about the reader's time, in the wrong direction, on exactly the chapters this tool exists for. The
+  drawer and Contents print words. (The dated-post reading-time estimate in `render/mod.rs` is a
+  different surface and is unchanged; `is_article` is test-pinned, do not touch it.)
 - **Flipping a book chapter's label to prefer `title:` over its `# H1`** (raised + resolved
   2026-07-25 while building 23's Ship A). The symptom is real — a chapter's drawer / Contents /
   Cmd-K label can differ from its `<title>` — but **measured across every book in the repo only 3
