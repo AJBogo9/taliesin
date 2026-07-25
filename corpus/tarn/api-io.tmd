@@ -1,0 +1,41 @@
+---
+title: "I/O functions"
+description: "Readers and writers, with their format-specific options."
+---
+
+## `read_csv` {#fn-read-csv}
+
+```
+tarn.read_csv(path, *, types=None, header=True, delimiter=",") -> Frame
+```
+
+Reads a delimited text file lazily. `types` overrides inferred column types by name;
+see @sec-load-csv for when the inference goes wrong. With `header=False` the columns
+are named `c0`, `c1`, … in order.
+
+## `read_parquet` {#fn-read-parquet}
+
+```
+tarn.read_parquet(path, *, columns=None) -> Frame
+```
+
+Reads a Parquet file lazily, with the schema taken from the file. `columns` restricts
+the read at the source; the planner also does this automatically from the query, so
+pass it only when you want the restriction to be explicit.
+
+## `write_csv` {#fn-write-csv}
+
+```
+Frame.write_csv(path, *, header=True) -> None
+```
+
+Collects the frame and writes it. This is a terminal operation: it runs the plan.
+
+## `write_parquet` {#fn-write-parquet}
+
+```
+Frame.write_parquet(path, *, compression="zstd") -> None
+```
+
+Collects and writes, preserving the frame's schema so a later `read_parquet` round-trips
+without inference.

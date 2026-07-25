@@ -1,0 +1,55 @@
+---
+title: "Grouping and aggregation"
+---
+
+## The shape of a grouped query {#sec-group-shape}
+
+`group_by` does not itself produce a frame — it produces a grouping that `agg`
+turns back into one. The result has one row per distinct key combination, and one
+column per aggregate you asked for.
+
+::: {.definition}
+A **grouping key** is the tuple of column values that defines one output row. Rows
+sharing a key are aggregated together; the key columns are carried through to the
+result unchanged.
+:::
+
+```python
+by_region = sales.group_by("region").agg(
+    tarn.col("revenue").sum(),
+    tarn.col("order_id").count(),
+)
+```
+
+Output columns are named `<column>_<aggregate>` unless you rename them with
+`.alias()`. Group on several columns by passing several names.
+
+## Aggregates that are not sums {#sec-group-aggregates}
+
+Beyond `sum`, `mean`, `min`, `max` and `count`, two aggregates come up often enough
+to name here. `n_unique` counts distinct values within the group, and `first` takes
+the value from the group's first row in the frame's current order — which is only
+meaningful after an explicit `sort`.
+
+::: {.definition}
+An aggregate is **order-dependent** when its result can change under a permutation of
+the input rows that does not change the grouping key. `first` and `last` are
+order-dependent; `sum` and `n_unique` are not.
+:::
+
+Order-dependent aggregates on an unsorted frame are the most common source of
+results that differ between runs, because the reader is free to return rows in
+whatever order is cheapest.
+
+## Grouping on a derived value {#sec-group-derived}
+
+You do not need a real column to group on. Add one first with `with_column`, then
+group on its name:
+
+```python
+by_month = (
+    sales.with_column(tarn.col("date").dt.month().alias("month"))
+    .group_by("month")
+    .agg(tarn.col("revenue").sum())
+)
+```

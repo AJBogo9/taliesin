@@ -292,7 +292,17 @@ impl Site {
         s.push_str("<ul class=\"tali-book-chapters\" id=\"tali-book-chapters\">");
         for e in &book.entries {
             if let Some(part) = &e.part {
-                s.push_str(&format!("<li class=\"tali-book-part\">{}</li>", esc(part)));
+                // A nested part is indented rather than flattened into its parent, so the
+                // drawer shows the structure the author actually declared.
+                let nested = if e.depth > 0 {
+                    " tali-book-part-nested"
+                } else {
+                    ""
+                };
+                s.push_str(&format!(
+                    "<li class=\"tali-book-part{nested}\">{}</li>",
+                    esc(part)
+                ));
                 continue;
             }
             let active = e.rel == current.rel;

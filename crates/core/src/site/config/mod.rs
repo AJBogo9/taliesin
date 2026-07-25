@@ -191,7 +191,7 @@ pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> S
             return SiteConfig::default();
         }
     };
-    parse_native(&value, warnings)
+    parse_native(&value, warnings, ConfigSource(Some(&text)))
 }
 
 /// Whether a discovery warning is the benign "this directory has no `_site.yml`" advisory,
@@ -224,8 +224,12 @@ fn validate_url(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
     }
 }
 
-fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteConfig {
-    validate_keys(value, warnings);
+fn parse_native(
+    value: &serde_yaml::Value,
+    warnings: &mut Vec<String>,
+    src: ConfigSource<'_>,
+) -> SiteConfig {
+    validate_keys(value, warnings, src);
     validate_url(value, warnings);
     let str_of = |k: &str| value.get(k).and_then(|v| v.as_str()).map(str::to_string);
     let chapters = value
@@ -303,17 +307,51 @@ fn did_you_mean(key: &str, candidates: &[&'static str]) -> String {
         .unwrap_or_default()
 }
 
+/// Where the config's own diagnostics point. `serde_yaml`'s `Value` has dropped all
+/// spans by the time the schema is validated, so the line is recovered from the raw
+/// text by finding where the offending key is written.
+#[derive(Clone, Copy, Default)]
+pub(super) struct ConfigSource<'a>(pub Option<&'a str>);
+
+impl ConfigSource<'_> {
+    /// The `file:line:` prefix for a diagnostic about `key`, in the same linter form as
+    /// the page-level warnings (so the editor can jump to it). Falls back to the bare
+    /// filename when the key cannot be located — a warning without a line still beats a
+    /// wrong one.
+    fn at(&self, key: &str) -> String {
+        match self.0.and_then(|t| key_line(t, key)) {
+            Some(line) => format!("_site.yml:{line}:"),
+            None => "_site.yml:".to_string(),
+        }
+    }
+}
+
+/// The 1-based line where `key` is written in `_site.yml`, at any nesting depth (a list
+/// item's `- key:` counts). First match wins: a duplicate key is a YAML error the parse
+/// step already reports.
+fn key_line(text: &str, key: &str) -> Option<usize> {
+    text.lines()
+        .position(|l| {
+            let t = l.trim_start().trim_start_matches("- ").trim_start();
+            // Match the key token exactly, not a prefix: `nav:` must not match `navigation:`.
+            t.strip_prefix(key)
+                .is_some_and(|rest| rest.starts_with(':'))
+        })
+        .map(|i| i + 1)
+}
+
 /// Warn on unrecognized keys against the closed native schema: top-level, and the
 /// nested `nav:`/`footer:`/`mounts:`/`publish:` structures (a typo in one of those
 /// silently drops the whole section/item, so it warns with a "did you mean"). Every
 /// warning is prefixed `_site.yml` so it is file-located rather than an anonymous string.
-fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
+fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
     let Some(map) = value.as_mapping() else {
         return;
     };
     let warn = |warnings: &mut Vec<String>, what: &str, key: &str, allowed: &[&'static str]| {
         warnings.push(format!(
-            "_site.yml: unknown {what} `{key}`{}",
+            "{} unknown {what} `{key}`{}",
+            src.at(key),
             did_you_mean(key, allowed)
         ));
     };
@@ -324,10 +362,10 @@ fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
             continue;
         }
         match key {
-            "nav" => validate_nav_like(v, NAV_SECTION_KEYS, "nav", warnings),
-            "footer" => validate_nav_like(v, FOOTER_SECTION_KEYS, "footer", warnings),
-            "mounts" => validate_mounts(v, warnings),
-            "publish" => validate_publish(v, warnings),
+            "nav" => validate_nav_like(v, NAV_SECTION_KEYS, "nav", warnings, src),
+            "footer" => validate_nav_like(v, FOOTER_SECTION_KEYS, "footer", warnings, src),
+            "mounts" => validate_mounts(v, warnings, src),
+            "publish" => validate_publish(v, warnings, src),
             _ => {}
         }
     }
@@ -341,29 +379,36 @@ fn validate_nav_like(
     section_keys: &[&'static str],
     ctx: &str,
     warnings: &mut Vec<String>,
+    src: ConfigSource<'_>,
 ) {
     match v {
         serde_yaml::Value::Mapping(m) => {
             for (k, section) in m {
                 let Some(key) = k.as_str() else { continue };
                 if section_keys.contains(&key) {
-                    validate_items(section, ctx, warnings);
+                    validate_items(section, ctx, warnings, src);
                 } else {
                     warnings.push(format!(
-                        "_site.yml: unknown {ctx} section `{key}`{}",
+                        "{} unknown {ctx} section `{key}`{}",
+                        src.at(key),
                         did_you_mean(key, section_keys)
                     ));
                 }
             }
         }
-        serde_yaml::Value::Sequence(_) => validate_items(v, ctx, warnings),
+        serde_yaml::Value::Sequence(_) => validate_items(v, ctx, warnings, src),
         _ => {}
     }
 }
 
 /// Validate one or a list of nav/footer items: each mapping's keys against
 /// [`NAV_ITEM_KEYS`] (a bare string item is a plain label, nothing to check).
-fn validate_items(v: &serde_yaml::Value, ctx: &str, warnings: &mut Vec<String>) {
+fn validate_items(
+    v: &serde_yaml::Value,
+    ctx: &str,
+    warnings: &mut Vec<String>,
+    src: ConfigSource<'_>,
+) {
     let items: Vec<&serde_yaml::Value> = match v {
         serde_yaml::Value::Sequence(seq) => seq.iter().collect(),
         other => vec![other],
@@ -373,7 +418,8 @@ fn validate_items(v: &serde_yaml::Value, ctx: &str, warnings: &mut Vec<String>) 
             for k in m.keys().filter_map(|k| k.as_str()) {
                 if !NAV_ITEM_KEYS.contains(&k) {
                     warnings.push(format!(
-                        "_site.yml: unknown {ctx} item key `{k}`{}",
+                        "{} unknown {ctx} item key `{k}`{}",
+                        src.at(k),
                         did_you_mean(k, NAV_ITEM_KEYS)
                     ));
                 }
@@ -384,7 +430,7 @@ fn validate_items(v: &serde_yaml::Value, ctx: &str, warnings: &mut Vec<String>) 
 
 /// Validate `mounts:` in its sequence form (`- { at, path }`); the mapping form
 /// (`{ prefix: path }`) has author-chosen keys, so it can't be checked.
-fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
+fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
     let serde_yaml::Value::Sequence(seq) = v else {
         return;
     };
@@ -393,7 +439,8 @@ fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
             for k in m.keys().filter_map(|k| k.as_str()) {
                 if !MOUNT_ITEM_KEYS.contains(&k) {
                     warnings.push(format!(
-                        "_site.yml: unknown mount key `{k}`{}",
+                        "{} unknown mount key `{k}`{}",
+                        src.at(k),
                         did_you_mean(k, MOUNT_ITEM_KEYS)
                     ));
                 }
@@ -404,14 +451,15 @@ fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
 
 /// Validate the `publish:` mapping's keys against [`PUBLISH_KEYS`]. A typo silently
 /// drops a setting (publish would fall back to a default), so it warns.
-fn validate_publish(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
+fn validate_publish(v: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
     let serde_yaml::Value::Mapping(m) = v else {
         return;
     };
     for k in m.keys().filter_map(|k| k.as_str()) {
         if !PUBLISH_KEYS.contains(&k) {
             warnings.push(format!(
-                "_site.yml: unknown publish key `{k}`{}",
+                "{} unknown publish key `{k}`{}",
+                src.at(k),
                 did_you_mean(k, PUBLISH_KEYS)
             ));
         }
@@ -503,7 +551,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\npython: .venv/bin/python\nr: /usr/bin/R\n").unwrap();
-        let cfg = parse_native(&v, &mut w);
+        let cfg = parse_native(&v, &mut w, ConfigSource(None));
         assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
         assert_eq!(cfg.r.as_deref(), Some("/usr/bin/R"));
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
@@ -514,7 +562,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\ntheorems:\n  numbered: false\n").unwrap();
-        let cfg = parse_native(&v, &mut w);
+        let cfg = parse_native(&v, &mut w, ConfigSource(None));
         assert!(
             cfg.theorems.is_some(),
             "a declared theorems: parses to Some"
@@ -526,7 +574,7 @@ mod config_tests {
 
         let mut w2 = Vec::new();
         let v2: serde_yaml::Value = serde_yaml::from_str("title: X\n").unwrap();
-        let cfg2 = parse_native(&v2, &mut w2);
+        let cfg2 = parse_native(&v2, &mut w2, ConfigSource(None));
         assert!(
             cfg2.theorems.is_none(),
             "an absent theorems: parses to None"
@@ -538,7 +586,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\ntheorems:\n  numbered: banana\n").unwrap();
-        let _ = parse_native(&v, &mut w);
+        let _ = parse_native(&v, &mut w, ConfigSource(None));
         assert!(
             w.iter().any(|m| m.contains("numbered")),
             "a bad book-level numbered value is diagnosed: {w:?}"
@@ -561,11 +609,40 @@ mod config_tests {
         // the set too, which is what makes the silence audible.
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str("image: assets/og-card.png\n").unwrap();
-        let _ = parse_native(&v, &mut w);
+        let _ = parse_native(&v, &mut w, ConfigSource(None));
         assert!(
             w.iter().any(|m| m.contains("image")),
             "a site-level `image:` must be diagnosed, not silently ignored: {w:?}"
         );
+    }
+
+    #[test]
+    fn an_unknown_key_diagnostic_carries_its_line_number() {
+        // A `_site.yml` diagnostic used to be an anonymous string ("_site.yml: unknown
+        // config key `pythn`"), so the editor could not jump to it and a long config left
+        // the author hunting. Locate it in the same `file:line:` form the page-level
+        // warnings use.
+        let text = "title: X\ntoc: true\npythn: python3\n";
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+        let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+        assert!(
+            w.iter()
+                .any(|m| m.starts_with("_site.yml:3:") && m.contains("pythn")),
+            "the unknown-key warning must name line 3: {w:?}"
+        );
+    }
+
+    #[test]
+    fn key_line_matches_the_whole_key_not_a_prefix() {
+        // `nav:` must not match `navigation:` — a prefix match would point the author at
+        // an unrelated line, which is worse than no line at all.
+        let text = "navigation: x\nnav:\n  - a\n";
+        assert_eq!(key_line(text, "nav"), Some(2));
+        assert_eq!(key_line(text, "navigation"), Some(1));
+        assert_eq!(key_line(text, "missing"), None);
+        // A list-item key is found too (`- at:` inside `mounts:`).
+        assert_eq!(key_line("mounts:\n  - at: /docs\n", "at"), Some(2));
     }
 
     #[test]
@@ -576,7 +653,7 @@ mod config_tests {
         // `page-layout`/site-`image:` precedent).
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str("title: X\nurl: ex.com\n").unwrap();
-        let _ = parse_native(&v, &mut w);
+        let _ = parse_native(&v, &mut w, ConfigSource(None));
         assert!(
             w.iter().any(|m| m.contains("url") && m.contains("scheme")),
             "a scheme-less url: must be diagnosed: {w:?}"
@@ -591,7 +668,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value =
                 serde_yaml::from_str(&format!("title: X\nurl: \"{url}\"\n")).unwrap();
-            let _ = parse_native(&v, &mut w);
+            let _ = parse_native(&v, &mut w, ConfigSource(None));
             assert!(
                 !w.iter().any(|m| m.contains("scheme")),
                 "a scheme'd or blank url must not warn ({url:?}): {w:?}"
@@ -603,7 +680,7 @@ mod config_tests {
     fn a_typod_interpreter_key_warns_via_native_keys() {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str("pyton: .venv/bin/python\n").unwrap();
-        let _ = parse_native(&v, &mut w);
+        let _ = parse_native(&v, &mut w, ConfigSource(None));
         assert!(
             w.iter().any(|m| m.contains("pyton")),
             "an unknown config key must warn (did-you-mean python): {w:?}"

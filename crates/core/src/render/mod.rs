@@ -43,6 +43,7 @@ pub use doc_includes::includes_from_parts;
 use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
+pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
 pub use fm_extract::is_reveal_doc;
 // `TheoremConfig` is public (an opaque handle) so the site search API can carry a book-level
 // policy through; `parse_theorem_config_value` stays crate-internal for the `_site.yml` parse.
@@ -519,6 +520,14 @@ fn render_internal_impl(
     // carry front-matter re-derives via `theorem_config_with_fallback` below (its own
     // `theorems:` wins, else the book).
     let mut theorem_config = book_theorems.cloned().unwrap_or_default();
+    // Whether this render will emit a visible title block — and therefore demote every
+    // body heading one level. Read from the front matter up front (not from the in-loop
+    // `title`/`format`/`hide_title_block`, which are only set once the walk has passed
+    // the front-matter node) because the section-numbering base below needs it BEFORE
+    // the first heading. The demotion site further down uses this same value, so the
+    // two cannot drift.
+    let emits_title_block_here =
+        emits_title_block(crate::frontmatter::front_matter_block(src).unwrap_or(""));
     let mut flat: Vec<FlatBlock> = Vec::new();
     // Footnote definitions, rendered as `<li>`s and gathered into a section at the
     // end (comrak moves them here in reference order); see below the loop.
@@ -531,10 +540,22 @@ fn render_internal_impl(
     let mut eq_count: usize = 0;
     let mut lst_count: usize = 0;
     let mut sec_count: usize = 0;
-    // Hierarchical section counters (h2..h6) for a book chapter, advanced over EVERY
-    // heading in document order so a `{#sec-x}` registers the same number the heading
-    // visibly shows via `number_chapter_headings` (they share `section_number`).
-    let mut sec_counters = [0u32; 5];
+    // Section numbering for a book chapter, advanced over EVERY heading in document
+    // order so a `{#sec-x}` registers the same number the heading visibly shows via
+    // `number_chapter_headings` (they share `ChapterNumbering`). Its base is the
+    // shallowest heading below the chapter's own, so the whole heading shape must be
+    // known before the walk reaches the first heading: pre-scan the top-level nodes,
+    // exactly the set the walk below numbers.
+    let chapter_heading_levels: Vec<usize> = root
+        .children()
+        .filter_map(|n| match &n.data.borrow().value {
+            NodeValue::Heading(h) => Some(h.level as usize),
+            _ => None,
+        })
+        .collect();
+    let mut sec_numbering = chapter.map(|ch| {
+        crate::site::ChapterNumbering::new(ch, &chapter_heading_levels, emits_title_block_here)
+    });
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
@@ -707,7 +728,9 @@ fn render_internal_impl(
         // will visibly show — even when earlier, unlabelled headings sit between them.
         // Outside a chapter there is no hierarchy: keep the flat sequential counter.
         let hierarchical_number = heading_level.and_then(|level| {
-            chapter.map(|ch| crate::site::section_number(ch, level as usize, &mut sec_counters))
+            sec_numbering
+                .as_mut()
+                .map(|numbering| numbering.next(level as usize))
         });
         // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N":
         // the chapter-hierarchical number ("2.2") in a book, else a flat sequential one.
@@ -1022,14 +1045,13 @@ fn render_internal_impl(
             html = strip_trailing_hardbreak(&html);
         }
         // One <h1> per page: when this render emits a visible title block, demote every
-        // body heading one level so sections nest beneath the title. The gate mirrors the
-        // title-block insertion condition exactly (Html, not hidden, titled). Decks
-        // (Reveal) and books (untitled, numbered chapters) never satisfy it, so their
-        // slide-break and section-numbering machinery is never entered.
+        // body heading one level so sections nest beneath the title. `emits_title_block`
+        // is the title-block insertion condition (Html, not hidden, titled), computed
+        // once before the walk and shared with the section numbering above, so a demoted
+        // heading and its `@sec-` number can never disagree. A deck (Reveal) never
+        // satisfies it, so its slide-break machinery is untouched.
         if let Some(level) = heading_level
-            && format == DocFormat::Html
-            && !hide_title_block
-            && title.is_some()
+            && emits_title_block_here
         {
             html = demote_heading_html(&html, level);
         }
@@ -1589,15 +1611,24 @@ pub const TOC_SPY_JS: &str = include_str!("../../../../web-client/toc-spy.js");
 /// (`toc_scripts`), never the preview, to avoid double-wiring the sheet.
 pub const TOC_SHEET_JS: &str = include_str!("../../../../web-client/toc-sheet.js");
 
+/// The scripts that only make sense with an on-page TOC: the scrollspy and the mobile
+/// TOC sheet. **Does not include [`search_scripts`]** — Cmd-K is a whole-book affordance
+/// and its button renders on every page, so gating it on this page's heading count made
+/// the palette advertise itself and then come up empty on any chapter under
+/// `MIN_TOC_HEADINGS` (the preview injects unconditionally, so the author never saw it).
 pub fn toc_scripts() -> String {
-    format!(
-        "<script>{TOC_SPY_JS}</script>\n<script>{TOC_SHEET_JS}</script>\n<script>{SEARCH_JS}</script>"
-    )
+    format!("<script>{TOC_SPY_JS}</script>\n<script>{TOC_SHEET_JS}</script>")
 }
 
-/// Cmd/Ctrl-K command palette to search the document's headings. Rides along on
-/// pages that have a table of contents (the long ones: the book, a paper), where
-/// jumping between sections matters most.
+/// The Cmd-K palette runtime. Ships wherever the palette's button ships, independently
+/// of whether this page earned a table of contents.
+pub fn search_scripts() -> String {
+    format!("<script>{SEARCH_JS}</script>")
+}
+
+/// Cmd/Ctrl-K command palette: searches the whole book (via the cross-page index) or
+/// the current document's headings. Its trigger is part of the page chrome, so this
+/// ships on every page of a site, TOC or not.
 pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
 // Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the

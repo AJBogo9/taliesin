@@ -478,9 +478,23 @@ fn html_page_inner(
     } else {
         String::new()
     };
-    // The scrollspy + search scripts ride along only on pages with a TOC. In a
-    // site/book, prepend the cross-page search index so Cmd-K searches everything.
-    let toc_script = if toc.is_empty() {
+    // The scrollspy + mobile TOC sheet ride along only on pages that HAVE a TOC.
+    let spy_script = if toc.is_empty() {
+        String::new()
+    } else {
+        match &assets {
+            AssetMode::Inline => toc_scripts(),
+            // External: the shared toc JS is in app.js.
+            AssetMode::External(_) => String::new(),
+        }
+    };
+    // Cmd-K is deliberately NOT gated on this page's TOC. Its button is part of the site
+    // chrome and renders on every page, so gating the runtime + index on `toc` left any
+    // chapter under `MIN_TOC_HEADINGS` advertising a palette that opened with nothing in
+    // it — invisible to the author, because the preview injects both unconditionally.
+    // Ship it wherever the trigger exists: a site page (chrome button, TOC or not) or a
+    // standalone page with a TOC (which is where a bare doc gets its ⌘K hint).
+    let search_script = if toc.is_empty() && site.is_none() {
         String::new()
     } else {
         let index = site
@@ -489,12 +503,13 @@ fn html_page_inner(
             .map(|idx| format!("<script>{idx}</script>\n"))
             .unwrap_or_default();
         match &assets {
-            // Inline: ship the per-page index (if any) followed by the shared toc/search JS.
-            AssetMode::Inline => format!("{index}{}", toc_scripts()),
-            // External: the shared toc/search JS is in app.js; keep only the per-page index.
+            // Inline: the per-page index (if any) followed by the palette runtime.
+            AssetMode::Inline => format!("{index}{}", search_scripts()),
+            // External: the palette runtime is in app.js; keep only the per-page index.
             AssetMode::External(_) => index,
         }
     };
+    let toc_script = format!("{search_script}{spy_script}");
     // The reading region is always a focusable `<main id="tali-main">`, emitted
     // server-side so the skip-to-content link (added in `assemble_html_page`) and
     // keyboard "skip the chrome" work with JS off. `tabindex="-1"` lets the skip link

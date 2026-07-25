@@ -8,7 +8,22 @@ chapters:                 # presence makes this a book
       - install.tmd
       - quickstart.tmd
       - concepts.tmd
+      - loading.tmd
+      - filtering.tmd
+      # A part nested inside a part. This group and every chapter under it used to be
+      # dropped silently, with `check` still exiting 0 (the inner loop in site/book.rs
+      # discarded `push_chapter_entry`'s "not a chapter" signal). Pinned by tarn.rs.
+      - part: "Going further"
+        chapters:
+          - grouping.tmd
+          - joins.tmd
+          - performance.tmd
   - part: "Reference"
     chapters:
       - api-frame.tmd
       - api-query.tmd
+      - api-io.tmd
+      - errors.tmd
+  - part: "Appendices"
+    chapters:
+      - glossary.tmd

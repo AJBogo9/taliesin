@@ -142,3 +142,141 @@ fn the_figure_is_hover_indexed_but_section_and_api_headings_are_not() {
         "raw </script must be neutralized: {idx}"
     );
 }
+
+// --- SKIM-1 pins (the 2026-07-24 skimmability audit) ---------------------------
+//
+// corpus/tarn was grown to 12 numbered chapters across 3 parts + a nested part so the
+// corpus finally pins the shapes the dogfood books have and the corpus did not: chapters
+// with a front-matter `title:` (which DEMOTES every body heading one level), a chapter
+// rooted deeper than `##`, a chapter below MIN_TOC_HEADINGS, and a part inside a part.
+// Every defect below was live on 32 of 32 dogfood chapters and invisible here.
+
+#[test]
+fn a_nested_part_keeps_its_chapters_and_is_marked_nested() {
+    // `{ part:, chapters: }` inside another one used to delete itself AND its chapters,
+    // with `check` still exiting 0. Three chapters sit under "Going further".
+    let index = tarn().render_page("index.tmd").expect("index renders");
+    for part in ["Guide", "Going further", "Reference", "Appendices"] {
+        assert!(
+            index.contains(part),
+            "part header `{part}` missing: {index}"
+        );
+    }
+    assert!(
+        index.contains("tali-book-part-nested"),
+        "the nested part must be marked as nested, not flattened into its parent"
+    );
+    for ch in ["grouping.html", "joins.html", "performance.html"] {
+        assert!(
+            index.contains(ch),
+            "chapter `{ch}` under the nested part must survive: {index}"
+        );
+    }
+}
+
+#[test]
+fn a_titled_chapters_headings_number_without_a_spurious_zero() {
+    // The regression, on all four chapter shapes at once. A `title:` chapter has its body
+    // headings demoted one level; numbering them against a hardcoded `h2` base produced
+    // "4.0.1" while the SAME heading's `@sec-` number resolved to "4.1".
+    for page in [
+        "loading.tmd",   // titled, rooted at `###`
+        "filtering.tmd", // titled, rooted at `##`
+        "joins.tmd",     // titled, carrying a body `# H1`
+        "grouping.tmd",  // titled, two `{.definition}` blocks
+    ] {
+        let html = tarn().render_page(page).expect("chapter renders");
+        let numbers: Vec<&str> = html
+            .match_indices("class=\"tali-section-number\">")
+            .map(|(i, m)| {
+                let rest = &html[i + m.len()..];
+                &rest[..rest.find('<').unwrap_or(0)]
+            })
+            .collect();
+        assert!(!numbers.is_empty(), "{page} must emit section numbers");
+        for n in &numbers {
+            assert!(
+                !n.contains(".0"),
+                "{page} emitted a spurious-zero section number `{n}` (all: {numbers:?})"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_rendered_number_the_toc_row_and_the_resolved_ref_agree() {
+    // The lockstep the audit asked for: a `@sec-` link must read the number its target
+    // heading visibly shows. `@sec-filter-predicate` is a subsection of chapter 5, whose
+    // headings are demoted — the exact case where the three numbering sites disagreed.
+    let errors = tarn().render_page("errors.tmd").expect("errors renders");
+    assert!(
+        errors.contains("filtering.html#sec-filter-predicate"),
+        "the cross-page ref must resolve: {errors}"
+    );
+    let resolved = errors
+        .split("filtering.html#sec-filter-predicate")
+        .nth(1)
+        .and_then(|s| s.split('<').next())
+        .unwrap_or_default()
+        .to_string();
+    // Pull the number the heading itself renders on the target page.
+    let filtering = tarn()
+        .render_page("filtering.tmd")
+        .expect("filtering renders");
+    let at = filtering
+        .find("id=\"sec-filter-predicate\"")
+        .expect("the target heading exists");
+    let heading_number = filtering[at..]
+        .split("class=\"tali-section-number\">")
+        .nth(1)
+        .and_then(|s| s.split('<').next())
+        .expect("the target heading is numbered")
+        .to_string();
+    assert!(
+        resolved.contains(&heading_number),
+        "the ref reads `{resolved}` but its target heading reads `{heading_number}`"
+    );
+}
+
+#[test]
+fn a_chapter_below_the_toc_gate_still_gets_the_search_index() {
+    // `performance.tmd` has two headings, under MIN_TOC_HEADINGS, so it earns no TOC. The
+    // Cmd-K index global used to ride inside the TOC-gated script block while the Cmd-K
+    // BUTTON rendered unconditionally: the affordance was advertised and the index absent.
+    let perf = tarn()
+        .render_page("performance.tmd")
+        .expect("performance renders");
+    assert!(
+        !perf.contains("id=\"TOC\""),
+        "performance.tmd is meant to sit below the TOC gate: {perf}"
+    );
+    assert!(
+        perf.contains("tali-search-btn"),
+        "the Cmd-K button renders on every book page"
+    );
+    assert!(
+        perf.contains("TALIESIN_SEARCH_URL"),
+        "…so the whole-book index must ship with it, TOC or not: {perf}"
+    );
+}
+
+#[test]
+fn the_appendix_is_unnumbered_and_the_definitions_render() {
+    let glossary = tarn()
+        .render_page("glossary.tmd")
+        .expect("glossary renders");
+    assert!(
+        !glossary.contains("class=\"tali-section-number\">13"),
+        "the appendix must not take a chapter number: {glossary}"
+    );
+    let grouping = tarn()
+        .render_page("grouping.tmd")
+        .expect("grouping renders");
+    // `tali-theorem-definition`, not a bare "definition" — the syntax highlighter also
+    // emits `tali-hl-definition`, so a loose substring count would pass vacuously.
+    assert_eq!(
+        grouping.matches("tali-theorem-definition").count(),
+        2,
+        "grouping.tmd carries two `{{.definition}}` blocks: {grouping}"
+    );
+}

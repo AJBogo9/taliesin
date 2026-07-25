@@ -57,13 +57,22 @@
     });
   }
 
-  // The activation line sits just under the sticky navbar so the highlighted
-  // section matches what a clicked TOC link lands at (headings carry a
-  // scroll-margin that clears the same navbar). Standalone pages have no navbar,
-  // so the line falls back to a small top margin.
+  // The activation line sits exactly where a clicked TOC link lands, which the browser
+  // decides from the heading's own `scroll-margin-top`. Read that, rather than measuring
+  // a navbar: `.tali-site-nav` is the WEBSITE chrome and a book emits `.tali-book-topbar`
+  // instead, so querying the navbar returned 0 on every book page and the highlight
+  // lagged a whole section behind the reader. `scroll-margin-top` is already
+  // `--tali-nav-h + 1rem` under both chromes, and 1rem on a standalone page.
+  var lineOffset = 16;
+  // Sampled here, once per (re)init, not in `update()` — that runs every rAF while
+  // scrolling and `getComputedStyle` forces a style flush.
+  function sampleLine() {
+    var first = entries.length ? entries[0].heading : null;
+    var px = first ? parseFloat(getComputedStyle(first).scrollMarginTop) : NaN;
+    lineOffset = isNaN(px) ? 16 : px;
+  }
   function line() {
-    var nav = document.querySelector(".tali-site-nav");
-    return (nav ? nav.getBoundingClientRect().height : 0) + 16;
+    return lineOffset;
   }
 
   function collect() {
@@ -75,6 +84,7 @@
       var h = id && document.getElementById(id);
       if (h) entries.push({ link: link, heading: h });
     });
+    sampleLine();
   }
 
   function update() {
@@ -91,7 +101,11 @@
       cur = entries[entries.length - 1];
     } else {
       for (var i = 0; i < entries.length; i++) {
-        if (entries[i].heading.getBoundingClientRect().top - ln > 0) break;
+        // 1px tolerance: scroll offsets are quantized to device pixels, so a heading
+        // the reader has just landed on (via a TOC click, a deep link, or resume) can
+        // measure a hair BELOW the line and leave the previous entry highlighted —
+        // the same visible off-by-one the activation line itself was causing.
+        if (entries[i].heading.getBoundingClientRect().top - ln > 1) break;
         cur = entries[i];
       }
     }

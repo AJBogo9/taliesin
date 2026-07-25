@@ -1,0 +1,53 @@
+---
+title: "Loading data"
+description: "Readers, formats, and what Tarn infers when you do not tell it."
+---
+
+### From a CSV file {#sec-load-csv}
+
+`read_csv` is the reader you will use most. It takes a path and returns a lazy
+`Frame` — nothing is read from disk until the query is collected, so pointing it at a
+large file costs nothing on its own.
+
+```python
+import tarn
+
+sales = tarn.read_csv("sales.csv")
+```
+
+Types are inferred from the first block of rows. An all-digit column becomes an
+integer, a column with a decimal point becomes a float, anything ISO-8601-shaped
+becomes a date, and everything else stays a string. Pass `types=` to override the
+guess for named columns when the inference is wrong:
+
+```python
+sales = tarn.read_csv("sales.csv", types={"zip": "str"})
+```
+
+That override matters more often than it looks. A postal code column of `01450`
+infers as an integer and loses its leading zero, and there is no way to recover it
+afterwards.
+
+### From Parquet {#sec-load-parquet}
+
+`read_parquet` carries its schema in the file, so nothing is inferred and nothing can
+be mis-guessed. It is the format to prefer when you control how the data is written.
+
+```python
+sales = tarn.read_parquet("sales.parquet")
+```
+
+Column pruning happens at the reader: if the query only ever mentions three columns,
+only those three are read off disk. This is the single largest speed difference
+between the two readers on a wide table.
+
+### From memory {#sec-load-memory}
+
+A dict of lists becomes a frame directly, which is how most of the examples in this
+book are written:
+
+```python
+f = tarn.frame({"region": ["north", "south"], "revenue": [10, 20]})
+```
+
+This reader is eager — the data is already in memory, so there is nothing to defer.

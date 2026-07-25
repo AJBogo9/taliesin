@@ -1,0 +1,24 @@
+---
+title: "Glossary"
+---
+
+# Glossary {.unnumbered}
+
+**Collect** — run a plan and materialise its result. The only operation that reads
+data; everything else builds a plan. See @sec-lazy.
+
+**Expression (`Expr`)** — a description of a per-row computation, built from `col()`
+and combinators. An expression carries no data and is bound to a frame only when the
+query runs.
+
+**Frame** — a lazy table of named columns. Every method returns a new frame rather
+than mutating the receiver.
+
+**Grouping key** — the tuple of column values defining one output row of an
+aggregation. See @sec-group-shape.
+
+**Pushdown** — moving a filter or a column selection down the plan toward the reader,
+so less data is read. See @sec-perf-explain.
+
+**Plan** — the tree of operations a frame has accumulated, visible with `explain()`
+and executed by `collect()`.

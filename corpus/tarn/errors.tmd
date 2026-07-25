@@ -1,0 +1,27 @@
+---
+title: "Errors"
+description: "Every exception Tarn raises, and what usually causes it."
+---
+
+## `ColumnNotFoundError` {#err-column-not-found}
+
+A `col("x")` naming a column the frame does not have. Raised at `collect()`, not at
+the point the expression was built, because the schema is only known once the plan is
+resolved. The message lists the columns that *are* present.
+
+## `AmbiguousExprError` {#err-ambiguous-expr}
+
+Python's `and`, `or` or `not` applied to an expression. Use `&`, `|` and `~`, with
+parentheses around the operands. See @sec-filter-predicate.
+
+## `TypeMismatchError` {#err-type-mismatch}
+
+A comparison or arithmetic operation between incompatible column types — most often a
+string column that was expected to be a date, because the CSV inference did not
+recognise the format. Fix it at the reader with `types=`.
+
+## `DuplicateKeyError` {#err-duplicate-key}
+
+A join whose right side has more than one row per key, when the join was declared
+one-to-one with `validate="1:1"`. Without `validate=` the join silently multiplies
+rows instead, which is why declaring the cardinality is worth the keystrokes.

@@ -65,7 +65,7 @@ For long reads, an unobtrusive trio answers "where was I?", with no control to o
 
 Hovering an internal reference, a `@fig-`/`@sec-`/`@eq-` cross-reference, a `[@cite]`
 citation, or a footnote, pops a card showing the *target block itself* (the figure,
-the equation, the bibliography entry, or a heading with its first lines). You read
+the equation, or the bibliography entry). You read
 the target without losing your place. The cards render the already-rendered content,
 so there is no re-execution, and table-of-contents links are excluded.
 

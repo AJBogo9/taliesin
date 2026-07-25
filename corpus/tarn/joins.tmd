@@ -1,0 +1,45 @@
+---
+title: "Joining frames"
+description: "The four join kinds and how key columns are matched."
+---
+
+Joining is how a query reaches data that lives in a second frame. Tarn's `join` is
+lazy like everything else, and the planner is free to reorder it against the filters
+around it.
+
+# Join kinds {#sec-join-kinds}
+
+Four kinds are supported, selected with `how=`:
+
+| `how=` | keeps |
+|--------|-------|
+| `inner` (default) | rows with a match on both sides |
+| `left` | every left row; unmatched right columns are null |
+| `outer` | every row from both sides |
+| `anti` | left rows with **no** match on the right |
+
+`anti` is the one people forget exists and then reimplement with a `left` join and an
+`is_null` filter. It is the same result and a slower plan.
+
+## Matching keys {#sec-join-keys}
+
+`on=` names a column present in both frames. When the two sides name the key
+differently, give both:
+
+```python
+enriched = sales.join(regions, left_on="region_code", right_on="code")
+```
+
+A key column that is null never matches, including against another null — the same
+three-valued rule that governs filtering. A frame whose key column contains nulls
+therefore loses those rows in an inner join, silently.
+
+## Overlapping column names {#sec-join-overlap}
+
+When both sides carry a column of the same name and it is not the key, the right
+side's copy is suffixed with `_right`. Rename before joining if that suffix would end
+up in a published result:
+
+```python
+enriched = sales.join(regions.rename({"name": "region_name"}), on="region")
+```

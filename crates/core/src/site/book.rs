@@ -38,6 +38,10 @@ pub struct BookEntry {
     /// `draft: true` front matter on the chapter file. Only ever `true` in
     /// `DraftMode::Include` (a draft chapter is dropped entirely in `Exclude`).
     pub draft: bool,
+    /// Nesting level of a part header: 0 for a top-level `{ part: }`, 1 for one nested
+    /// inside another, and so on. Always 0 for a chapter entry. Lets the drawer indent a
+    /// sub-part instead of flattening it into its parent.
+    pub depth: u8,
 }
 impl Book {
     /// The chapters in reading order (part headers dropped), for prev/next.
@@ -63,11 +67,42 @@ pub(super) fn build_book(
 ) -> Book {
     let mut entries = Vec::new();
     let mut num = 0u32;
-    for ch in &config.chapters {
-        if push_chapter_entry(root, ch, &mut entries, &mut num, mode, excluded) {
+    push_group(
+        root,
+        &config.chapters,
+        0,
+        &mut entries,
+        &mut num,
+        mode,
+        excluded,
+    );
+    Book {
+        title: config.title.clone(),
+        entries,
+    }
+}
+
+/// Walk one `chapters:` list in order, appending its chapters and part headers.
+///
+/// **Recurses into a nested `{ part:, chapters: }` group.** The inner loop used to call
+/// [`push_chapter_entry`] and discard its `false` — the signal that the value was some
+/// other shape — so a part nested inside a part silently deleted itself AND every chapter
+/// under it, with `check` still exiting 0. (The outer loop always did check that return;
+/// only the inner one dropped it.)
+fn push_group(
+    root: &Path,
+    list: &[serde_yaml::Value],
+    depth: u8,
+    entries: &mut Vec<BookEntry>,
+    num: &mut u32,
+    mode: DraftMode,
+    excluded: &mut Vec<String>,
+) {
+    for ch in list {
+        if push_chapter_entry(root, ch, entries, num, mode, excluded) {
             continue;
         }
-        // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner chapters.
+        // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner entries.
         if let Some(map) = ch.as_mapping() {
             let part = map
                 .get("part")
@@ -77,24 +112,29 @@ pub(super) fn build_book(
             let header_idx = entries.len();
             entries.push(BookEntry {
                 part: Some(part),
+                depth,
                 ..Default::default()
             });
             if let Some(seq) = map.get("chapters").and_then(|v| v.as_sequence()) {
-                for c in seq {
-                    push_chapter_entry(root, c, &mut entries, &mut num, mode, excluded);
-                }
+                push_group(
+                    root,
+                    seq,
+                    depth.saturating_add(1),
+                    entries,
+                    num,
+                    mode,
+                    excluded,
+                );
             }
             // Every chapter in this part was a draft and got dropped: drop the now-empty
             // part header too, rather than leaving an orphan heading over nothing in the
-            // drawer. (Drafting a whole part is a natural authoring state.)
+            // drawer. (Drafting a whole part is a natural authoring state.) Runs after the
+            // recursion, so an outer part whose only content was an all-draft inner part
+            // collapses too.
             if entries.len() == header_idx + 1 {
                 entries.pop();
             }
         }
-    }
-    Book {
-        title: config.title.clone(),
-        entries,
     }
 }
 /// Push one chapter from a list entry that is either a bare path string or a
@@ -172,6 +212,7 @@ fn push_chapter(
         url: qmd_to_html(&rel),
         rel,
         draft: fm.draft,
+        depth: 0, // only a part header nests; a chapter is always a leaf
     });
 }
 /// A page's leading `# H1` text (attributes stripped) and whether that heading is
@@ -218,4 +259,74 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a book from an inline `chapters:` list against a temp dir of empty chapters.
+    fn book_of(yaml: &str, files: &[&str]) -> Book {
+        let dir = std::env::temp_dir().join(format!(
+            "tali-book-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in files {
+            std::fs::write(dir.join(f), format!("# {f}\n")).unwrap();
+        }
+        let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let config = SiteConfig {
+            chapters: value
+                .get("chapters")
+                .and_then(|v| v.as_sequence())
+                .cloned()
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        let book = build_book(&dir, &config, DraftMode::Include, &mut Vec::new());
+        std::fs::remove_dir_all(&dir).ok();
+        book
+    }
+
+    #[test]
+    fn a_nested_part_group_keeps_its_chapters() {
+        // The regression: the inner loop called `push_chapter_entry` and threw away its
+        // `false`, so a part nested inside a part deleted ITSELF and every chapter under
+        // it — and `check` still exited 0. Two chapters went in; two must come out.
+        let book = book_of(
+            "chapters:\n  - a.tmd\n  - part: Outer\n    chapters:\n      - b.tmd\n      - part: Inner\n        chapters:\n          - c.tmd\n",
+            &["a.tmd", "b.tmd", "c.tmd"],
+        );
+        let chapters: Vec<&str> = book.chapters().iter().map(|c| c.rel.as_str()).collect();
+        assert_eq!(
+            chapters,
+            ["a.tmd", "b.tmd", "c.tmd"],
+            "a chapter under a nested part must survive"
+        );
+        let parts: Vec<(&str, u8)> = book
+            .entries
+            .iter()
+            .filter_map(|e| e.part.as_deref().map(|p| (p, e.depth)))
+            .collect();
+        assert_eq!(
+            parts,
+            [("Outer", 0), ("Inner", 1)],
+            "both part headers present, the inner one one level deeper"
+        );
+    }
+
+    #[test]
+    fn a_nested_part_still_numbers_chapters_in_reading_order() {
+        // Numbering must run straight through the nesting, not restart per part.
+        let book = book_of(
+            "chapters:\n  - part: One\n    chapters:\n      - a.tmd\n      - part: Two\n        chapters:\n          - b.tmd\n  - c.tmd\n",
+            &["a.tmd", "b.tmd", "c.tmd"],
+        );
+        let nums: Vec<Option<u32>> = book.chapters().iter().map(|c| c.number).collect();
+        assert_eq!(nums, [Some(1), Some(2), Some(3)]);
+    }
 }

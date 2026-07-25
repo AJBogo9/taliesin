@@ -1,0 +1,25 @@
+---
+title: "Performance notes"
+description: "The two habits that matter and the one measurement that settles the rest."
+---
+
+## Filter early, collect once {#sec-perf-filter}
+
+The planner pushes filters toward the readers, so writing them late costs nothing —
+but only when the filter is expressible as a predicate over columns. A filter that
+calls into Python per row cannot be pushed and forces the whole frame into memory
+first. Keep predicates in `col()` expressions and the pushdown holds.
+
+Collecting more than once re-runs the whole plan. If two results come from a shared
+prefix, collect the prefix once and branch from the materialised frame.
+
+## Measuring instead of guessing {#sec-perf-explain}
+
+`explain()` prints the plan Tarn will actually run, after pushdown and pruning:
+
+```python
+print(sales.filter(tarn.col("region") == "north").explain())
+```
+
+Read it bottom-up. If a filter you wrote appears above the reader rather than inside
+it, the pushdown did not happen, and that is the thing to fix before anything else.

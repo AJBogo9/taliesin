@@ -4878,6 +4878,64 @@ fn leading_h1_text_reads_only_a_first_level_one_heading() {
 }
 
 #[test]
+fn h5_and_h6_are_not_dimmer_than_body_text() {
+    // SKIM-1: h5/h6 were both `--tali-muted`, making the two DEEPEST headings the
+    // lowest-contrast text on the page — lighter than the prose they introduce. It
+    // compounds with title-block demotion, which pushes an author's `####` into `<h5>`.
+    let css = BASE_CSS;
+    let h5 = css
+        .lines()
+        .find(|l| l.trim_start().starts_with("h5 {"))
+        .expect("base.css must style h5");
+    let h6 = css
+        .lines()
+        .find(|l| l.trim_start().starts_with("h6 {"))
+        .expect("base.css must style h6");
+    // The h5 rule wraps to a second line; check the whole declaration block.
+    let h5_block = &css[css.find(h5).unwrap()..css.find(h6).unwrap()];
+    assert!(
+        !h5_block.contains("--tali-muted"),
+        "h5 must not render dimmer than body text: {h5_block}"
+    );
+    assert!(
+        !h6.contains("--tali-muted"),
+        "h6 must not render dimmer than body text: {h6}"
+    );
+}
+
+#[test]
+fn print_un_collapses_the_nested_toc_lists() {
+    // SKIM-1: on screen `#TOC ul ul` is hidden and the scrollspy expands only the active
+    // branch. On paper there is no scrollspy and no active section, so a printed chapter
+    // showed 2 of 8 entries and silently dropped the rest.
+    // base.css has several `@media print` blocks; the rule may live in any of them.
+    assert!(
+        BASE_CSS
+            .split("@media print")
+            .skip(1)
+            .any(|blk| blk.contains("#TOC ul ul") && blk.contains("display: block")),
+        "a print block must un-collapse #TOC ul ul"
+    );
+}
+
+#[test]
+fn the_scrollspy_derives_its_line_from_scroll_margin_not_the_website_navbar() {
+    // SKIM-1: `line()` measured `.tali-site-nav`, which is the WEBSITE chrome — a book
+    // emits `.tali-book-topbar` instead, so the query returned 0 on every book page and
+    // the highlight lagged a whole section. `scroll-margin-top` is already correct under
+    // both chromes (and on a standalone page).
+    // Match the CODE, not the word: the explanatory comment names the old selector.
+    assert!(
+        !TOC_SPY_JS.contains("querySelector(\".tali-site-nav\")"),
+        "the spy must not measure the website-only navbar"
+    );
+    assert!(
+        TOC_SPY_JS.contains("scrollMarginTop"),
+        "the spy must derive its activation line from scroll-margin-top"
+    );
+}
+
+#[test]
 fn toc_filter_is_relative_to_the_shallowest_heading() {
     // A titleless document whose sections start at <h2> (shallowest level = 2): the TOC
     // shows three levels (h2/h3/h4) and drops h5. This is the relative window, not the

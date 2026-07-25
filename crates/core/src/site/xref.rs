@@ -73,18 +73,45 @@ pub(super) fn scan_xref_targets(
     }
     map
 }
+/// The ATX heading level of a content line (`## T` -> 2), or `None` if it is not a
+/// heading. `#` runs must be followed by a space, so a `#hashtag` is not a heading.
+fn heading_level_of(line: &str) -> Option<usize> {
+    let level = line.bytes().take_while(|&b| b == b'#').count();
+    ((1..=6).contains(&level) && line.as_bytes().get(level) == Some(&b' ')).then_some(level)
+}
+
+/// Every heading level in a page's source, in document order — the input
+/// [`ChapterNumbering`] derives its base from.
+fn heading_levels(src: &str) -> Vec<usize> {
+    content_lines_numbered(src)
+        .filter_map(|(_, t)| heading_level_of(t))
+        .collect()
+}
+
 /// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
 /// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
 /// are counted in order so an unlabeled section still advances the numbering.
 fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String, usize)> {
     let mut out = Vec::new();
-    let mut counters = [0u32; 5];
+    // The numbering base is the shallowest heading below the chapter's own, so the whole
+    // heading shape has to be known before the first anchor is numbered: pre-scan it.
+    // `emits_title_block` is the renderer's own gate, so this scan and the rendered page
+    // agree on whether a leading heading is the chapter's title or its first section.
+    let levels: Vec<usize> = heading_levels(src);
+    let mut numbering = chapter.map(|ch| {
+        ChapterNumbering::new(
+            ch,
+            &levels,
+            crate::render::emits_title_block(
+                crate::frontmatter::front_matter_block(src).unwrap_or(""),
+            ),
+        )
+    });
     for (line, t) in content_lines_numbered(src) {
-        let level = t.bytes().take_while(|&b| b == b'#').count();
-        let is_heading = (1..=6).contains(&level) && t.as_bytes().get(level) == Some(&b' ');
-        if is_heading {
-            let number = chapter
-                .map(|ch| section_number(ch, level, &mut counters))
+        if let Some(level) = heading_level_of(t) {
+            let number = numbering
+                .as_mut()
+                .map(|n| n.next(level))
                 .unwrap_or_default();
             if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
                 out.push((id, number, line));

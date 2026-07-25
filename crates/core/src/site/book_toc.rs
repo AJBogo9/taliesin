@@ -40,7 +40,17 @@ pub(super) fn render_book_toc(
     );
     for e in entries {
         if let Some(part) = &e.part {
-            s.push_str(&format!("<li class=\"tali-btoc-part\">{}</li>", esc(part)));
+            // A nested part is indented here too, so the landing Contents and the drawer
+            // show the same structure (they are two renderers over one entry list).
+            let nested = if e.depth > 0 {
+                " tali-btoc-part-nested"
+            } else {
+                ""
+            };
+            s.push_str(&format!(
+                "<li class=\"tali-btoc-part{nested}\">{}</li>",
+                esc(part)
+            ));
             continue;
         }
         if !is_chapter(e) {
@@ -110,6 +120,7 @@ mod tests {
 
     fn chapter(number: Option<u32>, title: &str, url: &str) -> BookEntry {
         BookEntry {
+            depth: 0,
             part: None,
             number,
             title: title.to_string(),
@@ -225,6 +236,7 @@ mod tests {
             rel: "appendix.tmd".into(),
             url: "appendix.html".into(),
             draft: true,
+            depth: 0,
         });
         let html = render_book_toc(&entries, "index.html", |_| None).unwrap();
         assert!(

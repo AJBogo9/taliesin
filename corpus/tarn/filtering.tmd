@@ -1,0 +1,74 @@
+---
+title: "Filtering rows"
+description: "Predicates, null handling, and the one rule that catches everyone."
+---
+
+## Building a predicate {#sec-filter-predicate}
+
+`Frame.filter` takes an expression that evaluates to a boolean per row. Build it from
+`col()` and the usual comparison operators:
+
+```python
+recent = sales.filter(tarn.col("date") > "2024-01-01")
+```
+
+Combine predicates with `&` and `|`, and negate with `~`. Python's `and`/`or`/`not`
+do **not** work here: they coerce their operands to a single `bool`, which an
+expression cannot meaningfully become, so Tarn raises `AmbiguousExprError` rather
+than guessing. Parenthesise the operands, because `&` binds tighter than `>`:
+
+```python
+q = sales.filter((tarn.col("date") > "2024-01-01") & (tarn.col("region") == "north"))
+```
+
+## How nulls behave {#sec-filter-nulls}
+
+A comparison against null is null, not false, and `filter` keeps only rows where the
+predicate is *true*. A null therefore drops the row, which is usually what you want
+and occasionally a silent data loss you did not intend.
+
+Consider a `discount` column where a missing value means "no discount applied". The
+predicate `col("discount") < 0.5` drops every row with a null discount, even though
+those rows arguably satisfy it. Written out, the three-valued logic is:
+
+| `discount` | `discount < 0.5` | row kept? |
+|------------|------------------|-----------|
+| `0.2`      | true             | yes       |
+| `0.8`      | false            | no        |
+| `null`     | null             | no        |
+
+To keep the nulls, say so explicitly with `is_null`:
+
+```python
+q = sales.filter((tarn.col("discount") < 0.5) | tarn.col("discount").is_null())
+```
+
+Or fill them first, which is clearer when the fill value is meaningful in its own
+right rather than a trick to make a predicate behave:
+
+```python
+q = sales.with_column(tarn.col("discount").fill_null(0.0)).filter(tarn.col("discount") < 0.5)
+```
+
+The same rule applies to `!=`, which surprises people more than `==` does. A row
+whose `region` is null is dropped by `col("region") != "north"`, so a filter and its
+apparent complement do not partition the frame: rows can fall out of both halves.
+When you are splitting a frame into two parts and expect the row counts to add up,
+this is the reason they do not.
+
+Aggregations take the opposite convention: `sum`, `mean` and friends skip nulls
+rather than propagating them, so `sum` over a column of all nulls is `0` and not
+null. The asymmetry is deliberate — a filter that silently kept unknown rows would
+corrupt a query, whereas an aggregate that refused to produce a number whenever one
+input was missing would be useless on real data. We call the resulting behaviour
+**null-dropping-filter** semantics, and it is the single convention worth memorising
+from this chapter.
+
+## Filtering after a group {#sec-filter-post-group}
+
+`filter` before an aggregation restricts the rows that go in; `having` restricts the
+groups that come out. Reaching for `filter` after `group_by` is the usual mistake:
+
+```python
+q = sales.group_by("region").agg(tarn.col("revenue").sum()).having(tarn.col("revenue_sum") > 100)
+```

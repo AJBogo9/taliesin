@@ -331,9 +331,15 @@
   h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
   h3 { font-size: 1.35rem; line-height: 1.25; margin: 1.8rem 0 .55rem; }
   h4 { font-size: 1.15rem; line-height: 1.3; margin: 1.5rem 0 .45rem; }
+  /* h5/h6 keep the body colour. They used to be `--tali-muted`, which made the two
+     DEEPEST headings the lowest-contrast text on the page — lighter than the body prose
+     they introduce, so they read as captions rather than as structure. (All three themes
+     pass AA either way; this is a hierarchy defect, not a WCAG one.) It compounds with
+     title-block heading demotion, which pushes an author's `####` into an `<h5>`.
+     Weight + tracking carry the level distinction instead. */
   h5 { font-size: 1rem; line-height: 1.35; margin: 1.3rem 0 .4rem;
-       text-transform: uppercase; letter-spacing: .04em; color: var(--tali-muted); }
-  h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; color: var(--tali-muted); }
+       text-transform: uppercase; letter-spacing: .04em; }
+  h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; }
   .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--tali-border); }
   .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
   /* Clear the floating settings gear. It is `position: fixed` in the top-right (2.4rem wide,
@@ -866,6 +872,10 @@
       margin: 0 0 1.5rem !important; padding: 0 0 1rem !important;
       border-bottom: 1px solid var(--tali-border) !important; }
     #TOC::before { display: none !important; }
+    /* Un-collapse the subsection lists. On screen `#TOC ul ul` is hidden and the
+       scrollspy expands only the active branch, which on paper (no scrollspy, no
+       active section) printed 2 of 8 entries and silently dropped the rest. */
+    #TOC ul ul { display: block !important; }
     /* `background-image: none` drops the 4-layer scroll-shadow gradients (PA-P2): with
        overflow visible there's nothing to scroll, so on paper they were just faint
        edge-vignettes on every code block. The code-bg colour is kept. */

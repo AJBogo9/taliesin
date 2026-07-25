@@ -38,6 +38,19 @@ pub(super) fn detect_title_block_hidden(front_matter: &str) -> bool {
         .any(|l| l.strip_prefix("title-block-style:").map(str::trim) == Some("none"))
 }
 
+/// Whether a render of a document with this front matter emits a visible title block —
+/// and therefore demotes every body heading one level so the page keeps a single `<h1>`.
+///
+/// `pub(crate)` because the site's *source-side* section numbering (`site/xref.rs`) has
+/// to answer the same question without rendering: a demoted chapter numbers its sections
+/// from one level deeper, so a scan that guessed differently would resolve `@sec-x` to a
+/// number the heading does not show.
+pub(crate) fn emits_title_block(front_matter: &str) -> bool {
+    detect_format(front_matter) == DocFormat::Html
+        && !detect_title_block_hidden(front_matter)
+        && extract_field(front_matter, "title").is_some()
+}
+
 /// The un-indented (top-level) front-matter lines, trimmed. The shared primitive behind
 /// every top-level key scan, so they cannot drift on what "top-level" means.
 fn top_level_lines(front_matter: &str) -> impl Iterator<Item = &str> {
