@@ -8,35 +8,64 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, later: the hardening batch landed)
+## State (2026-07-25, latest: SKIM-1 shipped + four owner rulings recorded)
 
-**Branch `backlog/hardening-batch`.** The whole build-ready hardening set from the sweep below
-shipped in one pass, each piece verified by mutation (restore the bug, watch the named test fail):
+**Branch `backlog/skim-batch`, commit `29bc976`.** All of **item 22 (SKIM-1)** shipped: the
+corpus fixture (22a), all six heading-layer defects (22b), the docs one-liner (22c) and the
+notes hygiene (22d). Gates at landing: **1373 tests / 0 fail** across 85 binaries with all
+three gates set and `--test-threads=1`; `cargo fmt --check`, `clippy --all-targets` and both
+JS `tsc` gates clean; `check corpus/tarn` reports no problems. Defects 1 and 2 were verified
+by mutation; defect 4 was browser-verified at 1440x900 / 390x844 / 900x1440 with 0 console
+errors.
+
+**Four owner rulings were taken this session** and are recorded in place on their items:
+- **25 / oss-4 — deferred with the public flip.** Not going public until end of summer; the
+  tool gets honed first. Nothing gates on it.
+- **24 — YES to the three-state `check` severity floor** (reversing the 2026-07-10 decline).
+  The "only four binary rules, red gate" fallback is dead; build the floor first.
+- **23 — ship A, then B.** Order load-bearing; A is build-ready now.
+- **28 — delegated to the implementer, ruled:** (3) and (4) are no-change, **Option C is
+  declined**, and only (5), the viewport-driven overview column count, remains as code.
+
+**Two causes were recorded wrong and re-derived from source** (the "entries rot" law again):
+- **The numbering bug was not "three sites disagree with each other."** It was ONE shared
+  assumption: `section_number`'s hardcoded `level - 2`. `site/chapter.rs` numbers
+  POST-demotion emitted HTML; the other two number PRE-demotion source levels. Threading a
+  per-site base through a shared `ChapterNumbering` is what makes the slot come out equal on
+  both sides of that shift.
+- **The scrollspy needed a second fix the audit did not name.** Deriving the activation line
+  from `scroll-margin-top` was necessary but not sufficient: scroll offsets quantize to
+  device pixels, so a just-landed heading measured a hair below the line and left the
+  PREVIOUS entry highlighted. Browser-measured; a 1px tolerance closed it.
+
+**Why the corpus never caught any of this:** every corpus book chapter opens with `# Title`
+and no front-matter `title:`, so **nothing in the regression net exercised heading demotion
+at all** — while 32 of 32 dogfood chapters do. `corpus/tarn` now carries the titled,
+`###`-rooted, body-`# H1`, below-TOC-gate, nested-part and unnumbered-appendix shapes. Treat
+that as the standing lesson: the dogfood books are not in the net, so a shape only they have
+is a shape the suite cannot see.
+
+### Prior state (2026-07-25, earlier: the hardening batch landed)
+
+The whole build-ready hardening set shipped in one pass, each piece verified by mutation:
 **21** (lsp/mcp panic boundary), **26** (AP2: depth guard + render watchdog + the fuzz-regression
 harness), **27** (AP4 follow-ups), **13** (OFF-2), **20** (PERF-1), **25** except its owner decision,
-**28**'s two code residuals, and two bullets of **10**. Gates at landing: 1351 tests pass / 0 fail
-with all three gates set and `--test-threads=1`, `cargo fmt --check` clean, `clippy --all-targets`
-clean, both JS `tsc` gates clean; the mermaid, deck-overview and magic-move work was browser-verified
-through the chrome-devtools MCP.
+**28**'s two code residuals, and two bullets of **10**. Gates at landing: 1351 tests pass / 0 fail.
 
-**Three recorded causes were wrong, re-derived from source (the "entries rot" law earning its keep):**
+**Three recorded causes were wrong there too:**
 - **The `kernel_executes_..._runaway_cell` flake was never load-sensitive.** `cell_timeout()`
   memoizes in a `OnceLock`, so the test's `set_var("TALIESIN_CELL_TIMEOUT","3")` only took effect
-  when that test happened to be the first in the binary to touch the lock. When it was not, the cap
-  stayed at the 120 s default and the 20 s assertion failed. Fixed properly (a per-kernel `cell_cap`
-  the test sets directly); the full `--bin` suite went 155 s → 49 s as a side effect.
+  when that test happened to be the first in the binary to touch the lock. Fixed properly (a
+  per-kernel `cell_cap`); the full `--bin` suite went 155 s -> 49 s as a side effect.
 - **OFF-2's premise ("inlining 2.5 MB on every save would bloat the payload") was false.** The page
-  shell is re-served per *navigation*, not per save; saves send block ops over the websocket. So the
-  fix was better than the one filed: a same-origin route serving the vendored copy, which also keeps
-  working when a doc gains its first diagram mid-session.
+  shell is re-served per *navigation*, not per save. The fix was a same-origin route serving the
+  vendored copy, which also keeps working when a doc gains its first diagram mid-session.
 - **F-01's fix does not exist as written.** `two-face` ships 199 syntaxes and **none** is PowerShell
-  (enumerated, not grepped), so "adding it to the bundled set" cannot close it. See item 17.
+  (enumerated, not grepped). See item 17.
 
-**PERF-1 was solved by (b), which subsumes (a):** once the second pass stops being whole-site there
-is nothing left to share. Measured: whole-site → scoped is **20.1x** on `tech-blog` (46.9 → 2.3 ms),
-3.5x on `docs/guide`, and **51.7x on a synthetic 200-page book** (35.3 → 0.68 ms) — and the scoped
-cost is bounded by *one page's link count*, so it no longer grows with the book at all, which was the
-actual worry.
+**PERF-1 was solved by (b), which subsumes (a):** whole-site -> scoped is **20.1x** on `tech-blog`,
+3.5x on `docs/guide`, and **51.7x on a synthetic 200-page book** — and the scoped cost is bounded by
+*one page's link count*, so it no longer grows with the book at all.
 
 ### The 2026-07-25 audit sweep (earlier the same day)
 
@@ -74,27 +103,46 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: `main` == `origin/main` @ `a842007`, everything pushed, no open branches, all gates green**
-(1351 tests / 0 fail with the three gates + `--test-threads=1`, fmt + clippy + both JS `tsc` clean).
-Re-check with `git log --oneline origin/main..main` before trusting that — the author pushes mid-session.
+**State: branch `backlog/skim-batch` @ `29bc976`, NOT pushed** (the author pushes on request only).
+All gates green there: 1373 tests / 0 fail with the three gates + `--test-threads=1`, fmt + clippy +
+both JS `tsc` clean. Re-check with `git log --oneline origin/main..main` before trusting any of
+this — the author pushes mid-session with no signal here.
 
-**The build-ready hardening set is gone; it shipped 2026-07-25** (items 13, 20, 21, 25's code half, 26,
-27, 28's code half, two bullets of 10 — see the State block above). That matters for planning: what is
-left is deliberately **not** the same kind of work. There is no longer a queue of small, self-contained,
-verify-by-mutation code items waiting. What remains sorts into four piles:
+**Item 22 (SKIM-1) is gone; it shipped 2026-07-25**, and with it the last cluster of small,
+self-contained, verify-by-mutation code items. **Four owner rulings were also taken** (see the State
+block), which un-gates a large amount of previously-blocked work. What is left now sorts into:
 
-- **Writing, not code** — 22a (`grow-tarn`), 30 (`corpus/analyst/`). 22a **blocks seven downstream
-  items** and is the single highest-leverage thing in the file, because the regression net currently
-  pins nothing above 1,135 words and every scale-sensitive item otherwise mints its own fixture.
-- **Owner rulings you must make before anyone can build** — 24 (gated on *two*), 25's `oss-4`, 28's
-  three questions, 2. Their first step is asking you, not opening an editor.
-- **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), band D (the standing
-  freeze), Tier 3 (waits on real users).
-- **P3 residuals on secondary surfaces** — 11, 12, 16, 17, 18, 29. Real, small, low reward.
+- **Build-ready TODAY, in this order:**
+  1. **23 Ship A** (S, pure client, zero Rust) — group Cmd-K's empty state by page so the 161
+     section records already in the index become a browsable whole-book outline. Its one dependency
+     (22b's numbering fix) has shipped. Highest value-per-token left in the file.
+  2. **23 session 2** (M) — delete `BODY_CAP`, split long sections into records on block boundaries;
+     `hidden="until-found"` for tab panels (four edits, see the item); bound runaway cell output in
+     CSS. Sequence **29's R1** with it (it rebuilds the index anyway).
+  3. **24a** (S) — the three-state `check` severity floor, now RULED yes. Gates 24b and 24c.
+  4. **28's (5)** (S) — viewport-driven overview column count. The only code left in item 28.
+  5. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A.
+- **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
+  are real: personas 1-3 found **0** interaction-bugs between them.
+- **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), 2 (deferred, revive on a
+  real speaker ask), band D (the standing freeze), Tier 3 (waits on real users).
+- **P3 residuals on secondary surfaces** — 11, 12, 16, 17, 18, 29's T2. Real, small, low reward.
 
-**So the recommended order is: 22a first (it unblocks the most), then 22b's six defects, then 23.**
-If you want to grind code rather than prose, take the 22b defects — they are six independent, small,
-default-on fixes with a corpus pin each, and they are the last cluster of that shape in the file.
+**`grow-tarn` is done and is now the fixture the scale-sensitive items were waiting on.**
+`corpus/tarn` is 12 numbered chapters across 3 parts + a nested part, and it deliberately carries the
+shapes the rest of the corpus lacks: a titled chapter (so heading demotion is exercised at all), a
+`###`-rooted one, one with a body `# H1`, one below `MIN_TOC_HEADINGS`, an over-`BODY_CAP` section
+whose distinctive term sits in its last paragraph, two `{.definition}` blocks, and an unnumbered
+appendix. **Use it instead of minting a fixture.** Note it is a *documentation* book, not a scale
+fixture: do NOT grow it toward 200 pages, and do NOT mint `corpus/longbook` (the walker renders every
+corpus doc on every `cargo test`).
+
+**The standing lesson from SKIM-1, worth more than the six fixes:** every corpus book chapter opened
+with `# Title` and no front-matter `title:`, so **nothing in the regression net exercised heading
+demotion** — while 32 of 32 dogfood chapters do. A bug lived on every dogfood page under a green
+suite. The dogfood books (`docs/guide`, `docs/internals`) are NOT in the test net, so any shape only
+they have is a shape the suite structurally cannot see. When a defect is reported on a dogfood page,
+first ask whether the corpus has that shape at all.
 
 **Two live corrections a fresh session should not re-learn the hard way:**
 - **Item 17's F-01 cannot be fixed as written** — `two-face` has no PowerShell syntax at all (199
@@ -106,16 +154,8 @@ default-on fixes with a corpus pin each, and they are the last cluster of that s
 **Item 14 (heading-demotion) was found already shipped** (2026-07-12, `7e60f6c`) when picked up
 2026-07-22: AP9's "12 sibling `<h1>`" was a stale-artifact false lead (it measured a gitignored pre-fix
 `corpus/bayesian-website/_site/index.html`; a fresh render/build emits exactly one `<h1>`). See "Refuted by
-measurement". **Item 22 is NOT a re-open of it**: heading demotion works, the section-number counter was
-never taught about it.
-
-**Item 22 (SKIM-1) in one paragraph.** A 2026-07-24 skimmability audit
-([2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)) found six small, verified defects in
-the heading layer that a reader of a long book meets on every page: malformed section numbers (`4.0.1`) on
-31 of 32 numbered dogfood chapters, a nested `{part:, chapters:}` group that silently deletes its own
-chapters with `check` exiting 0, whole-book Cmd-K search absent on any chapter under `MIN_TOC_HEADINGS`
-while the search button still renders, a scrollspy that lags by one section on every book page, `h5`/`h6`
-rendered dimmer than body text, and a printed TOC showing 2 of 8 entries. All six re-verified at `5c25d00`.
+measurement". (Item 22 was NOT a re-open of it: demotion worked; the section-number counter had never been
+taught about it. Both shipped 2026-07-25.)
 
 - **Or run one of the four remaining *audit perspectives* ("Audit perspectives" section below):**
   proactive, findings-generating angles the prior rounds structurally could not see. **Done so far:
@@ -172,55 +212,6 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### A. High impact (build first)
 
-22. **SKIM-1: the heading layer is broken in six measured ways** (P1/P2, S each, no gating; detail:
-    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). A 2026-07-24 audit (8 research +
-    5 inventory lenses, 30 survivors, 3 adversarial verifiers per candidate, 4 killed) found the problem is
-    **not missing features**: the boundary layer a skimmer actually reads is defective, and every defect is
-    small and verified at `5c25d00`. **The six were re-verified by the main session** (fresh build + a
-    targeted repro), so trust these symptoms; still re-derive causes per the standing constraint. **Start
-    here, in this order:**
-    - **(a) `grow-tarn` FIRST (session 0, M, it is writing not code).** Grow `corpus/tarn` (already a book,
-      two parts) to >=12 chapters / >=3 parts with: one nested `{part:, chapters:}` group, one chapter below
-      `MIN_TOC_HEADINGS`, one `###`-rooted titled chapter, one titled chapter carrying a body `# H1`, one
-      section over `BODY_CAP` whose distinctive term sits in its last paragraph, two `{.definition}` blocks,
-      one unnumbered appendix. **Do NOT mint `corpus/longbook`** (the walker renders every corpus doc on
-      every `cargo test`; the corpus is real documents, not a scale fixture). Seven downstream items
-      otherwise each mint their own fixture and the net still pins nothing at scale (largest corpus book
-      today: 6 chapters / 1,135 words, about 2% of target). Expect a `body_html_snapshots` re-bless.
-    - **(b) The six defects (session 1, all small, all independent, all default-on).** Section numbers emit a
-      spurious zero on **31 of 32** numbered dogfood chapters (`4.0.1`, `16.0.0.1`; live strings include
-      `1.0.6.1` and `12.0.1.8`) because heading demotion (`render/mod.rs:847-857`) and the counter
-      (`site/chapter.rs:35`, slot `level - 2`) disagree, and the three numbering sites disagree with *each
-      other*, so a link reading "6.1.1" lands on a heading reading "6.0.1.1": fix by threading a
-      chapter-local `base` through **all three** call sites at once (`site/chapter.rs`, `site/xref.rs:87`,
-      `render/mod.rs:533`), not one. **This is NOT the shipped item-14 heading-demotion fix**: demotion works,
-      the numbering counter was never taught about it. A nested `{part:, chapters:}` group **silently deletes
-      itself and every chapter under it** and `check` exits 0 (`site/book.rs:84-86`'s inner loop discards
-      `push_chapter_entry`'s `false`, the signal the outer loop at `:70-72` does check); give `_site.yml`
-      diagnostics a line number in the same change. Whole-book Cmd-K search disappears on any chapter under
-      `MIN_TOC_HEADINGS` because the index global rides inside the TOC-gated `toc_scripts()`
-      (`render/page.rs:483`) while the Cmd-K **button still renders**, so the affordance is advertised and the
-      index is absent (split them; the preview injects unconditionally, so the author never sees it).
-      Scrollspy measures `.tali-site-nav`, which books never emit, so the highlight lags by one section
-      (derive from computed `scroll-margin-top`, sampled in `collect()`, not on the scroll path). `h5`/`h6`
-      render at **lower contrast than body text** (`base.css:334-336`, both `--tali-muted`): a hierarchy
-      defect, not a WCAG one (all three themes pass AA), and it compounds with the demotion above, which
-      pushes an author's `####` into `<h5>`. The print block never un-collapses `#TOC ul ul`, so a printed
-      chapter shows 2 of 8 entries: one rule.
-    - **(c) One-line docs correction:** delete `, or a heading with its first lines` from
-      `docs/guide/using/reading.tmd:68` (it promises a hover card deleted at `318f22f`).
-    - **(d) Notes hygiene, bundled with (a):** `FEATURE-IDEAS.md` #9 is falsely marked SHIPPED (read-aloud;
-      `speechSynthesis` greps to zero, its pin file does not exist), plus #4-#7, #10, moonshots 1+3 and the
-      line-575 entry; annotate `:444` and `:552` to separate structural aggregation from prose extraction; add
-      "Decided against" lines for `079a30d` (Ask-AI) and `318f22f` (section hover previews). The audit tripped
-      over this rot once already.
-    **Pins:** `grow-tarn` (four-case lockstep pin for the numbering: rendered heading number == TOC row ==
-    resolved `@sec-` text; nested-part chapters present; below-gate chapter carries `TALIESIN_SEARCH_URL` +
-    `SEARCH_JS`), plus `corpus/layout/heading-scale.tmd` (new, exercises both `<h5>` and `<h6>`) and CSS-rule
-    assertions for the print + spy tokens. Browser-verify the spy at 390x844 / 1440x900 / 900x1440.
-    **Honest residual:** `reference/cli.html` stays `16.0.1` (its first heading is deeper than its
-    shallowest); that is arguably correct, do not quote it as an exemplar.
-
 25. **Pre-public release checklist: one owner decision left** (detail:
     [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
     items shipped 2026-07-25 (`dos-pages`: a ws `?page=` the site cannot resolve no longer allocates
@@ -230,9 +221,12 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     stream-byte and output-count caps both missed; `dos-ws-size`: `max_message_size` on both ws
     upgrades; **CMD-01**: the warm pool logs its resolved interpreter like the cold path already did).
     **What remains is not a task:**
-    - **oss-4, an owner decision:** whether to prune `notes/` + `docs/superpowers/` before flipping
-      the repo public (~2026-08). No secret is exposed (the `--host` token design doc discloses only
-      a per-session UUID mechanism), but it is a curated bug roadmap, readable by anyone.
+    - **oss-4 — RULED 2026-07-25: deferred, and the public flip with it.** The owner is not
+      going public yet ("I'll do it at the end of summer; before that I want to hone the tool
+      to its final form"). So this is not a task and not a blocker: nothing here gates any
+      other work. Re-ask when a flip date is actually set. The question when it is: whether to
+      prune `notes/` + `docs/superpowers/`. No secret is exposed (the `--host` token design doc
+      discloses only a per-session UUID mechanism), but it is a curated bug roadmap.
     **Verified NOT open, do not re-scope:** `SECURITY.md` exists, the tracked `/home/bogo` paths are
     scrubbed, and PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped 2026-07-17. Refuted by the
     audit and not worth revisiting: `dos-yaml` (libyaml rejects the alias bomb in ~30 ms — the guard is
@@ -241,7 +235,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 ### B. Medium impact
 
-23. **SKIM-2: honest search, honest output, and the whole-book outline** (P2, M; sequenced after 22; detail:
+23. **SKIM-2: honest search, honest output, and the whole-book outline** (P2, M; **22 has shipped, so this is unblocked**; detail:
     [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). Two sessions, in order:
     - **Session 2, honest output.** `BODY_CAP = 1500` (`site/search.rs:11`, applied `:172-175`) truncates
       **18.3%** of guide sections and **25.3%** of internals sections (main-session recount on a fresh build:
@@ -274,8 +268,14 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       pages, never harvested headings) is an **owner appetite call**, not build-ready: it needs a per-page
       outline fragment (measured: the body field is 87% of raw and 92% of gzipped index bytes, so an
       outline-only sidecar is ~13x smaller gzipped) plus a `refresh_search_for_page`-shaped invalidation. Ship
-      B also decides whether a drawer type-ahead is wanted at all; do not ship both.
-    **Pins:** `grow-tarn` throughout (its over-`BODY_CAP` section, its 12 chapters for grouping); extend
+      B also decides whether a drawer type-ahead is wanted at all. **RULED 2026-07-25: ship A, then B.**
+      That supersedes the old "do not ship both" line, but the ORDER is load-bearing: A is a pure
+      client change and its only dependency (22b's numbering fix) has now shipped, so A is
+      build-ready today; B needs the per-page outline fragment + the invalidation first.
+    **Pins:** `corpus/tarn` throughout — grown 2026-07-25, use it, do not mint a fixture (its
+    over-`BODY_CAP` section is `filtering.tmd`'s "How nulls behave", whose distinctive term
+    `null-dropping-filter` sits in its LAST paragraph, i.e. past the old cap; its 12 chapters for
+    grouping); extend
     `corpus/tarn/install.tmd` for the tab attribute + the zero-intrinsic-size rule + the visible panel's
     first-child margin; new `corpus/layout/dense-output.tmd` (kernel-free: long `<pre>`, 200-row table, tall
     image) asserting the bound, the print reset, **and that the horizontal `pre` shadow is unchanged**. Ship A
@@ -308,9 +308,9 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       turns a green gate red for advice. Smaller than it looks: `check.rs:818`'s `at_severity_floor` already
       exists for `--errors-only` and becomes a three-state floor (printed output keeps showing everything, the
       **exit** default moves to errors+warnings). Must also teach `build --strict` (`build.rs:649`/`:1102`)
-      and `publish.rs:58`, or a default-on suggestion still blocks publish. **Owner ruling needed:** the same
-      plumbing was declined 2026-07-10 (TODO surfacing). If the answer is no, only the four binary rules ship,
-      as warnings, with a red gate until the corpus is clean.
+      and `publish.rs:58`, or a default-on suggestion still blocks publish. **RULED 2026-07-25: yes, ship the three-state floor.** (The same
+      plumbing was declined 2026-07-10 for TODO surfacing; the owner reversed that here.) So the
+      "only four binary rules, red gate" fallback is dead — build the floor first, as written.
     - **`taliesin skim` + `machine-shape-projections` BEFORE the lints, not after** (you cannot calibrate a
       structural lint against a corpus you cannot measure). `skim` prints the layer-cake projection (headings
       + numbers, first sentences, captions, callout titles, theorem statements) as one linear stream across a
@@ -350,7 +350,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       `corpus/layout/structure.tmd` (already named by `FEATURE-IDEAS` #26, still does not exist).
     **Pins:** `corpus/diagnostics/skim-shape.tmd` tripping each surviving code exactly once **plus** a
     well-shaped `skim-shape-clean.tmd` asserted to produce zero, so the rules cannot pass vacuously; extend
-    `check_cli.rs`'s DX18 exit-code tests with the three-state cases; `corpus/demo-book` + `grow-tarn` for the
+    `check_cli.rs`'s DX18 exit-code tests with the three-state cases; `corpus/demo-book` + `corpus/tarn` (grown 2026-07-25) for the
     projections.
     **Invariants:** the finding lands in the CLI or the editor and the **author** edits the `.tmd`: no preview
     gesture, no auto-fix, no write-back. The preview "skim view" is a *display* of a read-only projection, not
@@ -382,13 +382,17 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     → **0**), and magic-move is resynced (`CAM.morph`/`morphFade`/`morphFadeDelay` replace the
     hand-copied `.45s`/`.4s`/`480`/`560` literals, with one cancellable per-div settle mirroring
     `deck.aaSettle`; hammering forward/back mid-morph now leaves **0** stranded inline styles where
-    it used to race naked timers). **What is left is for the author to rule on, not to build:**
-    (3) should an out-of-order arrival — menu pick, deep link, back/forward, click-to-source — *look*
-    different from a step? They cut when far but are not distinguished. (4) is the overview a real
-    navigator for 100+ slide decks (which would eventually mean Option C, the shared-element FLIP
-    rewrite) or a glance at a 20-slide talk? The readability floor closed most of the gap C was for.
-    (5) wrap width: each run wraps to `ceil(sqrt(n))`, right per run but it stacks five topic blocks
-    into a tall narrow column; choosing the column count from the viewport would do better.
+    it used to race naked timers). **RULED 2026-07-25** (owner delegated the call: "use your own best judgement"):
+    - **(3) no-change.** An out-of-order arrival stays visually identical to a step. Distinguishing
+      them buys a cue the reader has no vocabulary for, and every arrival path already cuts when far.
+    - **(4) the overview is a glance at a ~20-slide talk, NOT a navigator for 100+.** So **Option C
+      (the shared-element FLIP rewrite) is declined** — the readability floor closed most of the gap
+      it existed for, and a 100+-slide deck is not a shape this tool is being built for. Record it as
+      decided, not deferred, so it is not re-costed a third time.
+    - **(5) BUILD THIS ONE (S, the only code left in the item):** choose the overview's column count
+      from the viewport instead of `ceil(sqrt(n))` per run. The per-run square is right for one run
+      and wrong for five, which stack into a tall narrow column. This is the whole remaining scope of
+      item 28.
     **Two LOW tradeoffs flagged to the author and left as-is, not defects:** ctrl+wheel-*down* claims
     browser page-zoom-out over the deck (that *is* the approved gesture), and it also fires inside an
     embedded deck on a scrollable page.

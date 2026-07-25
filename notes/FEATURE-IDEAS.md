@@ -148,7 +148,13 @@ collaboration** (no backend, no shared server) and is explicitly in-scope.
    popover with a definition (bundled wordlist offline, or Wiktionary/Wikipedia fetch
    online). — resolve jargon without leaving the page. — **M** offline / **S** online —
    reader — fits (reuses `qmdInitLinkPreview`).
-9. **Read-aloud with highlight-follows-voice** — ✅ SHIPPED 2026-06-26 (+ moonshot 3). Web
+9. **Read-aloud with highlight-follows-voice** — ❌ **NOT SHIPPED. The "✅ SHIPPED 2026-06-26
+   (+ moonshot 3)" mark this entry carried was false** and was corrected 2026-07-25:
+   `speechSynthesis` occurs **zero** times in `crates/` and `web-client/`, and the pin it
+   claimed (`corpus/reader/read-aloud.qmd`) does not exist. The "Big bets" list at the
+   bottom of this file always listed `#9` as unshipped, so the file contradicted itself;
+   that list was the correct half. Verdict recorded in backlog item 24: **out on cost,
+   not on principle.** Design below kept as the spec if it is ever built. Web
    Speech API + the reader's OS voices (offline), block-by-block from the block in view;
    prose spoken **sentence-by-sentence** (per-sentence utterances, not flaky `boundary`
    events) with the sentence highlighted (CSS Custom Highlight API) + auto-scrolled; code
@@ -807,3 +813,23 @@ in tension are marked needs-care. Nothing here is committed until it earns a pin
 entries (a 20-agent workflow: per-idea research + anchor verification) and queued in `backlog.md` §G
 (Tier-1 trio) + Tier 2/3. Detail file with every verified anchor + pin + first step + open ruling:
 [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md).
+
+## Decided against (built, or considered, and deliberately removed)
+
+Recorded so they are not rediscovered as fresh ideas. A verdict here is not "bad idea" —
+it is "tried or costed, and the answer was no." Each names the commit that settles it.
+
+- **Section hover previews** — built and then **deleted at `318f22f`**, 13 days before the
+  2026-07-24 skimmability audit. Three tests pin the removal. Cross-reference hover cards
+  (figures, equations, bibliography entries) were kept; it is specifically *headings*
+  previewing their first lines that went. Do not re-scope it from the audit's wish list.
+- **Ask-AI hand-off** — shipped at `5e2e8cb`, then **fully reverted at `079a30d`**
+  (2026-07-23): a backendless "select a passage → hand it to your own AI" composer. Browser
+  extensions do this better, and the provider surface it depended on is unstable (Claude's
+  `?q=` prefill was removed around Oct 2025; ChatGPT's is prefill-only). Reviving it means
+  re-litigating that, not just reverting the revert.
+- **Drag-to-reorder slides** — removed 2026-06-20. It broke the single-editing-surface
+  invariant: a second write path fights click-to-source over who owns the file. The in-scope
+  way to make a source edit ergonomic is an editor command, never a preview gesture.
+- **Read-aloud (`#9` above)** — never built; its SHIPPED mark was an error corrected
+  2026-07-25. Out on cost, not on principle.
