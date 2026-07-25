@@ -170,8 +170,8 @@ because it touches three things at once: the executor, the cache key, and the ke
 preamble.
 
 - **It is executor-side, not a render transform.** For a Python cell, `export_wrapped`
-  (`server/exec.rs`) prepends a one-line `_qmd_export([...], install=True)` trigger to the
-  cell's code before sending it to the kernel. The `_qmd_export` hook itself is defined
+  (`server/exec.rs`) prepends a one-line `_tali_export([...], install=True)` trigger to the
+  cell's code before sending it to the kernel. The `_tali_export` hook itself is defined
   once in the Python preamble (`server/kernel.rs`); `install=True` makes it idempotently
   wrap the figure even for a cell that produces a plot without naming matplotlib directly.
 - **Paths are relative to the document directory.** The warm kernel's working directory is

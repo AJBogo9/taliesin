@@ -142,19 +142,19 @@ try:
 
         # (foreground, grid) per theme — kept in sync with --tali-fg / --tali-border
         # in assets/css/{base,dark}.css.
-        _QMD_LIGHT = ('#1a1a1a', '#d0d0d0')
-        _QMD_DARK = ('#e6e6e6', '#363a44')
-        _qmd_pending_export = []
-        _qmd_orig_png = [None]  # the real Figure->png formatter, captured once
+        _TALI_LIGHT = ('#1a1a1a', '#d0d0d0')
+        _TALI_DARK = ('#e6e6e6', '#363a44')
+        _tali_pending_export = []
+        _tali_orig_png = [None]  # the real Figure->png formatter, captured once
 
-        def _qmd_do_export(fig):
+        def _tali_do_export(fig):
             # Write the (still-pristine) figure to the files a `#| fig-export:` cell
             # requested, with print-clean styling for LaTeX/print. PNG gets a print
             # DPI; vector formats (.pdf/.svg) are resolution-independent.
-            if not _qmd_pending_export:
+            if not _tali_pending_export:
                 return
             import os as _os, sys as _sys
-            for _p in list(_qmd_pending_export):
+            for _p in list(_tali_pending_export):
                 _d = _os.path.dirname(_p)
                 if _d:
                     _os.makedirs(_d, exist_ok=True)
@@ -165,9 +165,9 @@ try:
                     fig.savefig(_p, **_kw)
                 except Exception as _e:
                     print('taliesin: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
-            _qmd_pending_export.clear()
+            _tali_pending_export.clear()
 
-        def _qmd_recolour(fig, fg, grid):
+        def _tali_recolour(fig, fg, grid):
             # Recolour foreground (text/spines/ticks) to `fg` and grid lines to
             # `grid`, and make axes backgrounds transparent. Returns the originals
             # so the figure can be restored exactly. Data colours are untouched.
@@ -185,18 +185,18 @@ try:
                     saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(grid)
             return saved
 
-        def _qmd_render(fig, fg, grid):
+        def _tali_render(fig, fg, grid):
             # Produce a base64 PNG (transparent bg) with `fg`/`grid` recolouring,
             # restoring the live figure afterwards.
-            _orig = _qmd_orig_png[0]
-            _saved = _qmd_recolour(fig, fg, grid)
+            _orig = _tali_orig_png[0]
+            _saved = _tali_recolour(fig, fg, grid)
             try:
                 return _orig(fig)
             finally:
                 for _set, _val in reversed(_saved):
                     _set(_val)
 
-        def _qmd_ensure_inline():
+        def _tali_ensure_inline():
             # Make sure the inline backend's Figure->png formatter exists, activating
             # it (once) only when it doesn't, so we never reset an existing formatter.
             from matplotlib.figure import Figure
@@ -213,7 +213,7 @@ try:
                 except Exception:
                     pass
 
-        def _qmd_install():
+        def _tali_install():
             # Register a text/html Figure formatter emitting both theme variants, and
             # suppress the standalone image/png. Idempotent: skips if the html
             # formatter is already ours; re-wraps if something replaced it.
@@ -232,7 +232,7 @@ try:
                 _cur_html = _html.lookup_by_type(Figure)
             except Exception:
                 _cur_html = None
-            if getattr(_cur_html, '_qmd_themed', False):
+            if getattr(_cur_html, '_tali_themed', False):
                 return
             # Capture the real png formatter (the one matplotlib_inline registered),
             # before we replace it with the suppressor.
@@ -240,50 +240,50 @@ try:
                 _real = _png.lookup_by_type(Figure)
             except Exception:
                 _real = None
-            if _real is not None and not getattr(_real, '_qmd_suppress', False):
-                _qmd_orig_png[0] = _real
-            if _qmd_orig_png[0] is None:
+            if _real is not None and not getattr(_real, '_tali_suppress', False):
+                _tali_orig_png[0] = _real
+            if _tali_orig_png[0] is None:
                 return
             def _themed_html(fig):
                 if not fig.axes and not fig.lines:
                     return None  # empty figure: emit nothing (matches print_figure)
-                _qmd_do_export(fig)
-                _l = _qmd_render(fig, *_QMD_LIGHT)
-                _d = _qmd_render(fig, *_QMD_DARK)
+                _tali_do_export(fig)
+                _l = _tali_render(fig, *_TALI_LIGHT)
+                _d = _tali_render(fig, *_TALI_DARK)
                 if _l is None or _d is None:
                     return None
                 return ('<img class="tali-fig tali-fig-light" alt="" src="data:image/png;base64,' + _l + '">'
                         '<img class="tali-fig tali-fig-dark" alt="" src="data:image/png;base64,' + _d + '">')
-            _themed_html._qmd_themed = True
+            _themed_html._tali_themed = True
             _html.for_type(Figure, _themed_html)
             def _suppress(fig):
                 return None
-            _suppress._qmd_suppress = True
+            _suppress._tali_suppress = True
             _png.for_type(Figure, _suppress)
 
-        def _qmd_export(paths, install=False):
+        def _tali_export(paths, install=False):
             # Called via a line the executor prepends to a `#| fig-export:` cell.
-            _qmd_pending_export[:] = [p for p in paths if p]
+            _tali_pending_export[:] = [p for p in paths if p]
             if install:
                 try:
                     import matplotlib.pyplot  # noqa: F401
-                    _qmd_ensure_inline()
-                    _qmd_install()
+                    _tali_ensure_inline()
+                    _tali_install()
                 except Exception:
                     pass
 
-        def _qmd_pre(*_a, **_k):
+        def _tali_pre(*_a, **_k):
             _info = _a[0] if _a else None
             _src = getattr(_info, 'raw_cell', '') or ''
             if ('matplotlib' in _src) or ('pyplot' in _src) or ('plt' in _src) or ('seaborn' in _src):
                 try:
                     import matplotlib.pyplot  # noqa: F401
-                    _qmd_ensure_inline()
-                    _qmd_install()
+                    _tali_ensure_inline()
+                    _tali_install()
                 except Exception:
                     pass
 
-        _ip.events.register('pre_run_cell', _qmd_pre)
+        _ip.events.register('pre_run_cell', _tali_pre)
 except Exception:
     pass
 "#;

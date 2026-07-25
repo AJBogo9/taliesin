@@ -956,7 +956,7 @@ async fn set_kernel_cwd(kernel: &mut Kernel, dir: &Path) {
         .to_string_lossy()
         .replace('\\', "\\\\")
         .replace('\'', "\\'");
-    let code = format!("import os as _qmd_os; _qmd_os.chdir('{escaped}'); del _qmd_os");
+    let code = format!("import os as _tali_os; _tali_os.chdir('{escaped}'); del _tali_os");
     if let Err(e) = kernel.execute(&code).await {
         crate::log::warn(&format!(
             "warm-pool: could not set kernel cwd to {} ({e}); using daemon cwd",
@@ -1028,7 +1028,7 @@ fn plan(
 /// Prepend a `#| fig-export:` trigger to a Python cell's code so the kernel writes
 /// the cell's figure to the requested file(s) (print-clean) the moment it's
 /// displayed. A comma-separated list exports to several files at once (e.g. a vector
-/// `.pdf` plus a raster `.png`). The `_qmd_export` hook is defined in the Python
+/// `.pdf` plus a raster `.png`). The `_tali_export` hook is defined in the Python
 /// preamble ([`crate::kernel`]); `install=True` makes it idempotently install the
 /// figure wrap even for cells that produce a figure without naming matplotlib.
 /// Returns the code unchanged when there's nothing to export.
@@ -1045,12 +1045,12 @@ fn export_wrapped(code: &str, fig_export: Option<&str>) -> String {
     if paths.is_empty() {
         return code.to_string();
     }
-    format!("_qmd_export([{}], install=True)\n{code}", paths.join(", "))
+    format!("_tali_export([{}], install=True)\n{code}", paths.join(", "))
 }
 
 /// Quote a path as a Python single-quoted string literal, escaping backslashes and
 /// quotes so a path with spaces or odd characters survives being embedded in the
-/// prepended `_qmd_export([...])` call.
+/// prepended `_tali_export([...])` call.
 fn py_str_literal(s: &str) -> String {
     let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
     format!("'{escaped}'")
