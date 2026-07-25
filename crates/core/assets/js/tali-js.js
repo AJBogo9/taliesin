@@ -190,6 +190,34 @@
     };
   }
 
+  // AP7-2. A `//| input:` sink is a region of the document that rewrites itself as a
+  // consequence of the reader operating a control somewhere else on the page. Driving a
+  // slider from the keyboard changed six output regions on `corpus/reactive/inputs.tmd`
+  // with every live region on the page empty and no `.tali-js-out` carrying `aria-live`
+  // (7 of 7): a screen-reader user heard the slider value and was told nothing about the
+  // document that changed under it. This is the explorable-explanation feature, the most
+  // web-native thing the tool does, and it was silent.
+  //
+  // Marked from the FIRST run's output, so the region is already live before the reader
+  // can change anything, and only when that output is TEXT. A chart is the common sink and
+  // it has nothing useful to speak: re-reading an SVG's tick labels on every arrow-key tick
+  // is worse than silence, and a region that cries wolf gets turned off. (Measured on built
+  // `corpus/descent`: one of its three sink regions carries Plot's injected stylesheet as
+  // its text, so marking every sink live would announce raw CSS.) Text sinks are exactly
+  // the ones whose new content IS the answer the reader is looking for, so they are
+  // `atomic` — "k doubled (transitively) = 16" reads as one sentence, not as a diff.
+  //
+  // Idempotent, and never downgrades: a cell that painted text once keeps its live region
+  // even if a later run is empty (an empty region announces nothing anyway).
+  /** @param {Element | null} container */
+  function markLiveIfTextual(container) {
+    if (!container || container.getAttribute("aria-live")) return;
+    if (container.querySelector("svg, canvas, img, video, iframe")) return;
+    if (!(container.textContent || "").trim()) return;
+    container.setAttribute("aria-live", "polite");
+    container.setAttribute("aria-atomic", "true");
+  }
+
   /** @param {HTMLElement} script */
   function setupCell(script) {
     var r = rt();
@@ -246,6 +274,7 @@
         if (name) {
           r.scope[name] = (node instanceof Node && na.value !== undefined) ? na.value : node;
         }
+        if (kind === "sink") { markLiveIfTextual(container); }
       } catch (e) {
         console.error("tali-js cell error:", e);
         var pre = document.createElement("pre");
