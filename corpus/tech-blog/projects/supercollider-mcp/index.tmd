@@ -3,6 +3,7 @@ title: "supercollider-mcp"
 date: "2026-06-10"
 description: "An MCP server that gives an LLM a synthesis engine, a feedback loop, and ears."
 image: "thumbnail.png"
+image-alt: "Four synthesiser waveforms stacked on a near-black background: a cyan sine, a pink ramp, a green irregular wave, and a dense orange oscillation."
 categories:
   - Python
   - MCP

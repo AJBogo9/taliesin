@@ -143,6 +143,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_unsupported_keys(map, block, &mut out);
     validate_page_layout_value(map, block, &mut out);
     validate_date_value(map, block, &mut out);
+    validate_image_alt(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
     validate_nested(
@@ -251,6 +252,46 @@ fn days_in_month(year: u32, month: u32) -> u32 {
 /// the page still displays it — a green `check` certifying a half-published post. Free text
 /// (`date: Spring 2026`) stays legal for display, which is why this reports what is lost
 /// rather than calling the value wrong.
+/// PA-M13: an `image:` with no `image-alt:` emits `alt=""`, which tells a screen-reader
+/// user the image is *decorative* — but a card thumbnail or hero image carries meaning, so
+/// the empty alt is an omission rather than a choice. A body `<img>` has been linted for
+/// this since the a11y pass (`diagnostics::a11y`); front-matter images were the hole,
+/// because by the time they reach the emitted HTML the omission and a deliberate
+/// `image-alt: ""` look identical. Here they do not: present-but-empty stays silent, which
+/// is the escape hatch for an image that really is decorative.
+///
+/// Calibrated against the corpus before being written, per the standing constraint: it
+/// fires on 4 real pages, all genuine omissions. A grep-based version would also have
+/// fired on two `docs/` pages whose `image:` sits inside a YAML *example* in prose — which
+/// is exactly why this reads the parsed front matter instead of scanning source lines.
+fn validate_image_alt(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    /// A key whose value is a non-empty scalar (so `image:` with nothing after it, which
+    /// renders no image at all, is not nagged about its missing alt text).
+    fn is_set(v: Option<&serde_yaml::Value>) -> bool {
+        v.and_then(|v| v.as_str())
+            .is_some_and(|s| !s.trim().is_empty())
+    }
+    // "missing alt text" is the needle the diagnostics catalogue already maps to
+    // TAL-A11Y-ALT, so this joins the existing family rather than minting a code.
+    const HINT: &str = "(set `image-alt:`, or `image-alt: \"\"` if it is purely decorative)";
+
+    if is_set(map.get("image")) && map.get("image-alt").is_none() {
+        out.push(located_span(
+            format!("social/listing image is missing alt text {HINT}"),
+            block_key_span(block, "image"),
+        ));
+    }
+    if let Some(hero) = map.get("hero").and_then(|h| h.as_mapping())
+        && is_set(hero.get("image"))
+        && hero.get("image-alt").is_none()
+    {
+        out.push(located_span(
+            format!("hero image is missing alt text {HINT}"),
+            nested_key_span(block, "hero", "image"),
+        ));
+    }
+}
+
 fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(val) = map.get("date").and_then(|v| v.as_str()) else {
         return;
@@ -1161,5 +1202,72 @@ mod tests {
         assert_eq!(d.line, Some(4));
         assert_eq!(d.col, Some(3)); // 2-space indent -> column 3
         assert_eq!(d.end_col, Some(8));
+    }
+
+    /// PA-M13. The escape hatch matters as much as the warning: an author who means the
+    /// image decoratively writes `image-alt: ""`, and must not be nagged forever.
+    #[test]
+    fn an_image_without_its_alt_text_warns_but_an_explicitly_empty_alt_does_not() {
+        let warn_texts = |src: &str| -> Vec<String> {
+            validate_front_matter(src)
+                .iter()
+                .map(|w| w.message.clone())
+                .filter(|m| m.contains("missing alt text"))
+                .collect()
+        };
+
+        let missing = warn_texts("---\ntitle: A post\nimage: cover.png\n---\n\nBody.\n");
+        assert_eq!(
+            missing.len(),
+            1,
+            "an `image:` with no `image-alt:` must warn"
+        );
+        assert!(
+            missing[0].contains("social/listing image"),
+            "the warning must say which image it means: {}",
+            missing[0]
+        );
+
+        assert!(
+            warn_texts("---\ntitle: A post\nimage: cover.png\nimage-alt: A cover\n---\n")
+                .is_empty(),
+            "an `image:` WITH `image-alt:` must stay silent"
+        );
+        assert!(
+            warn_texts("---\ntitle: A post\nimage: cover.png\nimage-alt: \"\"\n---\n").is_empty(),
+            "an explicitly empty `image-alt:` is a deliberate decorative image, not an omission"
+        );
+        assert!(
+            warn_texts("---\ntitle: A post\n---\n").is_empty(),
+            "a page with no `image:` at all has nothing to warn about"
+        );
+
+        // The hero block carries its own image/alt pair.
+        let hero = warn_texts("---\ntitle: A page\nhero:\n  headline: Hi\n  image: h.png\n---\n");
+        assert_eq!(hero.len(), 1, "a `hero.image` with no alt must warn");
+        assert!(
+            hero[0].contains("hero image"),
+            "the hero warning must name the hero: {}",
+            hero[0]
+        );
+    }
+
+    /// The calibration guard. `image:` inside a fenced YAML EXAMPLE is prose, not front
+    /// matter, and two real `docs/` pages are written exactly this way — a line-scanning
+    /// version of this lint fired on both. Reading the parsed front matter is what makes
+    /// it correct, so pin that rather than the implementation detail.
+    #[test]
+    fn an_image_key_inside_a_prose_example_is_not_front_matter() {
+        let src = "---\ntitle: Configuration\n---\n\nWrite the front matter like this:\n\n\
+                   ```yaml\ntitle: \"A post about rust\"\nimage: cover.png\n```\n";
+        let warnings: Vec<_> = validate_front_matter(src)
+            .iter()
+            .map(|w| w.message.clone())
+            .filter(|m| m.contains("missing alt text"))
+            .collect();
+        assert!(
+            warnings.is_empty(),
+            "an `image:` in a prose example must not be linted as front matter: {warnings:?}"
+        );
     }
 }

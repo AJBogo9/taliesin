@@ -3,6 +3,7 @@ title: "iPhone Premium Analysis: Hardware vs. Price"
 date: "2025-01-30"
 description: "Regression models on 1,359 smartphones to test whether Apple devices are priced above their hardware-justified value. They are."
 image: "thumbnail.png"
+image-alt: "A correlation matrix heatmap of ten smartphone hardware specifications against price, shaded blue through red from 0.3 to 1.0."
 categories:
   - Python
   - Machine Learning

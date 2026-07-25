@@ -3,6 +3,7 @@ title: "Hierarchical Bayesian Analysis of Aviation Safety"
 date: "2025-11-04"
 description: "A hierarchical Bayesian study of fatality rates across aircraft manufacturers, showing partial pooling beats complete pooling by ~1,944 ELPD."
 image: "thumbnail.png"
+image-alt: "A forest plot of fatality rates for about forty aircraft manufacturers, each a point with a credible interval, against a dashed red line marking the overall mean."
 categories:
   - R
   - Bayesian

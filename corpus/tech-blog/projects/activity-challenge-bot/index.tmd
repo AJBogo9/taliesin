@@ -3,6 +3,7 @@ title: "Activity Challenge Telegram Bot"
 date: "2025-12-05"
 description: "A production Telegram bot running guild-based fitness competitions across Aalto societies, with a Kubernetes-deployed backend and an analytics dashboard."
 image: "thumbnail.png"
+image-alt: "A title card reading 'activity-challenge-bot, Fitness Event Organizer' beside a sun icon, on a blue-to-sand gradient."
 categories:
   - Python
   - Kubernetes
