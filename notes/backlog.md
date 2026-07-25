@@ -147,7 +147,12 @@ considered and is not wanted (it is not a one-liner: it needs collapse state + k
 
 **Items 22 (SKIM-1), 23's Ship A and 33 (the naming purge) are gone; all shipped 2026-07-25.**
 The purge is finished end to end and is now enforced by `crates/core/tests/retired_names.rs`, so
-the retired brand cannot come back silently. One manual step is still owed by the author: the
+the retired brand cannot come back silently. **It is also PUSHED** (2026-07-25, 7 commits
+fast-forwarded onto `origin/main`, `6bef1d7..7721432`), re-verified immediately before the push:
+1426 tests / 0 fail across 88 binaries with the three gates + `--test-threads=1`;
+`cargo fmt --check`, `clippy --workspace --all-targets -D warnings` (0 warnings) and both JS `tsc`
+gates clean; `check` reports no problems on `corpus/tarn`, `docs/guide` and `docs/internals`.
+One manual step is still owed by the author: the
 in-editor click-to-source check (Task 8 Step 5 of its plan) — the companion was repackaged and
 reinstalled, and the relay harness passes both directions, but nothing automated covers the real
 editor round-trip.
