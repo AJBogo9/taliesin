@@ -289,12 +289,32 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
+> ### OWNER RULING 2026-07-25: the next session runs an AUDIT, not a feature.
+>
+> Taken after the backlink-context batch emptied the last buildable band-C bullets. **Do not
+> pick a feature item.** Run **one** audit perspective, solo, per the working method in "Audit
+> perspectives" below: produce a dated findings doc in `notes/`, add a ledger line to
+> [AUDITS.md](AUDITS.md), and file the build-ready findings back into "Open work" with their
+> own prefix.
+>
+> **Recommended: AP7 (deep accessibility).** Its entry below now carries a measured starting
+> brief — three of AP7's own stated premises are already refuted, and the do-not-re-find list
+> is long, so read it before writing a single probe. **Alternate: AP3 (concurrency)** if the
+> browser surface is contended or a parallel session owns it. AP6 and AP11 are the other two
+> live options and both remain unranked.
+>
+> This ruling covers the *next* session only. It is not a standing preference for audits over
+> features; it exists because bands A-C currently have no buildable, unruled work left.
+
 **State: TWO batches are stacked and NEITHER is pushed.** `backlog/book-outline-drawer`
 (5 commits off `origin/main` at `994bcba`) and `backlog/backlink-context-and-resume`
 (6 more, branched off it). The P3 residual batch before them IS pushed. Before anything
 else, check what is actually where: `git log --oneline origin/main..HEAD` and
 `git branch -v`. **Do not trust a SHA written here** — the author pushes mid-session with no
 signal in this file. The SKIM batch and the naming purge were both pushed earlier the same day.
+**An audit session should branch off `backlog/backlink-context-and-resume`** (the newest tip),
+not `origin/main`, or it will audit a tree two batches stale — and note that a findings doc is
+the deliverable, so it will rarely need to branch at all.
 
 **Owner ruling 2026-07-25: the Cmd-K empty state stays the whole-book outline.** It was the one change
 in the batch that altered a daily-driver surface, and the one-line revert to the flat chapter
@@ -316,12 +336,12 @@ editor round-trip.
 **Four owner rulings were also taken** (see the prior-state block), which un-gated a large amount of
 previously-blocked work. What is left now sorts into:
 
-- **Build-ready TODAY: nothing in bands A-C is left that is both buildable and unruled.**
-  24's independent-medium set is down to the **"Part, Chapter" ribbon**, which is an owner
-  call, not a task (see item 24). The honest picks for a fresh session are therefore an
-  **audit perspective** (AP7 deep-a11y or AP3 concurrency are the recommended two — see
-  "Audit perspectives"), or **item 30** (`corpus/analyst/`, writing not code), or one of the
-  P3 residuals below. Ask the owner for the ribbon ruling if you want a code task in band C.
+- **Build-ready TODAY: nothing in bands A-C is left that is both buildable and unruled**, which is
+  why the next session is **ruled to an audit** (the box at the top of this section). 24's
+  independent-medium set is down to the **"Part, Chapter" ribbon**, which is an owner call, not a
+  task (see item 24) — ask for that ruling if a code task in band C is ever wanted. The only other
+  non-audit picks are **item 30** (`corpus/analyst/`, writing not code) and the P3 residuals below,
+  each of which carries its own blocker.
   - **23 is GONE, fully shipped 2026-07-25** (Ship B closed it). Two decisions in it are settled,
     not deferred: the **outline sidecar artifact is declined** (measured — the search index it
     would duplicate is 60 KB gzipped, already lazy-loaded on every page and already fetched by
@@ -397,17 +417,21 @@ carried a comment warning about exactly this, and it still recurred.)
 measurement". (Item 22 was NOT a re-open of it: demotion worked; the section-number counter had never been
 taught about it. Both shipped 2026-07-25.)
 
-- **Or run one of the four remaining *audit perspectives* ("Audit perspectives" section below):**
-  proactive, findings-generating angles the prior rounds structurally could not see. **Done so far:
-  AP1, AP2, AP4, AP5, AP8, AP9, AP10, AP12** (perf, fuzzing, cache-correctness, i18n/sourcepos, codebase
-  health, determinism, semantic HTML, offline-proof). **Remaining: AP3 (concurrency), AP6 (cross-browser),
-  AP7 (a11y), AP11 (chaos)** — all four are *stateful/solo* (server/kernel/browser), so run one when no
-  parallel session owns that surface. Each is a fresh session that writes a dated findings doc and feeds
-  build-ready items back here; the author has credits queued for exactly this. Recommended next:
-  **AP7 (deep a11y)** and **AP3 (concurrency)** are the highest-yield of the remaining stateful set.
+- **This is the ruled pick: run one of the four remaining *audit perspectives*** ("Audit
+  perspectives" section below) — proactive, findings-generating angles the prior rounds structurally
+  could not see. **Done so far: AP1, AP2, AP4, AP5, AP8, AP9, AP10, AP12** (perf, fuzzing,
+  cache-correctness, i18n/sourcepos, codebase health, determinism, semantic HTML, offline-proof).
+  **Remaining: AP3 (concurrency), AP6 (cross-browser), AP7 (a11y), AP11 (chaos)** — all four are
+  *stateful/solo* (server/kernel/browser), so run one when no parallel session owns that surface.
+  Each is a fresh session that writes a dated findings doc and feeds build-ready items back here;
+  the author has credits queued for exactly this. **Take AP7 (deep a11y)**; its entry carries a
+  measured starting brief with three refuted premises and a do-not-re-find list. **AP3
+  (concurrency)** is the alternate if the browser surface is contended.
 
-Working method is in "Standing constraints": branch per feature, verify by mutation, browser-verify,
-ff-merge locally, delete the item here on landing.
+Working method for an audit is in "Audit perspectives" (findings doc + `AUDITS.md` ledger line +
+items filed back here), not the feature method. For features it is in "Standing constraints":
+branch per feature, verify by mutation, browser-verify, ff-merge locally, delete the item here on
+landing.
 
 ## Standing constraints (read before working)
 
@@ -450,11 +474,17 @@ ff-merge locally, delete the item here on landing.
 Ranked highest user/product value first. Impact is not the same as buildability, so each item carries a
 gating tag: a high-impact item can still be frozen or need a ruling.
 
-**Read that literally right now: bands A and B contain NO buildable work.** A's single item is an
-owner decision that was ruled deferred, and both of B's need a device or a demand signal. Every
-build-ready thing in this file is in **band C** — chiefly what is left of **24**'s independent-medium
-set. That is the ranking working as designed, not a stale file; "Next session: start here" above
-names the actual picks.
+**Read that literally right now: bands A, B and C contain NO buildable, unruled work.** A's single
+item is an owner decision that was ruled deferred; both of B's need a device or a demand signal; and
+after the 2026-07-25 batches C is down to **24**'s "Part, Chapter" ribbon (an owner call), item
+**30** (writing, not code), and P3 residuals that each carry their own blocker — **17**'s F-01 needs
+a vendoring decision, **17**'s F-02 and **18**'s F-03 are WAI, **12** is demand-driven, **29**'s T2
+is explicitly "only if you are already in there", and **11**'s Semantics bullet needs a CSS-grid +
+filter-JS restructure. That is the ranking working as designed, not a stale file.
+
+**Which is why the next session is an audit, not a feature** (owner ruling 2026-07-25 — see "Next
+session: start here" above). Do not read this band list as a to-do queue; read it as the reason the
+queue is empty.
 
 ### A. High impact (build first)
 
@@ -840,6 +870,18 @@ file (Do-NOT-touch freeze, verify-by-mutation, entries rot so re-derive from sou
 the priority: non-test code carries ~700 `unwrap()`/`expect()`/`panic!`/`unreachable!` sites, and
 `data-sourcepos` (the load-bearing invariant) is byte-offset based.
 
+**While you are in `AUDITS.md` writing your own ledger line, close the known gap:** six rounds still
+have none (AP2, AP4, the 2026-07-17 security audit, the 2026-07-24 deck-motion audit, the CAD
+research, the 2026-07-13 companion version-skew bug). The AP2 findings file carries a
+ready-to-paste line. It is five minutes for whoever is already editing that file, and it has been
+deferred twice.
+
+**Every audit's first job is to falsify its own entry.** Both of the last two rounds to be picked up
+found that the entry overstated or misnamed what it was pointing at (AP2's "the codebase is
+unguarded" premise was already false; AP9's headline finding measured a stale build artifact), and
+AP7's brief below now records three premises measured false before the round even started. Budget
+the first hour for that, not for probes.
+
 **Run one perspective per session** (context isolation + token budget: the author's stated preference).
 The *stateful* ones (AP1, AP2, AP3, AP4, AP5, AP6, AP11) each build, fuzz, run the server, bind ports,
 drive a browser, or spawn kernels, so they corrupt each other if run at once: keep them solo. Only the
@@ -847,7 +889,10 @@ pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan 
 Workflow. The recommended-first set (**AP1, AP2, AP4, AP5**) plus the one safe code-read pick (**AP10**) are
 now all RUN (see their entries below). **Everything remaining — AP3 (concurrency), AP6 (cross-browser), AP7
 (a11y), AP11 (chaos) — is stateful/solo** (server/kernel/browser/ports), so each needs a session where no
-parallel work owns that surface. Highest-yield of the four: **AP7 (deep a11y)** and **AP3 (concurrency)**.
+parallel work owns that surface. **Owner ruling 2026-07-25: the next session runs one of these, and
+the pick is AP7 (deep a11y)**, with **AP3 (concurrency)** as the alternate if the browser surface is
+contended. AP7's entry below carries a measured starting brief; read it first, because three of its
+own stated premises are already refuted and its do-not-re-find list is long.
 
 ### Tier 1: genuinely untouched, highest expected yield
 
@@ -910,10 +955,42 @@ parallel work owns that surface. Highest-yield of the four: **AP7 (deep a11y)** 
 
 ### Tier 2: partially touched; a dedicated deep pass still pays
 
-- **AP7: Deep accessibility of the output.** The polish rounds found chrome-level a11y holes; nobody has
-  done a real screen-reader + keyboard pass over rendered docs, and especially the **deck as an interactive
-  application** (focus management, `aria`, KaTeX a11y, live-region announcement on slide change). Overlaps
-  item 11 pass (c) but goes deeper than one-hole-per-surface. *Stateful, solo.*
+- **AP7: Deep accessibility of the output. RECOMMENDED NEXT (owner ruling 2026-07-25).** The polish
+  rounds found chrome-level a11y holes one at a time; nobody has done a real screen-reader + keyboard
+  pass over rendered docs as *documents*. Overlaps item 11 pass (c) but should go deeper than
+  one-hole-per-surface. *Stateful, solo.*
+  **Three of this entry's own premises were measured on 2026-07-25 and are already false. Read this
+  before writing a probe, or a whole round goes into rediscovering shipped work:**
+  - **"live-region announcement on slide change"** — the deck already has one. `deck.js` builds a
+    polite live region (`liveRegion()`, `aria-live="polite"`) and `announce()`s the slide on every
+    change, the fragment step (`Step N of M`), and overview-map moves. Judge the *wording and
+    chattiness*, not its absence.
+  - **"`aria`" on the deck** — every slide is emitted `role="group" aria-roledescription="slide"`
+    (`render/deck.rs`) with a runtime "Slide N of M" `aria-label` (`updateSlideLabels`).
+  - **"KaTeX a11y"** — KaTeX runs in its default `htmlAndMathml` mode, so **MathML ships in the
+    built page** (verified: `<math xmlns=…>` is present in `docs/guide`'s built output). A screen
+    reader gets semantic math today. The open question is the *visible* `katex-html` twin being
+    read twice, not missing semantics.
+  **Do NOT re-find (all shipped, grep before doubting):** the three static rules
+  `TAL-A11Y-HEADING` / `-NAME` / `-ALT` (`diagnostics/a11y.rs`, incl. the placeholder-alt nudge);
+  the preview's live `scanA11y` (`web-client/client.js`); item 11 pass (c)'s announce/semantics
+  holes (`be9ebd6`); and item 11's a11y-interaction set B3/B5/B14/B15 + PA-B9 (`68bf5c8`) — the
+  mobile-TOC-sheet focus trap, the Cmd-K combobox Home/End binding, the menu's null-`relatedTarget`
+  rule and the sheet handle's label. Two facts recorded from that work: the pull-up handle
+  **ignores a synthetic `click()`** (use a real tap or Enter/Space), and **a site preview emits no
+  mobile-TOC sheet chrome at all**, so `client.js`'s copy of the sheet is reachable only in a
+  single-doc preview.
+  **Genuinely un-audited, so this is where the yield is:** a real screen-reader pass (not an axe
+  run) over a long book chapter and the deck; reading *order* versus visual order now that the
+  `#TOC` is emitted after `</main>`; whether the incremental block swap announces or strands focus
+  when a block is replaced mid-read (the moat feature nobody has audited with AT); tabsets,
+  callouts, theorem boxes and `{{< input >}}` controls as *composite widgets*; `.scrolly` /
+  `.code-walkthrough` for keyboard-only readers; and the reader-prefs / theme controls.
+  **Known adjacent, already filed:** item 11's Semantics bullet (`<ul>`/`role=list`, image-alt lint
+  nudge, deck `theme-color`/OG) and PA-B1 (the kernel-unavailable message tells headless callers to
+  click a Restart button that is not there — see item 10 / AP11).
+  **Corpus note:** `corpus/diagnostics/a11y.tmd` is the *lint* fixture, not a reader fixture; there
+  is no dedicated `crates/core/tests/a11y*.rs`, so a finding that deserves a pin needs one minted.
 - **AP8: Determinism / reproducibility. RUN 2026-07-22, findings shipped + closed** (findings:
   [2026-07-22-determinism-audit.md](2026-07-22-determinism-audit.md); was Open-work item 15, now complete +
   removed). Covered
