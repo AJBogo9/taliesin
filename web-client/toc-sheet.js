@@ -20,7 +20,6 @@
     const toc = byId("TOC");
     const handle = byId("tali-toc-handle");
     const backdrop = byId("tali-toc-backdrop");
-    const cur = byId("tali-toc-cur");
     // Nothing to wire without the sheet chrome (e.g. a page with no TOC).
     if (!toc || !handle || !backdrop) return;
     // Opt the body into the sheet ONLY now that JS is running (progressive enhancement):
@@ -31,6 +30,13 @@
     var isSheetMode = function () {
       return !window.matchMedia || matchMedia("(max-width: 60rem)").matches;
     };
+    // While the sheet is open it is a dimming modal over the page, so Tab belongs inside it
+    // — the same shared trap the lightbox and Cmd-K use (`04-focus-trap.js`). Guarded on the
+    // global: a page without the enhancer bundle keeps the previous focus-in-on-open
+    // behaviour rather than failing.
+    /** @type {(() => void) | null} */
+    var release = null;
+    var releaseTrap = function () { if (release) { release(); release = null; } };
     // `#TOC` doubles as the desktop sidebar, so only hide it from assistive tech and
     // pull it from the tab order when it is an off-screen sheet (narrow + closed).
     var syncA11y = function () {
@@ -41,12 +47,21 @@
       } else {
         toc.removeAttribute("inert"); toc.removeAttribute("aria-hidden");
       }
+      // Widening out of sheet mode turns the sheet back into the sticky sidebar. A trap held
+      // over from the sheet would then confine Tab to a sidebar nobody opened, so this runs
+      // on resize as well as on every open/close.
+      if (!isSheetMode()) releaseTrap();
     };
     /** @param {boolean} open */
     var setOpen = function (open) {
       document.body.classList.toggle("tali-toc-open", open);
       syncA11y();
-      if (open) { var f = toc.querySelector("a"); if (f) f.focus(); }
+      releaseTrap();
+      if (open && isSheetMode()) {
+        var f = /** @type {HTMLElement | null} */ (toc.querySelector("a"));
+        if (window.taliFocusTrap) release = window.taliFocusTrap(toc, f);
+        else if (f) f.focus();
+      }
     };
     var resetSheet = function () {
       toc.style.transition = ""; toc.style.transform = "";
@@ -137,8 +152,11 @@
     var labelTimer = 0;
     var flash = function () {
       if (!isSheetMode() || document.body.classList.contains("tali-toc-open")) return;
-      var active = toc.querySelector("a.tali-toc-active");
-      if (cur && active) cur.textContent = active.textContent;
+      // The label TEXT is toc-spy.js's (it sources it from the heading, with the hover `#`
+      // permalink stripped). This used to also write it, from the TOC *link*, which carries
+      // the visually-hidden " (read)" that toc-spy appends to a finished section — so a
+      // static build's handle read "Conclusion (read)". `toc_scripts()` always emits both
+      // scripts, so the one owner is always present: this only reveals the label.
       handle.classList.add("tali-show-label");
       clearTimeout(labelTimer);
       labelTimer = setTimeout(function () { handle.classList.remove("tali-show-label"); }, 1000);

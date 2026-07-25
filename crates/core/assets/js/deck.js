@@ -2282,6 +2282,14 @@
     backdrop.addEventListener('click', function () { toggleMenu(false); });
     document.body.appendChild(backdrop);
     menu.addEventListener('click', onMenuClick);
+    // Tabbing out dismisses it, beside Esc and click-away (the reader menu does the same).
+    // A null relatedTarget is focus leaving the document (window blur), not a dismissal.
+    menu.addEventListener('focusout', function (e) {
+      if (menu.hasAttribute('hidden')) return;
+      var to = /** @type {Element | null} */ (e.relatedTarget);
+      if (!to || menu.contains(to) || to === deck.menuBtn) return;
+      toggleMenu(false);
+    });
     deck.menu = menu;
     deck.menuBackdrop = backdrop;
   }

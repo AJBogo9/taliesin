@@ -1959,6 +1959,26 @@ mod protocol_contract {
         );
     }
 
+    /// PA-B3, the preview's half. The mobile TOC sheet is a dimming modal, so Tab belongs
+    /// inside it — the same shared trap the lightbox and Cmd-K use. The preview keeps its own
+    /// copy of the sheet (it rebuilds the TOC live), so the static build's `toc-sheet.js` fix
+    /// does not reach it; `render::tests` pins that copy. The trap must be released when a
+    /// resize turns the sheet back into the desktop sidebar, or Tab stays confined to a panel
+    /// nobody opened.
+    #[test]
+    fn client_js_traps_focus_in_the_mobile_toc_sheet() {
+        // The bare name is also in the feature-detect guard and the comment, so pin the CALL
+        // (deleting it left `contains("taliFocusTrap")` passing — found by mutation).
+        assert!(
+            CLIENT_JS.contains("taliFocusTrap(tocEl, f)"),
+            "the preview's TOC sheet must reuse the shared modal focus trap"
+        );
+        assert!(
+            CLIENT_JS.contains("if (!isSheetMode()) dropTocTrap()"),
+            "the preview's TOC sheet must release the trap on a resize out of sheet mode"
+        );
+    }
+
     #[test]
     fn client_and_status_css_ship_the_cache_legibility_surface() {
         // DX9: the ⚡ cached badge + the muted cached-cell border are include_str!'d JS/CSS,

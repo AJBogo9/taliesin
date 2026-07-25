@@ -885,6 +885,12 @@
   }
   if (tocHandle && tocEl && tocBackdrop) {
     const isSheetMode = () => !window.matchMedia || matchMedia("(max-width: 60rem)").matches;
+    // Open, the sheet is a dimming modal over the page, so Tab belongs inside it — the shared
+    // trap the lightbox and Cmd-K already use. Guarded on the global, and released when a
+    // resize turns the sheet back into the desktop sidebar (a trap left on the sidebar would
+    // confine Tab to a panel nobody opened).
+    let releaseTocTrap = /** @type {(() => void) | null} */ (null);
+    const dropTocTrap = () => { if (releaseTocTrap) { releaseTocTrap(); releaseTocTrap = null; } };
     // #TOC doubles as the desktop sidebar, so only hide it from assistive tech and
     // pull it out of the tab order when it is an off-screen sheet (narrow + closed).
     const syncSheetA11y = () => {
@@ -895,11 +901,17 @@
       } else {
         tocEl.removeAttribute("inert"); tocEl.removeAttribute("aria-hidden");
       }
+      if (!isSheetMode()) dropTocTrap();
     };
     const setOpen = (/** @type {boolean} */ open) => {
       document.body.classList.toggle("tali-toc-open", open);
       syncSheetA11y();
-      if (open) { const f = tocEl.querySelector("a"); if (f) f.focus(); } // focus into the sheet
+      dropTocTrap();
+      if (open && isSheetMode()) {                                   // focus into the sheet
+        const f = /** @type {HTMLElement | null} */ (tocEl.querySelector("a"));
+        if (window.taliFocusTrap) releaseTocTrap = window.taliFocusTrap(tocEl, f);
+        else if (f) f.focus();
+      }
     };
     const resetSheet = () => {
       tocEl.style.transition = ""; tocEl.style.transform = "";

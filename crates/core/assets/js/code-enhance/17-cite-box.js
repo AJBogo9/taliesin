@@ -25,7 +25,12 @@ function taliInitCiteBox(root) {
     /** @param {string | undefined} fmt */
     function select(fmt) {
       tabs.forEach(function (t) {
-        t.setAttribute('aria-selected', String(t.dataset.format === fmt));
+        var on = t.dataset.format === fmt;
+        t.setAttribute('aria-selected', String(on));
+        // Roving tabindex, same as tabset.js: the tablist is one stop in the tab sequence
+        // and the arrows (below) move within it. `cite_this.rs` emits the same shape, so
+        // this maintains it rather than establishing it.
+        t.tabIndex = on ? 0 : -1;
       });
       panes.forEach(function (p) { p.hidden = p.dataset.format !== fmt; });
     }

@@ -93,6 +93,18 @@ function taliInitReaderMenu() {
       if (l) l.focus();
     }
   });
+  // Tabbing out dismisses it, the third light-dismiss gesture beside Esc and click-away.
+  // Without this the panel stayed open behind a keyboard reader who had already Tabbed past
+  // it — and since it is appended to <body>, "past it" is a whole page away from the gear.
+  // A null relatedTarget means focus left the document entirely (window blur, or a click on
+  // page furniture that takes no focus): the click handler owns that case, and closing on
+  // window blur would drop the menu out from under someone who just switched apps.
+  panel.addEventListener('focusout', function (e) {
+    if (panel.hidden) return;
+    var to = /** @type {Element | null} */ (e.relatedTarget);
+    if (!to || panel.contains(to) || to.closest('[data-tali-settings]')) return;
+    closeMenu();
+  });
 
   // Public API: each reader feature adds its own section and an optional refresh hook
   // (called when the menu opens). `open`/`toggle` let the `?` shortcut summon it.

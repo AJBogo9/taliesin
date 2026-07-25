@@ -329,9 +329,15 @@ pub(crate) fn cite_block_html(m: &CiteMeta) -> String {
     let mut panes = String::new();
     for (i, (key, label, file, text)) in formats.iter().enumerate() {
         let selected = i == 0;
+        // A roving `tabindex`: a tablist is ONE stop in the tab sequence (the selected tab),
+        // and the arrow keys move within it — emitted server-side as well as maintained by
+        // `17-cite-box.js`, so the shape is right before any JS runs. Without it all three
+        // formats were their own Tab stop, and with JS off they were focusable controls that
+        // could not do anything.
+        let tabindex = if selected { "0" } else { "-1" };
         tabs.push_str(&format!(
             "<button type=\"button\" class=\"tali-cite-tab\" role=\"tab\" \
-             data-format=\"{key}\" aria-selected=\"{selected}\">{label}</button>"
+             data-format=\"{key}\" aria-selected=\"{selected}\" tabindex=\"{tabindex}\">{label}</button>"
         ));
         panes.push_str(&format!(
             "<pre class=\"tali-cite-out\" role=\"tabpanel\" data-format=\"{key}\" \
@@ -649,6 +655,31 @@ ER  -";
                 given: Some("Alan".into()),
                 family: "Turing".into()
             }]
+        );
+    }
+
+    /// PA-B5: a tablist is ONE stop in the tab sequence. All three format tabs used to be
+    /// their own stop, so Tab walked through BibTeX / CSL-JSON / RIS one at a time on the way
+    /// past the box — and with JS off they were focusable controls that did nothing at all.
+    /// Emitted server-side, not only maintained by `17-cite-box.js`, so the shape is correct
+    /// before any script runs.
+    #[test]
+    fn the_format_tablist_is_one_tab_stop() {
+        let html = cite_block_html(&em_meta());
+        assert_eq!(
+            html.matches("tabindex=\"0\"").count(),
+            1,
+            "exactly one tab is in the tab sequence: {html}"
+        );
+        assert_eq!(
+            html.matches("tabindex=\"-1\"").count(),
+            2,
+            "the unselected tabs are reachable by arrow key, not by Tab: {html}"
+        );
+        // The one stop is the SELECTED tab, not just any of them.
+        assert!(
+            html.contains("aria-selected=\"true\" tabindex=\"0\""),
+            "the selected tab is the one in the tab sequence: {html}"
         );
     }
 }

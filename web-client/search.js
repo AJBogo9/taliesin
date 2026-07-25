@@ -787,6 +787,19 @@
     } else if (e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey)) {
       e.preventDefault();
       move(-1);
+    } else if ((e.key === "Home" || e.key === "End") && matches.length && !input.value) {
+      // Jump to the ends of the list — the motion the cite tabs and the deck menu both
+      // have and the longest list in the app did not.
+      //
+      // Gated on an EMPTY input, and that gate is the whole design. Focus never leaves the
+      // input (this is an aria-activedescendant combobox), so with a query typed Home/End
+      // are the caret's keys and stealing them would break editing the query. With no
+      // query there is no caret motion to take: the binding is strictly additive, and it
+      // lands exactly where the list is longest, since the empty state is now the whole
+      // book's outline.
+      e.preventDefault();
+      sel = e.key === "Home" ? 0 : matches.length - 1;
+      markSel();
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (matches[sel]) go(matches[sel]);

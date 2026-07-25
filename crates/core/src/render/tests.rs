@@ -5144,6 +5144,102 @@ fn the_palettes_empty_state_is_the_whole_book_outline_not_a_chapter_list() {
     );
 }
 
+/// PA-B14: the palette is the longest list in the app and had no jump-to-the-ends, which the
+/// cite tabs and the deck menu both have. Gated on an EMPTY input on purpose: focus never
+/// leaves the input (aria-activedescendant), so with a query typed Home/End are the caret's
+/// keys — the binding may only add where it takes nothing away, which is also exactly where
+/// the list is longest (the empty state is the whole book's outline).
+#[test]
+fn the_palette_jumps_to_the_list_ends_only_when_the_caret_has_no_work() {
+    assert!(
+        SEARCH_JS.contains("e.key === \"Home\"") && SEARCH_JS.contains("e.key === \"End\""),
+        "the palette must bind Home/End to the ends of its list"
+    );
+    assert!(
+        SEARCH_JS.contains("!input.value"),
+        "Home/End must yield to caret motion whenever a query is typed"
+    );
+}
+
+/// PA-B15: both light-dismiss popovers (reader settings menu, deck control menu) closed on Esc
+/// and on click-away but stayed open behind a keyboard reader who Tabbed past them — and the
+/// reader panel is appended to `<body>`, so "past it" is a whole page away from its gear. A
+/// null `relatedTarget` (window blur) must NOT dismiss, or switching apps drops the menu.
+/// The needles are each popover's OWN dismissal test, not the bare word `focusout`: three
+/// other enhancer fragments already listen for it, so `CODE_ENHANCE_JS.contains("focusout")`
+/// passed with this fix deleted (caught by mutation, not by the green suite).
+#[test]
+fn a_light_dismiss_popover_closes_when_focus_tabs_out() {
+    for (js, listener, body, what) in [
+        (
+            CODE_ENHANCE_JS,
+            "panel.addEventListener('focusout'",
+            "to.closest('[data-tali-settings]')",
+            "the reader settings menu",
+        ),
+        (
+            super::deck::DECK_JS,
+            "menu.addEventListener('focusout'",
+            "to === deck.menuBtn",
+            "the deck control menu",
+        ),
+    ] {
+        // Element-scoped, so it cannot be satisfied by another fragment's focusout listener,
+        // and BOTH halves are pinned: renaming the event alone left a body-only needle passing.
+        assert!(
+            js.contains(listener),
+            "{what} must listen for focus leaving it, not only Esc + click-away"
+        );
+        assert!(
+            js.contains(body),
+            "{what}'s dismissal must exempt its own launcher"
+        );
+        // A null relatedTarget is focus leaving the document (window blur), never a dismissal.
+        assert!(
+            js.contains("if (!to ||"),
+            "{what} must treat a null relatedTarget as \"not a dismissal\""
+        );
+    }
+}
+
+/// PA-B3: the mobile TOC sheet is a dimming modal over the page, so Tab belongs inside it —
+/// the shared trap the lightbox and Cmd-K already use. It must also RELEASE on leaving sheet
+/// mode: a trap held over a resize would confine Tab to the desktop sidebar, which nobody
+/// opened. (The preview has its own copy of the sheet in `client.js`, which lives in the
+/// server crate; `serve::tests` pins that half.)
+#[test]
+fn the_mobile_toc_sheet_traps_focus() {
+    // `contains("taliFocusTrap")` is not enough: the feature-detect guard and the comment
+    // both mention it, so that needle survived deleting the call itself (mutation-caught).
+    assert!(
+        TOC_SHEET_JS.contains("taliFocusTrap(toc, f)"),
+        "the static build's TOC sheet must reuse the shared modal focus trap"
+    );
+    assert!(
+        TOC_SHEET_JS.contains("isSheetMode()"),
+        "it must only trap while the TOC IS a sheet"
+    );
+}
+
+/// PA-B9: the static build's pull-up handle read "Conclusion (read)". `toc-sheet.js` set the
+/// label from the TOC *link*, which carries the visually-hidden " (read)" that `toc-spy.js`
+/// appends to a finished section; toc-spy sets the same label from the *heading* and strips
+/// the hover permalink. `toc_scripts()` always emits both, so there is one owner, not two.
+#[test]
+fn the_pull_up_handle_label_has_exactly_one_owner() {
+    assert!(
+        !TOC_SHEET_JS.contains("cur.textContent"),
+        "the sheet must not write the handle label; toc-spy.js owns it"
+    );
+    assert!(
+        TOC_SPY_JS.contains("chip.textContent"),
+        "toc-spy.js is the owner, so it must still write the label"
+    );
+    // Both ship together on every TOC page, which is what makes single ownership safe.
+    let scripts = toc_scripts();
+    assert!(scripts.contains(TOC_SPY_JS) && scripts.contains(TOC_SHEET_JS));
+}
+
 #[test]
 fn the_palette_relaxes_and_for_content_but_never_for_actions() {
     // One mistyped word used to annihilate the result set (`else return 0`). Content now
