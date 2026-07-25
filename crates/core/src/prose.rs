@@ -66,7 +66,7 @@ pub(crate) fn lint(src: &str, cfg: &ProseLint) -> Vec<(usize, String)> {
 /// code/math/links/HTML all excluded), matching the client's live count that drops
 /// `<pre>`/`.katex` from the DOM. `src` is expected include-expanded (so an included
 /// file's prose counts). Rounding to whole minutes lives at the call site.
-pub(crate) fn word_count(src: &str) -> usize {
+pub fn word_count(src: &str) -> usize {
     let mut n = 0;
     for_each_prose_line(src, |_, text| n += words(text).len());
     n

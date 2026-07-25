@@ -59,9 +59,16 @@ painted. That is how an agent confirms a computed figure actually baked, again w
 no browser.
 
 `taliesin map <dir>` is the whole-project outline in one call: every page in nav /
-chapter order, the nav and any `mounts:`, and the cross-reference graph (each anchor,
-where it is defined, and its backlinks). It is how an agent plans an edit across a
-site without opening each file.
+chapter order with its prose length and heading outline, the nav and any `mounts:`,
+and the cross-reference graph (each anchor, where it is defined, and its backlinks).
+It is how an agent plans an edit across a site without opening each file.
+
+`taliesin skim <dir>` goes one layer deeper, projecting the whole book to what a
+reader skims: numbered headings, each section's opening sentence, and the captions,
+callout titles and theorem statements that stand on their own. `map` answers *what
+is here*; `skim` answers *does it read*. It prints the author's raw sentence rather
+than a summary, and annotates a missing opening instead of dropping the row, so it
+can be used as evidence about a document's structure rather than an opinion of it.
 
 ## The MCP server
 

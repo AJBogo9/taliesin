@@ -399,6 +399,31 @@ an agent plans an edit across a site without opening each file:
 taliesin map . --format json | jq '.pages[].url'
 ```
 
+Each page also carries `words` (its prose length) and `headings` (its outline, each
+heading carrying the number the rendered page shows), so an agent can judge a page's
+size and shape without reading it.
+
+`skim` projects a whole book down to the layers a reader actually skims, as one
+linear stream: numbered headings, each section's **opening sentence**, and the
+captions, callout titles and theorem statements that carry meaning on their own. Read
+top to bottom, it answers the question a table of contents cannot, namely whether the
+book still makes sense when nobody reads the paragraphs:
+
+```sh
+taliesin skim .                 # the linear stream
+taliesin skim . --format json   # the same projection, machine-shaped
+```
+
+Two rules keep it honest. It always prints the **raw** opening sentence, never a
+rewrite or a summary; and where it has a judgement to offer, it says so beside the
+text (`(no opening prose)`) rather than hiding the row. A section that is genuinely
+thin and a section the projection simply missed must never look the same, or the
+thing stops being a measurement.
+
+It reads the section's first *paragraph*, so fenced code, tab panels, and the
+contents of a callout or theorem box are not mistaken for the author's prose. Like
+`map`, it reuses site discovery and never starts a kernel.
+
 `vocab` emits the editor autocomplete vocabulary as one JSON blob (front-matter keys,
 cell options, callout and theorem kinds, div classes, cross-reference prefixes). It is
 generated from the validator's own lists, so it never drifts from what `check`

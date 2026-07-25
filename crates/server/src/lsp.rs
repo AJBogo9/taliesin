@@ -847,10 +847,29 @@ fn to_document_symbol(
     } else {
         node.title.clone()
     };
+    // The section's prose length, shown beside its name in the editor outline — the one
+    // structural measure an author can act on while writing, at the moment they can act on
+    // it. Counted over the node's own markdown line extent (which `lsp_outline` computed to
+    // bound the section) via the shared `prose::word_count`, so the outline, `lint`, `map`
+    // and the page's reading-time figure can never report four different lengths. Counting
+    // rendered text instead would count fenced code and cell output as prose.
+    //
+    // A node's extent spans its subsections too, so for a parent this is the whole
+    // section's length, not the prose directly under its own heading. That is the number
+    // worth showing (it answers "how long is this section" the way a reader means it), but
+    // it must not be read as own-prose, so a parent says "total" and a leaf does not.
+    let words = taliesin_core::prose::word_count(&lines[start..=end].join("\n"));
+    let detail = (words > 0).then(|| {
+        if node.children.is_empty() {
+            format!("{words} words")
+        } else {
+            format!("{words} words total")
+        }
+    });
     #[allow(deprecated)] // `deprecated` is a required (deprecated) field of DocumentSymbol.
     lsp_types::DocumentSymbol {
         name,
-        detail: None,
+        detail,
         kind: SymbolKind::STRING,
         tags: None,
         deprecated: None,
@@ -1490,6 +1509,59 @@ mod tests {
         assert_eq!(
             kids.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
             vec!["Sub A", "Sub B"]
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn document_symbol_detail_is_the_sections_prose_length() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-outline-words.tmd").unwrap();
+        // Heading text counts as prose, because `prose::word_count` is the same measure
+        // behind the page's reading-time figure and a reader reads headings. Fenced code
+        // does not. So `Sub` is "Sub" + four body words = 5, and `Top` is "Top" + three
+        // body words + all of `Sub` = 9.
+        let text = "# Top\n\none two three\n\n```\nnot prose at all here\n```\n\n## Sub\n\nfour \
+                    five six seven\n"
+            .to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(31),
+                method: lsp_types::request::DocumentSymbolRequest::METHOD.to_owned(),
+                params: serde_json::to_value(lsp_types::DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(31));
+        let syms: Vec<lsp_types::DocumentSymbol> =
+            serde_json::from_value(resp.result.expect("a documentSymbol result")).unwrap();
+
+        // A node's extent spans its subsections, so the parent reports the whole section and
+        // says "total"; a leaf reports only its own prose. Naming the difference is the
+        // point — the same number under both labels would quietly read as own-prose.
+        assert_eq!(
+            syms[0].detail.as_deref(),
+            Some("9 words total"),
+            "the parent should report its subtree, labelled as such"
+        );
+        let kids = syms[0].children.as_ref().expect("Top has children");
+        assert_eq!(
+            kids[0].detail.as_deref(),
+            Some("5 words"),
+            "a leaf reports its own prose, unlabelled"
         );
 
         shutdown(&client);

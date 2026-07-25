@@ -65,21 +65,7 @@ pub(super) fn page_fragment(
     if page.url == "404.html" {
         return None;
     }
-    let src = std::fs::read_to_string(&page.input).ok()?;
-    let base = page.input.parent().unwrap_or_else(|| Path::new("."));
-    let mut doc = render::render_document_scoped_with_theorems(&src, base, chapter, book_theorems);
-    // Finish the blocks in the same ORDER the served page does (`Site::finish_blocks`:
-    // number, then resolve), or index text the page never shows. Scoping the render alone
-    // numbers floats and theorems but NOT headings — that is `number_chapter_headings` — so
-    // without this call every heading was indexed unnumbered while the page it points at
-    // reads "5.2 How nulls behave": the reader could not search the number they can see, and
-    // an outline built from the index would be the one unnumbered view of a numbered book.
-    // (The same argument this function already makes for `chapter`, applied to headings.)
-    if let Some(chapter) = chapter {
-        super::chapter::number_chapter_headings(&mut doc.blocks, chapter);
-    }
-    // Then the registry: this render leaves a cross-page `@fig-` as a marker reading "Figure".
-    super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
+    let (src, doc) = render_finished(page, chapter, targets, book_theorems)?;
     let page_title = page
         .title
         .clone()
@@ -151,10 +137,37 @@ pub(super) fn page_fragment(
     Some(entries.join(","))
 }
 
+/// Render ONE page's markdown with its post-passes finished, exactly as the served page
+/// finishes them. Returns `(source, rendered)`, or `None` when the source can't be read.
+///
+/// **The order is the whole point of this function existing.** `Site::finish_blocks`
+/// numbers, then resolves; a scoped render numbers floats and theorems but NOT headings
+/// (that is `number_chapter_headings`, a separate step), and only then can the xref
+/// registry fill a cross-page `@fig-` that this alone-rendered page left as a bare marker.
+/// Getting the order wrong indexes text the page never shows — which is exactly the bug
+/// Ship A found, where every heading was indexed unnumbered under a page reading
+/// "5.2 How nulls behave". [`super::skim`] needs the identical recipe, so it is written
+/// once here rather than copied and left to drift.
+pub(super) fn render_finished(
+    page: &Page,
+    chapter: Option<u32>,
+    targets: &HashMap<String, XrefTarget>,
+    book_theorems: Option<&render::TheoremConfig>,
+) -> Option<(String, render::RenderedDoc)> {
+    let src = std::fs::read_to_string(&page.input).ok()?;
+    let base = page.input.parent().unwrap_or_else(|| Path::new("."));
+    let mut doc = render::render_document_scoped_with_theorems(&src, base, chapter, book_theorems);
+    if let Some(chapter) = chapter {
+        super::chapter::number_chapter_headings(&mut doc.blocks, chapter);
+    }
+    super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
+    Some((src, doc))
+}
+
 /// Scan rendered HTML for `<h1..6 id="…">text</hN>`, returning, per anchored
 /// heading, `(level, id, text, open_byte, close_end_byte)` — the byte span lets
 /// the caller slice each section's body (heading-close → next heading-open).
-fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
+pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
     let mut out = Vec::new();
     let mut pos = 0; // byte offset of `rest` within `html`
     let mut rest = html;
@@ -213,7 +226,7 @@ fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
 /// phrase that is on the page, and none to the author. Uncapping grows the indexed text by
 /// only ~1.17x (measured on both books), and `score()` is `indexOf` scans over that text at
 /// well under a millisecond per keystroke, so the cap was never buying what it cost.
-fn section_text(html: &str) -> String {
+pub(super) fn section_text(html: &str) -> String {
     render::indexable_text(html)
 }
 

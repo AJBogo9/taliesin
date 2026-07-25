@@ -294,6 +294,47 @@ and therefore absent from search, without search needing any special case for ei
 same mechanism, read through the other discovery mode. See @sec-draft-filtering.)
 :::
 
+## The layer-cake projection {#sec-skim}
+
+`skim.rs` projects a whole project down to the layers a reader skims: numbered headings,
+each section's opening sentence, and the captions, callout titles and theorem statements
+that carry meaning without their surrounding prose. `Site::skim()` returns it as data;
+`taliesin skim` prints it, and `map --format json` borrows its `words` and `headings`.
+
+It shares the search index's **render recipe**, not its text extraction, and the split is
+deliberate on both sides:
+
+- **Shared: `search::render_finished`.** Numbers exist only after the render's post-passes,
+  and the order is load-bearing (scope the render, then `number_chapter_headings`, then
+  resolve xrefs). Ship A shipped a bug from getting exactly that order wrong, so the recipe
+  is written once and both callers use it. A projection that reported unnumbered headings
+  for a numbered book would be worse than no projection.
+- **Not shared: the text.** `indexable_text` deliberately flattens *everything*, which is
+  right for search (a reader may hunt for a word inside a code block) and wrong here: with
+  no sentence terminators between blocks, a tabset's labels and its shell commands welded
+  onto the preceding paragraph and were reported as one opening sentence. `skim` instead
+  reads the section's first **paragraph**, skipping `<pre>`, figures, tables and the
+  callout / theorem / proof boxes (the last three are projected as their own layers).
+
+::: {.callout-important}
+## The projection must never suppress
+
+Its first customer is not a reader but the structural tooling itself: you cannot calibrate
+a lint about document structure against a corpus whose shape nobody can see. So the raw
+first sentence is **always** printed, and a judgement appears as a visible annotation
+beside it (`(no opening prose)`), never as a dropped row. The moment a genuinely thin
+section and a heuristic misfire render identically, the instrument stops measuring and
+starts asserting.
+:::
+
+Word counts come from `prose::word_count` rather than from the rendered text, so `skim`,
+`map`, the LSP outline's `detail` and the page's own reading-time figure cannot report four
+different lengths. That is also why there is no per-*section* count in `skim`: prose
+selection (excluding fenced code and `:::` fences) is a markdown notion, and a section's
+markdown extent is not available when walking rendered HTML. The LSP outline *does* carry
+one, because `lsp_outline` computed the line extent already — and because a node's extent
+spans its subsections, a parent there says "N words total" while a leaf says "N words".
+
 ## Social & SEO metadata
 
 Each page emits OpenGraph, Twitter-card, and `canonical` tags (`meta.rs`), taken from the

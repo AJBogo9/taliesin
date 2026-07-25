@@ -218,6 +218,7 @@ mod manifest;
 mod meta;
 mod search;
 mod seo;
+pub mod skim;
 mod xref;
 pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
 pub use xref::XrefTarget;
@@ -433,6 +434,26 @@ impl Site {
     /// being REBUILT, i.e. the open tabs, and a renumbered figure goes stale in the
     /// fragments of pages nobody has open — which is the exact
     /// snippet-contradicts-its-target defect this index ordering exists to prevent.
+    /// The whole project as one linear [layer-cake projection](skim), in page order: the
+    /// reading-order stream of numbered headings, opening sentences and standalone layers
+    /// that `taliesin skim` prints and the structural work is calibrated against.
+    ///
+    /// Renders each page once with its post-passes finished (the same recipe the search
+    /// index uses), so every number here is the number the page shows. Executes no code.
+    pub fn skim(&self) -> Vec<skim::PageSkim> {
+        self.pages
+            .iter()
+            .filter_map(|p| {
+                skim::page_skim(
+                    p,
+                    book::chapter_of(&self.book, p),
+                    &self.xref_targets,
+                    self.config.theorems.as_ref(),
+                )
+            })
+            .collect()
+    }
+
     pub fn rebuild_search_index(&mut self) {
         self.search_sections = search::build_sections(
             &self.pages,

@@ -150,8 +150,10 @@ also taken** (see the prior-state block), which un-gated a large amount of previ
 What is left now sorts into:
 
 - **Build-ready TODAY, in this order:**
-  1. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
-     three-state floor) shipped 2026-07-25, so the lints in 24c are no longer gate-blocked either.
+  1. **24c** (M) — the trimmed `skim-shape-lints`. Both prerequisites are now down: 24a (the
+     three-state severity floor) and 24b (`skim`, the instrument the thresholds are calibrated
+     against), both shipped 2026-07-25. **Calibrate against `taliesin skim` output, not intuition** —
+     that is what it was built for, and running it already killed three of its own assumptions.
   2. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
      put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
      specifically, not the outline as such.
@@ -354,17 +356,24 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       now `TAL-PROSE-WEASEL`/`-REPEAT`/`-BANNED` at `suggestion`, placed **first** in `TABLE` because the
       needles below include `("math", …)` and "weasel word \`mathematically\`" would have classified as a
       math diagnostic. The summary no longer calls advice a "problem" beside an exit 0.
-    - **`taliesin skim` + `machine-shape-projections` BEFORE the lints, not after** (you cannot calibrate a
-      structural lint against a corpus you cannot measure). `skim` prints the layer-cake projection (headings
-      + numbers, first sentences, captions, callout titles, theorem statements) as one linear stream across a
-      whole book; it is also the **evaluation instrument** for the whole audit, which is a stronger argument
-      than its standalone use. It must **always print the raw first sentence** and show any gate judgement as
-      a visible annotation, never as suppression, or a weak section and a heuristic misfire render identically
-      and the instrument dies. Projections: add `words` + a `headings` array to `map --format json` /
-      `read --json`, set LSP `detail` at **`lsp.rs:806`/`:809`** (not `lsp_outline.rs`, which supplies the
-      `end_line`), count from markdown line extents (not `search::section_text`, which is
-      `BODY_CAP`-truncated). `pub`-ify `prose::word_count` (`prose.rs:69`) once, in whichever of this or the
-      chapter-length signal lands first.
+    - ~~**`taliesin skim` + `machine-shape-projections`**~~ **SHIPPED 2026-07-25.** `taliesin skim <dir>
+      [--format human|json]` prints the layer cake (numbered headings, each section's opening sentence,
+      captions / callout titles / theorem statements) as one linear stream; `Site::skim()` is the typed
+      form in `crates/core/src/site/skim.rs`. `map --format json` gained `words` + `headings` per page, and
+      the LSP outline's `detail` is now the section's prose length. `prose::word_count` is `pub`.
+      **Three of this entry's own facts were wrong, re-derived from source:**
+      (1) **`BODY_CAP` does not exist** — SKIM-2 deleted it, so "not `search::section_text`, which is
+      `BODY_CAP`-truncated" named a dead reason. Counting from markdown extents is still right, but because
+      prose selection (excluding fenced code + `:::` fences) is a *markdown* notion. (2) **`lsp.rs:806`/`:809`
+      is `frontmatter_key_doc`**, unrelated; the `detail` site is `to_document_symbol`. (3) `prose.rs:69` was
+      correct. **What the instrument found by being run** (none of it visible from source): reading a section
+      with `indexable_text` welded a tabset's labels and shell commands onto the opening sentence, because the
+      flattened stream has no terminators — `skim` reads the first **paragraph** instead, skipping `<pre>`,
+      figures, tables and the callout/theorem/proof boxes. A separate "skip past the title heading" fix was
+      written, then **deleted as dead**: the first-`<p>` rule already excludes headings, and removing it left
+      the projection byte-identical on both `corpus/tarn` and `docs/guide`. Cost measured, not assumed:
+      `map --json` on `docs/internals` went 0.33 s → 0.42 s (debug) because it now renders every page.
+      Pins: `crates/server/tests/skim_cli.rs` (13), `first_sentence` unit tests (11), one LSP `detail` test.
     - **`skim-shape-lints`, heavily trimmed (M).** Ship only the threshold-free binary rules: HEADING
       (duplicate, empty, contentless, title-echo, near-duplicate first-two-words), CAPTION (empty,
       label-only, uncaptioned float that an xref points at), TOC-DROP (a heading the shared `toc_items` filter

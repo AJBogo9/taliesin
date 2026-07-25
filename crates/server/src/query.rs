@@ -867,6 +867,22 @@ struct PageEntry {
     description: Option<String>,
     categories: Vec<String>,
     page_layout: Option<String>,
+    /// Prose words, from `prose::word_count` — the same selection `lint` and the page's own
+    /// reading-time figure use, so `map` cannot report a length the page contradicts.
+    words: usize,
+    /// The page's heading outline, each carrying the number the rendered page shows.
+    /// Numbers exist only after the render's post-passes, so these come from the same
+    /// projection `skim` prints rather than from a markdown scan, which would report every
+    /// heading unnumbered in a numbered book.
+    headings: Vec<MapHeading>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct MapHeading {
+    id: String,
+    level: u8,
+    depth: usize,
+    text: String,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -921,19 +937,45 @@ fn build_project_map(site: &taliesin_core::Site) -> ProjectMap {
         is_book: site.is_book(),
         output_dir: site.output_dir().to_string(),
         url: site.config.url.clone(),
-        pages: site
-            .pages
-            .iter()
-            .map(|p| PageEntry {
-                rel: p.rel.clone(),
-                url: p.url.clone(),
-                title: p.title.clone(),
-                date: p.date.clone(),
-                description: p.description.clone(),
-                categories: p.categories.clone(),
-                page_layout: p.page_layout.clone(),
-            })
-            .collect(),
+        pages: {
+            // One projection pass for the whole site, indexed by url: `skim` renders each
+            // page, so doing it per-page inside the map would render every page twice.
+            let mut proj: std::collections::HashMap<String, taliesin_core::site::skim::PageSkim> =
+                site.skim()
+                    .into_iter()
+                    .map(|p| (p.url.clone(), p))
+                    .collect();
+            site.pages
+                .iter()
+                .map(|p| {
+                    let s = proj.remove(&p.url);
+                    PageEntry {
+                        rel: p.rel.clone(),
+                        url: p.url.clone(),
+                        title: p.title.clone(),
+                        date: p.date.clone(),
+                        description: p.description.clone(),
+                        categories: p.categories.clone(),
+                        page_layout: p.page_layout.clone(),
+                        words: s.as_ref().map_or(0, |s| s.words),
+                        headings: s
+                            .as_ref()
+                            .map(|s| {
+                                s.sections
+                                    .iter()
+                                    .map(|sec| MapHeading {
+                                        id: sec.id.clone(),
+                                        level: sec.level,
+                                        depth: sec.depth,
+                                        text: sec.title.clone(),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    }
+                })
+                .collect()
+        },
         nav: NavMap {
             left: nav_items(&site.config.nav.left),
             right: nav_items(&site.config.nav.right),
@@ -1054,6 +1096,209 @@ pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
         print!("{}", map_human(&map));
     }
     ExitCode::SUCCESS
+}
+
+/// Every long flag `skim` accepts (drives the unknown-flag did-you-mean).
+const SKIM_FLAGS: &[&str] = &["--format", "--json"];
+
+/// `taliesin skim <dir> [--format human|json]`: the whole book as the layers a reader
+/// actually skims — numbered headings, each section's opening sentence, and the captions,
+/// callout titles and theorem statements that carry meaning on their own — as one linear
+/// stream. Reuses `Site::discover` + `Site::skim`; no kernel, no code execution.
+///
+/// Its first customer is not a reader but the structural work itself: you cannot calibrate a
+/// lint about document structure against a corpus whose shape nobody can see. That is why
+/// **every section prints its raw first sentence** and why a judgement (here, "no prose")
+/// appears as a visible annotation beside the text rather than replacing it — the moment a
+/// weak section and a heuristic misfire render identically, the instrument stops measuring.
+pub(crate) fn cmd_skim(args: &[String]) -> ExitCode {
+    let mut path: Option<&str> = None;
+    let mut format = "human";
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--format" => {
+                if let Some(v) = it.next() {
+                    format = v;
+                }
+            }
+            // `--json`: clig.dev shorthand for `--format json`.
+            "--json" => format = "json",
+            s if s.starts_with("--") => {
+                log::error(&crate::serve::unknown_flag_error(s, SKIM_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s => {
+                if path.is_none() {
+                    path = Some(s);
+                }
+            }
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("usage: taliesin skim <dir> [--format human|json]");
+        return ExitCode::FAILURE;
+    };
+    if format != "human" && format != "json" {
+        log::error(&crate::serve::bad_format_error(Some(format)));
+        return ExitCode::FAILURE;
+    }
+    let target = Path::new(path);
+    if !target.is_dir() {
+        log::error(&format!(
+            "skim projects a whole project directory (an _site.yml + .tmd pages); `{path}` is \
+             not a directory. Use `symbols` or `read` for a single file."
+        ));
+        return ExitCode::FAILURE;
+    }
+    let site = taliesin_core::Site::discover(target);
+    if site.pages.is_empty() {
+        log::error(&format!("no .tmd pages found under {path}"));
+        return ExitCode::FAILURE;
+    }
+    let pages: Vec<SkimPage> = site.skim().iter().map(SkimPage::from).collect();
+    if format == "json" {
+        let out = SkimDoc {
+            title: site.config.title.clone(),
+            is_book: site.is_book(),
+            words: pages.iter().map(|p| p.words).sum(),
+            pages,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else {
+        print!("{}", skim_human(&site, &pages));
+    }
+    ExitCode::SUCCESS
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SkimDoc {
+    title: Option<String>,
+    is_book: bool,
+    /// Prose words across every page — the same count `lint` and the reading-time figure use.
+    words: usize,
+    pages: Vec<SkimPage>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SkimPage {
+    url: String,
+    title: String,
+    chapter: Option<u32>,
+    words: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intro: Option<String>,
+    sections: Vec<SkimSection>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SkimSection {
+    id: String,
+    level: u8,
+    depth: usize,
+    title: String,
+    /// `null` when the section has no prose — never omitted, so a consumer can tell "no
+    /// prose" from "not projected".
+    first_sentence: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    layers: Vec<SkimLayer>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SkimLayer {
+    kind: &'static str,
+    text: String,
+}
+
+impl From<&taliesin_core::site::skim::PageSkim> for SkimPage {
+    fn from(p: &taliesin_core::site::skim::PageSkim) -> Self {
+        SkimPage {
+            url: p.url.clone(),
+            title: p.title.clone(),
+            chapter: p.chapter,
+            words: p.words,
+            intro: p.intro.clone(),
+            sections: p
+                .sections
+                .iter()
+                .map(|s| SkimSection {
+                    id: s.id.clone(),
+                    level: s.level,
+                    depth: s.depth,
+                    title: s.title.clone(),
+                    first_sentence: s.first_sentence.clone(),
+                    layers: s
+                        .layers
+                        .iter()
+                        .map(|l| SkimLayer {
+                            kind: l.kind.tag(),
+                            text: l.text.clone(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// The linear human stream. Indentation carries structure; the gutter tag carries layer.
+fn skim_human(site: &taliesin_core::Site, pages: &[SkimPage]) -> String {
+    let mut s = String::new();
+    let kind = if site.is_book() { "book" } else { "site" };
+    let words: usize = pages.iter().map(|p| p.words).sum();
+    s.push_str(&format!(
+        "{} ({kind}) — {} page(s), {} words\n",
+        site.config.title.as_deref().unwrap_or("(untitled)"),
+        pages.len(),
+        thousands(words),
+    ));
+    for p in pages {
+        s.push('\n');
+        let num = p.chapter.map(|c| format!("{c}  ")).unwrap_or_default();
+        s.push_str(&format!(
+            "{num}{}  ({}, {} words)\n",
+            p.title,
+            p.url,
+            thousands(p.words)
+        ));
+        // Annotated, not omitted: a chapter that opens straight onto its first section
+        // heading is a structural fact worth seeing, and silence would render it the same
+        // as a chapter whose opening the projection simply failed to find.
+        match &p.intro {
+            Some(intro) => s.push_str(&format!("    ▸ {intro}\n")),
+            None => s.push_str("    ▸ (no opening prose)\n"),
+        }
+        for sec in &p.sections {
+            let pad = "  ".repeat(sec.depth + 1);
+            s.push_str(&format!("{pad}{}\n", sec.title));
+            match &sec.first_sentence {
+                Some(t) => s.push_str(&format!("{pad}  ▸ {t}\n")),
+                // A visible annotation, never a suppression: an empty section and a section
+                // the projection failed on must not look alike.
+                None => s.push_str(&format!("{pad}  ▸ (no prose)\n")),
+            }
+            for l in &sec.layers {
+                s.push_str(&format!("{pad}  [{}] {}\n", l.kind, l.text));
+            }
+        }
+    }
+    s
+}
+
+/// `32600` → `32,600`. The stream is read by a person counting words against a chapter.
+fn thousands(n: usize) -> String {
+    let d = n.to_string();
+    let mut out = String::with_capacity(d.len() + d.len() / 3);
+    for (i, c) in d.chars().enumerate() {
+        if i > 0 && (d.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Every long flag `symbols` accepts (drives the unknown-flag did-you-mean).

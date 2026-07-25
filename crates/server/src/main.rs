@@ -65,6 +65,7 @@ fn main() -> ExitCode {
         Some("vocab") => query::cmd_vocab(),
         Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
+        Some("skim") => query::cmd_skim(&args),
         Some("check") => check::cmd_check(&args),
         Some("doctor") => doctor::cmd_doctor(&args),
         Some("mcp") => mcp::cmd_mcp(&args),
@@ -126,6 +127,7 @@ const COMMANDS: &[&str] = &[
     "check",
     "doctor",
     "map",
+    "skim",
     "mcp",
     "lsp",
     "init",
@@ -367,6 +369,21 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin map . --format json | jq '.pages[].url'\n"
+        }
+        "skim" => {
+            "taliesin skim <dir> [--format human|json]\n\
+             \n\
+             The whole book as the layers a reader actually skims, in one linear stream:\n\
+             numbered headings, each section's opening sentence, and the captions, callout\n\
+             titles and theorem statements that carry meaning on their own. Reuses site\n\
+             discovery; no kernel, no code execution.\n\
+             \n\
+             Every section prints its raw opening sentence, and a judgement (\"no prose\")\n\
+             is an annotation beside it, never a suppression — so a thin section and a\n\
+             projection miss can always be told apart.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin skim . | less\n"
         }
         "read" => {
             "taliesin read <file.tmd>\n\

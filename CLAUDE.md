@@ -67,7 +67,9 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/site/        multi-page project (mod.rs): _site.yml config (config/), page
                    discovery, chrome, link rewrite, listings + about/`hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs),
-                   Cmd-K search (search.rs), cross-refs (xref.rs); an {{< embed >}}-
+                   Cmd-K search (search.rs), the skim layer-cake projection (skim.rs,
+                   shares search's render recipe, not its text extraction),
+                   cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview
   assets/          bundled offline: css/ (base, dark, deck, site),
@@ -120,6 +122,7 @@ cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
 cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full page to stdout
 cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
+cargo run -p taliesin-server -- skim   <dir>                   # the book's skimmable layers as one linear stream
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/qmd-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; CI-gated)
