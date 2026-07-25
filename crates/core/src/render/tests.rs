@@ -3668,6 +3668,92 @@ fn the_overview_wraps_at_one_count_for_the_whole_map() {
     );
 }
 
+/// The hex value of `token` inside the first block after `selector` in `css`. The block
+/// matters: `tokens.css` defines `--tali-bg` twice (the light root and the sepia theme), so a
+/// first-match scan would silently compare against the wrong palette.
+#[cfg(test)]
+fn token_hex_in(css: &str, selector: &str, token: &str) -> String {
+    let block = css
+        .find(selector)
+        .unwrap_or_else(|| panic!("no `{selector}` block in the token CSS"));
+    let rest = &css[block..];
+    let at = rest
+        .find(&format!("{token}:"))
+        .unwrap_or_else(|| panic!("no `{token}:` after `{selector}`"));
+    let after = &rest[at + token.len() + 1..];
+    let h = after
+        .find('#')
+        .unwrap_or_else(|| panic!("no hex value for `{token}` after `{selector}`"));
+    after[h..h + 7].to_ascii_lowercase()
+}
+
+/// PA-C5, half one: a per-slide background (`{background="#111"}`) forces its own ink,
+/// because a slide that is dark on a LIGHT deck cannot use `var(--tali-link)` — the variable
+/// follows the page's theme, which is the opposite of what the slide needs. So the values are
+/// literals by necessity, and the risk is silent drift: move a token and the deck keeps the
+/// old hue with nothing failing. This is `card.rs`'s drift-lock idiom applied to CSS-can't-
+/// invert-a-var instead of Rust-can't-read-CSS.
+///
+/// Only the literals that HAVE a token counterpart are locked. `#fff` on a dark slide and the
+/// `rgba()` subtitle washes are deliberate absolutes, not copies of a token.
+#[test]
+fn per_slide_background_ink_tracks_the_paired_theme_tokens() {
+    let deck = super::deck::DECK_CSS;
+    // A dark slide takes the DARK palette's link colour, whatever the deck's own theme is.
+    let dark_link = token_hex_in(TOKENS_DARK_CSS, ":root", "--tali-link");
+    for sel in ["section.tali-dark-bg a", "section.tali-dark-bg li::marker"] {
+        let rule = deck
+            .find(sel)
+            .map(|i| &deck[i..i + 80])
+            .unwrap_or_else(|| panic!("no `{sel}` rule in deck.css"));
+        assert!(
+            rule.to_ascii_lowercase().contains(&dark_link),
+            "`{sel}` must carry the dark `--tali-link` ({dark_link}); it reads: {rule}"
+        );
+    }
+    // A light slide takes the LIGHT palette's link + body ink.
+    let light_link = token_hex_in(TOKENS_CSS, ":root", "--tali-link");
+    let light_fg = token_hex_in(TOKENS_CSS, ":root", "--tali-fg");
+    for (sel, want) in [
+        ("section.tali-light-bg a", &light_link),
+        ("section.tali-light-bg li::marker", &light_link),
+        ("section.tali-light-bg strong", &light_fg),
+    ] {
+        let rule = deck
+            .find(sel)
+            .map(|i| &deck[i..i + 80])
+            .unwrap_or_else(|| panic!("no `{sel}` rule in deck.css"));
+        assert!(
+            rule.to_ascii_lowercase().contains(want.as_str()),
+            "`{sel}` must carry {want} from the light tokens; it reads: {rule}"
+        );
+    }
+}
+
+/// PA-C5, half two: the pre-paint head script sets the canvas (and the mobile `theme-color`)
+/// from its own `BG` map, because it runs BEFORE any stylesheet parses — that is the whole
+/// point of it, and it is why the values cannot be `var(--tali-bg)`. Unlocked, a token change
+/// showed up as a one-frame flash of the OLD background on every navigation, which is exactly
+/// the bug the script exists to prevent.
+#[test]
+fn the_pre_paint_canvas_map_tracks_the_theme_tokens() {
+    let head = super::theme::theme_head("light");
+    for (mode, css, selector) in [
+        ("dark", TOKENS_DARK_CSS, ":root"),
+        ("light", TOKENS_CSS, ":root"),
+        ("sepia", TOKENS_CSS, "html[data-theme=\"sepia\"]"),
+    ] {
+        let want = token_hex_in(css, selector, "--tali-bg");
+        // Matched as the map entry (`dark: '#16181d'`), so a hex that merely appears somewhere
+        // else in the script cannot satisfy it.
+        let entry = format!("{mode}: '{want}'");
+        assert!(
+            head.to_ascii_lowercase().contains(&entry),
+            "the pre-paint BG map must read `{entry}` (from `--tali-bg`); it does not"
+        );
+    }
+}
+
 /// The overview map is clamped against the STAGE, not against the grid plus a spare cell.
 /// The old clamp never looked at the stage or the scale, so when the map missed fitting —
 /// by 7 px on a 21-slide three-topic deck at 1100x1000 — `fitOverview` fell back to "follow
