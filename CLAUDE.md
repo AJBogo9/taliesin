@@ -47,15 +47,17 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     deck.rs          slide decks on Taliesin's OWN engine (reveal.js removed): bundles
                      deck.css/deck.js, emits the native `.tali-deck`/`.tali-slides`
                      contract + a `window.TaliesinDeck` API (no reveal vocabulary).
-                     `window.QmdDeck` is a back-compat alias only; write `tali-*`
+                     The old back-compat alias is deleted; `window.TaliesinDeck` is
+                     the only name
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
     divs.rs          `:::` fenced divs (callouts, columns, magic-move)
     figure.rs        numbered figures + captions
     extension/       format extensions (`_extensions/`) + shortcode expansion, incl. the
                      built-in `{{< embed deck.tmd >}}` + `{{< video clip.mp4 dark= >}}`
     theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes).
-                     The `qmd-theme` storage key + `qmd:themechange` event keep their
-                     frozen runtime names; the CSS custom properties are `--tali-*`
+                     The storage key is `tali-theme` and the event is
+                     `tali:themechange`; `crates/core/tests/retired_names.rs` keeps the
+                     retired `q`-prefix spelling out of the tree
     page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
                      favicon): RenderedDoc → standalone page for build + in-process render
   src/diff.rs      block-level diff (BlockOp) for incremental updates

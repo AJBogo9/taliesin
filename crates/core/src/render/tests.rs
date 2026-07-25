@@ -2996,7 +2996,10 @@ fn input_shortcode_other_types_emit_their_native_control() {
         render_document_with_includes("{{< input name=\"n\" type=\"number\" step=\"0.1\" >}}\n", p)
             .body_html();
     assert!(num.contains("type=\"number\"") && num.contains("step=\"0.1\""));
-    assert!(!num.contains("data-tali-out"), "no readout on number: {num}");
+    assert!(
+        !num.contains("data-tali-out"),
+        "no readout on number: {num}"
+    );
 
     let cb = render_document_with_includes(
         "{{< input name=\"on\" type=\"checkbox\" value=\"true\" >}}\n",

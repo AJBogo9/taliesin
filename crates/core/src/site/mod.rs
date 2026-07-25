@@ -239,8 +239,8 @@ mod links;
 pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
-    join_rel, join_rel_in_root, manual_local_links, tmd_to_html, resolve_href,
-    sourcepos_start_line,
+    join_rel, join_rel_in_root, manual_local_links, resolve_href, sourcepos_start_line,
+    tmd_to_html,
 };
 
 /// One outgoing local link found in a rendered page, kept with enough context to locate a

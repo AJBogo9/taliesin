@@ -28,7 +28,7 @@ smells that compile but mislead.
   from preview → source (a drag-to-reorder feature was removed for exactly this).
 - **HTML-only scope:** HTML is the sole output target. Flag creep toward LaTeX/Typst/
   Word/ePub/PDF-as-parallel-format.
-- **No reveal/OJS/legacy shims:** the engine is native (`window.QmdDeck`, not reveal).
+- **No reveal/OJS/legacy shims:** the engine is native (`window.TaliesinDeck`, not reveal).
   Flag reintroduced reveal vocabulary, OJS runtime, or legacy-compat tolerance.
 - **Corpus-plus-roadmap:** a new capability should be pinned by a target corpus doc +
   test added in the same change. Flag features with no corpus/test anchor.

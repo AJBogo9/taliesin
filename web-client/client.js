@@ -1357,7 +1357,7 @@
         msg = JSON.parse(e.data);
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
-        console.error("qmd: could not parse server message", err, e.data);
+        console.error("taliesin: could not parse server message", err, e.data);
         setStatus("error");
         showError("malformed server message: " + m);
         return;
@@ -1366,7 +1366,7 @@
         handle(msg);
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
-        console.error("qmd: error handling server message", err, msg);
+        console.error("taliesin: error handling server message", err, msg);
         setStatus("error");
         showError("client error applying a server update: " + m);
       }

@@ -1,5 +1,5 @@
 ---
-name: qmd-explorer
+name: tali-explorer
 description: Read-only codebase navigator for Taliesin. Use PROACTIVELY whenever a question needs sweeping across the Rust crates, assets, docs, or corpus to locate where something lives or how a path works (e.g. "where is the deck engine wired", "how does freeze keying work", "what emits data-sourcepos"). Returns conclusions + file:line pointers, not file dumps. Fan several of these out in parallel for independent questions.
 tools: Read, Grep, Glob, Bash
 model: sonnet

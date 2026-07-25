@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'audit-qmd',
+  name: 'audit-tali',
   description: 'Multi-dimension review of taliesin changes with per-finding adversarial verification',
   whenToUse: 'Auditing a taliesin change set: fans reviewers across correctness + load-bearing invariants + scope-discipline + corpus coverage + simplicity, then refutes each finding before reporting. Pass a target description as args, or omit to review the current branch diff.',
   phases: [
@@ -25,7 +25,7 @@ const DIMENSIONS = [
   },
   {
     key: 'scope-discipline',
-    prompt: 'Flag scope creep: anything pulling toward non-HTML output (LaTeX/Typst/Word/ePub/PDF-as-parallel-format), reintroduced reveal.js/OJS/legacy shims or vocabulary, or legacy-compat tolerance. HTML is the only target; the engine is native (window.QmdDeck).',
+    prompt: 'Flag scope creep: anything pulling toward non-HTML output (LaTeX/Typst/Word/ePub/PDF-as-parallel-format), reintroduced reveal.js/OJS/legacy shims or vocabulary, or legacy-compat tolerance. HTML is the only target; the engine is native (window.TaliesinDeck).',
   },
   {
     key: 'corpus-coverage',

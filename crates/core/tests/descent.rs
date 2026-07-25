@@ -49,7 +49,9 @@ fn headline_is_a_once_cell_that_drags_and_subscribes() {
     // Pin the once-ness structurally: the `<script>` that carries the onInput call
     // must declare no data-inputs, else the DAG would re-run (and rebuild) it on every
     // slider move, throwing away the dragged start point.
-    let at = h.find("tali.onInput").expect("the headline cell is present");
+    let at = h
+        .find("tali.onInput")
+        .expect("the headline cell is present");
     let script_open = h[..at]
         .rfind("<script")
         .expect("onInput sits inside a <script>");
