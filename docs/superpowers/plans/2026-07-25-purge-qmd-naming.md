@@ -10,13 +10,40 @@
 
 ## Progress
 
-**Tasks 1 and 2 are done and on `origin/main`. Resume at Task 3.**
+**ALL NINE TASKS DONE.** Tasks 1–2 were on `origin/main`; 3–9 landed 2026-07-25 on
+branch `purge/qmd-naming-tasks-3-9` (unpushed at time of writing). One manual step is
+outstanding: Task 8 Step 5, the in-editor click-to-source check, which only the author
+can do.
 
 | Task | State |
 |---|---|
 | 1. Regression net | ✅ `183069b` — 3 checks in `token_contract.rs` + a `FORMAT_VERSION` pin in `freeze.rs`, each verified to *fire* on the defect it targets |
 | 2. Silent contracts | ✅ `e1cfa3b` — storage keys, theme event, `?tali=`, cookie, postMessage. Browser-verified |
-| 3–9 | ⬜ not started |
+| 3. `data-tali-*` | ✅ `db48aab` — 15 attrs, 40 files. Both censuses fired; only their sort order needed updating |
+| 4. `{js}` script types | ✅ `3d3553e` — `tali-js.js`, `application/tali-js`, `tali-define`, cell param deleted, `FORMAT_VERSION` 4. Browser-verified |
+| 5. Collisions + aliases | ✅ `964b8d1` — 4 aliases deleted, 4 block ids merged, 11 `__tali*` guard flags + a CSS keyframe renamed |
+| 6. Python prelude | ✅ `2bce763` — 14 identifiers; cold-kernel matplotlib build verified |
+| 7. Prose/corpus/tools/CI | ✅ `6dcbe50` — plus three already-broken things fixed (see below) |
+| 8. Companion | ✅ repackaged + installed (nothing tracked changed). Relay harness passes both directions. **Step 5 (manual in-editor check) still owed by the author** |
+| 9. Lock it shut | ✅ `9f5e93d` — `retired_names.rs`, mutation-verified; CLAUDE.md updated |
+
+**Final state:** 1426 tests pass / 0 fail with all three gates
+(`TALIESIN_REQUIRE_NODE`, `TALIESIN_R`+`TALIESIN_REQUIRE_R`,
+`TALIESIN_PYTHON`+`TALIESIN_REQUIRE_KERNEL`); `cargo fmt --check` clean;
+`cargo clippy --workspace --all-targets -D warnings` clean; both `tsc` configs clean.
+
+**Bugs fixed in passing (not renames):** `site/showcase.tmd`'s two `{js}` exhibits and
+12 corpus/docs cells styled against `--qmd-*` / `.qmd-input`, none of which were ever
+defined, so those styles had been silently falling back to nothing; `tools/ui-audit` and
+`tools/record-demo` were live-broken by Tasks 2 and 4 (still setting the old storage keys
+and navigating `?qmd=present`); a vacuous assertion in `headless_js.rs`; and a stale
+`troubleshooting.tmd` claim about the `taliesin.path` default.
+
+**Two findings left as findings, deliberately:** `docs/guide/reference/configuration.tmd`
+documents an `about-<template>` CSS class hook that **is emitted nowhere** (`about:` is
+only front-matter-linted), and `samples/deck.tmd` uses `var(--tali-deck-fg, …)`, a token
+that is also not defined (it renders via its hard-coded fallback). Both had the prefix
+renamed for consistency; neither is a rename bug, and fixing them is a behaviour change.
 
 **Corrections to this plan discovered while executing it** (the plan text below has been updated, but
 these are the ones that cost time):
