@@ -8,7 +8,74 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: the book-wayfinding batch)
+## State (2026-07-25, latest: the backlink-context + resume batch)
+
+**Branch `backlog/backlink-context-and-resume`, 6 commits, NOT PUSHED** (off
+`backlog/book-outline-drawer`, which is itself 5 commits off `origin/main` at `994bcba` and
+also unpushed — check `git log --oneline origin/main..HEAD` before believing either). Cleared
+**all three remaining buildable bullets of item 24's independent-medium set** (the
+citing-sentence backlink line, the link-text collision lint, book-scoped resume) and **item
+16's F-03**, which empties item 16. Gates at landing, re-run not trusted from this file:
+**1481 tests / 0 fail across 88 binaries** with all three gates and `--test-threads=1`;
+`cargo fmt --check`, `clippy --workspace --all-targets -D warnings` (0 warnings) and both JS
+`tsc` gates clean; `check` reports no problems on `corpus/tarn`, `docs/guide`,
+`docs/internals` and `site`. Every fix is mutation-verified (10 mutations, all caught); the
+client work is browser-verified against real release builds of `corpus/tarn` **and** the
+dogfood `docs/guide` at 1440x900 / 390x844 / 900x1440 in light and dark, 0 console errors.
+
+**What this batch shipped**
+- **The citing-sentence backlink line.** "Referenced by Results" now carries the sentence
+  the reference is made in, quoted beside the link (never inside it: the sentence contains
+  the reference's own `<a>`). Dropped wholesale past two referrers.
+- **`TAL-LINK-TEXT`**, the lint half: two links on a page with the same accessible name and
+  different destinations, compared **modulo fragment**. `suggestion` severity.
+- **Book-scoped resume.** A "Continue reading → 3 Executable content" pill on a book's
+  landing page, keyed to `data-tali-book` (the landing href), inert in the build.
+- **Item 16 F-03**, both halves of the lossy `read` projection.
+
+**Six things this batch got that the entries did not say:**
+- **The needle trap is systemic, and it bit three times.** Any new class, attribute or
+  label name is ALSO shipped inside the *inlined* CSS/JS payload of every page, so a
+  whole-page `contains("data-tali-continue")` / `contains("tali-backref-")` /
+  `contains("Continue reading")` is satisfied by a page that renders none of it. Two
+  existing tests broke on this and one new one passed for the wrong reason. **Needle the
+  full emitted tag**, or scope the read to the block. The pre-existing comment in
+  `xref_backlinks.rs` warned about exactly this for `tali-backrefs` and it still recurred.
+- **F-03's recorded cause was wrong, and fixing it exposed a wider bug.** The entry said a
+  walkthrough's "steps + code concatenate"; measured, the code was dropped **entirely**.
+  Restoring it revealed that `wrap_code_lines` drops the `\n` (each line is a
+  block-displayed span, so the element *is* the break), so **any** line-wrapped block — a
+  walkthrough or a magic-move deck slide — welded into one line under `decode_code`. Fixed
+  once, for both callers. And the substitution has to happen before **one** strip pass:
+  `strip_tags` trims, so stripping per line ate the indentation.
+- **The audit's `data-footnote-ref`/`-backref` exemption would have been dead code.** This
+  project emits `role="doc-noteref"` and `class="tali-fn-back"`, not comrak's attributes.
+  Back-references are already silent for a better reason (they all point at *bare*
+  fragments, so the modulo-fragment rule covers them). Cross-references ARE exempted, for a
+  reason the audit did not give: an *unnumbered* theorem renders every reference to it as a
+  bare "Theorem", which collides on text the author cannot reword.
+- **`TAL-LINK-TEXT` fires ZERO times on the whole corpus** — in this form *and* in the naive
+  whole-href form, so the audit's "4 findings on the dogfood books" does not reproduce at
+  block scope (it presumably measured built pages, i.e. chrome). It is a latent guard, which
+  is why `corpus/diagnostics/link-text.tmd` carries the near-misses **in the same document**:
+  lose the fragment trim, the same-destination check or the footnote silence and it reports
+  2+ instead of 1.
+- **Position had to be measured, not chosen.** The Continue pill first shipped inside the
+  landing Contents nav — which put it **3,120 px down a 4,109 px `docs/guide` page**, three
+  viewports below the fold, for an affordance whose entire job is "get me back in". Moved to
+  its own block after the title block: 164 px. The pin asserts *order*, not just presence.
+- **`skim::plain` was asymmetric**, found by reading real built output. It stripped the space
+  `indexable_text` leaves *before* closing punctuation but not *after* an opening bracket, so
+  `(@sec-install)` projected as `( Chapter 1)` — 1 occurrence in `corpus/tarn` and **7 in
+  `docs/guide`'s own `skim` output**, now 0. The backlink line reuses `plain` rather than
+  minting a second extractor, which is how it surfaced.
+
+**One process failure worth not repeating:** `git checkout -- <file>` was used twice to undo
+a mutation on an **uncommitted** file, which restores from HEAD and destroyed the working
+implementation both times. Commit before mutation-testing, then `git stash`; or patch and
+restore from a copy.
+
+### Prior state (2026-07-25, earlier: the book-wayfinding batch)
 
 **Branch `backlog/book-outline-drawer`, 3 commits, NOT PUSHED** (off `origin/main` at `994bcba`).
 Cleared **item 23 entirely** (Ship B was its last piece, so the item is gone) and **two of item
@@ -222,12 +289,12 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 
 ## Next session: start here
 
-**State: the book-wayfinding batch is on branch `backlog/book-outline-drawer` and is NOT PUSHED**
-(3 commits off `origin/main` at `994bcba`; gates in the State block above). The P3 residual batch
-before it IS pushed. Before anything else, check what is actually where:
-`git log --oneline origin/main..main` and `git branch -v`. **Do not trust a SHA written here** — the
-author pushes mid-session with no signal in this file. The SKIM batch and the naming purge were both
-pushed earlier the same day.
+**State: TWO batches are stacked and NEITHER is pushed.** `backlog/book-outline-drawer`
+(5 commits off `origin/main` at `994bcba`) and `backlog/backlink-context-and-resume`
+(6 more, branched off it). The P3 residual batch before them IS pushed. Before anything
+else, check what is actually where: `git log --oneline origin/main..HEAD` and
+`git branch -v`. **Do not trust a SHA written here** — the author pushes mid-session with no
+signal in this file. The SKIM batch and the naming purge were both pushed earlier the same day.
 
 **Owner ruling 2026-07-25: the Cmd-K empty state stays the whole-book outline.** It was the one change
 in the batch that altered a daily-driver surface, and the one-line revert to the flat chapter
@@ -249,9 +316,12 @@ editor round-trip.
 **Four owner rulings were also taken** (see the prior-state block), which un-gated a large amount of
 previously-blocked work. What is left now sorts into:
 
-- **Build-ready TODAY:** what is left of **24's independent-medium set** — a citing-sentence
-  backlink line, book-scoped resume, and the "Part, Chapter" ribbon (that one is an owner call).
-  Everything else in the band needs a device, a demand signal, or a ruling.
+- **Build-ready TODAY: nothing in bands A-C is left that is both buildable and unruled.**
+  24's independent-medium set is down to the **"Part, Chapter" ribbon**, which is an owner
+  call, not a task (see item 24). The honest picks for a fresh session are therefore an
+  **audit perspective** (AP7 deep-a11y or AP3 concurrency are the recommended two — see
+  "Audit perspectives"), or **item 30** (`corpus/analyst/`, writing not code), or one of the
+  P3 residuals below. Ask the owner for the ribbon ruling if you want a code task in band C.
   - **23 is GONE, fully shipped 2026-07-25** (Ship B closed it). Two decisions in it are settled,
     not deferred: the **outline sidecar artifact is declined** (measured — the search index it
     would duplicate is 60 KB gzipped, already lazy-loaded on every page and already fetched by
@@ -267,10 +337,11 @@ previously-blocked work. What is left now sorts into:
   are real: personas 1-3 found **0** interaction-bugs between them.
 - **Needs a device or a demand signal** — 4 (deck mobile, needs a phone), 2 (deferred, revive on a
   real speaker ask), band D (the standing freeze), Tier 3 (waits on real users).
-- **P3 residuals on secondary surfaces** — what is LEFT after the 2026-07-25 batch: **11**'s
+- **P3 residuals on secondary surfaces** — what is LEFT after the 2026-07-25 batches: **11**'s
   Semantics bullet only (the `<ul>`/`role=list` restructure, the image-alt lint nudge, the deck
-  `theme-color`/OG residual), **12**, **16**'s F-03, **17**'s F-01 (needs a vendoring decision, not
-  a one-liner — see the correction below) and F-02 (WAI), **18**, **29**'s T2. Item **32 is gone**.
+  `theme-color`/OG residual), **12**, **17**'s F-01 (needs a vendoring decision, not a one-liner
+  — see the correction below) and F-02 (WAI), **18**'s F-02/F-03, **29**'s T2. Items **32 and
+  16 are gone** (16's last finding, F-03, shipped in the backlink-context batch).
 
 **`grow-tarn` is done and is now the fixture the scale-sensitive items were waiting on.**
 `corpus/tarn` is 12 numbered chapters across 3 parts + a nested part, and it deliberately carries the
@@ -296,6 +367,22 @@ fenced code documenting the syntax. So any rule that reads a chapter's *source* 
 and a bug there is invisible. `crates/core/src/site/skim.rs`'s tests now mint that shape in a temp
 dir; anything else source-reading needs the same treatment (or a corpus fixture, which was NOT
 added here — `corpus/tarn` is a documentation book and gaining a partial would muddy it).
+
+**A third missing shape, measured 2026-07-25: no book in the corpus keeps a chapter in a
+SUBDIRECTORY.** Enumerated, not grepped — all five corpus books (`demo-book`, `tarn`, `course`,
+`theorem-book`, `scaffold-book`) are flat, while both dogfood books are nested and neither is in
+the test net. So any depth-relative emission (`{up}`-prefixed hrefs, `../index.html`) is the empty
+string everywhere the suite can see, and a pin over the corpus passes with the prefix deleted.
+`crates/core/tests/book_landing_toc.rs` now mints that shape in a `TempProj`.
+
+**The inlined-asset needle trap, which bit three times in one batch and is worth internalising:**
+every page inlines the whole CSS + enhancer-JS payload into its `<head>`, so **any new class name,
+`data-` attribute or user-facing string you add is present in the HTML of every page whether or not
+that page renders the feature.** `html.contains("data-tali-continue")`,
+`contains("tali-backref-")` and `contains("Continue reading")` were each satisfied by a page that
+rendered none of it — two existing tests broke on this and one new test passed for the wrong
+reason. Needle the **full emitted tag**, or slice the block out first. (`xref_backlinks.rs` already
+carried a comment warning about exactly this, and it still recurred.)
 
 **Two live corrections a fresh session should not re-learn the hard way:**
 - **Item 17's F-01 cannot be fixed as written** — `two-face` has no PowerShell syntax at all (199
@@ -483,19 +570,29 @@ names the actual picks.
       dogfood pages and that one is a false positive; the headline "1,832-word run" is 1,021 words of
       table cells). Nothing resembling a readability grade, and never a rule about heading *form*
       (Sanchez/Lorch: no differential effect).
-    - **Independent medium items, no ordering constraint.** ~~Per-chapter prose length~~ and ~~the
-      preview/build TOC selector divergence~~ **both SHIPPED 2026-07-25** (see the State block). Left:
-      a citing-sentence backlink line; book-scoped resume; a static "Part, Chapter" ribbon (**owner
-      call**: it adds a fourth persistent top element, and the dwell-time evidence says the first
-      viewport is the screening surface).
-      *Two facts from shipping the first two, so they are not re-learned:* the TOC entry's recorded
-      cause was **right** for once (absolute tag vs. relative window, and `base` was indeed already
-      correct) — but there is no equivalence test between the two implementations and one cannot be
-      written cheaply, because `buildToc` closes over `root`/`tocEl` inside client.js's single IIFE;
-      it is pinned by a needle pair instead. And the prose-length entry did not mention that
-      `skim`/`map`'s `words` **violated `word_count`'s include-expanded contract** (1 word reported
-      where a reader reads 9), which had to be fixed in the same change or the new nav count would
-      have disagreed with what an agent reads.
+    - **Independent medium items.** Four of the five SHIPPED 2026-07-25: ~~per-chapter prose
+      length~~, ~~the preview/build TOC selector divergence~~, ~~the citing-sentence backlink
+      line~~ and ~~book-scoped resume~~ (the last two in the backlink-context batch — see the
+      State block; the link-text collision lint shipped with them as `TAL-LINK-TEXT`).
+      **Only one is left, and it is not a task:** a static "Part, Chapter" ribbon
+      (`book-breadcrumb`), which is an **owner call** — it adds a fourth persistent top
+      element, and the dwell-time evidence says the first viewport is the screening surface.
+      The audit itself downgraded it to "cheap and mildly orienting" and notes it must be
+      argued as a reversal of D114's "no breadcrumbs", not as an unexamined gap.
+      *Facts from shipping the other four, so they are not re-learned:* the TOC entry's
+      recorded cause was **right** for once (absolute tag vs. relative window, and `base` was
+      indeed already correct) — but there is no equivalence test between the two
+      implementations and one cannot be written cheaply, because `buildToc` closes over
+      `root`/`tocEl` inside client.js's single IIFE; it is pinned by a needle pair instead.
+      The prose-length entry did not mention that `skim`/`map`'s `words` **violated
+      `word_count`'s include-expanded contract** (1 word reported where a reader reads 9).
+      The backlink sentence had to be harvested in a **second pass over blocks
+      `harvest_xref_numbers` already rendered**, because the xref registry is not final until
+      that loop ends and an unresolved marker reads "in Section (in particular…)" — retaining
+      a handful of block strings per page is what buys the ordering without a second
+      whole-site render. And **`book-resume`'s record deliberately does not copy the block id
+      or the scroll fraction**: `tali-pos:<path>` already holds those, the pill's job is only
+      to reach the right chapter, and two records for one position is how they drift.
     - **`section-extents` is an owner ruling, not a task.** The DOM has no section boundaries (zero
       `<section>` wrapping content headings on 17 of 19 built guide pages; `using/code.html` is 47 flat
       siblings; repo-wide `<section>` is emitted only by `render/deck.rs` and the footnotes block at
@@ -651,17 +748,6 @@ names the actual picks.
       also `init --json`/`--format`/`--yes`, `new --format`, `publish --strict`. Each verified accepted
       before being documented — and `publish --strict` is **last-wins** with `--no-strict`, which is
       what its test pins, not "`--strict` wins" as the first draft of that help line said.
-
-16. **Demand-probe (course pilot) findings** (P2/P3, in-scope; detail:
-    [2026-07-22-corpus-demand-probe-course-author.md](2026-07-22-corpus-demand-probe-course-author.md)).
-    A realistic lecturer's course (`corpus/course/`, corpus-pinned by `course.rs` + a `/gallery/course`
-    marketing-site exhibit) was authored to probe where a book-length computational project meets friction.
-    The *stacked* HTML interactions (book × shared-theorem-counter × chapter-scope × cross-page refs ×
-    deck-embed-in-chapter × code-walkthrough × `{python}` cell × draft-appendix) ALL work — 0 interaction-bugs.
-    The remaining findings sit on secondary surfaces (F-01 book-level `theorems:` and F-02 book-scoped `read`
-    both shipped 2026-07-22, see "Already shipped"):
-    - **F-03 (friction, P3):** the `read` text projection of `{{< embed >}}` (leaks iframe UI chrome) and
-      `.code-walkthrough` (steps + code concatenate) is lossy.
 
 18. **Demand-probe (interactive-explainer, persona #3) findings** (P3, in-scope; detail:
     [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)).
@@ -964,6 +1050,28 @@ The bulk of this file used to be blow-by-blow `LANDED` records; that detail live
 [AUDITS.md](AUDITS.md). Kept here only as the anti-rot guard (grep the named symbol before trusting any
 claim that one of these is "missing"):
 
+- **The 2026-07-25 backlink-context + resume batch** (branch `backlog/backlink-context-and-resume`;
+  was three of 24's independent-medium bullets + item 16's F-03). Grep before doubting any of it:
+  - **The citing sentence in the backlink line**: `Site::backlinks` is now
+    `HashMap<String, Vec<Backref>>` (`Backref { url, context }`), harvested in a second pass
+    inside `harvest_xref_numbers` over the marker-bearing blocks it already rendered, resolved
+    through `xref::rewrite_cross_refs` so it quotes the number the referring page shows.
+    `backlinks::citing_sentence` plants a NUL in the link's open tag and walks
+    `skim::sentence_at` (which walks `skim::first_sentence`, so the backlink line and the skim
+    projection cannot disagree on where a sentence ends). Rendered as a sibling
+    `.tali-backref-cite` span, dropped past `MAX_CITED_REFERRERS` (2).
+  - **`TAL-LINK-TEXT`** (`diagnostics::validate_link_text_collisions`), `SUGGESTION`, compared
+    modulo `#fragment`, reusing a11y's nesting-aware `interactives` scan. Pinned by
+    `corpus/diagnostics/link-text.tmd` (one fire, three near-misses in the same file).
+  - **Book-scoped resume**: `data-tali-book` on the book sidebar nav (the landing href,
+    relative per page), `tali-book:<resolved root>` in `localStorage`, and a
+    `tali-book-continue` block emitted **after the title block** on the landing page,
+    hydrated by `15-reading-progress.js` from the Contents list already on the page.
+  - **`read` projection of `{{< embed >}}`** (`[embed <src>: <title>]`) and of a
+    `.code-walkthrough` (its `.cw-code` fenced first, then `[lines N] …` per step);
+    `decode_code` turns `tali-hl-ln` wrappers back into the newlines they replaced, which
+    also un-welds a magic-move deck slide.
+  - `skim::plain` now strips the tag-boundary space on **both** sides of punctuation.
 - **The 2026-07-25 book-wayfinding batch** (branch `backlog/book-outline-drawer`; was 23's Ship B
   and two of 24's independent-medium bullets). Grep before doubting any of it:
   - The **chapter drawer's per-chapter section outline**: `code-enhance/19-book-outline.js` hydrates
@@ -1037,8 +1145,9 @@ claim that one of these is "missing"):
   `@thm-elbo`→"Theorem 3.1", cross-page `@thm-consistency`→"Theorem 2.1"/"Chapter 2"; `read <dir>`
   projects a whole book (`===== rel (Chapter N) =====` headers, human + `--json`), `--run` on a dir
   rejected. Pinned by `crates/server/tests/read_book.rs`; `indexable_text` (Cmd-K) unchanged
-  (arms live in `project_block`, which search doesn't call). Still open: item 16 F-03 (embed iframe-chrome
-  leak in `read`) is a SEPARATE finding, NOT folded here.
+  (arms live in `project_block`, which search doesn't call). Item 16 F-03 (the embed iframe-chrome
+  leak + the walkthrough) was a SEPARATE finding, not folded here; it **shipped 2026-07-25** in the
+  backlink-context batch.
 - **2026-07-22 (late) backlog-clearing pass** (shipped 2026-07-22, on origin/main): **focus mode split from OS fullscreen**
   (`f` = calm column, `F`/menu = fullscreen; `03-focus-mode.js`); **Vite-user hint banner** (`log::keys_hint`,
   TTY-gated, points at the `◇` dev menu); **deck `footer:`/`logo:`** (`render::deck_overlay_html` +
