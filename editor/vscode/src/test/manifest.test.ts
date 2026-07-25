@@ -114,9 +114,9 @@ test("vsce packaging rebuilds the bundle first", () => {
 });
 
 test("no `qmd-fast` branding survives in the manifest or the extension source", () => {
-  // `qmd-goto` / `qmd-cursor` are the wire names of the postMessage protocol the preview
+  // `tali-goto` / `tali-cursor` are the wire names of the postMessage protocol the preview
   // client speaks; they are deliberately frozen and are not branding.
-  const allowed = /qmd-goto|qmd-cursor|getElementById\("qmd"\)|id="qmd"/;
+  const allowed = /tali-goto|tali-cursor|getElementById\("tali-preview"\)|id="tali-preview"/;
   const offenders: string[] = [];
   for (const p of sourceFiles()) {
     for (const [i, line] of fs.readFileSync(p, "utf8").split("\n").entries()) {

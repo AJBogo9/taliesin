@@ -144,7 +144,7 @@ pub fn title(title: Option<&str>) -> String {
 }
 
 /// Hot-swap the theme CSS in place (no reload): the client replaces the contents
-/// of `<style id="qmd-theme">` (creating it if absent). Sent when only the theme
+/// of `<style id="tali-theme">` (creating it if absent). Sent when only the theme
 /// CSS changed, so scroll position, the current deck slide, and open callouts all
 /// survive a theme edit.
 pub fn style(css: &str) -> String {

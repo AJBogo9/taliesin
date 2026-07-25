@@ -51,10 +51,10 @@ async function openPreview(context: vscode.ExtensionContext) {
   );
   panel.webview.html = relayHtml(local.toString(), panel.webview.cspSource);
 
-  // forward: preview -> editor (reveal source on qmd-goto)
+  // forward: preview -> editor (reveal source on tali-goto)
   panel.webview.onDidReceiveMessage(
     async (m) => {
-      if (!m || m.type !== "qmd-goto") return;
+      if (!m || m.type !== "tali-goto") return;
       const abs = resolveSourceFile(docPath, m.source_file ?? null);
       const pos = parseSourcepos(m.sourcepos || "") || { line: 1, col: 1 };
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
@@ -67,7 +67,7 @@ async function openPreview(context: vscode.ExtensionContext) {
     context.subscriptions
   );
 
-  // reverse: editor cursor -> preview (debounced qmd-cursor)
+  // reverse: editor cursor -> preview (debounced tali-cursor)
   let timer: NodeJS.Timeout | undefined;
   const sel = vscode.window.onDidChangeTextEditorSelection((e) => {
     const f = e.textEditor.document.fileName;
@@ -76,7 +76,7 @@ async function openPreview(context: vscode.ExtensionContext) {
     const line = e.selections[0].active.line + 1;
     if (timer) clearTimeout(timer);
     timer = setTimeout(
-      () => panel.webview.postMessage({ type: "qmd-cursor", file: key, line }),
+      () => panel.webview.postMessage({ type: "tali-cursor", file: key, line }),
       80
     );
   });

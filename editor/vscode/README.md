@@ -5,10 +5,10 @@ It is the missing *producer* for the source-sync protocol the preview client
 (`web-client/client.js`) already consumes:
 
 - **Forward (preview → editor):** Alt-click a block in the preview → the editor jumps to
-  that block's source line (`qmd-goto`).
+  that block's source line (`tali-goto`).
 - **Reverse (editor → preview):** move the cursor in the `.tmd` → the matching block
   highlights and scrolls into view in the preview, and the deck jumps to the right slide
-  (`qmd-cursor` → `highlightAtLine`).
+  (`tali-cursor` → `highlightAtLine`).
 
 The preview stays **read-only**: the extension only navigates and highlights; it never
 writes back to the source.
@@ -109,8 +109,8 @@ needed yet). Phase 2 (editor commands like insert-block / reorder-slide, strictl
    locally it's already present). No Extension Host launch. This is the `editor-vscode` CI gate.
 2. **Relay bridge (`node scripts/relay-harness.cjs`)** — serves the real `relayHtml` with a
    same-origin stub iframe so a browser can drive both message directions against the actual
-   code (see the script header). Verified: `qmd-goto` from the iframe reaches the host;
-   `qmd-cursor` from the host reaches the iframe.
+   code (see the script header). Verified: `tali-goto` from the iframe reaches the host;
+   `tali-cursor` from the host reaches the iframe.
 3. **Extension Host (`npm run test:e2e`)** — `@vscode/test-electron` downloads a throwaway
    VS Code and runs `src/e2e/` inside the real Extension Host: asserts the command is
    registered, that the **`taliesin` language is contributed and a `.tmd` file resolves to it**,

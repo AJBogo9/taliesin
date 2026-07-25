@@ -197,7 +197,7 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
   var embedded = window.self !== window.top;
   function osDark(){{ try {{ return matchMedia('(prefers-color-scheme: dark)').matches; }} catch(e){{ return false; }} }}
   function hostTheme(){{ try {{ var t = window.top.document.documentElement.getAttribute('data-theme'); return (t==='dark'||t==='light') ? t : (t==='sepia' ? 'light' : null); }} catch(e){{ return null; }} }}
-  function stored(){{ try {{ var v = localStorage.getItem('qmd-deck-theme'); return (v==='dark'||v==='light') ? v : null; }} catch(e){{ return null; }} }}
+  function stored(){{ try {{ var v = localStorage.getItem('tali-deck-theme'); return (v==='dark'||v==='light') ? v : null; }} catch(e){{ return null; }} }}
   function resolve(){{
     if (embedded) {{ return hostTheme() || (osDark() ? 'dark' : 'light'); }}  // follow the host page
     var s = stored(); if (s) return s;                                        // a standalone deck's saved toggle
@@ -210,9 +210,9 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
     // A live light/dark flip must re-render mermaid (it bakes colours into the SVG at
     // run() time); the page fires this same event, so a deck reuses it. Skip the first
     // apply (prev undefined) — the initial diagram render already reads the resolved mode.
-    if (prev !== undefined && prev !== m) {{ try {{ window.dispatchEvent(new CustomEvent('qmd:themechange', {{ detail: {{ mode: m }} }})); }} catch(e){{}} }}
+    if (prev !== undefined && prev !== m) {{ try {{ window.dispatchEvent(new CustomEvent('tali:themechange', {{ detail: {{ mode: m }} }})); }} catch(e){{}} }}
     return m; }};
-  window.taliDeckSetTheme = function(m){{ if (!embedded) {{ try {{ if (m==='dark'||m==='light') localStorage.setItem('qmd-deck-theme', m); else localStorage.removeItem('qmd-deck-theme'); }} catch(e){{}} }} return window.taliDeckApplyTheme(); }};
+  window.taliDeckSetTheme = function(m){{ if (!embedded) {{ try {{ if (m==='dark'||m==='light') localStorage.setItem('tali-deck-theme', m); else localStorage.removeItem('tali-deck-theme'); }} catch(e){{}} }} return window.taliDeckApplyTheme(); }};
   window.taliDeckThemeChoice = function(){{ return stored() || 'auto'; }};  // 'auto' = no stored key (OS-follow)
   // A standalone deck in Auto follows a live OS light/dark flip, mirroring the page's pre-paint script.
   try {{ if (!embedded && window.matchMedia) {{ var mq = matchMedia('(prefers-color-scheme: dark)'); var onOs = function(){{ if (!stored()) window.taliDeckApplyTheme(); }}; if (mq.addEventListener) mq.addEventListener('change', onOs); else if (mq.addListener) mq.addListener(onOs); }} }} catch(e){{}}

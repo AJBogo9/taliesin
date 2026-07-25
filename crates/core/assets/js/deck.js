@@ -1259,12 +1259,12 @@
   }
 
   // --- presenter mode + cross-window sync --------------------------------
-  // `s` opens a speaker window (a popup at ?qmd=speaker). It shows the current +
+  // `s` opens a speaker window (a popup at ?tali=speaker). It shows the current +
   // next slide as static snapshot previews (cloned `<section>`s, see snapshotInto), the
   // slide's speaker notes (`::: {.notes}`), and a timer + clock. Audience and speaker stay
   // in sync via opener<->popup postMessage (works on file://); either can drive.
   /** @param {string} url @param {string} val */
-  function withQmd(url, val) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'qmd=' + val; }
+  function withTali(url, val) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'tali=' + val; }
   function deckBaseUrl() { return location.href.split('#')[0].split('?')[0]; }
   // Only accept/sync with windows of our own origin, so a third-party page that
   // embeds the deck can't drive it (or read its slide position). file:// has no
@@ -1291,7 +1291,7 @@
     fire('slidechanged');
   }
   function broadcastState() {
-    var msg = { qmd: 'deck', type: 'state', h: deck.h, v: deck.v, frag: deck.frag };
+    var msg = { tali: 'deck', type: 'state', h: deck.h, v: deck.v, frag: deck.frag };
     var t = targetOrigin();
     if (deck.speakerWin && !deck.speakerWin.closed) { try { deck.speakerWin.postMessage(msg, t); } catch (e) {} }
     if (window.opener && !window.opener.closed) { try { window.opener.postMessage(msg, t); } catch (e) {} }
@@ -1300,14 +1300,14 @@
   function onMessage(e) {
     if (!sameOrigin(e)) return; // ignore cross-origin drivers
     var d = e.data;
-    if (!d || d.qmd !== 'deck') return;
+    if (!d || d.tali !== 'deck') return;
     if (d.type === 'goto' || d.type === 'state') applyRemote(d.h, d.v, d.frag);
     else if (d.type === 'hello') broadcastState(); // a freshly-opened speaker asks for our position
   }
   function openSpeaker() {
     if (deck.mode !== 'normal') return;
     if (deck.speakerWin && !deck.speakerWin.closed) { deck.speakerWin.focus(); return; }
-    deck.speakerWin = window.open(withQmd(deckBaseUrl(), 'speaker'), 'tali-speaker', 'width=1180,height=760');
+    deck.speakerWin = window.open(withTali(deckBaseUrl(), 'speaker'), 'tali-speaker', 'width=1180,height=760');
   }
   /** @param {number} h @param {number} v */
   function nextIndex(h, v) {
@@ -1510,7 +1510,7 @@
     });
     updateSpeakerClock();
     clampIndices();
-    if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, targetOrigin()); } catch (e) {} }
+    if (window.opener) { try { window.opener.postMessage({ tali: 'deck', type: 'hello' }, targetOrigin()); } catch (e) {} }
   }
 
   // --- URL hash (replaceState: no history pollution) ---------------------
@@ -1953,7 +1953,7 @@
     applyClasses(); layout(); updateNumber(); focusCurrent();
   }
   // A rotation may cross the portrait/landscape line: re-route only in auto mode (an
-  // explicit ?qmd=feed / ?qmd=present, or an embed, is a fixed choice).
+  // explicit ?tali=feed / ?tali=present, or an embed, is a fixed choice).
   function maybeReroute() {
     if (!deck.autoRoute) return;
     var wantFeed = isPortrait();
@@ -2331,7 +2331,7 @@
     if (!item) return;
     var a = item.getAttribute('data-action');
     toggleMenu(false);
-    // Present / Overview from the feed are a MANUAL mode choice: pin it (like ?qmd=present)
+    // Present / Overview from the feed are a MANUAL mode choice: pin it (like ?tali=present)
     // so a later resize's maybeReroute() can't auto-snap the user back into the feed.
     if (a === 'present') { deck.autoRoute = false; exitFeed(); }
     else if (a === 'overview') { if (deck.feed) { deck.autoRoute = false; exitFeed(); } setOverview(true); }
@@ -2516,8 +2516,8 @@
     if (deck.ready) { sync(); return facade; } // idempotent: client.js may call again
     var rev = deckEl();
     if (!rev || !slidesEl()) return facade;
-    var qmd = new URLSearchParams(location.search).get('qmd');
-    deck.mode = qmd === 'speaker' ? 'speaker' : 'normal';
+    var tali = new URLSearchParams(location.search).get('tali');
+    deck.mode = tali === 'speaker' ? 'speaker' : 'normal';
     var d = document.documentElement.style;
     d.setProperty('--tali-deck-w', deck.config.width + 'px');
     d.setProperty('--tali-deck-h', deck.config.height + 'px');
@@ -2526,16 +2526,16 @@
     if (deck.mode === 'speaker') { initSpeaker(); deck.ready = true; return facade; }
 
     // A3: route the front door by aspect. A phone / portrait screen opens the vertical
-    // slide-feed; landscape opens stepped slides. `?qmd=feed` / `?qmd=present` are transient
+    // slide-feed; landscape opens stepped slides. `?tali=feed` / `?tali=present` are transient
     // escape hatches that force one mode (no config knob); an embedded deck never feeds.
     // `taliDeckEmbedded` is unset for a custom-themed deck (its head script is skipped), so
     // fall back to the frame check.
     var embedded = (typeof window.taliDeckEmbedded !== 'undefined')
       ? window.taliDeckEmbedded : (window.self !== window.top);
-    deck.autoRoute = !embedded && qmd !== 'feed' && qmd !== 'present';
+    deck.autoRoute = !embedded && tali !== 'feed' && tali !== 'present';
     // Whether to OPEN in the feed. Don't set deck.feed here: enterFeed() owns that flag
     // and early-returns when it's already set, so pre-setting it would no-op the enter.
-    var wantFeed = !embedded && (qmd === 'feed' || (deck.autoRoute && isPortrait()));
+    var wantFeed = !embedded && (tali === 'feed' || (deck.autoRoute && isPortrait()));
 
     publishMotionTokens(); // the camera's clock, so CSS runs off the same numbers
     if (!readHash()) { deck.h = 0; deck.v = 0; }
@@ -2600,8 +2600,8 @@
         } catch (e) {}
       }
       // A deck opens AS a deck: stepped slides on landscape/desktop, the mobile
-      // slide-feed on a phone/portrait screen (routed by aspect above; ?qmd=feed /
-      // ?qmd=present force one). Reader/scroll mode and PDF-export mode were removed.
+      // slide-feed on a phone/portrait screen (routed by aspect above; ?tali=feed /
+      // ?tali=present force one). Reader/scroll mode and PDF-export mode were removed.
       // enterFeed()/apply()+layout() above already placed the first view.
     }
     deck.ready = true;

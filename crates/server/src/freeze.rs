@@ -351,4 +351,33 @@ mod tests {
         assert_eq!(FreezeCache::for_page(path.clone()).get("a"), None);
         let _ = std::fs::remove_file(&path);
     }
+
+    /// Tokens that appear inside a CACHED cell's rendered output.
+    ///
+    /// The cache key hashes a cell's SOURCE, never its output, so changing the
+    /// vocabulary that output carries busts nothing on its own: old entries replay
+    /// verbatim and the current browser runtime no longer recognises them.
+    /// `FORMAT_VERSION` is the only lever, and it has to be turned by hand.
+    ///
+    /// `d0b1ffa` is the bug this exists to prevent: the `qmd-fig-*` -> `tali-fig-*`
+    /// rename shipped without a bump and needed a follow-up fix commit, because
+    /// every test runs against a clean tree and no test has a stale `_freeze/`.
+    const CACHED_OUTPUT_TOKENS: &[&str] = &[
+        "application/qmd-js",
+        "qmd-define",
+        "tali-fig-light",
+        "tali-fig-dark",
+    ];
+
+    #[test]
+    fn cached_output_vocabulary_is_tied_to_format_version() {
+        let digest = format!("{:016x}", fnv1a(&CACHED_OUTPUT_TOKENS.join("\u{1f}")));
+        assert_eq!(
+            (digest.as_str(), FORMAT_VERSION),
+            ("b5cdb009fef70b53", 3),
+            "the cached-output token vocabulary changed. Bump FORMAT_VERSION, then \
+             update BOTH values here. Skipping the bump makes every existing _freeze/ \
+             entry replay markup the current runtime cannot read."
+        );
+    }
 }

@@ -13,7 +13,7 @@
 // `--tali-mermaid-theme` (a mermaid theme name; defaults to dark/default by mode),
 // and optionally `--tali-mermaid-{bg,node,node-border,text,line}` to tune colours
 // (most effective with `--tali-mermaid-theme: base`). Each diagram's source is
-// stashed (dataset.src) so a later `qmd:themechange` can restore and re-run it.
+// stashed (dataset.src) so a later `tali:themechange` can restore and re-run it.
 function taliMermaidConfig() {
   var cs = getComputedStyle(document.documentElement);
   /** @param {string} n */
@@ -131,7 +131,7 @@ function taliReRenderMermaid() {
   });
   taliRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
 }
-window.addEventListener('qmd:themechange', taliReRenderMermaid);
+window.addEventListener('tali:themechange', taliReRenderMermaid);
 
   window.taliEnhancers.register(taliRenderMermaid);
 })();

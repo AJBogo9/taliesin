@@ -6,16 +6,16 @@ export function relayHtml(iframeSrc: string, cspSource: string): string {
   frame-src ${origin} ${cspSource}; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';">
 <style>html,body,iframe{margin:0;padding:0;border:0;width:100%;height:100vh;display:block}</style>
 </head><body>
-<iframe id="qmd" src="${iframeSrc}" allow="clipboard-read; clipboard-write"></iframe>
+<iframe id="tali-preview" src="${iframeSrc}" allow="clipboard-read; clipboard-write"></iframe>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
-  const iframe = document.getElementById("qmd");
+  const iframe = document.getElementById("tali-preview");
   // iframe (preview) -> host, and host -> iframe (the extension posts to THIS window).
   window.addEventListener("message", (e) => {
     const m = e.data;
     if (!m || typeof m !== "object") return;
-    if (m.type === "qmd-goto") { vscode.postMessage(m); return; }
-    if (m.type === "qmd-cursor" && iframe.contentWindow) {
+    if (m.type === "tali-goto") { vscode.postMessage(m); return; }
+    if (m.type === "tali-cursor" && iframe.contentWindow) {
       iframe.contentWindow.postMessage(m, "*");
     }
   });

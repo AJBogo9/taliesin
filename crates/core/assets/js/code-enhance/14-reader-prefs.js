@@ -53,6 +53,6 @@ function taliInitReaderPrefs() {
   var themeSeg = seg('Theme', THEMES, curTheme, function (v) {
     setTheme(/** @type {'auto' | 'light' | 'dark' | 'sepia'} */ (v));
   });
-  window.addEventListener('qmd:themechange', themeSeg.sync);
+  window.addEventListener('tali:themechange', themeSeg.sync);
   window.taliReaderMenu.addSection('', themeSeg.row, themeSeg.sync);
 }

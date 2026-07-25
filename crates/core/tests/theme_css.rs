@@ -14,7 +14,7 @@ use common::{TempProj, corpus_dir};
 use std::fs;
 
 /// The corpus `theme: brand.css` doc: its sibling stylesheet is read from disk and inlined,
-/// both onto the RenderedDoc (`theme_css`) and into the assembled page's `<style id="qmd-theme">`.
+/// both onto the RenderedDoc (`theme_css`) and into the assembled page's `<style id="tali-theme">`.
 #[test]
 fn a_custom_css_theme_file_is_read_from_disk_and_inlined() {
     let dir = corpus_dir().join("theme-css");
@@ -32,11 +32,11 @@ fn a_custom_css_theme_file_is_read_from_disk_and_inlined() {
         doc.theme_css
     );
 
-    // End to end: the assembled page wraps that CSS in <style id="qmd-theme"> inside <head>.
+    // End to end: the assembled page wraps that CSS in <style id="tali-theme"> inside <head>.
     let page = render_html_page_with_includes(&src, &dir, "Custom theme");
     let head = &page[..page.find("</head>").expect("page has </head>")];
     assert!(
-        head.contains("<style id=\"qmd-theme\">") && head.contains("CORPUS-C3-THEME-MARKER"),
+        head.contains("<style id=\"tali-theme\">") && head.contains("CORPUS-C3-THEME-MARKER"),
         "the custom theme CSS must be inlined into the page <head>"
     );
 }
