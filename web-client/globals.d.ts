@@ -85,6 +85,10 @@ interface Window {
   /** Set by the index loader's onerror so the palette shows a load-failure row
    *  instead of a silently-empty result list. */
   TALIESIN_SEARCH_LOAD_FAILED?: boolean;
+  /** Load `search-index.js` (re-fetching it in a live preview), then run `cb`. Exported by
+   *  search.js so the book drawer's section outline (code-enhance/19-book-outline.js) reads
+   *  the same index through the same loader instead of minting a second one. */
+  taliLoadSearchIndex?: (cb: () => void) => void;
   /** This page's own url, so a search hit on the current page scrolls in place
    *  rather than triggering a same-page navigation. */
   TALIESIN_PAGE_URL?: string;

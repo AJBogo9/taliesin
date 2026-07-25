@@ -3325,6 +3325,30 @@ fn code_enhance_bundle_matches_fragments_in_order() {
 }
 
 #[test]
+fn every_code_enhance_fragment_is_in_the_type_check_gate() {
+    // The `tsc` gate checks an EXPLICIT include list, so a fragment added to the concat! but
+    // not to `jsconfig.json` ships unchecked while the gate still reports success. Found by
+    // adding one: `18-media.js` had been outside the gate since it landed. Read the list
+    // mechanically rather than trusting one assertion per file — the same lesson the CLI
+    // help gate learned (nine undocumented flags where the audit had filed two).
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/js");
+    let cfg = std::fs::read_to_string(dir.join("jsconfig.json")).expect("jsconfig.json exists");
+    let mut names: Vec<String> = std::fs::read_dir(dir.join("code-enhance"))
+        .expect("assets/js/code-enhance should exist")
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".js"))
+        .collect();
+    names.sort();
+    assert!(!names.is_empty(), "the fragment directory cannot be empty");
+    for name in &names {
+        assert!(
+            cfg.contains(&format!("\"code-enhance/{name}\"")),
+            "assets/js/jsconfig.json must list code-enhance/{name}, or it ships type-unchecked"
+        );
+    }
+}
+
+#[test]
 fn captioned_code_listing_is_a_figure_not_a_bare_div() {
     // A `<figcaption>` is only valid inside a `<figure>`; the numbered code listing must
     // wrap as `<figure class="tali-listing">` (valid HTML, and the same float semantics
@@ -5264,6 +5288,56 @@ fn the_palettes_empty_state_is_the_whole_book_outline_not_a_chapter_list() {
     assert!(
         SEARCH_JS.contains("shallowest[it.url"),
         "outline depth must be measured against the page's own shallowest heading"
+    );
+}
+
+/// SKIM-2 Ship B: the chapter drawer gains a per-chapter section outline, hydrated from the
+/// SAME `search-index.js` Cmd-K already lazy-loads. Re-scoped from the audit's "second
+/// per-page artifact" on measurement (the index is 172 KB / 60 KB gzipped on the largest
+/// dogfood book, and it is one already-cached subresource): a second artifact would mean a
+/// second copy of `page_fragment`'s ordering recipe, a second assembly and a second
+/// invalidation path, which is the divergence the reduction audit keeps filing.
+///
+/// The needles are element-scoped and each names the behaviour, not the feature: a bare
+/// `contains("search-index")` passes with the whole fragment deleted (search.js names it too).
+#[test]
+fn the_chapter_drawer_outlines_each_chapter_from_the_shared_search_index() {
+    // The hydration target is the drawer's own list, so this cannot be satisfied by the
+    // palette's outline (a different const) or by the drawer script in `site/chrome.rs`.
+    assert!(
+        CODE_ENHANCE_JS.contains("tali-book-chapters"),
+        "the outline must hydrate the drawer's chapter list"
+    );
+    assert!(
+        CODE_ENHANCE_JS.contains("tali-book-sections"),
+        "each chapter row must gain a list of its own sections"
+    );
+    // ONE loader, exported from search.js and consumed here. A private copy would re-derive
+    // the live-preview cache-bust, the `<script>`-under-file:// load and the in-flight guard,
+    // and the two would drift the moment either is touched.
+    assert!(
+        super::SEARCH_JS.contains("window.taliLoadSearchIndex = loadIndexThen"),
+        "search.js must export its index loader rather than keep it private"
+    );
+    assert!(
+        CODE_ENHANCE_JS.contains("window.taliLoadSearchIndex"),
+        "the drawer must load the index through that shared loader"
+    );
+    // Ship A's lesson, one surface further down: absolute heading level depends on whether a
+    // chapter emits a title block and where it roots, so indenting by `l` puts a `###`-rooted
+    // chapter's top-level sections three steps in beside a `##`-rooted chapter's.
+    assert!(
+        CODE_ENHANCE_JS.contains("shallowest["),
+        "section indent must be measured against each page's own shallowest heading"
+    );
+    // You are reading a chapter: its sections are the ones worth showing without a click.
+    assert!(
+        CODE_ENHANCE_JS.contains("[aria-current]"),
+        "the chapter being read must start expanded"
+    );
+    assert!(
+        SITE_CSS.contains(".tali-book-sections"),
+        "the hydrated outline needs its styles bundled, not injected"
     );
 }
 

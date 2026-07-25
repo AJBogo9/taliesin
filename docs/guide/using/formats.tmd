@@ -253,9 +253,16 @@ collapses into a pull-up sheet.
 
 A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:`:
 their presence makes it a book (no `type:` needed), optionally grouped into
-`part:`s. Taliesin numbers the chapters, builds the left sidebar, wires prev/next
+`part:`s. Taliesin numbers the chapters, builds the **Chapters** drawer, wires prev/next
 navigation, and resolves cross-references across chapters. *These very docs are
-such a book*: look at the sidebar and press <kbd>Cmd/Ctrl-K</kbd> to search.
+such a book*: open **Chapters** and press <kbd>Cmd/Ctrl-K</kbd> to search.
+
+The drawer is not only a list of chapters. Every chapter with sections carries an
+expander, and opening it reveals that chapter's own numbered headings, indented by
+depth — so you can see where a chapter goes, and jump into the middle of one, without
+opening it first. The chapter you are reading is expanded already. Nothing to
+configure: the section list is read from the same search index <kbd>Cmd/Ctrl-K</kbd>
+uses, loaded the first time you open the drawer.
 
 ```yaml
 title: "My Book"

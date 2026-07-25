@@ -301,6 +301,27 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-active { color: var(--tali-link); font-weight: 600; }
 .tali-chap-num { color: var(--tali-muted); margin-right: .25rem; }
 .tali-book-active .tali-chap-num { color: var(--tali-link); }
+/* The per-chapter section outline (code-enhance/19-book-outline.js). Created client-side
+   once the shared search index loads, so with JS off none of this matches and the drawer
+   is the flat chapter list it has always been. */
+.tali-book-row { display: flex; align-items: baseline; gap: .25rem; }
+.tali-book-row .tali-book-chapter { flex: 1 1 auto; min-width: 0; }
+.tali-book-expand { flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+  color: var(--tali-muted); padding: .2rem .3rem; border-radius: var(--tali-radius-md);
+  line-height: 0; }
+.tali-book-expand:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
+.tali-book-expand svg { transition: transform var(--tali-dur) ease; }
+.tali-book-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .tali-book-expand svg { transition: none; } }
+.tali-book-sections { list-style: none; margin: 0 0 .35rem; padding: 0;
+  border-left: 1px solid var(--tali-border); margin-left: .35rem; }
+.tali-book-sections[hidden] { display: none; }
+.tali-book-section { display: block; padding: .18rem 0 .18rem .6rem; color: var(--tali-muted);
+  text-decoration: none; font-size: .85rem; line-height: 1.35; }
+.tali-book-section:hover { color: var(--tali-link); }
+.tali-book-sd2 { padding-left: 1.5rem; }
+.tali-book-sd3 { padding-left: 2.4rem; }
+.tali-book-sd4 { padding-left: 3.3rem; }
 @media (max-width: 60rem) {
   /* single column: the on-this-page TOC (if any) stacks below the text, pager spans full width */
   .tali-book-main { max-width: var(--tali-maxw); }

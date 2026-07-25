@@ -359,6 +359,57 @@ fn a_numbered_chapters_records_carry_its_number_and_the_heading_path() {
     }
 }
 
+// --- SKIM-2 Ship B: the chapter drawer's per-chapter outline ------------------------
+// The drawer hydrates from this same index rather than a second artifact, so its coverage
+// question is a producer question: does every chapter contribute its own anchored headings,
+// including the chapters whose sections the PAGE never lists?
+
+#[test]
+fn a_below_toc_gate_chapters_sections_reach_the_drawer_outline() {
+    // `performance.tmd` sits under MIN_TOC_HEADINGS, so the page itself renders no TOC — it
+    // is exactly the chapter whose structure a reader can only get from the drawer. Its
+    // sections must therefore be in the index as SECTION records (`l` > 0); a page-title
+    // record alone would leave the drawer's toggle empty on the one chapter that needs it.
+    let idx = tarn().search_index_json;
+    let perf: Vec<&str> = index_records(&idx)
+        .into_iter()
+        .filter(|r| r.contains("\"u\":\"performance.html\""))
+        .collect();
+    for anchor in ["sec-perf-filter", "sec-perf-explain"] {
+        assert!(
+            perf.iter()
+                .any(|r| r.contains(&format!("\"i\":\"{anchor}\"")) && !r.contains("\"l\":0")),
+            "a below-TOC-gate chapter must still index {anchor} as a section: {perf:?}"
+        );
+    }
+}
+
+#[test]
+fn the_drawer_renders_flat_with_no_dead_toggle_when_js_is_off() {
+    // The outline is client-hydrated (the section data lives in the lazily-loaded index, not
+    // on the page), so the SERVER must not emit an expander it cannot fill: with JS off the
+    // drawer stays exactly the flat chapter list it has always been. A `<button
+    // aria-expanded>` shipped server-side would be an affordance that lies.
+    let page = tarn()
+        .render_page("grouping.tmd")
+        .expect("grouping renders");
+    // Scope to the emitted chapter LIST, not the whole page: the hydration script rides in
+    // the same document and names every one of these classes in its own source, so a
+    // whole-page `!contains` fails on the fix rather than on the bug (it did, first run).
+    let start = page
+        .find("id=\"tali-book-chapters\"")
+        .expect("the drawer's chapter list is the hydration target");
+    let list = &page[start..start + page[start..].find("</ul>").expect("the list closes")];
+    for dead in ["tali-book-expand", "tali-book-sections", "<button"] {
+        assert!(
+            !list.contains(dead),
+            "the server must not emit `{dead}` in the chapter list — the outline is created \
+             only once the index loads, so a server-side expander would be an affordance \
+             that cannot expand: {list}"
+        );
+    }
+}
+
 #[test]
 fn a_websites_index_carries_no_chapter_number() {
     // `c` is emitted only for a book chapter, so a plain website's records are unchanged.
