@@ -124,7 +124,7 @@ being precise about which is which:
   appears. The walk recognises comrak's footnote-definition nodes, collects them as
   `<li>`s in comrak's reference order, and after the citation pass appends them as one
   trailing `<section class="footnotes" role="doc-endnotes">` block (fixed id
-  `qmd-footnotes`, empty `data-sourcepos`) after any References block.
+  `tali-footnotes`, empty `data-sourcepos`) after any References block.
 
 That trailing section flows through the block model and the diff exactly like the
 References block: a generated, source-less block that the client treats no differently

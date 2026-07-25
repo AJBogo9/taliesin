@@ -49,7 +49,7 @@ fn ieee_corpus_reference_output_is_byte_stable() {
     let refs = references_section(&html);
     assert_eq!(
         refs,
-        "<section class=\"tali-references\" data-block-id=\"qmd-references\">\
+        "<section class=\"tali-references\" data-block-id=\"tali-references\">\
          <h2>References</h2>\
          <div id=\"ref-bishop2006pattern\" class=\"csl-entry\">\
          [1] C. M. Bishop, <em>Pattern Recognition and Machine Learning</em>. Springer, 2006.\
@@ -71,7 +71,7 @@ fn single_and_double_brace_author_corpus_output_is_byte_stable() {
     .to_string();
     assert_eq!(
         elbo,
-        "<section class=\"tali-references\" data-block-id=\"qmd-references\"><h2>References</h2>\
+        "<section class=\"tali-references\" data-block-id=\"tali-references\"><h2>References</h2>\
          <div id=\"ref-bishop2006pattern\" class=\"csl-entry\">\
          [1] C. M. Bishop, <em>Pattern Recognition and Machine Learning</em>. Springer, 2006.</div>\
          <div id=\"ref-jamil2023vae\" class=\"csl-entry\">\
@@ -89,7 +89,7 @@ fn single_and_double_brace_author_corpus_output_is_byte_stable() {
     .to_string();
     assert_eq!(
         kw,
-        "<section class=\"tali-references\" data-block-id=\"qmd-references\"><h2>References</h2>\
+        "<section class=\"tali-references\" data-block-id=\"tali-references\"><h2>References</h2>\
          <div id=\"ref-wiki_anova\" class=\"csl-entry\">\
          [1] Wikipedia contributors, \u{201c}Analysis of variance,\u{201d} 2025. [Online]. \
          Available: <a href=\"https://en.wikipedia.org/wiki/Analysis_of_variance\">\

@@ -623,7 +623,7 @@ fn gathered_sections_stay_unlocatable() {
         let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
         // The block model's own view: the generated sections carry an empty sourcepos.
         for b in &doc.blocks {
-            if b.id != "qmd-references" && b.id != "qmd-footnotes" {
+            if b.id != "tali-references" && b.id != "tali-footnotes" {
                 continue;
             }
             seen += 1;
@@ -637,7 +637,7 @@ fn gathered_sections_stay_unlocatable() {
         }
         // The emitted HTML, which is what the client actually reads.
         let html = doc.body_html();
-        for id in ["qmd-references", "qmd-footnotes"] {
+        for id in ["tali-references", "tali-footnotes"] {
             let needle = format!("data-block-id=\"{id}\"");
             let Some(i) = html.find(&needle) else {
                 continue;

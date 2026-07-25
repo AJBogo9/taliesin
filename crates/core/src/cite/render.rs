@@ -105,7 +105,7 @@ pub fn process(
         .position(|b| is_manual_references_heading(&b.html));
     let mut warnings: Vec<Warning> = Vec::new();
     let mut list =
-        String::from("<section class=\"tali-references\" data-block-id=\"qmd-references\">");
+        String::from("<section class=\"tali-references\" data-block-id=\"tali-references\">");
     if manual_heading.is_none() {
         list.push_str("<h2>References</h2>");
     }
@@ -148,7 +148,7 @@ pub fn process(
     // is its `.bib` record, not the `.tmd`, and the `[@key]` citation site is one of
     // several, so any value here would be a guess wearing navigation's clothes.
     let block = Block {
-        id: "qmd-references".to_string(),
+        id: "tali-references".to_string(),
         sourcepos: String::new(),
         source_file: None,
         html: list,

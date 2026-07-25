@@ -343,7 +343,7 @@ pub(crate) fn cite_block_html(m: &CiteMeta) -> String {
     tabs.push_str("</div>");
 
     format!(
-        "<aside class=\"tali-cite-this\" data-block-id=\"qmd-cite-this\" \
+        "<aside class=\"tali-cite-this\" data-block-id=\"tali-cite-this\" \
          aria-labelledby=\"tali-cite-this-h\">\
          <p id=\"tali-cite-this-h\" class=\"tali-cite-this-title\">Cite this</p>\
          {tabs}{panes}\
@@ -358,14 +358,14 @@ impl Site {
     /// Append the reader-facing "Cite this" box at the end of a page's content, when the
     /// page carries enough metadata (see [`resolve`]). Called last in `finish_blocks`, so
     /// the static build and the live preview inject identically; a single-root generated
-    /// block (`qmd-cite-this`, no sourcepos) so the incremental client mounts it cleanly.
+    /// block (`tali-cite-this`, no sourcepos) so the incremental client mounts it cleanly.
     /// A no-op when the gate fails — the box degrades to nothing, never an empty shell.
     pub(super) fn attach_cite_this(&self, page: &Page, blocks: &mut Vec<Block>) {
         let Some(meta) = resolve(page, &self.config, self.abs_page_url(page)) else {
             return;
         };
         blocks.push(Block {
-            id: "qmd-cite-this".to_string(),
+            id: "tali-cite-this".to_string(),
             sourcepos: String::new(),
             source_file: None,
             html: cite_block_html(&meta),
@@ -608,7 +608,7 @@ ER  -";
     fn cite_block_html_embeds_all_three_formats_escaped() {
         let html = cite_block_html(&em_meta());
         assert!(html.contains("class=\"tali-cite-this\""), "got: {html}");
-        assert!(html.contains("data-block-id=\"qmd-cite-this\""));
+        assert!(html.contains("data-block-id=\"tali-cite-this\""));
         assert!(html.contains(">Cite this<"));
         assert!(html.contains("role=\"tablist\""));
         assert!(html.contains("data-format=\"bibtex\""));

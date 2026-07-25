@@ -58,7 +58,7 @@ fn front_matter_title_extracted_and_rendered_as_title_block() {
     assert_eq!(doc.title.as_deref(), Some("My Post"));
     // A generated title block is prepended, then the body paragraph.
     assert_eq!(doc.blocks.len(), 2);
-    assert_eq!(doc.blocks[0].id, "qmd-title-block");
+    assert_eq!(doc.blocks[0].id, "tali-title-block");
     assert!(
         doc.blocks[0]
             .html
@@ -100,7 +100,7 @@ fn title_block_style_none_injects_a_hidden_h1_but_no_visible_block() {
     assert_eq!(doc.title.as_deref(), Some("Blog"));
     // ...and no VISIBLE title-block header is emitted...
     assert!(
-        !doc.blocks.iter().any(|b| b.id == "qmd-title-block"),
+        !doc.blocks.iter().any(|b| b.id == "tali-title-block"),
         "expected no visible title block, got ids: {:?}",
         doc.blocks.iter().map(|b| &b.id).collect::<Vec<_>>()
     );
@@ -154,9 +154,9 @@ fn title_block_includes_subtitle_date_and_description() {
 
 #[test]
 fn reveal_deck_has_no_html_title_block() {
-    // The deck builds its own title slide; no `qmd-title-block` block.
+    // The deck builds its own title slide; no `tali-title-block` block.
     let doc = render_document("---\ntitle: T\nformat: deck\n---\n\n## Slide\n");
-    assert!(!doc.blocks.iter().any(|b| b.id == "qmd-title-block"));
+    assert!(!doc.blocks.iter().any(|b| b.id == "tali-title-block"));
 }
 
 #[test]
@@ -637,7 +637,7 @@ fn mermaid_library_inlined_into_build_pages_only() {
         "Build must inline the vendored mermaid library for a diagram page"
     );
     assert!(
-        build.contains("__qmdMermaidLoading"),
+        build.contains("__taliMermaidLoading"),
         "Build still ships the loader (uses the inlined global)"
     );
     // Content-gated: a Build page with NO diagram inlines nothing.
@@ -649,7 +649,7 @@ fn mermaid_library_inlined_into_build_pages_only() {
     // Preview keeps the lean lazy loader (inlining 2.5 MB on every save would bloat it).
     let preview = code_scripts_for(body, OutputMode::Preview);
     assert!(
-        !preview.contains("__esbuild_esm_mermaid") && preview.contains("__qmdMermaidLoading"),
+        !preview.contains("__esbuild_esm_mermaid") && preview.contains("__taliMermaidLoading"),
         "Preview keeps only the lazy loader, not the inlined library"
     );
 }
@@ -1392,7 +1392,7 @@ fn front_matter_only_yields_just_the_title_block() {
     assert_eq!(doc.title.as_deref(), Some("Only Meta"));
     // Only the generated title block (no body content).
     assert_eq!(doc.blocks.len(), 1);
-    assert_eq!(doc.blocks[0].id, "qmd-title-block");
+    assert_eq!(doc.blocks[0].id, "tali-title-block");
 }
 
 #[test]
@@ -2839,7 +2839,7 @@ fn footnote_li_is_the_locatable_unit_for_click_to_source() {
     let fns = doc
         .blocks
         .iter()
-        .find(|b| b.id == "qmd-footnotes")
+        .find(|b| b.id == "tali-footnotes")
         .expect("gathered footnotes block");
 
     // Each note resolves to the line its OWN definition sits on (7 and 11), not to
@@ -2874,7 +2874,7 @@ fn gathered_footnotes_block_keeps_an_empty_block_level_sourcepos() {
     let fns = doc
         .blocks
         .iter()
-        .find(|b| b.id == "qmd-footnotes")
+        .find(|b| b.id == "tali-footnotes")
         .expect("gathered footnotes block");
     assert!(
         fns.sourcepos.is_empty(),
@@ -2882,7 +2882,7 @@ fn gathered_footnotes_block_keeps_an_empty_block_level_sourcepos() {
         fns.sourcepos
     );
     // It still carries data-block-id: the diff addresses it by id (client.js `blockEl`).
-    assert!(fns.html.contains("data-block-id=\"qmd-footnotes\""));
+    assert!(fns.html.contains("data-block-id=\"tali-footnotes\""));
 }
 
 #[test]

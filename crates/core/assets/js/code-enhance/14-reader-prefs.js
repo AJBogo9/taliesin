@@ -3,10 +3,10 @@
 // head script (taliSetTheme / taliGetThemeChoice in theme.rs), so this enhancer is only the UI.
 // Read-only. Skipped on decks.
 function taliInitReaderPrefs() {
-  if (window.__qmdReaderPrefs) return;
+  if (window.__taliReaderPrefs) return;
   if (!window.taliSetTheme || !window.taliReaderMenu) return; // need the pre-paint API + the menu host
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
-  window.__qmdReaderPrefs = true;
+  window.__taliReaderPrefs = true;
 
   var THEMES = [
     ['auto', 'Auto', 'Follow your system light/dark setting'],

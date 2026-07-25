@@ -551,12 +551,12 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
     };
     // Directly after its heading, and strictly before the appendix that follows.
     assert_eq!(
-        idx("qmd-references"),
+        idx("tali-references"),
         idx("refs-h") + 1,
         "the reference list must sit directly under `# References`, blocks: {blocks:?}"
     );
     assert!(
-        idx("qmd-references") < idx("appx-h"),
+        idx("tali-references") < idx("appx-h"),
         "the reference list must not be orphaned past a later appendix, blocks: {blocks:?}"
     );
     // The appendix keeps its own order, and nothing else moved.

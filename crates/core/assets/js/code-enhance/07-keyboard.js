@@ -4,9 +4,9 @@
 // dialog. All guarded so they never fire while typing or under a modal. Read-only, deck-skipped,
 // idempotent.
 function taliInitKeyboard() {
-  if (window.__qmdKeyboard) return;
+  if (window.__taliKeyboard) return;
   if (document.querySelector('.tali-deck')) return;
-  window.__qmdKeyboard = true;
+  window.__taliKeyboard = true;
 
   // Mount the shortcut list into the Settings menu (built by taliInitReaderMenu, which runs
   // first via the registry order). A static list of literal <kbd>s, no interpolation.

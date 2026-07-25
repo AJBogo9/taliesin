@@ -8,8 +8,8 @@
 // the calm column. Each has its own Reader-menu toggle; `f` drives focus only.
 function taliInitFocusMode() {
   if (document.querySelector('.tali-deck')) return;
-  if (window.__qmdFocus) return;
-  window.__qmdFocus = true;
+  if (window.__taliFocus) return;
+  window.__taliFocus = true;
 
   var live = document.createElement('span');
   live.className = 'tali-sr-only';

@@ -1629,13 +1629,13 @@ impl Site {
         // slot existed. With an image (the blog homepage): a two-column media layout.
         match hero.image.as_deref() {
             None => format!(
-                "<header class=\"hero\" data-block-id=\"qmd-title-block\" data-tali-src=\"{src}\">{inner}</header>"
+                "<header class=\"hero\" data-block-id=\"tali-title-block\" data-tali-src=\"{src}\">{inner}</header>"
             ),
             Some(image) => {
                 let image = esc(image);
                 let alt = esc(hero.image_alt.as_deref().unwrap_or(""));
                 format!(
-                    "<header class=\"hero hero-has-media\" data-block-id=\"qmd-title-block\" data-tali-src=\"{src}\">\
+                    "<header class=\"hero hero-has-media\" data-block-id=\"tali-title-block\" data-tali-src=\"{src}\">\
                      <div class=\"hero-body\">{inner}</div>\
                      <img class=\"hero-media\" src=\"{image}\" alt=\"{alt}\"></header>"
                 )
@@ -1660,15 +1660,15 @@ fn listing_block(index: usize, contents: &str, cards_html: &str) -> Block {
 }
 
 /// Set the page's title-block content to `html` (a `hero:` header): reuse
-/// the existing `qmd-title-block` so source-mapping + diffing are preserved, or
+/// the existing `tali-title-block` so source-mapping + diffing are preserved, or
 /// insert it at the top if the page has no title block.
 fn set_title_block(blocks: &mut Vec<Block>, html: String) {
-    match blocks.iter_mut().find(|b| b.id == "qmd-title-block") {
+    match blocks.iter_mut().find(|b| b.id == "tali-title-block") {
         Some(tb) => tb.html = html,
         None => blocks.insert(
             0,
             Block {
-                id: "qmd-title-block".to_string(),
+                id: "tali-title-block".to_string(),
                 sourcepos: String::new(),
                 source_file: None,
                 html,

@@ -1097,11 +1097,11 @@ fn render_internal_impl(
     if !footnote_items.is_empty() {
         let inner = footnote_items.join("");
         blocks.push(Block {
-            id: "qmd-footnotes".to_string(),
+            id: "tali-footnotes".to_string(),
             sourcepos: String::new(),
             source_file: None,
             html: format!(
-                "<section class=\"footnotes\" role=\"doc-endnotes\" aria-label=\"Footnotes\" data-block-id=\"qmd-footnotes\"><hr><ol>{inner}</ol></section>"
+                "<section class=\"footnotes\" role=\"doc-endnotes\" aria-label=\"Footnotes\" data-block-id=\"tali-footnotes\"><hr><ol>{inner}</ol></section>"
             ),
             cell: None,
         });
@@ -1133,7 +1133,7 @@ fn render_internal_impl(
         blocks.insert(
             0,
             Block {
-                id: "qmd-title-block".to_string(),
+                id: "tali-title-block".to_string(),
                 sourcepos: String::new(),
                 source_file: None,
                 html: tb,
@@ -1282,7 +1282,7 @@ fn title_block_html(
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
-        "<header class=\"tali-title-block\" data-block-id=\"qmd-title-block\"><h1 class=\"title\">",
+        "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\"><h1 class=\"title\">",
     );
     h.push_str(&html_escape(title));
     h.push_str("</h1>");

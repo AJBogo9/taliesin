@@ -336,8 +336,6 @@
   window.taliJs = window.taliJs || {};
   window.taliJs.teardown = teardownIn;
   window.taliJs.reset = resetRuntime;
-  // Back-compat: the pre-rename public global (same live object).
-  window.qmdJs = window.taliJs;
 
   // Run a list of cells in document order, awaiting each — so `//| name:` outputs
   // are stored before dependent cells run.

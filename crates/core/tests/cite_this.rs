@@ -55,10 +55,11 @@ fn an_authorless_dated_page_falls_back_to_the_site_author() {
 fn a_dateless_page_renders_no_cite_box() {
     let site = Site::discover(&corpus_dir().join("cite-this"));
     let html = site.render_page("index.tmd").expect("renders");
-    // Key on the block id: the `.tali-cite-this` CLASS string also appears in the
-    // always-inlined enhancer JS, so only the generated block's id proves absence.
+    // Key on the full block-id ATTRIBUTE: the `tali-cite-this` class string also
+    // appears in the always-inlined enhancer JS, so only `data-block-id="…"`
+    // proves the generated block is absent.
     assert!(
-        !html.contains("qmd-cite-this"),
+        !html.contains("data-block-id=\"tali-cite-this\""),
         "a page without a date must render no citation box"
     );
 }
@@ -77,8 +78,9 @@ fn a_site_without_any_author_degrades_to_no_box() {
     );
     let site = Site::discover(&d.0);
     let html = site.render_page("post.tmd").expect("renders");
+    // Full block-id attribute, not the bare class substring (see above).
     assert!(
-        !html.contains("qmd-cite-this"),
+        !html.contains("data-block-id=\"tali-cite-this\""),
         "no author anywhere -> the box degrades to nothing"
     );
 }

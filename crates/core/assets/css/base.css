@@ -843,9 +843,9 @@
       padding: .2rem .55rem; border-radius: var(--tali-radius-md); box-shadow: var(--tali-shadow-sm);
       opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
     #tali-toc-handle.tali-show-label #tali-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
-    @keyframes qmdPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
+    @keyframes taliPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
       50% { bottom: calc(1.3rem + env(safe-area-inset-bottom, 0px)); } }
-    body.tali-toc-sheet #tali-toc-handle.tali-hint { animation: qmdPeekHint 1.15s ease-in-out 2; }
+    body.tali-toc-sheet #tali-toc-handle.tali-hint { animation: taliPeekHint 1.15s ease-in-out 2; }
     /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
        minmax(0,1fr), not 1fr: the 0 floor lets wide children (figures/images) shrink
        to the column instead of forcing their intrinsic width and overflowing the page. */

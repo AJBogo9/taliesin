@@ -6,11 +6,11 @@ use super::helpers::start_line;
 use crate::render::{Block, Warning};
 use std::path::Path;
 
-/// Citations are present (`cite::process` appended the `qmd-references` section) but the
+/// Citations are present (`cite::process` appended the `tali-references` section) but the
 /// front matter declares no `bibliography:`, so every reference renders as a raw key with
 /// no diagnostic today. (A declared-but-missing bibliography file is a separate warning.)
 pub fn citations_without_bibliography(src: &str, blocks: &[Block]) -> Vec<Warning> {
-    let has_citations = blocks.iter().any(|b| b.id == "qmd-references");
+    let has_citations = blocks.iter().any(|b| b.id == "tali-references");
     if !has_citations {
         return Vec::new();
     }
@@ -81,7 +81,7 @@ pub fn bare_citation_key_not_rendered(src: &str, blocks: &[Block], base: &Path) 
         // A resolved citation is `<a href="#ref-key">n</a>`, so a surviving literal
         // `@key` in the emitted HTML is precisely the failure. Skip code: a `@key` in a
         // sample is prose about code, not a citation.
-        if b.html.starts_with("<pre") || b.id == "qmd-references" {
+        if b.html.starts_with("<pre") || b.id == "tali-references" {
             continue;
         }
         for key in &keys {

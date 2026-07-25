@@ -149,11 +149,11 @@ mod tests {
 
     #[test]
     fn numbers_the_chapter_title_block() {
-        let title = "<header class=\"tali-title-block\" data-block-id=\"qmd-title-block\">\
+        let title = "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\">\
             <h1 class=\"title\">Executable content</h1></header>";
         assert_eq!(
             prefix_title_number(title, "3"),
-            "<header class=\"tali-title-block\" data-block-id=\"qmd-title-block\">\
+            "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\">\
              <h1 class=\"title\"><span class=\"tali-section-number\">3</span> Executable content</h1></header>"
         );
     }

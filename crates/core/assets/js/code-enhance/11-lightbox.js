@@ -5,8 +5,8 @@
 // (so <foreignObject> labels keep rendering, which an <img> would drop). Modifier
 // clicks pass through (new tab, reveal alt-zoom). Dismiss: backdrop, Esc, or x.
 function taliInitLightbox() {
-  if (window.__qmdLightbox) return;
-  window.__qmdLightbox = true;
+  if (window.__taliLightbox) return;
+  window.__taliLightbox = true;
 
   var style = document.createElement('style');
   style.textContent =
@@ -217,7 +217,7 @@ function taliInitLightbox() {
   // Keyboard entry point for the decorated types (images + mermaid), driven by the per-mount
   // decoration below. A `{{< video >}}` is intentionally absent: it is not keyboard-decorated
   // (it keeps native media semantics), and its mouse click-zoom goes through the delegation above.
-  window.__qmdLightboxOpen = function (el) {
+  window.__taliLightboxOpen = function (el) {
     if (el.matches && el.matches('figure img, img.lightbox')) openImg(/** @type {HTMLImageElement} */ (el));
     else if (el.matches && el.matches('pre.mermaid')) { if (el.querySelector('svg')) openMermaid(el); }
   };
@@ -230,7 +230,7 @@ function taliInitLightbox() {
 // gallery nav inside taliInitLightbox are untouched; this only adds the keyboard entry point.
 /** @param {ParentNode | null} [root] */
 function taliDecorateLightbox(root) {
-  taliInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
+  taliInitLightbox(); // ensure the document-level machinery + window.__taliLightboxOpen exist
   var scope = root || document;
   // Images + mermaid diagrams only. A `<video>` keeps its native media semantics: stamping
   // role="button"/aria-label onto it mislabels it in the a11y tree, and the clip already
@@ -261,7 +261,7 @@ function taliDecorateLightbox(root) {
     el.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault(); // stop Space from scrolling the page
-        if (window.__qmdLightboxOpen) window.__qmdLightboxOpen(el);
+        if (window.__taliLightboxOpen) window.__taliLightboxOpen(el);
       }
     });
   });

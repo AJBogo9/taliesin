@@ -5,8 +5,8 @@
 // survives block swaps. Section-heading links get NO preview (they carry no useful
 // extra context beyond their title); table-of-contents links are skipped too.
 function taliInitLinkPreview() {
-  if (window.__qmdLinkPreview) return;
-  window.__qmdLinkPreview = true;
+  if (window.__taliLinkPreview) return;
+  window.__taliLinkPreview = true;
 
   var style = document.createElement('style');
   style.textContent =

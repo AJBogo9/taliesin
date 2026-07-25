@@ -4,7 +4,7 @@
 // works with JS off; this only enhances. The live `#tali-root` mount has no server `<main>`,
 // so the pair is synthesized there. Read-only, deck-skipped, idempotent.
 function taliInitSkipLink() {
-  if (window.__qmdSkipLink) return;
+  if (window.__taliSkipLink) return;
   if (document.querySelector('.tali-deck')) return;
   // `const` (not `var`) so the null-narrowing below survives into the deferred
   // focus closure; the element is mutated in place, never reassigned.
@@ -14,7 +14,7 @@ function taliInitSkipLink() {
     document.querySelector('[data-block-id]')
   );
   if (!main) return;
-  window.__qmdSkipLink = true;
+  window.__taliSkipLink = true;
   if (!main.id) main.id = 'tali-main';
   main.setAttribute('tabindex', '-1');
   // Move focus (not just scroll) so a keyboard reader continues from the content. Wire

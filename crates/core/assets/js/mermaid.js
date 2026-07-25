@@ -99,8 +99,8 @@ function taliRenderMermaid(root) {
     if (pe.dataset.src == null) pe.dataset.src = pe.textContent || '';
   });
   if (window.mermaid) { taliRunMermaid(pending); return; }
-  if (window.__qmdMermaidLoading) return; // its onload will sweep the whole doc
-  window.__qmdMermaidLoading = true;
+  if (window.__taliMermaidLoading) return; // its onload will sweep the whole doc
+  window.__taliMermaidLoading = true;
   var s = document.createElement('script');
   s.src = '{{MERMAID}}';
   s.onload = function () {
@@ -111,7 +111,7 @@ function taliRenderMermaid(root) {
     // later mutation can retry, and make the failure VISIBLE — render a banner in each
     // diagram's place instead of leaving a silent unstyled blob of source. The original
     // source is kept below the banner so nothing is lost (and a retry can restore it).
-    window.__qmdMermaidLoading = false;
+    window.__taliMermaidLoading = false;
     document
       .querySelectorAll('pre.mermaid:not([data-processed])')
       .forEach(taliMermaidShowError);

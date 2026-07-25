@@ -3,9 +3,9 @@
 // read-only: derives from the live DOM and the reader's own localStorage; never writes the
 // author's source. Skipped on decks. Idempotent (document-level, builds once).
 function taliInitReadingProgress() {
-  if (window.__qmdProgress) return;
+  if (window.__taliProgress) return;
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
-  window.__qmdProgress = true;
+  window.__taliProgress = true;
 
   // Top-level content blocks (a [data-block-id] not nested inside another block).
   /** @returns {Element[]} */

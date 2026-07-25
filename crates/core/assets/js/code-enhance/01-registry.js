@@ -31,12 +31,9 @@
       for (var i = 0; i < list.length; i++) run1(list[i], root);
     },
   };
-  // Back-compat: the pre-rename public globals (same live objects).
-  window.qmdEnhancers = window.taliEnhancers;
   var enh = window.taliEnhancers; // captured non-undefined for the entry-point closure
   // The single entry point every caller uses (live client, static build, reveal).
   window.taliEnhanceCode = function (root) { enh.run(root); };
-  window.qmdEnhanceCode = window.taliEnhanceCode;
 })();
 
 // Shared clipboard helper: navigator.clipboard in a secure context, with a hidden-textarea

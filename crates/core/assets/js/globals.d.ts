@@ -13,10 +13,6 @@
 
 interface Window {
   // --- code-enhance registry aliases + reader surfaces -----------------------
-  /** Back-compat alias for `taliEnhanceCode` kept during the qmd->tali rename. */
-  qmdEnhanceCode?: (root: ParentNode | null) => void;
-  /** Back-compat alias for `taliEnhancers` kept during the qmd->tali rename. */
-  qmdEnhancers?: Window['taliEnhancers'];
   /** Reader menu controller (code-enhance/13-reader-menu.js): opens/closes the
    *  reading-tools sheet and lets other fragments dock a section into it. */
   taliReaderMenu?: {
@@ -31,16 +27,12 @@ interface Window {
   /** Internal per-page state bag for the `{js}` runtime (cell registry, teardown
    *  handles, observers). Private to tali-js.js; typed loosely. */
   __talijs?: any;
-  /** Back-compat alias for `taliJs` kept during the qmd->tali rename. */
-  qmdJs?: Window['taliJs'];
   /** Vendored Observable Plot global (plot.umd.min.js), available to `{js}` cells. */
   Plot?: any;
   /** Vendored d3 global (d3.min.js), available to `{js}` cells. */
   d3?: any;
 
   // --- deck engine (deck.js) -------------------------------------------------
-  /** Back-compat alias for `TaliesinDeck` kept during the qmd->tali rename. */
-  QmdDeck?: any;
   /** The deck is rendered inside an `{{< embed >}}` iframe, not standalone. */
   taliDeckEmbedded?: boolean;
   /** Deck-local theme controls (deck.js), distinct from the page theme API. */
@@ -54,7 +46,7 @@ interface Window {
   /** Vendored mermaid API, lazy-attached by the loader shim. */
   mermaid?: any;
   /** In-flight guard so the mermaid bundle is fetched/initialised once. */
-  __qmdMermaidLoading?: boolean;
+  __taliMermaidLoading?: boolean;
 
   // --- link preview / hover cards (code-enhance/12-link-preview.js) ----------
   /** URL of the lazy-loaded cross-page hover-card index. */
@@ -64,16 +56,16 @@ interface Window {
 
   // --- install-once guards (each feature fragment sets its own) --------------
   /** anchor-links (02) shared aria-live region element (announces "Link copied"). */
-  __qmdAnchorLive?: HTMLElement;
+  __taliAnchorLive?: HTMLElement;
   /** Keyboard entry point for the lightbox (11): open the viewer for a decorated
    *  image / mermaid element. Set once taliInitLightbox has run. */
-  __qmdLightboxOpen?: (el: Element) => void;
+  __taliLightboxOpen?: (el: Element) => void;
   /** lightbox (11) document-level machinery has been installed (install-once guard). */
-  __qmdLightbox?: boolean;
-  __qmdLinkPreview?: boolean;
-  __qmdKeyboard?: boolean;
-  __qmdFocus?: boolean;
-  __qmdSkipLink?: boolean;
-  __qmdReaderPrefs?: boolean;
-  __qmdProgress?: boolean;
+  __taliLightbox?: boolean;
+  __taliLinkPreview?: boolean;
+  __taliKeyboard?: boolean;
+  __taliFocus?: boolean;
+  __taliSkipLink?: boolean;
+  __taliReaderPrefs?: boolean;
+  __taliProgress?: boolean;
 }

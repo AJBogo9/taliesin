@@ -59,7 +59,7 @@ fn blocks_lists_block_ids_and_sourcepos() {
         "listing header: {text}"
     );
     assert!(
-        text.contains("qmd-title-block"),
+        text.contains("tali-title-block"),
         "the generated title block is listed: {text}"
     );
     assert!(

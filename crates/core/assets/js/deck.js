@@ -1971,8 +1971,8 @@
   }
   /** @param {any} p */
   function initPlugin(p) {
-    if (!p || p.__qmdInited || typeof p.init !== 'function') return;
-    p.__qmdInited = true;
+    if (!p || p.__taliInited || typeof p.init !== 'function') return;
+    p.__taliInited = true;
     try { p.init(facade); } catch (e) {}
   }
   /** @param {any} p */
@@ -2660,7 +2660,4 @@
   };
 
   window.TaliesinDeck = facade;
-  // Back-compat: the pre-rename public global. Same live object, so every method
-  // (and any spec-added method) is reachable through either name.
-  window.QmdDeck = window.TaliesinDeck;
 })();

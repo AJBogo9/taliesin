@@ -7,15 +7,15 @@
 /** @param {ParentNode | null} [root] */
 function taliInitAnchorLinks(root) {
   if (document.querySelector('.tali-deck')) return;
-  if (!window.__qmdAnchorLive) {
+  if (!window.__taliAnchorLive) {
     var l = document.createElement('span');
     l.className = 'tali-sr-only';
     l.setAttribute('aria-live', 'polite');
     document.body.appendChild(l);
-    window.__qmdAnchorLive = l;
+    window.__taliAnchorLive = l;
   }
   /** @param {string} msg */
-  function announce(msg) { var r = window.__qmdAnchorLive; if (!r) return; r.textContent = ''; r.textContent = msg; }
+  function announce(msg) { var r = window.__taliAnchorLive; if (!r) return; r.textContent = ''; r.textContent = msg; }
   /** @param {Element | null} host @param {string} id */
   function decorate(host, id) {
     if (!host || !id) return;
