@@ -10,10 +10,12 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-25)
 
-**Branch `backlog/band-a-diagnostics`: 13 commits**, stacked on
-`backlog/backlink-context-and-resume` (19 commits ahead of `origin/main`). **Do not trust any SHA
-written here** (see Git under "Standing constraints"); verify with
-`git log --oneline origin/main..HEAD`.
+**Branch `backlog/band-a-diagnostics`: 15 commits** at the end of the band-B batch, stacked on
+`backlog/backlink-context-and-resume` (19 commits ahead of `origin/main`), so **33 unpushed in
+total**. **Nothing is pushed** — the author pushes on request only. **Do not trust any SHA *or
+count* written here** (see Git under "Standing constraints"; this count was itself written one
+commit stale, then corrected): verify with `git log --oneline origin/main..HEAD` and
+`git log --oneline backlog/backlink-context-and-resume..HEAD`.
 
 **Bands A and B are both empty as of the 2026-07-25 band-B batch.** It closed items **11**
 (PA-M3 list semantics, PA-M13 image-alt lint, PA-H1's deck theme-color + social meta), **29**
