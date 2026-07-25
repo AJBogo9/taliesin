@@ -8,9 +8,11 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: SKIM-2 Ship A shipped)
+## State (2026-07-25, latest: SKIM-2 Ship A + SKIM-3a + deck-motion (5) shipped)
 
-**Branch `backlog/skim-batch`.** **Item 23's Ship A is done** (the Cmd-K empty state is now the whole-book
+**Branch `backlog/skim-batch`.** Three items landed after SKIM-1: **23's Ship A**, **24a** (the
+three-state `check` severity floor) and **28's (5)** (the overview column count), which empties item
+28 completely. Ship A is done (the Cmd-K empty state is now the whole-book
 outline; results group by chapter; partial matches survive with `Missing:`; `within1` is Damerau-aware;
 actions keep hard AND). Gates at landing: **1379 tests / 0 fail** across 85 binaries with all three gates
 and `--test-threads=1`; `cargo fmt --check`, `clippy --all-targets` (0 warnings) and both JS `tsc` gates
@@ -147,10 +149,9 @@ What is left now sorts into:
      index shape once, so re-measure the cap's real cost on a fresh build before quoting 18.3%.*
   2. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
      three-state floor) shipped 2026-07-25, so the lints in 24c are no longer gate-blocked either.
-  3. **28's (5)** (S) — viewport-driven overview column count. The only code left in item 28.
-  4. **31** (S) — the contradictory book-chapter label rule, found while building Ship A. One-line
+  3. **31** (S) — the contradictory book-chapter label rule, found while building Ship A. One-line
      precedence flip, but it relabels chapters, so check the dogfood books first.
-  5. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
+  4. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
      put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
      specifically, not the outline as such.
 - **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
@@ -415,7 +416,7 @@ gating tag: a high-impact item can still be frozen or need a ruling.
     digest all produce near-empty output until an authoring pass happens; defer those three rather than
     building them into an empty registry.
 
-28. **Deck-motion: three open decisions, no code left** (detail:
+28. **Deck-motion: decided, no code left** (detail:
     [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)). Option A shipped
     2026-07-24 and its **two residuals shipped 2026-07-25**: overview content flips are now instant
     (a `.tali-nofx` frame suppresses the fragment and magic-move transitions while `.overview`
@@ -430,10 +431,17 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       (the shared-element FLIP rewrite) is declined** — the readability floor closed most of the gap
       it existed for, and a 100+-slide deck is not a shape this tool is being built for. Record it as
       decided, not deferred, so it is not re-costed a third time.
-    - **(5) BUILD THIS ONE (S, the only code left in the item):** choose the overview's column count
-      from the viewport instead of `ceil(sqrt(n))` per run. The per-run square is right for one run
-      and wrong for five, which stack into a tall narrow column. This is the whole remaining scope of
-      item 28.
+    - ~~**(5)**~~ **SHIPPED 2026-07-25.** One wrap count for the whole map, chosen by measuring
+      the map at each candidate count and taking the one whose whole-map fit is largest — rows
+      counted from the REAL run lengths, because `n/cols` under-counts (a run boundary rounds up)
+      and picks a count that then does not fit. **Measured, because the premise needed checking:**
+      on `corpus/deck.tmd` the change is a **no-op at every viewport tested** (that deck's runs
+      already wrap optimally), so the item's shape had to be built to see it. On a 21-slide
+      three-topic deck at 1100x1000 the overview now shows **23 of 25 slides against 13**, at 145 px
+      tiles instead of 218 px — which is the right trade for a glance surface. A
+      coverage-weighted refinement that also modelled the readability-floor fallback was tried
+      and measured **worse** (15 of 25); it is out, and the comment says so. Do not re-refine
+      without measuring.
     **Two LOW tradeoffs flagged to the author and left as-is, not defects:** ctrl+wheel-*down* claims
     browser page-zoom-out over the deck (that *is* the approved gesture), and it also fires inside an
     embedded deck on a scrollable page.
@@ -570,6 +578,19 @@ gating tag: a high-impact item can still be frozen or need a ruling.
       pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are
       already in there**, not as a standalone refactor. Overlaps item 20, which wants exactly one shared
       whole-site pass.
+
+32. **The overview map is framed low, with dead space above it** (P3, S; measured 2026-07-25 while
+    verifying 28's (5), and **pre-existing** — it reproduces identically on a build from before that
+    change, so it is not a regression from it). On a 21-slide three-topic deck at 1100x1000 the map
+    is 626 px tall in a 1000 px viewport (it would fit centred) yet opens at `mapTop` **459 px**, so
+    ~460 px of empty stage sits above it and the last row is clipped 85 px below. The old column
+    count showed the same offset (`mapTop` 439). Suspect `fitOverview`'s `roomy` test
+    (`deck.js`: `all >= floor` → centre on `gw/2, gh/2`, else follow the current tile): the map
+    measurably fits, so `roomy` should be true and it is not — either `gridDims` reports more rows
+    than are placed, or `presentScale()` is read at a moment when it is not yet meaningful. **Trust
+    the symptom, re-derive the cause**; instrument `deck.ov` rather than reasoning from the formula
+    (that is how the 28(5) refinement went wrong). Pin: none exists — the overview is client JS with
+    no server-rendered output, so this needs a browser measurement, not a corpus doc.
 
 31. **A book chapter's label follows two contradictory rules** (P3, S; found 2026-07-25 while building 23
     Ship A, surfaced not fixed because it changes drawer labels project-wide). Measured on

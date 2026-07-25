@@ -99,6 +99,65 @@
   // places each sub-slide from its OWN grid cell (not `v` cells across the wrapper), so
   // a wrapped stack stays in sync with gridRows.
   var OVERVIEW_ROW_MAX = 6; // a run longer than this reflows; up to 6 stays a readable line
+  // How many columns a reflowed run wraps at. This used to be `ceil(sqrt(run.length))`,
+  // computed PER RUN, which makes each run individually square — right for one run and
+  // wrong for five, because five squares stack into a column the overview then has to zoom
+  // past to fit, and the tiles the reflow existed to enlarge come out smaller than before.
+  //
+  // Choose ONE count for the whole map, and choose it by what the reader actually gets:
+  // the size of a tile. For each candidate count the map is `cols x rows` cells and
+  // `fitOverview` frames it at `min(sw/mapW, sh/mapH)`, so pick the count that maximises
+  // that. The row count is computed from the REAL run lengths rather than `n/cols`,
+  // because run boundaries round up — a closed-form estimate silently under-counts rows
+  // and picks a column count that then does not fit.
+  var overviewCols = 0; // 0 = not computed yet; refreshed by layout() + relayoutViewport()
+  /** The map's dimensions if long runs wrapped at `c` columns. A short run is never
+   * wrapped, so it sets the map width on its own.
+   * @param {GridCell[][]} runs @param {number} c */
+  function dimsAtCols(runs, c) {
+    var cols = 1, rows = 0;
+    for (var i = 0; i < runs.length; i++) {
+      var len = runs[i].length;
+      if (len > OVERVIEW_ROW_MAX) {
+        cols = Math.max(cols, Math.min(c, len));
+        rows += Math.ceil(len / c);
+      } else {
+        cols = Math.max(cols, len);
+        rows += 1;
+      }
+    }
+    return { cols: cols, rows: Math.max(1, rows) };
+  }
+  function computeOverviewCols() {
+    var runs = gridRuns();
+    var longest = runs.reduce(function (m, r) { return Math.max(m, r.length); }, 1);
+    if (longest <= OVERVIEW_ROW_MAX) return longest; // nothing wraps; the count is moot
+    var W = deck.config.width, H = deck.config.height;
+    var rev = deckEl();
+    var sw = (rev && rev.clientWidth) || window.innerWidth || W;
+    var sh = (rev && rev.clientHeight) || window.innerHeight || H;
+    // Maximise the scale at which the WHOLE map fits — which is what `fitOverview` frames
+    // it at, and what makes the overview a glance at the whole talk rather than a window
+    // onto part of it. (A coverage-weighted score that also modelled the readability-floor
+    // fallback was tried and measured WORSE on the target shape: 15 of 25 slides on screen
+    // against 23. Simplest rule, best measurement — do not re-refine without measuring.)
+    var best = 1, bestScale = -1;
+    for (var c = 1; c <= longest; c++) {
+      var d = dimsAtCols(runs, c);
+      var scale = Math.min(sw / (d.cols * W), sh / (d.rows * H));
+      // Ties go to the WIDER map: same tile size, but reading order stays left-to-right
+      // and fewer rows means less to pan past when the readability floor takes over.
+      if (scale > bestScale + 1e-9 || (scale > bestScale - 1e-9 && c > best)) {
+        bestScale = scale;
+        best = c;
+      }
+    }
+    return best;
+  }
+  function wrapCols() {
+    if (!overviewCols) overviewCols = computeOverviewCols();
+    return overviewCols;
+  }
   // The grid's two inputs, tracked separately because they change at DIFFERENT MOMENTS
   // (see setOverview): `wrapped` reflows long runs into a block and moves every tile, so
   // it may only run while the camera frames one cell and the move is invisible; `gutter`
@@ -109,29 +168,39 @@
   /** @param {GridCell[][]} rows @param {GridCell[]} run */
   function pushRun(rows, run) {
     if (grid.wrapped && run.length > OVERVIEW_ROW_MAX) {
-      var cols = Math.ceil(Math.sqrt(run.length));
+      var cols = wrapCols();
       for (var i = 0; i < run.length; i += cols) rows.push(run.slice(i, i + cols));
     } else {
       rows.push(run);
     }
   }
+  // The deck's runs BEFORE any overview wrap: one per `#`-section stack (its sub-slides
+  // laid out across) and one per maximal run of consecutive top-level slides. Split out of
+  // gridRows so the column chooser can measure the real run lengths without wrapping them.
   /** @returns {GridCell[][]} */
-  function gridRows() {
+  function gridRuns() {
     var T = tops();
     /** @type {GridCell[][]} */
-    var rows = [];
+    var runs = [];
     /** @type {GridCell[] | null} */
     var run = null;
     for (var h = 0; h < T.length; h++) {
       if (isStack(T[h])) {
-        if (run) { pushRun(rows, run); run = null; }
-        pushRun(rows, vertsOf(T[h]).map(function (sec, v) { return { h: h, v: v }; }));
+        if (run) { runs.push(run); run = null; }
+        runs.push(vertsOf(T[h]).map(function (sec, v) { return { h: h, v: v }; }));
       } else {
         if (!run) run = [];
         run.push({ h: h, v: 0 });
       }
     }
-    if (run) pushRun(rows, run);
+    if (run) runs.push(run);
+    return runs.length ? runs : [[{ h: 0, v: 0 }]];
+  }
+  /** @returns {GridCell[][]} */
+  function gridRows() {
+    /** @type {GridCell[][]} */
+    var rows = [];
+    gridRuns().forEach(function (run) { pushRun(rows, run); });
     return rows.length ? rows : [[{ h: 0, v: 0 }]];
   }
   // The visual (row, col) of a leaf, plus the row grid it came from.
@@ -338,6 +407,7 @@
   function layout() {
     if (!slidesEl()) return;
     grid.wrapped = grid.gutter = deck.overview; // a fresh layout lands in the final state
+    overviewCols = computeOverviewCols();
     positionGrid();
     applyBackgrounds();
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
@@ -351,6 +421,13 @@
   // frame and janked a 100-200 slide deck; late in-slide content re-fits via fitRO instead.
   function relayoutViewport() {
     if (!slidesEl()) return;
+    // The wrap column count IS viewport-derived, so a resize can change the map's shape and
+    // not just its fit. Re-place the tiles when it actually changed — `positionGrid` only
+    // writes inline transforms, so this is not the per-slide re-fit that janked a 200-slide
+    // deck; the `!==` guard keeps a plain resize free.
+    var before = overviewCols;
+    overviewCols = computeOverviewCols();
+    if (deck.overview && overviewCols !== before) positionGrid();
     if (deck.overview) fitOverview();
     setCamera(false);
   }

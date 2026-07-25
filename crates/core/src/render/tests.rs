@@ -3478,6 +3478,32 @@ fn deck_key_sheet_lists_home_end_and_fit_map() {
     );
 }
 
+/// The overview's wrap column count is chosen for the WHOLE map, not per run. Per run,
+/// `ceil(sqrt(run.length))` makes each run individually square, and several squares stack
+/// into a map the overview has to zoom past — browser-measured on a 21-slide three-topic
+/// deck at 1100x1000, that showed 13 of 25 slides where one shared count shows 23.
+/// The layout itself is browser-verified, not corpus-pinned (it is client JS with no
+/// server-rendered output); what this pins is that the per-run square has not come back.
+#[test]
+fn the_overview_wraps_at_one_count_for_the_whole_map() {
+    let js = super::deck::DECK_JS;
+    // Match the CODE, not the word: the explanatory comment names the old formula.
+    assert!(
+        !js.contains("Math.ceil(Math.sqrt(run.length))"),
+        "the wrap count must not be computed per run"
+    );
+    assert!(
+        js.contains("function computeOverviewCols") && js.contains("dimsAtCols"),
+        "the count is chosen by measuring the map at each candidate column count"
+    );
+    // The row count must come from the real run lengths: `n/cols` under-counts, because a
+    // run boundary rounds up, and a count that then does not fit is the bug being fixed.
+    assert!(
+        js.contains("Math.ceil(len / c)"),
+        "rows are counted from the real run lengths, not estimated from the slide total"
+    );
+}
+
 /// PL17: a theorem led by a heading adopts it as the parenthetical title (the same gesture
 /// that names a callout), instead of rendering the heading as body. A hoisted heading keeps
 /// an xref anchor on the title span, and an explicit `title="..."` still wins.
