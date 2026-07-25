@@ -814,11 +814,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
 /// The `new` usage line, printed when a kind/slug is missing and there's no TTY to prompt at.
 /// Derived from `new`'s `--help` synopsis so the two can't drift.
 fn new_usage() -> ExitCode {
-    eprintln!(
-        "usage: {}",
-        crate::command_synopsis("new").unwrap_or("taliesin new <post|page|deck|paper> <slug>")
-    );
-    ExitCode::FAILURE
+    crate::usage_error("new")
 }
 
 /// The `--json` receipt for a scaffold: `{kind?, slug?, created:[...], preview}` as pretty
@@ -909,10 +905,9 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
         }
     }
 
-    let path = *positionals.first().ok_or_else(|| {
-        "usage: taliesin preview <file.tmd|dir> [port] [--port <N>] [--host] [--open] [--no-exec]"
-            .to_string()
-    })?;
+    let path = *positionals
+        .first()
+        .ok_or_else(|| crate::usage_line("preview"))?;
     // `--port` wins over the positional when both are given (the explicit flag is the
     // more deliberate spelling); a present-but-unparseable value is always an error.
     let port = parse_port(flag_port.or_else(|| positionals.get(1).copied()))?;

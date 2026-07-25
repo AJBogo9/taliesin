@@ -178,11 +178,12 @@ fn usage() {
     println!("                             scaffold one document, correct on its first save");
     println!();
     println!("Preview & build");
-    println!("  preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]");
+    println!("  preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
     println!("                             a dir previews the whole SITE with nav + hot reload;");
-    println!("                             default port 4321, replacing this project's own");
-    println!("                             running preview and stepping past anyone else's;");
+    println!("                             default port 4321 (or [port] / --port <N>), replacing");
+    println!("                             this project's own running preview and stepping past");
+    println!("                             anyone else's;");
     println!("                             --host exposes it on your LAN with a QR code");
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
@@ -216,10 +217,12 @@ fn usage() {
     println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
     println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
     println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
-    println!("  read   <file.tmd> [--run]  project the document to plain text (agent-readable;");
     println!(
-        "                             --run executes cells + reports produced figures/output)"
+        "  read   <file.tmd | dir> [--run] [--format human|json]  project the document to plain"
     );
+    println!("                             text (agent-readable; --run executes cells + reports");
+    println!("                             produced figures/output; --format json emits");
+    println!("                             {{path, executed, cells, text}}; a dir reads the book)");
     println!("  render <file.tmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");
     println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
@@ -254,7 +257,7 @@ fn usage() {
 fn subcommand_help(cmd: &str) -> Option<&'static str> {
     let text = match cmd {
         "preview" | "dev" | "serve" => {
-            "taliesin preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]\n\
+            "taliesin preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]\n\
              \n\
              Live preview server (aliases: dev, serve). A file previews one document; a\n\
              directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
@@ -263,12 +266,15 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              back to the next free one.\n\
              \n\
              Flags:\n\
+             \x20 --port <N>  serve on port N (same as the [port] positional, which it wins\n\
+             \x20             over when both are given)\n\
              \x20 --host      bind your LAN + print a QR code for phones (token-gated)\n\
              \x20 --open      launch the default browser at the preview URL\n\
              \x20 --no-exec   render code cells as source, never executing them\n\
              \n\
              Example:\n\
-             \x20 taliesin preview index.tmd --open\n"
+             \x20 taliesin preview index.tmd --open\n\
+             \x20 taliesin preview . --port 4400\n"
         }
         "build" => {
             "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]\n\
@@ -386,15 +392,26 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin skim . | less\n"
         }
         "read" => {
-            "taliesin read <file.tmd>\n\
+            "taliesin read <file.tmd | dir> [--run] [--format human|json]\n\
              \n\
              Project the rendered document to structured plain text (headings, resolved\n\
              \"Figure N\"/cross-reference numbers, callouts, fenced code, math as raw TeX),\n\
              so an agent can read what it made with no browser and no HTML. A VIEW, not an\n\
-             output format. Static: like render it does NOT execute code cells.\n\
+             output format. Static by default: like render it does NOT execute code cells.\n\
+             A directory that is a site reads as the whole book, in chapter order.\n\
+             \n\
+             Flags:\n\
+             \x20 --run            execute the document's cells first, so the projection\n\
+             \x20                  carries real outputs, and report the figures/output each\n\
+             \x20                  cell produced ({js} cells are observed in headless Chrome\n\
+             \x20                  when one is available, else reported as skipped)\n\
+             \x20 --format human|json  json emits {path, executed, cells, text} (agent/jq),\n\
+             \x20                  where text is exactly the human projection;\n\
+             \x20                  --json is shorthand for --format json\n\
              \n\
              Example:\n\
-             \x20 taliesin read post.tmd\n"
+             \x20 taliesin read post.tmd\n\
+             \x20 taliesin read post.tmd --run --format json | jq '.cells[].kind'\n"
         }
         "schema" => {
             "taliesin schema [--out <dir>]\n\
@@ -434,6 +451,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
              \x20 --tour         (deck only) scaffold a guided deck: one slide per feature, explained\n\
              \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
+             \x20 --format human|json  the long spelling of --json\n\
              \x20 -y, --yes      skip the interactive prompt (for scripts run at a terminal)\n\
              \n\
              Example:\n\
@@ -464,7 +482,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin blocks post.tmd\n"
         }
         "init" => {
-            "taliesin init [dir] [--template basic|site|book] [-y]\n\
+            "taliesin init [dir] [--template basic|site|book] [--json] [-y]\n\
              \n\
              Scaffold a starter project into dir (default the current directory) and print\n\
              the preview hint. Refuses to overwrite existing files.\n\
@@ -473,6 +491,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 basic   a one-page site (the default): _site.yml + index.tmd\n\
              \x20 site    a multi-page site: a nav linking a Home and an About page\n\
              \x20 book    a chapters: project: a landing page + two starter chapters\n\
+             \n\
+             Flags:\n\
+             \x20 --template basic|site|book  which starter to scaffold (prompted without it)\n\
+             \x20 --json         print a {created, preview} receipt instead of the hint\n\
+             \x20 --format human|json  the long spelling of --json\n\
+             \x20 -y, --yes      take the basic default without prompting\n\
              \n\
              Every template also writes AGENTS.md (the agent onramp) and the .taliesin/\n\
              config schemas that drive editor autocomplete.\n\
@@ -497,6 +521,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --public               deploy a public, un-gated site (default: passcode-gated;\n\
              \x20                        also settable as publish.gate: false in _site.yml)\n\
              \x20 --no-strict            deploy even if the build has warnings (default: strict)\n\
+             \x20 --strict               ask for the default explicitly (with --no-strict, the\n\
+             \x20                        last one given wins)\n\
              \x20 --dry-run              build + gate, print the deploy command, do not deploy\n\
              \x20 --format json         emit {diagnostics:[…]} from the build to stdout (agent/CI)\n\
              \n\
@@ -547,11 +573,43 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
     Some(text)
 }
 
-/// The one-line synopsis for `cmd` — the first line of [`subcommand_help`] (`taliesin <cmd> …`),
-/// the single source of truth a subcommand's missing-positional `usage:` error derives from, so
-/// it can't drift from the `--help` block. `None` for a command with no focused help.
-pub(crate) fn command_synopsis(cmd: &str) -> Option<&'static str> {
-    subcommand_help(cmd).and_then(|h| h.lines().next())
+/// The synopsis for `cmd` — everything in [`subcommand_help`] before its first blank line
+/// (`taliesin <cmd> …`), the single source of truth a subcommand's missing-positional `usage:`
+/// error derives from, so it can't drift from the `--help` block. `None` for a command with no
+/// focused help.
+///
+/// Not `lines().next()`: a synopsis too long for one line wraps onto an indented continuation,
+/// and reading only the first line silently truncated it. `check`'s wrapped continuation is
+/// where `--require-kernel`/`--stdin`/`--explain` lived.
+pub(crate) fn command_synopsis(cmd: &str) -> Option<String> {
+    let help = subcommand_help(cmd)?;
+    let joined = help
+        .lines()
+        .take_while(|l| !l.trim().is_empty())
+        .map(str::trim)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!joined.is_empty()).then_some(joined)
+}
+
+/// `usage: <synopsis>` for `cmd`: what a subcommand prints when a required positional is
+/// missing. Derived from that command's `--help` synopsis so the two cannot drift — every
+/// subcommand goes through here rather than spelling its own line out, which is gated by
+/// `no_subcommand_hand_writes_its_own_usage_line`.
+pub(crate) fn usage_line(cmd: &str) -> String {
+    // Unreachable for a real subcommand: `subcommand_help_covers_documented_commands` pins
+    // every name in `COMMANDS` to a focused help page. The fallback keeps a typo'd caller
+    // pointing somewhere useful instead of printing a bare `usage:`.
+    match command_synopsis(cmd) {
+        Some(s) => format!("usage: {s}"),
+        None => format!("run `taliesin help` for usage ({cmd} has no focused help)"),
+    }
+}
+
+/// Print [`usage_line`] to stderr and fail — the whole body of a missing-positional arm.
+pub(crate) fn usage_error(cmd: &str) -> std::process::ExitCode {
+    eprintln!("{}", usage_line(cmd));
+    std::process::ExitCode::FAILURE
 }
 
 #[cfg(test)]
@@ -745,6 +803,128 @@ mod cli_microcopy_tests {
         );
     }
 
+    /// Every `.rs` source under this crate, as `(path, text)`, sorted so a failure names the
+    /// same file every run. The two gates below read the sources rather than importing the
+    /// constants, so a *new* parser is covered without anyone remembering to list it.
+    fn server_sources() -> Vec<(std::path::PathBuf, String)> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<(std::path::PathBuf, String)>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().and_then(|s| s.to_str()) == Some("rs") {
+                    let src = std::fs::read_to_string(&p).unwrap();
+                    out.push((p, src));
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut out,
+        );
+        out.sort();
+        out
+    }
+
+    /// The command a `<PREFIX>_FLAGS` const belongs to. Only `SERVE_FLAGS` needs a mapping:
+    /// `preview`'s parser is still named `cmd_serve` because the `serve`/`dev` spellings came
+    /// first, but `preview` is the canonical name and the one with focused help.
+    fn command_for_flag_const(prefix: &str) -> String {
+        match prefix {
+            "SERVE" => "preview".to_string(),
+            p => p.to_ascii_lowercase(),
+        }
+    }
+
+    /// Each argv parser's accepted long-flag set, read out of the `<PREFIX>_FLAGS` const that
+    /// already drives its unknown-flag did-you-mean, paired with its subcommand.
+    fn parser_flag_lists() -> Vec<(String, Vec<String>)> {
+        const MARK: &str = "_FLAGS: &[&str] = &[";
+        let mut out = Vec::new();
+        for (_, src) in server_sources() {
+            for (i, _) in src.match_indices(MARK) {
+                // A top-level `const` only. A flag list declared *inside* a function is a
+                // test fixture or a local carve-out, not a parser's real accepted set, and
+                // it is indented — so requiring `const` at column 0 excludes it.
+                let line_start = src[..i].rfind('\n').map_or(0, |n| n + 1);
+                let Some(prefix) = src[line_start..i].strip_prefix("const ") else {
+                    continue;
+                };
+                let Some(end) = src[i + MARK.len()..].find("];") else {
+                    continue;
+                };
+                let flags: Vec<String> = src[i + MARK.len()..i + MARK.len() + end]
+                    .split('"')
+                    .skip(1)
+                    .step_by(2)
+                    .filter(|s| s.starts_with("--"))
+                    .map(str::to_string)
+                    .collect();
+                out.push((command_for_flag_const(prefix), flags));
+            }
+        }
+        out
+    }
+
+    /// Every long flag a subcommand's parser accepts appears in that subcommand's focused
+    /// `--help`. `preview --port <N>` was parsed, unit-tested, shell-completed and printed in
+    /// its own error line while appearing in **no** help text at all (PA-CLI1), and `read`'s
+    /// `--run` / `--format` were the same (PA-CLI2) — on the least discoverable surface there
+    /// is, the agent-facing JSON mode. One `--jobs`-shaped assertion per flag is what let that
+    /// happen; this compares the two lists mechanically instead.
+    #[test]
+    fn every_parsed_flag_is_documented_in_its_subcommand_help() {
+        let lists = parser_flag_lists();
+        // A scan that finds nothing would pass every assertion below it.
+        assert!(
+            lists.len() >= 10,
+            "the flag-const scan collected only {} lists; the declaration shape moved",
+            lists.len()
+        );
+        // Collected, not asserted per flag: the first miss would otherwise hide the rest, and
+        // the whole point is to see the drift as one list.
+        let mut undocumented: Vec<String> = Vec::new();
+        for (cmd, flags) in lists {
+            assert!(!flags.is_empty(), "`{cmd}`'s flag const parsed as empty");
+            let help =
+                subcommand_help(&cmd).unwrap_or_else(|| panic!("`{cmd}` has no focused help"));
+            for f in flags {
+                // `--json` is clig.dev shorthand for `--format json` (every parser treats it
+                // that way), so documenting `--format` documents both spellings.
+                let documented = help.contains(&f) || (f == "--json" && help.contains("--format"));
+                if !documented {
+                    undocumented.push(format!("{cmd} {f}"));
+                }
+            }
+        }
+        assert!(
+            undocumented.is_empty(),
+            "parsed but documented in no `--help` block: {undocumented:#?}"
+        );
+    }
+
+    /// No subcommand hand-writes its missing-positional `usage:` line: every one derives from
+    /// the `--help` synopsis via [`usage_line`], so the two cannot drift. They already had,
+    /// in both directions — the hand-written `preview` line advertised a `--port` its help
+    /// omitted, while the hand-written `check` line dropped five flags its help documented.
+    #[test]
+    fn no_subcommand_hand_writes_its_own_usage_line() {
+        // Assembled by `concat!`, so this test's own needle does not appear contiguously in
+        // this file and the gate cannot flag itself.
+        let needle = concat!("usage: ", "taliesin ");
+        for (path, src) in server_sources() {
+            if let Some(i) = src.find(needle) {
+                let line = src[..i].matches('\n').count() + 1;
+                panic!(
+                    "{}:{line} spells out a literal usage line; print `crate::usage_line(cmd)` \
+                     instead, so it derives from that command's `--help` synopsis",
+                    path.display()
+                );
+            }
+        }
+    }
+
     /// Names in `COMMANDS` that are an alias of another command, or not a command at all.
     /// `subcommand_help_covers_documented_commands` skips them: `dev`/`serve` resolve to
     /// `preview`'s help, and `help` is the help system rather than an entry in it.
@@ -793,6 +973,27 @@ mod cli_microcopy_tests {
         assert!(
             command_synopsis("build").is_some_and(|s| s.contains("--format json")),
             "the derived `build` usage synopsis must carry --format json"
+        );
+        // A synopsis too long for one line wraps onto an indented continuation, and reading
+        // only the first line dropped it: `check`'s `--require-kernel`/`--stdin`/`--explain`
+        // live there, so `check` with no path advertised two of its seven flags.
+        let check_synopsis = command_synopsis("check").expect("check synopsis");
+        for flag in [
+            "--errors-only",
+            "--strict",
+            "--require-kernel",
+            "--stdin",
+            "--explain",
+        ] {
+            assert!(
+                check_synopsis.contains(flag),
+                "the derived `check` synopsis must carry {flag} from its wrapped continuation: \
+                 {check_synopsis}"
+            );
+        }
+        assert!(
+            !check_synopsis.contains('\n'),
+            "a synopsis is one line once joined: {check_synopsis}"
         );
     }
 }

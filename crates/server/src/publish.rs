@@ -100,10 +100,10 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
             s => positionals.push(s),
         }
     }
-    let path = positionals.first().copied().ok_or_else(|| {
-        "usage: taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run]"
-            .to_string()
-    })?;
+    let path = positionals
+        .first()
+        .copied()
+        .ok_or_else(|| crate::usage_line("publish"))?;
     Ok(PublishArgs {
         path,
         project_name,

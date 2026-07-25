@@ -19,8 +19,7 @@ use std::process::ExitCode;
 
 pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
-        eprintln!("usage: taliesin render <file.tmd>");
-        return ExitCode::FAILURE;
+        return crate::usage_error("render");
     };
     if let Some(msg) = directory_rejection(path, "render renders a single .tmd file") {
         log::error(&msg);
@@ -112,8 +111,7 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: taliesin read <file.tmd> [--run] [--format human|json]");
-        return ExitCode::FAILURE;
+        return crate::usage_error("read");
     };
     if format != "human" && format != "json" {
         log::error(&crate::serve::bad_format_error(Some(format)));
@@ -647,8 +645,7 @@ fn js_cell_result(id: String, outcome: &JsOutcome) -> CellResult {
 
 pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
-        eprintln!("usage: taliesin blocks <file.tmd>");
-        return ExitCode::FAILURE;
+        return crate::usage_error("blocks");
     };
     if let Some(msg) =
         directory_rejection(path, "blocks lists the block model of a single .tmd file")
@@ -1066,8 +1063,7 @@ pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: taliesin map <dir> [--format human|json]");
-        return ExitCode::FAILURE;
+        return crate::usage_error("map");
     };
     if format != "human" && format != "json" {
         log::error(&crate::serve::bad_format_error(Some(format)));
@@ -1136,8 +1132,7 @@ pub(crate) fn cmd_skim(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: taliesin skim <dir> [--format human|json]");
-        return ExitCode::FAILURE;
+        return crate::usage_error("skim");
     };
     if format != "human" && format != "json" {
         log::error(&crate::serve::bad_format_error(Some(format)));
@@ -1336,8 +1331,7 @@ pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: taliesin symbols <file.tmd> [--format human|json]");
-        return ExitCode::FAILURE;
+        return crate::usage_error("symbols");
     };
     if format != "human" && format != "json" {
         log::error(&crate::serve::bad_format_error(Some(format)));

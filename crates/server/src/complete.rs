@@ -29,7 +29,7 @@ pub(crate) fn cmd_completions(args: &[String]) -> ExitCode {
             ExitCode::SUCCESS
         }
         None => {
-            log::error("usage: taliesin completions <bash|zsh|fish|powershell> [--install]");
+            eprintln!("{}", crate::usage_line("completions"));
             ExitCode::FAILURE
         }
     }

@@ -745,8 +745,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         };
     }
     let Some(path) = path else {
-        eprintln!("usage: taliesin check <file.tmd|dir> [--format human|json]");
-        return ExitCode::FAILURE;
+        return crate::usage_error("check");
     };
     let target = Path::new(path);
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
