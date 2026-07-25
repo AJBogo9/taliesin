@@ -356,7 +356,7 @@ impl ForkserverDaemon {
             }
             b.create(&helper_dir)?;
         }
-        let helper_path = helper_dir.join("qmd_forkserver.py");
+        let helper_path = helper_dir.join("tali_forkserver.py");
         std::fs::write(&helper_path, FORKSERVER_HELPER)?;
 
         let preload_json = serde_json::to_string(PRELOAD_CANDIDATES).unwrap();

@@ -74,7 +74,7 @@ const build = async () => {
     });
   } catch (e) {
     el = document.createElement("p");
-    el.className = "qmd-muted";
+    el.className = "tali-muted";
     el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
   }
   host.replaceChildren(el);
@@ -141,7 +141,7 @@ const build = async () => {
     });
   } catch (e) {
     el = document.createElement("p");
-    el.className = "qmd-muted";
+    el.className = "tali-muted";
     el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
   }
   host.replaceChildren(el);
@@ -180,13 +180,13 @@ wrap.style.cssText = "min-height:300px;display:flex;flex-direction:column;gap:16
 const tile = (t, hi) => {
   const d = document.createElement("div");
   d.textContent = t;
-  d.style.cssText = "padding:12px 18px;border-radius:8px;font:600 14px/1.2 var(--qmd-font-head);text-align:center;min-width:170px;"
-    + (hi ? "border:1px solid var(--qmd-accent);background:var(--qmd-accent);color:#fff"
-          : "border:1px solid var(--qmd-border);background:var(--qmd-code-bg);color:var(--qmd-fg)");
+  d.style.cssText = "padding:12px 18px;border-radius:8px;font:600 14px/1.2 var(--tali-font-head);text-align:center;min-width:170px;"
+    + (hi ? "border:1px solid var(--tali-accent);background:var(--tali-accent);color:#fff"
+          : "border:1px solid var(--tali-border);background:var(--tali-code-bg);color:var(--tali-fg)");
   return d;
 };
 const group = (dir, ...k) => { const g = document.createElement("div"); g.style.cssText = `display:flex;flex-direction:${dir};gap:12px;flex-wrap:wrap;justify-content:center`; k.forEach(x => g.append(x)); return g; };
-const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--qmd-muted)"; return p; };
+const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--tali-muted)"; return p; };
 const views = {
   "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
   "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
@@ -223,13 +223,13 @@ wrap.style.cssText = "min-height:300px;display:flex;flex-direction:column;gap:16
 const tile = (t, hi) => {
   const d = document.createElement("div");
   d.textContent = t;
-  d.style.cssText = "padding:12px 18px;border-radius:8px;font:600 14px/1.2 var(--qmd-font-head);text-align:center;min-width:170px;"
-    + (hi ? "border:1px solid var(--qmd-accent);background:var(--qmd-accent);color:#fff"
-          : "border:1px solid var(--qmd-border);background:var(--qmd-code-bg);color:var(--qmd-fg)");
+  d.style.cssText = "padding:12px 18px;border-radius:8px;font:600 14px/1.2 var(--tali-font-head);text-align:center;min-width:170px;"
+    + (hi ? "border:1px solid var(--tali-accent);background:var(--tali-accent);color:#fff"
+          : "border:1px solid var(--tali-border);background:var(--tali-code-bg);color:var(--tali-fg)");
   return d;
 };
 const group = (dir, ...k) => { const g = document.createElement("div"); g.style.cssText = `display:flex;flex-direction:${dir};gap:12px;flex-wrap:wrap;justify-content:center`; k.forEach(x => g.append(x)); return g; };
-const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--qmd-muted)"; return p; };
+const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--tali-muted)"; return p; };
 const views = {
   "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
   "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],

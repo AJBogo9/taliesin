@@ -114,7 +114,7 @@ jobs:
           node-version: "20"
       - name: Type-check the client JS
         run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
-      # The bundled browser scripts (the code-enhance/ fragments, deck.js, qmd-js.js,
+      # The bundled browser scripts (the code-enhance/ fragments, deck.js, tali-js.js,
       # mermaid/scrolly/tabset/walkthrough) ship to every page and had no type gate;
       # this keeps them at strict-zero the same way the client JS is kept honest.
       - name: Type-check the bundled assets JS

@@ -2,7 +2,7 @@
 //!
 //! Every other test in the suite asserts on string literals that live in the same
 //! file as the emitter, so a rename moves both sides together and nothing fails.
-//! (Measured 2026-07-25: a blanket `qmd` -> `tali` substitution over the tree built
+//! (Measured 2026-07-25: a blanket rename of the retired prefix over the tree built
 //! clean and changed the state of 5 of 1387 tests, 3 of them only block-id hash
 //! drift.) This file is the one place a change to the `data-*` vocabulary must be
 //! declared by hand, which makes an incomplete rename a visible diff instead of a

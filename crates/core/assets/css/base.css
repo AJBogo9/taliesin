@@ -52,7 +52,7 @@
   .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
   @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
-  /* Focus / reading mode (qmdInitFocusMode): hide site chrome and centre the prose into one
+  /* Focus / reading mode (taliInitFocusMode): hide site chrome and centre the prose into one
      calm column. Reader-side + ephemeral. The reader-menu launcher and the progress bar stay
      (the exit path + reading support); decks never get the class. */
   body.tali-focus .tali-site-nav, body.tali-focus .tali-site-footer,
@@ -68,7 +68,7 @@
      recentred column. Match it to the same centred 46rem measure. */
   body.tali-focus .tali-book-postnav { width: auto; max-width: var(--tali-maxw); margin-inline: auto; }
 
-  /* Reading progress (top bar + "min left") + block-id-anchored resume (qmdInitReadingProgress). */
+  /* Reading progress (top bar + "min left") + block-id-anchored resume (taliInitReadingProgress). */
   .tali-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
     z-index: 2147481400; pointer-events: none; }
   .tali-readbar-fill { height: 100%; width: 0; background: var(--tali-accent);
@@ -173,7 +173,7 @@
   figure, .tali-figure { break-inside: avoid; }
   figcaption { break-before: avoid; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid; }
-  /* Skip-to-content link (qmdInitSkipLink): hidden until focused, then pinned top-left. */
+  /* Skip-to-content link (taliInitSkipLink): hidden until focused, then pinned top-left. */
   .tali-skip { position: fixed; top: -3rem; left: .5rem; z-index: 2147482000;
     background: var(--tali-fg); color: var(--tali-bg); padding: .5rem .8rem;
     border-radius: var(--tali-radius-md); font: 600 .9rem var(--tali-font-head); text-decoration: none; }
@@ -212,7 +212,7 @@
   a.btn-outline-secondary { border-color: var(--tali-border-strong); color: var(--tali-muted); }
   a.btn-outline-secondary:hover { background: var(--tali-fg); color: var(--tali-bg); border-color: var(--tali-fg); }
   a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
-  /* Embedded slide deck (`{{< embed deck.qmd >}}`): a 16:9 iframe that isolates the
+  /* Embedded slide deck (`{{< embed deck.tmd >}}`): a 16:9 iframe that isolates the
      deck's full-viewport CSS/JS/keyboard from the page, plus fullscreen + open. */
   .tali-embed { margin: 1.6rem 0; }
   .tali-embed-stage { position: relative; width: 100%; aspect-ratio: 16 / 9;
@@ -312,7 +312,7 @@
      `.hero p`/`.feature p` etc. keep their own tighter margins by specificity. */
   p { margin: 0 0 1.1rem; }
   hr { border: 0; border-top: 1px solid var(--tali-border); margin: 2rem 0; }
-  /* Anchor copy-link (qmdInitAnchorLinks): a `#` revealed on hover/focus of a heading or a
+  /* Anchor copy-link (taliInitAnchorLinks): a `#` revealed on hover/focus of a heading or a
      float caption; clicking copies that anchor's canonical deep link. Reader-side. */
   .tali-anchor { position: relative; margin-left: .35em; color: var(--tali-muted);
     text-decoration: none; font-weight: 400; opacity: 0;

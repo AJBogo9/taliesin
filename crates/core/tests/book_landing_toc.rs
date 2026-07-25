@@ -1,7 +1,7 @@
 //! B2: the book landing-page auto-TOC (the hardcover Contents list).
 //!
 //! Renders the corpus `demo-book/` and pins: the landing (`index.html`) grows a
-//! `qmd-book-toc` Contents nav listing the numbered chapters + the "Core" part divider,
+//! `tali-book-toc` Contents nav listing the numbered chapters + the "Core" part divider,
 //! in order, each linking its `.html`; a chapter with a `description:` shows its blurb and
 //! one without shows none; the landing does not link to itself; a chapter page renders no
 //! landing TOC; and a plain (non-book) website landing renders none either.
@@ -16,7 +16,7 @@ fn the_book_landing_lists_chapters_parts_and_a_blurb() {
     let site = Site::discover(&corpus_dir().join("demo-book"));
     let html = site.render_page("index.tmd").expect("renders");
     assert!(
-        html.contains("data-block-id=\"qmd-book-toc\""),
+        html.contains("data-block-id=\"tali-book-toc\""),
         "the book landing must grow a Contents nav: {html}"
     );
     assert!(html.contains(">Contents<"));
@@ -49,7 +49,7 @@ fn a_chapter_page_has_no_landing_toc() {
     let site = Site::discover(&corpus_dir().join("demo-book"));
     let html = site.render_page("methods.tmd").expect("renders");
     assert!(
-        !html.contains("qmd-book-toc"),
+        !html.contains("tali-book-toc"),
         "only the landing page carries the Contents nav, not a chapter"
     );
 }
@@ -68,7 +68,7 @@ fn a_non_book_website_landing_has_no_book_toc() {
     let site = Site::discover(&d.0);
     let html = site.render_page("index.tmd").expect("renders");
     assert!(
-        !html.contains("qmd-book-toc"),
+        !html.contains("tali-book-toc"),
         "a non-book website landing must not grow a book Contents nav"
     );
 }

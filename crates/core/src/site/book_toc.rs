@@ -7,7 +7,7 @@
 //! blurb. Additive: the per-page scrollspy TOC and the chapter drawer are untouched
 //! (the 2026-07-06 "keep both nav surfaces" decision).
 //!
-//! It is a generated content block (`qmd-book-toc`, no sourcepos) appended in
+//! It is a generated content block (`tali-book-toc`, no sourcepos) appended in
 //! `finish_blocks`, exactly like `attach_backlinks`/`attach_cite_this` — NOT a chrome
 //! slot, so it cannot collide with the drawer's `[data-tali-drawer-close]` markup. The
 //! class prefix is deliberately `tali-btoc-*`, never the drawer's `.tali-book-chapter`.
@@ -34,7 +34,7 @@ pub(super) fn render_book_toc(
     let up = "../".repeat(current_url.matches('/').count());
     let mut s = String::from(
         "<nav class=\"tali-book-landing-toc\" aria-labelledby=\"tali-btoc-h\" \
-         data-block-id=\"qmd-book-toc\">\
+         data-block-id=\"tali-book-toc\">\
          <h2 id=\"tali-btoc-h\" class=\"tali-btoc-title\">Contents</h2>\
          <ul class=\"tali-btoc-list\">",
     );
@@ -104,7 +104,7 @@ impl Site {
         };
         if let Some(html) = render_book_toc(&book.entries, &page.url, desc_of) {
             blocks.push(Block {
-                id: "qmd-book-toc".to_string(),
+                id: "tali-book-toc".to_string(),
                 sourcepos: String::new(),
                 source_file: None,
                 html,
@@ -152,7 +152,7 @@ mod tests {
     fn lists_numbered_chapters_and_the_part_divider_in_order() {
         let html = render_book_toc(&demo_entries(), "index.html", |_| None).unwrap();
         assert!(
-            html.contains("data-block-id=\"qmd-book-toc\""),
+            html.contains("data-block-id=\"tali-book-toc\""),
             "got: {html}"
         );
         assert!(html.contains(">Contents<"));

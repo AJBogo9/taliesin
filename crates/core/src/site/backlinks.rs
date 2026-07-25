@@ -37,7 +37,7 @@ pub(super) fn build_backlink_index(
 
 /// The muted "Referenced by" line for the target `anchor`, listing each referring
 /// page as a quiet link. Emitted as a single-root block carrying its own
-/// `data-block-id` (`qmd-backref-<anchor>`) — the incremental client mounts only a
+/// `data-block-id` (`tali-backref-<anchor>`) — the incremental client mounts only a
 /// block's `firstElementChild`, so the line must be one root element, spliced into
 /// the block stream as its own block rather than appended to the target's block.
 /// `referrers` is `(href, page title)` in document order; the href is already
@@ -52,7 +52,7 @@ fn render_backrefs_line(anchor: &str, referrers: &[(String, String)]) -> String 
     // `Block.id` the diff keys on (built the same way in `attach_backlinks`). The `↳`
     // is decorative — `aria-hidden` so assistive tech announces only "Referenced by …".
     let mut out = format!(
-        "<div class=\"tali-backrefs\" data-block-id=\"qmd-backref-{anchor}\">\
+        "<div class=\"tali-backrefs\" data-block-id=\"tali-backref-{anchor}\">\
          <span aria-hidden=\"true\">\u{21b3}</span> Referenced by "
     );
     for (i, (href, label)) in referrers.iter().enumerate() {
@@ -74,7 +74,7 @@ impl Site {
     /// this page that other pages cross-reference. Called right after
     /// [`resolve_cross_refs`](Site::resolve_cross_refs) in `finish_blocks`, so the
     /// static build and the live preview inject identically. Each line is its own
-    /// single-root block (`qmd-backref-<anchor>`, no sourcepos) so the incremental
+    /// single-root block (`tali-backref-<anchor>`, no sourcepos) so the incremental
     /// client mounts it cleanly. A no-op when nothing cross-references this page's
     /// targets.
     pub(super) fn attach_backlinks(&self, blocks: &mut Vec<Block>, current_url: &str) {
@@ -113,7 +113,7 @@ impl Site {
                 let html = render_backrefs_line(anchor, &links);
                 if !html.is_empty() {
                     out.push(Block {
-                        id: format!("qmd-backref-{anchor}"),
+                        id: format!("tali-backref-{anchor}"),
                         sourcepos: String::new(),
                         source_file: None,
                         html,
@@ -209,7 +209,7 @@ mod tests {
         // mounts only `firstElementChild`, so the line must be one root element).
         assert!(
             html.starts_with(
-                r#"<div class="tali-backrefs" data-block-id="qmd-backref-fig-scree">"#
+                r#"<div class="tali-backrefs" data-block-id="tali-backref-fig-scree">"#
             )
         );
         assert!(html.trim_end().ends_with("</div>"));

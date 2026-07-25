@@ -1150,13 +1150,13 @@ fn render_internal_impl(
         // outline opens at an H2/H3 card with no page context. Inject a visually-hidden `<h1>`
         // — but only when the body carries no `<h1>` of its own, so a `hero:` landing (which
         // renders its own `<h1>`) never gets a duplicate.
-        let mut h1 = String::from("<h1 class=\"tali-sr-only\" data-block-id=\"qmd-sr-title\">");
+        let mut h1 = String::from("<h1 class=\"tali-sr-only\" data-block-id=\"tali-sr-title\">");
         escape_html(t, &mut h1);
         h1.push_str("</h1>");
         blocks.insert(
             0,
             Block {
-                id: "qmd-sr-title".to_string(),
+                id: "tali-sr-title".to_string(),
                 sourcepos: String::new(),
                 source_file: None,
                 html: h1,

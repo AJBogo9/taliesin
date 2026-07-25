@@ -104,8 +104,8 @@ ships in-repo, at `editor/vscode/`: the **Taliesin Companion**. It is the concre
 
 It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
 editor/vscode && npm install && npm run build`, then **F5** to launch an Extension
-Development Host). A single command, `qmdFast.openPreview` (command palette or the
-editor-title button on a `.tmd`), and one setting, `qmdFast.path` (the binary, when
+Development Host). A single command, `taliesin.openPreview` (command palette or the
+editor-title button on a `.tmd`), and one setting, `taliesin.path` (the binary, when
 `taliesin` is not on `PATH`), are its whole surface.
 
 The host architecture is deliberately thin:
@@ -114,9 +114,9 @@ The host architecture is deliberately thin:
   token never enters the picture) and embeds that URL in a webview via
   `vscode.env.asExternalUri`;
 - a small **relay** HTML document inside the webview bridges the preview iframe's
-  `postMessage` protocol to and from the extension host. Forward sync (`qmd-goto`) calls
+  `postMessage` protocol to and from the extension host. Forward sync (`tali-goto`) calls
   `revealRange` to move the editor cursor; reverse sync turns a cursor move into a
-  debounced `qmd-cursor`, which the client resolves with `highlightAtLine` (and, in a
+  debounced `tali-cursor`, which the client resolves with `highlightAtLine` (and, in a
   deck, jumps `TaliesinDeck` to the containing slide).
 
 The companion **never writes back to the source**: it only navigates and highlights,

@@ -601,7 +601,7 @@ mod tests {
         assert!(s.contains("application/tali-js"), "selects js cell scripts");
         assert!(s.contains("data-tali-done"), "waits on the settle signal");
         // Key on the ANCHORED prefix-strip, not a bare `tali-js-` substring: after the
-        // qmd -> tali rename the loose form is also satisfied by the `.tali-js-error`
+        // rename to the tali-* prefix the loose form is also satisfied by the `.tali-js-error`
         // selector further down this same script, which made the assertion vacuous.
         assert!(
             s.contains("/^tali-js-/") && s.contains("data-target"),

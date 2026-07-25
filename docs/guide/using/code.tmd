@@ -166,7 +166,7 @@ synthesis and watch the curve sharpen:
 //| viewof: harmonics
 //| echo: false
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("Harmonics ");
 const input = document.createElement("input");
 input.type = "range";

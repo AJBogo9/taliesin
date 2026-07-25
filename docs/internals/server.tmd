@@ -136,7 +136,7 @@ code). That also means anyone on the network could reach it, so a shared guard i
 `serve.rs` (`new_session_token` / `lan_access` / `lan_token_guard`, installed via
 `with_lan_guard` on both servers) gates **non-loopback** requests behind a
 per-session token: the token is a random UUID minted at startup, threaded into the
-LAN URL/QR as `?t=…`, and the first tokened load sets a `qmd_token` cookie so the
+LAN URL/QR as `?t=…`, and the first tokened load sets a `tali_token` cookie so the
 rest of the session (assets, the websocket upgrade, reloads) authenticates with no
 client changes. Loopback peers are detected from `ConnectInfo` and exempted, so the
 local workflow (and the editor companion) is unaffected; a non-loopback request with

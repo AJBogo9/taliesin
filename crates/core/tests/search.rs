@@ -12,7 +12,7 @@ use common::TempProj;
 #[test]
 fn cross_page_search_wires_a_script_loadable_index_not_a_raw_fetch() {
     // The cross-page index must load via a `<script>`-loadable URL (a `.js` that
-    // assigns window.QMD_SEARCH_INDEX), which works under file:// too. A raw
+    // assigns window.TALIESIN_SEARCH_INDEX), which works under file:// too. A raw
     // `search.json` fetched with fetch() is CORS-blocked on file://, silently
     // killing Cmd-K when a book is opened from disk (the author's bug report).
     let d = TempProj::new();

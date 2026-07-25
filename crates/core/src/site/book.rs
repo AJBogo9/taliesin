@@ -1,6 +1,6 @@
 //! Book project model: chapter navigation (`Book`/`BookEntry` from
 //! `book: chapters:`) and the per-chapter page set. `use super::*` reaches Page,
-//! parse_front_matter, qmd_to_html, etc.
+//! parse_front_matter, tmd_to_html, etc.
 
 use super::*;
 
@@ -198,7 +198,7 @@ fn push_chapter(
                 .unwrap_or(&rel)
                 .to_string()
         });
-    // The `index.{tmd,qmd}` preface is unnumbered by convention.
+    // The `index.tmd` preface is unnumbered by convention.
     let number = if unnumbered || crate::ext::strip_source_ext(&rel) == Some("index") {
         None
     } else {
@@ -209,7 +209,7 @@ fn push_chapter(
         part: None,
         number,
         title,
-        url: qmd_to_html(&rel),
+        url: tmd_to_html(&rel),
         rel,
         draft: fm.draft,
         depth: 0, // only a part header nests; a chapter is always a leaf

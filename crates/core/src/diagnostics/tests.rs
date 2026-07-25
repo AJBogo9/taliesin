@@ -60,11 +60,11 @@ fn local_links_skip_xref_links() {
 }
 
 #[test]
-fn local_links_flag_html_link_whose_only_source_is_qmd() {
+fn local_links_flag_html_link_whose_only_source_is_the_retired_ext() {
     // After the .tmd-only flip, a `.qmd` file on disk is no longer a recognized source:
     // an `.html` link (or directory link) whose only on-disk source is `.qmd` is now
     // flagged broken, same as any other missing target.
-    let dir = Tmp::new("links-html-qmd-gone");
+    let dir = Tmp::new("links-html-retired-ext-gone");
     std::fs::write(dir.0.join("page.qmd"), "x").unwrap();
     std::fs::create_dir_all(dir.0.join("guide")).unwrap();
     std::fs::write(dir.0.join("guide/index.qmd"), "x").unwrap();
@@ -83,7 +83,7 @@ fn local_links_flag_html_link_whose_only_source_is_qmd() {
 
 #[test]
 fn local_links_accept_html_link_with_tmd_source() {
-    // Unlike `local_links_flag_html_link_whose_only_source_is_qmd`, the on-disk source
+    // Unlike `local_links_flag_html_link_whose_only_source_is_the_retired_ext`, the on-disk source
     // here is spelled `.tmd` (Taliesin's native and only source extension), so the
     // probe finds it and the `.html` link resolves clean.
     let dir = Tmp::new("links-html-tmd");

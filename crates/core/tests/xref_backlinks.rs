@@ -18,7 +18,7 @@ fn methods_targets_show_referenced_by_results() {
     // Each cross-referenced target on this page gets its own backref block.
     for anchor in ["sec-methods", "sec-setup", "thm-kl"] {
         assert!(
-            methods.contains(&format!("data-block-id=\"qmd-backref-{anchor}\"")),
+            methods.contains(&format!("data-block-id=\"tali-backref-{anchor}\"")),
             "methods.html is missing the backref block for {anchor}"
         );
     }
@@ -41,7 +41,7 @@ fn same_page_reference_is_not_a_backlink() {
     let site = Site::discover(&corpus_dir().join("demo-book"));
     let methods = site.render_page("methods.tmd").expect("methods renders");
     let block = methods
-        .split(r#"data-block-id="qmd-backref-thm-kl""#)
+        .split(r#"data-block-id="tali-backref-thm-kl""#)
         .nth(1)
         .expect("thm-kl backref block present")
         .split("</div>")
@@ -63,11 +63,11 @@ fn a_page_that_defines_no_referenced_targets_has_no_backrefs() {
     // property results.tmd used to have. Referring is not defining: a referrer gets no
     // backref block of its own.
     let summary = site.render_page("summary.tmd").expect("summary renders");
-    // Check for the backref BLOCK (its `qmd-backref-` block id), not the class name
+    // Check for the backref BLOCK (its `tali-backref-` block id), not the class name
     // `tali-backrefs` — the latter also appears in the inlined `.tali-backrefs` CSS
     // rule in every page's <head>, so it is not a reliable "no backref line" signal.
     assert!(
-        !summary.contains("qmd-backref-"),
+        !summary.contains("tali-backref-"),
         "summary.tmd defines no referenced-to anchors, so it shows no backref block"
     );
 }
@@ -80,7 +80,7 @@ fn a_cell_labelled_figure_is_backlinked_like_a_brace_id_one() {
     let site = Site::discover(&corpus_dir().join("demo-book"));
     let results = site.render_page("results.tmd").expect("results renders");
     assert!(
-        results.contains(r#"data-block-id="qmd-backref-fig-stages""#),
+        results.contains(r#"data-block-id="tali-backref-fig-stages""#),
         "the cell-labelled fig-stages should show a backref block for summary.tmd"
     );
     // Labelled "Wrap-up", not "Summary": `_site.yml` gives summary.tmd a `text:` override,

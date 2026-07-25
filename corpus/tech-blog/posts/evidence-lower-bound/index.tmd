@@ -190,7 +190,7 @@ define(
 //| viewof: iter
 //| echo: false
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("VI iteration ");
 const input = document.createElement("input");
 input.type = "range";

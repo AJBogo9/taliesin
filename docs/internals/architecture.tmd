@@ -282,7 +282,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 `web-client/`, the browser preview (vanilla JS, no build step): `client.js`
 (mounts blocks, applies ops, the dev menu, click-to-source), `search.js` (the
 Cmd-K palette), `toc-spy.js` (the scrollspy). The core also ships JS *assets*
-(`code-enhance.js` with the `window.qmdEnhancers` registry, `mermaid.js`) that
+(`code-enhance.js` with the `window.taliEnhancers` registry, `mermaid.js`) that
 both the live client and the static build inject.
 
 The next two chapters go deeper: [the rendering pipeline](rendering.tmd) (how a

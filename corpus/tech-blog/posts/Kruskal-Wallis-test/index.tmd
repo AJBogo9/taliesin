@@ -142,7 +142,7 @@ For deducing whether one protocol produces less pain than another, we don't need
 //| echo: false
 
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("← original values  ·  ranks → ");
 const input = document.createElement("input");
 input.type = "range";

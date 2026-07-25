@@ -37,11 +37,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_tmd_only_rejects_qmd_and_others() {
+    fn accepts_tmd_only_rejects_the_retired_ext_and_others() {
         assert!(is_source_ext("tmd"));
         assert!(
             !is_source_ext("qmd"),
-            "qmd is no longer an accepted source extension"
+            ".qmd is no longer an accepted source extension"
         );
         assert!(!is_source_ext("md") && !is_source_ext("html") && !is_source_ext(""));
         assert!(is_source_path(Path::new("a/b/index.tmd")));
@@ -57,7 +57,7 @@ mod tests {
         assert_eq!(
             strip_source_ext("sub/index.qmd"),
             None,
-            "qmd is no longer an accepted source extension"
+            ".qmd is no longer an accepted source extension"
         );
     }
 }

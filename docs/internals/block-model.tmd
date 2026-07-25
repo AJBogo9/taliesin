@@ -244,8 +244,8 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
   and the *original* line: click-to-source works across files.
 - **Reverse (editor → preview).** The client also speaks a `postMessage` protocol
   as the integration surface for an embedded editor host. The in-repo [VS Code
-  companion](extending.tmd) is that host: the client posts `qmd-goto` up to it (which
-  reveals the source), and accepts `qmd-cursor {file, line}` to highlight/scroll to the
+  companion](extending.tmd) is that host: the client posts `tali-goto` up to it (which
+  reveals the source), and accepts `tali-cursor {file, line}` to highlight/scroll to the
   block whose `data-sourcepos` covers that line (in a deck, jumping to the containing
   slide). So an editor can host the preview and add cursor sync without forking the
   client.

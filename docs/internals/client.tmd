@@ -37,7 +37,7 @@ with each one.
 
 The first paint is the subtle case. Because the body is server-rendered, the very
 first `full_render` after connect is **identical** to what is already on screen, so
-the client *skips* the destructive part of mounting it (a `window.QMD_SSR` flag,
+the client *skips* the destructive part of mounting it (a `window.TALIESIN_SSR` flag,
 consumed once): no `resetJs()` teardown of `{js}` cells and no `root.innerHTML`
 replacement, so there is no flash. It does *not* skip the `afterChange()` pass that
 runs after every render, so the deck is still initialized (the first `syncDeck`
@@ -49,7 +49,7 @@ For the incremental ops, every block is found by its `data-block-id`
 (`elById(id)`, a `[data-block-id="…"]` query with `CSS.escape`):
 
 - **`update`** finds the target and `replaceWith`s a fresh element built from the
-  HTML, then pulses it (`qmd-flash`) so the change is visible.
+  HTML, then pulses it (`tali-flash`) so the change is visible.
 - **`insert`** builds the element and places it after `after_id` (or `prepend`s it
   when `after_id` is null). Because block ids are unique, it first drops any element
   already carrying the incoming id; the server emits all removes before any inserts,
@@ -66,7 +66,7 @@ For the incremental ops, every block is found by its `data-block-id`
   click-to-source.
 
 The other server messages are handled too: `diagnostics` repaints the issue panel,
-`style` hot-swaps the theme `<style id="qmd-theme">` in place (no reload, so scroll
+`style` hot-swaps the theme `<style id="tali-theme">` in place (no reload, so scroll
 and the current slide survive a theme edit), `error` raises a full-screen overlay
 over the last good content, and `reload` (sent after a kernel restart or a config
 change) does a plain `location.reload()`.
@@ -85,7 +85,7 @@ go out only when the socket is `OPEN`.
 
 ### The dev control bar
 
-The preview's only chrome is one collapsed corner widget, `#qmd-controls`: a `</>`
+The preview's only chrome is one collapsed corner widget, `#tali-controls`: a `</>`
 toggle carrying the live-status dot, expanding to a panel of preview-only tools. The
 panel shows the connection status, the word/reading-time count, the Alt-click hint,
 a Restart-kernel button, and (only in single-doc preview, where there is no site
@@ -113,7 +113,7 @@ reader's place.
 `afterChange()` runs after each mount and re-attaches everything that lives
 *outside* the block model: it re-syncs the deck, rebuilds the live TOC, re-inits the
 scrollspy against the fresh nav, recomputes the word count, re-runs the code
-enhancers (`window.qmdEnhanceCode(root)`), and re-scans for cell errors and a11y
+enhancers (`window.taliEnhanceCode(root)`), and re-scans for cell errors and a11y
 issues. `set_meta` deliberately **skips** `afterChange()`, because nothing was
 rendered.
 
@@ -151,7 +151,7 @@ nested block beats its container. If no block *contains* the line (the cursor is
 a blank line between blocks), it falls back to the **nearest block starting before
 it**.
 
-The chosen block gets a `qmd-hl` outline (any previous one is cleared first), and
+The chosen block gets a `tali-hl` outline (any previous one is cleared first), and
 then the view follows the cursor:
 
 - in a normal page, the block is scrolled into view only if it is off-screen
@@ -172,8 +172,8 @@ parent frame can use it.
 
 | Direction | Message | Payload | Meaning |
 |---|---|---|---|
-| client → parent | `qmd-goto` | `source_file`, `sourcepos` (plus `block_id` on a `data-block-id` click) | Forward click-to-source: reveal this source line in the editor. |
-| parent → client | `qmd-cursor` | `file`, `line` | The editor cursor moved; highlight/scroll to the covering block. |
+| client → parent | `tali-goto` | `source_file`, `sourcepos` (plus `block_id` on a `data-block-id` click) | Forward click-to-source: reveal this source line in the editor. |
+| parent → client | `tali-cursor` | `file`, `line` | The editor cursor moved; highlight/scroll to the covering block. |
 
 `block_id` rides along only on the `data-block-id` click path; a located-diagnostic
 click and a `data-tali-src` click post just `{ source_file, sourcepos }`. The host
@@ -181,19 +181,19 @@ needs only the file and line, so the field is informational.
 
 The client decides which transport to use from whether it is framed
 (`window.parent !== window`). When it is framed, Alt-clicking a block (or clicking a
-located diagnostic) posts a `qmd-goto` up to the parent rather than navigating;
+located diagnostic) posts a `tali-goto` up to the parent rather than navigating;
 the host turns that into an editor `revealRange`. When it is *not* framed, the same
 gesture opens a `vscode://file/<path>:<line>:<col>` deep link directly. Inbound,
-`window.addEventListener("message", …)` listens for `qmd-cursor` and calls
+`window.addEventListener("message", …)` listens for `tali-cursor` and calls
 `highlightAtLine(m.file, m.line)`.
 
 ::: {.callout-important}
 ## The preview never writes back
 
 The bridge is deliberately one-way as a *write* path: click-to-source and
-`qmd-cursor` both only **navigate** and **highlight**. The `.tmd` file is the single
+`tali-cursor` both only **navigate** and **highlight**. The `.tmd` file is the single
 editing surface and the preview is a read-only view, so nothing the client posts can
-mutate the source. There is no `qmd-edit` message, by design.
+mutate the source. There is no `tali-edit` message, by design.
 :::
 
 Forward click-to-source is a modifier *gesture*, not a mode: a plain click always
@@ -206,11 +206,11 @@ so the highlight and the jump can never drift apart.
 ## The enhancer registry
 
 `code-enhance.js` opens with the one public client-side extension point:
-`window.qmdEnhancers`. An **enhancer** is a function `fn(root)` that decorates
+`window.taliEnhancers`. An **enhancer** is a function `fn(root)` that decorates
 freshly-mounted DOM, and an extension's JS opts in with one call:
 
 ```js
-window.qmdEnhancers.register(function (root) {
+window.taliEnhancers.register(function (root) {
   root.querySelectorAll(".my-widget:not([data-enhanced])").forEach(function (el) {
     el.dataset.enhanced = "1"; // idempotency guard, see below
     // …decorate el…
@@ -221,7 +221,7 @@ window.qmdEnhancers.register(function (root) {
 A registered enhancer runs:
 
 - after **every** (re)mount in the live preview, via `afterChange()` →
-  `window.qmdEnhanceCode(root)`;
+  `window.taliEnhanceCode(root)`;
 - once on `DOMContentLoaded` in the static build;
 - once immediately when it registers *after* the page is already mounted (the
   registry tracks a `mounted` flag, so an extension script loaded in
@@ -240,7 +240,7 @@ then `pre.dataset.enhanced = "1"`), and every built-in follows the same pattern.
 The built-ins register through this exact API, so a third-party enhancer is
 indistinguishable from core's. The notable ones:
 
-- **Copy buttons** (`qmdCopyButtons`) on every `pre > code`, using a clipboard
+- **Copy buttons** (`taliCopyButtons`) on every `pre > code`, using a clipboard
   helper that falls back to a hidden-textarea `execCommand` in insecure contexts
   (`file://`, a plain-HTTP `--host` LAN preview).
 - **`{js}` cells** (`tali-js.js`): finds each `<script type="application/tali-js">`,
@@ -255,7 +255,7 @@ indistinguishable from core's. The notable ones:
   **link-preview card**, the **keyboard shortcuts** layer, the **skip link**, and
   the listing **category filter**.
 
-`window.qmdEnhanceCode(root)` is the single entry point every caller (live client,
+`window.taliEnhanceCode(root)` is the single entry point every caller (live client,
 static build) uses to run the whole list.
 
 ## Cmd-K search (`search.js`)
@@ -310,10 +310,10 @@ the heading; on the current page (or in a single doc) it scrolls in place.
 just under the sticky navbar. It is the canonical scrollspy shared by two callers so
 the behaviour matches exactly: the static build inlines it and lets it auto-init on
 load, and the live preview rebuilds `#TOC` on every edit and then calls
-`window.qmdInitTocSpy()` to re-collect against the fresh links.
+`window.taliInitTocSpy()` to re-collect against the fresh links.
 
 On each scroll (throttled to one `requestAnimationFrame`) it finds the last heading
-above the activation line, toggles `qmd-toc-active`, expands only the active entry's
+above the activation line, toggles `tali-toc-active`, expands only the active entry's
 branch of a long nested TOC, and keeps the active link visible inside the TOC's own
 scroll area. It also tracks **read state**: every entry strictly before the current
 section is marked read (a forward-only high-water index, so scrolling back never

@@ -34,7 +34,7 @@ const GROUPS = [
   {
     target: 'corpus/deck.tmd',
     kind: 'doc',
-    tasks: [{ feature: 'deck-nav', nav: '/?qmd=present', run: probeDeck }],
+    tasks: [{ feature: 'deck-nav', nav: '/?tali=present', run: probeDeck }],
   },
   {
     target: 'corpus/media/gallery.tmd',

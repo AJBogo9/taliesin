@@ -28,7 +28,7 @@ async function safe(feature, assertion, fn) {
   }
 }
 
-// 1. Deck navigation. A deck opens stepped by default now; ?qmd=present just pins
+// 1. Deck navigation. A deck opens stepped by default now; ?tali=present just pins
 // that (over a future portrait slide-feed). ArrowRight should advance the active leaf.
 export async function probeDeck(page) {
   const F = 'deck-nav';

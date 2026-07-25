@@ -866,7 +866,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// author's `{js}` source, where relative `import()`/`fetch()` specifiers live —
 /// invisible to the `src=`/`href=` scan). `</script` is server-escaped in the source, so
 /// the next `</script>` reliably ends the body.
-fn qmd_js_cell_sources(html: &str) -> Vec<&str> {
+fn tali_js_cell_sources(html: &str) -> Vec<&str> {
     let needle = "type=\"application/tali-js\"";
     let mut out = Vec::new();
     let mut i = 0;
@@ -948,7 +948,7 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
             "{{js}} import escapes the doc tree, not bundled: {spec}"
         )),
     };
-    for body in qmd_js_cell_sources(html) {
+    for body in tali_js_cell_sources(html) {
         for spec in relative_specifiers(body) {
             enqueue(&mut queue, "", &spec);
         }
@@ -2310,7 +2310,7 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
     }
     // (2) remote / bare `{js}` `import()` specifiers — only inside author cell bodies, so the
     //     tool's own inlined vendored libraries (d3/Plot) can't false-positive.
-    for body in qmd_js_cell_sources(html) {
+    for body in tali_js_cell_sources(html) {
         let base = body.as_ptr() as usize - html.as_ptr() as usize;
         for (rel_off, spec) in dynamic_import_specifiers(body) {
             if is_external_fetch(&spec) || is_bare_specifier(&spec) {
@@ -2822,7 +2822,7 @@ mod build_diag_tests {
     }
 
     #[test]
-    fn report_cell_errors_counts_only_qmd_error_outputs() {
+    fn report_cell_errors_counts_only_tali_error_outputs() {
         let blocks = vec![
             output_block("<div class=\"tali-output\"><pre class=\"tali-error\">boom</pre></div>"),
             output_block("<div class=\"tali-output\"><pre>ok</pre></div>"),

@@ -87,7 +87,7 @@ fn rebase_url(val: &str, page_url: &str) -> String {
     };
     // Site-absolute (`/x`) -> root-relative (`x`); relative -> resolved against the
     // defining page's directory. `.tmd`->`.html` on the path either way.
-    let mapped = qmd_to_html(path.trim_start_matches('/'));
+    let mapped = tmd_to_html(path.trim_start_matches('/'));
     let rooted = if path.starts_with('/') {
         mapped
     } else {

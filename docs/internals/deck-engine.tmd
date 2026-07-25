@@ -11,7 +11,7 @@ reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
   is the camera transform itself, not state classes. The public JS surface is
   `window.TaliesinDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
   `getCurrentSlide` / `registerPlugin`, …), which the preview client and theme
-  extensions bind to (`window.QmdDeck` stays as a back-compat alias).
+  extensions bind to (`window.TaliesinDeck` stays as a back-compat alias).
 - **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, the `{js}`
   enhancer, highlight CSS) are `include_str!`'d into the page. No CDN, no network.
 - **Reuse the block model.** Every slide's blocks still carry `data-block-id` +
@@ -125,17 +125,17 @@ static markup, never re-rendering:
 
 ### Modes
 
-One engine, several presentations, selected by a `?qmd=` query param, a class, or the
+One engine, several presentations, selected by a `?tali=` query param, a class, or the
 viewport shape:
 
 | Mode | Trigger | What it does |
 |------|---------|--------------|
 | normal | **default** — a deck opens as a deck, standalone or embedded | the interactive (stepped) deck — the presenting surface |
-| speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
-| feed | `?qmd=feed`, or **auto on a portrait / phone screen** | a vertical scroll-feed of full-screen slides (native scroll-snap), for reading a deck on a phone; each slide's `::: {.notes}` surface as reader narration under it (feed-only, CSS-gated on `html.tali-feed`) |
+| speaker | `S` → popup at `?tali=speaker` | current + next slide previews, notes, timer |
+| feed | `?tali=feed`, or **auto on a portrait / phone screen** | a vertical scroll-feed of full-screen slides (native scroll-snap), for reading a deck on a phone; each slide's `::: {.notes}` surface as reader narration under it (feed-only, CSS-gated on `html.tali-feed`) |
 | overview | `Esc` / `O` | zoomed grid of all slides |
 
-There is no `?qmd=embed` mode: an embedded deck runs the *normal* interactive engine
+There is no `?tali=embed` mode: an embedded deck runs the *normal* interactive engine
 inside its iframe (the iframe is the isolation boundary — see below), it is just
 detected as framed (`window.self !== window.top`) so it follows the host's `data-theme`
 and never auto-routes to the feed. A deck opens **as a deck** — there is no reader/scroll

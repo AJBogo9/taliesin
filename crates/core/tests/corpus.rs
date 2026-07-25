@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 mod common;
 use common::corpus_dir;
 
-fn collect_qmd(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_tmd(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap() {
         let p = entry.unwrap().path();
         if p.is_dir() {
@@ -18,7 +18,7 @@ fn collect_qmd(dir: &Path, out: &mut Vec<PathBuf>) {
             if name == "_extensions" || name == "expected" {
                 continue; // not source documents
             }
-            collect_qmd(&p, out);
+            collect_tmd(&p, out);
         } else if taliesin_core::ext::is_source_path(&p) {
             out.push(p);
         }
@@ -44,7 +44,7 @@ fn every_corpus_doc_has_clean_front_matter() {
     // here means the allowlist is missing a key the corpus legitimately uses.
     // corpus/diagnostics/ is exempt (it deliberately holds typo'd keys).
     let mut files = Vec::new();
-    collect_qmd(&corpus_dir(), &mut files);
+    collect_tmd(&corpus_dir(), &mut files);
     let mut offenders = Vec::new();
     for f in &files {
         if f.components().any(|c| c.as_os_str() == "diagnostics") {
@@ -70,7 +70,7 @@ fn every_corpus_doc_emits_no_unknown_key_warnings() {
     // silent. corpus/diagnostics/ is exempt (its exact warnings are pinned in
     // crates/core/tests/nested_validation.rs).
     let mut files = Vec::new();
-    collect_qmd(&corpus_dir(), &mut files);
+    collect_tmd(&corpus_dir(), &mut files);
     let mut offenders = Vec::new();
     for f in &files {
         if f.components().any(|c| c.as_os_str() == "diagnostics") {
@@ -98,7 +98,7 @@ fn every_corpus_doc_emits_no_unknown_key_warnings() {
 #[test]
 fn every_corpus_doc_renders_with_invariants() {
     let mut files = Vec::new();
-    collect_qmd(&corpus_dir(), &mut files);
+    collect_tmd(&corpus_dir(), &mut files);
     files.sort();
     assert!(
         files.len() >= 5,
@@ -522,7 +522,7 @@ fn reverse_sync_sourcepos_is_total() {
         ok(a) && ok(b)
     };
     let mut files = Vec::new();
-    collect_qmd(&corpus_dir(), &mut files);
+    collect_tmd(&corpus_dir(), &mut files);
     let mut offenders = Vec::new();
     for f in &files {
         let src = fs::read_to_string(f).unwrap();
@@ -567,7 +567,7 @@ fn footnote_lis_are_locatable() {
     // walks past the note up to the section, which has no sourcepos, and `openSource`
     // falls back to line 1 of the document — silently the wrong line, not a no-op.
     let mut files = Vec::new();
-    collect_qmd(&corpus_dir(), &mut files);
+    collect_tmd(&corpus_dir(), &mut files);
     let mut seen = 0;
     let mut offenders = Vec::new();
     for f in &files {
@@ -614,7 +614,7 @@ fn gathered_sections_stay_unlocatable() {
     // They must also carry no `data-tali-src`: that attribute is the OTHER way to be
     // locatable (an explicit file, for site chrome), and neither section has one.
     let mut files = Vec::new();
-    collect_qmd(&corpus_dir(), &mut files);
+    collect_tmd(&corpus_dir(), &mut files);
     let mut seen = 0;
     let mut offenders = Vec::new();
     for f in &files {
@@ -1350,7 +1350,7 @@ fn every_titled_post_emits_exactly_one_h1() {
     // sections demote to <h2>+ so the page keeps a single-<h1> document outline (a11y/SEO).
     let posts_dir = corpus_dir().join("tech-blog/posts");
     let mut posts = Vec::new();
-    collect_qmd(&posts_dir, &mut posts);
+    collect_tmd(&posts_dir, &mut posts);
     assert!(
         !posts.is_empty(),
         "expected posts under {}",

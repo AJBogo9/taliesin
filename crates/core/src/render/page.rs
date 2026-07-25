@@ -109,7 +109,7 @@ pub struct PageParts<'a> {
     /// The body region: chrome + content (build/site) or the live `#tali-root`.
     pub body: &'a str,
     /// Scripts emitted *before* the shared enhancer registry (the static
-    /// click-to-source logger, or the live `window.QMD_*` globals).
+    /// click-to-source logger, or the live `window.TALIESIN_*` globals).
     pub scripts_pre: &'a str,
     /// Scripts emitted *after* it (the static `taliEnhanceCode` call + TOC scripts,
     /// or the live websocket client).
@@ -240,7 +240,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // emitted inline just below, ahead of the deferred app.js, so it already exists by the
             // time this runs), and the deferred jslibs (d3/Plot) have executed by the
             // DOMContentLoaded mount, so the cells still see `window.d3` / `Plot`.
-            let qmd_js_inline = if !bare && has_js_cells(p.body) {
+            let tali_js_inline = if !bare && has_js_cells(p.body) {
                 format!("\n<script>{TALIESIN_JS}</script>")
             } else {
                 String::new()
@@ -261,7 +261,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             //     running every registered enhancer (core + tali-js + any extension); the deferred
             //     jslibs (d3/Plot) have executed by then, so `{js}` cells still run correctly.
             let framework_scripts = format!(
-                "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{qmd_js_inline}{mermaid}",
+                "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}",
                 a.app_js
             );
             (style_block, katex_block, js_head_html, framework_scripts)
@@ -458,7 +458,7 @@ fn html_page_inner(
     // `<script type="application/tali-js">` in the body, so strip those (the cell is
     // inert without its browser runtime; the build warns separately).
     let body = if mode == OutputMode::Bare {
-        strip_qmd_js_scripts(&body)
+        strip_tali_js_scripts(&body)
     } else {
         body
     };
@@ -684,7 +684,7 @@ pub(super) fn default_favicon() -> String {
 /// inert without its browser runtime. The author source escapes any `</script` to
 /// `<\/script` (see `emit_js_cell`), so the first `</script>` after the opening tag
 /// is always the real terminator.
-fn strip_qmd_js_scripts(body: &str) -> String {
+fn strip_tali_js_scripts(body: &str) -> String {
     const OPEN: &str = "<script type=\"application/tali-js\"";
     const CLOSE: &str = "</script>";
     let mut out = String::with_capacity(body.len());

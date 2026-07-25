@@ -97,7 +97,7 @@ function taliCleanCaptionText(node) {
 // failure path returns true.
 //
 // Key: `tali-shortcuts`, matching its siblings `tali-theme` (render/theme.rs) and
-// `tali-deck-theme`. Those two were renamed off the retired `qmd-` prefix on 2026-07-25.
+// `tali-deck-theme`. Those two were renamed onto the `tali-` prefix on 2026-07-25.
 // A storage key has no aliasing mechanism, so that rename discarded every existing
 // reader's saved theme choice. That was accepted deliberately (single-user tool); if a
 // key is ever renamed again, either accept the same reset or read the old key once and

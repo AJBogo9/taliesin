@@ -1,6 +1,6 @@
 // kw-helpers.js
 // Shared helper functions for the Kruskal-Wallis interactive visualiser.
-// Imported by the {js} cells in index.qmd via:
+// Imported by the {js} cells in index.tmd via:
 //   import { gaussianKDE, linspace, silvermanBw } from "./kw-helpers.js"
 
 export function linspace(lo, hi, n) {

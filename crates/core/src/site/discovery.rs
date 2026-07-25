@@ -21,7 +21,7 @@ pub(super) fn website_pages(
         .into_iter()
         .filter_map(|input| {
             let rel = rel_str(root, &input);
-            let url = qmd_to_html(&rel);
+            let url = tmd_to_html(&rel);
             let fm = parse_front_matter(&input, &rel, warnings);
             // `draft: true`: dropped from the published set (Exclude) — recorded so the
             // build can report it — or kept and tagged for the preview view (Include).
@@ -92,7 +92,7 @@ pub(super) fn discover_decks(
         let (src, _origins) = crate::includes::resolve(&src, base);
         for target in crate::render::embed_targets(&src) {
             let rel = join_rel(&page.rel, &target);
-            let url = qmd_to_html(&rel);
+            let url = tmd_to_html(&rel);
             if decks.iter().any(|d| d.url == url) {
                 continue;
             }

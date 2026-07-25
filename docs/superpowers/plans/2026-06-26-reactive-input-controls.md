@@ -152,7 +152,7 @@ Emit the static control HTML for the five types, calling `validate_input`. Style
 
 **Interfaces:**
 - Consumes: `validate_input` (Task 1); `DivAttrs::get`, `escape_attr`, `html_escape`, the arm-local `id`, `data`, `open_line`, `file` already in scope in `build_container`.
-- Produces: a `<div class="qmd-input">` carrying a `data-qmd-input="<name>"` control (+ slider `<output data-qmd-out>`), consumed by Task 3's runtime + Task 4's pin doc.
+- Produces: a `<div class="tali-input">` carrying a `data-qmd-input="<name>"` control (+ slider `<output data-qmd-out>`), consumed by Task 3's runtime + Task 4's pin doc.
 
 - [ ] **Step 1: Write the failing render tests**
 

@@ -32,14 +32,14 @@ export async function launch({ chromePath = DEFAULT_CHROME } = {}) {
 
 // Force a theme deterministically. localStorage seeding is the dominant lever
 // (it wins over front-matter `theme:` and OS in the pre-paint head script);
-// media emulation is belt-and-braces for `--bare`/auto pages. `qmd-theme`
-// covers single-doc + site/book pages; `qmd-deck-theme` covers standalone decks
+// media emulation is belt-and-braces for `--bare`/auto pages. `tali-theme`
+// covers single-doc + site/book pages; `tali-deck-theme` covers standalone decks
 // (separate key + `tali-deck-dark` class).
 export async function forceTheme(page, theme) {
   await page.evaluateOnNewDocument((mode) => {
     try {
-      localStorage.setItem('qmd-theme', mode);
-      localStorage.setItem('qmd-deck-theme', mode);
+      localStorage.setItem('tali-theme', mode);
+      localStorage.setItem('tali-deck-theme', mode);
     } catch {
       /* localStorage may be unavailable on some origins; ignore */
     }

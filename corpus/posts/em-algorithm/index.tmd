@@ -277,7 +277,7 @@ The slider steps through the iterations of the EM algorithm. The top plot shows 
 // (the cell re-runs when that define lands). Returns a labeled range input.
 const n = (tali.defines.history || []).length || 1;
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("EM iteration ");
 const input = document.createElement("input");
 input.type = "range"; input.min = "1"; input.max = String(n); input.step = "1"; input.value = "1";
@@ -289,7 +289,7 @@ return wrap;
 //| viewof: showTrue
 //| echo: false
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 const input = document.createElement("input");
 input.type = "checkbox";
 wrap.append(input, " Reveal true labels");

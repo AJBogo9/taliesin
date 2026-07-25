@@ -50,7 +50,7 @@ const build = async () => {
     });
   } catch (e) {
     el = document.createElement("p");
-    el.className = "qmd-muted";
+    el.className = "tali-muted";
     el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
   }
   host.replaceChildren(el);

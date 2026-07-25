@@ -382,7 +382,7 @@ $$
 //| echo: false
 const options = [1, 2];
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("Principal components to keep (k) ");
 const radios = options.map((v, i) => {
   const opt = document.createElement("label");

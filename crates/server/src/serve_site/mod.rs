@@ -722,7 +722,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         format!("{};", chrome.search_index)
     };
     // Body links (author `.tmd` references) -> `.html`; chrome links already are.
-    let body = taliesin_core::site::rewrite_qmd_links(&body);
+    let body = taliesin_core::site::rewrite_tmd_links(&body);
     // The site's configured favicon (depth-relative); else the dev server's own.
     let favicon = if chrome.favicon.is_empty() {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
@@ -965,13 +965,13 @@ fn handle_client_msg(text: &str) {
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &PageDoc) -> String {
-    use taliesin_core::site::rewrite_qmd_links;
+    use taliesin_core::site::rewrite_tmd_links;
     protocol::full_render(
         // The display-ready tab title, NOT the raw front-matter one: the client assigns
         // this straight to `document.title`, over the `<title>` we server-rendered. Null
         // (not "") for a page with no render yet, so the client keeps its own default.
         (!d.tab_title.is_empty()).then_some(d.tab_title.as_str()),
-        &rewrite_qmd_links(&d.body_html()),
+        &rewrite_tmd_links(&d.body_html()),
         d.generation,
         &d.diagnostics,
     )
@@ -980,7 +980,7 @@ fn full_render_json(d: &PageDoc) -> String {
 /// Like the single-doc server's `op_json`, but rewrites any author `.tmd` links
 /// in the block HTML to their `.html` targets before it goes over the wire.
 fn op_json(op: &BlockOp, generation: u64) -> String {
-    protocol::op(op, generation, taliesin_core::site::rewrite_qmd_links)
+    protocol::op(op, generation, taliesin_core::site::rewrite_tmd_links)
 }
 
 // --- build worker -------------------------------------------------------
@@ -1248,7 +1248,7 @@ struct Change {
     structural: bool,
 }
 
-fn is_qmd(p: &Path) -> bool {
+fn is_tmd(p: &Path) -> bool {
     // Native `.tmd` source docs, plus `.md` (watched for includes).
     matches!(
         p.extension().and_then(|e| e.to_str()),
@@ -1347,11 +1347,11 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     tokio::spawn(async move {
         while let Some(first) = sig_rx.recv().await {
             let mut changed: HashSet<PathBuf> = HashSet::new();
-            let mut structural = first.structural && is_qmd(&first.path);
+            let mut structural = first.structural && is_tmd(&first.path);
             changed.insert(first.path);
             tokio::time::sleep(Duration::from_millis(80)).await;
             while let Ok(c) = sig_rx.try_recv() {
-                structural |= c.structural && is_qmd(&c.path);
+                structural |= c.structural && is_tmd(&c.path);
                 changed.insert(c.path);
             }
             dispatch_changes(&app, &changed, structural);
@@ -1728,7 +1728,7 @@ mod protocol_contract {
     }
 
     #[test]
-    fn op_json_rewrites_qmd_links_in_block_html() {
+    fn op_json_rewrites_tmd_links_in_block_html() {
         let up = parse(op_json(
             &BlockOp::Update {
                 target_id: "b1".into(),
@@ -1760,7 +1760,7 @@ mod protocol_contract {
         let html = msg["html"].as_str().unwrap();
         assert!(
             html.contains("other.html"),
-            "qmd link not rewritten: {html}"
+            "tmd link not rewritten: {html}"
         );
         assert!(!html.contains("other.tmd"), "raw .tmd link leaked: {html}");
     }

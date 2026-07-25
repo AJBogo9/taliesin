@@ -1,6 +1,6 @@
 // em-helpers.js
 // Shared helper functions for the EM algorithm interactive visualiser.
-// Imported by the {js} cells in index.qmd via:
+// Imported by the {js} cells in index.tmd via:
 //   import { gaussPDF, makeCurve, makeResp, makeLLData, linspace } from "./em-helpers.js"
 
 /**

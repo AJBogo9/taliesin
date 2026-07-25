@@ -70,7 +70,7 @@ work once, reuse it everywhere it didn't change.
 
 The memo is transparent: it never changes *what* gets rendered. An expression KaTeX
 can't parse is still rendered inline in red (`throw_on_error` is off), and an
-engine-level failure still falls back to the escaped source in a `qmd-math-error` span.
+engine-level failure still falls back to the escaped source in a `tali-math-error` span.
 The cache only ever skips repeating work whose answer it already has.
 
 ## No flash: the pre-paint script
@@ -78,7 +78,7 @@ The cache only ever skips repeating work whose answer it already has.
 A theme that is chosen at runtime risks a flash of the wrong one. `theme.rs` ships
 a small **pre-paint `<head>` script** that runs before the body renders. It:
 
-- sets `<html data-theme>` from the saved choice (`localStorage` key `qmd-theme`),
+- sets `<html data-theme>` from the saved choice (`localStorage` key `tali-theme`),
   else a front-matter-forced `light`/`dark`, else **follows the OS** `prefers-color-scheme`
   (dark when the OS prefers dark, otherwise falling back to light); an unsaved "auto" page
   also re-applies when the OS theme flips, except for a reader who explicitly toggled; and
@@ -95,12 +95,12 @@ Setting `color-scheme` alongside it is what stops the browser from drawing a *li
 default scrollbar and form-control chrome over a dark page for that same first frame.
 The script is shipped *in the page* (not in the preview client) so the toggle and
 the no-flash behaviour work in static `build` output too, and it defines the
-`qmdSetTheme` / `qmdWireThemeToggles` helpers the reader Settings gear and the
+`taliSetTheme` / `taliWireThemeToggles` helpers the reader Settings gear and the
 dev-menu toggle call.
 
 The reader's theme is their single display choice: light, dark, or sepia, picked from
 the Settings gear (see [The reader experience](../guide/using/reading.html)). It rides
-this exact mechanism, `localStorage["qmd-theme"]` applied before paint, so a returning
+this exact mechanism, `localStorage["tali-theme"]` applied before paint, so a returning
 reader never flashes the wrong theme. There are deliberately no per-reader typography
 knobs (text size, width, spacing): the default is tuned once, for everyone, rather than
 handed to the reader as a pile of sliders.
@@ -117,6 +117,6 @@ their colours at render time and a CSS-variable swap can't reach them:
 | Mermaid diagrams | SVG colours are baked at render time, so they **re-render** |
 | Theme-matched `{{< video >}}` clips | the now-visible variant is played, the hidden one paused |
 
-The pre-paint script dispatches a `qmd:themechange` event, and exactly those
+The pre-paint script dispatches a `tali:themechange` event, and exactly those
 renderers listen for it. That small, explicit list is the boundary of the
 "toggle re-styles with nothing to re-render" rule.

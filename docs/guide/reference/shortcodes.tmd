@@ -90,7 +90,7 @@ holds it.
 | *path* (positional) | yes | (none) | The deck source, relative to the embedding page. A `.tmd` path is mapped to its built `.html`; an already-`.html` path is used as written. |
 | `title="…"` | no | "Embedded slide deck" | The iframe's accessible name (its `title` attribute), announced by screen readers. |
 
-It emits a `<div class="qmd-embed">` containing the framed `<iframe>` and the
+It emits a `<div class="tali-embed">` containing the framed `<iframe>` and the
 control bar. A deck on a **built-in** theme is theme-aware: an embedded deck
 follows the host page's light/dark setting rather than its own. A deck with a
 custom or extension `theme:` owns its own colours and is left as-is (no
@@ -119,7 +119,7 @@ The deck syntax the embed points at is covered in
 
 Emits a framed `<video>` that **autoplays, is muted, loops, and plays inline**: the
 silent-screencast pattern, authored in Markdown so a page never needs raw `<video>`
-HTML. It renders as a `<figure class="qmd-video">`.
+HTML. It renders as a `<figure class="tali-video">`.
 
 | Argument | Required | Default | Effect |
 |---|---|---|---|

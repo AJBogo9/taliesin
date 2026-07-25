@@ -24,7 +24,7 @@ your phone) lands on the change.
 In the browser preview, a plain click browses normally; **Alt-click (Option-click
 on Mac) any block to open its exact source line in your editor** (including across
 `{{< include >}}`d files) via a `vscode://` deep link. The client also speaks a
-`qmd-goto` / `qmd-cursor` `postMessage` protocol, so an editor can host the preview and
+`tali-goto` / `tali-cursor` `postMessage` protocol, so an editor can host the preview and
 add reverse cursor sync (highlighting the block under your cursor) without forking
 anything. The in-repo **VS Code companion** (`editor/vscode/`) is exactly that host.
 

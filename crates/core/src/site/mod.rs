@@ -236,10 +236,10 @@ use discovery::{discover_decks, website_pages};
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
 mod links;
-pub use links::rewrite_qmd_links;
+pub use links::rewrite_tmd_links;
 use links::{
-    block_tag_has_id, collect_html_ids, href_matches_page, html_to_qmd, is_external_or_special,
-    join_rel, join_rel_in_root, manual_local_links, qmd_to_html, resolve_href,
+    block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
+    join_rel, join_rel_in_root, manual_local_links, tmd_to_html, resolve_href,
     sourcepos_start_line,
 };
 
@@ -321,7 +321,7 @@ impl Site {
                 ));
             }
         }
-        excluded_drafts.retain(|rel| !decks.iter().any(|d| d.url == qmd_to_html(rel)));
+        excluded_drafts.retain(|rel| !decks.iter().any(|d| d.url == tmd_to_html(rel)));
 
         // A loose deck: a `format: revealjs` page that survived the embed retain
         // above, so it isn't referenced by `{{< embed >}}` anywhere. It would be
@@ -753,7 +753,7 @@ impl Site {
         let ctx = self.page_chrome(page, false);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
-        (rewrite_qmd_links(&html), warnings)
+        (rewrite_tmd_links(&html), warnings)
     }
 
     /// Render a page linking the shared `_assets/` bundle (the multi-page build path).
@@ -777,7 +777,7 @@ impl Site {
         ctx.includes.in_header.push_str(&self.manifest_head(page));
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
-        (rewrite_qmd_links(&html), warnings)
+        (rewrite_tmd_links(&html), warnings)
     }
 
     /// Static `check` cross-page link validation: for every page, resolve each manual
@@ -882,7 +882,7 @@ impl Site {
         // unresolvable offline and deliberately skipped — only the marketing site that
         // mounts both books can resolve it, so flagging it here would be a false positive
         // (cross-book/mount links are written as relative `.html` by design).
-        let target_url = join_rel_in_root(from_url, &qmd_to_html(path))?;
+        let target_url = join_rel_in_root(from_url, &tmd_to_html(path))?;
         // A directory-style link (`dir/`) targets that dir's index.
         Some(if target_url.is_empty() || target_url.ends_with('/') {
             format!("{target_url}index.html")
@@ -935,7 +935,7 @@ impl Site {
                     if under_mount
                         || self.decks.iter().any(|d| d.url == target_url)
                         || self.root.join(&target_url).is_file()
-                        || html_to_qmd(&target_url)
+                        || html_to_tmd(&target_url)
                             .iter()
                             .any(|p| self.root.join(p).is_file())
                     {

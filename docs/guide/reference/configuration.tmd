@@ -293,7 +293,7 @@ about:
 
 | Key | Meaning |
 |---|---|
-| `template` | A style name. `jolla` is the confirmed, corpus-tested style (a centered column). The value is emitted as a `qmd-about-<template>` CSS class hook, so another name still renders the centered layout but lets you target it from your own CSS |
+| `template` | A style name. `jolla` is the confirmed, corpus-tested style (a centered column). The value is emitted as a `tali-about-<template>` CSS class hook, so another name still renders the centered layout but lets you target it from your own CSS |
 | `image` | Profile image, relative to the page; `image-alt` sets its alt text |
 | `links` | A list of `{ text, href, icon }` social/profile links (the same `icon:` glyph names as the navbar) |
 

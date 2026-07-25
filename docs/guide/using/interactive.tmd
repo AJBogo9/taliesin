@@ -22,7 +22,7 @@ directives (they must come before any code):
 - `//| name: NAME` publishes the cell's return value under `NAME`.
 - `//| input: A, B` consumes those names; the cell re-runs when any of them change.
 
-Inside a cell, read values through the injected `qmd` API: `tali.value("k")` returns
+Inside a cell, read values through the injected `tali` API: `tali.value("k")` returns
 a control's current value, and `tali.get("squared")` returns the last value a
 `//| name` cell published. A first cell publishes a slider as `n`:
 

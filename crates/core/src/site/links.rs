@@ -1,13 +1,13 @@
 //! Link rewriting + cross-file link validation: map `.tmd` hrefs to their built `.html`
 //! URLs, resolve depth-relative hrefs, and the manual-local-link scan used by cross-page
-//! validation. `rewrite_qmd_links` is the public entry the dev server applies to each
+//! validation. `rewrite_tmd_links` is the public entry the dev server applies to each
 //! page's body. `use super::*` reaches Page/Block/esc.
 
 use super::*;
 
 /// Map a source rel-path to its built `.html` URL (`x.tmd` → `x.html`); a non-source
 /// path round-trips unchanged.
-pub(super) fn qmd_to_html(rel: &str) -> String {
+pub(super) fn tmd_to_html(rel: &str) -> String {
     match crate::ext::strip_source_ext(rel) {
         Some(stem) => format!("{stem}.html"),
         None => rel.to_string(),
@@ -28,19 +28,19 @@ pub(super) fn resolve_href(href: &str, up: &str) -> String {
     }
     // Site-absolute (`/blog.tmd`): tmd→html, keep absolute.
     if let Some(rest) = href.strip_prefix('/') {
-        return format!("/{}", qmd_href(rest));
+        return format!("/{}", tmd_href(rest));
     }
     // Relative: tmd→html, prefix with the page's depth.
-    format!("{up}{}", qmd_href(href))
+    format!("{up}{}", tmd_href(href))
 }
 
 /// `.tmd`→`.html` on an href, preserving any `#fragment`.
-pub(super) fn qmd_href(href: &str) -> String {
+pub(super) fn tmd_href(href: &str) -> String {
     let (path, frag) = match href.split_once('#') {
         Some((p, f)) => (p, Some(f)),
         None => (href, None),
     };
-    let mapped = qmd_to_html(path);
+    let mapped = tmd_to_html(path);
     match frag {
         Some(f) => format!("{mapped}#{f}"),
         None => mapped,
@@ -51,18 +51,18 @@ pub(super) fn qmd_href(href: &str) -> String {
 ///
 /// A nav href may carry a `#fragment` or `?query` (an in-page anchor, a cache-bust);
 /// the active page is decided by the path alone, so both are stripped before matching
-/// (otherwise `qmd_to_html` can't map the `.tmd` and the highlight is silently lost).
+/// (otherwise `tmd_to_html` can't map the `.tmd` and the highlight is silently lost).
 pub(super) fn href_matches_page(href: &str, page: &Page) -> bool {
     let h = href.trim_start_matches('/');
     let h = h.split(['#', '?']).next().unwrap_or(h);
-    let target = qmd_to_html(h);
+    let target = tmd_to_html(h);
     target == page.url || h == page.rel
 }
 
 /// Rewrite every intra-site `.tmd` link in rendered HTML to its `.html` target,
 /// preserving the author's relative/absolute prefix and `#fragment`. External
 /// links, data URIs, and non-`.tmd` paths are untouched.
-pub fn rewrite_qmd_links(html: &str) -> String {
+pub fn rewrite_tmd_links(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
     while let Some(pos) = rest.find("href=\"") {
@@ -103,8 +103,8 @@ pub(super) fn rewrite_one_href(val: &str) -> String {
         return val.to_string();
     }
     // `.tmd`→`.html` on the path component, fragment preserved (a non-`.tmd` path
-    // round-trips unchanged through `qmd_to_html`).
-    qmd_href(val)
+    // round-trips unchanged through `tmd_to_html`).
+    tmd_href(val)
 }
 
 /// Whether a block's *leading element tag* carries `id="x"` (so a `::: {#x}`
@@ -185,7 +185,7 @@ pub(super) fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
 /// [`crate::ext::ACCEPTED_SOURCE_EXTS`]), so the checker can test whether a link target is
 /// backed by a source file on disk, in any accepted spelling. A non-`.html` path yields no
 /// candidates (there is nothing to probe).
-pub(super) fn html_to_qmd(url: &str) -> Vec<String> {
+pub(super) fn html_to_tmd(url: &str) -> Vec<String> {
     match url.strip_suffix(".html") {
         Some(stem) => crate::ext::ACCEPTED_SOURCE_EXTS
             .iter()
@@ -280,19 +280,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tmd_urls_map_to_html_qmd_no_longer_a_source_link() {
-        assert_eq!(qmd_to_html("blog.tmd"), "blog.html");
-        assert_eq!(qmd_to_html("index.tmd"), "index.html");
+    fn tmd_urls_map_to_html_and_the_retired_ext_is_not_a_source_link() {
+        assert_eq!(tmd_to_html("blog.tmd"), "blog.html");
+        assert_eq!(tmd_to_html("index.tmd"), "index.html");
         assert_eq!(
-            qmd_to_html("posts/intro/index.tmd"),
+            tmd_to_html("posts/intro/index.tmd"),
             "posts/intro/index.html"
         );
-        assert_eq!(qmd_to_html("style.css"), "style.css");
+        assert_eq!(tmd_to_html("style.css"), "style.css");
         // `.qmd` is no longer an accepted source extension: it round-trips unchanged,
         // it does NOT map to `.html`.
-        assert_eq!(qmd_to_html("blog.qmd"), "blog.qmd");
+        assert_eq!(tmd_to_html("blog.qmd"), "blog.qmd");
         assert_eq!(
-            qmd_to_html("posts/em-algorithm/index.qmd"),
+            tmd_to_html("posts/em-algorithm/index.qmd"),
             "posts/em-algorithm/index.qmd"
         );
     }
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn link_rewrite_preserves_prefix_and_fragment() {
         let html = r##"<a href="blog.tmd">b</a> <a href="../KL-divergence/index.tmd#sec-x">k</a> <a href="/projects.tmd">p</a> <a href="talk.qmd">t</a> <a href="https://x.com/a.qmd">ext</a> <a href="#local">l</a>"##;
-        let out = rewrite_qmd_links(html);
+        let out = rewrite_tmd_links(html);
         assert!(out.contains("href=\"blog.html\""));
         assert!(out.contains("href=\"../KL-divergence/index.html#sec-x\""));
         assert!(out.contains("href=\"/projects.html\""));
@@ -362,11 +362,11 @@ mod tests {
     }
 
     #[test]
-    fn html_to_qmd_yields_the_tmd_candidate_only() {
+    fn html_to_tmd_yields_the_tmd_candidate_only() {
         // A `.html` link target is backed by its `.tmd` source only — `.tmd` is now the
         // only accepted source extension, so `.qmd` is no longer a candidate.
-        assert_eq!(html_to_qmd("blog.html"), vec!["blog.tmd".to_string()]);
-        assert_eq!(html_to_qmd("style.css"), Vec::<String>::new());
+        assert_eq!(html_to_tmd("blog.html"), vec!["blog.tmd".to_string()]);
+        assert_eq!(html_to_tmd("style.css"), Vec::<String>::new());
     }
 
     #[test]

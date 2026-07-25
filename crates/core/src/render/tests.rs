@@ -109,7 +109,7 @@ fn title_block_style_none_injects_a_hidden_h1_but_no_visible_block() {
     let sr = doc
         .blocks
         .iter()
-        .find(|b| b.id == "qmd-sr-title")
+        .find(|b| b.id == "tali-sr-title")
         .expect("a hidden <h1> should be injected");
     assert!(
         sr.html.contains("<h1 class=\"tali-sr-only\"") && sr.html.contains(">Blog</h1>"),
@@ -126,7 +126,7 @@ fn title_block_style_none_does_not_duplicate_an_existing_h1() {
     let doc =
         render_document("---\ntitle: Home\ntitle-block-style: none\n---\n\n# Welcome\n\nHi.\n");
     assert!(
-        !doc.blocks.iter().any(|b| b.id == "qmd-sr-title"),
+        !doc.blocks.iter().any(|b| b.id == "tali-sr-title"),
         "must not inject a second h1 when the body already has one"
     );
     assert_eq!(
@@ -166,7 +166,7 @@ fn html_is_escaped_in_text() {
 }
 
 #[test]
-fn qmd_code_cell_language_detected() {
+fn tmd_code_cell_language_detected() {
     let doc = render_document("```{python}\nprint(1)\n```\n");
     assert!(doc.blocks[0].html.contains("<pre "));
     assert!(doc.blocks[0].html.contains("class=\"language-python\""));
@@ -5351,7 +5351,7 @@ fn core_enhance_js_has_our_scripts_not_the_big_libs() {
     // The `{js}`-cell runtime must NOT be bundled into app.js either: it runs cells via
     // `new AsyncFunction`, whose `import()` resolves against the calling script, so folding
     // it into the shared `/_assets/app.js` would break a cell's page-relative
-    // `import("./helper.js")`. It stays inline on the page instead (page.rs `qmd_js_inline`).
+    // `import("./helper.js")`. It stays inline on the page instead (page.rs `tali_js_inline`).
     // `"tali-js cell error:"` is a literal unique to tali-js.js.
     assert!(
         !js.contains("tali-js cell error:"),

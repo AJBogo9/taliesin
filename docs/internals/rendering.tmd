@@ -118,7 +118,7 @@ Markdown footnotes (`[^name]`) split across **two separate emit paths**, and it 
 being precise about which is which:
 
 - A footnote **reference** (`[^name]` in the prose) is rendered *in place*, inline, as a
-  superscript link (`<sup class="qmd-fnref"><a href="#fn-name">N</a></sup>`) by the
+  superscript link (`<sup class="tali-fnref"><a href="#fn-name">N</a></sup>`) by the
   per-node emitter (`emit.rs`). It stays inside its surrounding block.
 - A footnote **definition** (`[^name]: the note text`) is *not* rendered where it
   appears. The walk recognises comrak's footnote-definition nodes, collects them as
@@ -157,7 +157,7 @@ page chrome the reader never authored:
 - The **bundled offline assets**: `base.css`, the dark layer, the optional site CSS, and
   (only when the document actually uses math) the KaTeX stylesheet, all `include_str!`d
   into the binary so a built page is self-contained with no CDN.
-- A **skip-to-content link** when the body carries the focusable `<main id="qmd-main">`,
+- A **skip-to-content link** when the body carries the focusable `<main id="tali-main">`,
   plus any `include-in-header` / `include-before-body` / `include-after-body` raw HTML.
 - For a page with `{js}` cells, the vendored d3 + Observable Plot libs and the `{js}`
   enhancer (gated on the rendered body, so a page without `{js}` carries none of it).

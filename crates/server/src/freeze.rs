@@ -69,7 +69,7 @@ use serde::{Deserialize, Serialize};
 /// never ingest, so `{js}` cells would silently receive no data.
 ///
 /// (The v2/v3 notes deliberately describe the *change* rather than spelling the
-/// retired prefix, which `crates/core/tests/no_qmd.rs` keeps out of the tree.)
+/// retired prefix, which `crates/core/tests/retired_names.rs` keeps out of the tree.)
 const FORMAT_VERSION: u32 = 4;
 
 /// Per-page entry cap. Entries beyond the live set are kept (so toggling an edit
@@ -366,7 +366,7 @@ mod tests {
     /// verbatim and the current browser runtime no longer recognises them.
     /// `FORMAT_VERSION` is the only lever, and it has to be turned by hand.
     ///
-    /// `d0b1ffa` is the bug this exists to prevent: the `qmd-fig-*` -> `tali-fig-*`
+    /// `d0b1ffa` is the bug this exists to prevent: the dual-theme figure-class
     /// rename shipped without a bump and needed a follow-up fix commit, because
     /// every test runs against a clean tree and no test has a stale `_freeze/`.
     const CACHED_OUTPUT_TOKENS: &[&str] = &[

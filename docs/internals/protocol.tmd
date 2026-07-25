@@ -187,7 +187,7 @@ after a re-mount because `full_render` carries no CSS field.)
 ### `style`
 
 Only the theme CSS changed. Rather than reload, the client hot-swaps the contents
-of `<style id="qmd-theme">` in place (creating the element if absent).
+of `<style id="tali-theme">` in place (creating the element if absent).
 
 ```json
 { "type": "style", "css": ":root { --tali-accent: #4c8dff; … }" }
@@ -329,12 +329,12 @@ reach it. A **per-session token** gates non-loopback access.
 | Caller | Token needed? | Outcome |
 |---|---|---|
 | Loopback (your own machine, the [VS Code companion](extending.tmd)) | no | always allowed |
-| LAN peer with valid `?t=` in the URL | yes | allowed; server sets a `qmd_token` cookie |
-| LAN peer with a valid `qmd_token` cookie | yes | allowed |
+| LAN peer with valid `?t=` in the URL | yes | allowed; server sets a `tali_token` cookie |
+| LAN peer with a valid `tali_token` cookie | yes | allowed |
 | LAN peer with no / wrong token | yes | `403` |
 
 The token is a random UUID minted at startup and threaded into the printed LAN URL
-and QR code as `?t=…`. The first tokened load sets a `qmd_token` cookie
+and QR code as `?t=…`. The first tokened load sets a `tali_token` cookie
 (`Path=/; SameSite=Lax; Max-Age=86400`, a 24-hour expiry), so every later
 same-origin request (assets, the websocket upgrade, reloads) authenticates by cookie
 with no client changes. The token is regenerated each server start, so a stale cookie
@@ -354,13 +354,13 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
 - **Forward (preview → editor).** Alt-clicking (Option-clicking on Mac) a block
   reads its `data-sourcepos` and `data-source-file` and opens that source line. In a
   plain browser it navigates to a `vscode://file/<path>:<line>:<col>` deep link; in
-  an editor webview it posts a `qmd-goto` message up to the host. (It also sends a
+  an editor webview it posts a `tali-goto` message up to the host. (It also sends a
   `click_block` over the websocket so the location logs to the console.) The forward
-  message is `qmd-goto { type, source_file, sourcepos }`, where `source_file` is the
+  message is `tali-goto { type, source_file, sourcepos }`, where `source_file` is the
   source path (`null` = the previewed doc) and `sourcepos` is the `line:col` to jump
   to. The `data-block-id` click path additionally spreads `block_id` into the message;
   the located-diagnostic path omits it.
-- **Reverse (editor → preview).** The client listens for a `qmd-cursor {file, line}`
+- **Reverse (editor → preview).** The client listens for a `tali-cursor {file, line}`
   `postMessage` and calls `highlightAtLine`, which picks the **smallest** block whose
   `data-sourcepos` range covers the line in the same file (else the nearest block
   starting before it), outlines it with `.tali-hl`, and scrolls it into view, or, in a

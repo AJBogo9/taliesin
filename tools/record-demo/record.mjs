@@ -33,7 +33,7 @@ const port = spec.port || 4399;
 const url = `http://127.0.0.1:${port}/${spec.path || ""}`;
 const docPath = resolve(here, spec.doc);
 
-function qmdFastBinary() {
+function taliesinBinary() {
   if (process.env.TALIESIN) return process.env.TALIESIN;
   for (const p of ["target/release/taliesin", "target/debug/taliesin"]) {
     if (existsSync(join(repoRoot, p))) return join(repoRoot, p);
@@ -75,7 +75,7 @@ async function smoothScroll(page, frac, ms) {
 }
 
 console.log(`▶ starting preview: ${spec.doc} on :${port}`);
-const server = spawn(qmdFastBinary(), ["preview", docPath, String(port)], {
+const server = spawn(taliesinBinary(), ["preview", docPath, String(port)], {
   cwd: repoRoot,
   stdio: "ignore",
   env: process.env,
@@ -101,7 +101,7 @@ try {
   // taliesin pages ignore the OS preference (they default to dark), so drive the
   // theme explicitly via the saved choice the theme script reads on first paint.
   await ctx.addInitScript((t) => {
-    try { localStorage.setItem("qmd-theme", t); } catch (e) {}
+    try { localStorage.setItem("tali-theme", t); } catch (e) {}
   }, spec.theme === "light" ? "light" : "dark");
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "networkidle" }).catch(() => {});

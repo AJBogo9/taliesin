@@ -356,7 +356,7 @@ editor can call it while you type. A cell's `label:` is registered when the bloc
 is built, long before the cell would run.
 
 `--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
-the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token is
+the printed LAN URL and QR (`?t=…`, then a `tali_token` cookie); a fresh token is
 minted each server start, and loopback (`127.0.0.1`) is exempt. See
 [Reading on any screen](../using/preview.tmd) for the full behaviour.
 

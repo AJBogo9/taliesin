@@ -91,7 +91,7 @@ The div body is ignored (empty by convention).
 Slider (the only type with a live `<output>` readout):
 
 ```html
-<div class="qmd-input" data-block-id="…" data-sourcepos="…">
+<div class="tali-input" data-block-id="…" data-sourcepos="…">
   <label class="qmd-input-label" for="qin-<id>">k</label>
   <input id="qin-<id>" class="qmd-input-control" data-qmd-input="k"
          type="range" min="1" max="10" step="1" value="3">

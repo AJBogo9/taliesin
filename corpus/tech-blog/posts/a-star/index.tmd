@@ -157,7 +157,7 @@ Start with Dijkstra and then swap to A\* with the Manhattan heuristic. Also, tes
 
 // ── controls ─────────────────────────────────────────────────────────────────
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("Heuristic ");
 const sel = document.createElement("select");
 for (const opt of ["zero (Dijkstra)", "manhattan"]) {
@@ -175,7 +175,7 @@ return wrap;
 //| echo: false
 
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("Weight (w) ");
 const input = document.createElement("input");
 input.type = "range"; input.min = "1"; input.max = "5"; input.step = "0.1"; input.value = "1";
@@ -188,7 +188,7 @@ return wrap;
 //| echo: false
 
 const wrap = document.createElement("label");
-wrap.className = "qmd-input";
+wrap.className = "tali-input";
 wrap.append("Speed (ms/step) ");
 const input = document.createElement("input");
 input.type = "range"; input.min = "10"; input.max = "500"; input.step = "10"; input.value = "80";

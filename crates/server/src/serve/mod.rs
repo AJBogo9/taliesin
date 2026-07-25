@@ -1019,7 +1019,7 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         js_str(ctx.doc_path),
         js_str(ctx.base_dir),
     );
-    // The live deck tail: the deck engine, the enhancers, the `QMD_*` flags, the
+    // The live deck tail: the deck engine, the enhancers, the `TALIESIN_*` flags, the
     // doc's after-body include (an extension plugin's `<script src>` + registration,
     // which must run after the engine and before the client initializes it), then
     // the websocket client last.
@@ -2000,7 +2000,7 @@ mod protocol_contract {
     }
 
     #[test]
-    fn reveal_index_carries_qmd_doc_for_click_to_source() {
+    fn reveal_index_carries_tmd_doc_for_click_to_source() {
         // The deck page has no scripts_pre, so its tail must inject TALIESIN_DOC — without
         // it, client.js's openSource bails (no doc) and click-to-source is dead on
         // slides, even though every block carries data-block-id/sourcepos.

@@ -24,13 +24,13 @@ fn try_render(src: &str) -> Result<usize, String> {
 #[test]
 fn line_prefixes_of_every_doc_never_panic() {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let mut qmds = Vec::new();
-    collect_qmds(std::path::Path::new(root).join("corpus"), &mut qmds);
-    collect_qmds(std::path::Path::new(root).join("docs"), &mut qmds);
+    let mut tmds = Vec::new();
+    collect_tmds(std::path::Path::new(root).join("corpus"), &mut tmds);
+    collect_tmds(std::path::Path::new(root).join("docs"), &mut tmds);
     assert!(
-        qmds.len() > 10,
+        tmds.len() > 10,
         "expected to find the corpus; got {}",
-        qmds.len()
+        tmds.len()
     );
 
     // Sample line-prefixes: every boundary for short docs, step-capped to ~20 per
@@ -39,7 +39,7 @@ fn line_prefixes_of_every_doc_never_panic() {
     // locally, set the step to 1.)
     let mut failures = Vec::new();
     let mut prefixes_rendered = 0usize;
-    for path in &qmds {
+    for path in &tmds {
         let src = std::fs::read_to_string(path).unwrap_or_default();
         let lines: Vec<&str> = src.lines().collect();
         let total = lines.len();
@@ -59,7 +59,7 @@ fn line_prefixes_of_every_doc_never_panic() {
     }
     eprintln!(
         "rendered {prefixes_rendered} sampled line-prefixes across {} docs",
-        qmds.len()
+        tmds.len()
     );
     assert!(
         failures.is_empty(),
@@ -143,14 +143,14 @@ fn diffing_consecutive_prefixes_never_panics() {
     );
 }
 
-fn collect_qmds(dir: std::path::PathBuf, out: &mut Vec<std::path::PathBuf>) {
+fn collect_tmds(dir: std::path::PathBuf, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
-            collect_qmds(p, out);
+            collect_tmds(p, out);
         } else if p.extension().is_some_and(|x| x == "tmd") {
             out.push(p);
         }
