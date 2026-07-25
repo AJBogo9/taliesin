@@ -8,7 +8,38 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: the AP7 accessibility audit, findings only, no code)
+## State (2026-07-25, latest: the AP3 concurrency audit, findings only, no code)
+
+**Branch `backlog/backlink-context-and-resume`, notes-only commits on top of the 13 unpushed
+code commits.** Second audit of the day, run at the author's request to refill the backlog:
+**AP3 (concurrency)** produced
+[2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md), a round-index row,
+and **item 35**. **No source file was touched**; the M6a freeze on `exec_pool.rs` was respected
+(observed, never retuned).
+
+**What the round found: every race AP3 predicted is refuted, because the server never builds
+concurrently.** One builder task consumes one channel for the whole server (root *and* every
+mount), `pools` is a plain task-owned `HashMap` so the `MAX_WARM_PAGES` LRU has no lock to race
+on, and freeze writes already use a per-writer unique temp plus an atomic rename. What that
+safety buys is **AP3-1: a page with no code cells at all hot-reloads in 0.11s alone and 12.15s
+(110x) when an unrelated page is mid-execution.** Latency, not correctness, and preview-only.
+
+**Three things this round got that the entry did not say:**
+- **Item 10's flake claim is wrong.** "Two `exec::tests` fail ~2 runs in 3 in a full `--bins`
+  run" measured **0 failures in 13 full runs** with all three gates at full parallelism. So the
+  `ETXTBSY` hypothesis was never reproduced and its recorded "cheap first move" was not spent.
+  What *did* flake is a different test: `kernel_executes_..._runaway_cell`, **1 run in 13**,
+  though item 10 records it as fixed and deterministic since 2026-07-25.
+- **A no-dedupe queue is not automatically a bug.** `build_tx` has no in-flight tracking, so 5
+  edits during one build queue 5 rebuilds; measured, they produce **1** `update` and the correct
+  final state, because builds 2..5 render byte-identical HTML and the block diff emits no ops.
+  Filed as an observation with its harm bounded, not as a defect.
+- **The first head-of-line probe measured nothing** because it edited the slow page's *heading*:
+  the cell's cumulative hash was unchanged, the log said `restored 1 cached cell · 0 re-ran`, and
+  both pages updated in 3.25s. Force execution by editing the **cell body**, and read the server
+  log to catch the mistake.
+
+### Prior state (2026-07-25, earlier: the AP7 accessibility audit, findings only, no code)
 
 **Branch `backlog/backlink-context-and-resume`, notes-only commit on top of the 13 unpushed
 commits below.** The owner ruling that sent the previous session to an audit was discharged: **AP7
@@ -336,9 +367,9 @@ remains open is smaller and mostly P3. Ranked below by product impact.
 > have**. AP7-1 in particular is a real defect on 37 of 51 book pages.
 >
 > The ruling covered that one session only and is **not** a standing preference for audits over
-> features. AP3 (concurrency), AP6 (cross-browser) and AP11 (chaos) remain the unrun
-> perspectives, all stateful/solo and all unranked; there is no ruling that the next session
-> must take one.
+> features. **AP3 also ran on 2026-07-25** (item 35). **AP6 (cross-browser) and AP11 (chaos) are
+> the last two unrun perspectives**, both stateful/solo and both unranked; there is no ruling that
+> the next session must take one.
 >
 > **Read AP7-1 before picking it up:** its two causes pull in opposite directions, and the
 > cheap half (making `check` *see* the defect) turns 37 currently-green pages red, which is a
@@ -374,10 +405,13 @@ editor round-trip.
 **Four owner rulings were also taken** (see the prior-state block), which un-gated a large amount of
 previously-blocked work. What is left now sorts into:
 
-- **Build-ready TODAY: item 34 (AP7), filed 2026-07-25.** That band was empty, which is why the
-  previous session was ruled to an audit; the audit refilled it. **AP7-1 is the pick** (a measured
-  defect on 37 of 51 reader-facing book pages, unblocked, with both causes already re-derived from
-  source). AP7-2/3/4/5 are smaller and each stands alone. 24's independent-medium set is still down
+- **Build-ready TODAY: items 34 (AP7) and 35 (AP3), both filed 2026-07-25.** That band was empty,
+  which is why a session was ruled to an audit; two audits refilled it. **The two picks are AP7-1**
+  (a measured defect on 37 of 51 reader-facing book pages, unblocked, both causes already re-derived
+  from source) **and AP3-1** (a measured 110x hot-reload stall, 0.11s to 12.15s, whose fix shape is
+  already constrained: bypass the queue for cell-free rebuilds, do NOT parallelise the builder).
+  AP7-2/3/4/5 are smaller and each stands alone; AP3-2/3 are small and AP3-2 is an observation, not
+  a defect. 24's independent-medium set is still down
   to the **"Part, Chapter" ribbon**, an owner call rather than a task (see item 24). The other
   non-audit picks remain **item 30** (`corpus/analyst/`, writing not code) and the P3 residuals
   below, each of which carries its own blocker.
@@ -459,9 +493,9 @@ taught about it. Both shipped 2026-07-25.)
 - **The *audit perspectives* track** ("Audit perspectives" section below): proactive,
   findings-generating angles the prior rounds structurally could not see. **Done so far: AP1, AP2,
   AP4, AP5, AP7, AP8, AP9, AP10, AP12** (perf, fuzzing, cache-correctness, i18n/sourcepos, **a11y**,
-  codebase health, determinism, semantic HTML, offline-proof). **Remaining: AP3 (concurrency), AP6
-  (cross-browser), AP11 (chaos)**. All three are *stateful/solo* (server/kernel/browser), so run one
-  when no parallel session owns that surface, and all three are unranked. Each is a fresh session
+  codebase health, determinism, semantic HTML, offline-proof), plus **AP3** (concurrency) the same
+  day. **Remaining: AP6 (cross-browser) and AP11 (chaos)**, both *stateful/solo*
+  (server/kernel/browser), so run one when no parallel session owns that surface, and both unranked. Each is a fresh session
   that writes a dated findings doc and feeds build-ready items back here; the author has credits
   queued for exactly this.
 
@@ -558,6 +592,41 @@ note before starting, because its two causes pull in opposite directions.
    were considered and left for later. Revive only on a real speaker ask.
 
 ### C. Low / hardening (P3)
+
+35. **AP3 concurrency findings** (detail:
+    [2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md)). The round **refuted
+    every race it went looking for** (see the perspective entry); what it found is a queueing
+    property. Read the "Verified sound" list before touching any of this.
+    - **AP3-1 (medium-high, M): one slow cell anywhere stalls hot reload everywhere.** Measured on a
+      two-page preview with a warm pool: a **cell-free** page's trivial prose edit lands in **0.11s**
+      alone and **12.15s** (110x) when an unrelated page is 1.2s into a 12s `{python}` cell.
+      `spawn_builder` (`serve_site/mod.rs:1006-1053`) is one task consuming one channel for the whole
+      server, **root and every mount alike**, awaiting each `build_page_guarded` to completion. It
+      serializes on the wrong predicate: a page with no cells needs no kernel and is queued behind
+      kernel work it will never use. Matters concretely because the marketing site `mounts:` both
+      dogfood books and the corpus has genuinely slow cells. **Do not "fix" by simply parallelising
+      the builder:** serialization is what makes the shared warm pool and the task-owned `ExecPool`
+      race-free (and `ExecPool` is under the M6a freeze), so the safe shape is a bypass for
+      cell-free/no-exec rebuilds, not concurrent executors. Preview-only; degrades latency, never
+      correctness.
+    - **AP3-2 (low, observation not defect): the build queue has no dedupe.** `build_tx` is a bare
+      `UnboundedSender` with no in-flight tracking, so every 80ms debounce window enqueues another
+      build for an open page. **Measured before filing it as a bug, and the visible cost is nil:** 5
+      distinct edits during one 12s build produced **1** `update` line and the correct final state,
+      because builds 2..5 render byte-identical HTML and the block diff emits no ops. The residual is
+      wasted CPU (per AP1, two full-site passes each), which was **not** measured. Only becomes real
+      if AP3-1 is fixed by parallelising.
+    - **AP3-3 (low): `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` still
+      flakes 1 run in 13.** Item 10 records it as fixed 2026-07-25 and deterministic (per-kernel
+      `cell_cap` replacing `OnceLock` memoization of `cell_timeout()`). The rate is clearly far lower
+      than before but is not zero, so either the cap has a second order-dependence or the interrupt
+      path has an unrelated timing edge. **The assertion text was not captured** (the failing run was
+      under a summary-only harness); loop the detail-capturing harness to catch it.
+    - **Correction to item 10, verified:** its "two `exec::tests` concurrency-race tests fail ~2 runs
+      in 3 in a full `--bins` run" is **0 failures in 13 full runs** with all three gates at full
+      parallelism. The `ETXTBSY` hypothesis was never reproduced, so do not spend a session on it;
+      note also that `probe_interp_id` memoizes only an *answer*, so a failed ask is genuinely
+      retried and `interp_id_settled`'s 5s loop already absorbs a transient exec refusal.
 
 34. **AP7 accessibility findings** (detail:
     [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md)). Five findings; the
@@ -965,9 +1034,9 @@ drive a browser, or spawn kernels, so they corrupt each other if run at once: ke
 pure code-read ones (AP9, AP10, AP12, and the read half of AP8) are safe to fan out together in one
 Workflow. The recommended-first set (**AP1, AP2, AP4, AP5**) plus the one safe code-read pick (**AP10**) are
 now all RUN (see their entries below), and **AP7 was run 2026-07-25** under the owner ruling that
-picked it. **Everything remaining (AP3 concurrency, AP6 cross-browser, AP11 chaos) is
+picked it, and **AP3 ran the same day**. **Everything remaining (AP6 cross-browser, AP11 chaos) is
 stateful/solo** (server/kernel/browser/ports), so each needs a session where no parallel work owns
-that surface. All three are unranked. Note from AP7's run: the **chrome-devtools MCP was unusable
+that surface. Both are unranked. Note from AP7's run: the **chrome-devtools MCP was unusable
 because a parallel session held its Chrome profile**, and the fallback that worked is the project's
 own `puppeteer-core` under `tools/ui-audit/node_modules` with a private `userDataDir`. Assume any
 browser-driving perspective (AP6 especially) may need the same.
@@ -998,12 +1067,24 @@ browser-driving perspective (AP6 especially) may need the same.
   isolation, AP2-2 balanced nested brackets → a comrak-0.52 inline O(n²) render hang. Plus AP2-3, the
   still-true "zero fuzz coverage" half. Refuted: the four grep-flagged reachable `unwrap` sites (all correct
   code). *Was stateful/solo.*
-- **AP3: Concurrency / race conditions.** The server multiplexes a `notify` file watcher, websocket
-  handlers, a warm ZMQ kernel, the exec pool, the `MAX_WARM_PAGES` LRU, and `_freeze/` writes across N
-  browser clients. Rust stops data races, not logic races: save-while-executing, file-change-mid-build,
-  two clients on one preview, concurrent freeze writes, eviction interleaving. Start: a stress driver plus
-  a code read of shared-state ordering in `serve_site/exec_pool.rs` (respect the M6a freeze: observe, do
-  not retune). *Stateful, solo.*
+- **AP3: Concurrency / race conditions. RUN 2026-07-25** (findings:
+  [2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md); the three findings are
+  Open-work item **35**). Result: **the concurrency model is safe by construction, and what it buys
+  with that safety is head-of-line blocking.** **Every race this entry predicted is refuted**, because
+  the server never builds concurrently: `spawn_builder` is a *single* task consuming one
+  `UnboundedReceiver<BuildMsg>` for the whole server (root **and** every mount), `pools` is a plain
+  task-owned `HashMap` so `ExecPool`/the `MAX_WARM_PAGES` LRU has no lock and cannot interleave, and
+  freeze writes already use a per-writer unique temp plus an atomic rename (with the reasoning in the
+  source). The real cost, which nobody had measured: **AP3-1**, a page with *no code cells at all*
+  hot-reloads in **0.11s** alone but **12.15s** (110x) when an unrelated page is mid-execution. Plus
+  **AP3-2** (the queue has no dedupe, but the block diff absorbs it, so it is wasted CPU rather than a
+  bug) and **AP3-3** (the runaway-cell test still flakes 1 run in 13 despite being recorded as fixed
+  and deterministic). **Also refuted: the "two `exec::tests` fail ~2 runs in 3" claim in item 10 is
+  0 failures in 13 full runs** on this machine, so `ETXTBSY` was never reproduced and its "cheap first
+  move" was not spent. *Was stateful/solo; the M6a freeze was respected (observed, not retuned).*
+  **Probe trap worth reusing:** editing a slow page's *heading* does not force execution (the cell's
+  cumulative hash is unchanged, and the log says `restored 1 cached cell · 0 re-ran`). Edit the
+  **cell body**, and read the server log to catch the mistake.
 - **AP4: Cache-correctness (adversarial freeze). RUN 2026-07-22** (findings:
   [2026-07-22-cache-correctness-audit.md](2026-07-22-cache-correctness-audit.md); AP4-1 shipped, AP4-2/3/4
   folded into Open-work item 27). Covered BOTH halves — the read hunt (enumerate every input the cumulative
