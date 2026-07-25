@@ -122,7 +122,14 @@
   a.tali-foot-item:has(svg) { min-height: 24px; min-width: 24px; justify-content: center; }
 
   /* listing: post cards (a `grid` of cards, or a stacked `default` list) */
-  .tali-listing { margin: 1.75rem 0; }
+  /* A listing is a real `<ul>` (PA-M3), so strip the list affordances the base
+     stylesheet gives prose lists — the cards ARE the visible items. */
+  .tali-listing { margin: 1.75rem 0; padding: 0; list-style: none; }
+  /* The `<li>` is the grid/flex item the card used to be, so it must not change the
+     layout: it carries no box of its own and stretches its card to the row height
+     (which is what kept cards in a grid row equal-height before the wrapper existed). */
+  .tali-listing > .tali-listing-item { display: flex; margin: 0; padding: 0; }
+  .tali-listing > .tali-listing-item > .tali-card { flex: 1 1 auto; min-width: 0; }
   /* On a wide listing page (blog / projects), the intro prose stays at the reading measure
      while the card grid keeps the full chrome width. Grid width and reading measure are
      already separate tokens; this just applies that separation to a listing's own lead. */

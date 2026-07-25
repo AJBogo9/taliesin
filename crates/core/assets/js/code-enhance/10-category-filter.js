@@ -35,7 +35,11 @@ function taliInitCategoryFilter(root) {
       var shown = 0, total = 0;
       /** @type {NodeListOf<HTMLElement>} */ (listing.querySelectorAll('.tali-card')).forEach(function (card) {
         var show = selected.size === 0 || catsOf(card).some(function (c) { return selected.has(c); });
-        card.style.display = show ? '' : 'none';
+        // Hide the `<li>`, not the card inside it: the listing is a real list (PA-M3), so
+        // hiding only the card would leave an empty list item holding its grid cell open
+        // AND still counted by AT as one of the "N items".
+        var item = /** @type {HTMLElement} */ (card.closest('.tali-listing-item') || card);
+        item.style.display = show ? '' : 'none';
         total++;
         if (show) shown++;
       });

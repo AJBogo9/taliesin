@@ -1538,7 +1538,16 @@ impl Site {
             .iter()
             .map(|p| self.card_html(p, &up, spec.with_image))
             .collect();
-        let grid = format!("<div class=\"tali-listing tali-listing-{layout}\">{cards}</div>");
+        // A real `<ul>`, so assistive tech announces "list, N items" and offers list
+        // navigation (PA-M3). The cards stay `<a>`s inside `<li>`s: putting
+        // `role="listitem"` on the anchor would replace its link role, which is worse
+        // than the defect being fixed.
+        // The explicit `role="list"` is not redundant: WebKit strips list semantics from a
+        // `<ul>` whose `list-style` is `none`, which is exactly what the card layout sets,
+        // so without it VoiceOver announces nothing even though Chrome's tree is correct.
+        // (AP6 compared Firefox and Chromium only, so this browser was never measured.)
+        let grid =
+            format!("<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\">{cards}</ul>");
 
         if !spec.categories {
             return grid;
@@ -1646,8 +1655,8 @@ impl Site {
         // `data-tali-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
-            "<a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
-             <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a>",
+            "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
+             <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a></li>",
             src = esc(&p.rel)
         )
     }
@@ -2944,6 +2953,67 @@ pub(crate) mod tests {
             plain.contains("class=\"tali-listing tali-listing-default\"")
                 && !plain.contains("class=\"tali-card-img\""),
             "default stays text-only: {plain}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// PA-M3: a listing is a real list, so assistive tech announces "list, N items" and
+    /// offers list navigation. It used to be a `<div>` of `<a>` cards — visually a grid,
+    /// semantically a pile — while the book chapter list and the TOC next to it were
+    /// correct `<ul>`s.
+    ///
+    /// The cards stay `<a>`s inside `<li>`s rather than becoming `role="listitem"`
+    /// themselves: a role on the anchor would REPLACE its link semantics, trading one
+    /// a11y defect for a worse one.
+    #[test]
+    fn a_listing_is_a_list_so_at_can_announce_and_navigate_it() {
+        let root = write_site(
+            "listingsemantics",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Blog\n",
+                ),
+                (
+                    "posts/a.tmd",
+                    "---\ntitle: A\ndate: 2026-01-01\n---\n\nBody.\n",
+                ),
+                (
+                    "posts/b.tmd",
+                    "---\ntitle: B\ndate: 2026-01-02\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (blog, _) = render_page(&site, "blog.tmd");
+
+        // Needle the full opening tag: every page inlines the whole stylesheet, which
+        // names `.tali-listing`, so a bare class-name `contains` passes on any page.
+        assert!(
+            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-grid\">"),
+            "the listing container must be a <ul>: {blog}"
+        );
+        assert!(
+            !blog.contains("<div class=\"tali-listing tali-listing-grid\">"),
+            "the old <div> container must be gone: {blog}"
+        );
+        // The explicit role is load-bearing, not belt-and-braces: `list-style: none` (which
+        // the card layout sets) makes WebKit drop list semantics entirely.
+        assert!(
+            blog.contains("role=\"list\""),
+            "the <ul> must keep an explicit role=list for WebKit: {blog}"
+        );
+        // Each card is wrapped, and the anchor keeps its own semantics.
+        let items = blog.matches("<li class=\"tali-listing-item\">").count();
+        assert_eq!(items, 2, "each of the 2 posts must be one <li>: {blog}");
+        assert!(
+            blog.contains("<li class=\"tali-listing-item\"><a class=\"tali-card\""),
+            "the card anchor must sit INSIDE its <li>: {blog}"
+        );
+        assert!(
+            !blog.contains("role=\"listitem\""),
+            "cards must not take a listitem role, which would replace their link role: {blog}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
