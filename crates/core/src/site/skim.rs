@@ -208,8 +208,8 @@ fn layers_in(html: &str) -> Vec<Layer> {
     out.into_iter().map(|(_, l)| l).collect()
 }
 
-/// Plain text for the projection: [`render::indexable_text`], then the space that pass
-/// leaves in front of punctuation removed.
+/// Plain text for the projection: [`render::indexable_text`], then the spaces that pass
+/// leaves against punctuation removed.
 ///
 /// `strip_tags_separated` inserts a space at *every* tag boundary, which is right for the
 /// search index (two adjacent blocks must not weld into one word) but shows up here as
@@ -217,20 +217,28 @@ fn layers_in(html: &str) -> Vec<Layer> {
 /// fix belongs on this side: the index is keyed on that exact text and matched by `indexOf`,
 /// so normalizing it upstream would change what a search finds.
 ///
+/// **Both sides**, symmetrically. The closing half shipped first and the opening half was
+/// missing, so a parenthesised inline element came out as "a Rust toolchain ( cargo
+/// build)" — 7 occurrences in `docs/guide`'s projection, and the shape is common because
+/// `(@sec-x)` and `(`code`)` are both ordinary. Found by reading real output, not source.
+///
 /// `pub(super)` because `backlinks.rs` reads the same reading-form text to pull a citing
 /// sentence out of a referring block. Two extractors that "both strip tags" is exactly the
 /// R1 divergence this codebase already carries once; one is enough.
 pub(super) fn plain(html: &str) -> String {
     let text = render::indexable_text(html);
     let mut out = String::with_capacity(text.len());
+    let mut prev: Option<char> = None;
     for (i, c) in text.char_indices() {
-        let next_is_punct = text[i + c.len_utf8()..].chars().next().is_some_and(|n| {
+        let next_is_closing = text[i + c.len_utf8()..].chars().next().is_some_and(|n| {
             matches!(n, ',' | '.' | ';' | ':' | '!' | '?' | ')' | ']' | '”' | '’')
         });
-        if c == ' ' && next_is_punct {
+        let after_opening = prev.is_some_and(|p| matches!(p, '(' | '[' | '“' | '‘'));
+        if c == ' ' && (next_is_closing || after_opening) {
             continue;
         }
         out.push(c);
+        prev = Some(c);
     }
     out
 }
@@ -465,6 +473,27 @@ pub(super) fn sentence_at(text: &str, at: usize) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plain_closes_the_gap_on_both_sides_of_a_bracketed_inline_element() {
+        // `indexable_text` puts a space at every tag boundary, so a parenthesised inline
+        // element gets one on EACH side. The closing half was already handled; the
+        // opening half was not, and it showed up 7 times in `docs/guide`'s own
+        // projection ("a Rust toolchain ( cargo build)").
+        assert_eq!(
+            plain("<p>Builds with a toolchain (<code>cargo build</code>), then runs.</p>"),
+            "Builds with a toolchain (cargo build), then runs."
+        );
+        assert_eq!(
+            plain("<p>A quote \u{201c}<em>so</em>\u{201d} and a list [<code>a</code>].</p>"),
+            "A quote \u{201c}so\u{201d} and a list [a]."
+        );
+        // An ordinary space between words is untouched, in both neighbourhoods.
+        assert_eq!(
+            plain("<p>one <em>two</em> three (four five)</p>"),
+            "one two three (four five)"
+        );
+    }
 
     /// The nav's cost signal and `skim`/`map`'s `words` must be one number, and the only
     /// shape that can tell them apart is a chapter assembled from `{{< include >}}`.

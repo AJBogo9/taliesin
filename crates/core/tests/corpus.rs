@@ -1041,7 +1041,8 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     // (a screen reader can tell the chapter list from the pager).
     assert!(
         methods.contains(
-            "class=\"tali-book-sidebar\" data-tali-src=\"_site.yml\" aria-label=\"Chapters\""
+            "class=\"tali-book-sidebar\" data-tali-src=\"_site.yml\" \
+             data-tali-book=\"index.html\" aria-label=\"Chapters\""
         ) && methods.contains("class=\"tali-postnav tali-book-postnav\" aria-label=\"Pagination\""),
         "book nav landmarks must be aria-labelled"
     );

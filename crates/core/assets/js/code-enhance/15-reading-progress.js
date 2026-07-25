@@ -1,7 +1,8 @@
-// Reading progress + resume: a thin ambient top progress bar tied to scroll, and a
-// block-id-anchored resume position (reader-local, exact, survives reflow). Reader-side +
-// read-only: derives from the live DOM and the reader's own localStorage; never writes the
-// author's source. Skipped on decks. Idempotent (document-level, builds once).
+// Reading progress + resume: a thin ambient top progress bar tied to scroll, a
+// block-id-anchored resume position within a page, and a book-scoped "Continue reading"
+// pill on a book's landing page. Reader-side + read-only: derives from the live DOM and
+// the reader's own localStorage; never writes the author's source, never talks to a
+// server, no account, no sync. Skipped on decks. Idempotent (document-level, builds once).
 function taliInitReadingProgress() {
   if (window.__taliProgress) return;
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
@@ -95,6 +96,56 @@ function taliInitReadingProgress() {
     saveSoon();
     // Dismiss the resume pill on the reader's own scroll (not the first programmatic tick).
     if (resumeEl) { if (resumeArmed) dismissResume(); else resumeArmed = true; }
+  }
+
+  // --- book-scoped reading position -------------------------------------------------
+  //
+  // One record per book: the path of the chapter the reader was last in. The book's
+  // identity is `data-tali-book` (the landing page's href, resolved absolute) rather than
+  // its title — a retitled book must not orphan the reader's position, and an untitled
+  // book has no title to key on. Deliberately NOT a copy of the block id or the scroll
+  // fraction: `tali-pos:<path>` already holds those for the chapter, and the pill's job is
+  // only to get the reader back to the right chapter, where the resume pill above then
+  // offers the exact position. Two records for one position is how they drift apart.
+  var bookNav = document.querySelector('[data-tali-book]');
+  var bookRoot = null;
+  if (bookNav) {
+    var rel = bookNav.getAttribute('data-tali-book');
+    try { bookRoot = new URL(/** @type {string} */ (rel), location.href).pathname; } catch (e) {}
+  }
+  var slot = /** @type {HTMLElement | null} */ (document.querySelector('[data-tali-continue]'));
+
+  if (bookRoot && !slot) {
+    // A chapter: record that this is where the reader is. Once, on arrival — the value is
+    // the page path, which no amount of scrolling changes.
+    try { localStorage.setItem('tali-book:' + bookRoot, location.pathname); } catch (e) {}
+  } else if (bookRoot && slot) {
+    // The landing page: offer the way back in. The chapter's number and title are read
+    // out of the Contents list already on this page, so nothing new is built or shipped —
+    // and a chapter that has since been renamed or removed simply has no matching row,
+    // which leaves the slot hidden rather than guessing.
+    var want = null;
+    try { want = localStorage.getItem('tali-book:' + bookRoot); } catch (e) {}
+    if (want && want !== location.pathname) {
+      var links = /** @type {Element[]} */ ([].slice.call(document.querySelectorAll('.tali-btoc-link')));
+      for (var li = 0; li < links.length; li++) {
+        var a = /** @type {HTMLAnchorElement} */ (links[li]);
+        if (a.pathname !== want) continue;
+        var label = document.createElement('a');
+        label.className = 'tali-book-continue-link';
+        label.href = a.getAttribute('href') || a.href;
+        // The chapter's own number + title, minus the cost signal and the draft badge:
+        // this is a "take me back" affordance, not a second Contents row.
+        var num = a.querySelector('.tali-btoc-num');
+        var chap = a.querySelector('.tali-btoc-chap');
+        label.textContent = ((num ? num.textContent + ' ' : '') + (chap ? chap.textContent : '')).trim();
+        if (!label.textContent) break; // nothing to name it with; stay silent
+        slot.appendChild(document.createTextNode('Continue reading '));
+        slot.appendChild(label);
+        slot.hidden = false;
+        break;
+      }
+    }
   }
 
   render();

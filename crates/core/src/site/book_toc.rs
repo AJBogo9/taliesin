@@ -32,10 +32,16 @@ pub(super) fn render_book_toc(
     // Depth-relative prefix, like the drawer: the landing is at the site root
     // (`index.html`), so this is empty in practice, but keep the general form.
     let up = "../".repeat(current_url.matches('/').count());
+    // The Continue slot is emitted INERT and empty: which chapter a reader left off in is
+    // reader-local state that exists only in their browser, so the server has nothing to
+    // put here and a built page is identical for every reader. `15-reading-progress.js`
+    // fills it in and unhides it; with JS off it stays a hidden empty element and the
+    // Contents below is the whole navigation, exactly as before.
     let mut s = String::from(
         "<nav class=\"tali-book-landing-toc\" aria-labelledby=\"tali-btoc-h\" \
          data-block-id=\"tali-book-toc\">\
          <h2 id=\"tali-btoc-h\" class=\"tali-btoc-title\">Contents</h2>\
+         <p class=\"tali-book-continue\" data-tali-continue hidden></p>\
          <ul class=\"tali-btoc-list\">",
     );
     for e in entries {
