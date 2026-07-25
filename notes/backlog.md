@@ -8,7 +8,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25, latest: SKIM-2 Ship A + SKIM-3a + deck-motion (5) shipped)
+## State (2026-07-25, latest: SKIM-2 fully shipped + SKIM-3a + deck-motion (5))
 
 **Branch `backlog/skim-batch`.** Three items landed after SKIM-1: **23's Ship A**, **24a** (the
 three-state `check` severity floor) and **28's (5)** (the overview column count), which empties item
@@ -143,13 +143,9 @@ also taken** (see the prior-state block), which un-gated a large amount of previ
 What is left now sorts into:
 
 - **Build-ready TODAY, in this order:**
-  1. **23 session 2** (M) — delete `BODY_CAP`, split long sections into records on block boundaries;
-     `hidden="until-found"` for tab panels (four edits, see the item); bound runaway cell output in
-     CSS. Sequence **29's R1** with it (it rebuilds the index anyway). *Ship A already changed the
-     index shape once, so re-measure the cap's real cost on a fresh build before quoting 18.3%.*
-  2. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
+  1. **24b** (M) — `taliesin skim` + the machine-shape projections. Its prerequisite (24a, the
      three-state floor) shipped 2026-07-25, so the lints in 24c are no longer gate-blocked either.
-  3. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
+  2. **23 Ship B** (L) — the drawer outline sidecar, now RULED in, after A. **Re-scope first:** Ship A
      put a browsable whole-book outline one keystroke away, so B's remaining value is the *drawer*
      specifically, not the outline as such.
 - **Writing, not code** — 30 (`corpus/analyst/`), the last un-probed persona. Diminishing returns
@@ -267,23 +263,23 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 
 23. **SKIM-2: honest search, honest output, and the whole-book outline** (P2, M; **22 has shipped, so this is unblocked**; detail:
     [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). Two sessions, in order:
-    - **Session 2, honest output.** `BODY_CAP = 1500` (`site/search.rs:11`, applied `:172-175`) truncates
-      **18.3%** of guide sections and **25.3%** of internals sections (main-session recount on a fresh build:
-      32 of 180 guide entries sit at the cap), taking roughly 15% of each book's prose out of the index with
-      no signal to reader or author: delete the cap and split long sections into records on **block**
-      boundaries (measured: uncapping grows indexed text only ~1.17x; `score()` costs 0.75-1.01 ms/keystroke
-      on the real index, 6.6-11.6 ms at 5x, so the matcher is not the constraint). **Do NOT ship the chunked
-      term-keyed index** (Stage 2): no measured trigger, and `install_search_fragment`'s per-page fragment
-      model has no term-keyed equivalent, so the dev loop is unsolved. Text in a non-active tab panel is
-      invisible to Ctrl-F (`tabset.js:28` sets `panel.hidden`) while `tarn.rs:42` actively asserts it **is**
-      in Cmd-K: fix with `hidden="until-found"`, which needs **four** edits (`divs.rs`, narrow
-      `base.css:582`, add a zero `contain-intrinsic-size`, and write the attribute as a string in
-      `tabset.js` or the boolean IDL setter kills it on the first click) plus a programmatic reveal on the
-      Cmd-K arrival path. Bound runaway cell output in **CSS** (`max-height` + `overflow-y` + a print reset),
-      never with `hidden="until-found"` (Chrome-only reveal; older Safari falls back to `display:none` and a
-      traceback becomes uncopyable and absent from print); decide `.tali-output img` explicitly, and budget a
-      **new** vertical fade, not a reuse (`base.css:625`'s `background` shorthand already resets the generic
-      `pre` shadow).
+    - ~~**Session 2, honest output.**~~ **SHIPPED 2026-07-25.** `BODY_CAP` is gone (re-measured
+      first: it truncated **18.7%** of Guide and **25.9%** of Internals section records;
+      uncapping costs **1.20x** indexed chars / **1.17x** index bytes, and 3.2-10.5 ms per
+      keystroke INCLUDING the full result re-render). **Not split into per-block records**,
+      which the audit also proposed: the record count is exactly what Ship A's outline
+      renders, so splitting would put duplicate rows in it, and the measured growth gives
+      splitting nothing to fix. `section_text` is now exactly `render::indexable_text`, which
+      also closes **29's R1** on the Cmd-K side. Tab panels ship `hidden="until-found"` with
+      all four edits, **plus a fifth the audit named but understated**: walking ancestors from
+      the target finds nothing, because the index anchors a section to its HEADING and the
+      tabset is a SIBLING of it — `revealFor` also reveals the panel in the landed section
+      that contains a query term. And it must run in a macrotask: inline it raced tabset.js's
+      own DOMContentLoaded registration (measured — the click did nothing). Cell output is
+      bounded in CSS via `--tali-output-max` with a NEW vertical fade, a `<pre>`/table scroll
+      + image `object-fit: contain` split, and a print reset; new fixture
+      `corpus/layout/dense-output.tmd` (kernel-free) drops that page from ~19,000 px to
+      2,275 px.
     - ~~**Session 3, Ship A.**~~ **SHIPPED 2026-07-25.** The palette's empty state is now the whole-book
       outline (every page + its sections, indented), results group by chapter with a "+N more" disclosure,
       partial matches survive with a struck-through `Missing: X`, `within1` is Damerau-aware, and actions
@@ -565,12 +561,13 @@ gating tag: a high-impact item can still be frozen or need a ruling.
 29. **Reduction-audit residuals** (P3, dev-facing; detail:
     [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). Phase 2 + T1 + R2 shipped and
     the codebase is lean; two items were explicitly deferred and never filed here. Both re-verified open:
-    - **R1 — two divergent text extractors.** The pass tried to unify them and the equivalence gate
-      **failed**: `text_content` (which feeds `llms.txt`) decodes `&#8217;`/`&nbsp;`, `render::indexable_text`
-      (which feeds Cmd-K) does not, so naively reusing one would leak raw entities into `llms.txt`. The
-      divergence is pinned by a passing test, so it is a conscious fork, not a bug — but aligning them
-      **changes the search index**, which is why it was carved out. Sequence it with item 23 (which rebuilds
-      the index anyway) rather than as its own change.
+    - **R1 — two divergent text extractors.** *Half closed 2026-07-25:* the Cmd-K side no longer has
+      an extractor of its own — `search::section_text` was `indexable_text` **plus a 1500-char cap**,
+      and with the cap gone it is exactly `render::indexable_text`. What remains is the original
+      divergence: `text_content` (which feeds `llms.txt`) decodes `&#8217;`/`&nbsp;`,
+      `render::indexable_text` does not, so naively reusing one would leak raw entities into
+      `llms.txt`. That fork is pinned by a passing test, so it is conscious, not a bug. Its stated
+      sequencing hook is spent (item 23 has shipped); revisit only if a consumer needs them equal.
     - **T2 — three site modules each run their own raw-source pre-scan** (`site/xref.rs`, `site/book.rs`,
       `site/discovery.rs` each `read_to_string` the page and re-implement a slice of the include/parse
       pipeline). A recurring pattern rather than a single bug; unify on one shared pre-scan **if you are

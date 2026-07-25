@@ -65,6 +65,10 @@
     --tali-shadow-md: 0 4px 18px var(--tali-edge-shadow);
     --tali-shadow-lg: 0 8px 34px var(--tali-edge-shadow);
     --tali-dur: .12s; --tali-dur-slow: .25s;
+    /* How tall one cell's output may grow before it scrolls in its own box. Roughly a
+       screenful on a laptop: enough that ordinary output is never boxed at all, small enough
+       that a runaway cell cannot take the page's scrollbar hostage. Lifted in print. */
+    --tali-output-max: 32rem;
     /* One "dim behind an overlay" scrim for every modal/drawer/sheet backdrop, so the dimming
        is set once instead of drifting per surface (it was .38/.42/.55 across site/base/deck).
        A pure black alpha, theme-independent like the literals it replaces (a black scrim reads
