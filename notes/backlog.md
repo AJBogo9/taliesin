@@ -10,34 +10,33 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-25)
 
-**Branch `backlog/backlink-context-and-resume`: 15 commits, NOT pushed**, stacked on
-`backlog/book-outline-drawer` (5 commits), itself off `origin/main` at `994bcba`. **Do not trust
-that SHA** (see Git under "Standing constraints"); verify with `git log --oneline origin/main..HEAD`.
+**Branch `backlog/band-a-diagnostics`: 7 commits**, stacked on
+`backlog/backlink-context-and-resume` (19 commits ahead of `origin/main`). **Do not trust any SHA
+written here** (see Git under "Standing constraints"); verify with
+`git log --oneline origin/main..HEAD`.
 
-Five code batches landed 2026-07-25 (the hardening set, SKIM-1/2/3a, the P3 residual batch, the
-book-wayfinding batch, the backlink-context + resume batch). What they shipped is in git and
-[AUDITS.md](AUDITS.md); the lessons worth carrying forward are folded into "Standing constraints"
-below. Gates at the last code landing, **re-run before trusting them**: 1481 tests / 0 fail across
-88 binaries with all three gates and `--test-threads=1`; `cargo fmt --check`,
-`clippy --workspace --all-targets -D warnings` and both JS `tsc` gates clean; `check` clean on
-`corpus/tarn`, `docs/guide`, `docs/internals` and `site`.
+**Band A is empty. Every build-ready audit finding has shipped**, so the backlog is clear for the
+next round of audits. The 2026-07-25 band-A batch closed items **34** (AP7, all five findings),
+**35** (AP3-1), **36** (AP11-1), **37** (DIAG-1) and **38** (DOCS-1); what is worth carrying forward
+is in [AUDITS.md](AUDITS.md) under "The 2026-07-25 band-A batch", not repeated here. Two findings
+turned out larger than filed: DIAG-1's six fall-through diagnostics were **eight** (the zero-GENERIC
+test found a seventh, and the two build-only execution diagnostics are invisible to any `check`-side
+sweep), and AP7-1's fix surfaced two real authoring skips the blind rule had been hiding.
 
-Five audit rounds then ran, **findings only**: **AP7** (accessibility) = item **34**, **AP3**
-(concurrency) = item **35**, **AP11** (chaos) = item **36**, **AP6** (cross-browser) = **no findings**,
-and two non-AP lenses = items **37** (diagnostics) and **38** (docs drift). **All twelve AP slots are
-now run.**
+Five earlier code batches landed the same day (the hardening set, SKIM-1/2/3a, the P3 residual batch,
+the book-wayfinding batch, the backlink-context + resume batch).
 
-**Build-ready now: the whole of band A** (items 34, 37, 35, 36, 38), ranked and grouped into three
-batches at the top of "Open work" so a session can take one and stay in one area. The two largest are
-**AP7-1** (37 of 51 book pages emit a skipped heading level while `check` prints "no problems found")
-and **AP3-1** (a page with no code cells hot-reloads in 0.11s alone, 12.15s when an unrelated page is
-executing). Each item records its own fix-shape constraint; read it before starting.
+**Gates at the last code landing, re-run before trusting them:** full workspace suite with all three
+gates and `--test-threads=1`; `cargo fmt --check`, `clippy --workspace --all-targets` and both JS
+`tsc` gates clean; `check` clean on `corpus/tarn`, `docs/guide`, `docs/internals` and `site`. The
+band-A batch additionally browser-verified every client-side change (the chrome-devtools MCP profile
+was held by a parallel session, so via the project's own `puppeteer-core` harness, as AP7 itself did).
 
 **Owed by the author, not by a session:** the in-editor click-to-source round-trip check from the
 naming purge (Task 8 Step 5). The companion was repackaged and reinstalled and the relay harness
 passes both directions, but nothing automated covers the real editor round-trip.
 
-**Every AP slot is now run**, AP6 closing the set. The only audit work left is **AP1's unchased
+**Every AP slot is now run.** The only audit work with code left in it is **AP1's unchased
 residuals** (kernel RSS drift, multi-hour warm RSS) and the *behavioural* half of the docs lens.
 Working method is in "Audit perspectives": a dated findings doc, a row in
 [AUDITS.md](AUDITS.md)'s round index, and the build-ready findings filed into "Open work" under
@@ -70,7 +69,7 @@ their own prefix. No ruling requires the next session to take one.
   "~2 runs in 3" is wrong and `ETXTBSY` was never reproduced; what still flakes is
   `kernel_executes_..._runaway_cell` at **1 run in 13**, despite item 10 recording it as fixed and
   deterministic. So a red `exec`/`kernel` probe is worth one re-run, but is no longer a reason to
-  reach for `--no-verify` by default. See item 35.
+  reach for `--no-verify` by default. The surviving flake is tracked in item 10 (it was AP3-3).
 - **Git:** do not trust a SHA written in notes. Check `git log --oneline origin/main..main` for what is
   unpushed and `git reflog show origin/main` before believing any "not pushed" claim; the author pushes
   mid-session with no signal here.
@@ -104,6 +103,15 @@ their own prefix. No ruling requires the next session to take one.
   user-facing string is present in the HTML of every page whether or not that page renders the
   feature.** A whole-page `contains("…")` is satisfied by a page rendering none of it. **Needle the
   full emitted tag, or slice the block out first.**
+- **To measure anything about cell execution, edit the CELL BODY, not the page.** A cell's freeze key
+  is its own code plus all upstream same-language code, so editing a page's *prose* leaves every cell
+  hash intact and nothing re-runs. AP3-1's first probe did exactly this and reported 0.09 s with and
+  without the fix — a false all-clear on an unfixed build. The same trap makes any "is the kernel
+  busy?" setup silently no-op.
+- **A message-catalogue sweep must enumerate the EMITTERS, not one command's output.** DIAG-1 measured
+  `check --format json` over 23 targets and found six uncatalogued diagnostics; there were eight. The
+  two it could not see are emitted only by `build`/`publish` (a crashed cell, a cell that never ran),
+  and `check` never executes a cell, so no amount of `check` coverage would have reached them.
 - **Calibrate a new lint against real output before writing it.** Measuring the proposed
   `TAL-SHAPE-*` rules over all 14 site projects killed four of their own prescriptions, including
   the most valuable one (it fired on 11.8% of the corpus, essentially all false positives) and one
@@ -111,10 +119,11 @@ their own prefix. No ruling requires the next session to take one.
 
 ## Open work (priority order: take from the top)
 
-**Ranked for implementation, not by theme.** Band A is buildable today; B is buildable but not
-worth a session alone; C and D are blocked and are listed so they are not re-scoped. **Item numbers
-are stable** and referenced from the findings docs and [AUDITS.md](AUDITS.md), so they are NOT
-renumbered when the order changes.
+**Ranked for implementation, not by theme.** Band A is what a session can build today and is
+currently **empty**; B is buildable but not worth a session alone; C and D are blocked and are listed
+so they are not re-scoped. **Item numbers are stable** and referenced from the findings docs and
+[AUDITS.md](AUDITS.md), so they are NOT renumbered when the order changes, and a closed item's number
+is never reused.
 
 **Standing rule for a batch:** branch per batch, verify each fix by *mutation* (restore the bug,
 watch the named test fail), browser-verify anything client-side, and **delete the item from this
@@ -122,156 +131,19 @@ file when it lands**. Read "Standing constraints" first; several of these have a
 
 ### A. Build now: measured, unblocked, and each one has its fix shape recorded
 
-**This is the batch pool. Take from the top, or take a whole batch.** Every item here is a defect
-someone measured, with no owner call and no missing device in front of it. The three batch groupings
-are by *what code they touch*, so a session stays in one area:
+**Empty.** Every finding the twelve AP rounds and the two non-AP lenses filed as build-ready has
+shipped; the 2026-07-25 band-A batch closed the last five (items 34, 35, 36, 37, 38 — deleted from
+this file, as the rule below requires). The next entries here come from the next audit round.
 
-| Batch | Items | Why it batches |
-|---|---|---|
-| **Diagnostics + messages** | **37**, **36**, **38** | all three live in the `check`/`build` message layer, all small, and 37's fix (a test) also guards 36 |
-| **Reader-facing a11y** | **34** | one item, but AP7-1 alone is the largest measured defect open |
-| **Dev loop** | **35** | server-side; touches the builder queue, so keep it out of a batch that edits diagnostics |
-
-**Sequencing warnings that are easy to miss:**
-- **34**'s two causes pull in opposite directions, and the cheap half (teaching `check` to *see* the
-  defect) turns thirty-seven currently-green pages red without fixing any of them.
-- **35** must NOT be fixed by parallelising the builder: serialization is what makes the shared warm
-  pool and the task-owned `ExecPool` race-free, and `ExecPool` is under the M6a freeze. The safe
-  shape is a bypass for cell-free rebuilds.
-- **37**'s fix is the *test* (assert zero `GENERIC` classifications), not the needles. Adding needles
-  alone fixes six instances and resets the clock on a bug class that has now bitten twice.
-
-34. **AP7 accessibility findings** (detail:
-    [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md)). Five findings; the
-    doc also records what came back **sound** (deck `inert`, KaTeX MathML, tabsets, focus rings) and
-    three false leads, so re-derive from it before doubting any of this. **AP7-1 is the only one that
-    is a defect on shipped reader-facing pages.**
-    - **AP7-1 (medium-high, S+M): 37 of 51 book pages emit a skipped heading level while
-      `check` prints "no problems found".** Measured across `docs/guide` + `docs/internals` +
-      `corpus/tarn`: 35 pages `h1→h3`, 2 pages `h1→h4`; `h2` is empty on essentially every chapter of
-      both dogfood books. **Two independent causes, both re-derived from source:**
-      (1) `render/mod.rs:2490 demote_heading_html` is an absolute `+1`, right for a `#`-rooted chapter
-      and wrong for the `##`-rooted house style, while the build's TOC already windows relative to
-      the *shallowest heading present*, so the two disagree; (2) `diagnostics/a11y.rs:211` starts
-      `prev = 0` and `helpers.rs:47 heading_level` needs the block html to **start with** `<hN`, but
-      the title block is `blocks[0]` as `<header class="tali-title-block">…<h1>` (`render/mod.rs:1133`),
-      so the page's only `<h1>` is skipped and the largest jump on the page is never compared.
-      **Sequencing matters:** fixing (2) alone is cheap but turns 37 green pages red rather than
-      fixing them; fixing (1) changes emitted levels, which `site/chapter.rs` numbers *post*-demotion,
-      so the relative-demotion fix and `ChapterNumbering`'s per-site base must move together or
-      `@sec-` refs drift. Needs a minted pin: there is no `crates/core/tests/a11y*.rs`.
-    - **AP7-2 (medium, S): the reactive `{js}` graph rewrites the document silently.** Keyboard-driving
-      a `{{< input >}}` slider on built `corpus/reactive/inputs.tmd` changed six output regions
-      (`k=3 n=20` → `k=8 n=20`) with **every** live region empty; no `.tali-js-out` carries `aria-live`
-      or `role` (7 of 7), and `tali-js.js` has no `aria-live` at all. The control itself is correct
-      (real `<label for>`, keyboard-operable); only the consequence is unannounced.
-    - **AP7-3 (medium, M): `.scrolly` and `.code-walkthrough` carry no a11y semantics at all.**
-      Measured: 0 focusable steps, 0 steps with `aria`/`role`, 0 live regions, `null` root role, for
-      both. `scrolly.js`/`walkthrough.js` contain no `keydown`/`tabindex`/`role`/`aria`. The step
-      prose reads fine linearly; what is never conveyed is the **stage** each step drives (no
-      `aria-controls`/`aria-describedby`), and its state advances only as a consequence of visual
-      scrolling. *The audit did not manage to drive a state transition headlessly (the known
-      scroll-testing gotcha), so it reports the semantics, not the flip timing.*
-    - **AP7-4 (low-medium, S): a preview block swap strands keyboard focus.** Measured against a
-      live preview: focus **inside** the edited block → `<body>` (next Tab restarts at the top of the
-      document); focus in an **unrelated** block survives, so the block-level diff is already doing
-      its job. Nothing announced either way. `client.js:1276` `replaceWith` / `:1312` `remove` have no
-      focus handling. **Preview-only** (a built page has no swap), so this costs an author who works
-      keyboard-first or with AT, not a reader.
-    - **AP7-5 (low, S): the in-page TOC is tab stop 56 of 62** on a chapter, after all 48 content
-      stops, though it is a sticky sidebar visible the whole time. Screen-reader users are unaffected
-      (`role="doc-toc"` is exposed as a landmark, verified in the full a11y tree); this lands on
-      keyboard-only users not running AT. The skip link goes to `#tali-main` only.
-
-37. **DIAG-1: six live diagnostics fall through to the uncatalogued code, at ERROR** (P3, S+test;
-    detail: [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
-    `classify` (`diagnostics/codes.rs:141`) substring-matches the human message against `TABLE`;
-    anything unmatched returns `(GENERIC, ERROR)`. **Measured over 23 corpus/dogfood targets plus a
-    purpose-built fixture**, these six reach the fallback today: `broken citation: @X (did you
-    mean …)`, ``unknown div class `X` (did you mean …)``, ``.scrolly` has no `.step` divs``,
-    ``.panel-tabset` has no headings``, ``.input` needs a `name=` ``, ``.input type=select` needs
-    `options=` ``. **Three real consequences:** severity is decided by whether someone remembered a
-    needle (an unknown *callout kind* is a WARNING, an unknown *div class* is an ERROR that fails
-    `check` / `build --strict` / `publish`); `check --explain` answers "an uncatalogued diagnostic"
-    for all six, five of which carry a ``did you mean`` hint and are the most fixable diagnostics
-    the tool has; and `--format json` emits the same wrong code + `docs_url`.
-    **This is a recurrence, not a new bug:** the opt-in `prose-lint:` rules hit the identical
-    fallback until 2026-07-25, where a green gate cost you the rule. That was fixed by adding three
-    needles, so the *instance* was fixed and the *failure mode* was not.
-    **The fix is the test, not the needles:** the only existing guard
-    (`uncatalogued_message_gets_a_stable_generic_code`, `codes.rs:709`) asserts the fallback works on
-    a synthetic string; nothing asserts no real message reaches it. Add a test that renders the
-    diagnostics fixtures (plus a new one for the four widget-validation families) and asserts **zero**
-    `GENERIC` classifications. Adding needles alone just resets the clock. Ordering constraint already
-    documented: shape rows must precede prose rows in `TABLE`.
-
-35. **AP3 concurrency findings** (detail:
-    [2026-07-25-ap3-concurrency-audit.md](2026-07-25-ap3-concurrency-audit.md)). The round **refuted
-    every race it went looking for** (see the perspective entry); what it found is a queueing
-    property. Read the "Verified sound" list before touching any of this.
-    - **AP3-1 (medium-high, M): one slow cell anywhere stalls hot reload everywhere.** Measured on a
-      two-page preview with a warm pool: a **cell-free** page's trivial prose edit lands in **0.11s**
-      alone and **12.15s** (110x) when an unrelated page is 1.2s into a 12s `{python}` cell.
-      `spawn_builder` (`serve_site/mod.rs:1006-1053`) is one task consuming one channel for the whole
-      server, **root and every mount alike**, awaiting each `build_page_guarded` to completion. It
-      serializes on the wrong predicate: a page with no cells needs no kernel and is queued behind
-      kernel work it will never use. Matters concretely because the marketing site `mounts:` both
-      dogfood books and the corpus has genuinely slow cells. **Do not "fix" by simply parallelising
-      the builder:** serialization is what makes the shared warm pool and the task-owned `ExecPool`
-      race-free (and `ExecPool` is under the M6a freeze), so the safe shape is a bypass for
-      cell-free/no-exec rebuilds, not concurrent executors. Preview-only; degrades latency, never
-      correctness.
-    - **AP3-2 (low, observation not defect): the build queue has no dedupe.** `build_tx` is a bare
-      `UnboundedSender` with no in-flight tracking, so every 80ms debounce window enqueues another
-      build for an open page. **Measured before filing it as a bug, and the visible cost is nil:** 5
-      distinct edits during one 12s build produced **1** `update` line and the correct final state,
-      because builds 2..5 render byte-identical HTML and the block diff emits no ops. The residual is
-      wasted CPU (per AP1, two full-site passes each), which was **not** measured. Only becomes real
-      if AP3-1 is fixed by parallelising.
-    - **AP3-3 (low): `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` still
-      flakes 1 run in 13.** Item 10 records it as fixed 2026-07-25 and deterministic (per-kernel
-      `cell_cap` replacing `OnceLock` memoization of `cell_timeout()`). The rate is clearly far lower
-      than before but is not zero, so either the cap has a second order-dependence or the interrupt
-      path has an unrelated timing edge. **The assertion text was not captured** (the failing run was
-      under a summary-only harness); loop the detail-capturing harness to catch it.
-    - **Correction to item 10, verified:** its "two `exec::tests` concurrency-race tests fail ~2 runs
-      in 3 in a full `--bins` run" is **0 failures in 13 full runs** with all three gates at full
-      parallelism. The `ETXTBSY` hypothesis was never reproduced, so do not spend a session on it;
-      note also that `probe_interp_id` memoizes only an *answer*, so a failed ask is genuinely
-      retried and `interp_id_settled`'s 5s loop already absorbs a transient exec refusal.
-
-36. **AP11 chaos finding** (detail:
-    [2026-07-25-ap11-chaos-audit.md](2026-07-25-ap11-chaos-audit.md)). One finding; the round's
-    main result is a **positive bill of health** on failure handling, listed in the doc so it is not
-    re-audited (corrupt `_freeze` self-heals in all three corruption shapes; an unwritable `_freeze`
-    warns and completes; an **unwritable output dir exits 1 with nothing half-written**; a missing
-    interpreter renders cells as source with a precise page diagnostic and **fails under `--strict`**;
-    a killed server leaves the client in a visible `reconnecting…` state with a boot-id-forced
-    re-mount). **PA-B1 was already fixed**, so AP11's only seed is closed.
-    - **AP11-1 (low-medium, S): a missing interpreter is reported to the console as an author code
-      exception.** With a bogus `TALIESIN_PYTHON`, the build logs `cell error … code cell raised an
-      uncaught exception; its traceback is baked into the output`. Both claims are false: the kernel
-      never launched and no traceback exists. **Cause:** `build.rs:380 is_cell_error_output`
-      classifies a crashed cell purely by HTML shape (`<div class="tali-output"` containing
-      `class="tali-error"`), and the kernel-unavailable diagnostic is emitted with exactly that
-      shape, so `cell_error_message` (`build.rs:478`) asserts an exception unconditionally. Reaches
-      `--format json` too, via `cell_error_diagnostics` (`build.rs:493`). The rendered **page is
-      correct**; only the console and the structured diagnostics are wrong. Matters because a wrong
-      interpreter path is plausibly the most common setup failure. **Fix shape:** distinguish at the
-      source of truth (a distinct class on the unavailable diagnostic, or an executor-set marker),
-      not by HTML shape.
-
-38. **DOCS-1: two user-facing env knobs are undocumented** (P3, XS; detail:
-    [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md)).
-    The user guide documents nine `TALIESIN_*` variables; **`TALIESIN_RENDER_TIMEOUT`**
-    (`render/mod.rs:295`, the render watchdog, `0` disables) and **`TALIESIN_JS_TIMEOUT`**
-    (`headless_js.rs:211`, the headless `{js}` settle budget) appear nowhere in it. Both shipped with
-    feature work (AP2 hardening, DX17b) that never touched the reference page, which is the same
-    drift shape the CLI-flag gate exists to catch. Consider extending that mechanical gate to env
-    vars. **Do not re-derive the other seven apparent drifts:** they are refuted in the doc
-    (`TALIESIN_BOOT`/`SSR_GEN`/`SEARCH_LOAD_FAILED`/`LABELS` are `window.*` globals, not env vars;
-    `COLD_REAP_CHILD` is an internal child marker; `BIN` belongs to the test harnesses;
-    `EDITOR_URI` exists only in a historical spec).
+**Two residuals were deliberately NOT closed with them, and are recorded where they belong rather
+than left looking open:**
+- **AP3-3**, `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` still flaking
+  1 run in 13, is test-infra and lives in item **10**. It needs a detail-capturing harness looped
+  until it reproduces, not a fix — the assertion text has still never been captured.
+- **AP7's "not chased" list** (a real screen reader, colour contrast, callouts/theorems as composite
+  widgets, the mobile TOC sheet, reduced-motion across the scroll features) is scope the round
+  declared out, not work it left undone. It is in
+  [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md).
 
 ### B. Buildable, but low yield on its own
 
@@ -326,8 +198,9 @@ into a batch that is already in the same file.
       even though it was fixed 2026-07-25 (a per-kernel `cell_cap` replacing `OnceLock` memoization
       of `cell_timeout()`, which also dropped the `--bin` suite 155 s → 49 s). So either the cap has
       a second order-dependence or the interrupt path has an unrelated timing edge. **The assertion
-      text has never been captured**; loop a detail-capturing harness to get it. Tracked as AP3-3 in
-      item 35. `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` asserts on no
+      text has never been captured**; loop a detail-capturing harness to get it. This is AP3-3, and
+      item 35 having shipped, this bullet is now its only home.
+      `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` asserts on no
       elapsed time at all (it polls `pool.ready_len()`, bounded at 10 s): nothing to fix there.
     - **Mermaid `<script>` SRI + `crossorigin`: now moot by construction.** Nothing fetches mermaid
       from a CDN any more — build inlines the vendored copy and preview serves it from a same-origin
@@ -512,19 +385,19 @@ run; only **AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS) i
 |---|---|---|
 | [AP1 perf/scale](2026-07-23-ap1-performance-scale-audit.md) | no quadratic anywhere; the one tax is two full-site passes per warm save | PERF-1, shipped |
 | [AP2 fuzzing](2026-07-22-ap2-robustness-fuzzing-audit.md) | zero unexpected panics; two input-bound gaps (uncatchable abort, comrak O(n²) hang) | item 26, shipped |
-| [AP3 concurrency](2026-07-25-ap3-concurrency-audit.md) | every predicted race refuted; the cost is head-of-line blocking (0.11s → 12.15s) | item **35** |
+| [AP3 concurrency](2026-07-25-ap3-concurrency-audit.md) | every predicted race refuted; the cost is head-of-line blocking (0.11s → 12.15s) | AP3-1 shipped; AP3-3 flake in item 10 |
 | [AP4 cache/freeze](2026-07-22-cache-correctness-audit.md) | design sound; one real cold-build stale hit | AP4-1 shipped, rest shipped |
 | [AP5 i18n/sourcepos](2026-07-22-i18n-unicode-sourcepos-audit.md) | premise mostly refuted; the real find is three position encodings in the LSP | item 12 |
-| [AP7 a11y](2026-07-25-ap7-accessibility-audit.md) | document sound, application not; defects are all "content changes silently" | item **34** |
+| [AP7 a11y](2026-07-25-ap7-accessibility-audit.md) | document sound, application not; defects are all "content changes silently" | all five shipped |
 | [AP8 determinism](2026-07-22-determinism-audit.md) | positive bill of health; byte-identical across processes | closed |
 | [AP9 semantic HTML](2026-07-22-semantic-html-audit.md) | strong positive; its one finding was a stale-artifact false lead | closed |
 | [AP10 codebase health](2026-07-23-ap10-codebase-health-audit.md) | healthy; dead code ~nil; lsp/mcp lacked a panic boundary | item 21, shipped |
 | [AP6 cross-browser](2026-07-25-ap6-cross-browser-audit.md) | **no findings**: Firefox == Chromium on every measured axis, 0 console errors | closed |
-| [AP11 chaos](2026-07-25-ap11-chaos-audit.md) | failure paths well-built; the defect is wording (a missing interpreter reported as an author exception) | item **36** |
+| [AP11 chaos](2026-07-25-ap11-chaos-audit.md) | failure paths well-built; the defect is wording (a missing interpreter reported as an author exception) | shipped |
 | [AP12 offline](2026-07-22-offline-guarantee-audit.md) | own assets genuinely offline; gap is author-introduced external refs | item 13 |
 
 **Lenses that were never AP-shaped** (proposed 2026-07-25). **Two ran the same day**:
-*diagnostics-message quality* (items **37**) and *docs-vs-behaviour drift* (item **38**), findings in
+*diagnostics-message quality* and *docs-vs-behaviour drift* (**both shipped**), findings in
 [2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md).
 **One is left and unstarted: AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS), a
 narrow round, but it targets the warm-server moat. The docs lens also left its expensive half
@@ -570,6 +443,15 @@ A compact **do not re-add / re-scope** guard, not a changelog: each line names w
 finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
 than re-expanding this list.
 
+- **The 2026-07-25 band-A batch** — every build-ready audit finding: AP7-1 (relative heading
+  demotion + a title-block-aware heading rule), AP7-2 (a reactive `{js}` sink announces its output
+  when that output is text, and stays silent when it is a chart), AP7-3 (`.scrolly` /
+  `.code-walkthrough` steps are labelled groups pointing at the stage they drive), AP7-4 (a preview
+  block swap keeps keyboard focus), AP7-5 (a skip link to the in-page TOC), AP3-1 (a bypass lane for
+  cell-free rebuilds), AP11-1 (`TAL-KERNEL`: a cell that never ran is no longer reported as an author
+  exception), DIAG-1 (eight diagnostics catalogued + a zero-`GENERIC` gate), DOCS-1 (two env knobs
+  documented + a gate tying `--help` to the guide). Do not re-derive any of these from the findings
+  docs: the docs describe the *defects*, which no longer exist.
 - **The 2026-07-25 backlink-context + resume batch**
 - **The 2026-07-25 book-wayfinding batch**
 - **The 2026-07-25 hardening batch**

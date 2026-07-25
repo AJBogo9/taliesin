@@ -33,18 +33,44 @@ you run one.
 | [2026-07-22-demand-probe-interactive-explainer](2026-07-22-corpus-demand-probe-interactive-explainer.md) | demand probe, persona 3 | item **18** (F-02, F-03 open) |
 | [2026-07-23-cad-as-code-research](2026-07-23-cad-as-code-research.md) | CAD-as-code feasibility + market | **decided against** (feasible + legally green, no demand); 5 revisit triggers in the doc |
 | [2026-07-24-deck-motion-audit](2026-07-24-deck-motion-audit.md) | deck overview + every animation | Option A + both residuals shipped; 3 owner decisions = item **28** |
-| [2026-07-25-ap7-accessibility-audit](2026-07-25-ap7-accessibility-audit.md) | **AP7** deep a11y of the output | 5 findings = item **34**; static surfaces came back sound, the defects are all "content changes without an announcement" |
-| [2026-07-25-ap3-concurrency-audit](2026-07-25-ap3-concurrency-audit.md) | **AP3** concurrency / race conditions | 3 findings = item **35**; every predicted race refuted (single builder task, task-owned pool, atomic freeze writes), the real cost is head-of-line blocking (0.11s to 12.15s measured) |
-| [2026-07-25-ap11-chaos-audit](2026-07-25-ap11-chaos-audit.md) | **AP11** chaos / failure injection | 1 finding = item **36**; degradation paths are well-built (corrupt cache self-heals, unwritable output exits 1), the defect is wording: a missing interpreter is reported as an author code exception |
+| [2026-07-25-ap7-accessibility-audit](2026-07-25-ap7-accessibility-audit.md) | **AP7** deep a11y of the output | was item **34**; **all five findings shipped 2026-07-25** (see below). Static surfaces came back sound; the defects were all "content changes without an announcement" |
+| [2026-07-25-ap3-concurrency-audit](2026-07-25-ap3-concurrency-audit.md) | **AP3** concurrency / race conditions | was item **35**; every predicted race refuted (single builder task, task-owned pool, atomic freeze writes), the real cost was head-of-line blocking — **AP3-1 shipped 2026-07-25**; AP3-3 (a 1-in-13 kernel-test flake) is the only residual, folded into item 10 |
+| [2026-07-25-ap11-chaos-audit](2026-07-25-ap11-chaos-audit.md) | **AP11** chaos / failure injection | was item **36**; degradation paths are well-built (corrupt cache self-heals, unwritable output exits 1), the defect was wording — **AP11-1 shipped 2026-07-25** |
 | [2026-07-25-ap6-cross-browser-audit](2026-07-25-ap6-cross-browser-audit.md) | **AP6** cross-browser (the last AP slot) | **no findings**: Firefox and Chromium byte-identical on every measured axis, 0 console errors. Coverage gaps (WebKit, mobile, the preview path, Windows/macOS) listed in the doc |
-| [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | DIAG-1 = item **37**, DOCS-1 = item **38**; 6 live diagnostics fall through to the uncatalogued code at ERROR, and the same hole already bit the prose-lint rules once |
+| [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | was items **37** + **38**; **both shipped 2026-07-25**. The fall-through count was 6 in the doc and **8** in fact — the zero-GENERIC test found `.code-walkthrough` and, separately, the two build-only execution diagnostics the check-side sweep structurally could not see |
 
 Rounds with their own narrative entry below (and so already in the ledger): AP1, AP5, AP8, AP9, AP10,
 AP12, the 2026-07-19 polish audit, the 2026-07-18 vacuous-test audit, the 2026-07-24 skimmability
 audit, and the 2026-07-07 multi-surface deep audit.
 
-**Perspectives not yet run: AP3 (concurrency), AP6 (cross-browser), AP7 (a11y), AP11 (chaos)** — all
-four stateful/solo. Highest-yield: AP7 and AP3. Everything else in AP1-AP12 is done.
+**All twelve AP slots are run**, and as of 2026-07-25 **every build-ready finding any of them produced
+has shipped**. The only audit work with code left in it is AP1's unchased residuals (kernel RSS drift,
+multi-hour warm RSS) and the *behavioural* half of the docs lens (what a flag does, not whether it
+exists); neither has been started.
+
+### The 2026-07-25 band-A batch (AP7 + AP3-1 + AP11-1 + DIAG-1 + DOCS-1)
+
+Everything the five rounds above filed as build-ready, landed in one branch. What is worth carrying
+forward rather than re-deriving:
+
+- **Two of the eight diagnostic fall-throughs were invisible to the audit's own method.** DIAG-1
+  measured `check --format json` over 23 targets and found six. `check` never executes a cell, so the
+  two execution diagnostics (`TAL-CELL-ERROR`, `TAL-KERNEL`) exist only on the `build`/`publish` path
+  and no check-side sweep could have seen them. **A message-catalogue audit has to enumerate the
+  emitters, not the emissions of one command.**
+- **AP7-1's two causes had to move together, and fixing them exposed real content defects.** With the
+  heading rule able to see the title block at last, two genuine authoring skips surfaced that the blind
+  rule had been hiding: `docs/guide/reference/cli.tmd` opened at `###` with no `##` above it, and the
+  `new paper` scaffold put `# References` after `## Methods`. 37 of 51 book pages → 0.
+- **AP11-1's fix could not read the diagnostic's own prose.** The obvious implementation (extract the
+  reason from the block HTML) fails on a `#| label:` cell, whose output is wrapped in a `<figure>` —
+  `classify_exec_output` then reports a figure, not an error. The marker carries a *kind*, not text.
+- **AP3-1's measurement needs the cell's own body edited.** The first version of the probe edited the
+  slow page's prose, which leaves the cumulative hash intact, so the cell replayed from cache and the
+  probe measured 0.09 s both times — a false all-clear on an unfixed build. Mutation-checked properly
+  afterwards: forcing every build back onto the exec lane reproduces 10.30 s.
+- **A `{js}`-heavy page is cell-free** for routing purposes, which is most of what makes the bypass
+  lane worth having: the explorable-explanation pages are exactly the ones with no kernel cells.
 
 **Skimmability audit (reader experience at book scale), 2026-07-24** →
 [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md). Author-prompted, not an AP slot: "how do I
