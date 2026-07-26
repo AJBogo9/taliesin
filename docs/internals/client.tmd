@@ -1,5 +1,6 @@
 ---
 title: "The browser client"
+description: "The browser half, which does almost nothing: mounting blocks, applying ops, the idempotent enhancer registry, and why the preview never writes back."
 ---
 
 The server does the rendering; the browser does almost nothing. The client

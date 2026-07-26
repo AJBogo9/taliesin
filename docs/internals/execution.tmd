@@ -1,5 +1,6 @@
 ---
 title: "Code execution & the kernel"
+description: "Why an edit re-runs one cell and not the whole notebook: cumulative hashing, the freeze cache on disk, and kernels forked before you need them."
 ---
 
 Our `post.tmd` has a single `{python}` cell. This chapter is what happens when it

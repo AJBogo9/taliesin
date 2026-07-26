@@ -1,5 +1,6 @@
 ---
 title: "Front-matter reference"
+description: "Every top-level front-matter key, the closed vocabulary behind did-you-mean, and a fully annotated example."
 ---
 
 Every `.tmd` document can open with a YAML **front-matter** block: a `---`

@@ -1,5 +1,6 @@
 ---
 title: "Offline-first rendering & theming"
+description: "Math, syntax highlighting and theming solve one problem: render in Rust, ship offline, and emit output with no theme baked into it."
 ---
 
 Three subsystems, math, syntax highlighting, and theming, look unrelated but

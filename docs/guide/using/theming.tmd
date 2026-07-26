@@ -1,5 +1,6 @@
 ---
 title: "Theming"
+description: "Restyling a document by overriding a handful of variables, and where the reader's own preference outranks the author's."
 ---
 
 A theme in Taliesin is not a stylesheet you wrestle with, it is a small set of CSS

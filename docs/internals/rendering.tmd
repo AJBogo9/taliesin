@@ -1,5 +1,6 @@
 ---
 title: "The rendering pipeline"
+description: "Text to block list: the parse stages, the block contract every emitter honours, citations and cross-references, and output assembly."
 ---
 
 Rendering is where `post.tmd` stops being text and becomes the **block list**

@@ -1,5 +1,6 @@
 ---
 title: "Troubleshooting"
+description: "How to decode a diagnostic code, and fixes for the common failures: no kernel, a hanging cell, stale outputs, a port in use, an unstyled deck."
 ---
 
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · Troubleshooting*

@@ -1,5 +1,6 @@
 ---
 title: "The deck engine"
+description: "How slides are cut from a flat document, what the runtime owns at view time, and what an embedded deck costs."
 ---
 
 `format: deck` renders to a slide deck driven by Taliesin's **own** engine, not

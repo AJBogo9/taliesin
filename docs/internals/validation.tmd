@@ -1,5 +1,6 @@
 ---
 title: "Validation & schemas"
+description: "Diagnostics that are purely advisory and always located: the closed vocabularies, did-you-mean, the prose linter, and check and lsp."
 ---
 
 Mistype `#| eccho: false` in `post.tmd`'s cell, or write `treme:` for `theme:` in its

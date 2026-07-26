@@ -1,5 +1,6 @@
 ---
 title: "The live preview loop"
+description: "What survives a save (scroll position, kernel state, a running canvas) and how Alt-click jumps from the page back to the line that made it."
 ---
 
 The reason Taliesin exists is the edit loop: change the source, and the preview

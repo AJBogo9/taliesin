@@ -1,5 +1,6 @@
 ---
 title: "The repository"
+description: "The physical map: which directory holds the engine, the corpus that is the spec, the manual, the showcase, the tooling, and the tests."
 ---
 
 [Architecture](architecture.tmd) is the *logical* map: the crates, the data flow,

@@ -1,5 +1,6 @@
 ---
 title: "Theorems and proofs"
+description: "Eight numbered environments for mathematical writing: titles, proofs, cross-references, numbering, and the reading affordances they carry."
 ---
 
 Mathematical writing needs more than typeset math: it needs *environments*, the

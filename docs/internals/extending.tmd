@@ -1,5 +1,6 @@
 ---
 title: "Extending Taliesin"
+description: "Where a new feature belongs, which two seams are meant to be extended, and what a lean core deliberately rules out."
 ---
 
 This chapter is for working *on* Taliesin: the conventions, where new code goes,

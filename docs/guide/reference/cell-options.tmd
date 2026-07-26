@@ -1,5 +1,6 @@
 ---
 title: "Cell-options reference"
+description: "Every cell option and what a label decides, including why the cache key sees your code rather than your data."
 ---
 
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · Cell options · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*

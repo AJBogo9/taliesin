@@ -1,5 +1,6 @@
 ---
 title: "Configuration reference"
+description: "Which knob lives where, what each one defaults to, and the names a project may not use for itself."
 ---
 
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*

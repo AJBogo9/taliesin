@@ -1,5 +1,6 @@
 ---
 title: "The dev server"
+description: "Two servers behind one file watcher: what each owns, why they were never merged, and what opening a preview to the LAN requires."
 ---
 
 The server (`crates/server`) is the long-running process behind `preview`: an

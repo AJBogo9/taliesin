@@ -1,5 +1,6 @@
 ---
 title: "Working with an agent"
+description: "Driving the whole authoring loop from a program: the headless commands, the check gate, the MCP server, and why there is no write tool."
 ---
 
 Taliesin is built so a *program* can drive the whole authoring loop with no

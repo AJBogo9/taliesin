@@ -1,5 +1,6 @@
 ---
 title: "Taliesin"
+description: "A slide tour of what Taliesin is: the three load-bearing goals, how a save flows to the browser, and one pipeline behind three outputs."
 subtitle: "A 60-second tour"
 format: deck
 ---

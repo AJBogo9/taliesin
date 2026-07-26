@@ -1,5 +1,6 @@
 ---
 title: "Taliesin Internals"
+description: "How one saved keystroke becomes one repainted paragraph: the idea the whole tool keys off, the running example, and how to read this book."
 ---
 
 # How Taliesin works {.unnumbered}

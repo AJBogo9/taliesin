@@ -1,5 +1,6 @@
 ---
 title: "Architecture"
+description: "The logical map: how a save flows from the file watcher to a repainted block in a few milliseconds, and where each crate sits."
 ---
 
 Saving `post.tmd` updates the browser in a few milliseconds: no reload, no lost

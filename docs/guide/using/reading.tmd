@@ -1,5 +1,6 @@
 ---
 title: "The reader experience"
+description: "What a built page gives its reader: theme, reading progress and resume, hover cross-reference cards, anchor links, focus mode and keyboard access."
 ---
 
 A Taliesin page is not just rendered HTML, it is a reading surface. Every built

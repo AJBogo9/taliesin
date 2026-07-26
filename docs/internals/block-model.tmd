@@ -1,5 +1,6 @@
 ---
 title: "The block model & protocol"
+description: "The document as a list of identified blocks: the content-hash contract, the diff that deliberately has no Move, and click-to-source."
 ---
 
 Everything in Taliesin keys off one idea: the document is a list of **blocks**,

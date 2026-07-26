@@ -1,5 +1,6 @@
 ---
 title: "The Taliesin deck engine"
+description: "The deck engine demonstrating itself: fragments, magic move, auto-animate, backdrops, offline math and the presenter tools."
 subtitle: "A tour of every feature, in one deck"
 format: deck
 ---

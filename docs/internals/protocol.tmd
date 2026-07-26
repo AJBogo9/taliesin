@@ -1,5 +1,6 @@
 ---
 title: "The websocket protocol"
+description: "Every message the preview can send in either direction, and the trust boundary that decides which ones are honoured."
 ---
 
 The preview is one long-lived **websocket** carrying **line-delimited JSON**: one

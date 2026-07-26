@@ -1,5 +1,6 @@
 ---
 title: "CLI reference"
+description: "Every subcommand and flag: preview, build and publish, the check gate, and the machine-facing read, map, vocab, mcp and lsp."
 ---
 
 *Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*

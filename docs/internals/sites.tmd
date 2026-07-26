@@ -1,5 +1,6 @@
 ---
 title: "The multi-page subsystem"
+description: "What the page walker collects, how a book differs from a website, and the projections built on top: search, cross-references and skim."
 ---
 
 A directory with a `_site.yml` is a **project**: a website or a book. The core's

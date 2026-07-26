@@ -1,5 +1,6 @@
 ---
 title: "Data-type reference"
+description: "A reference for the types the pipeline passes around: the block model, the diff ops, and the server's own state."
 ---
 
 The rest of this book explains *how* the pipeline, the diff, and the executor
