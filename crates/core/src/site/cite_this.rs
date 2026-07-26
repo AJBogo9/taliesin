@@ -519,6 +519,20 @@ mod tests {
     }
 
     #[test]
+    fn bibtex_escapes_the_backslash_tilde_and_caret_arms_too() {
+        // The test above covers the `& % $ # _ { }` arm, whose members all escape the same
+        // way. These three expand to control sequences instead, and deleting ANY of the
+        // three arms survived the whole suite (mutation-found). An unescaped `\`, `~` or
+        // `^` does not merely look wrong: it makes the exported .bib fail to compile.
+        let mut m = em_meta();
+        m.title = "Big-O ~ n^2 on C:\\drive".into();
+        let bib = to_bibtex(&m);
+        assert!(bib.contains("\\textbackslash{}"), "got: {bib}");
+        assert!(bib.contains("\\textasciitilde{}"), "got: {bib}");
+        assert!(bib.contains("\\textasciicircum{}"), "got: {bib}");
+    }
+
+    #[test]
     fn csl_json_golden_single_author() {
         let expected = "\
 [

@@ -72,8 +72,9 @@ fn resolve_icons(root: &Path) -> Icons {
 }
 
 /// The launcher label: the name up to its first colon ("Taliesin: The User Guide" ->
-/// "Taliesin"). A head that is empty or no shorter than 30 characters buys nothing, so the
-/// full name is kept and the OS ellipsizes.
+/// "Taliesin"). A head that is empty or *longer* than 30 characters buys nothing, so the
+/// full name is kept and the OS ellipsizes. (The prose used to read "no shorter than 30",
+/// i.e. `>= 30`, which is not what the code does and nothing pinned either way.)
 fn short_name(name: &str) -> String {
     let head = name.split(':').next().unwrap_or(name).trim();
     if head.is_empty() || head.chars().count() > 30 {
@@ -191,6 +192,13 @@ mod tests {
         // and let the OS ellipsize.
         let long = "A Very Long Book Title That Runs On: part two";
         assert_eq!(short_name(long), long);
+        // The boundary itself, which nothing pinned: 30 characters still counts as short
+        // enough, 31 does not. Without these, widening `> 30` to `>= 30` survives.
+        let head30 = "x".repeat(30);
+        assert_eq!(short_name(&format!("{head30}: tail")), head30);
+        let head31 = "x".repeat(31);
+        let full31 = format!("{head31}: tail");
+        assert_eq!(short_name(&full31), full31);
     }
 
     #[test]
