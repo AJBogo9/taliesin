@@ -10,10 +10,16 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Branch `probe/analyst-persona`**, stacked on `backlog/band-a-diagnostics` →
-`backlog/backlink-context-and-resume` → `origin/main`. **Nothing is pushed** — the author pushes on
-request only, and the stack has been growing for several sessions, so the next push is worth a
-deliberate look at what it carries.
+**Bands A and B are BOTH empty, and this file now has no code in it at all.** The last build-ready
+batch (items **39** + **40**, the analyst probe's reporting-surface findings) landed on
+`backlog/xref-reporting`, so every remaining entry is blocked on an owner ruling (band C), on a
+device or a real user (band D), or is gated (band E). **A session cannot "take from the top" any
+more** — see "Next session: start here" for the only two ways forward.
+
+**Branch `backlog/xref-reporting`**, on top of the earlier stack (`probe/analyst-persona` →
+`backlog/band-a-diagnostics` → `backlog/backlink-context-and-resume` → `origin/main`). **Nothing is
+pushed** — the author pushes on request only, and the stack has been growing for several sessions,
+so the next push is worth a deliberate look at what it carries.
 
 **No commit counts are recorded here, deliberately.** They were wrong twice in one session: the
 first was written one commit stale, and the correction then mis-added the two branches' totals —
@@ -37,8 +43,9 @@ carried two startup preambles and `KernelSpec::r` carried an empty list (AN-2a: 
 rasterised onto opaque white, on a page whose default theme is dark — found only in the browser, the
 markup looked right). Neither is visible from inside a single-language document, and every corpus
 document was single-language. **A fifth persona is not indicated; a fifth un-crossed dimension might
-be, and none is currently known.** Both defects are fixed and shipped; the remaining four findings
-are items **39** (band A), **40** (band B) and **41** (band D).
+be, and none is currently known.** Both defects are fixed and shipped; of the remaining four
+findings, items **39** and **40** shipped later the same day and only **41** (band D, blocked on
+being a feature) is left.
 
 **Bands A and B were both empty before that**, as of the 2026-07-25 band-B batch. It closed items **11**
 (PA-M3 list semantics, PA-M13 image-alt lint, PA-H1's deck theme-color + social meta), **29**
@@ -47,8 +54,9 @@ actionable (AP3-3 fixed; the rest split between won't-fix — which stays as ite
 demand-driven, and declined-on-measurement). Nothing in "Open work" is buildable today; the next
 entries come from the next audit round.
 
-**Band A had been empty; item 39 is the only thing in it, and it came from the probe above, not from
-an audit round.** The 2026-07-25 band-A batch closed items **34** (AP7, all five findings),
+**Band A had been empty before that too**, and item 39 — the only thing that ever refilled it —
+came from the probe above rather than from an audit round. The 2026-07-25 band-A batch closed items
+**34** (AP7, all five findings),
 **35** (AP3-1), **36** (AP11-1), **37** (DIAG-1) and **38** (DOCS-1); what is worth carrying forward
 is in [AUDITS.md](AUDITS.md) under "The 2026-07-25 band-A batch", not repeated here. Two findings
 turned out larger than filed: DIAG-1's six fall-through diagnostics were **eight** (the zero-GENERIC
@@ -174,23 +182,11 @@ their own prefix.
 
 ### Next session: start here
 
-**There is exactly one session of build-ready code left, and it is items 39 + 40 together.** Take
-them as one batch: both are small, both are on the *reporting* surface rather than the rendering
-one, and neither is worth a session alone. Order within the batch:
+**There is no build-ready code left in this file.** Items 39 + 40 landed together on 2026-07-26
+(see "Already shipped"), which was the last of it. A session now needs one of:
 
-1. **Item 39, AN-6 first** (the LSP reports valid cross-page refs as errors). Highest
-   annoyance-per-line in the file: it is wrong on *correct* content, in the editor, every time the
-   author writes a cross-page reference. Fix shape recorded; two candidate approaches, pick either.
-2. **Item 39, AN-5 second** (a cross-page `@sec-` renders as the bare word "Section"). Same surface,
-   reader-visible. **Read the item before touching it** — the obvious fix is already refuted in a
-   source comment, and the entry says why.
-3. **Item 40** (two documented lines in the guide: the `kable`-as-text trap, the pandas vendor
-   markup). Nearly free once you are already in the tree; do not spin a session up for it alone.
-
-**When that batch lands, bands A and B are empty again and the file has no code in it.** At that
-point a session cannot just "take from the top" — it needs one of:
-
-- **an owner ruling from band C** (the only work the author can unblock; see the list below), or
+- **an owner ruling from band C** (the only work the author can unblock; see the list below). This
+  is the shorter path and the author is the only bottleneck: ask, then build what the ruling opens.
 - **a NEW audit lens, argued for first.** The twelve AP slots and all four non-AP lenses are run;
   the "Audit perspectives" table is a complete record, not a menu. Do not go looking there for
   something to take.
@@ -221,24 +217,8 @@ file when it lands**. Read "Standing constraints" first; several of these have a
 
 ### A. Build now: measured, unblocked, and each one has its fix shape recorded
 
-39. **Cross-page references are misreported, in opposite directions** (P3, S; detail:
-    [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md), AN-5 +
-    AN-6). Both found on one page of `corpus/analyst/`, both about a *valid* cross-page ref:
-    - **AN-5 — a cross-page `@sec-` renders as the bare word "Section"** (no number, no title), so
-      the sentence reads "…as set out in Section." The same ref on its own page reads "Section 3".
-      **Do NOT "fix" this by harvesting the number:** `site/mod.rs`'s `harvest_xref_numbers`
-      excludes `sec-` deliberately and its comment gives the failure mode — a website target filled
-      with a flat "1" is then mislabelled **"Chapter 1"** by `rewrite_one_xref`. The open part is
-      the *label*: carry the heading title in `XrefTarget` (already in hand in `scan_page_anchors`)
-      and use it when the number is empty. Watch `XrefTarget: PartialEq` — it drives the dev
-      server's "did a target move" check, so a new field makes a heading edit re-render referring
-      pages (correct, but intend it). Cross-page `@fig-`/`@tbl-` are **fine** (right page + right
-      number, harvested from the render) — do not re-scope those.
-    - **AN-6 — the editor flags valid cross-page refs as `TAL-XREF-UNDEF` errors.** The LSP has no
-      `Site::discover` and is per-document, but the project is a site, so `check <dir>` is clean and
-      the built page resolves every ref while the author sees red squiggles on correct content.
-      Candidates: resolve the enclosing `_site.yml` in the LSP, or downgrade an unresolved xref to a
-      hint when the document sits inside a site project.
+**Empty.** Item 39 was the last entry and it landed 2026-07-26 with item 40. The next entry comes
+from a band-C ruling or a new audit lens, not from anything already written down.
 
 **One residual is deliberately NOT closed, and is recorded where it belongs rather than left
 looking open:**
@@ -254,24 +234,11 @@ recorded version got wrong.)*
 
 ### B. Buildable, but low yield on its own
 
-40. **Two authoring traps in the executed-table path, both worth one documented line** (P3, XS;
-    detail: [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md),
-    AN-3 + AN-4). Neither is engine work; both were hit while authoring `corpus/analyst/`, which now
-    demonstrates the right idiom with a comment saying why.
-    - **AN-3:** `knitr::kable(format = "html")` returns a *string*, so a bare R cell prints its own
-      markup and the reader sees escaped `&lt;table&gt;` in a `<pre>`. It works under
-      knitr/rmarkdown (knitr splices it), which is what makes it a trap. The wrapper is
-      `IRdisplay::display_html(as.character(kable(...)))`. `docs/guide/using/code.tmd` documents
-      `#| tbl-cap:` without saying an R cell must *publish* HTML rather than print it. **This is
-      also what exposed AN-1** (now fixed): the dangling anchor was only visible because the output
-      was not a table.
-    - **AN-4:** a bare pandas `display(df)` emits `<table border="1" class="dataframe">`, a row-index
-      column, and a `<style scoped>` block — `scoped` is a **removed** HTML attribute no current
-      browser implements, so that style element applies page-wide. `to_html(index=False, border=0)`
-      gives markup the page's own table styling reaches.
+**Empty.** Item 40 was the last entry and it landed 2026-07-26 with item 39, in one batch, exactly
+as this band's own rule says such an item should.
 
-**The band was empty before this.** The 2026-07-25 band-B batch cleared the last three: items **11**
-and **29** are closed and deleted, and item **10** is reduced to its two no-clean-fix kernel
+**The band was empty before that too.** The 2026-07-25 band-B batch cleared the previous three: items
+**11** and **29** are closed and deleted, and item **10** is reduced to its two no-clean-fix kernel
 limitations and moved to band D.
 Two of the three closed
 on *evidence* rather than on code, which is the outcome this band is most likely to produce and is
@@ -534,6 +501,22 @@ A compact **do not re-add / re-scope** guard, not a changelog: each line names w
 finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
 than re-expanding this list.
 
+- **The 2026-07-26 reporting-surface batch (items 39 + 40, the last build-ready code in this
+  file).** **AN-5**: an unnumbered cross-page `@sec-` rendered as the bare word "Section". Fixed on
+  the *label*, not by harvesting a number (that path is refuted in `harvest_xref_numbers`'s own
+  comment): `XrefTarget` carries the target heading's text and a reference with no number names its
+  target — `Section “Is the canary still slower?”`. A number still wins where one exists, so a book
+  is untouched. The new field is inside `XrefTarget: PartialEq` deliberately, so editing a heading
+  re-renders the pages that name it. **AN-6**: per-document validation reported every *valid*
+  cross-page reference as `TAL-XREF-UNDEF` while `check <dir>` on the same tree was clean.
+  `site::anchors_defined_elsewhere_in_project` resolves the enclosing `_site.yml` and excuses what
+  the project defines — **scope, not severity**: an anchor no page defines is still an error. The
+  scan is render-free (it reads `#| label:` directly, because a *number* needs a render and a *name*
+  does not) and measures **1.0 ms on `docs/internals`**, against a buffer render the editor already
+  pays per keystroke; no cache, and none needed. Pinned by `corpus/analyst/methods.tmd`, which now
+  makes the cross-page `@sec-model` reference the finding was reported from. **AN-3 + AN-4**
+  documented in `docs/guide/using/code.tmd`, and that page's own `#| tbl-cap:` example — which was
+  itself the AN-4 trap, a bare `describe()` — corrected to the idiom it now describes.
 - **Demand probe #4, the computational-report analyst** (2026-07-26; detail:
   [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md)).
   `corpus/analyst/` is a two-page quarterly latency readout and **the only corpus project that runs

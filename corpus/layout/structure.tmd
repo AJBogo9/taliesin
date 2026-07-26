@@ -1,0 +1,59 @@
+---
+title: "Layout: where a section begins and ends"
+---
+
+Blocks are flat siblings of one root. Nothing wraps a heading and the content beneath
+it, which is what makes the incremental block swap cheap: every block is replaceable on
+its own, with no container to re-parent. The cost is that the DOM could not say where a
+section *stopped*, so anything wanting to measure or fold one had to re-derive the
+boundaries by walking tag names.
+
+Each heading now carries `data-section-end`, naming the `data-block-id` of the last
+block its section covers. This page is that rule written down as the shapes it has to
+survive.
+
+## A section with content beneath it {#sec-plain}
+
+The ordinary case. This paragraph and the one after it belong to the section opened
+above, so the heading's `data-section-end` names the last of them.
+
+Extents are inclusive of the heading itself, so a section is never empty and a consumer
+never needs a missing-value case.
+
+## A section that contains subsections {#sec-nested}
+
+Extents nest. This `##` section does not stop at the `###` below it: it stops where the
+next section at its own level begins, so its extent covers every subsection too.
+
+That direction is the one that keeps information. The flat heading-to-next-heading run
+is recoverable from wherever the next heading sits; the nesting is not recoverable from
+the flat runs.
+
+### A subsection {#sec-nested-first}
+
+The subsection's own extent stops at its sibling below.
+
+### A second subsection {#sec-nested-second}
+
+And this one stops where the next `##` begins, which is also where its parent stops.
+Two extents ending on the same block is normal, not a collision.
+
+## A heading with nothing beneath it {#sec-empty}
+
+## The heading above has an empty section {#sec-after-empty}
+
+The `## A heading with nothing beneath it` section has no body at all: the next heading
+follows it immediately. Its extent is its own block id, which is what "inclusive of the
+heading" buys, and it is the shape a document acquires the moment an author writes two
+headings before filling the first one in.
+
+## A section that runs to the end of the document {#sec-last}
+
+The last section has no following heading to stop at, so it ends at the last block of
+the *body*. Generated document furniture is appended after that: this page carries a
+footnote[^extent], and the footnotes block it produces is not part of any section. Nor
+would a References section be. They are structures the document grew, not content the
+author filed under a heading.
+
+[^extent]: A footnote, so this page emits a trailing generated block and the "no section
+owns the furniture" rule is exercised rather than merely asserted.

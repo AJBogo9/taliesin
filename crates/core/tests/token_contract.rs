@@ -24,6 +24,7 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-inputs",
     "data-name",
     "data-scrolly-name",
+    "data-section-end",
     "data-slide-anchor",
     "data-source-file",
     "data-sourcepos",
@@ -85,6 +86,7 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-scrolly-init",
     "data-scrolly-name",
     "data-scrolly-state",
+    "data-section-end",
     "data-slide-anchor",
     "data-source-file",
     "data-sourcepos",
@@ -133,6 +135,16 @@ const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
     (
         "data-slide-anchor",
         "build-time only: deck.rs:425 reads it via extract_attr while assigning slide ids",
+    ),
+    (
+        "data-section-end",
+        "informational substrate, no consumer YET and that is the decision, not an oversight: \
+         `section-extents` option (b), ruled 2026-07-26. Blocks are flat siblings with no \
+         per-section wrapper, so the DOM could not say where a section stops; render/mod.rs's \
+         `mark_section_extents` now records it on each heading. Emitted default-on so a consumer \
+         (per-section length, section-scoped read state or change marks, a JS-driven fold) needs \
+         no render change to arrive. Option (a), a real <section> wrapper, was explicitly \
+         deferred: it changes the parent/child shape the incremental diff mounts.",
     ),
     (
         "data-scrolly-name",
