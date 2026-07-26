@@ -36,8 +36,7 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
             // Guard the render: a panic in core rendering becomes a located error +
             // non-zero exit, not a raw abort (this one-shot has no async loop to absorb it).
             let rendered = crate::serve::guarded(|| {
-                let doc =
-                    taliesin_core::render_single_doc(&src, base);
+                let doc = taliesin_core::render_single_doc(&src, base);
                 // `render` is a static, one-shot HTML dump: unlike `build`/`preview` it
                 // never starts a kernel, so kernel-executed cells (python/r) emit as
                 // source with empty output blocks — broken `@fig-` refs, no plots. Warn
@@ -141,9 +140,7 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
     // panic-guarded standalone render, exactly as before.
     let mut doc = match scoped_site_doc(p, &src) {
         Some(d) => d,
-        None => match crate::serve::guarded(|| {
-            taliesin_core::render_single_doc(&src, base)
-        }) {
+        None => match crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base)) {
             Ok(d) => d,
             Err(panic) => {
                 log::error(&format!("read panicked on {path}: {panic}"));
@@ -644,9 +641,7 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
             let p = Path::new(path);
             let base = p.parent().unwrap_or_else(|| Path::new("."));
             // Guard the render so a panic becomes a clean error + non-zero exit.
-            let doc = match crate::serve::guarded(|| {
-                taliesin_core::render_single_doc(&src, base)
-            }) {
+            let doc = match crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base)) {
                 Ok(doc) => doc,
                 Err(panic) => {
                     log::error(&format!("render panicked on {path}: {panic}"));
@@ -743,10 +738,8 @@ pub(crate) fn symbols_json(path: &str) -> Result<String, String> {
     }
     let src = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
-    let doc = crate::serve::guarded(|| {
-        taliesin_core::render_single_doc(&src, base)
-    })
-    .map_err(|p| format!("render panicked on {path}: {p}"))?;
+    let doc = crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base))
+        .map_err(|p| format!("render panicked on {path}: {p}"))?;
     Ok(serde_json::to_string_pretty(&collect_symbols(&doc)).unwrap_or_else(|_| "[]".to_string()))
 }
 
@@ -776,10 +769,8 @@ pub(crate) fn read_text(path: &str) -> Result<String, String> {
     }
     let src = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
-    crate::serve::guarded(|| {
-        taliesin_core::render_single_doc(&src, base).body_text()
-    })
-    .map_err(|p| format!("read panicked on {path}: {p}"))
+    crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base).body_text())
+        .map_err(|p| format!("read panicked on {path}: {p}"))
 }
 
 /// One cross-reference target a document defines: the anchor an author writes after `@`.
@@ -1347,9 +1338,7 @@ pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
     let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
     // Guard the render so a panic becomes a clean error + non-zero exit, never a raw
     // abort inside the editor's completion request.
-    let doc = match crate::serve::guarded(|| {
-        taliesin_core::render_single_doc(&src, base)
-    }) {
+    let doc = match crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base)) {
         Ok(doc) => doc,
         Err(panic) => {
             log::error(&format!("render panicked on {path}: {panic}"));

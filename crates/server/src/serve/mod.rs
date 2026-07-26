@@ -935,13 +935,14 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     // `TALIESIN_TOC` flag switches the client into that mode. `tali-toc-sheet` opts the
     // live page into the mobile pull-up-sheet TOC (the static export keeps the
     // plain stacked-top TOC).
+    let toc_nav = format!(
+        "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>\n{}",
+        taliesin_core::TOC_SHEET_MARKUP
+    );
     let (body_class, toc_nav, toc_flag) = if ctx.toc {
         (
             " class=\"has-toc tali-toc-sheet\"",
-            "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>\n\
-             <div id=\"tali-toc-backdrop\"></div>\n\
-             <button id=\"tali-toc-handle\" type=\"button\" aria-label=\"Contents\">\
-             <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>",
+            toc_nav.as_str(),
             "window.TALIESIN_TOC = true;",
         )
     } else {
@@ -969,14 +970,27 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     // `window.taliInitTocSpy` is defined when client.js rebuilds the nav and calls it
     // after every edit — that drives the active-section highlight and the read-state
     // marks. Without this the TOC sits inert in single-doc preview (scrollspy + read
-    // state only worked in the static build / site preview). Search (Cmd-K) stays out:
-    // the client doesn't re-index it on a live edit, so its index would go stale.
+    // state only worked in the static build / site preview).
     let toc_spy = if ctx.toc {
         format!("<script>\n{}\n</script>\n", taliesin_core::TOC_SPY_JS)
     } else {
         String::new()
     };
-    let scripts_post = format!("{toc_spy}<script>\n{CLIENT_JS}\n</script>");
+    // Cmd-K, on the same terms the standalone build ships it (`page.rs`: a TOC page, or
+    // any site page). Held back until now on the reasoning that "the client doesn't
+    // re-index on a live edit, so the index would go stale" — which is true of a site's
+    // cross-page index and false of the only index this path has: with no
+    // `TALIESIN_SEARCH_INDEX`, `search.js` builds from the current DOM and rebuilds on
+    // every open, so a live edit is reflected by construction. The effect of holding it
+    // back was that Ctrl+K did nothing under `preview <file.tmd>` while working in all
+    // three of the build paths (PP-1) — a palette the author could not reach in the one
+    // surface they author in.
+    let search = if ctx.toc {
+        format!("<script>\n{}\n</script>\n", taliesin_core::SEARCH_JS)
+    } else {
+        String::new()
+    };
+    let scripts_post = format!("{toc_spy}{search}<script>\n{CLIENT_JS}\n</script>");
     taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
         mode: taliesin_core::OutputMode::Preview,
@@ -2107,6 +2121,67 @@ mod protocol_contract {
         assert!(
             !mk(false).contains("tali-read:"),
             "a no-TOC preview should not load the TOC scrollspy"
+        );
+    }
+
+    /// The single-document preview shell for a page that did / did not earn a TOC.
+    fn preview_page(toc: bool) -> String {
+        let includes = taliesin_core::render::PageIncludes::default();
+        blog_index_html(&PageCtx {
+            format: DocFormat::Html,
+            toc,
+            theme_css: "",
+            theme_default: "auto",
+            theme_is_custom: false,
+            doc_path: "/tmp/doc.tmd",
+            base_dir: "/tmp",
+            includes: &includes,
+            body: "<h2 id=\"s\" data-block-id=\"b\">S</h2>",
+            footer: None,
+            logo: None,
+            generation: 0,
+        })
+    }
+
+    #[test]
+    fn blog_index_ships_the_command_palette_a_build_of_the_same_doc_would_ship() {
+        // PP-1: Ctrl+K opened the palette in the site preview, the standalone build and
+        // the site build, and did nothing under `preview <file.tmd>` — the one surface the
+        // author works in. `search.js` binds Cmd/Ctrl-K on `document` unconditionally, so
+        // shipping the runtime IS shipping the feature.
+        //
+        // Needled on the whole embedded asset rather than a phrase from it: every page
+        // inlines the full CSS + enhancer payload, so any class name or user-facing string
+        // from the palette is already present on a page that ships no palette at all.
+        assert!(
+            preview_page(true).contains(taliesin_core::SEARCH_JS),
+            "a TOC preview must ship the Cmd-K runtime, as `build` of the same doc does"
+        );
+        assert!(
+            !preview_page(false).contains(taliesin_core::SEARCH_JS),
+            "gated exactly as the build path gates it (`page.rs`: a TOC, or a site page)"
+        );
+    }
+
+    #[test]
+    fn blog_index_emits_the_shared_toc_sheet_chrome_not_a_hand_copy() {
+        // PP-2's other half. This path always HAD the sheet, but as a second hand-written
+        // copy of the markup in `render/page.rs`; the third assembler (the site preview)
+        // had none, which is the divergence. Asserting on the shared const is what makes a
+        // future edit to one copy impossible rather than merely unlikely.
+        assert!(
+            preview_page(true).contains(taliesin_core::TOC_SHEET_MARKUP),
+            "the preview must emit the shared sheet chrome verbatim"
+        );
+        assert!(
+            !preview_page(false).contains(taliesin_core::TOC_SHEET_MARKUP),
+            "no TOC, no sheet"
+        );
+        // Body-level, so `position: fixed` cannot be trapped by a containing block, and
+        // the class the preview sets server-side (a build defers it to toc-sheet.js).
+        assert!(
+            preview_page(true).contains("class=\"has-toc tali-toc-sheet\""),
+            "the preview opts the body into sheet mode itself"
         );
     }
 

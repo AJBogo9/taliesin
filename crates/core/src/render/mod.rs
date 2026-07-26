@@ -110,8 +110,9 @@ pub(crate) use theme::theme_head;
 mod page;
 use page::page_from_doc;
 pub use page::{
-    PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
-    html_page_from_doc_in_site_external, render_doc_to_page, title_with_site_suffix,
+    PageParts, SiteCtx, TOC_SHEET_MARKUP, assemble_html_page, favicon_link,
+    html_page_from_doc_in_site, html_page_from_doc_in_site_external, render_doc_to_page,
+    title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;

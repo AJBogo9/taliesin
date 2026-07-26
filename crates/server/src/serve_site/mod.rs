@@ -738,6 +738,23 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     } else {
         ("tali-site-main", "", "")
     };
+    // The mobile pull-up sheet ships here for the same reason it ships in both static
+    // builds and the single-document preview: below 60rem an "on this page" TOC that is
+    // not a sheet strands at the very bottom of the chapter. This assembler was the one
+    // that never got a copy, so a site preview stayed a desktop sidebar at phone width
+    // (PP-2) — and `preview <dir>` is how the books are written, so a book's phone
+    // reading experience was the one thing its author could not see while writing it.
+    // `client.js` already ships here and wires the sheet off `#tali-toc-handle`; it was
+    // only ever missing the chrome to wire.
+    //
+    // Body-level, not beside `<nav id="TOC">`: the handle and backdrop are `position:
+    // fixed`, and the site layouts nest the TOC inside `.tali-site-main` /
+    // `.tali-book-inner`, either of which could acquire a containing block.
+    let toc_sheet = if toc {
+        taliesin_core::TOC_SHEET_MARKUP
+    } else {
+        ""
+    };
     let main_cls = if chrome.wide {
         format!("{base_cls} tali-wide")
     } else {
@@ -823,9 +840,18 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         ),
     };
 
-    // The live body: the site chrome + the mountable `#tali-root`, plus the
-    // dev-menu mount. The websocket client drives everything after first paint.
-    let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
+    // The live body: the site chrome + the mountable `#tali-root`, plus the TOC sheet
+    // chrome and the dev-menu mount. The websocket client drives everything after first
+    // paint.
+    let body = format!("{layout}\n{toc_sheet}<div id=\"tali-controls\"></div>");
+    // A preview sets `tali-toc-sheet` server-side; only a static build defers it to
+    // `toc-sheet.js` (so a JS-off build still degrades to the in-flow TOC). Matches what
+    // the single-document preview does with the same client.
+    let body_class = if toc {
+        format!("{body_class} tali-toc-sheet")
+    } else {
+        body_class.to_string()
+    };
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let boot = protocol::boot_id();
     // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
@@ -2151,6 +2177,79 @@ mod project_tests {
         assert!(!is_cell_free(&render(
             "---\ntitle: T\n---\n\n```{python}\n#| include: false\nprint(1)\n```\n"
         )));
+    }
+
+    /// The site-preview shell for one `corpus/tarn` page, assembled the way the live
+    /// server assembles it: a real `PageState` (so `toc` is the page's own answer, not a
+    /// hand-set flag) behind a real `Project`.
+    fn tarn_preview_page(rel: &str) -> String {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/tarn");
+        let site = taliesin_core::site::Site::discover(&dir);
+        let page = site.page(rel).expect("corpus/tarn page").clone();
+        let doc = render_markdown_only(&site, &page);
+        let mut pages = HashMap::new();
+        pages.insert(
+            page.rel.clone(),
+            PageState {
+                doc,
+                tx: tokio::sync::broadcast::channel(4).0,
+            },
+        );
+        let project = Arc::new(Project {
+            key: ProjectKey(String::new()),
+            dir,
+            site: parking_lot::Mutex::new(site),
+            pages: parking_lot::Mutex::new(pages),
+        });
+        site_page_html(&project, &page)
+    }
+
+    #[test]
+    fn a_site_preview_page_gets_the_same_mobile_toc_sheet_a_build_of_it_gets() {
+        // PP-2 (2026-07-26 path-parity audit): `body.tali-toc-sheet` was set in the
+        // single-doc preview, the standalone build and the site build, and NOT in
+        // `preview <dir>` — so at phone width a site preview left the TOC as a desktop
+        // sidebar and the handle never appeared. `preview <dir>` is how the dogfooded
+        // books are written, which made a book's phone reading experience the one thing
+        // its author could not see while writing it.
+        //
+        // The chrome is needled as the whole shared const: every page inlines the entire
+        // CSS payload, so `tali-toc-handle` as a bare substring is present on pages that
+        // emit no handle (it is a selector in there).
+        let with_toc = tarn_preview_page("install.tmd");
+        assert!(
+            with_toc.contains(taliesin_core::TOC_SHEET_MARKUP),
+            "a TOC chapter's site preview must emit the shared sheet chrome"
+        );
+        assert!(
+            with_toc.contains("tali-toc-sheet"),
+            "and opt the body into sheet mode, as the other three paths do"
+        );
+        // Not beside `<nav id=\"TOC\">`, which the site layouts nest inside
+        // `.tali-site-main` / `.tali-book-inner`: the handle and backdrop are `position:
+        // fixed` and either wrapper could acquire a containing block.
+        let sheet_at = with_toc.find(taliesin_core::TOC_SHEET_MARKUP).unwrap();
+        let controls_at = with_toc.find("id=\"tali-controls\"").unwrap();
+        let inner_close = with_toc.find("</main>").unwrap();
+        assert!(
+            sheet_at > inner_close && sheet_at < controls_at,
+            "sheet chrome must sit at body level (after the content wrapper, beside the \
+             dev-menu mount), got sheet@{sheet_at} main-close@{inner_close} controls@{controls_at}"
+        );
+    }
+
+    #[test]
+    fn a_page_below_the_toc_threshold_gets_no_sheet_chrome() {
+        // The gate is the page's own `toc`, not the command: `performance.tmd` sits below
+        // `MIN_TOC_HEADINGS` (measured against a real build of `corpus/tarn` — counting
+        // `##` in the source under-reports it, since the gate counts every anchored
+        // heading), so it earns no TOC and must earn no sheet either. Without this the
+        // test above passes on a shell that emits the chrome unconditionally.
+        let without = tarn_preview_page("performance.tmd");
+        assert!(
+            !without.contains(taliesin_core::TOC_SHEET_MARKUP),
+            "a page with no TOC must not ship a handle that opens an empty sheet"
+        );
     }
 
     #[test]
