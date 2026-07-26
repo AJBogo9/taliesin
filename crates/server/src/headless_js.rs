@@ -220,6 +220,20 @@ fn settle_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+/// The wall-clock bound on **each** browser phase — launch, open, navigate, evaluate, close,
+/// wait. The settle budget plus the same slack the in-page eval already used, so no phase can
+/// hang `read --run-js` and the worst case is a small multiple of a budget the author set.
+///
+/// This exists because chromiumoxide has bounds of its own and they are *not* ours: a silent
+/// 20 s `launch_timeout` and a 30 s `request_timeout`, neither derived from
+/// `TALIESIN_JS_TIMEOUT`, and `launch_timeout` covers only reading the DevTools URL off the
+/// child's stderr — the websocket connect that follows it is unbounded, and so are
+/// `close()`/`wait()`. Setting the library's knobs *and* wrapping each await means a future
+/// change to either default cannot silently unbound this path.
+fn phase_timeout() -> Duration {
+    settle_timeout() + Duration::from_secs(5)
+}
+
 /// Observe every `{js}` cell in a built page, returning `block_id → outcome` for exactly the
 /// requested `cell_ids`. Never errors to the caller: any launch/navigation/eval failure
 /// degrades the whole set to `Skipped(reason)`, and a cell the browser didn't surface (e.g.
@@ -248,18 +262,38 @@ pub(crate) async fn observe_js_cells(
 
 /// Launch a throwaway headless Chrome (its own temp profile, so it never collides with a
 /// dev/MCP Chrome), observe, then always tear the browser + profile down.
+///
+/// **Every phase is bounded** ([`phase_timeout`]) and every exit removes the profile, so a
+/// browser that starts and then stops answering degrades to `Skipped(reason)` like any other
+/// failure instead of hanging `read --run-js` with no diagnostic (L3-1).
 async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, String> {
     use chromiumoxide::{Browser, BrowserConfig};
     use futures::StreamExt;
 
     let exe = chrome_path().ok_or_else(|| "chrome unavailable".to_string())?;
     let profile = unique_profile_dir();
+    let phase = phase_timeout();
     let config = BrowserConfig::builder()
         .chrome_executable(&exe)
         .new_headless_mode()
+        // `--no-sandbox` (L3-2, the reasoning this decision was missing). Chrome's own
+        // sandbox needs either unprivileged user namespaces or the setuid helper, and it is
+        // unavailable in exactly the environments this runs in unattended: containers, CI
+        // images, and any host with `kernel.unprivileged_userns_clone=0`. Without this flag
+        // the browser exits at startup there and every `{js}` cell reports `skipped`, which
+        // is a silent loss of the whole feature. What the flag gives up is the OS-level
+        // containment of *page* content — and the page here is a `file://` document this
+        // tool just rendered from the user's own source, with no network (`observe_page`
+        // never leaves `file://`) and no third-party origin, i.e. exactly the author-trusted
+        // input the crate's trust model already assumes. The browser is throwaway, has its
+        // own empty profile, and is killed at the end of the call.
         .no_sandbox()
         .user_data_dir(&profile)
         .window_size(1280, 900)
+        // Make the library's own bounds ours, so they track `TALIESIN_JS_TIMEOUT` instead of
+        // its silent 20 s / 30 s defaults.
+        .launch_timeout(phase)
+        .request_timeout(phase)
         .args(vec![
             "--disable-gpu",
             "--disable-dev-shm-usage",
@@ -269,16 +303,35 @@ async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, S
         .build()
         .map_err(|e| format!("chrome config: {e}"))?;
 
-    let (mut browser, mut handler) = Browser::launch(config)
+    // The outer bound covers the one part of launching that `launch_timeout` does not: the
+    // websocket connect that follows DevTools-URL detection. It sits just above the config
+    // bound so the library's own error — which carries the browser's stderr — wins whenever
+    // it can. Dropping this future is safe: the spawned child is `kill_on_drop`, and the
+    // profile directory is removed on this path like every other.
+    let launched = tokio::time::timeout(phase + Duration::from_secs(2), Browser::launch(config))
         .await
-        .map_err(|e| format!("chrome launch failed: {e}"))?;
+        .map_err(|_| "chrome launch timed out".to_string())
+        .and_then(|r| r.map_err(|e| format!("chrome launch failed: {e}")));
+    let (mut browser, mut handler) = match launched {
+        Ok(pair) => pair,
+        Err(reason) => {
+            let _ = std::fs::remove_dir_all(&profile);
+            return Err(reason);
+        }
+    };
     let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
-    let result = observe_page(&browser, page_path).await;
+    let result = observe_page(&browser, page_path, phase).await;
 
-    // Tear down regardless of the observation result.
-    let _ = browser.close().await;
-    let _ = browser.wait().await;
+    // Tear down regardless of the observation result, and never wait forever for a browser
+    // that has decided not to leave: ask politely, then kill. `close()` can hang when the
+    // handler never answers, and `wait()` when Chrome accepts the close and then does not
+    // exit — the two unbounded awaits that made a wedged browser hang the whole command.
+    let closed = tokio::time::timeout(phase, browser.close()).await.is_ok();
+    let exited = closed && tokio::time::timeout(phase, browser.wait()).await.is_ok();
+    if !exited {
+        let _ = tokio::time::timeout(phase, browser.kill()).await;
+    }
     handler_task.abort();
     let _ = std::fs::remove_dir_all(&profile);
     result
@@ -288,21 +341,28 @@ async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, S
 async fn observe_page(
     browser: &chromiumoxide::Browser,
     page_path: &Path,
+    phase: Duration,
 ) -> Result<HashMap<String, JsOutcome>, String> {
     let url = format!("file://{}", page_path.display());
-    let page = browser
-        .new_page("about:blank")
+    // Each CDP round-trip gets the same wall-clock bound. `request_timeout` on the config
+    // already covers a command the handler tracks, but these wrappers do not depend on the
+    // library tracking every one of them, and dropping a request future owns no process.
+    let page = tokio::time::timeout(phase, browser.new_page("about:blank"))
         .await
+        .map_err(|_| "new page timed out".to_string())?
         .map_err(|e| format!("new page: {e}"))?;
     // Flip tali-js.js into full-error mode for THIS observation only: a built page hides the
     // real error behind a terse reader message unless `window.taliOpenPageSource` is defined
     // (the live preview defines it for real). A no-op has no other effect in a built page,
     // and gives the agent the actual error instead of "couldn't load".
-    let _ = page
-        .evaluate_on_new_document("window.taliOpenPageSource = function () {};")
-        .await;
-    page.goto(&url)
+    let _ = tokio::time::timeout(
+        phase,
+        page.evaluate_on_new_document("window.taliOpenPageSource = function () {};"),
+    )
+    .await;
+    tokio::time::timeout(phase, page.goto(&url))
         .await
+        .map_err(|_| "navigate timed out".to_string())?
         .map_err(|e| format!("navigate: {e}"))?;
 
     let budget = settle_timeout();
@@ -382,6 +442,56 @@ fn build_observe_script(deadline_ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `CHROME_PATH` is process-global, and two tests here set it. Without this lock the
+    /// wedged-launch test below **passed vacuously in 0.02 s** whenever it raced
+    /// `chrome_path_skips_an_explicit_nonexistent_binary`: it read that test's
+    /// `/nonexistent/…`, skipped every cell as "chrome unavailable" instantly, and satisfied
+    /// its own elapsed-time assertion by never launching anything. Run alone it takes 7 s.
+    static CHROME_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Replace every character inside a `"…"` literal with a space, preserving length and
+    /// line structure, so a source scan can find statement boundaries without tripping over
+    /// punctuation that lives in a string. Handles `\"` escapes.
+    fn blank_string_literals(src: &str) -> String {
+        // A multi-byte char is blanked to as many spaces as it had BYTES, so an index into
+        // the result indexes the original too. Blanking it to one space instead shifted every
+        // later offset, and the failure report quoted a window a few bytes off the line it
+        // named (`"330: .\n    let _ = browser.close().awai"`).
+        let blank = |ch: char, out: &mut String| {
+            for _ in 0..ch.len_utf8() {
+                out.push(' ');
+            }
+        };
+        let mut out = String::with_capacity(src.len());
+        let mut in_str = false;
+        let mut escaped = false;
+        for ch in src.chars() {
+            if !in_str {
+                out.push(ch);
+                if ch == '"' {
+                    in_str = true;
+                }
+                continue;
+            }
+            if escaped {
+                escaped = false;
+                blank(ch, &mut out);
+            } else if ch == '\\' {
+                escaped = true;
+                out.push(' ');
+            } else if ch == '"' {
+                in_str = false;
+                out.push('"');
+            } else if ch == '\n' {
+                out.push('\n');
+            } else {
+                blank(ch, &mut out);
+            }
+        }
+        debug_assert_eq!(out.len(), src.len(), "blanking must preserve byte offsets");
+        out
+    }
 
     fn node(done: bool) -> JsNode {
         JsNode {
@@ -585,7 +695,9 @@ mod tests {
     fn chrome_path_skips_an_explicit_nonexistent_binary() {
         // The negative integration case relies on this: CHROME_PATH set but missing → skip,
         // NOT a fall back to a real PATH Chrome. Uses a path that cannot exist.
-        // SAFETY: single-threaded test; restore the prior value after.
+        // SAFETY: `CHROME_ENV` makes this the only test touching `CHROME_PATH` right now;
+        // restore the prior value after.
+        let _env = CHROME_ENV.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var_os("CHROME_PATH");
         unsafe { std::env::set_var("CHROME_PATH", "/nonexistent/definitely-not-chrome") };
         assert!(chrome_path().is_none());
@@ -593,6 +705,165 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("CHROME_PATH", v) },
             None => unsafe { std::env::remove_var("CHROME_PATH") },
         }
+    }
+
+    /// L3-1: a **wedged** Chrome must degrade to `Skipped` on the module's own budget, not
+    /// hang `read --run-js`. The module's contract covered a launch/navigation/eval *failure*
+    /// and this is neither: the browser starts and then never speaks.
+    ///
+    /// Reproduced without a real wedged browser by pointing `CHROME_PATH` at a program that
+    /// launches happily and then sleeps — which is exactly what chromiumoxide's launch path
+    /// blocks on (it reads the child's stderr for the DevTools websocket URL). Before the fix
+    /// this returned on the *library's* silent 20 s default instead of the budget the author
+    /// set, so the assertion is on the clock, not on the outcome.
+    ///
+    /// Also asserts the throwaway profile directory is gone: bounding a phase by dropping its
+    /// future is only safe if teardown still runs, and leaking one temp profile per timed-out
+    /// run is the failure this item explicitly warned against re-creating.
+    ///
+    /// Driven through `Runtime::block_on` rather than `#[tokio::test]` so it enters the module
+    /// exactly the way `read --run-js` does (`query.rs`), and so the `CHROME_ENV` guard is not
+    /// held across an await.
+    #[test]
+    fn a_chrome_that_launches_and_then_hangs_is_bounded_by_our_own_budget() {
+        let dir = std::env::temp_dir().join(format!("tali-hangchrome-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let fake = dir.join("fake-chrome");
+        // Never writes the `DevTools listening on ws://…` line, never exits: the shape of a
+        // browser that is up but wedged.
+        std::fs::write(&fake, "#!/bin/sh\nsleep 300\n").expect("write fake chrome");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let page = dir.join("page.html");
+        std::fs::write(&page, "<!doctype html><html><body></body></html>").unwrap();
+
+        // SAFETY: this test owns both variables for its duration; restored below. It is the
+        // only test that sets `TALIESIN_JS_TIMEOUT`, and `CHROME_ENV` keeps it off the other
+        // `CHROME_PATH` test (see that lock's own comment for what racing it looked like).
+        let _env = CHROME_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let prev_chrome = std::env::var_os("CHROME_PATH");
+        let prev_budget = std::env::var_os("TALIESIN_JS_TIMEOUT");
+        unsafe {
+            std::env::set_var("CHROME_PATH", &fake);
+            std::env::set_var("TALIESIN_JS_TIMEOUT", "2");
+        }
+
+        let started = std::time::Instant::now();
+        let ids = vec!["b-1".to_string(), "b-2".to_string()];
+        let out = tokio::runtime::Runtime::new()
+            .expect("tokio runtime")
+            .block_on(observe_js_cells(&page, &ids));
+        let elapsed = started.elapsed();
+
+        unsafe {
+            match prev_chrome {
+                Some(v) => std::env::set_var("CHROME_PATH", v),
+                None => std::env::remove_var("CHROME_PATH"),
+            }
+            match prev_budget {
+                Some(v) => std::env::set_var("TALIESIN_JS_TIMEOUT", v),
+                None => std::env::remove_var("TALIESIN_JS_TIMEOUT"),
+            }
+        }
+
+        assert_eq!(out.len(), 2);
+        for id in &ids {
+            // The reason must be the *launch* giving up, not "chrome unavailable" — that is
+            // the shape this test takes when it is not testing anything (see `CHROME_ENV`).
+            match out.get(id) {
+                Some(JsOutcome::Skipped(why)) => assert!(
+                    why.contains("launch"),
+                    "expected a launch failure, got {why:?}: the fake browser was never started"
+                ),
+                other => panic!("a wedged browser must skip, not classify: {other:?}"),
+            }
+        }
+        // The library's own default is 20 s. Anything at or above that means the budget the
+        // author set is not the one in force.
+        assert!(
+            elapsed < std::time::Duration::from_secs(15),
+            "a 2 s budget took {elapsed:?}: the bound is the library's default, not ours"
+        );
+        // No leaked profile directory from the timed-out launch.
+        let leaked: Vec<_> = std::fs::read_dir(std::env::temp_dir())
+            .expect("temp dir")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(&format!("tali-headless-{}_", std::process::id())))
+            .collect();
+        assert!(leaked.is_empty(), "leaked browser profile dirs: {leaked:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The other half of L3-1, which the wedged-launch test above cannot reach: a Chrome that
+    /// *accepts* `Browser.close` and then does not exit leaves `browser.wait()` awaiting the
+    /// child forever, with the observation already complete. Reproducing that needs a browser
+    /// that speaks CDP and then lies, so this is a source-level guard instead — the same
+    /// trade `tests/kernel_start_is_retried.rs` makes, and for the same reason: a behavioural
+    /// test for it would be less reliable than the property it is checking.
+    ///
+    /// The property: every `.await` in this module's browser orchestration is inside a
+    /// `tokio::time::timeout`, with the exemptions named below.
+    #[test]
+    fn every_browser_await_is_bounded() {
+        const FULL: &str = include_str!("headless_js.rs");
+        // Only the module body; the tests below await on purpose.
+        let src = &FULL[..FULL.find("\n#[cfg(test)]").unwrap_or(FULL.len())];
+        // Statement boundaries are found by scanning back for `;`/`{`/`}`, so string literals
+        // must be neutralised first: the injected `"window.taliOpenPageSource = function ()
+        // {};"` contains all three, and cutting a statement inside it made this scan report a
+        // bounded await as unbounded.
+        let code = blank_string_literals(src);
+
+        // Deliberate exemptions, each bounded by something other than a wrapper:
+        //   * the CDP event pump — bounding it would tear down the connection mid-observation,
+        //     and `handler_task.abort()` already ends it;
+        //   * `observe_inner` / `observe_page` — bounded by construction, since every phase
+        //     inside them is. Wrapping either *again* would drop the future mid-flight and
+        //     skip the profile-directory removal, which is the leak this item warned against.
+        const EXEMPT: &[&str] = &["handler.next()", "observe_inner(", "observe_page("];
+
+        let mut unbounded = Vec::new();
+        for (at, _) in code.match_indices(".await") {
+            let line_start = code[..at].rfind('\n').map(|p| p + 1).unwrap_or(0);
+            let line_end = code[at..].find('\n').map(|e| at + e).unwrap_or(code.len());
+            // A comment mentioning `.await` is not an await.
+            if code[line_start..at].contains("//") {
+                continue;
+            }
+            let stmt_start = code[..at]
+                .rfind([';', '{', '}'])
+                .map(|p| p + 1)
+                .unwrap_or(0);
+            let stmt = &code[stmt_start..line_end];
+            if stmt.contains("tokio::time::timeout(") || EXEMPT.iter().any(|e| stmt.contains(e)) {
+                continue;
+            }
+            unbounded.push(format!(
+                "{}: {}",
+                code[..at].matches('\n').count() + 1,
+                src[line_start..line_end].trim()
+            ));
+        }
+        assert!(
+            unbounded.is_empty(),
+            "these browser awaits are unbounded, so a wedged Chrome can hang `read --run-js`: {unbounded:#?}"
+        );
+        // Controls: the scan means nothing if it sees no awaits, or if it sees no wrappers —
+        // either way it would keep passing after every bound was deleted.
+        assert!(
+            code.matches(".await").count() > 6,
+            "the scan found almost no awaits — it is passing vacuously"
+        );
+        assert!(
+            code.matches("tokio::time::timeout(").count() >= 6,
+            "far fewer wrappers than there are phases to bound"
+        );
     }
 
     #[test]
