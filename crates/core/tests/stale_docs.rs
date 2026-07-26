@@ -29,9 +29,11 @@ fn internals_do_not_describe_the_deleted_shim() {
 }
 
 /// The GitHub Actions workflow was deleted on 2026-07-26 (it billed Actions minutes on
-/// this private repo) and nothing replaced it, so every gate it ran is manual now. A doc
-/// that still promises an automatic gate is worse than silence: it tells the next reader
-/// (or the next agent) that a push is checked for them when nothing checks it.
+/// this private repo). `.githooks/pre-push` still gates fmt + clippy + `test --workspace`,
+/// but the jobs only CI ran (live kernels, the JS type-checks, the VS Code grammar test,
+/// `cargo audit`, `cargo deny`) are manual now. A doc that still credits "CI" for those is
+/// worse than silence: it tells the next reader (or agent) a push is checked for them in
+/// ways it is not.
 #[test]
 fn docs_do_not_promise_a_ci_that_enforces_gates() {
     assert!(

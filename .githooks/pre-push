@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Pre-push gate. Runs the fast, environment-independent CI checks LOCALLY before a push
-# reaches origin, so a break is caught here instead of after it has landed on main. This
-# is the "turn the smoke alarm into a gate" half; the heavier CI jobs stay in GitHub
-# Actions on purpose, because they do things this hook can't:
-#   - live-kernel tests   (need a clean python env; also timing-sensitive)
+# Pre-push gate. Runs the fast, environment-independent checks LOCALLY before a push
+# reaches origin, so a break is caught here instead of after it has landed on main.
+#
+# As of 2026-07-26 this is the ONLY automatic gate in the repo: the GitHub Actions
+# workflow was deleted (it billed Actions minutes on this private repo), so the jobs it
+# alone ran now run nowhere and are manual. Deliberately still NOT gated here, because
+# each needs an environment this hook cannot assume:
+#   - live-kernel tests   (need a clean python env / R; also timing-sensitive)
 #   - JS typecheck + VS Code grammar  (need node)
-#   - weekly cargo audit / cargo deny advisory scan  (no local equivalent — the main
-#                                                      reason to keep CI at all)
+#   - cargo audit / cargo deny advisory scan  (need the tools + network; run them on
+#                                              any dependency change)
 #
 # Only gates a push that includes main; WIP-branch pushes skip for speed (matching CI,
 # which reserves the heavy gate for main + PRs). Bypass once with:  git push --no-verify

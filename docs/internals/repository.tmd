@@ -26,7 +26,8 @@ Taliesin/
 ├─ notes/             roadmap & process notes (backlog, ROADMAP, AUDITS, …)
 ├─ README.md, LICENSE, CLAUDE.md, THIRD_PARTY.md   the root Markdown that stays
 ├─ Cargo.toml         workspace manifest (resolver 3, edition 2024)
-└─ deny.toml          dependency license/advisory policy (`cargo deny check`)
+├─ deny.toml          dependency license/advisory policy (`cargo deny check`)
+└─ .githooks/         pre-push gate (fmt + clippy + test); the only automatic check
 ```
 
 ## The engine: crates and clients
@@ -152,9 +153,15 @@ in `notes/` so the root stays uncluttered:
   files); `crates/server/build.rs` stamps the short git SHA into the binary for the
   `--version` colophon, falling back to `"unknown"` outside a checkout.
 - **`deny.toml`**: the dependency *policy* gate (redistribution-friendly licenses
-  only, no unknown registries or git sources, plus an advisory pass). Run it with
-  `cargo deny check`. There is no CI: the repo had a GitHub Actions workflow until
-  2026-07-26, and every check it ran is now a manual, local one.
+  only, no unknown registries or git sources, plus an advisory pass). Nothing runs it
+  for you; `cargo deny check` is a manual step on any dependency change.
+- **`.githooks/pre-push`**: the only automatic gate in the repo, wired through
+  `core.hooksPath` (so it does not appear in `.git/hooks`). A push that includes
+  `main` runs `cargo fmt --check`, `cargo clippy -D warnings`, and
+  `cargo test --workspace` first; a WIP-branch push skips it, and `--no-verify`
+  bypasses. There is no CI to back it up: the GitHub Actions workflow was deleted on
+  2026-07-26, so the jobs it alone ran (live Python/R kernels, the JS type-checks,
+  the VS Code grammar test, `cargo audit`, `cargo deny`) are now manual.
 
 Several directories are **generated and gitignored**, so do not be surprised when
 they appear: `target/` (the Rust build), `_freeze/` (the persistent per-page

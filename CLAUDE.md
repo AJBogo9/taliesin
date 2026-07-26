@@ -163,16 +163,21 @@ For UI work, `/preview <file.tmd>` builds, serves on port 4388, and verifies it 
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`
 hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-clean.
 
-**There is no CI and there are no git hooks.** The GitHub Actions workflow was
-deleted on 2026-07-26 (it was billing Actions minutes on this private repo), and
-nothing replaced it, so every gate it used to run is now manual: `cargo fmt --all --
---check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D
-warnings`, the two `tsc` type-checks above, and `cargo audit` / `cargo deny check`
-(`deny.toml` is still the dependency policy) when dependencies change. Run them
-before a push and never claim a change is verified without their output. Two things
-the workflow was the *only* place to run: the live-kernel suites (Python and R, via
-`TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`, which otherwise silently skip) and
-the VS Code companion's offline TextMate grammar gate.
+**There is no CI. The pre-push hook is the only automatic gate.** The GitHub Actions
+workflow was deleted on 2026-07-26 (it was billing Actions minutes on this private
+repo). What survives is `.githooks/pre-push` (wired via `core.hooksPath`, so it is
+invisible in `.git/hooks`): a push that includes `main` runs `cargo fmt --all --
+--check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test
+--workspace` first, and a WIP-branch push skips it. `git push --no-verify` bypasses.
+
+The workflow's *other* jobs now run nowhere, so they are yours to run by hand and
+they are the ones most likely to rot unnoticed: the live-kernel suites (Python and R,
+via `TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`, which silently *skip* when the
+interpreter is absent, which is exactly how they reach zero coverage), the two `tsc`
+type-checks above, `node --test crates/server/src/assets/_middleware.test.mjs` (the
+publish passcode gate), the VS Code companion's offline TextMate grammar test, and
+`cargo audit` / `cargo deny check` (`deny.toml` is still the policy) on any
+dependency change. Never call one of these verified without its output.
 
 ## Conventions
 
