@@ -242,7 +242,13 @@ fn collect_file_diagnostics_from_src(path: &Path, src: &str) -> Result<Vec<Diagn
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_document_with_includes_rooted(src, base, Some(base));
     let path_str = path.display().to_string();
-    let xref = taliesin_core::cite::validate_xrefs(&doc.blocks);
+    // A document inside a site project may legitimately refer across its pages, so
+    // resolve what the project defines before calling anything broken: this path is the
+    // editor's every-keystroke validator (and `check <file.tmd>`), and it used to report
+    // every valid cross-page `@sec-`/`@fig-`/`@tbl-` as an error while `check <dir>` on
+    // the same tree was clean. Outside a project the scan is empty and nothing changes.
+    let elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(path);
+    let xref = taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &elsewhere);
     let statics = page_static_diagnostics(src, &doc.blocks, base, doc.format, Scope::Standalone);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
@@ -909,6 +915,7 @@ fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn buffer_diagnostics_flags_a_front_matter_typo() {
@@ -922,6 +929,102 @@ mod tests {
             "expected a typo diagnostic, got: {:?}",
             diags.iter().map(|d| &d.message).collect::<Vec<_>>()
         );
+    }
+
+    /// A temp site project: `_site.yml` plus `(relative name, contents)` files.
+    fn tmp_project(tag: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("tali-check-proj-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        for (name, body) in files {
+            fs::write(dir.join(name), body).unwrap();
+        }
+        dir
+    }
+
+    fn broken_xrefs(diags: &[Diagnostic]) -> Vec<&str> {
+        diags
+            .iter()
+            .filter(|d| d.code == "TAL-XREF-UNDEF")
+            .map(|d| d.message.as_str())
+            .collect()
+    }
+
+    /// AN-6: the per-document path is what the editor's language server runs on every
+    /// keystroke, and it has no page registry — so it reported every *valid* cross-page
+    /// reference as a broken one while `check <dir>` on the same tree was clean. Both
+    /// definition shapes have to be seen: a `{#sec-}` heading anchor (source-visible)
+    /// and a `#| label:` cell anchor (inside a fence, which the anchor scan skips).
+    #[test]
+    fn a_valid_cross_page_reference_is_not_reported_as_broken() {
+        let dir = tmp_project(
+            "xpage-ok",
+            &[
+                ("_site.yml", "title: Project\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n## A topic {#sec-topic}\n\n\
+                     ```{python}\n#| label: fig-plot\n#| fig-cap: A plot\nplot()\n```\n",
+                ),
+                (
+                    "other.tmd",
+                    "---\ntitle: Other\n---\n\nSee @sec-topic and @fig-plot.\n",
+                ),
+            ],
+        );
+        let src = fs::read_to_string(dir.join("other.tmd")).unwrap();
+        let diags = super::buffer_diagnostics(&dir.join("other.tmd"), &src);
+        assert!(
+            broken_xrefs(&diags).is_empty(),
+            "a reference the project resolves must not be reported broken: {:?}",
+            broken_xrefs(&diags)
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The other half, and the reason this is a scope fix rather than a severity
+    /// downgrade: an anchor no page in the project defines is still an error, reported
+    /// where the author can act on it.
+    #[test]
+    fn a_reference_no_page_defines_is_still_reported_as_broken() {
+        let dir = tmp_project(
+            "xpage-bad",
+            &[
+                ("_site.yml", "title: Project\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n## A topic {#sec-topic}\n",
+                ),
+                ("other.tmd", "---\ntitle: Other\n---\n\nSee @sec-ghost.\n"),
+            ],
+        );
+        let src = fs::read_to_string(dir.join("other.tmd")).unwrap();
+        let diags = super::buffer_diagnostics(&dir.join("other.tmd"), &src);
+        assert!(
+            broken_xrefs(&diags)
+                .iter()
+                .any(|m| m.contains("@sec-ghost")),
+            "an anchor nothing defines is still broken: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A standalone `.tmd` with no ancestor `_site.yml` is unaffected: there is no
+    /// project to resolve against, so its broken references stay broken.
+    #[test]
+    fn a_standalone_document_still_reports_its_broken_reference() {
+        let dir = tmp_project("xpage-solo", &[("solo.tmd", "# Solo\n\nSee @fig-nope.\n")]);
+        // `tmp_project` writes no `_site.yml` here, which is the point.
+        let src = fs::read_to_string(dir.join("solo.tmd")).unwrap();
+        let diags = super::buffer_diagnostics(&dir.join("solo.tmd"), &src);
+        assert!(
+            broken_xrefs(&diags).iter().any(|m| m.contains("@fig-nope")),
+            "a standalone document has no project to excuse a broken ref: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

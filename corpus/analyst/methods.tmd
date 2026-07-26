@@ -85,9 +85,9 @@ for week in WEEKS:
 
 ## Model diagnostics {#sec-diagnostics}
 
-The readout fits `log(p95) ~ region + channel + week` by least squares: the model
-behind @tbl-coefs, and the reason @fig-p95 is read the way it is. Three assumptions
-carry it, and the residuals are where they show.
+The readout fits `log(p95) ~ region + channel + week` by least squares in @sec-model:
+the model behind @tbl-coefs, and the reason @fig-p95 is read the way it is. Three
+assumptions carry it, and the residuals are where they show.
 
 ```{r}
 #| label: diag-fit

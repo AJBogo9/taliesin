@@ -97,6 +97,27 @@ fn a_cross_page_ref_to_a_cell_produced_float_keeps_its_number() {
     );
 }
 
+/// A cross-PAGE `@sec-` on a **website** has no number to carry — section numbering is
+/// a book's, and `harvest_xref_numbers` deliberately refuses to invent one here (a flat
+/// per-page counter would be mislabelled "Chapter 1"). It must still say which section
+/// it points at: the readout is a two-page website, so this is the corpus's only
+/// unnumbered cross-page section reference, and without the heading title the sentence
+/// renders as "…by least squares in Section." (AN-5).
+#[test]
+fn a_cross_page_sec_ref_on_a_website_names_the_heading_it_points_at() {
+    let methods = analyst()
+        .render_page("methods.tmd")
+        .expect("methods renders");
+    assert!(
+        methods.contains(
+            "<a href=\"index.html#sec-model\" class=\"tali-xref\">Section&nbsp;\u{201c}Is the \
+             canary still slower?\u{201d}</a>"
+        ),
+        "a cross-page @sec- must name its target heading, not render a bare \
+         \u{201c}Section\u{201d}: {methods}"
+    );
+}
+
 /// The authored table is the one float whose anchor + caption exist without execution,
 /// so it pins the Markdown-caption path end to end (id on the `<table>`, `<caption>` as
 /// its first child) rather than only its xref registration.

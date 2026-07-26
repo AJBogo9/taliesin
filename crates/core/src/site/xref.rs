@@ -5,16 +5,24 @@
 
 use super::*;
 use crate::render::parse_attrs;
+use std::collections::BTreeSet;
 
 /// Where a cross-referenceable anchor (`sec-x`, `fig-x`, …) lives in the project:
 /// its page url and, for a numbered section, its number ("2.1"; empty otherwise).
 /// `PartialEq` so the dev server can ask whether a refresh actually MOVED anything —
 /// a cross-page ref is a dependency the file-level walk cannot see, so "did a target
-/// move" is what tells it which open pages to re-render.
+/// move" is what tells it which open pages to re-render. `title` is part of that
+/// equality *on purpose*: it is rendered into every referring page, so editing a
+/// heading's text has to re-render the pages that name it, exactly as moving it does.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct XrefTarget {
     pub url: String,
     pub number: String,
+    /// The target heading's own text, for an anchor that sits on a heading line;
+    /// empty otherwise (a figure/equation anchor, or a cell label harvested from a
+    /// render). Carried so an unnumbered cross-page `@sec-` can name what it points
+    /// at instead of rendering the bare word "Section" — see [`rewrite_one_xref`].
+    pub title: String,
 }
 /// Scan every page's source for cross-referenceable anchors (`{#sec-x}` headings,
 /// `{#fig-x}`/`{#eq-x}`/… on other lines), recording each anchor's page url and —
@@ -41,8 +49,14 @@ pub(super) fn scan_xref_targets(
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
         let chapter = super::book::chapter_of(book, page);
-        for (anchor, number, line) in scan_page_anchors(&src, chapter) {
-            match map.entry(anchor) {
+        for ScannedAnchor {
+            id,
+            number,
+            title,
+            line,
+        } in scan_page_anchors(&src, chapter)
+        {
+            match map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(e) => {
                     // First definition wins project-wide; warn when a *different*
                     // page redefines the same label (within-page dups are warned by
@@ -66,6 +80,7 @@ pub(super) fn scan_xref_targets(
                     e.insert(XrefTarget {
                         url: page.url.clone(),
                         number,
+                        title,
                     });
                 }
             }
@@ -73,11 +88,131 @@ pub(super) fn scan_xref_targets(
     }
     map
 }
+/// Every cross-reference anchor defined by the *other* `.tmd` files of the site
+/// project that contains `page` — empty when `page` has no ancestor `_site.yml`, i.e.
+/// when it really is a standalone document.
+///
+/// This exists because per-document validation is a **scope mismatch**, not a bug: a
+/// page inside a site legitimately refers across pages, so `check <dir>` and the built
+/// page resolve every such reference while a per-document check (the editor's language
+/// server, and `check <file.tmd>`) reported every one of them as a broken
+/// cross-reference. An author who trusts that squiggle deletes a working reference; one
+/// who learns to ignore it stops reading the diagnostics that matter.
+///
+/// Deliberately cheap — sources are read and scanned line by line, and **nothing is
+/// rendered** — because the caller is the every-keystroke editor path where
+/// [`Site::discover`](super::Site::discover) (three whole-project render passes) is out
+/// of the question. That is also why a cell's `#| label:` is read directly rather than
+/// harvested from a render the way [`super::Site::harvest_xref_numbers`] must: a
+/// *number* needs the render, a *name* does not, and a name is all this answers.
+///
+/// The page's own anchors are excluded: an editor buffer is ahead of its file on disk,
+/// and a reference the buffer resolves locally emits no marker to validate anyway.
+pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let Some(root) = enclosing_site_root(page) else {
+        return out;
+    };
+    let own = page.canonicalize().ok();
+    let mut inputs = Vec::new();
+    super::collect_pages(&root, &mut inputs);
+    for input in inputs {
+        if own.is_some() && input.canonicalize().ok() == own {
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&input) else {
+            continue;
+        };
+        // Resolve includes, exactly as the scan above does: an anchor authored in an
+        // `_includes/` partial belongs to whichever page includes it, and the walk
+        // skips `_`-prefixed directories, so it is reachable only this way.
+        let base = input.parent().unwrap_or_else(|| Path::new("."));
+        let (src, _) = crate::includes::resolve(&raw, base);
+        out.extend(scan_page_anchors(&src, None).into_iter().map(|a| a.id));
+        out.extend(cell_label_anchors(&src));
+    }
+    out
+}
+
+/// The nearest ancestor directory of `page` holding a `_site.yml`, or `None`. Starts at
+/// the file's own directory, so a page IS in the project its own `_site.yml` roots.
+fn enclosing_site_root(page: &Path) -> Option<PathBuf> {
+    let abs = page
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(page));
+    let mut cur = abs.parent()?;
+    loop {
+        if cur.join("_site.yml").is_file() {
+            return Some(cur.to_path_buf());
+        }
+        cur = cur.parent()?;
+        if cur.as_os_str().is_empty() {
+            return None;
+        }
+    }
+}
+
+/// The cross-reference anchors a page's code cells define through `#| label: fig-x`.
+/// [`scan_page_anchors`] cannot see these — a cell option lives inside a fence, which
+/// [`content_lines_numbered`] skips by design — so they are read here, from inside the
+/// fences, using the renderer's own directive primitive.
+fn cell_label_anchors(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_code = false;
+    for line in src.lines() {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            continue;
+        }
+        if !in_code {
+            continue;
+        }
+        let Some(opt) = crate::render::option_directive(line) else {
+            continue;
+        };
+        if let Some((k, v)) = opt.split_once(':')
+            && k.trim() == "label"
+        {
+            let id = v.trim().trim_matches(['"', '\'']);
+            if is_ref_anchor(id) {
+                out.push(id.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// The ATX heading level of a content line (`## T` -> 2), or `None` if it is not a
 /// heading. `#` runs must be followed by a space, so a `#hashtag` is not a heading.
 fn heading_level_of(line: &str) -> Option<usize> {
     let level = line.bytes().take_while(|&b| b == b'#').count();
     ((1..=6).contains(&level) && line.as_bytes().get(level) == Some(&b' ')).then_some(level)
+}
+
+/// The display text of a heading line: its `#` run, its `{…}` attribute blocks and
+/// its inline `` ` ``/`*` delimiters removed. Plain text, not HTML — the caller
+/// escapes it, so a heading containing `<` or `&` cannot inject markup into the
+/// referring page's link label.
+///
+/// Only the two delimiters that actually occur in the repo's anchored headings are
+/// stripped. `_` is deliberately left alone: it is far likelier to be a `snake_case`
+/// identifier than an emphasis marker in a heading, and mangling one is worse than
+/// leaving the other.
+fn heading_title(line: &str) -> String {
+    let after_hashes = line.trim_start_matches('#').trim_start();
+    let mut text = String::with_capacity(after_hashes.len());
+    let mut depth = 0usize;
+    for c in after_hashes.chars() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            '`' | '*' if depth == 0 => {}
+            _ if depth == 0 => text.push(c),
+            _ => {}
+        }
+    }
+    text.trim().to_string()
 }
 
 /// Every heading level in a page's source, in document order — the input
@@ -88,10 +223,21 @@ fn heading_levels(src: &str) -> Vec<usize> {
         .collect()
 }
 
+/// One cross-referenceable anchor as the source scan sees it.
+struct ScannedAnchor {
+    id: String,
+    /// Section number for a `{#sec-}` heading in a numbered chapter; empty otherwise.
+    number: String,
+    /// The heading's own text when the anchor sits on a heading line; empty otherwise.
+    title: String,
+    /// 1-based source line, for the duplicate-label warning.
+    line: usize,
+}
+
 /// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
 /// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
 /// are counted in order so an unlabeled section still advances the numbering.
-fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String, usize)> {
+fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> {
     let mut out = Vec::new();
     // The numbering base is the shallowest heading below the chapter's own, so the whole
     // heading shape has to be known before the first anchor is numbered: pre-scan it.
@@ -114,10 +260,21 @@ fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String, us
                 .map(|n| n.next(level))
                 .unwrap_or_default();
             if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-                out.push((id, number, line));
+                out.push(ScannedAnchor {
+                    id,
+                    number,
+                    title: heading_title(t),
+                    line,
+                });
             }
         } else if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-            out.push((id, String::new(), line)); // a figure/equation anchor: link, no number
+            // a figure/equation anchor: link, no number, no heading to name it by
+            out.push(ScannedAnchor {
+                id,
+                number: String::new(),
+                title: String::new(),
+                line,
+            });
         }
     }
     out
@@ -274,13 +431,21 @@ fn rewrite_one_xref(
     } else {
         &link[gt + 1..link.len() - "</a>".len()]
     };
-    let number = if target.number.is_empty() {
-        String::new()
-    } else {
+    // What qualifies the kind word. A number when the project has one — but a website
+    // has no section numbering, so a cross-page `@sec-` there had nothing to add and
+    // rendered as the bare word "Section", a sentence-breaking dead end ("…as set out
+    // in Section."). Name the target instead: the heading's own text says which section
+    // it is, which is what the number would have said. Numbers still win where they
+    // exist, so a book is untouched.
+    let qualifier = if !target.number.is_empty() {
         format!("&nbsp;{}", target.number)
+    } else if !target.title.is_empty() {
+        format!("&nbsp;\u{201c}{}\u{201d}", esc(&target.title))
+    } else {
+        String::new()
     };
     format!(
-        "<a href=\"{up}{}#{anchor}\" class=\"tali-xref\">{label}{number}</a>",
+        "<a href=\"{up}{}#{anchor}\" class=\"tali-xref\">{label}{qualifier}</a>",
         target.url
     )
 }
@@ -323,6 +488,92 @@ mod tests {
             Some("sec-x")
         );
         assert_eq!(brace_id("::: {.theorem #thm-x}").as_deref(), Some("thm-x"));
+    }
+
+    /// A website has no section numbering, so a cross-page `@sec-` has no number to
+    /// carry. It must name its target rather than render the bare kind word.
+    #[test]
+    fn an_unnumbered_cross_page_sec_is_labelled_with_its_heading_title() {
+        let targets = HashMap::from([(
+            "sec-model".to_string(),
+            XrefTarget {
+                url: "index.html".to_string(),
+                number: String::new(),
+                title: "Is the canary still slower?".to_string(),
+            },
+        )]);
+        let link =
+            r##"<a href="#sec-model" class="tali-xref" data-tali-xref="sec-model">Section</a>"##;
+        assert_eq!(
+            rewrite_one_xref(link, &targets, "methods.html", ""),
+            "<a href=\"index.html#sec-model\" class=\"tali-xref\">Section&nbsp;\u{201c}Is the \
+             canary still slower?\u{201d}</a>"
+        );
+    }
+
+    /// A number, where the project has one, still wins: a book is untouched by the
+    /// title fallback above.
+    #[test]
+    fn a_numbered_cross_page_sec_still_renders_its_number_not_its_title() {
+        let targets = HashMap::from([(
+            "sec-setup".to_string(),
+            XrefTarget {
+                url: "methods.html".to_string(),
+                number: "2.1".to_string(),
+                title: "Setting up".to_string(),
+            },
+        )]);
+        let link =
+            r##"<a href="#sec-setup" class="tali-xref" data-tali-xref="sec-setup">Section</a>"##;
+        assert_eq!(
+            rewrite_one_xref(link, &targets, "intro.html", ""),
+            "<a href=\"methods.html#sec-setup\" class=\"tali-xref\">Section&nbsp;2.1</a>"
+        );
+    }
+
+    /// The title is plain text from the source line, so it is escaped on the way into
+    /// the referring page — a heading may legitimately contain `&` or `<`.
+    #[test]
+    fn a_heading_title_is_escaped_into_the_referring_page() {
+        let targets = HashMap::from([(
+            "sec-ab".to_string(),
+            XrefTarget {
+                url: "a.html".to_string(),
+                number: String::new(),
+                title: "Tom & Jerry <live>".to_string(),
+            },
+        )]);
+        let link = r##"<a href="#sec-ab" class="tali-xref" data-tali-xref="sec-ab">Section</a>"##;
+        let out = rewrite_one_xref(link, &targets, "b.html", "");
+        assert!(
+            out.contains("Tom &amp; Jerry &lt;live&gt;") && !out.contains("<live>"),
+            "the heading text must be escaped: {out}"
+        );
+    }
+
+    #[test]
+    fn heading_title_drops_the_hashes_attributes_and_inline_delimiters() {
+        assert_eq!(
+            heading_title("## Is the canary still slower? {#sec-model}"),
+            "Is the canary still slower?"
+        );
+        // The one anchored heading in the repo with inline code: the delimiters go, the
+        // identifier stays.
+        assert_eq!(
+            heading_title("### How `draft:` filtering works {#sec-draft-filtering}"),
+            "How draft: filtering works"
+        );
+        // A split-brace heading drops BOTH blocks, not only the last.
+        assert_eq!(
+            heading_title("## Setup {.unnumbered} {#sec-setup}"),
+            "Setup"
+        );
+        // `_` survives: a heading is likelier to hold a snake_case identifier than an
+        // emphasis pair.
+        assert_eq!(
+            heading_title("## The p95_ms column {#sec-p95}"),
+            "The p95_ms column"
+        );
     }
 
     #[test]

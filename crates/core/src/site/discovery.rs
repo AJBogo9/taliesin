@@ -113,7 +113,7 @@ pub(super) fn discover_decks(
 /// The walk reads directories directly rather than resolving paths through
 /// [`crate::includes::safe_join`], so it applies that function's symlink boundary by
 /// hand: a link is followed only while it stays inside the repository.
-fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(super) fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
     let boundary = crate::includes::repo_boundary(dir);
     let mut walked = HashSet::new();
     // Seed with the root itself, so a link pointing back at it is a repeat, not a

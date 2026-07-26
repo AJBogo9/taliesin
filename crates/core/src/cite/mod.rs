@@ -39,7 +39,7 @@ pub(crate) use render::XREF_LABELS;
 pub use render::is_xref_anchor;
 pub use render::process;
 pub(crate) use render::xref_prefix_for_label;
-pub use validate::validate_xrefs;
+pub use validate::{validate_xrefs, validate_xrefs_known_elsewhere};
 
 /// A parsed BibTeX database.
 #[derive(Default)]

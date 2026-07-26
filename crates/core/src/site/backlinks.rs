@@ -296,6 +296,7 @@ mod tests {
             XrefTarget {
                 url: "p1.html".to_string(),
                 number: String::new(),
+                title: String::new(),
             },
         )]);
         let per_page = vec![

@@ -222,8 +222,8 @@ mod seo;
 pub mod skim;
 mod xref;
 pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
-pub use xref::XrefTarget;
 use xref::scan_xref_targets;
+pub use xref::{XrefTarget, anchors_defined_elsewhere_in_project};
 mod config;
 mod frontmatter;
 pub use config::*;
@@ -232,7 +232,10 @@ mod chapter;
 pub(crate) use chapter::ChapterNumbering;
 use chapter::number_chapter_headings; // also used by xref.rs (via `use super::*`)
 mod discovery;
-use discovery::{discover_decks, website_pages};
+// `collect_pages` is not called here: `xref.rs` reaches it through this binding (a
+// private `use` is still visible to a descendant module), so the project-wide anchor
+// scan walks exactly the page set discovery does.
+use discovery::{collect_pages, discover_decks, website_pages};
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
@@ -1298,7 +1301,11 @@ impl Site {
                 // enriching alone silently dropped it and `@fig-x` from another page
                 // stayed a bare "Figure" pointing at a dead same-page anchor.
                 std::collections::hash_map::Entry::Vacant(e) => {
-                    e.insert(XrefTarget { url, number });
+                    e.insert(XrefTarget {
+                        url,
+                        number,
+                        title: String::new(),
+                    });
                 }
             }
         }
@@ -2615,6 +2622,17 @@ pub(crate) mod tests {
         assert!(
             !html.contains("Chapter&nbsp;1") && !html.contains(">Chapter"),
             "a website @sec- must not be mislabelled a Chapter: {html}"
+        );
+        // AN-5: "a bare Section" was the *other* half of the same defect. With no number
+        // to carry, the link named nothing at all and the sentence read "See Section
+        // elsewhere." It names its target instead — the information the number would
+        // have carried, in the form a website can supply it.
+        assert!(
+            html.contains(
+                "<a href=\"other.html#sec-topic\" class=\"tali-xref\">Section&nbsp;\u{201c}A \
+                 topic\u{201d}</a>"
+            ),
+            "an unnumbered cross-page @sec- must name its heading: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -12,6 +12,23 @@ use std::collections::BTreeSet;
 /// A broken anchor that is a near-miss of one the page defines carries a did-you-mean.
 /// Renaming a label is the commonest way an author silently breaks their own document.
 pub fn validate_xrefs(blocks: &[Block]) -> Vec<Warning> {
+    validate_xrefs_known_elsewhere(blocks, &BTreeSet::new())
+}
+
+/// [`validate_xrefs`], plus a set of anchors known to be defined **on other pages of
+/// the same project**, which are therefore not broken and must not be reported.
+///
+/// This is the per-document/whole-project scope seam. A single-document check has no
+/// page registry, so every legitimate cross-page reference looked broken to it: the
+/// editor drew red squiggles on correct content that `check <dir>` and the built page
+/// both resolved. The caller supplies what it can see of the project (see
+/// [`crate::site::anchors_defined_elsewhere_in_project`]); an anchor that exists
+/// nowhere in it is still an error, so a genuinely broken reference is still caught in
+/// the editor, which is the only place worth catching it.
+pub fn validate_xrefs_known_elsewhere(
+    blocks: &[Block],
+    known_elsewhere: &BTreeSet<String>,
+) -> Vec<Warning> {
     let marker = "data-tali-xref=\"";
     let anchors = local_anchors(blocks);
     // First occurrence wins for the reported location; dedup by anchor.
@@ -24,7 +41,9 @@ pub fn validate_xrefs(blocks: &[Block]) -> Vec<Warning> {
             rest = &rest[i + marker.len()..];
             let Some(end) = rest.find('"') else { break };
             let anchor = rest[..end].to_string();
-            seen.entry(anchor).or_insert_with(|| loc.clone());
+            if !known_elsewhere.contains(&anchor) {
+                seen.entry(anchor).or_insert_with(|| loc.clone());
+            }
             rest = &rest[end..];
         }
     }
