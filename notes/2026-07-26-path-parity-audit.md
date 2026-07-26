@@ -1,5 +1,22 @@
 # Path-parity audit (L1) — 2026-07-26
 
+> **All three findings SHIPPED 2026-07-26** (`97c1d46` PP-3, `66fafa8` PP-1 + PP-2). Two corrections
+> this document's fix directions needed, kept because they are the transferable part:
+>
+> - **PP-3's stated fix was a revert.** "Give the single-file build the same inferred root" would
+>   have re-opened PT-2 (`9359a2c`): that walk stops at `.git` **or** `_site.yml`, and widening to a
+>   checkout is exactly what the release audit closed. What shipped separates the two markers —
+>   `_site.yml` (an author declaring a project) widens and is the root the site build already passes,
+>   so honouring it *is* parity; `.git` never widens a single invoked document again.
+> - **PP-3's `.git`-dependence was two tests, not one.** `include_relative_base.rs::
+>   relative_base_resolves_include_against_repo_root` failed identically in a VCS-free copy. Measured
+>   after the fix: `cargo test -p taliesin-core` in a `.git`-free copy is 49 binaries, 0 failures.
+>
+> PP-1's exclusion also carried a reason worth recording as refuted: "the client doesn't re-index on
+> a live edit, so the index would go stale" is true of a site's cross-page index and false of a single
+> doc, where `search.js` builds from the DOM and rebuilds on every `open()`. Verified in the browser
+> (append an anchored heading live, reopen: 11 items → 12, the new one matching).
+
 **Lens:** feature × emission path. A document can reach a reader through five assemblers, and no round
 has ever crossed the feature list against them. Three rounds each tripped over exactly one divergence
 and stopped there: **DX1** (the located validators ran in `build`/`check` but not preview), **AP7**

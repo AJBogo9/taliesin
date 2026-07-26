@@ -11,18 +11,24 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Band A holds 8 items (0 HIGH, 7 MEDIUM/LOW, plus one authoring pass).** The mobile batch (42-49,
-every HIGH on the board) **shipped 2026-07-26**; what is left is path parity (50, 51, 57) and the
-L2/L3/L4/L5 lens batch (52-56). Band B is empty; band C holds only item **25**, parked on a
-public-release *date* rather than on a decision; the rest is blocked on a device or a real user
-(band D) or gated (band E).
+**Band A holds 5 items (0 HIGH, 4 MEDIUM/LOW, plus one authoring pass).** Two batches shipped on
+2026-07-26: mobile (42-49, every HIGH on the board) and path parity (50, 51, 57). What is left is the
+L2/L3/L4/L5 lens batch (52-56) — and **the mutation re-run, which item 57 unblocked and which is now
+the top of the order**. Band B is empty; band C holds only item **25**, parked on a public-release
+*date* rather than on a decision; the rest is blocked on a device or a real user (band D) or gated
+(band E).
 
-**They are two or three batches, not eight sessions** — most share a root cause. The suggested order
-is at the top of band A; start with path parity, where item **57** unblocks the mutation re-run. Read
-the band-A preamble before starting, and the 2026-07-26 probe traps under Standing constraints before
-writing any probe — plus the four the mobile batch added when it shipped (a scroll lock cannot be
-tested with `scrollBy`; a capability rule can be discarded by the cascade; a tap target on a sticky
-bar must grow by overlay; and a stale *cause* can sit under a real *symptom*).
+**Verified 2026-07-26 after 57 landed:** `cargo test -p taliesin-core` in a `.git`-free copy of the
+tree is **49 binaries, 0 failures** (it was 2 failures, which is precisely what kept cargo-mutants'
+unmutated baseline red). The re-run can start.
+
+**What is left is one batch plus an authoring pass, not five sessions.** Read the band-A preamble
+before starting, and the 2026-07-26 probe traps under Standing constraints before writing any probe
+— plus the four the mobile batch added (a scroll lock cannot be tested with `scrollBy`; a capability
+rule can be discarded by the cascade; a tap target on a sticky bar must grow by overlay; a stale
+*cause* can sit under a real *symptom*) and the four the path-parity batch added (an audit's stated
+fix can be a revert; a documented reason can be true of a sibling path and false of yours; a finding
+that names one instance has not enumerated the shape; a hidden overlay still renders a stale list).
 
 **A lens menu now exists** ("Proposed audit lenses", below): six never-run lenses (L1-L6), four
 re-runs ranked by age × measured churn in each round's own surface, and four directions that the last
@@ -193,8 +199,9 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   tripped over exactly one divergence and none swept the matrix: **DX1** (the located validators ran
   in `build`/`check` but not preview), **AP7** (the mobile TOC sheet exists only in a single-doc
   preview, so a site preview emits no sheet chrome at all), **DIAG-1** (two execution diagnostics
-  exist only on the `build`/`publish` path). Needs no device, no kernel and no network. **RUNNING
-  2026-07-26** → [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md).
+  exist only on the `build`/`publish` path). Needs no device, no kernel and no network. **RAN and its
+  three findings SHIPPED 2026-07-26** →
+  [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md).
 - **L2. Reader-side runtime performance** (crosses AP1 × AP6 × mobile). AP1 measured the *server*
   (8,000 blocks in 647 ms, 400 pages in 874 ms); AP6 measured browser *parity*, not speed. The only
   successful Lighthouse run is 2026-07-11, desktop mode, on the website, and it predates the switch
@@ -228,10 +235,11 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   since, and the mode-model was deliberately reshaped after it (reader + PDF deleted, phone feed
   added, motion round 07-24). AUDITS.md already warns the doc describes *outgoing* behaviour. Re-run
   it **crossed with touch**, not as-is: MOB-1 and MOB-2 just put the deck back at the top of band A.
-- **The mutation / vacuous-test round (07-18) is the best value per token:** 41,149+/5,715- across
-  `crates/` + `web-client/` since, including 26 new test files and 5 new subsystems, and mutation
-  testing is the one lens that decays mechanically with new code. **Scope it cheaply:** `cargo-mutants`
-  restricted to files added or changed since 07-18.
+- **The mutation / vacuous-test round (07-18) is the best value per token, and is now UNBLOCKED:**
+  41,149+/5,715- across `crates/` + `web-client/` since, including 26 new test files and 5 new
+  subsystems, and mutation testing is the one lens that decays mechanically with new code. **Scope it
+  cheaply:** `cargo-mutants` restricted to files added or changed since 07-18. Item 57 fixed the red
+  baseline (measured 2026-07-26: a `.git`-free copy of the tree now runs 49 core binaries green).
 - **The website/brand audit (07-11):** its headline performance finding measured per-page inlining and
   is now obsolete (hashed `_assets/`), which is itself the signal. Its Lighthouse pass was desktop-mode
   only, which is how it missed the touch-target defects the mobile round found.
@@ -268,19 +276,16 @@ file when it lands**.
 
 #### A. Build now
 
-**Suggested order (2026-07-26), so a fresh session does not re-derive it.** The 8 items here are two
-or three *batches*, not eight sessions, because most share a root cause. (Step 1, mobile / touch
-42-49, **shipped 2026-07-26**.)
+**Suggested order (2026-07-26), so a fresh session does not re-derive it.** (Steps 1 and 2 — mobile /
+touch 42-49, then path parity 50/51/57 — **both shipped 2026-07-26**.)
 
-1. **Path parity (50, 51, 57).** One root cause: page assembly is hand-wired at three sites with no
-   shared owner. **57 is the keystone** — fixing the containment root also unblocks the mutation
-   re-run, which currently cannot start at all.
-2. **The mutation re-run**, which becomes possible once 57 lands. Mechanical yield on code that has
-   never been mutation-checked; scope it to files changed since 2026-07-18 and heed the cargo-mutants
-   traps above.
-3. **Migration UX (53, 54)** and **deck weight (52)** and **hygiene (55)**: small, self-contained, any
+1. **The mutation re-run**, which item 57 unblocked and which is now measured startable (a
+   `.git`-free copy runs 49 binaries green). Mechanical yield on code that has never been
+   mutation-checked; scope it to files changed since 2026-07-18 and heed the cargo-mutants traps
+   above — especially `--output` outside the tree, and never scoping its test command to `--lib`.
+2. **Migration UX (53, 54)** and **deck weight (52)** and **hygiene (55)**: small, self-contained, any
    order.
-4. **56 is an authoring pass, not code**, and can run in parallel with any of the above.
+3. **56 is an authoring pass, not code**, and can run in parallel with any of the above.
 
 **Auditing is done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings, while the
 one round that produced four came from the author using the tool on a phone. The remaining menu
@@ -316,35 +321,46 @@ they are method lessons, not history:**
 MOB-6 also had a **third** instance the round did not enumerate (`docs/guide/index.tmd`), found by
 grep once the two named ones were known.
 
-**The 2026-07-26 path-parity round's two findings** (L1; detail:
+**The 2026-07-26 path-parity round's three findings SHIPPED the same day** (L1; detail:
 [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md)). Same shape as the mobile batch,
-one layer up: page assembly is hand-wired at **three** sites with no shared owner (`render/page.rs`
+one layer up: page assembly was hand-wired at **three** sites with no shared owner (`render/page.rs`
 for both static builds, `serve/mod.rs` for the single-doc preview, `serve_site/mod.rs` for the site
-preview), and each finding is a line present in two of the three and absent from the third. Neither
-breaks a built page; both break the *preview* being a faithful view of it, which is the loop the tool
-is built around. **Cheapest built as one batch, and the batch should end with one helper the three
-assemblers call rather than a third copy.**
+preview), and each finding was a line present in two of the three and absent from the third. It did
+end with shared owners rather than another copy, which is what the round asked for.
 
-50. **PP-1 (MEDIUM): the Cmd-K palette does not exist in a single-doc preview.** Browser-measured on
-    one document across four paths: Ctrl+K opens the palette in the site preview, the standalone build
-    and the site build, and does **nothing** under `preview <file.tmd>`. `search.js:1035-1044` binds
-    Cmd/Ctrl-K on `document` unconditionally, so wherever the runtime ships the palette works, button
-    or not (a standalone build has a *working, invisible* palette). Grepping all of
-    `crates/server/src/serve/` for `SEARCH_JS` returns nothing, while `serve_site/mod.rs:856` injects
-    it. **The comment stating the rule is now false:** `page.rs:507-512` justifies not gating Cmd-K on
-    the TOC with "invisible to the author, because the preview injects both unconditionally" — the
-    build-side half of that bug was fixed and the preview-side premise was never re-checked. Fix:
-    inject `SEARCH_JS` beside `TOC_SPY_JS` in the single-doc shell.
+**Items 50, 51 and 57 SHIPPED 2026-07-26** (PP-1, PP-2, PP-3), as one batch, ending with the shared
+owners the round asked for: `render_single_doc` decides the single-document containment root once
+(it was `Some(base)` hand-written at twelve call sites, and the hand-rooted entry point is deleted
+rather than left as a thirteenth), and `TOC_SHEET_MARKUP` is the one copy of the sheet chrome all
+four assemblers emit. **Four method lessons this round paid for:**
 
-51. **PP-2 (MEDIUM): the mobile TOC sheet does not exist in a site preview.** At an emulated 390×844
-    phone, `body.tali-toc-sheet` is set in the single-doc preview, the standalone build and the site
-    build, and **not** in `preview <dir>`; the handle is correspondingly invisible there and the TOC
-    stays a desktop sidebar at phone width. The chrome (`<button id="tali-toc-handle">` + backdrop) is
-    emitted at two hand-copied sites, `render/page.rs:353` and `serve/mod.rs:946`; `serve_site` has no
-    copy. Two different runtimes drive it (`toc-sheet.js` in a build, `client.js:888-1001` in the
-    single-doc preview), which is why it survived: each looks complete alone. This is AP7's recorded
-    "not chased" note, now measured and attributed — and it hits the **book-authoring** path, so a
-    book's phone reading experience is the one thing its author cannot see while writing it.
+- **An audit's stated fix can be a revert.** PP-3's "give the single-file build the same inferred
+  root" would have re-opened PT-2 (`9359a2c`): the inferred walk stops at `.git` **or** `_site.yml`,
+  and widening to a *checkout* is exactly the escape that release-audit item closed. Separating the
+  two markers satisfies both — `_site.yml` is an author declaring a project boundary and is the root
+  the site build already passes, so honouring it *is* parity; `.git` never widens a single invoked
+  document again. **Read the code the item proposes to change before trusting the change.**
+- **A documented reason can be true of a sibling path and false of yours.** PP-1 was held back by
+  "the client doesn't re-index on a live edit, so the index would go stale" — true of a site's
+  cross-page index, false of a single doc, where `search.js` builds from the DOM and rebuilds on
+  every open. Measured in the browser (append a heading live → the reopened palette goes 11 → 12
+  items) rather than argued.
+- **The `.git`-dependence was two tests, not the one the audit named.** `include_relative_base.rs`
+  failed the same way. A finding that names one instance of a shape has not enumerated it.
+- **A hidden overlay still renders.** Setting the palette input and reading its list gave a
+  confident "No matches" while the overlay was closed the whole time — the list was stale, not
+  empty. **Assert the surface is open before believing what it says**, and settle a transition
+  before measuring geometry (the sheet reads as off-screen at y=844 synchronously and y=688 once
+  settled).
+
+**Adjacent, surfaced not fixed:** a site with **no `_site.yml`** (`build <dir>` accepts a bare
+directory) declares no boundary, so a single-document render of one of its pages still roots at that
+page, and the site path's own inference can still widen to `.git`. Nothing can infer an undeclared
+boundary; the fix is to declare one. Also `corpus/posts/pca-geometry/` (the loose twin of the
+tech-blog page, byte-identical to it and pinned so by `twinned_corpus_sources_stay_byte_identical`)
+sits under no project marker, so `build` of it warns `include not resolved` — unchanged by this
+batch, true since PT-2 shipped, and now uncovered by any test since the corpus pin moved to the
+tech-blog copy.
 
 **Measured healthy in the same round — do not re-scope:** **decks pass path parity outright** (all
 four deck paths give the same 20-method `TaliesinDeck` facade, 18 slides, a runtime-injected
@@ -357,24 +373,6 @@ load-bearing invariants (`data-block-id`, `data-sourcepos`, `data-section-end`),
 favicon, `<html lang>` and generator meta are identical on all six paths; `render` is byte-identical
 to `build <file>`; the `--bare` zero-`<script>` contract holds; site-build externalisation into
 `_assets/` is correct and un-duplicated; zero console errors on all four live paths.
-
-57. **PP-3 (MEDIUM): the two build paths disagree about `{{< include >}}`, and the test that covers it
-    exercises neither.** `corpus/tech-blog/posts/pca-geometry/index.tmd` includes
-    `../../_includes/three-scene.tmd`. The **site** build resolves it (no warning, `function
-    makeScene3D` present). The **single-file** build of the same page drops it with `include not
-    resolved (path escapes the project root)`, so the artifact ships without its 3D scene. Mechanism:
-    `includes.rs:350` documents the containment root as "the nearest ancestor holding `.git` or
-    `_site.yml`, else `base_dir` itself"; the site build passes the site root, the single-file path
-    lets it collapse to the document's own directory, so any `../` climb escapes. **Two riders:**
-    (a) `crates/core/tests/corpus.rs::includes_are_resolved_with_origin_files` is green because it
-    calls `render_document_with_includes` directly, a path `build <file>` does not use — an assertion
-    true of the library and false of the product; (b) that test's result **depends on `.git` being
-    present**, since root inference walks for it, so the same test fails in any export, vendored copy
-    or `docker COPY` without VCS metadata (verified by leaking a copy: inputs byte-identical, fixture
-    present, test still red). **This is what blocks the mutation re-run** — cargo-mutants will not
-    test mutants while the unmutated baseline is red, and it is red only because its scratch copy has
-    no `.git`. Fix: give the single-file build the same inferred root, and make the test exercise the
-    CLI path or pass an explicit root.
 
 **The 2026-07-26 L2/L3/L4/L5 round** (detail:
 [2026-07-26-lenses-l2-l5-audit.md](2026-07-26-lenses-l2-l5-audit.md)). Four lenses in one session
@@ -598,6 +596,13 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-26 path-parity batch (items 50, 51, 57, PP-1..3):** one document now renders the same
+  whichever command renders it. The single-document containment root is decided once by
+  `render_single_doc` (nearest `_site.yml`, else the doc's own directory), so `build <page>` and
+  `build <site>` emit the same document while PT-2's climb-out-of-a-checkout escape stays closed;
+  `TOC_SHEET_MARKUP` is the single copy of the mobile-sheet chrome all four assemblers emit; and the
+  single-doc preview ships Cmd-K on the same terms a build of that document ships it. **Do not
+  re-scope as "give the single-file build the inferred root"** — that is a revert of `9359a2c`.
 - **2026-07-26 mobile batch (items 42-49, MOB-1..8):** the tree now asks what device it is on
   (`hover`/`pointer` media features; it had none). Deck menu drops its keyboard legend + hint badges
   and gates Speaker view on capability instead of orientation; the ⌘K badge is hidden on touch at any

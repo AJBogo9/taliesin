@@ -40,7 +40,7 @@ you run one.
 | [2026-07-25-ap6-cross-browser-audit](2026-07-25-ap6-cross-browser-audit.md) | **AP6** cross-browser (the last AP slot) | **no findings**: Firefox and Chromium byte-identical on every measured axis, 0 console errors. Coverage gaps (WebKit, mobile, the preview path, Windows/macOS) listed in the doc |
 | [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | was items **37** + **38**; **both shipped 2026-07-25**. The fall-through count was 6 in the doc and **8** in fact — the zero-GENERIC test found `.code-walkthrough` and, separately, the two build-only execution diagnostics the check-side sweep structurally could not see |
 | [2026-07-26-lenses-l2-l5-audit](2026-07-26-lenses-l2-l5-audit.md) | **L2 + L3(partial) + L4 + L5** off the menu, one session | **five findings, items 52-56.** L2: ordinary pages are fast even at 4× CPU (every LCP inside the 2,500 ms band); the one outlier is that a **deck in a site build ignores `_assets/`** and re-inlines everything, so mermaid ships twice in one tree and the deck needs 94 s over Slow 3G. L4: a pre-rename **`_quarto.yml` is invisible** (`check` says "no problems found" while the config is silently defaulted), and removed keys (`about:`, `number-within:`) are reported identically to typos with no retired-key registry anywhere. L3: `headless_js.rs` is well-built but its browser wait is unbounded end to end. L5: **3 of 37** dogfood pages set `description:` against 12 of 19 in the blog corpus. **Instrument trap:** raw CDP `Network.emulateNetworkConditions` silently no-ops — a "throttled" number that is not slower than the unthrottled one is a broken probe, not a fast page |
-| [2026-07-26-path-parity-audit](2026-07-26-path-parity-audit.md) | **L1** path parity (feature × emission path), the first lens off the new menu | **two findings, items 50 + 51.** The preview is not a faithful view of the built page, and each preview path is unfaithful differently: Cmd-K is missing from the single-doc preview, the mobile TOC sheet from the site preview. One root cause: page assembly is hand-wired at three sites (`page.rs`, `serve/mod.rs`, `serve_site/mod.rs`) with no shared owner, so every divergence is a line present in two of the three. **PP-3 (item 57) was added later the same day** and is the first of this round where the *content*
+| [2026-07-26-path-parity-audit](2026-07-26-path-parity-audit.md) | **L1** path parity (feature × emission path), the first lens off the new menu | **three findings, items 50 + 51 + 57 — all SHIPPED 2026-07-26.** The preview is not a faithful view of the built page, and each preview path is unfaithful differently: Cmd-K is missing from the single-doc preview, the mobile TOC sheet from the site preview. One root cause: page assembly is hand-wired at three sites (`page.rs`, `serve/mod.rs`, `serve_site/mod.rs`) with no shared owner, so every divergence is a line present in two of the three. **PP-3 (item 57) was added later the same day** and is the first of this round where the *content*
 differs, not the chrome: a **single-file** build drops a `{{< include ../../… >}}` that the **site**
 build resolves, because the containment root documented at `includes.rs:350` (nearest ancestor with
 `.git`/`_site.yml`) is only passed by one caller. Its test is green through the library API the CLI
@@ -87,15 +87,16 @@ substantial (decks pass path parity outright, `mounts:` differs by 4 bytes, the 
 one diagnostic path, ordinary pages are fast at 4× CPU, the web manifest's suspicious white is
 deliberate and pinned). **The recommendation recorded here is to build, not to audit**: the remaining
 menu entries are the weak ones, and an audit's value decays to zero if its findings never ship. The
-two exceptions, both earned rather than proposed: the **mutation re-run** (mechanical yield, and
-unblocked by item 57) and **real-device mobile** (the only lens with a track record of HIGHs here),
+two exceptions, both earned rather than proposed: the **mutation re-run** (mechanical yield;
+item 57 shipped 2026-07-26, and a `.git`-free copy of the tree now runs 49 core binaries green, so
+the baseline that blocked it is measured clear) and **real-device mobile** (the only lens with a track record of HIGHs here),
 each *after* the batch it depends on.
 
 **A standing lens menu now lives in [backlog.md](backlog.md) under "Proposed audit lenses"** (added
 2026-07-26, so this table can stay a record): six never-run lenses **L1-L6**, four re-runs ranked by
 age against churn measured in each round's *own* surface, and four directions that recent work has
 unblocked (a real device, HEALTH-1's panic boundary, `data-section-end`). Each entry carries the
-measurement that justified it, so a session picking one does not re-derive it. **L1 (path parity) ran
+measurement that justified it, so a session picking one does not re-derive it. **L1 (path parity) ran and shipped
 2026-07-26** → [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md).
 
 What those two rounds left explicitly unmeasured, so it is not mistaken for a clean result: whether the
