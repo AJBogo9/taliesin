@@ -876,6 +876,24 @@ fn shape_flags_a_numbered_figure_whose_caption_is_only_its_label() {
 }
 
 #[test]
+fn shape_reads_every_caption_in_a_block_not_just_the_first() {
+    // A `:::` div holding two figures is ONE block carrying TWO `<figcaption>`s, so the
+    // caption scan has to step past the first closing tag and keep looking. Every other
+    // caption test uses a one-figure block, which never runs that loop a second time —
+    // and with only those, rewinding the cursor instead of advancing it is invisible
+    // (mutation-found: `rest[next + len..]` → `rest[next - len..]` survived the suite).
+    let m = shape(
+        "# H\n\n::: {.columns}\n![A real caption](a.png){#fig-a}\n\n![](b.png){#fig-b}\n:::\n",
+    );
+    assert_eq!(
+        m.len(),
+        1,
+        "only the second figure's caption is bare: {m:?}"
+    );
+    assert!(m[0].contains("caption is only its label"), "{m:?}");
+}
+
+#[test]
 fn shape_is_silent_on_a_well_formed_document() {
     // The anti-vacuous guard: the rules above must not be firing on everything.
     let m = shape(

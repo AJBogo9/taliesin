@@ -166,6 +166,15 @@ fn a_nested_part_keeps_its_chapters_and_is_marked_nested() {
         index.contains("tali-book-part-nested"),
         "the nested part must be marked as nested, not flattened into its parent"
     );
+    // TWO renderers walk one entry list (`site/book_toc.rs:43`): the chapter drawer and
+    // the landing's own Contents nav. The assertion above is the DRAWER's marker, and the
+    // drawer chrome is on this page too, so it passes while saying nothing about the
+    // Contents list. Pin the landing's own marker as well (mutation-found: flattening
+    // `e.depth > 0` in `render_book_toc` survived the whole suite).
+    assert!(
+        index.contains("tali-btoc-part tali-btoc-part-nested"),
+        "the landing Contents must mark the nested part too, not just the drawer"
+    );
     for ch in ["grouping.html", "joins.html", "performance.html"] {
         assert!(
             index.contains(ch),
