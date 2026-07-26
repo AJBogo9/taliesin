@@ -177,6 +177,19 @@ pub const MISSING_CONFIG_PREFIX: &str = "no _site.yml at";
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
     let path = root.join("_site.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
+        // A directory still holding the pre-rename `_quarto.yml` is NOT the bare-directory
+        // case: it has a config and every setting in it is being ignored, so the project
+        // builds with its `title:` and everything else silently defaulted. Reporting it as
+        // "no config here" is what hid it, because that advisory is the one `check` drops
+        // from its tally on purpose. Name the file that is actually on disk instead.
+        if root.join("_quarto.yml").is_file() {
+            warnings.push(format!(
+                "found `_quarto.yml` at {}, but the project config is now `_site.yml`: \
+                 rename it, or its settings go on being ignored",
+                root.display()
+            ));
+            return SiteConfig::default();
+        }
         // A missing `_site.yml` is legitimate (a bare directory of `.tmd` pages), not an
         // error — distinct from the malformed case below, which downstream counts.
         warnings.push(format!("{MISSING_CONFIG_PREFIX} {}", root.display()));
@@ -718,6 +731,43 @@ mod config_tests {
         assert!(
             !warnings.iter().any(|w| is_malformed_config_warning(w)),
             "a missing file must not be reported as malformed: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pre_rename_quarto_yml_is_named_rather_than_silently_ignored() {
+        // The config file was renamed to `_site.yml` on 2026-06-24. A project still
+        // carrying the old name is not read at all: it builds with its configuration
+        // silently defaulted, dropping its `title:`. It stayed invisible because the only
+        // signal was the *missing* advisory, which `check` deliberately discards from its
+        // tally (a bare directory of pages is legitimate). Having the old file on disk is
+        // a different situation from having no config at all, so it says so.
+        let dir = tmp("quarto-legacy");
+        std::fs::write(
+            dir.join("_quarto.yml"),
+            "project:\n  type: book\ntitle: Old title\n",
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        assert!(
+            cfg.title.is_none(),
+            "the retired file is reported, never read: {cfg:?}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("_quarto.yml") && w.contains("_site.yml")),
+            "name the file that is there AND the name it needs: {warnings:?}"
+        );
+        assert!(
+            !warnings.iter().any(|w| is_missing_config_warning(w)),
+            "must not fall back to the advisory `check` filters out: {warnings:?}"
+        );
+        assert!(
+            !warnings.iter().any(|w| is_malformed_config_warning(w)),
+            "it is not malformed YAML: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
