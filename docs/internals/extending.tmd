@@ -25,8 +25,10 @@ presentation and optional features should ride the extension points below.
   `data-block-id` (content hash) + `data-sourcepos` (and `data-source-file` for
   includes). Source mapping, the diff, and live-state preservation all key off it.
 - **`rustfmt`-clean, `clippy`-clean.** A `PostToolUse` hook formats every edited
-  `.rs`; CI enforces `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings`,
-  and a weekly `cargo audit`.
+  `.rs`, but nothing enforces the rest for you (there is no CI and there are no git
+  hooks), so run `cargo fmt --all -- --check`, `cargo test --workspace`, and
+  `cargo clippy --workspace --all-targets -- -D warnings` yourself before a push,
+  plus `cargo audit` and `cargo deny check` when you touch dependencies.
 
 ## Where a change goes
 

@@ -28,6 +28,32 @@ fn internals_do_not_describe_the_deleted_shim() {
     );
 }
 
+/// The GitHub Actions workflow was deleted on 2026-07-26 (it billed Actions minutes on
+/// this private repo) and nothing replaced it, so every gate it ran is manual now. A doc
+/// that still promises an automatic gate is worse than silence: it tells the next reader
+/// (or the next agent) that a push is checked for them when nothing checks it.
+#[test]
+fn docs_do_not_promise_a_ci_that_enforces_gates() {
+    assert!(
+        !Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.github")
+            .exists(),
+        ".github/ is back: re-enabling CI means these docs need updating, not this test"
+    );
+    for rel in [
+        "CLAUDE.md",
+        "README.md",
+        "docs/internals/extending.tmd",
+        "docs/internals/repository.tmd",
+    ] {
+        let text = read(rel);
+        assert!(
+            !text.contains("CI enforces") && !text.contains("CI-gated"),
+            "{rel} still promises a CI gate, but the workflow is gone and the check is manual"
+        );
+    }
+}
+
 #[test]
 fn claude_md_does_not_list_feed_rs() {
     let claude = read("CLAUDE.md");

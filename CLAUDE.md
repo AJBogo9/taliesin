@@ -127,7 +127,7 @@ cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sou
 cargo run -p taliesin-server -- skim   <dir>                   # the book's skimmable layers as one linear stream
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
-cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; CI-gated)
+cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
 ```
 
 A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
@@ -161,8 +161,18 @@ document is unchanged.) See `crates/server/src/freeze.rs`.
 
 For UI work, `/preview <file.tmd>` builds, serves on port 4388, and verifies it in
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`
-hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-clean
-(CI enforces it).
+hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-clean.
+
+**There is no CI and there are no git hooks.** The GitHub Actions workflow was
+deleted on 2026-07-26 (it was billing Actions minutes on this private repo), and
+nothing replaced it, so every gate it used to run is now manual: `cargo fmt --all --
+--check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D
+warnings`, the two `tsc` type-checks above, and `cargo audit` / `cargo deny check`
+(`deny.toml` is still the dependency policy) when dependencies change. Run them
+before a push and never claim a change is verified without their output. Two things
+the workflow was the *only* place to run: the live-kernel suites (Python and R, via
+`TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`, which otherwise silently skip) and
+the VS Code companion's offline TextMate grammar gate.
 
 ## Conventions
 

@@ -1,6 +1,5 @@
 # Taliesin
 
-[![CI](https://github.com/AJBogo9/taliesin/actions/workflows/ci.yml/badge.svg)](https://github.com/AJBogo9/taliesin/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 > The native (and only) source extension is `.tmd`; the CLI is `taliesin`

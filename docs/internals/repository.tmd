@@ -26,7 +26,7 @@ Taliesin/
 ├─ notes/             roadmap & process notes (backlog, ROADMAP, AUDITS, …)
 ├─ README.md, LICENSE, CLAUDE.md, THIRD_PARTY.md   the root Markdown that stays
 ├─ Cargo.toml         workspace manifest (resolver 3, edition 2024)
-└─ deny.toml, .github/   license/advisory policy + CI
+└─ deny.toml          dependency license/advisory policy (`cargo deny check`)
 ```
 
 ## The engine: crates and clients
@@ -151,7 +151,10 @@ in `notes/` so the root stays uncluttered:
   single self-contained CSS at build time (so rendered pages need no sidecar font
   files); `crates/server/build.rs` stamps the short git SHA into the binary for the
   `--version` colophon, falling back to `"unknown"` outside a checkout.
-- **`.github/`**: CI formatting, tests, and `cargo-deny`.
+- **`deny.toml`**: the dependency *policy* gate (redistribution-friendly licenses
+  only, no unknown registries or git sources, plus an advisory pass). Run it with
+  `cargo deny check`. There is no CI: the repo had a GitHub Actions workflow until
+  2026-07-26, and every check it ran is now a manual, local one.
 
 Several directories are **generated and gitignored**, so do not be surprised when
 they appear: `target/` (the Rust build), `_freeze/` (the persistent per-page
