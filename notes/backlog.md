@@ -10,8 +10,10 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Branch `backlog/band-a-diagnostics`**, stacked on `backlog/backlink-context-and-resume`, which is
-itself stacked on `origin/main`. **Nothing is pushed** — the author pushes on request only.
+**Branch `probe/analyst-persona`**, stacked on `backlog/band-a-diagnostics` →
+`backlog/backlink-context-and-resume` → `origin/main`. **Nothing is pushed** — the author pushes on
+request only, and the stack has been growing for several sessions, so the next push is worth a
+deliberate look at what it carries.
 
 **No commit counts are recorded here, deliberately.** They were wrong twice in one session: the
 first was written one commit stale, and the correction then mis-added the two branches' totals —
@@ -19,8 +21,8 @@ because any count written *into* this file is invalidated by the commit that wri
 as a SHA (see Git under "Standing constraints"). Count them instead:
 
 ```sh
-git log --oneline origin/main..HEAD                              # everything unpushed
-git log --oneline backlog/backlink-context-and-resume..HEAD      # just this branch
+git log --oneline origin/main..HEAD                    # everything unpushed, across the stack
+git log --oneline backlog/band-a-diagnostics..HEAD     # just this branch
 ```
 
 **The demand-probe programme is finished, 4 of 4** (2026-07-26, second batch of the day). Persona 4
@@ -170,13 +172,48 @@ their own prefix.
 
 ## Open work (priority order: take from the top)
 
+### Next session: start here
+
+**There is exactly one session of build-ready code left, and it is items 39 + 40 together.** Take
+them as one batch: both are small, both are on the *reporting* surface rather than the rendering
+one, and neither is worth a session alone. Order within the batch:
+
+1. **Item 39, AN-6 first** (the LSP reports valid cross-page refs as errors). Highest
+   annoyance-per-line in the file: it is wrong on *correct* content, in the editor, every time the
+   author writes a cross-page reference. Fix shape recorded; two candidate approaches, pick either.
+2. **Item 39, AN-5 second** (a cross-page `@sec-` renders as the bare word "Section"). Same surface,
+   reader-visible. **Read the item before touching it** — the obvious fix is already refuted in a
+   source comment, and the entry says why.
+3. **Item 40** (two documented lines in the guide: the `kable`-as-text trap, the pandas vendor
+   markup). Nearly free once you are already in the tree; do not spin a session up for it alone.
+
+**When that batch lands, bands A and B are empty again and the file has no code in it.** At that
+point a session cannot just "take from the top" — it needs one of:
+
+- **an owner ruling from band C** (the only work the author can unblock; see the list below), or
+- **a NEW audit lens, argued for first.** The twelve AP slots and all four non-AP lenses are run;
+  the "Audit perspectives" table is a complete record, not a menu. Do not go looking there for
+  something to take.
+
+The most likely *productive* new lens, on the evidence of the last two rounds, is a **crossed
+dimension rather than a stacked feature**: persona 4 found two real defects by putting two kernels
+in one document, after three personas that stacked features found zero. No further un-crossed
+dimension is currently known — naming one is the actual work.
+
+### The bands
+
 **Ranked for implementation, not by theme.** Band A is what a session can build today and B is
-buildable but not worth a session alone; **both are currently empty**, so there is no code here to
-take — the next session either runs an audit (see "Audit perspectives") or takes an owner ruling
-from C. C and D are blocked and are listed so they are not re-scoped. **Item numbers are stable**
-and referenced from the findings docs and
+buildable but not worth a session alone. C and D are blocked and are listed so they are not
+re-scoped. **Item numbers are stable** and referenced from the findings docs and
 [AUDITS.md](AUDITS.md), so they are NOT renumbered when the order changes, and a closed item's number
 is never reused.
+
+**What only the author can unblock** (band C, in the order they are worth asking about): **25**
+(the public-release flip — ruled *deferred to end of summer*, so re-ask only when a date is set),
+**24** (`section-extents`: a recommendation is on file, option (b); and `book-breadcrumb`, which
+must be argued as a reversal of D114, not as a gap), **17** (F-01 PowerShell highlighting: needs a
+grammar vendored, and its licence establishing first — sharper now that the repo is going public),
+**2** (deck presenter tools: revive only on a real speaker ask).
 
 **Standing rule for a batch:** branch per batch, verify each fix by *mutation* (restore the bug,
 watch the named test fail), browser-verify anything client-side, and **delete the item from this
