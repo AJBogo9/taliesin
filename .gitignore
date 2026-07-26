@@ -3,6 +3,11 @@
 **/*.rs.bk
 *.pdb
 
+# cargo-mutants scratch output. It lands in the repo root by default; pass
+# `--output <dir>` outside the tree when running a mutation pass, and this is the
+# backstop for when that is forgotten.
+mutants.out/
+
 # Node / web client tooling
 node_modules/
 dist/

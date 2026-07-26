@@ -39,6 +39,14 @@ you run one.
 | [2026-07-25-ap11-chaos-audit](2026-07-25-ap11-chaos-audit.md) | **AP11** chaos / failure injection | was item **36**; degradation paths are well-built (corrupt cache self-heals, unwritable output exits 1), the defect was wording — **AP11-1 shipped 2026-07-25** |
 | [2026-07-25-ap6-cross-browser-audit](2026-07-25-ap6-cross-browser-audit.md) | **AP6** cross-browser (the last AP slot) | **no findings**: Firefox and Chromium byte-identical on every measured axis, 0 console errors. Coverage gaps (WebKit, mobile, the preview path, Windows/macOS) listed in the doc |
 | [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | was items **37** + **38**; **both shipped 2026-07-25**. The fall-through count was 6 in the doc and **8** in fact — the zero-GENERIC test found `.code-walkthrough` and, separately, the two build-only execution diagnostics the check-side sweep structurally could not see |
+| [2026-07-26-lenses-l2-l5-audit](2026-07-26-lenses-l2-l5-audit.md) | **L2 + L3(partial) + L4 + L5** off the menu, one session | **five findings, items 52-56.** L2: ordinary pages are fast even at 4× CPU (every LCP inside the 2,500 ms band); the one outlier is that a **deck in a site build ignores `_assets/`** and re-inlines everything, so mermaid ships twice in one tree and the deck needs 94 s over Slow 3G. L4: a pre-rename **`_quarto.yml` is invisible** (`check` says "no problems found" while the config is silently defaulted), and removed keys (`about:`, `number-within:`) are reported identically to typos with no retired-key registry anywhere. L3: `headless_js.rs` is well-built but its browser wait is unbounded end to end. L5: **3 of 37** dogfood pages set `description:` against 12 of 19 in the blog corpus. **Instrument trap:** raw CDP `Network.emulateNetworkConditions` silently no-ops — a "throttled" number that is not slower than the unthrottled one is a broken probe, not a fast page |
+| [2026-07-26-path-parity-audit](2026-07-26-path-parity-audit.md) | **L1** path parity (feature × emission path), the first lens off the new menu | **two findings, items 50 + 51.** The preview is not a faithful view of the built page, and each preview path is unfaithful differently: Cmd-K is missing from the single-doc preview, the mobile TOC sheet from the site preview. One root cause: page assembly is hand-wired at three sites (`page.rs`, `serve/mod.rs`, `serve_site/mod.rs`) with no shared owner, so every divergence is a line present in two of the three. **PP-3 (item 57) was added later the same day** and is the first of this round where the *content*
+differs, not the chrome: a **single-file** build drops a `{{< include ../../… >}}` that the **site**
+build resolves, because the containment root documented at `includes.rs:350` (nearest ancestor with
+`.git`/`_site.yml`) is only passed by one caller. Its test is green through the library API the CLI
+does not use, and depends on `.git` existing — which is what **blocks the mutation re-run**, since
+cargo-mutants' scratch copy carries no VCS metadata and its baseline goes red. Validated the lens
+itself: DX1, AP7 and DIAG-1 had each tripped over one instance and stopped. **The other two assemblers came back clean**: decks are identical across all four deck paths (same 20-method facade, 18 slides, runtime `theme-color`, same slide after `ArrowRight`), `mounts:` differs from direct serving by 4 bytes (boot nonce + ws path) with 0 failed requests, the `{{< embed >}}` iframe matches in build and preview, and `--bare` refuses a deck outright. A static grep called deck `theme-color` missing on all four paths, a false regression: `deck.rs:240` creates that meta at runtime, so the only valid needle is the rendered result |
 | [2026-07-26-mobile-audit](2026-07-26-mobile-audit.md) | **mobile / touch reader experience** — author-proposed from real device testing; the first new lens after the AP slate closed | **eight findings; seven of them share one root cause**: the tree has **zero** input-capability queries (`pointer: coarse` / `hover: none` / `any-pointer`), so every keyboard hint, hover-reveal and presenter tool is gated on viewport *width* or deck *layout mode*. Filed as items **42-49** (band A). The phone slide-feed, page overflow, console and mobile typography all measured healthy. Two traps recorded: `resize_page` floors at ~500px (use viewport emulation), and the deck feed flag lives on `html`, not `.tali-deck` — probing the wrong element made a working feed look dead |
 | [2026-07-26-ap1-residual-and-docs-behaviour](2026-07-26-ap1-residual-and-docs-behaviour-audit.md) | the last two unstarted lenses: **AP1's residuals** + the **behavioural** half of the docs lens | **both shipped 2026-07-26**. Each entry was wrong about where its own defect was: the kernel does NOT leak (it saturates over 1,000 executions) — the unbounded growth was Taliesin's own freeze cache, capped by entry *count* and never by *bytes*; and the docs gates covered flag/env *existence* while the front-matter vocabulary had drifted totally (`about:` removed 2026-07-17, documented for nine more days) |
 
@@ -69,7 +77,19 @@ out-of-scope gap rather than measuring it.
 Android Chrome (the mobile round was Chromium emulation, which models viewport/DPR/pointer but not
 WebKit, momentum scrolling, the dynamic viewport toolbar or safe-area insets), a phone screen reader,
 tablet widths, and the `--host` QR phone-preview flow — a first-class phone feature with no coverage
-at all.
+at all. **Run it AFTER the mobile batch ships**, so it verifies the fixes rather than re-finding them.
+
+**Stop-auditing ruling, 2026-07-26.** Five rounds landed in one day and band A now holds 16 items.
+**The four fresh lenses run that day (L2, L3, L4, L5) produced zero HIGH findings**; every HIGH on the
+board came from the mobile round, which was not a lens at all but the author using the tool on a real
+phone. The code-reading lenses now return "healthy" more often than not, and this day's positives were
+substantial (decks pass path parity outright, `mounts:` differs by 4 bytes, the LSP shares `check`'s
+one diagnostic path, ordinary pages are fast at 4× CPU, the web manifest's suspicious white is
+deliberate and pinned). **The recommendation recorded here is to build, not to audit**: the remaining
+menu entries are the weak ones, and an audit's value decays to zero if its findings never ship. The
+two exceptions, both earned rather than proposed: the **mutation re-run** (mechanical yield, and
+unblocked by item 57) and **real-device mobile** (the only lens with a track record of HIGHs here),
+each *after* the batch it depends on.
 
 **A standing lens menu now lives in [backlog.md](backlog.md) under "Proposed audit lenses"** (added
 2026-07-26, so this table can stay a record): six never-run lenses **L1-L6**, four re-runs ranked by

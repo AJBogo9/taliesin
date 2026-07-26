@@ -11,19 +11,24 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Band A holds one batch: the mobile audit's eight findings (items 42-49), filed 2026-07-26.** That
-round was the first new lens after the twelve AP slots and four non-AP lenses closed, and it refilled
-a band that had been empty the same morning. Band B is empty; band C holds only item **25**, parked
-on a public-release *date* rather than on a decision; the rest is blocked on a device or a real user
-(band D) or gated (band E).
+**Band A holds 16 items (4 HIGH, 8 MEDIUM, 3 LOW, plus one authoring pass), filed 2026-07-26 by five
+rounds in one day:** the mobile audit (42-49), path parity (50, 51, 57), and the L2/L3/L4/L5 lens
+batch (52-56). Band B is empty; band C holds only item **25**, parked on a public-release *date*
+rather than on a decision; the rest is blocked on a device or a real user (band D) or gated (band E).
 
-**Items 42-48 share one root cause and should ship as one batch** — four of them are the same edit at
-four sites. Read the band-A preamble before starting, and the two traps under "The mobile audit RAN"
-before opening a browser.
+**They are four or five batches, not sixteen sessions** — most share a root cause. The suggested
+order is at the top of band A; start with the mobile batch (it holds every HIGH), then path parity
+(item **57** unblocks the mutation re-run). Read the band-A preamble before starting, the two traps
+under "The mobile audit RAN" before opening a browser, and the 2026-07-26 probe traps under Standing
+constraints before writing any probe.
 
 **A lens menu now exists** ("Proposed audit lenses", below): six never-run lenses (L1-L6), four
 re-runs ranked by age × measured churn in each round's own surface, and four directions that the last
-weeks' work has *unblocked*. The first, **L1 path parity**, is running (2026-07-26).
+weeks' work has *unblocked*. As of 2026-07-26, **L1, L2, L4 and L5 have run** (items 50-51 and 52-56);
+**L3 is partial** (only `headless_js.rs`; `lsp.rs`, `complete.rs`, `skim.rs`, `manifest.rs` unread);
+**L6 is blocked** on a repository that is not on this machine; and **none of the four re-runs has been
+done** — the mutation re-run is the one worth scheduling, since it is a long compute job rather than a
+read.
 
 **Do not trust this file's freshness.** The author pushes mid-session with no signal here, and a
 scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are recorded**
@@ -119,6 +124,27 @@ still there, so a future change to the relay or the companion re-opens the same 
   `check --format json` over 23 targets and found six uncatalogued diagnostics; there were eight. The
   two it could not see are emitted only by `build`/`publish` (a crashed cell, a cell that never ran),
   and `check` never executes a cell, so no amount of `check` coverage would have reached them.
+- **Probe traps from the 2026-07-26 audit day (each one produced a false result first).**
+  - **zsh does not word-split an unquoted variable.** `files="a.html b.html"; for f in $files` passes
+    all names to `grep` as ONE argument. Write the list literally in the loop, or use an array.
+  - **An empty needle matches everything.** An unset shell variable makes `grep -qF -- "$n"` true on
+    every file. **A parity/coverage row that is uniformly positive is a broken probe until proven
+    otherwise**, exactly like a uniformly negative one.
+  - **A runtime-injected DOM node is invisible to a static grep.** Deck `theme-color` is created by
+    `deck.rs:240` (`createElement` + `setAttribute`), so grepping built HTML reports it missing on all
+    four deck paths — a false regression of shipped work. When the mechanism is runtime construction,
+    the only valid needle is the rendered result in a browser.
+  - **`#tali-toc-handle` is an id, not a class.** A `.tali-toc-handle` selector reports the sheet
+    handle missing everywhere.
+  - **Raw CDP `Network.emulateNetworkConditions` silently no-ops**, with or without `Network.enable`.
+    Use puppeteer's `page.emulateNetworkConditions(...)`. A "throttled" number that is not slower than
+    the unthrottled one is a broken instrument, not a fast page. (`Emulation.setCPUThrottlingRate`
+    does work over raw CDP.)
+  - **cargo-mutants:** scoping its test command to `--lib` reports MISSED for everything an
+    integration test covers (measured: 102 MISSED / 0 CAUGHT, all artefact). It also writes
+    `mutants.out/` into the repo root, which is **not in `.gitignore`** — pass `--output` somewhere
+    outside the tree. And its scratch copy carries no `.git`, which is why the baseline is red (item
+    **57**).
 - **Calibrate a new lint against real output before writing it.** Measuring the proposed
   `TAL-SHAPE-*` rules over all 14 site projects killed four of their own prescriptions, including
   the most valuable one (it fired on 11.8% of the corpus, essentially all false positives) and one
@@ -238,6 +264,28 @@ file when it lands**.
 
 #### A. Build now
 
+**Suggested order (2026-07-26), so a fresh session does not re-derive it.** The 16 items here are
+four or five *batches*, not sixteen sessions, because most share a root cause:
+
+1. **Mobile / touch (42-49).** Every HIGH on the board, one root cause, and four of them are the same
+   edit at four sites. It came from real device use, which is the only source that produced a HIGH
+   this month. **Do this first.**
+2. **Path parity (50, 51, 57).** One root cause: page assembly is hand-wired at three sites with no
+   shared owner. **57 is the keystone** — fixing the containment root also unblocks the mutation
+   re-run, which currently cannot start at all.
+3. **The mutation re-run**, which becomes possible once 57 lands. Mechanical yield on code that has
+   never been mutation-checked; scope it to files changed since 2026-07-18 and heed the cargo-mutants
+   traps above.
+4. **Migration UX (53, 54)** and **deck weight (52)** and **hygiene (55)**: small, self-contained, any
+   order.
+5. **56 is an authoring pass, not code**, and can run in parallel with any of the above.
+
+**Auditing is done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings, while the
+one round that produced four came from the author using the tool on a phone. The remaining menu
+entries are the weak ones; the next *audit* worth running is real-device mobile **after** batch 1
+ships, so it verifies rather than re-finds.
+
+
 **The 2026-07-26 mobile audit's eight findings** (detail:
 [2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md)). They share one root cause and are cheapest
 built as **one batch**, because 1, 2, 3 and 4 are the same edit applied at four sites: replace a
@@ -328,6 +376,120 @@ errors/warnings; the ⌘K badge *is* correctly hidden at 390px; body typography 
 mobile practice). **Observation, not a finding:** 11 of 18 code blocks scroll horizontally rather
 than wrap (`white-space: pre`, worst 368px); scrolled code is often better than wrapped code and the
 affordance is visible, so this looks deliberate — it becomes an item only if the author disagrees.
+
+**The 2026-07-26 path-parity round's two findings** (L1; detail:
+[2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md)). Same shape as the mobile batch,
+one layer up: page assembly is hand-wired at **three** sites with no shared owner (`render/page.rs`
+for both static builds, `serve/mod.rs` for the single-doc preview, `serve_site/mod.rs` for the site
+preview), and each finding is a line present in two of the three and absent from the third. Neither
+breaks a built page; both break the *preview* being a faithful view of it, which is the loop the tool
+is built around. **Cheapest built as one batch, and the batch should end with one helper the three
+assemblers call rather than a third copy.**
+
+50. **PP-1 (MEDIUM): the Cmd-K palette does not exist in a single-doc preview.** Browser-measured on
+    one document across four paths: Ctrl+K opens the palette in the site preview, the standalone build
+    and the site build, and does **nothing** under `preview <file.tmd>`. `search.js:1035-1044` binds
+    Cmd/Ctrl-K on `document` unconditionally, so wherever the runtime ships the palette works, button
+    or not (a standalone build has a *working, invisible* palette). Grepping all of
+    `crates/server/src/serve/` for `SEARCH_JS` returns nothing, while `serve_site/mod.rs:856` injects
+    it. **The comment stating the rule is now false:** `page.rs:507-512` justifies not gating Cmd-K on
+    the TOC with "invisible to the author, because the preview injects both unconditionally" — the
+    build-side half of that bug was fixed and the preview-side premise was never re-checked. Fix:
+    inject `SEARCH_JS` beside `TOC_SPY_JS` in the single-doc shell.
+
+51. **PP-2 (MEDIUM): the mobile TOC sheet does not exist in a site preview.** At an emulated 390×844
+    phone, `body.tali-toc-sheet` is set in the single-doc preview, the standalone build and the site
+    build, and **not** in `preview <dir>`; the handle is correspondingly invisible there and the TOC
+    stays a desktop sidebar at phone width. The chrome (`<button id="tali-toc-handle">` + backdrop) is
+    emitted at two hand-copied sites, `render/page.rs:353` and `serve/mod.rs:946`; `serve_site` has no
+    copy. Two different runtimes drive it (`toc-sheet.js` in a build, `client.js:888-1001` in the
+    single-doc preview), which is why it survived: each looks complete alone. This is AP7's recorded
+    "not chased" note, now measured and attributed — and it hits the **book-authoring** path, so a
+    book's phone reading experience is the one thing its author cannot see while writing it.
+
+**Measured healthy in the same round — do not re-scope:** **decks pass path parity outright** (all
+four deck paths give the same 20-method `TaliesinDeck` facade, 18 slides, a runtime-injected
+`theme-color`, and the same slide after `ArrowRight`); **`mounts:` differs from direct serving by 4
+bytes** (boot nonce + ws path) with 0 failed requests and 0 console errors; the `{{< embed >}}` iframe
+matches in build and preview; `--bare` refuses a deck with a real error instead of degrading. Also:
+every content gate in `code_scripts_for`
+matches its emitter exactly (including a `.scrolly` without `name=`, the sharpest suspect); the
+load-bearing invariants (`data-block-id`, `data-sourcepos`, `data-section-end`), figure numbering,
+favicon, `<html lang>` and generator meta are identical on all six paths; `render` is byte-identical
+to `build <file>`; the `--bare` zero-`<script>` contract holds; site-build externalisation into
+`_assets/` is correct and un-duplicated; zero console errors on all four live paths.
+
+57. **PP-3 (MEDIUM): the two build paths disagree about `{{< include >}}`, and the test that covers it
+    exercises neither.** `corpus/tech-blog/posts/pca-geometry/index.tmd` includes
+    `../../_includes/three-scene.tmd`. The **site** build resolves it (no warning, `function
+    makeScene3D` present). The **single-file** build of the same page drops it with `include not
+    resolved (path escapes the project root)`, so the artifact ships without its 3D scene. Mechanism:
+    `includes.rs:350` documents the containment root as "the nearest ancestor holding `.git` or
+    `_site.yml`, else `base_dir` itself"; the site build passes the site root, the single-file path
+    lets it collapse to the document's own directory, so any `../` climb escapes. **Two riders:**
+    (a) `crates/core/tests/corpus.rs::includes_are_resolved_with_origin_files` is green because it
+    calls `render_document_with_includes` directly, a path `build <file>` does not use — an assertion
+    true of the library and false of the product; (b) that test's result **depends on `.git` being
+    present**, since root inference walks for it, so the same test fails in any export, vendored copy
+    or `docker COPY` without VCS metadata (verified by leaking a copy: inputs byte-identical, fixture
+    present, test still red). **This is what blocks the mutation re-run** — cargo-mutants will not
+    test mutants while the unmutated baseline is red, and it is red only because its scratch copy has
+    no `.git`. Fix: give the single-file build the same inferred root, and make the test exercise the
+    CLI path or pass an explicit root.
+
+**The 2026-07-26 L2/L3/L4/L5 round** (detail:
+[2026-07-26-lenses-l2-l5-audit.md](2026-07-26-lenses-l2-l5-audit.md)). Four lenses in one session
+after L1 closed. Ordinary-page performance came back healthy on a throttled phone (every LCP inside
+the 2,500 ms band), so the items below are the outliers, not a general problem.
+
+52. **L2-1 (MEDIUM): a deck in a site build ignores `_assets/` and re-inlines the whole framework.**
+    Measured on a site whose only deck draws one mermaid diagram: `talk.html` is **4,583,261 bytes**
+    (1,375,317 gzipped) and links `_assets/` **zero** times, while the ordinary page beside it is
+    24,718 bytes and links the shared, content-hashed assets — so **mermaid ships twice in one output
+    tree**, and a second deck would ship a third copy. The fixed per-deck duplicate is ~1 MB raw /
+    ~390 KB gzipped (measured by removing the mermaid block: 1,011,028 / 396,685). Over Slow 3G + 4×
+    CPU the deck takes **94.0 s** to load against 10.7 s for a 365 KB page. **Name the trade-off:** a
+    *standalone* deck should stay self-contained (that is the artifact you hand someone, and
+    `site/mod.rs` deliberately builds an embedded deck as a standalone document). The narrow fix is to
+    let a deck page inside `build <dir>` take `AssetMode::External` like every other page in that
+    build, leaving the standalone path untouched.
+
+53. **L4-1 (MEDIUM): a pre-rename `_quarto.yml` is invisible and `check` reports "no problems
+    found".** The config file renamed on 2026-06-24 is not looked for, so a project still carrying it
+    builds with its configuration silently defaulted (the file's `title:` is dropped; the page keeps
+    only its own). Everything downstream is healthy — rename it to `_site.yml` and the linter
+    immediately errors `unknown config key 'project'` — so the whole gap is a missing existence check:
+    "found `_quarto.yml`; the project config is now `_site.yml`". **Where:** the config load is
+    `crates/core/src/site/config/mod.rs:178` (`root.join("_site.yml")`); the sibling check belongs
+    beside it, next to the existing `is_malformed_config_warning` / missing-config distinction that
+    `malformed_site_yml_pushes_tagged_warning_distinct_from_missing` already pins.
+
+54. **L4-2 (LOW/MEDIUM): removed vocabulary is indistinguishable from a typo.** `about:` (removed
+    2026-07-17, superseded by `hero:`) and `number-within:` both report `unknown front-matter key`,
+    the same message a misspelling gets, with no pointer to the replacement. There is **no retired-key
+    registry in the tree** (`RETIRED`/`REMOVED_KEYS` grep to zero); the removals live in comments and
+    tests. Conspicuous because the did-you-mean culture is otherwise thorough. Fix: a
+    `RETIRED_KEYS: &[(&str, Option<&str>)]` consulted before the unknown-key warning. **Where:**
+    `crates/core/src/frontmatter.rs` — `KNOWN_KEYS` is the vocabulary at `:19` and the sibling consts
+    (`UNSUPPORTED_KEYS:78`, `EXECUTE_KEYS:82`, …) are the pattern to copy; the two known retirees are
+    named in comments at `:725` (`number-within`) and `:817`/`:1280` (`about`, removed at `dcf0588`).
+
+55. **L3-1 (LOW/MEDIUM): the headless `{js}` observation is not bounded end to end.** `tokio::time::
+    timeout` bounds the eval (`headless_js.rs:312`), but `Browser::launch`, navigation,
+    `browser.close()` and `browser.wait()` are unbounded, and the only call site is a bare
+    `rt.block_on(...)` (`query.rs:371`). The module's contract covers a launch/navigation/eval
+    *failure*, not a **hang**, so a wedged Chrome hangs `taliesin read --run-js` with no diagnostic.
+    The pattern already exists (`TALIESIN_CELL_TIMEOUT`). Fold in **L3-2 (LOW)**: `.no_sandbox()` at
+    `headless_js.rs:260` is unconditional with no recorded justification (probably correct, but every
+    comparable decision here carries its reasoning).
+
+56. **L5-1: the tool's own manual ships without the metadata it derives reader surfaces from.**
+    Measured 2026-07-26: **3 of 37** dogfood pages set `description:` (`docs/guide` 3 of 22,
+    `docs/internals` 0 of 15) against **12 of 19** in `corpus/tech-blog`; 31 xrefs across 37 chapters
+    and **one** `{.definition}` block in ~65,000 words. The books are what a prospective user reads
+    and they are the pages with no meta description and the weakest search text. **Authoring pass, not
+    code.** The skimmability round recorded "0 of 37"; today it measures 3, so re-measure rather than
+    trusting either figure.
 
 #### B. Buildable, but low yield on its own — **empty**
 
