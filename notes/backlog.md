@@ -391,25 +391,29 @@ the 2,500 ms band), so the items below are the outliers, not a general problem.
     let a deck page inside `build <dir>` take `AssetMode::External` like every other page in that
     build, leaving the standalone path untouched.
 
-53. **L4-1 (MEDIUM): a pre-rename `_quarto.yml` is invisible and `check` reports "no problems
-    found".** The config file renamed on 2026-06-24 is not looked for, so a project still carrying it
-    builds with its configuration silently defaulted (the file's `title:` is dropped; the page keeps
-    only its own). Everything downstream is healthy — rename it to `_site.yml` and the linter
-    immediately errors `unknown config key 'project'` — so the whole gap is a missing existence check:
-    "found `_quarto.yml`; the project config is now `_site.yml`". **Where:** the config load is
-    `crates/core/src/site/config/mod.rs:178` (`root.join("_site.yml")`); the sibling check belongs
-    beside it, next to the existing `is_malformed_config_warning` / missing-config distinction that
-    `malformed_site_yml_pushes_tagged_warning_distinct_from_missing` already pins.
+**Migration UX (53, 54) SHIPPED 2026-07-26.** Both were "the tool says nothing useful to a document
+written against last month's build", and both fixes were smaller than the items assumed. **Three
+method lessons, since each one changed the fix:**
 
-54. **L4-2 (LOW/MEDIUM): removed vocabulary is indistinguishable from a typo.** `about:` (removed
-    2026-07-17, superseded by `hero:`) and `number-within:` both report `unknown front-matter key`,
-    the same message a misspelling gets, with no pointer to the replacement. There is **no retired-key
-    registry in the tree** (`RETIRED`/`REMOVED_KEYS` grep to zero); the removals live in comments and
-    tests. Conspicuous because the did-you-mean culture is otherwise thorough. Fix: a
-    `RETIRED_KEYS: &[(&str, Option<&str>)]` consulted before the unknown-key warning. **Where:**
-    `crates/core/src/frontmatter.rs` — `KNOWN_KEYS` is the vocabulary at `:19` and the sibling consts
-    (`UNSUPPORTED_KEYS:78`, `EXECUTE_KEYS:82`, …) are the pattern to copy; the two known retirees are
-    named in comments at `:725` (`number-within`) and `:817`/`:1280` (`about`, removed at `dcf0588`).
+- **A missing signal and a mis-shaped signal look identical from the outside.** 53's `check` really
+  did say "no problems found", but the warning was being pushed the whole time — as the
+  *missing-config advisory*, which `check` discards on purpose because a bare directory of pages is a
+  legitimate project. The fix was not "add a warning", it was "stop reporting a different situation".
+  Before adding a diagnostic, check whether one is already being emitted and filtered.
+- **An item's proposed data shape can contradict a decision the tree already made.** 54 proposed
+  `RETIRED_KEYS: &[(&str, Option<&str>)]` carrying the replacement, which invites "did you mean
+  `hero`?" — and `frontmatter.rs:487` had already ruled that phrasing out, because
+  `codes::extract_suggestion` lifts it into a structured fix an agent applies mechanically. `about:`
+  → `hero:` is a rewrite (different sub-keys), so the mechanical rename would have traded a warning
+  for a document broken in a new way. **Read the neighbouring decision before copying an item's
+  proposed signature.**
+- **The item flattened a scope.** `number-within` was a `theorems:` **sub-key**, never a top-level
+  one, so the registry entries carry the scope label they were retired from. A retired-key table
+  without scopes would recognize it in the wrong map.
+
+Also kept: the messages append to the classified prefix rather than replacing it, because
+`codes::classify` resolves TAL-FM-KEY off the `unknown <scope> key` substring — so neither fix needed
+a new diagnostic code, explanation, or regenerated `docs/DIAGNOSTICS.md`.
 
 55. **L3-1 (LOW/MEDIUM): the headless `{js}` observation is not bounded end to end.** `tokio::time::
     timeout` bounds the eval (`headless_js.rs:312`), but `Browser::launch`, navigation,
