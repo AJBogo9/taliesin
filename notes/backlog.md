@@ -269,15 +269,26 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   CAUGHT, leaving **44 real survivors**. Nine pins landed across three commits, each verified by
   restoring the mutant and watching the named test fail. **A timeout is a detection, not a gap:** all
   7 were cursor arithmetic in scan loops that spins instead of returning a wrong answer.
-  **Still owed: the 12 new `crates/server` files, 1,152 mutants** (`lsp_nav.rs` 444, `lsp_complete.rs`
-  294, `complete.rs` 149, `lsp.rs` 98, then nine smaller). Budget roughly five hours: measured at
-  `-j 4`, a server mutant runs at **2.2/min** against `-p taliesin-server` (correct scoping there,
-  since core tests cannot reach server code) versus **1.7/min** for a core mutant, which must also
-  rebuild core. Cheaper, but not by much — both still relink the server crate's ~50 test binaries
-  every time, and that relink, not the test run, is what the clock goes on.
-  **`lsp_nav.rs` is the one to start with** —
-  444 mutants over 692 lines is the densest logic in the tree, and click-to-source still has no
-  end-to-end coverage.
+  **The `crates/server` half ran `lsp_nav.rs` to 338 of 444 on 2026-07-26 and was stopped there**
+  (end of session; the job was not left running overnight). Its findings are written up — the run
+  itself is gone, `cargo-mutants` has no resume, and the scratch output was under `/tmp` — in
+  [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md):
+  **282 caught, 36 missed, 16 timeout, 4 unviable**, at ~2.3 mutants/min, matching the 2.2 estimate.
+  **Read that file before spending the 3.5 h to re-run this one**, because it already answers the
+  question the compute was for: **all 36 survivors are one shape** — a boundary comparison or a
+  cursor operator inside a click-to-source position classifier (`classify_target`,
+  `classify_include`, `classify_frontmatter_key`, `nested_parent_of`, `definition_site`,
+  `is_anchor_site`, `anchor_occurrences`, `is_cite_key_char`), and **one table-driven test that walks
+  the cursor across every byte of a fixture line kills most of them at once.** All 16 timeouts are
+  again scan-cursor arithmetic, i.e. detections, not gaps. Writing that test does not need the run
+  repeated; re-running is how you'd *confirm* it, and that is the cheaper order.
+  **Still owed: the other 11 server files, ~708 mutants** (`lsp_complete.rs` 294, `complete.rs` 149,
+  `lsp.rs` 98, then eight smaller). Budget roughly three hours: measured at `-j 4`, a server mutant
+  runs at **2.3/min** against `-p taliesin-server` (correct scoping there, since core tests cannot
+  reach server code) versus **1.7/min** for a core mutant, which must also rebuild core. Cheaper, but
+  not by much — both still relink the server crate's ~50 test binaries every time, and that relink,
+  not the test run, is what the clock goes on. Note `headless_js.rs` gained tests on 2026-07-26
+  (item 55), so it is no longer the file this scope was drawn against.
   **Residual in the core half, measured rather than estimated** (the 35 `skim.rs` survivors were
   re-run against the post-pin tree): **20 are now caught, 13 remain**, plus `cite_this.rs:125` (the
   `venue` filter for a blank `title:`, never triaged). What is left is all boundary comparisons and
@@ -330,9 +341,12 @@ touch 42-49, then path parity 50/51/57 — **both shipped 2026-07-26**.)
 Steps 1 (mutation re-run, core half), 2's **migration UX (53, 54)** and 3 (**56**, its metadata half)
 all shipped 2026-07-26, and so did **52 and 55** — so the only *code* item left in this band is:
 
-1. **The mutation re-run's `crates/server` half** — 1,152 mutants, detail in the re-runs entry above.
-   Start with `lsp_nav.rs`. Cheaper per mutant than the core half, because a server mutant needs only
-   `-p taliesin-server`.
+1. **The mutation re-run's `crates/server` half.** `lsp_nav.rs` ran to 338 of 444 on 2026-07-26 and
+   its findings are banked in
+   [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md), so
+   **the next move is to write the test that file names — one table-driven cursor walk that kills
+   most of the 36 survivors — not to re-run the 3.5 h job.** Detail, including the remaining 11
+   files (~708 mutants), in the re-runs entry above.
 
 **Deck weight (52) and headless-JS bounding (55) SHIPPED 2026-07-26.** Both were correctly sized in
 the preamble that used to sit here — 52 really did need external-asset awareness threaded through
