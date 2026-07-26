@@ -2290,7 +2290,10 @@
         tool('speaker', IC.speak, 'Speaker view', 'S') +
         tool('fullscreen', IC.fs, 'Fullscreen', 'F') +
       '</div>' + themeRow +
-      '<div class="tali-menu-head">Keyboard</div><div class="tali-menu-keys">' + KEYS_HTML + '</div>';
+      // The legend's own heading carries a class so CSS can drop the pair together on a
+      // touch device (deck.css's capability block). Without it the "Keyboard" head would
+      // survive its own contents — CSS has no previous-sibling selector to reach it.
+      '<div class="tali-menu-head tali-keys-head">Keyboard</div><div class="tali-menu-keys">' + KEYS_HTML + '</div>';
     document.body.appendChild(menu);
     var backdrop = document.createElement('div');
     backdrop.className = 'tali-menu-backdrop';

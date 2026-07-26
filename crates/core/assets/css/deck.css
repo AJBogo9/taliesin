@@ -763,6 +763,21 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-key { display: flex; align-items: center; gap: 7px; color: #aeb4bf; font-size: 12px; }
 .tali-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
   background: #2a2e36; border: 1px solid #3a3f49; border-radius: var(--tali-radius-sm); padding: 1px 5px; white-space: nowrap; }
+/* A touch reader has no keyboard and no second window, so the menu drops what only those
+   can reach (MOB-1 / MOB-2). `buildMenu()` already suppresses contextually in three places
+   — the theme row when embedded, Present outside the feed, Speaker inside it — and this is
+   the case that thinking missed: on a 390px phone the ten-shortcut legend was ~125px, about
+   a third of the menu, pushing the controls that DO work out of reach.
+   Capability, not layout mode, is the right question. The old Speaker gate keyed on
+   `html.tali-feed`, and feed mode is chosen by ORIENTATION — so rotating a phone to
+   landscape handed back a presenter tool that opens a dead-end second window. The two
+   conditions are independent: this rule is additive to the feed rule above, which still
+   covers a narrow desktop window that routes into the feed. Overview and Fullscreen stay:
+   both work by tap, only their key HINTS go. */
+@media (hover: none) and (pointer: coarse) {
+  .tali-keys-head, .tali-menu-keys, .tali-menu-hint { display: none; }
+  .tali-menu-item[data-action="speaker"] { display: none; }
+}
 
 /* live-presenting chrome only: gone in overview (print is handled by @media print). It
    fades on the zoom's clock rather than `display: none`-ing, so opening the map is one

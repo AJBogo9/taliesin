@@ -193,7 +193,8 @@
     .tali-listing-default .tali-card { flex-direction: column; }
     .tali-listing-default .tali-card-img,
     .tali-listing-default .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; }
-    /* The keyboard-shortcut hint is meaningless on a touch phone (no ⌘/Ctrl key). */
+    /* Narrow desktop windows: the hint is real (there IS a ⌘/Ctrl key) but the row is
+       cramped, so it still goes. The capability half of this lives below — see MOB-3. */
     .tali-search-kbd { display: none; }
     /* ≥44px square tap target (WCAG 2.5.5); centred icon, no auto-margin (the
        brand + spacer already push it right) so it can't bleed past the edge. */
@@ -211,6 +212,26 @@
     .tali-nav-links.tali-nav-open { display: flex; }
     .tali-nav-spacer { display: none; }
     .tali-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
+  }
+
+  /* --- input capability, not viewport width (the 2026-07-26 mobile audit's root cause) ---
+     The rule above hides the ⌘K badge under 40rem, and its own comment stated the intent as
+     capability ("meaningless on a touch phone"). 40rem is 640px, so it missed every phone in
+     LANDSCAPE and every tablet: measured at 844×390 with touch, the badge rendered a literal
+     "Ctrl K" to a reader with no Ctrl key. Width and capability are different questions, so
+     both gates stand — this one is about the keyboard, that one about the room.
+     (`search.js` rewrites the server-rendered ⌘K to "Ctrl K" off `navigator.platform` with no
+     touch check; once the badge is hidden on every touch device that swap can no longer reach
+     one. The button's `aria-keyshortcuts` is untouched and still lists both.) */
+  @media (hover: none) and (pointer: coarse) {
+    .tali-search-kbd { display: none; }
+    /* MOB-7: the burger appears only under 40rem, so a landscape phone gets the full 7-link
+       desktop nav at a 26px minimum link height — clearing the 24px AA floor but well under
+       the 44px AAA target. Deliberately NOT forcing the burger here: a tablet has room for
+       the real nav and would lose it. The measured defect is the target size, so that is
+       what this fixes, matching the 44px the burger above already chose for touch. */
+    .tali-nav-link { min-height: 44px; justify-content: center; }
+    .tali-nav-icon { min-width: 44px; }
   }
 
 /* --- book format: ONE centred reading column; the chapter list is a summoned drawer ---
@@ -280,8 +301,12 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-drawer[hidden] { display: none; }
 .tali-book-drawer { position: fixed; inset: 0; z-index: 60; }
 .tali-book-drawer-backdrop { position: absolute; inset: 0; background: var(--tali-scrim); }
+/* `overscroll-behavior: contain`: the panel is a scroller inside a fixed overlay, so at
+   either end of the chapter list a continued swipe used to chain to the page behind it —
+   the other half of the scroll lock the drawer script sets on the root element (MOB-5). */
 .tali-book-drawer-panel { position: absolute; top: 0; left: 0; bottom: 0;
-  width: min(20rem, 86vw); overflow-y: auto; padding: 1.4rem 1.25rem 2rem;
+  width: min(20rem, 86vw); overflow-y: auto; overscroll-behavior: contain;
+  padding: 1.4rem 1.25rem 2rem;
   background: var(--tali-bg); border-right: 1px solid var(--tali-border);
   box-shadow: 2px 0 28px var(--tali-edge-shadow); animation: tali-book-drawer-in .16s ease; }
 @keyframes tali-book-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
@@ -291,9 +316,38 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-brand { display: block; font-weight: 700; font-size: 1.02rem; line-height: 1.25;
   color: var(--tali-fg); text-decoration: none; }
 .tali-book-brand:hover { color: var(--tali-link); }
+/* MOB-8, and the same failure this file already documents once at `.tali-book-drawer-btn svg`
+   above: the topbar row puts its shrink pressure on whichever item has no min-content floor.
+   That fix gave the icon `flex: none` and left the title exposed. As a flex item the title's
+   default `min-width: auto` refuses to shrink below its content, so it does not truncate — it
+   WRAPS, and the bar grows taller instead of the text getting shorter. Measured: 1 line/48px
+   at 390px, 2 lines/56px at 320px, 3 lines/77px (13% of the viewport) at 240px — on a bar that
+   is `position: sticky`, so that height is subtracted from every screen of reading, forever.
+   Scoped to the topbar because `.tali-book-brand` is emitted TWICE (`chrome.rs` topbar + the
+   drawer's sidebar head); the drawer heading has room and should keep wrapping. The idiom is
+   the one already used correctly at `deck.css`'s `.tali-menu-slide-t`. */
+.tali-book-topbar .tali-book-brand { min-width: 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+/* Below ~22rem the "Chapters" word stops earning its 66px (27% of the row): measured, the
+   title holds one line to ~360px with the label and to ~280px without it. Safe to hide
+   outright — the button is `<button aria-label="Chapters">`, so the accessible name comes
+   from the attribute, not this span, and screen-reader users lose nothing. With the ellipsis
+   above in place this only decides how much of the title survives, not whether the bar grows. */
+@media (max-width: 22rem) {
+  .tali-book-drawer-btn span { display: none; }
+  .tali-book-drawer-btn { padding: .35rem .45rem; }
+}
+/* Measured 26x22px, under the 24px WCAG 2.5.8 AA floor on the height axis (MOB-5c). The
+   floor is unconditional; touch gets the same 44px the nav burger already chose. Centring
+   is what keeps the glyph put once the box is bigger than the text. */
 .tali-book-drawer-close { flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
   color: var(--tali-muted); font-size: 1.1rem; line-height: 1; padding: .15rem .35rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; min-height: 24px;
   border-radius: var(--tali-radius-md); }
+@media (hover: none) and (pointer: coarse) {
+  .tali-book-drawer-close { min-width: 44px; min-height: 44px; }
+}
 .tali-book-drawer-close:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
 .tali-book-chapters { list-style: none; margin: 0; padding: 0; }
 .tali-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;

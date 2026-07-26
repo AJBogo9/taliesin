@@ -25,7 +25,18 @@ const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementBy
 /// close it on Escape, on a backdrop / close-button click (`[data-tali-drawer-close]`), or
 /// after a chapter link is followed (restoring focus to the opener). `data-drawer-wired`
 /// keeps it idempotent across hot-reload re-injects.
-const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';var panel=d.querySelector('.tali-book-drawer-panel')||d,release=null;function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.tali-book-chapter[aria-current]')||d.querySelector('.tali-book-chapter,a,button');if(window.taliFocusTrap){release=window.taliFocusTrap(panel,f);}else if(f){f.focus();}}else if(release){release();release=null;}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-tali-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
+///
+/// It also **locks page scroll** while open (MOB-5). On a phone the panel covers 93% of the
+/// viewport over a backdrop, and without the lock a swipe meant for the chapter list scrolled
+/// the article underneath it (measured: 328px), so dismissing the drawer returned the reader
+/// somewhere they never chose. `overflow: hidden` on the root element is the lock; the panel's
+/// own `overscroll-behavior: contain` (site.css) stops a scroll *inside* the list from
+/// chaining out at either end. Restoring to `''` hands the value back to the stylesheet
+/// rather than freezing whatever was inline.
+///
+/// *Not verified on real WebKit* — iOS Safari is known to honour a root `overflow: hidden`
+/// less completely than Chromium, and the 2026-07-26 round was Chromium emulation only.
+const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';var panel=d.querySelector('.tali-book-drawer-panel')||d,release=null;function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');document.documentElement.style.overflow=o?'hidden':'';if(o){var f=d.querySelector('.tali-book-chapter[aria-current]')||d.querySelector('.tali-book-chapter,a,button');if(window.taliFocusTrap){release=window.taliFocusTrap(panel,f);}else if(f){f.focus();}}else if(release){release();release=null;}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-tali-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
 
 /// A search control that opens the Cmd-K palette. It carries `data-tali-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
@@ -270,7 +281,8 @@ impl Site {
         s.push_str(
             "<div class=\"tali-book-drawer\" id=\"tali-book-drawer\" hidden>\
              <div class=\"tali-book-drawer-backdrop\" data-tali-drawer-close></div>\
-             <div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\">",
+             <div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-modal=\"true\" \
+             aria-label=\"Chapters\">",
         );
         // The `tali-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
         // inside the drawer panel rather than a left rail.
@@ -510,6 +522,59 @@ mod tests {
         assert!(
             b.contains("aria-label='Search'"),
             "icon-only button keeps its label: {b}"
+        );
+    }
+
+    // --- the chapter drawer is a modal, and must behave like one (MOB-5) --------------
+    //
+    // Re-derived from source before writing, per the backlog's own warning that entries
+    // rot: two thirds of the filed finding was already fixed. `role="dialog"` HAS been on
+    // the panel since 2369d80 (2026-07-07), and `BOOK_DRAWER_SCRIPT` already calls
+    // `window.taliFocusTrap`, so "not a dialog / focus trap unused" was stale. What is
+    // genuinely absent is `aria-modal` and any scroll lock at all.
+
+    fn book_page_html() -> String {
+        let root = write_site(
+            "bookdrawermodal",
+            &[
+                (
+                    "_site.yml",
+                    "title: A Book\nchapters:\n  - index.tmd\n  - two.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: One\n---\n\nx\n"),
+                ("two.tmd", "---\ntitle: Two\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        html
+    }
+
+    #[test]
+    fn book_drawer_panel_is_announced_as_a_modal_dialog() {
+        let html = book_page_html();
+        // Needle the WHOLE tag, not `aria-modal` alone: every page inlines the entire CSS +
+        // JS payload, so a bare substring is satisfied by a script that merely mentions it.
+        assert!(
+            html.contains(
+                "<div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-modal=\"true\" \
+                 aria-label=\"Chapters\">"
+            ),
+            "drawer panel is not a modal dialog; it covers 93% of a phone viewport over a \
+             backdrop, so AT must be told the rest of the page is inert:\n{html}"
+        );
+    }
+
+    #[test]
+    fn book_drawer_locks_page_scroll_while_it_is_open() {
+        // Measured on a 390x844 phone: with the drawer open, `scrollBy(0, 400)` moved the
+        // article behind it by 328px, so a swipe meant for the chapter list moved the
+        // chapter and dismissing returned the reader somewhere they did not choose.
+        let js = BOOK_DRAWER_SCRIPT;
+        assert!(
+            js.contains("documentElement.style.overflow=o?'hidden':''"),
+            "the drawer sets no scroll lock, so the page scrolls behind it:\n{js}"
         );
     }
 }

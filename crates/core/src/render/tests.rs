@@ -5852,3 +5852,182 @@ fn book_theorem_config_is_a_fallback_for_a_page_with_none_of_its_own() {
         "default policy numbers the theorem"
     );
 }
+
+// --- input-capability gating (the 2026-07-26 mobile audit's root cause) --------------
+//
+// Every decision about whether to show a keyboard hint, a hover-revealed control or a
+// presenter tool used to be made from viewport WIDTH or from deck layout MODE. Both are
+// proxies for "is this a touch device" and both fail the same way: a phone in landscape,
+// or a phone in stepped mode, is treated as a desktop. The fix is the ordinary
+// `hover`/`pointer` media features, so these tests assert the rules live INSIDE a
+// capability query rather than merely existing somewhere in the sheet.
+//
+// Needling the bare selector would pass vacuously — every one of these selectors already
+// appears in its sheet (that is the bug: it appears UNGATED). So each assertion slices the
+// capability block out by brace matching first and needles only inside it. Restoring the
+// bug (moving a rule back out of the block) fails the named test.
+
+/// The body of the first `@media <query> {` block in `css`, by brace matching.
+///
+/// Returns `None` when the query is absent, which is the failure these tests are for.
+fn media_block<'a>(css: &'a str, query: &str) -> Option<&'a str> {
+    let at = css.find(&format!("@media {query}"))?;
+    let open = at + css[at..].find('{')?;
+    let mut depth = 0usize;
+    for (i, c) in css[open..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&css[open + 1..open + i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+#[test]
+fn media_block_slices_a_balanced_block_and_reports_a_missing_query() {
+    // The helper is the load-bearing half of the tests below; a broken slicer would make
+    // every one of them pass vacuously (it would report the whole sheet, or nothing).
+    let css = "a { x: 1 }\n@media (hover: none) { b { y: 2 } @supports (z: 1) { c { w: 3 } } }\nd { v: 4 }";
+    let body = media_block(css, "(hover: none)").expect("query present");
+    assert!(body.contains("b { y: 2 }"), "inner rule sliced: {body}");
+    assert!(body.contains("c { w: 3 }"), "nested block kept: {body}");
+    assert!(!body.contains("d { v: 4 }"), "stopped at the close: {body}");
+    assert!(!body.contains("a { x: 1 }"), "did not start early: {body}");
+    assert!(
+        media_block(css, "(pointer: coarse)").is_none(),
+        "absent query"
+    );
+}
+
+#[test]
+fn deck_menu_drops_keyboard_affordances_on_a_touch_device() {
+    // MOB-1: `buildMenu()` appended a 125px ten-shortcut legend + per-tool hint badges
+    // unconditionally, so a phone reader got a keyboard manual taking a third of the menu.
+    let block = media_block(super::deck::DECK_CSS, "(hover: none) and (pointer: coarse)")
+        .expect("deck.css has no input-capability query");
+    assert!(
+        block.contains(".tali-menu-keys"),
+        "the keyboard legend is not gated on capability:\n{block}"
+    );
+    assert!(
+        block.contains(".tali-keys-head"),
+        "the legend's own 'Keyboard' heading is not gated, so it survives alone:\n{block}"
+    );
+    assert!(
+        block.contains(".tali-menu-hint"),
+        "the per-tool key hint badges (O / S / F) are not gated:\n{block}"
+    );
+    // The heading must actually carry the class the CSS gates, or the rule targets nothing.
+    assert!(
+        super::deck::DECK_JS.contains(r#"class="tali-menu-head tali-keys-head">Keyboard<"#),
+        "deck.js does not tag the Keyboard head with the class deck.css gates"
+    );
+}
+
+#[test]
+fn deck_menu_hides_speaker_view_by_capability_not_by_layout_mode() {
+    // MOB-2: the gate was `html.tali-feed .tali-menu-item[data-action="speaker"]`, and feed
+    // mode is chosen by ORIENTATION — so rotating a phone to landscape handed back a
+    // presenter tool that opens a second window, which is a dead end on a phone.
+    let block = media_block(super::deck::DECK_CSS, "(hover: none) and (pointer: coarse)")
+        .expect("deck.css has no input-capability query");
+    assert!(
+        block.contains(r#"[data-action="speaker"]"#),
+        "Speaker view is still gated only on layout mode, so a rotation restores it:\n{block}"
+    );
+}
+
+#[test]
+fn search_kbd_badge_is_hidden_on_touch_at_any_width() {
+    // MOB-3: `.tali-search-kbd` was hidden only under `max-width: 40rem`, and the rule's own
+    // comment states the intent as CAPABILITY ("meaningless on a touch phone"). 40rem misses
+    // every phone in landscape and every tablet, which then render a literal "Ctrl K".
+    let block = media_block(SITE_CSS, "(hover: none) and (pointer: coarse)")
+        .expect("site.css has no input-capability query");
+    assert!(
+        block.contains(".tali-search-kbd"),
+        "the Cmd-K badge is still gated on width alone:\n{block}"
+    );
+}
+
+#[test]
+fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
+    // MOB-4: both controls sat at `opacity: 0`, revealed only by `:hover`/`:focus-visible`,
+    // with no `hover: none` fallback — so on a phone they were invisible (and copy-code is
+    // arguably MORE valuable there, with no easy selection across a scrolling `<pre>`).
+    let block =
+        media_block(BASE_CSS, "(hover: none)").expect("base.css has no input-capability query");
+    assert!(
+        block.contains(".tali-copy"),
+        "copy-code is still hover-only, so it is invisible on touch:\n{block}"
+    );
+    assert!(
+        block.contains(".tali-anchor"),
+        "the heading anchor is still hover-only:\n{block}"
+    );
+    // Author ruling 2026-07-26: SHOW the anchor on touch, dimmed — not `display: none`, and
+    // not full strength (a `#` after every heading at full ink is noise on a phone).
+    assert!(
+        !block.contains(".tali-anchor { display: none"),
+        "the ruling was show-dimmed, not drop:\n{block}"
+    );
+}
+
+#[test]
+fn book_topbar_title_truncates_instead_of_wrapping_the_sticky_bar_taller() {
+    // MOB-8: `.tali-book-brand` is `display: block` with no `min-width: 0`, so as a flex item
+    // its default `min-width: auto` refuses to shrink below content and the title WRAPS —
+    // measured 3 lines / 77px (13% of the viewport) at 240px, on a bar that is sticky, so the
+    // cost is subtracted from every screen of reading.
+    //
+    // Scoped to the topbar on purpose: `.tali-book-brand` is emitted TWICE (chrome.rs:245 in
+    // the topbar, :291 in the drawer's sidebar head), and the drawer heading has room to wrap.
+    let rule = SITE_CSS
+        .split(".tali-book-topbar .tali-book-brand")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .expect("no topbar-scoped .tali-book-brand rule");
+    for prop in [
+        "min-width: 0",
+        "white-space: nowrap",
+        "text-overflow: ellipsis",
+    ] {
+        assert!(
+            rule.contains(prop),
+            "topbar title is missing `{prop}`, so it wraps instead of truncating:\n{rule}"
+        );
+    }
+}
+
+#[test]
+fn book_drawer_close_button_clears_the_wcag_tap_target_floor() {
+    // MOB-5(c): measured 26x22px — under the 24px WCAG 2.5.8 AA floor on the height axis.
+    // Severity is bounded (backdrop tap and Escape both dismiss, verified in the audit), but
+    // it is the only dismiss control a reader can see and aim at.
+    let rule = SITE_CSS
+        .split(".tali-book-drawer-close {")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .expect("no .tali-book-drawer-close rule");
+    assert!(
+        rule.contains("min-width: 24px") && rule.contains("min-height: 24px"),
+        "close control is under the 24px AA floor:\n{rule}"
+    );
+    // MOB-5(a), the other half of the scroll lock: `overscroll-behavior: auto` let a scroll
+    // INSIDE the panel chain to the page once the list hit either end.
+    let panel = SITE_CSS
+        .split(".tali-book-drawer-panel {")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .expect("no .tali-book-drawer-panel rule");
+    assert!(
+        panel.contains("overscroll-behavior: contain"),
+        "panel scroll still chains to the page:\n{panel}"
+    );
+}

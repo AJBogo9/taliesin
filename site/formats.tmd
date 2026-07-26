@@ -39,7 +39,7 @@ re-runs as you edit it.
 
 {{< embed demo.tmd title="The Taliesin deck engine" >}}
 
-The deck above is live: click it, arrow through it, press <kbd>F</kbd> for fullscreen.
+The deck above is live: step through it in place, and open its menu for fullscreen.
 
 ## Multi-chapter books {#books}
 

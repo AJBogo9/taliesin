@@ -117,8 +117,8 @@ Taliesin website.
 
 ## A real slide deck, embedded
 
-This is the running deck engine, not a screenshot. Click it and arrow through it,
-press <kbd>F</kbd> for fullscreen, or open it in its own tab.
+This is the running deck engine, not a screenshot. Step through it in place, open its
+menu for fullscreen and the slide list, or open it in its own tab.
 
 {{< embed demo.tmd title="The Taliesin deck engine" >}}
 
