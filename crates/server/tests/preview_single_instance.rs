@@ -42,14 +42,64 @@ fn port_is_free(port: u16) -> bool {
 
 static NEXT_BAND: AtomicU16 = AtomicU16::new(0);
 
-/// Find `count` consecutive free ports, well above the 4321 default so a test never
-/// collides with a real preview the developer has running, and inside a band no other
-/// test in this binary will touch (these tests run in parallel, and scanning from one
-/// shared base hands the same "free" ports to several of them at once).
+/// The floor of the port bands: well above the 4321 default, so a test never collides
+/// with a real preview the developer has running, and below the ephemeral range the
+/// kernel allocates outbound source ports from (`net.ipv4.ip_local_port_range`,
+/// 32768-60999 by default on Linux). The bands used to start at 47,000, inside that
+/// range, which is a standing hazard for any bind-then-release probe like
+/// [`port_is_free`] — though it was *not* the cause of the flake below, which was
+/// diagnosed separately and reproduced from 21,000 too.
+const PORT_FLOOR: u16 = 21_000;
+
+/// How far past its requested port a preview walks when that port is taken
+/// (`serve/mod.rs`: `for p in port+1..=port+9`), so a slot has to be wider than this or
+/// one test's preview lands on the ports `free_run` promised another.
+const FALLBACK_SPAN: u16 = 9;
+
+/// Ports reserved per test: the longest run any test asks for plus [`FALLBACK_SPAN`].
+const SLOT: u16 = 16;
+
+/// Ports reserved per band, i.e. per `free_run` caller.
+const BAND: u16 = 128;
+
+/// Bands per process-offset stride. Room for every band this binary allocates, with the
+/// whole stride shifted per process — see [`free_run`].
+const STRIDE: u16 = 640;
+
+/// Find `count` consecutive free ports in a range no *other test in this binary* and no
+/// *recent run of this binary* will touch.
+///
+/// Two separate isolation problems, both measured 2026-07-26 while chasing a ~1-in-15
+/// flake in `a_port_holder_naming_another_process_does_not_get_it_signalled`:
+///
+/// 1. **Within a run.** These tests run in parallel, so each `free_run` caller gets its
+///    own band, and the slot stride clears [`FALLBACK_SPAN`] so a preview walking its
+///    fallback range cannot leave its own slot.
+/// 2. **Across runs**, which is the pressure behind the flake. The bands were fixed, so
+///    every run of the binary asked for the ports the previous run had just finished
+///    with, and those are still encumbered: `wait_until_ready` polls with
+///    `Connection: close` every 50 ms, so a port that served a preview is left carrying
+///    dozens of TIME-WAIT sockets (48 of them on the captured failure). The range is
+///    therefore shifted by pid, so consecutive runs land somewhere else.
+///
+/// The shifted range stays below the ephemeral floor (32768 by default on Linux), so the
+/// kernel never hands one of these ports out as an outbound source port either.
+///
+/// **None of this makes a returned port *acquired*.** [`port_is_free`] binds and releases,
+/// so every port here has only been peeked at, and a caller that binds it later can still
+/// lose. Shifting the range cut the flake but did not remove it (4 in 60); only
+/// [`spawn_liar`] acquiring its own port did (0 in 80). A caller that must *hold* a port
+/// should bind it itself.
 fn free_run(count: u16) -> u16 {
+    assert!(
+        SLOT > FALLBACK_SPAN + count,
+        "a slot must hold a {count}-port run plus the preview's {FALLBACK_SPAN}-port \
+         fallback walk, or bands stop isolating tests"
+    );
     let band = NEXT_BAND.fetch_add(1, Ordering::SeqCst);
-    let start = 47_000 + band * 64;
-    for base in (start..start + 64).step_by(8) {
+    let run_offset = (std::process::id() as u16 % 16) * STRIDE;
+    let start = PORT_FLOOR + run_offset + band * BAND;
+    for base in (start..start + BAND).step_by(SLOT as usize) {
         if (0..count).all(|i| port_is_free(base + i)) {
             return base;
         }
@@ -262,10 +312,29 @@ fn sighup_shuts_down_gracefully_rather_than_killing_the_process() {
     );
 }
 
-/// Hold `port` and answer the identity probe with whatever we like. Any local user can
-/// bind a loopback port, so the probe's answer is untrusted input.
-fn spawn_liar(port: u16, root: &Path, claimed_pid: i32) {
-    let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind the liar");
+/// Hold a port and answer the identity probe with whatever we like — any local user can
+/// bind a loopback port, so the probe's answer is untrusted input. Returns the port it
+/// actually acquired.
+///
+/// **It binds first and reports second, rather than being handed a port.** A port from
+/// [`free_run`] has only been *peeked* at (bound and released), and this is the caller
+/// that binds last, so it was the one that lost the peek-then-bind race: a ~1-in-15 flake
+/// whose captured failure showed the port carrying 48 TIME-WAIT sockets from the previous
+/// run's polling. Narrowing that window kept the flake (4 in 60 with the range shifted per
+/// process); closing it is what removes it. Same lesson as `Kernel::start_with_retry`:
+/// a free-port *peek* is not an acquisition, so acquire and then report.
+fn spawn_liar(band_base: u16, root: &Path, claimed_pid: i32) -> u16 {
+    // The successor has to be free too — that is where the preview must land — but only
+    // the liar's own port needs to be *held*, and an unusable successor just moves the
+    // search along instead of failing the test.
+    let (listener, port) = (band_base..band_base + SLOT)
+        .find_map(|p| {
+            let l = TcpListener::bind(("127.0.0.1", p)).ok()?;
+            port_is_free(p + 1).then_some((l, p))
+        })
+        .unwrap_or_else(|| {
+            panic!("no bindable port with a free successor in slot {band_base}..+{SLOT}")
+        });
     let body = format!(
         "{{\"root\":\"{}\",\"pid\":{claimed_pid},\"version\":\"0.2.0\"}}",
         root.display()
@@ -284,6 +353,7 @@ fn spawn_liar(port: u16, root: &Path, claimed_pid: i32) {
             );
         }
     });
+    port
 }
 
 /// The takeover signals a pid it learned over a socket, so the pid is untrusted: a port
@@ -293,7 +363,7 @@ fn spawn_liar(port: u16, root: &Path, claimed_pid: i32) {
 fn a_port_holder_naming_another_process_does_not_get_it_signalled() {
     let dir = tmp_dir("liar");
     write_site(&dir);
-    let port = free_run(2);
+    let band_base = free_run(2);
 
     // A process of ours that must survive. `sleep` is not a taliesin preview, which is
     // exactly what the out-of-band check catches.
@@ -303,8 +373,8 @@ fn a_port_holder_naming_another_process_does_not_get_it_signalled() {
         .stderr(Stdio::null())
         .spawn()
         .expect("spawn bystander");
-    spawn_liar(
-        port,
+    let port = spawn_liar(
+        band_base,
         &fs::canonicalize(&dir).unwrap(),
         bystander.id() as i32,
     );
