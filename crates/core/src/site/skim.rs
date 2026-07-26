@@ -500,6 +500,21 @@ mod tests {
         // And the reported span is the element's true extent, so it slices back out whole.
         assert_eq!(&src[two[0].0..two[0].1], "<p>one</p>");
         assert_eq!(&src[two[1].0..two[1].1], "<p>two</p>");
+
+        // An EMPTY element is the case that separates advancing from rewinding: with a
+        // non-empty one, stepping back by the close tag's width still lands after the
+        // opening `<p`, so the scan happens to recover and the difference is invisible.
+        // Here it cannot recover -- which is why this line, not the two above, is what
+        // pins the cursor arithmetic.
+        let empty = "<p></p><p>x</p>";
+        let both = tag_spans(empty, "p");
+        assert_eq!(
+            both.len(),
+            2,
+            "an empty element is still an element: {both:?}"
+        );
+        assert_eq!((both[0].2, both[1].2), ("", "x"));
+        assert_eq!(&empty[both[0].0..both[0].1], "<p></p>");
     }
 
     #[test]
