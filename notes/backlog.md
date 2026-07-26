@@ -420,13 +420,31 @@ the 2,500 ms band), so the items below are the outliers, not a general problem.
     `headless_js.rs:260` is unconditional with no recorded justification (probably correct, but every
     comparable decision here carries its reasoning).
 
-56. **L5-1: the tool's own manual ships without the metadata it derives reader surfaces from.**
-    Measured 2026-07-26: **3 of 37** dogfood pages set `description:` (`docs/guide` 3 of 22,
-    `docs/internals` 0 of 15) against **12 of 19** in `corpus/tech-blog`; 31 xrefs across 37 chapters
-    and **one** `{.definition}` block in ~65,000 words. The books are what a prospective user reads
-    and they are the pages with no meta description and the weakest search text. **Authoring pass, not
-    code.** The skimmability round recorded "0 of 37"; today it measures 3, so re-measure rather than
-    trusting either figure.
+56. **L5-1 residual: the manual's cross-page references, not its metadata.** The `description:`
+    half **SHIPPED 2026-07-26**: 0 of 36 tracked pages → 36 of 36. Both figures the item carried
+    were artefacts, and the re-measure it asked for is what caught them — the "3" counted
+    `description:` lines inside fenced examples that *document* the key, and the "37th" page is
+    `docs/guide/_book/index.tmd`, a build-output copy under a directory discovery already skips.
+    **Two things this half taught, since neither is history:**
+    - **A front-matter key can render as visible prose.** `description:` is not only metadata: it
+      emits a lede under the H1 (`render/mod.rs:1312`) as well as `<meta>`/og, the book landing's
+      Contents annotation (`site/book_toc.rs`) and search text. 13 descriptions drafted *from* each
+      page's opening paragraph therefore printed directly above that paragraph. **The browser showed
+      it; no grep would have.** Check what a metadata key *renders* before writing 36 of them.
+    - **Grepping the manual for a front-matter key hits the manual's own documentation of it.**
+      Any coverage figure over `docs/` must parse the leading front-matter block, not match a line.
+
+    **What is left is not the authoring pass the item assumed, and splits two ways:**
+    - **Glossary, term index and float digest have no surface to feed.** `glossary`, `term-index`
+      and `float-digest` grep to **zero** across `crates/core/src` + `crates/server/src`, so
+      "they render empty until an authoring pass happens" describes a *feature proposal*, not
+      authoring work. Writing `{.definition}` blocks today feeds only `skim.rs`, which reads them
+      as statement heads.
+    - **Backlinks ship and render nothing, and authoring genuinely could fix that.**
+      `site/backlinks.rs` builds its reverse index from **cross-page** xref markers; the books' 33
+      xrefs (17 guide + 16 internals) are all intra-page, so **0** "Referenced by" lines are emitted
+      in either book. Real cross-chapter references would light it up, but they have to be
+      references someone means, which is a writing judgment rather than a sweep.
 
 #### B. Buildable, but low yield on its own — **empty**
 
