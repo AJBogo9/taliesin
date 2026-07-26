@@ -474,6 +474,102 @@ pub(super) fn sentence_at(text: &str, at: usize) -> Option<String> {
 mod tests {
     use super::*;
 
+    // --- the HTML scanners -------------------------------------------------------------
+    //
+    // Found by the 2026-07-26 mutation re-run: this file carried by far the most survivors
+    // against the FULL workspace suite, nearly all of them in these three functions. The
+    // reason is a coverage shape worth naming: `skim_cli` exercises the projection
+    // end-to-end and therefore CALLS all of them, so replacing a whole function is caught
+    // — while the token-boundary tests, the nesting-depth loop and the cursor arithmetic
+    // inside them were constrained by nothing. Each test below asserts a rule the
+    // function's own doc comment already claims.
+
+    #[test]
+    fn tag_spans_needs_a_tag_name_boundary_and_advances_past_each_element() {
+        // The documented rule: `caption` must never match a `figcaption`.
+        let html = "<figcaption>no</figcaption><caption>yes</caption>";
+        let got = tag_spans(html, "caption");
+        assert_eq!(got.len(), 1, "figcaption is not a caption: {got:?}");
+        assert_eq!(got[0].2, "yes");
+
+        // The cursor has to step past a whole element, or the second one is never reached.
+        let src = "<p>one</p><p>two</p>";
+        let two = tag_spans(src, "p");
+        assert_eq!(two.len(), 2, "both paragraphs: {two:?}");
+        assert_eq!((two[0].2, two[1].2), ("one", "two"));
+        // And the reported span is the element's true extent, so it slices back out whole.
+        assert_eq!(&src[two[0].0..two[0].1], "<p>one</p>");
+        assert_eq!(&src[two[1].0..two[1].1], "<p>two</p>");
+    }
+
+    #[test]
+    fn class_spans_matches_a_whole_token_and_only_inside_a_class_attribute() {
+        // Three ways a substring test is wrong. All three are stated on the function; none
+        // was asserted, so `in_class_attr` could return a constant `true` undetected.
+        assert!(
+            class_spans("<div class=\"callout-title\">x</div>", "callout").is_empty(),
+            "`callout-title` is not the `callout` token"
+        );
+        assert!(
+            class_spans("<p>a callout is a boxed aside</p>", "callout").is_empty(),
+            "the word in body text is not a class"
+        );
+        assert!(
+            class_spans("<div data-kind=\"callout\">x</div>", "callout").is_empty(),
+            "another attribute is not the class attribute"
+        );
+        // The real thing still matches inside the compound list the renderer emits.
+        let got = class_spans("<div class=\"callout callout-note\">body</div>", "callout");
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].2, "body");
+    }
+
+    #[test]
+    fn class_spans_closes_on_nesting_depth_not_on_the_first_close_tag() {
+        // Exactly the case the depth counter exists for: a callout holding an inner `<div>`
+        // must read to its OWN end. Stopping at the inner close truncates the span, and
+        // every caller then treats the rest of the callout as prose.
+        let html = "<div class=\"callout\">a<div>inner</div>b</div><p>after</p>";
+        let got = class_spans(html, "callout");
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(
+            got[0].2, "a<div>inner</div>b",
+            "span must cross the inner div"
+        );
+        assert_eq!(
+            &html[got[0].0..got[0].1],
+            "<div class=\"callout\">a<div>inner</div>b</div>"
+        );
+    }
+
+    #[test]
+    fn first_prose_sentence_skips_paragraphs_inside_an_excluded_container() {
+        // A paragraph inside a callout is not the section's lede; the first one outside is.
+        // This is the whole point of the exclusion window, and it only works if the window
+        // is compared as a real interval.
+        let html = "<div class=\"callout\"><p>Inside a callout.</p></div><p>Real prose here.</p>";
+        assert_eq!(
+            first_prose_sentence(html).as_deref(),
+            Some("Real prose here.")
+        );
+        // A paragraph inside a <figure> is excluded by tag rather than by class.
+        let fig = "<figure><p>A caption-ish line.</p></figure><p>The actual prose.</p>";
+        assert_eq!(
+            first_prose_sentence(fig).as_deref(),
+            Some("The actual prose.")
+        );
+        // With nothing excluded the first paragraph wins, and a blank one is skipped
+        // rather than returned as an empty lede.
+        assert_eq!(
+            first_prose_sentence("<p>Plain first.</p><p>Second.</p>").as_deref(),
+            Some("Plain first.")
+        );
+        assert_eq!(
+            first_prose_sentence("<p>   </p><p>Then this.</p>").as_deref(),
+            Some("Then this.")
+        );
+    }
+
     #[test]
     fn plain_closes_the_gap_on_both_sides_of_a_bracketed_inline_element() {
         // `indexable_text` puts a space at every tag boundary, so a parenthesised inline
