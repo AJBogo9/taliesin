@@ -11,16 +11,20 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Band A holds 5 items (0 HIGH, 4 MEDIUM/LOW, plus one authoring pass).** Two batches shipped on
-2026-07-26: mobile (42-49, every HIGH on the board) and path parity (50, 51, 57). What is left is the
-L2/L3/L4/L5 lens batch (52-56) — and **the mutation re-run, which item 57 unblocked and which is now
-the top of the order**. Band B is empty; band C holds only item **25**, parked on a public-release
-*date* rather than on a decision; the rest is blocked on a device or a real user (band D) or gated
-(band E).
+**Band A holds 2 items (0 HIGH): 52 and 55.** Four batches shipped on 2026-07-26: mobile (42-49,
+every HIGH on the board), path parity (50, 51, 57), migration UX (53, 54), and the metadata half of
+56. The **mutation re-run ran its `crates/core` half** the same day and its `crates/server` half
+(1,152 mutants) is the largest single piece of work now on the board. Band B is empty; band C holds
+only item **25**, parked on a public-release *date* rather than on a decision; the rest is blocked on
+a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-26 after 57 landed:** `cargo test -p taliesin-core` in a `.git`-free copy of the
-tree is **49 binaries, 0 failures** (it was 2 failures, which is precisely what kept cargo-mutants'
-unmutated baseline red). The re-run can start.
+**Verified 2026-07-26 at the last landing:** full workspace suite with all three gates and
+`--test-threads=1` is **94 binaries, 0 failures**; `cargo fmt --check`, `clippy --workspace
+--all-targets` and both JS `tsc` gates clean.
+
+**The two items left are both bigger than their own summary line**, and each says why in the band-A
+preamble: 52 because `DeckParts` has no `AssetMode` to flip, and 55 because its actual failure (a
+wedged Chrome) has no automated reproduction and the obvious outer timeout re-creates the leak.
 
 **What is left is one batch plus an authoring pass, not five sessions.** Read the band-A preamble
 before starting, and the 2026-07-26 probe traps under Standing constraints before writing any probe
@@ -148,11 +152,35 @@ still there, so a future change to the relay or the companion re-opens the same 
     Use puppeteer's `page.emulateNetworkConditions(...)`. A "throttled" number that is not slower than
     the unthrottled one is a broken instrument, not a fast page. (`Emulation.setCPUThrottlingRate`
     does work over raw CDP.)
-  - **cargo-mutants:** scoping its test command to `--lib` reports MISSED for everything an
-    integration test covers (measured: 102 MISSED / 0 CAUGHT, all artefact). It also writes
-    `mutants.out/` into the repo root, which is **not in `.gitignore`** — pass `--output` somewhere
-    outside the tree. And its scratch copy carries no `.git`, which is why the baseline is red (item
-    **57**).
+  - **cargo-mutants: any test-command narrowing fabricates MISSED, and `--lib` is only the
+    loudest case.** Scoping to `--lib` reports MISSED for everything an integration test covers
+    (measured: 102 MISSED / 0 CAUGHT, all artefact). **Scoping to a PACKAGE does the same thing and
+    looks far more reasonable** (measured 2026-07-26): `-p taliesin-core` is cargo-mutants' *default*
+    for a core mutant, and it cannot run `crates/server/tests/*`, where several core subsystems are
+    actually pinned. Re-testing that run's 96 survivors with `--test-workspace=true` flipped **51 of
+    96 (53%) to CAUGHT**. For a `crates/core` file, `--test-workspace=true` is not optional; for a
+    `crates/server` file the package default is sound, because core tests cannot reach server code.
+    The cost is real (each core mutant relinks ~50 server test binaries, ~1.7 mutants/min at `-j 4`),
+    so budget for it rather than trading it away.
+  - **Being called is not being tested — the trap that makes a mutation run worth the compute.**
+    An end-to-end test that drives a subsystem *calls* every helper in it, so replacing a whole
+    function is caught instantly and coverage looks fine. What survives is the inside: token-boundary
+    tests, nesting-depth loops, cursor arithmetic. Measured on `skim.rs`, whose only integration
+    coverage is `skim_cli`: `LayerKind::tag -> ""` and `first_prose_sentence -> None` are both caught,
+    while **35 finer-grained mutants inside those same functions survived the full workspace suite**.
+    Sampling whole-function mutants and generalising from them is how this gets missed (it did, here).
+  - **cargo-mutants housekeeping:** its scratch copy carries no `.git`, which is why the baseline was
+    red (item **57**, fixed). Still pass `--output` outside the tree so a run is never mistaken for
+    working state — but note `mutants.out/` **is** already in `.gitignore` (line 9); the earlier claim
+    that it is not was wrong. Run it from a `git archive` snapshot rather than the live tree, so the
+    working tree stays free for other work during a multi-hour run.
+  - **Equivalent mutants already triaged, do not re-triage:** `diagnostics/shape.rs` `is_content`
+    (`:81` both conjuncts, and `:156` `i + 1` → `i`). At its only call site the slice runs between two
+    consecutive heading indices, so no block in it can be a heading; and no `Block` anywhere is built
+    with empty `html` (every block carries `data-block-id` by invariant, which `corpus.rs` enforces).
+    Both conjuncts are therefore unreachable-false and no test can kill these without hand-building a
+    `Block` the renderer cannot emit. **Writing that test would be the vacuous-test defect this very
+    round exists to remove.**
 - **Calibrate a new lint against real output before writing it.** Measuring the proposed
   `TAL-SHAPE-*` rules over all 14 site projects killed four of their own prescriptions, including
   the most valuable one (it fired on 11.8% of the corpus, essentially all false positives) and one
@@ -235,11 +263,32 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   since, and the mode-model was deliberately reshaped after it (reader + PDF deleted, phone feed
   added, motion round 07-24). AUDITS.md already warns the doc describes *outgoing* behaviour. Re-run
   it **crossed with touch**, not as-is: MOB-1 and MOB-2 just put the deck back at the top of band A.
-- **The mutation / vacuous-test round (07-18) is the best value per token, and is now UNBLOCKED:**
-  41,149+/5,715- across `crates/` + `web-client/` since, including 26 new test files and 5 new
-  subsystems, and mutation testing is the one lens that decays mechanically with new code. **Scope it
-  cheaply:** `cargo-mutants` restricted to files added or changed since 07-18. Item 57 fixed the red
-  baseline (measured 2026-07-26: a `.git`-free copy of the tree now runs 49 core binaries green).
+- **The mutation / vacuous-test round (07-18) RAN 2026-07-26 on its `crates/core` half, and the
+  `crates/server` half is still owed.** Scope taken: the 5 core files first committed after 07-18
+  (`skim.rs`, `shape.rs`, `cite_this.rs`, `manifest.rs`, `book_toc.rs`) = **298 mutants → 187 caught,
+  96 missed, 7 timeout, 8 unviable**; re-testing the 96 against the full workspace suite flipped 51 to
+  CAUGHT, leaving **44 real survivors**. Nine pins landed across three commits, each verified by
+  restoring the mutant and watching the named test fail. **A timeout is a detection, not a gap:** all
+  7 were cursor arithmetic in scan loops that spins instead of returning a wrong answer.
+  **Still owed: the 12 new `crates/server` files, 1,152 mutants** (`lsp_nav.rs` 444, `lsp_complete.rs`
+  294, `complete.rs` 149, `lsp.rs` 98, then nine smaller). Budget roughly five hours: measured at
+  `-j 4`, a server mutant runs at **2.2/min** against `-p taliesin-server` (correct scoping there,
+  since core tests cannot reach server code) versus **1.7/min** for a core mutant, which must also
+  rebuild core. Cheaper, but not by much — both still relink the server crate's ~50 test binaries
+  every time, and that relink, not the test run, is what the clock goes on.
+  **`lsp_nav.rs` is the one to start with** —
+  444 mutants over 692 lines is the densest logic in the tree, and click-to-source still has no
+  end-to-end coverage.
+  **Residual in the core half, measured rather than estimated** (the 35 `skim.rs` survivors were
+  re-run against the post-pin tree): **20 are now caught, 13 remain**, plus `cite_this.rs:125` (the
+  `venue` filter for a blank `title:`, never triaged). What is left is all boundary comparisons and
+  cursor arithmetic: `sentence_at:466` (3), `first_sentence:414/437/440` (3), `class_spans:334/352/368`
+  (4), `in_class_attr:379`, `first_prose_sentence:274:74`, and `page_skim:121:13`. **Two of those are
+  probably equivalent, so do not burn a session forcing them:** `page_skim`'s `&&`→`||` needs a page
+  that emits a title block *and* still opens with an `<h1>`, which the heading-demotion rule appears
+  to make unreachable; and `first_prose_sentence`'s `>`→`>=` needs a `<p>` that is *itself* the
+  excluded element. Each remaining one needs a test that means something on its own — chasing the
+  number green is the failure mode this round exists to remove, not the goal.
 - **The website/brand audit (07-11):** its headline performance finding measured per-page inlining and
   is now obsolete (hashed `_assets/`), which is itself the signal. Its Lighthouse pass was desktop-mode
   only, which is how it missed the touch-target defects the mobile round found.
@@ -279,13 +328,20 @@ file when it lands**.
 **Suggested order (2026-07-26), so a fresh session does not re-derive it.** (Steps 1 and 2 — mobile /
 touch 42-49, then path parity 50/51/57 — **both shipped 2026-07-26**.)
 
-1. **The mutation re-run**, which item 57 unblocked and which is now measured startable (a
-   `.git`-free copy runs 49 binaries green). Mechanical yield on code that has never been
-   mutation-checked; scope it to files changed since 2026-07-18 and heed the cargo-mutants traps
-   above — especially `--output` outside the tree, and never scoping its test command to `--lib`.
-2. **Migration UX (53, 54)** and **deck weight (52)** and **hygiene (55)**: small, self-contained, any
-   order.
-3. **56 is an authoring pass, not code**, and can run in parallel with any of the above.
+Steps 1 (mutation re-run, core half), 2's **migration UX (53, 54)** and 3 (**56**, its metadata half)
+all shipped 2026-07-26. What is left:
+
+1. **The mutation re-run's `crates/server` half** — 1,152 mutants, detail in the re-runs entry above.
+   Start with `lsp_nav.rs`. Cheaper per mutant than the core half, because a server mutant needs only
+   `-p taliesin-server`.
+2. **Deck weight (52)** and **hygiene (55)**: self-contained, either order. **52 is bigger than its
+   own "narrow fix" line suggests** — `DeckParts` (`render/deck.rs:19`) carries no `AssetMode` at all
+   and the deck skeleton bundles its own CSS/JS, so this is threading external-asset awareness through
+   `assemble_deck_page` and deciding which bundled assets become `_assets/` links, not flipping a flag.
+   **55 has no automated reproduction for its actual failure** (a wedged Chrome): only the eval is
+   bounded (`headless_js.rs:312`) while `Browser::launch`, `new_page`, `goto`, `close` and `wait` are
+   not, and a naive outer timeout would drop the future and orphan Chrome plus its temp profile, which
+   is the very thing being fixed. Bound each phase and keep teardown reachable.
 
 **Auditing is done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings, while the
 one round that produced four came from the author using the tool on a phone. The remaining menu
