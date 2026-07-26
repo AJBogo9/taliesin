@@ -207,6 +207,136 @@ fn tech_blog_shares_one_hashed_css_across_pages() {
     let _ = std::fs::remove_dir_all(&out);
 }
 
+// Needles that appear ONLY when the deck framework is inlined into the page, rather than
+// linked out of `_assets/`. Each is a *definition* in exactly one bundled file, so the
+// whole-page `contains` cannot be satisfied by some other blob riding along in the head
+// (the inlined-asset needle trap): a CSS declaration body for deck.css, the facade
+// assignment for deck.js, and the vendored library's esbuild namespace for mermaid.
+const MARKER_DECK_CSS: &str = ".tali-blackout-overlay { position: fixed;";
+const MARKER_DECK_JS: &str = "window.TaliesinDeck = facade;";
+const MARKER_MERMAID_LIB: &str = "__esbuild_esm_mermaid_nm";
+
+/// L2-1: a deck built *inside* a multi-page `build <dir>` shares that build's `_assets/`
+/// instead of re-inlining the whole framework. Measured before the fix on a site whose only
+/// deck drew one mermaid diagram: `talk.html` was **4,583,261 bytes** and linked `_assets/`
+/// **zero** times, while the ordinary page beside it was 24,718 — so mermaid shipped twice
+/// in one output tree, and a second deck would have shipped a third copy.
+///
+/// The *standalone* deck build is deliberately left alone (asserted at the bottom): that is
+/// the artifact you hand someone, and it has no `_assets/` to link.
+#[test]
+fn a_site_deck_links_the_shared_assets_instead_of_inlining_them() {
+    let root = std::env::temp_dir().join(format!("tali-ab-deck-src-{}", std::process::id()));
+    let out = std::env::temp_dir().join(format!("tali-ab-deck-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: DeckWeight\n").unwrap();
+    std::fs::write(
+        root.join("index.tmd"),
+        "---\ntitle: Home\n---\n\n{{< embed talk.tmd >}}\n",
+    )
+    .unwrap();
+    // A mermaid diagram (the measured worst case) and math (so the conditional katex link
+    // is exercised on a deck too, not only on a page).
+    std::fs::write(
+        root.join("talk.tmd"),
+        "---\ntitle: Talk\nformat: deck\n---\n\n# One\n\n```mermaid\ngraph TD;\n  A-->B;\n```\n\n## Two\n\nMath $x=1$.\n",
+    )
+    .unwrap();
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .expect("build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    let assets = std::fs::read_dir(out.join("_assets"))
+        .expect("_assets dir")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let named = |stem: &str, ext: &str| -> String {
+        assets
+            .iter()
+            .find(|n| n.starts_with(&format!("{stem}.")) && n.ends_with(ext))
+            .unwrap_or_else(|| panic!("no {stem}.<hash>{ext} in {assets:?}"))
+            .clone()
+    };
+    let deck_css = named("deck", ".css");
+    let deck_js = named("deck", ".js");
+    let mermaid_js = named("mermaid", ".js");
+    let katex_css = named("katex", ".css");
+
+    let talk = std::fs::read_to_string(out.join("talk.html")).unwrap();
+    for href in [&deck_css, &deck_js, &mermaid_js, &katex_css] {
+        assert!(
+            talk.contains(&format!("_assets/{href}")),
+            "the deck must link _assets/{href}"
+        );
+    }
+    // Nothing that is now a shared file may also be inlined into the deck page.
+    for (what, needle) in [
+        ("deck.css", MARKER_DECK_CSS),
+        ("deck.js", MARKER_DECK_JS),
+        ("the mermaid library", MARKER_MERMAID_LIB),
+    ] {
+        assert!(
+            !talk.contains(needle),
+            "{what} must not be inlined into a deck inside a site build"
+        );
+    }
+    // Mermaid ships ONCE in the tree, not once per deck.
+    assert_eq!(
+        assets.iter().filter(|n| n.starts_with("mermaid.")).count(),
+        1,
+        "{assets:?}"
+    );
+    // The whole point: the deck page is now page-sized, not framework-sized.
+    let bytes = talk.len();
+    assert!(
+        bytes < 300_000,
+        "a site deck is still shipping the framework: {bytes} bytes"
+    );
+
+    // The standalone artifact is untouched: `build <deck.tmd>` has no `_assets/` to link,
+    // so it must still carry the engine (and its diagram library) inside the one file.
+    let solo = std::env::temp_dir().join(format!("tali-ab-deck-solo-{}.html", std::process::id()));
+    let _ = std::fs::remove_file(&solo);
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(root.join("talk.tmd"))
+        .arg(&solo)
+        .output()
+        .expect("standalone deck build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    let solo_html = std::fs::read_to_string(&solo).unwrap();
+    for (what, needle) in [
+        ("deck.css", MARKER_DECK_CSS),
+        ("deck.js", MARKER_DECK_JS),
+        ("the mermaid library", MARKER_MERMAID_LIB),
+    ] {
+        assert!(
+            solo_html.contains(needle),
+            "a standalone deck must stay self-contained: {what} is missing"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+    let _ = std::fs::remove_file(&solo);
+}
+
 /// Regression pin for the #17 blocker: in an External (`build <dir>`) page, a documented
 /// `include-after-body` extension that calls `window.taliEnhancers.register(...)` runs INLINE at
 /// parse. #17 folded the registry into the DEFERRED `_assets/app.<hash>.js`, so that hook fired

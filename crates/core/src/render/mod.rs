@@ -111,8 +111,8 @@ mod page;
 use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, TOC_SHEET_MARKUP, assemble_html_page, favicon_link,
-    html_page_from_doc_in_site, html_page_from_doc_in_site_external, render_doc_to_page,
-    title_with_site_suffix,
+    html_page_from_doc_in_site, html_page_from_doc_in_site_external, render_deck_to_page_external,
+    render_doc_to_page, title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -1733,6 +1733,38 @@ pub fn shared_site_css() -> String {
 /// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
 pub fn katex_css() -> &'static str {
     KATEX_CSS
+}
+
+/// The raw framework CSS a deck inlines in its main `<style>` (fonts + tokens + the deck
+/// stylesheet). A deck's sheet is not the page's: it is `deck.css` instead of
+/// base + dark + site chrome, so a deck inside a `build <dir>` cannot link `app.<hash>.css`
+/// and gets its own `deck.<hash>.css` instead.
+pub fn deck_shared_css() -> String {
+    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{}", deck::DECK_CSS)
+}
+
+/// Everything a deck's script tail carries that can be shared across the decks in one
+/// build: the deck engine plus the enhancers a deck can use. Separated by a bare `;` on its
+/// own line so concatenation is ASI-safe, like [`core_enhance_js`].
+///
+/// **Deliberately not `core_enhance_js`**, even though the two overlap in `code-enhance.js`:
+/// the page bundle also carries `search.js`, which binds a capture-phase Cmd/Ctrl-K on
+/// `document` and `preventDefault()`s it. Linking the page bundle from a deck would hand
+/// decks a command palette they have never had, built from a document structure they do not
+/// have, and take a key away from the deck's own handling. The duplicated `code-enhance.js`
+/// is the price of leaving deck behaviour exactly where it was.
+///
+/// Excluded for the same reasons as the page bundle: mermaid (its own conditional file) and
+/// the `{js}`-cell runtime (must stay inline so a cell's `import()` resolves page-relative).
+pub fn deck_shared_js() -> String {
+    [
+        deck::DECK_JS,
+        CODE_ENHANCE_JS,
+        WALKTHROUGH_JS,
+        TABSET_JS,
+        SCROLLY_JS,
+    ]
+    .join("\n;\n")
 }
 
 /// All of Taliesin's OWN page JS, concatenated for the always-on `app.<hash>.js`. Each

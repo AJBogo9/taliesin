@@ -2528,6 +2528,8 @@ pub(crate) mod tests {
             app_js: "_assets/app.c.js",
             mermaid_js: "_assets/mermaid.d.js",
             jslibs_js: "_assets/jslibs.e.js",
+            deck_css: "",
+            deck_js: "",
         };
         let (build_html, _) = site.render_page_doc_external(page, doc, ext);
         let _ = std::fs::remove_dir_all(&root);
@@ -2569,6 +2571,8 @@ pub(crate) mod tests {
             app_js: "_assets/app.c.js",
             mermaid_js: "_assets/mermaid.d.js",
             jslibs_js: "_assets/jslibs.e.js",
+            deck_css: "",
+            deck_js: "",
         };
         let (html, _w) = site.render_page_doc_external(page, doc, ext);
         // app.js is linked (carries the toc/search code now).

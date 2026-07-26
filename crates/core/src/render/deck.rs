@@ -54,6 +54,10 @@ pub struct DeckParts<'a> {
     /// (the static `TaliesinDeck.initialize` flow and the client-driven live flow differ,
     /// and the live flow is load-order-sensitive).
     pub tail: &'a str,
+    /// How the deck's framework CSS is delivered. `Inline` bakes it in (the standalone
+    /// build and both live previews); `External` links the shared `_assets/` pair, which
+    /// only the multi-page `build <dir>` path has.
+    pub assets: AssetMode<'a>,
 }
 
 /// Assemble a complete deck page from its parts: the single source of the deck
@@ -61,19 +65,43 @@ pub struct DeckParts<'a> {
 /// by the static build and the live-deck preview. The deck-engine `<script>` and
 /// the rest of the script tail are caller-composed.
 pub fn assemble_deck_page(p: &DeckParts) -> String {
-    // Only ship the (large) KaTeX stylesheet when the deck has math (build); a live
-    // deck always ships it, since it can gain math on any edit.
-    let katex = if p.ship_katex {
-        format!("<style>{KATEX_CSS}</style>\n")
-    } else {
-        String::new()
-    };
-    // Native `{js}` cells need the vendored d3 + Plot libs (the enhancer rides in
-    // code_scripts); gated on the slide body.
-    let js_head_html = if has_js_cells(p.slides) {
-        js_cell_head()
-    } else {
-        String::new()
+    // The deck stylesheet, KaTeX and the `{js}`-cell libs are the three head payloads that
+    // differ by asset mode; everything else about the skeleton is identical, so the two
+    // modes cannot drift apart in shape.
+    let (style_block, katex, js_head_html) = match &p.assets {
+        AssetMode::Inline => {
+            // Only ship the (large) KaTeX stylesheet when the deck has math (build); a live
+            // deck always ships it, since it can gain math on any edit.
+            let katex = if p.ship_katex {
+                format!("<style>{KATEX_CSS}</style>\n")
+            } else {
+                String::new()
+            };
+            // Native `{js}` cells need the vendored d3 + Plot libs (the enhancer rides in
+            // code_scripts); gated on the slide body.
+            let js_head_html = if has_js_cells(p.slides) {
+                js_cell_head()
+            } else {
+                String::new()
+            };
+            let style =
+                format!("<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{DECK_CSS}</style>");
+            (style, katex, js_head_html)
+        }
+        AssetMode::External(a) => {
+            let katex = if p.ship_katex {
+                format!("<link rel=\"stylesheet\" href=\"{}\">\n", a.katex_css)
+            } else {
+                String::new()
+            };
+            let js_head_html = if has_js_cells(p.slides) {
+                format!("<script src=\"{}\" defer></script>", a.jslibs_js)
+            } else {
+                String::new()
+            };
+            let style = format!("<link rel=\"stylesheet\" href=\"{}\">", a.deck_css);
+            (style, katex, js_head_html)
+        }
     };
     // `theme` comes after the deck's own stylesheet so it overrides it; the css
     // folded into `include-in-header` follows last.
@@ -83,7 +111,7 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n\
          <meta name=\"referrer\" content=\"no-referrer\" />\n\
          <meta name=\"generator\" content=\"Taliesin\" />\n\
-         <title>{title}</title>{social}\n{favicon}{deck_theme}<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
+         <title>{title}</title>{social}\n{favicon}{deck_theme}{style_block}\n{katex}{js_head}{theme}{in_header}{extra_head}\
          </head>\n<body>\n{before_body}<div class=\"tali-deck\">\n<div class=\"tali-slides\"{slides_attr}>\n{slides}</div>\n{overlay}</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
@@ -129,6 +157,7 @@ pub(super) fn deck_page_from_doc(
     doc: &RenderedDoc,
     fallback_title: &str,
     mode: OutputMode,
+    assets: AssetMode,
 ) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
@@ -138,13 +167,46 @@ pub(super) fn deck_page_from_doc(
     // once (no websocket client to drive them after a mount). `mode` gates the
     // enhancers exactly like an HTML page (e.g. a Build with a Mermaid diagram
     // inlines the vendored library instead of fetching it from a CDN).
+    //
+    // External mode replaces the two big inline blobs — the engine and the enhancer
+    // bundle — with ONE classic (non-`defer`) `<script src>`. Classic external scripts
+    // execute in document order before the inline scripts that follow them, so the
+    // `TaliesinDeck.initialize(...)` call below still sees the facade and the
+    // `include-after-body` position still sees the enhancer registry: the same
+    // guarantees the inline tail gives, without the `defer` dance a page needs.
+    let engine_and_enhancers = match &assets {
+        AssetMode::Inline => format!(
+            "<script>{DECK_JS}</script>\n\
+             <script>\n  TaliesinDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+             {}\n",
+            code_scripts_for(&slides, mode)
+        ),
+        AssetMode::External(a) => {
+            // Mermaid keeps its own conditional file (shared with the site's pages, which is
+            // the duplicate this whole mode exists to remove); the `{js}`-cell runtime stays
+            // inline so a cell's `import("./x.js")` resolves against the page, not `_assets/`.
+            let mermaid = if has_mermaid(&slides) {
+                format!("\n<script src=\"{}\" defer></script>", a.mermaid_js)
+            } else {
+                String::new()
+            };
+            let tali_js = if has_js_cells(&slides) {
+                format!("\n<script>{TALIESIN_JS}</script>")
+            } else {
+                String::new()
+            };
+            format!(
+                "<script src=\"{}\"></script>\n\
+                 <script>\n  TaliesinDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\
+                 {mermaid}{tali_js}\n",
+                a.deck_js
+            )
+        }
+    };
     let tail = format!(
-        "<script>{DECK_JS}</script>\n\
-         <script>\n  TaliesinDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
-         {code_scripts}\n\
+        "{engine_and_enhancers}\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.taliEnhanceCode&&window.taliEnhanceCode(document.body);}});</script>\n\
          {after_body}",
-        code_scripts = code_scripts_for(&slides, mode),
         after_body = doc.includes.after_body,
     );
     // A standalone-built deck gets the same bundled-mark favicon a standalone page
@@ -184,6 +246,7 @@ pub(super) fn deck_page_from_doc(
         deck_overlay: &overlay,
         after_deck: "",
         tail: &tail,
+        assets,
     })
 }
 

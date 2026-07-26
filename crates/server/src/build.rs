@@ -1184,6 +1184,9 @@ async fn build_one_page(
         app_js: &app_js,
         mermaid_js: &mermaid_js,
         jslibs_js: &jslibs_js,
+        // A page never links the deck pair (its own `app_css`/`app_js` are the right ones).
+        deck_css: "",
+        deck_js: "",
     };
     let (html, render_warnings) = site.render_page_doc_external(page, doc, ext);
     for w in &render_warnings {
@@ -1240,12 +1243,18 @@ struct AssetBundle {
     app_js: String,
     mermaid_js: String,
     jslibs_js: String,
+    /// The deck engine's pair, `""` in a build with no deck (a deck's stylesheet is not the
+    /// page's, so it cannot share `app_css`, and a site without a deck should not pay for a
+    /// file nothing links).
+    deck_css: String,
+    deck_js: String,
 }
 
 /// Minify + content-hash each shared blob, write it once under `<out>/_assets/`, and
 /// return the (root-relative) filenames. Clears any stale `_assets/` first so old hashes
-/// do not accumulate across rebuilds.
-fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
+/// do not accumulate across rebuilds. `with_deck` adds the deck engine's own CSS/JS pair,
+/// which only a build that actually has a deck to link them needs.
+fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundle> {
     use taliesin_core::hash::fnv1a;
     let dir = out.join("_assets");
     let _ = std::fs::remove_dir_all(&dir); // own the lifecycle; clear stale hashes
@@ -1273,12 +1282,30 @@ fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
     // Vendored libs are already minified: hash + write as-is (do not re-minify).
     let mermaid_js = named("mermaid", "js", &taliesin_core::mermaid_bundle_js())?;
     let jslibs_js = named("jslibs", "js", &taliesin_core::js_cell_libs_js())?;
+    let (deck_css, deck_js) = if with_deck {
+        (
+            named(
+                "deck",
+                "css",
+                &crate::minify::minify_css(&taliesin_core::deck_shared_css()),
+            )?,
+            named(
+                "deck",
+                "js",
+                &crate::minify::minify_js(&taliesin_core::deck_shared_js()),
+            )?,
+        )
+    } else {
+        (String::new(), String::new())
+    };
     Ok(AssetBundle {
         app_css,
         katex_css,
         app_js,
         mermaid_js,
         jslibs_js,
+        deck_css,
+        deck_js,
     })
 }
 
@@ -1476,7 +1503,7 @@ async fn build_site_async(
     // The shared framework CSS/JS, written once as content-hashed files under `_assets/`
     // (dedups what would otherwise be a copy inlined into every page); every page below
     // links to it instead of shipping its own inline blob.
-    let bundle = match write_asset_bundle(&out) {
+    let bundle = match write_asset_bundle(&out, !site.decks.is_empty()) {
         Ok(b) => b,
         Err(e) => {
             let msg = format!("cannot write {}/_assets: {e}", out.display());
@@ -1705,7 +1732,30 @@ async fn build_site_async(
             .next()
             .and_then(|f| f.strip_suffix(".html"))
             .unwrap_or("deck");
-        let html = taliesin_core::render_doc_to_page(&doc, stem, taliesin_core::OutputMode::Build);
+        // A deck inside a site build links that build's shared `_assets/` like every page
+        // beside it, instead of inlining the deck framework (and, with a diagram, a second
+        // copy of the 3.5 MB mermaid library) into every deck page (L2-1). The standalone
+        // `build <deck.tmd>` path keeps the self-contained single file.
+        let deck_css = asset_href(&deck.url, &bundle.deck_css);
+        let deck_js = asset_href(&deck.url, &bundle.deck_js);
+        let katex_css = asset_href(&deck.url, &bundle.katex_css);
+        let mermaid_js = asset_href(&deck.url, &bundle.mermaid_js);
+        let jslibs_js = asset_href(&deck.url, &bundle.jslibs_js);
+        let html = taliesin_core::render_deck_to_page_external(
+            &doc,
+            stem,
+            taliesin_core::ExternalAssets {
+                // A deck never links the page bundle: its stylesheet is `deck.css`, and its
+                // script bundle deliberately leaves out the Cmd-K palette runtime.
+                app_css: "",
+                app_js: "",
+                katex_css: &katex_css,
+                mermaid_js: &mermaid_js,
+                jslibs_js: &jslibs_js,
+                deck_css: &deck_css,
+                deck_js: &deck_js,
+            },
+        );
         let dest = out.join(&deck.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -3214,7 +3264,7 @@ mod asset_bundle_tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let bundle = write_asset_bundle(&dir).expect("write bundle");
+        let bundle = write_asset_bundle(&dir, true).expect("write bundle");
 
         let read = |rel: &str| std::fs::read_to_string(dir.join(rel)).expect("read asset");
         // `assert_eq!` on two megabyte bundles prints BOTH on failure (~3.5MB of minified
@@ -3234,6 +3284,43 @@ mod asset_bundle_tests {
             "app.js should have been minified"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The deck pair is written only for a build that has a deck to link it. Externalizing
+    /// the deck framework must not make every deck-less site carry ~200 KB nothing requests;
+    /// the whole item was about weight.
+    #[test]
+    fn the_deck_asset_pair_is_written_only_when_the_build_has_a_deck() {
+        let names = |with_deck: bool| -> Vec<String> {
+            let dir = std::env::temp_dir().join(format!(
+                "tali-bundle-{}-deck-{with_deck}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("temp dir");
+            let bundle = write_asset_bundle(&dir, with_deck).expect("write bundle");
+            assert_eq!(bundle.deck_css.is_empty(), !with_deck);
+            assert_eq!(bundle.deck_js.is_empty(), !with_deck);
+            let mut got: Vec<String> = std::fs::read_dir(dir.join("_assets"))
+                .expect("_assets")
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with("deck."))
+                .collect();
+            got.sort();
+            let _ = std::fs::remove_dir_all(&dir);
+            got
+        };
+        assert_eq!(
+            names(false).len(),
+            0,
+            "a build with no deck must not write the deck pair"
+        );
+        assert_eq!(
+            names(true).len(),
+            2,
+            "a build with a deck writes deck.<hash>.css + deck.<hash>.js"
+        );
     }
 }
 

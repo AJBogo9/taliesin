@@ -1072,6 +1072,8 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         // `#tali-status` node, which only showed an orphaned "live" label.)
         after_deck: "<div id=\"tali-controls\"></div>\n",
         tail: &tail,
+        // A preview serves one document from memory: there is no `_assets/` tree to link.
+        assets: taliesin_core::AssetMode::Inline,
     })
 }
 

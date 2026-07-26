@@ -253,12 +253,19 @@ pub enum AssetMode<'a> {
 }
 
 /// Depth-adjusted hrefs for the shared `_assets/` files, supplied per page by the build.
+///
+/// `deck_css`/`deck_js` are the deck engine's own pair (a deck's stylesheet is `deck.css`,
+/// not the page's base + site chrome, so it cannot share `app_css`). They are written only
+/// when the build has a deck to link them, and are `""` otherwise — an ordinary page never
+/// reads them.
 pub struct ExternalAssets<'a> {
     pub app_css: &'a str,
     pub katex_css: &'a str,
     pub app_js: &'a str,
     pub mermaid_js: &'a str,
     pub jslibs_js: &'a str,
+    pub deck_css: &'a str,
+    pub deck_js: &'a str,
 }
 
 /// Ready-to-inject markup from the `include-in-header` / `include-before-body` /
