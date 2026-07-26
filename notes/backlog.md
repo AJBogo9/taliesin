@@ -5,97 +5,44 @@ docs under `corpus/` render correctly; each new capability ships pinned by a tar
 Roadmap: [ROADMAP.md](ROADMAP.md).
 
 > **Only open tasks live here.** Completed work lives in git + [AUDITS.md](AUDITS.md) +
-> [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
-> list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
+> [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "do not re-add"
+> list near the bottom is a compact anti-rot guard, **one line per entry**, not a changelog — if an
+> entry there needs a paragraph, the paragraph belongs in its dated findings doc.
 
 ## State (2026-07-26)
 
-**Bands A, B and C are all empty of tasks.** Items **39** + **40** (the last build-ready code) landed
-on 2026-07-26, and the author then ruled on the whole of band C in one pass: **24** and **17** became
-shipped code the same day, **2** was declined again, and only **25** remains, parked on a
-public-release date rather than on a decision. Everything still listed is blocked on a device or a
-real user (band D) or gated (band E). **A session cannot "take from the top" any more** — the only
-way forward is a new audit lens, argued for first. See "Next session: start here".
+**Band A holds one batch: the mobile audit's eight findings (items 42-49), filed 2026-07-26.** That
+round was the first new lens after the twelve AP slots and four non-AP lenses closed, and it refilled
+a band that had been empty the same morning. Band B is empty; band C holds only item **25**, parked
+on a public-release *date* rather than on a decision; the rest is blocked on a device or a real user
+(band D) or gated (band E).
 
-**The whole stack was pushed on 2026-07-26**, on the author's instruction: everything from the
-backlink-context batch through `backlog/xref-reporting` fast-forwarded onto `main` and went to
-`origin/main` in one push, pre-push hook green. That cleared a stack that had been growing across
-several sessions. **Do not read that as still true** — the author pushes mid-session with no signal
-in this file.
+**Items 42-48 share one root cause and should ship as one batch** — four of them are the same edit at
+four sites. Read the band-A preamble before starting, and the two traps under "The mobile audit RAN"
+before opening a browser.
 
-**No commit counts are recorded here, deliberately.** They were wrong twice in one session: the
-first was written one commit stale, and the correction then mis-added the two branches' totals —
-because any count written *into* this file is invalidated by the commit that writes it. Same rule
-as a SHA (see Git under "Standing constraints"). Ask git instead:
+**A lens menu now exists** ("Proposed audit lenses", below): six never-run lenses (L1-L6), four
+re-runs ranked by age × measured churn in each round's own surface, and four directions that the last
+weeks' work has *unblocked*. The first, **L1 path parity**, is running (2026-07-26).
+
+**Do not trust this file's freshness.** The author pushes mid-session with no signal here, and a
+scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are recorded**
+— any count written *into* this file is invalidated by the commit that writes it (it was wrong twice
+in one session). Ask git instead:
 
 ```sh
 git log --oneline origin/main..main    # what is unpushed, right now
 ```
 
-**The demand-probe programme is finished, 4 of 4** (2026-07-26, second batch of the day). Persona 4
-shipped as `corpus/analyst/` + `analyst.rs` + `/gallery/analyst` and closed item **30**. Its lesson is
-about *slate design*, not probe count: personas 1-3 each stacked features the corpus had never
-combined and found **0** interaction bugs, because the features compose. Persona 4 crossed a
-*dimension* the corpus had never crossed — **two languages executing in one document** — and found
-**two** real defects, both the same shape: *the R arm of a two-arm facility was never built.*
-`figure_wrap` had a fallback and `table_wrap` did not (AN-1: a labelled `tbl-` cell whose output is
-not a table emitted a dangling cross-reference, silently, with `check` clean). `KernelSpec::python`
-carried two startup preambles and `KernelSpec::r` carried an empty list (AN-2a: **every** R figure
-rasterised onto opaque white, on a page whose default theme is dark — found only in the browser, the
-markup looked right). Neither is visible from inside a single-language document, and every corpus
-document was single-language. **A fifth persona is not indicated; a fifth un-crossed dimension might
-be, and none is currently known.** Both defects are fixed and shipped; of the remaining four
-findings, items **39** and **40** shipped later the same day and only **41** (band D, blocked on
-being a feature) is left.
-
-**Bands A and B were both empty before that**, as of the 2026-07-25 band-B batch. It closed items **11**
-(PA-M3 list semantics, PA-M13 image-alt lint, PA-H1's deck theme-color + social meta), **29**
-(R1 + T2, both closed on evidence rather than built), and emptied item **10** of everything
-actionable (AP3-3 fixed; the rest split between won't-fix — which stays as item 10 in band D —
-demand-driven, and declined-on-measurement). Nothing in "Open work" is buildable today; the next
-entries come from the next audit round.
-
-**Band A had been empty before that too**, and item 39 — the only thing that ever refilled it —
-came from the probe above rather than from an audit round. The 2026-07-25 band-A batch closed items
-**34** (AP7, all five findings),
-**35** (AP3-1), **36** (AP11-1), **37** (DIAG-1) and **38** (DOCS-1); what is worth carrying forward
-is in [AUDITS.md](AUDITS.md) under "The 2026-07-25 band-A batch", not repeated here. Two findings
-turned out larger than filed: DIAG-1's six fall-through diagnostics were **eight** (the zero-GENERIC
-test found a seventh, and the two build-only execution diagnostics are invisible to any `check`-side
-sweep), and AP7-1's fix surfaced two real authoring skips the blind rule had been hiding.
-
-Five earlier code batches landed the same day (the hardening set, SKIM-1/2/3a, the P3 residual batch,
-the book-wayfinding batch, the backlink-context + resume batch).
-
 **Gates at the last code landing, re-run before trusting them:** full workspace suite with all three
 gates and `--test-threads=1`; `cargo fmt --check`, `clippy --workspace --all-targets` and both JS
-`tsc` gates clean; `check` clean on `corpus/tarn`, `docs/guide`, `docs/internals` and `site`. The
-band-A batch additionally browser-verified every client-side change (the chrome-devtools MCP profile
-was held by a parallel session, so via the project's own `puppeteer-core` harness, as AP7 itself did).
+`tsc` gates clean; `check` clean on `corpus/tarn`, `docs/guide`, `docs/internals` and `site`.
 
-**Nothing is owed by the author.** The one item that was — the in-editor click-to-source round-trip
-from the naming purge (Task 8 Step 5) — was **verified working by the author on 2026-07-25**, which
-closes the naming purge outright. It needed a human because nothing automated covers the real editor
-round-trip: the companion was repackaged and reinstalled and the relay harness passes both
-directions, but the harness stops at the relay and cannot see whether the editor actually lands the
-cursor. That gap is still there, so a future change to the relay or the companion re-opens the same
-manual check.
-
-**Every AP slot is run, and as of 2026-07-26 so is every proposed non-AP lens.** The last two —
-**AP1's unchased residuals** and the **behavioural half of the docs lens** — ran on 2026-07-26 and
-both of their findings shipped the same day (the 2026-07-26 audit batch, below). **There is no
-queued audit angle left.** A further round now needs a *new* lens argued for first, not one taken
-off a list; what those two rounds deliberately did not measure is recorded in
-[AUDITS.md](AUDITS.md) rather than left looking like an open task.
-
-Both entries were wrong about where their own defect was, in opposite directions, which is the
-fourth and fifth time running that an audit's first job (falsify its own entry) paid for itself.
-AP1's residual predicted a *kernel* leak; over 1,000 real executions the kernel **saturates**, and
-the unbounded growth was Taliesin's own freeze cache. The docs lens's existing gates covered flag
-and env-var *existence* thoroughly; the vocabulary they did not cover had drifted **totally**.
-Working method is in "Audit perspectives": a dated findings doc, a row in
-[AUDITS.md](AUDITS.md)'s round index, and the build-ready findings filed into "Open work" under
-their own prefix.
+**Nothing is owed by the author.** The last outstanding item — the in-editor click-to-source
+round-trip from the naming purge — was verified working by the author on 2026-07-25. It needed a
+human because nothing automated covers the real editor round-trip: the relay harness passes both
+directions but stops at the relay and cannot see whether the editor lands the cursor. **That gap is
+still there, so a future change to the relay or the companion re-opens the same manual check.**
 
 ## Standing constraints (read before working)
 
@@ -119,30 +66,28 @@ their own prefix.
   `TALIESIN_REQUIRE_NODE=1` (JS-equivalence guard), `TALIESIN_R=R TALIESIN_REQUIRE_R=1` (R kernel),
   `TALIESIN_PYTHON=… TALIESIN_REQUIRE_KERNEL=1` (pool-booted `--jobs` path; a missing interpreter is a
   hard fail, not a skip). `cargo test` aborts the remaining binaries at the first failure, so re-run
-  before trusting a total. **Flake status: FIXED 2026-07-25, and the entry that described it was
-  wrong in both its test and its cause.** Looping the `--bin` binary reproduced the flake 3 times in
-  37 runs (matching the recorded ~1 in 13) and captured what had never been captured: **three
-  different tests** failing, from **one** root cause. `prepare_connection` peeks free ports by
-  binding then releasing them, so concurrent starts can be handed the same port and the loser exits
-  at startup — `Address already in use`, or `ConnectionReset`, or (for the pooled-warm test) a
-  missed 10 s poll bound. The re-roll that survives this lived in the *callers*, so the three
-  test-side callers of the raw `Kernel::start` inherited it; which test failed on a given run was
-  chance, which is why it was mis-attributed to `kernel_executes_..._runaway_cell` and "fixed"
-  against a theory of interrupt timing that was never the cause. The re-roll now lives on
-  `Kernel::start_with_retry` and `crates/server/tests/kernel_start_is_retried.rs` fails if any
-  caller reaches the un-retried primitive again. **Verified 0 failures in 45 post-fix runs** under
-  the same load. A red `exec`/`kernel` probe is now a real signal, not a coin flip.
+  before trusting a total.
+- **The kernel-test flake is FIXED (2026-07-25), and the entry that described it was wrong in both
+  its test and its cause.** Looping the real binary reproduced it 3 times in 37 runs and caught what
+  theorising never did: **three different tests** failing from **one** root cause. `prepare_connection`
+  peeks free ports by binding then releasing them, so concurrent starts can be handed the same port
+  and the loser dies at startup (`Address already in use`, or `ConnectionReset`, or a missed 10 s poll
+  bound). The surviving re-roll lived in the *callers*, so the three test-side callers of the raw
+  `Kernel::start` inherited the race; which test failed was chance, which is why it was mis-attributed
+  to `kernel_executes_..._runaway_cell` and "fixed" against an interrupt-timing theory that was never
+  the cause. The re-roll now lives on `Kernel::start_with_retry`, and
+  `crates/server/tests/kernel_start_is_retried.rs` fails if any caller reaches the un-retried
+  primitive again. **Verified 0 failures in 45 post-fix runs** under the same load: a red
+  `exec`/`kernel` probe is now a real signal, not a coin flip.
 - **Git:** do not trust a SHA written in notes. Check `git log --oneline origin/main..main` for what is
-  unpushed and `git reflog show origin/main` before believing any "not pushed" claim; the author pushes
-  mid-session with no signal here.
-- **How this file lies to you:** entries rot (the author pushes mid-session; a scoped prune leaves the
-  rest looking freshly reviewed). Before picking an item, **grep its named symbol/flag in source** and
-  prefer measuring the running product over reading this file. Trust an item's *symptom*, never its
-  cause, line number, or stated cost (all three have rotted). Verify a fix by **mutation** (restore the
-  bug, watch the named test fail), not by a green suite. Grep traps live here: a bare word matches
-  prose, `grep | head` reports head's exit code, quote `--include='*.tmd'` in zsh.
-  **Commit before mutation-testing:** `git checkout -- <file>` on an *uncommitted* file restores from
-  HEAD and destroys the working implementation (it did, twice).
+  unpushed and `git reflog show origin/main` before believing any "not pushed" claim.
+- **How this file lies to you:** entries rot. Before picking an item, **grep its named symbol/flag in
+  source** and prefer measuring the running product over reading this file. Trust an item's *symptom*,
+  never its cause, line number, or stated cost (all three have rotted). Verify a fix by **mutation**
+  (restore the bug, watch the named test fail), not by a green suite. Grep traps: a bare word matches
+  prose, `grep | head` reports head's exit code, quote `--include='*.tmd'` in zsh. **Commit before
+  mutation-testing:** `git checkout -- <file>` on an *uncommitted* file restores from HEAD and
+  destroys the working implementation (it did, twice).
 - **What the test net structurally cannot see.** The dogfood books (`docs/guide`, `docs/internals`)
   are NOT in the regression net, so any shape only they have is invisible to a green suite. Three
   gaps were measured (enumerated, not grepped) and each one hid a real bug: **(1)** every corpus book
@@ -181,156 +126,243 @@ their own prefix.
 
 ## Open work (priority order: take from the top)
 
-### Next session: start here
+### The mobile audit RAN on 2026-07-26 — its findings are in band A
 
-**There is no build-ready code left in this file, and band C has been drained too.** Items 39 + 40
-landed on 2026-07-26, and the same day the author ruled on 24, 17 and 2 — two of which turned into
-shipped code (`section-extents` option (b), the vendored PowerShell grammar) and two into recorded
-decisions (`book-breadcrumb` = no, presenter tools = still deferred). Only item **25** is left in
-band C, and it waits on a public-release *date*, not on a decision.
+Detail: [2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md). The author's reported symptom
+reproduces, and **seven of its eight findings share one root cause: the tool never asks what kind of device it is
+on.** Measured over every `.css`, `.js` and `.rs` file in `crates/` + `web-client/`: **zero**
+`pointer: coarse`, **zero** `hover: none`, **zero** `any-pointer`. Every keyboard hint, hover-reveal
+and presenter tool is gated on viewport *width* or on deck *layout mode* — two proxies that both fail
+the same way, by treating a wide or stepped phone as a desktop.
 
-**So a session now needs a NEW audit lens, argued for first.** The twelve AP slots and all four
-non-AP lenses are run; the "Audit perspectives" table is a complete record, not a menu. Do not go
-looking there for something to take.
+**Two traps this round paid for, recorded so the next one doesn't:**
+- **`resize_page` floors at ~500px.** It resizes the *window*, and Chrome will not go narrower. Two
+  probes reported `innerWidth: 500` while I believed I was at 390 — silently across the 40rem
+  breakpoint that half the audit is about. **Use viewport emulation, never window resize, below
+  ~500px.**
+- **The deck feed flag is on `document.documentElement` (`html.tali-feed`) and its scroller is
+  `.tali-slides`, not the document.** Probing `.tali-deck` and `window.scrollY` made a working feed
+  look completely dead, and I filed that wrong before catching it.
 
-The most likely *productive* new lens, on the evidence of the last two rounds, is a **crossed
-dimension rather than a stacked feature**: persona 4 found two real defects by putting two kernels
-in one document, after three personas that stacked features found zero. No further un-crossed
-dimension is currently known — naming one is the actual work.
+**Still un-run, and worth naming as the next lens:** everything under "Not measured" in the findings
+doc — real iOS Safari / Android Chrome (this was Chromium emulation, which does not model WebKit,
+momentum scroll, the dynamic viewport toolbar or safe-area insets), a phone screen reader, tablet
+widths, and the `--host` QR phone-preview flow, which is a first-class phone feature that got no
+coverage at all.
+
+### Proposed audit lenses (2026-07-26) — the menu, since the table in AUDITS.md is not one
+
+[AUDITS.md](AUDITS.md)'s round index is a *record*: a further round needs a lens proposed first. These
+were proposed on 2026-07-26 by crossing what has run against what the tree now contains, and each
+carries the measurement that justifies it so none has to be re-derived. **Ranked; take from the top.**
+
+**New lenses, never run:**
+
+- **L1. Path parity** (feature × emission path). Five paths emit a document: single-doc `preview`,
+  site `preview`, standalone `build`, site `build`, and a `mounts:`-served project. Three rounds each
+  tripped over exactly one divergence and none swept the matrix: **DX1** (the located validators ran
+  in `build`/`check` but not preview), **AP7** (the mobile TOC sheet exists only in a single-doc
+  preview, so a site preview emits no sheet chrome at all), **DIAG-1** (two execution diagnostics
+  exist only on the `build`/`publish` path). Needs no device, no kernel and no network. **RUNNING
+  2026-07-26** → [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md).
+- **L2. Reader-side runtime performance** (crosses AP1 × AP6 × mobile). AP1 measured the *server*
+  (8,000 blocks in 647 ms, 400 pages in 874 ms); AP6 measured browser *parity*, not speed. The only
+  successful Lighthouse run is 2026-07-11, desktop mode, on the website, and it predates the switch
+  from per-page inlining to hashed `_assets/`; the 07-22 round tried and got `NO_FCP`. Measured
+  2026-07-26 on a release build: a standalone `corpus/deck.tmd` is **4,583,261 bytes** (1,375,317
+  gzipped), and a `tech-blog` site build ships `_assets/mermaid.*.js` 3,572,004 · `app.css` 229,204 ·
+  `app.js` 91,066 · `search-index.js` 118,726 · `hover-index.js` 54,690. Conditional loading works (a
+  no-mermaid doc builds to 869,748), so this is an unmeasured surface, not a bug list: **INP, LCP and
+  scroll cost under a 4× CPU throttle**, on the device the mobile round says the readers are on.
+- **L3. The subsystems that post-date every lens that would own them.** First-commit dates against
+  audit dates: `lsp.rs` (1,922 lines, 07-21) is younger than the security (07-17), DX (07-18),
+  mutation (07-18) and polish (07-19) rounds, and only AP10 has read it; `headless_js.rs` (615 lines,
+  07-22) **spawns an external browser** and the security round is five days older than it;
+  `complete.rs` (1,157, 07-18/07-25), `skim.rs` (647, 07-25) and `manifest.rs` (303, 07-24) likewise.
+  The web manifest is a *phone* surface (add-to-home-screen, standalone display) the mobile round did
+  not touch.
+- **L4. Deprecation / migration UX** (crosses time × the author's existing files). `about:` was removed
+  07-17 and the *docs* drifted nine days (DOCS-2..5). The same question about a **user's project** has
+  never been asked: FORMAT_VERSION 4, the `_freeze/` schema, the `.taliesin/` schemas, the retired
+  `q`-prefix names. What does the tool say to a document written against last month's build?
+- **L5. The content half of the skimmability round**, which that round named and deliberately left
+  undone: 0 of 37 dogfood pages set `description:`, 8 xref links across 19 chapters, 0 backlinks, 0
+  `{.definition}` blocks in 60,208 words of internals. Glossary, term index and float digest render
+  empty until an authoring pass happens. Not code.
+- **L6. A real external document.** All four demand probes were fixtures written for the probe. The
+  FL-weather Quarto book (Tier 3) is the fifth probe and the only one the corpus cannot fake.
+
+**Re-runs, ranked by age × churn measured in each round's own surface (2026-07-26):**
+
+- **The deck audit (07-12) is the most rotted:** 2,510+/1,196- in `deck.rs` + `deck.js` + `deck.css`
+  since, and the mode-model was deliberately reshaped after it (reader + PDF deleted, phone feed
+  added, motion round 07-24). AUDITS.md already warns the doc describes *outgoing* behaviour. Re-run
+  it **crossed with touch**, not as-is: MOB-1 and MOB-2 just put the deck back at the top of band A.
+- **The mutation / vacuous-test round (07-18) is the best value per token:** 41,149+/5,715- across
+  `crates/` + `web-client/` since, including 26 new test files and 5 new subsystems, and mutation
+  testing is the one lens that decays mechanically with new code. **Scope it cheaply:** `cargo-mutants`
+  restricted to files added or changed since 07-18.
+- **The website/brand audit (07-11):** its headline performance finding measured per-page inlining and
+  is now obsolete (hashed `_assets/`), which is itself the signal. Its Lighthouse pass was desktop-mode
+  only, which is how it missed the touch-target defects the mobile round found.
+- **The security release audit (07-17)** should wait for the flip date it is already parked on (item
+  25), **except** `headless_js.rs` and the LSP, which post-date it and spawn or expose processes.
+- **Not due:** AP10 (07-23). Of its 19,337 touched lines in `crates/`, roughly half are vendored
+  mermaid, the PowerShell grammar and the reverted ask-ai feature.
+
+**Unblocked by progress already made (was blocked, is not any more):**
+
+- **Real iOS Safari / Android Chrome, a phone screen reader, and the `--host` QR flow** — blocked on a
+  device; the author is now device-testing. This is the mobile round's own "Not measured" list.
+- **Deck touch gestures (band D item 4)** — the device blocker is gone and the mobile round confirmed
+  the feed itself works, so pinch/pan is testable now.
+- **Fuzzing the LSP + MCP request loops**, filed as an AP2 residual. HEALTH-1 shipped, so
+  `serve::guarded` now wraps both dispatches (`lsp.rs:105`, `mcp.rs:127`): there is finally a survival
+  property to assert. Before it, a fuzz finding could only restate "there is no boundary".
+- **Reader-surface work that needed section extents** — `data-section-end` shipped 07-26, so the four
+  skimmability proposals blocked on "zero `<section>` extents" have substrate.
+- **Still blocked:** the prune half of the release audit (gated on the public-flip date), and true
+  WebKit unless the phone is an iPhone.
 
 ### The bands
 
 **Ranked for implementation, not by theme.** Band A is what a session can build today and B is
-buildable but not worth a session alone. C and D are blocked and are listed so they are not
+buildable but not worth a session alone. C, D and E are blocked and are listed so they are not
 re-scoped. **Item numbers are stable** and referenced from the findings docs and
 [AUDITS.md](AUDITS.md), so they are NOT renumbered when the order changes, and a closed item's number
 is never reused.
 
-**Band C is down to one item, and it is not a task.** The author ruled on **24**, **17** and **2**
-on 2026-07-26 (see below); only **25** remains, and it is explicitly parked until a
-public-release date is set. Nothing in this file is buildable without a new audit lens.
-
 **Standing rule for a batch:** branch per batch, verify each fix by *mutation* (restore the bug,
 watch the named test fail), browser-verify anything client-side, and **delete the item from this
-file when it lands**. Read "Standing constraints" first; several of these have a recorded trap.
+file when it lands**.
 
-### A. Build now: measured, unblocked, and each one has its fix shape recorded
+#### A. Build now
 
-**Empty.** Item 39 was the last entry and it landed 2026-07-26 with item 40. The next entry comes
-from a band-C ruling or a new audit lens, not from anything already written down.
+**The 2026-07-26 mobile audit's eight findings** (detail:
+[2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md)). They share one root cause and are cheapest
+built as **one batch**, because 1, 2, 3 and 4 are the same edit applied at four sites: replace a
+width/mode proxy with `@media (hover: none) and (pointer: coarse)`. **Verify in a browser with real
+viewport emulation, not window resize** (see the trap above), and pin what you can server-side —
+remember the inlined-asset needle trap when writing any assertion.
 
-**One residual is deliberately NOT closed, and is recorded where it belongs rather than left
-looking open:**
-- **AP7's "not chased" list** (a real screen reader, colour contrast, callouts/theorems as composite
-  widgets, the mobile TOC sheet, reduced-motion across the scroll features) is scope the round
-  declared out, not work it left undone. It is in
-  [2026-07-25-ap7-accessibility-audit.md](2026-07-25-ap7-accessibility-audit.md).
+42. **MOB-1 (HIGH): the deck menu hands a touch reader a keyboard manual.** On a 390×844 phone the
+    menu renders a **125px "KEYBOARD" block listing ten shortcuts** (`→ ↓ Space`, `Home End`, `O`,
+    `F`, `S`, `B`, `?`, `Esc`) plus `O`/`S`/`F` hint badges — about a third of the menu, pushing the
+    controls that work out of reach. `deck.js`'s `buildMenu()` appends `KEYS_HTML` unconditionally
+    and always passes `tool()`'s `hint`. **Oversight, not decision, and the same function proves
+    it:** it already drops the theme row when embedded, hides Present outside the feed and hides
+    Speaker *in* the feed — so in portrait, Speaker view is correctly hidden from Tools **while the
+    legend still advertises `S` — Speaker view**. Fix: gate `.tali-menu-keys` (`deck.css:762`) and
+    `.tali-menu-hint` (`deck.css:745`) on capability.
 
-*(**AP3-3 is closed**, 2026-07-25: it was neither the test nor the cause on file. See the flake
-paragraph under "Standing constraints" — the entry is kept there because the *method* it teaches,
-loop the real condition and capture the failure rather than theorize from the symptom, is what the
-recorded version got wrong.)*
+43. **MOB-2 (HIGH): rotating a phone gives it desktop affordances.** The gates that exist key on deck
+    layout *mode*, and mode is chosen by orientation. Measured on one emulated phone, rotation only:
+    portrait hides Speaker view, landscape (844×390, `pointer: coarse` still true) **shows it**, along
+    with the badges and the legend. Speaker view opens a presenter window — a dead end on a phone, and
+    `deck.css:632-633` already knows it. Fix: gate presenter-only tools on input capability, which is
+    independent of feed/stepped.
 
-### B. Buildable, but low yield on its own
+44. **MOB-3 (HIGH): the ⌘K hint appears on any touch device wider than 640px.** `site.css:197` hides
+    `.tali-search-kbd` under `max-width: 40rem`, and **its own comment states the intent as
+    capability** ("meaningless on a touch phone (no ⌘/Ctrl key)"). Measured at 844×390 touch: the badge
+    renders **"Ctrl K"**. `search.js:1064` compounds it — `IS_MAC` reads `navigator.platform`/
+    `userAgent` with **no touch check**, so an Android phone is told to press Ctrl+K and an iPad ⌘K.
+    Emitted at `site/chrome.rs:41` + `:506`. Keep `aria-keyshortcuts`; only the visible badge is wrong.
 
-**Empty.** Item 40 was the last entry and it landed 2026-07-26 with item 39, in one batch, exactly
-as this band's own rule says such an item should.
+45. **MOB-4 (HIGH): copy-code and copy-link are invisible on touch.** `.tali-copy`
+    (`base.css:394-401`) and `.tali-anchor` (`base.css:321-332`) sit at `opacity: 0`, revealed only by
+    `:hover`/`:focus-visible`, with no `hover: none` fallback. **Copy-code matters more on a phone**
+    (no easy selection across a scrolling `<pre>`) and is exactly where it cannot be found. Note the
+    irony to avoid re-deriving it: `base.css:324-327` adds a 24×24 `::after` tap target citing WCAG
+    2.5.8 — the size was solved *for touch* on a control that on touch never appears. Fix under
+    `@media (hover: none)`: show `.tali-copy` persistently; `.tali-anchor` wants an author ruling
+    (show, or drop).
 
-**The band was empty before that too.** The 2026-07-25 band-B batch cleared the previous three: items
-**11** and **29** are closed and deleted, and item **10** is reduced to its two no-clean-fix kernel
-limitations and moved to band D.
-Two of the three closed
-on *evidence* rather than on code, which is the outcome this band is most likely to produce and is
-worth stating plainly: an item here is cheap to build and therefore easy to build without asking
-whether it should be. See "Decided against" for what was declined and on what measurement.
+46. **MOB-5 (MEDIUM): the book chapter drawer does not behave like a drawer.** At 390×844 it covers
+    **93% of the viewport** over a backdrop, and: **(a)** page scroll is not locked —
+    `scrollBy(0,400)` moved the article behind it by **328px**; `body` is `position: static` /
+    `overflow: visible`, and the panel's `overscroll-behavior: auto` chains at either end. **There is
+    no scroll-lock code anywhere in the client JS** — never implemented, not broken. **(b)** It is not
+    a dialog: `role`/`aria-modal`/`aria-hidden` all absent and focus stays on `.tali-book-body` after
+    opening, though a focus trap already exists (`code-enhance/04-focus-trap.js`, built for Cmd-K).
+    **(c)** The close control is **26×22px**, under the 24px WCAG 2.5.8 AA floor on height. *Bounded:*
+    backdrop tap-to-dismiss and Escape both work (verified), so this is a size defect, not a trap —
+    (a) and (b) are the ones worth a session.
 
-### C. Blocked on an owner ruling or decision (not a task until then)
+47. **MOB-6 (MEDIUM): the marketing site tells phone readers to press keys.** `site/index.tmd:121`
+    ("press `F` for fullscreen") and `site/formats.tmd:42` ("click it, arrow through it, press `F`")
+    — verified rendered at 844×390 touch, describing a keyboard the reader lacks about a deck directly
+    above the sentence. Content fix. **Scope it precisely:** a *reference table* of shortcuts in the
+    guide is legitimate on any device and is NOT in scope; this is an *instruction* about the widget
+    on the page.
 
-**Three of the four were ruled on 2026-07-26 and are closed** (24, 17, 2 — kept below for their
-do-not-re-scope tails, not as tasks). Only **25** is genuinely still waiting, and it waits on a
-date rather than on a decision. Nothing here is startable as code.
+49. **MOB-8 (MEDIUM): the book topbar grows instead of truncating on narrow screens.**
+    Author-reported, then measured: **the row never overflows horizontally at any width — it grows
+    vertically**, because the title wraps. 390px → 1 line / ~48px; 320px → 2 lines / 56px; **280px and
+    240px → 3 lines / 77px, 12-13% of the viewport**, and the topbar is *sticky*, so that is taken off
+    every screen of reading. `.tali-book-brand` (`site.css:291-292`) is `display: block` with no
+    `nowrap`, no `overflow: hidden`, no `text-overflow: ellipsis` and no `min-width: 0` — as a flex
+    item its default `min-width: auto` refuses to shrink below content, so it wraps instead of
+    truncating. **The same failure is already documented at `site.css:244-248`** (shrink pressure
+    landing on the item with no min-content floor; that fix protected the icon and left the title
+    exposed), and the correct idiom is already used at `deck.css:761`.
+    **Fix = two parts, and the label alone is not enough.** Measured at 240px: the title needs
+    **146px** for one line, the label + gap is worth **66px**, hiding it leaves **103px** — still
+    wrapping. So: **(a)** give the brand `min-width: 0; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis` — this is the real fix and bounds the bar at one line for *any* book
+    title at *any* width; **(b)** hide the `Chapters` label below ~**22rem** (measured: with the label
+    the title holds one line to ~360px and wraps at 320px; without it, to ~280px). **Safe to hide:**
+    the button is `<button aria-label="Chapters"><svg/><span>Chapters</span></button>`, so the
+    accessible name survives `display: none` on the span — no `.tali-sr-only` needed.
 
-25. **Pre-public release checklist: one owner decision left** (detail:
-    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
-    items shipped 2026-07-25 (`dos-pages`: a ws `?page=` the site cannot resolve no longer allocates
-    a never-evicted `PageState`; **DEP-03**: mermaid vendored at 11.16.0 with an explicit
-    `securityLevel: 'strict'`, `THIRD_PARTY.md` updated and now drift-locked by a test that reads the
-    version out of the bundle itself; `dos-rich`: an 8 MB cap on rich-output bytes, the axis the
-    stream-byte and output-count caps both missed; `dos-ws-size`: `max_message_size` on both ws
-    upgrades; **CMD-01**: the warm pool logs its resolved interpreter like the cold path already did).
-    **What remains is not a task:**
-    - **oss-4 — RULED 2026-07-25: deferred, and the public flip with it.** The owner is not
-      going public yet ("I'll do it at the end of summer; before that I want to hone the tool
-      to its final form"). So this is not a task and not a blocker: nothing here gates any
-      other work. Re-ask when a flip date is actually set. The question when it is: whether to
-      prune `notes/` + `docs/superpowers/`. No secret is exposed (the `--host` token design doc
-      discloses only a per-session UUID mechanism), but it is a curated bug roadmap.
+48. **MOB-7 (LOW): the desktop nav is served to landscape phones.** The burger appears only under
+    40rem, so at 844×390 a touch phone gets the full **7-link desktop nav at 26px** minimum link
+    height (clears the 24px AA floor, misses 44px AAA), plus search and settings. Deck menu launcher
+    is 34×34. Same root cause as MOB-3.
+
+**Measured healthy in the same round — do not re-scope:** the phone slide-feed (A3) works
+(`html.tali-feed`, `scroll-snap-type: y mandatory`, 10,972px over 14 slides, one-viewport snapping,
+live rotation re-routing); zero horizontal overflow on any page or viewport; zero console
+errors/warnings; the ⌘K badge *is* correctly hidden at 390px; body typography on a phone is right
+(16px, 39 characters per line — the desktop ~70ch keep is unreachable at 390px and 39ch is normal
+mobile practice). **Observation, not a finding:** 11 of 18 code blocks scroll horizontally rather
+than wrap (`white-space: pre`, worst 368px); scrolled code is often better than wrapped code and the
+affordance is visible, so this looks deliberate — it becomes an item only if the author disagrees.
+
+#### B. Buildable, but low yield on its own — **empty**
+
+An item here is cheap to build and therefore easy to build *without asking whether it should be*. Two
+of the last three closed on **evidence rather than code**, which is the outcome this band is most
+likely to produce.
+
+#### C. Blocked on an owner ruling (not a task until then)
+
+25. **Pre-public release: one decision, parked on a date** (detail:
+    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). All five code items
+    shipped 2026-07-25. **oss-4 — ruled 2026-07-25: deferred, and the public flip with it.** The owner
+    is not going public yet ("I'll do it at the end of summer; before that I want to hone the tool to
+    its final form"), so this gates no other work. Re-ask when a flip date is set; the question then is
+    whether to prune `notes/` + `docs/superpowers/` (no secret is exposed — the `--host` token design
+    doc discloses only a per-session UUID mechanism — but it is a curated bug roadmap).
     **Verified NOT open, do not re-scope:** `SECURITY.md` exists, the tracked `/home/bogo` paths are
     scrubbed, and PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped 2026-07-17. Refuted by the
-    audit and not worth revisiting: `dos-yaml` (libyaml rejects the alias bomb in ~30 ms — the guard is
-    in the C library, so grepping our source for it correctly finds nothing) and NET-3
-    (non-constant-time token compare).
+    audit: `dos-yaml` (libyaml rejects the alias bomb in ~30 ms — the guard is in the C library, so
+    grepping our source for it correctly finds nothing) and NET-3 (non-constant-time token compare).
 
-24. **RULED 2026-07-26, both calls made — no task left; kept only for its do-not-re-scope tail**
-    (detail: [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)).
-    - **`section-extents` = option (b)**, shipped the same day: `data-section-end` on every heading
-      block, pinned by `corpus/layout/structure.tmd` + `tests/section_extents.rs`. Option (a), the
-      real `<section>` wrapper, stays deferred exactly as the audit asked (it changes the
-      parent/child shape the incremental diff mounts). Three sub-decisions the ruling did not
-      cover are recorded in the commit and pinned by tests: extents **nest**, they are
-      **inclusive of the heading**, and generated furniture (References, footnotes) belongs to no
-      section. Decks are excluded — `deck.rs` already emits a real `<section>` per slide.
-    - **`book-breadcrumb` = NO**, D114 stands. The audit had already downgraded it to "cheap and
-      mildly orienting", and its own dwell-time evidence says the first viewport is the screening
-      surface, which a fourth persistent top element spends. Do not re-raise without new evidence.
-    **Invariants for anything in this area:** the finding lands in the CLI or the editor and the
-    **author** edits the `.tmd` (no preview gesture, no auto-fix, no write-back); no LLM anywhere
-    (byte-identical build output is actively pinned, and `include_str!` cannot carry model weights);
-    zero new YAML keys.
-    **Deferred, do not schedule:** a reading-density fold (three unbuilt prerequisites, premise
-    measurably overstated); `content-visibility: auto` (needs option (a), which is deferred); the
-    `:~:text=` half of deep links (669 of 876 dogfood paragraphs contain inline code, so fragments
-    miss exactly the identifier queries they exist for; the `?h=` half ships alone);
-    `changed-since`; read-aloud (out on cost, not principle).
-    **Killed by verification, do not re-scope:** section hover previews (built and deleted at
-    `318f22f`, pinned by three tests), a TOC entry budget (the depth window is already relative),
-    margin footnotes (two real footnotes exist in the whole repo), and `taliesin split` (it would
-    repair 0 references on the chapter it was designed for).
-    **Note for the author, no code in it:** roughly half the measured problem is *content*. Zero of
-    37 dogfood pages set `description:`, 8 xref links exist across 19 chapters, 0 backlink lines
-    render, and `docs/internals` is 60,208 words with zero `{.definition}` blocks. A glossary, a term
-    index and a float digest all produce near-empty output until an authoring pass happens.
-
-17. **CLOSED 2026-07-26 — F-01 shipped, F-02 was never a defect** (detail:
-    [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
-    The probe itself found 0 interaction-bugs across the tabsets × full-text-search × API-reference
-    cluster; `corpus/tarn/` remains the fixture it produced.
-    - **F-01 shipped.** The author ruled "establish the licence, vendor if clean"; it is clean.
-      `SublimeText/PowerShell`'s `.sublime-syntax` (MIT) is vendored at
-      `crates/core/assets/syntaxes/`, consulted last so it can only fill a hole, and pinned by
-      `corpus/highlight.tmd`. **Every recorded fact about the fix was wrong and had to be
-      re-derived — the third time running for this entry.** The `LICENSE.txt` that "404s" is
-      `LICENSE` (MIT, Microsoft). `plist-load` is already enabled *and* irrelevant: it covers themes
-      and metadata, and syntect loads `.sublime-syntax` only, so vendoring the filed `.tmLanguage`
-      would have shipped a dead file. Only "two-face has no PowerShell" held up, and that was
-      re-verified by enumeration rather than trusted.
-    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API
-      entries; the linter is correct (demote entries to `##`). An authoring-DX nuance, not a defect.
-
-2. **Deck presenter tools — RE-RULED 2026-07-26: still nothing, keep deferred.** One-command deck
-   publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
-   `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"). Asked again on
-   2026-07-26 and declined again on the same grounds: no real speaker ask has appeared. Kept visible
-   so it is not re-scoped; revive only when the author actually presents from Taliesin.
-
-### D. Blocked on a device, a real user, or is working-as-intended
+#### D. Blocked on a device, a real user, or working-as-intended
 
 Kept visible so they are not re-scoped. Revive on a real signal, not on capacity.
 
-10. **Two kernel limitations with no clean fix** (P3, dev-facing; the rest of the old
-    "reliability / test-infra long tail" is closed — AP3-3 fixed 2026-07-25, the mermaid-SRI
-    bullet was moot by construction, the `mounts:` live-HTTP test moved to Tier 3, and the
-    op-batching bullet is in "Decided against" with its measurement):
+4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
+   deck mode); drop `fitSlide` from the resize path (needs a lazy fit-on-show refactor first). *(The
+   desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down opens the overview map, with a
+   250 ms hysteresis.)* **The device blocker is gone** (the author is testing on a phone) but this
+   item is **still not measured**: the 2026-07-26 mobile audit covered chrome, affordances and the
+   feed's scroll mechanics, and deliberately did not exercise pinch/pan or touch gestures. It stays
+   in band D until someone measures the gestures on real hardware — Chromium touch emulation is not
+   evidence for a pinch.
+
+10. **Two kernel limitations with no clean fix** (P3, dev-facing):
     - **R cold kernels still orphan on ungraceful parent death.** IRkernel has no
       `ParentPollerUnix` equivalent, so there is nothing to arm; PDEATHSIG is the only other
       lever and is hazardous. R is rarely the cold single-doc path, and the warm-pool,
@@ -339,57 +371,39 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
       (The old note called this file do-not-touch; that was the completed rewrite-scoping
       list, not a freeze — see CLAUDE.md. It is still unfixed, just not forbidden.)
 
-4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the phone-feed
-   deck mode; hard to verify without a device); drop `fitSlide` from the resize path (needs a lazy
-   fit-on-show refactor first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down
-   opens the overview map, with a 250 ms hysteresis. What that left behind is all shipped or ruled —
-   see "Deck-motion: the whole item is closed" under "Decided against", formerly item 28.)*
+12. **i18n / Unicode: done bar a demand-driven residual.** The LSP UTF-16 fix shipped 2026-07-22
+    (detail: [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)).
+    *Residual, do not spin up without a real ask: RTL layout, CJK line-breaking, non-ASCII heading-slug
+    collisions.*
 
-18. **Demand-probe (interactive-explainer, persona #3) findings** (P3, in-scope; detail:
-    [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)).
-    A single-page explorable explanation (`corpus/descent/`, gradient descent, pinned by `descent.rs` +
-    a `/gallery/descent` exhibit) stacked the interactive cluster the corpus never combined on one page —
-    `{{< input >}}` sliders × a **draggable** `{js}` graphic × a `.scrolly` sticky `{js}` graphic × a
-    reactive Plot cell × math × two numbered SVG figures — and it ALL works, standalone and mounted, 0
-    console errors. Two remaining P3 findings (F-01 read-projection fusion shipped 2026-07-22, see "Already
-    shipped"):
+18. **Demand-probe (interactive-explainer) residuals** (P3; detail:
+    [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)):
     - **F-02 (gap, P3):** an authored numbered figure is emitted as `<img src="fig.svg">`, and an
-      `<img>`-embedded SVG is style-isolated: it can't see `--tali-*` or the `qmd-theme` toggle, only the
+      `<img>`-embedded SVG is style-isolated: it can't see `--tali-*` or the theme toggle, only the
       **OS** `prefers-color-scheme`. So a reader who forces the page theme opposite their OS gets the
-      figure in the wrong palette (light-palette labels, weak contrast, on a dark page). Inline `{js}`/SVG
-      graphics on the same page track the toggle fine (they use `--tali-*`). Candidates: an inline-SVG
-      figure path so `![](x.svg)` inherits page vars, or document a neutral-palette convention. Edits
-      would touch `crates/core/src/render/figure.rs` (figure emission).
+      figure in the wrong palette. Inline `{js}`/SVG graphics on the same page track the toggle fine.
+      Candidates: an inline-SVG figure path so `![](x.svg)` inherits page vars, or a documented
+      neutral-palette convention. Edits `crates/core/src/render/figure.rs`.
     - **F-03 (WAI, authoring nuance):** a `{js}` "once" cell's returned node is mounted *after* the cell
       body runs, so an attachment-gated init (`if (!node.isConnected) return`) silently no-ops the first
-      paint. Gate teardown on `invalidation`, not DOM attachment. WAI but a sharp edge — candidate: a doc
-      line in the `{js}`-cell reference, or an optional post-mount hook.
-
-12. **i18n / Unicode multibyte correctness: DONE bar a demand-driven residual.** The LSP UTF-16 encoding
-    fix shipped 2026-07-22 (folded from AP5; detail:
-    [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)): the stdio
-    LSP advertises `positionEncoding: utf-16` and converts at every boundary (I18N-2/3/4/5); I18N-1 was
-    resolved as documentation (block start columns are always ASCII-prefixed, so the client conversion was
-    unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
-    layout, CJK line-breaking, non-ASCII heading-slug collisions.*
+      paint. Gate teardown on `invalidation`, not DOM attachment. Candidate: a doc line in the `{js}`-cell
+      reference, or an optional post-mount hook.
 
 41. **R graphics cannot follow the page theme; matplotlib figures can** (P3, M; detail:
     [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md), AN-2b).
-    Taliesin renders every inline matplotlib figure **twice** (light + dark foreground) and swaps
-    them on the theme toggle (`kernel.rs`'s `MPL_THEME_PREAMBLE`); measured on `corpus/analyst/` the
-    Python figure emits two genuinely different PNGs and the ggplot figure emits one, so a
-    mixed-language report has half its figures track the reader's theme and half baked. **Blocked on
-    being a feature, not a fix:** a real version re-renders the figure twice against two
-    foregrounds — real design, and only worth it on a real ask. **Do NOT confuse this with AN-2a,
-    which is fixed:** the R device no longer paints opaque white under a transparent figure
-    (`KernelSpec::r` now carries `options(repr.plot.bg = "transparent")`). Transparency lets the page
-    show through; the *ink* is still baked at one colour, and that is what is left here. The
-    documented workaround (a neutral mid-grey palette) is in the corpus doc and is the second
-    instance of the "neutral-palette convention" option named in item 18's F-02. Minor and separable:
-    an R figure is emitted `<img alt="output">` where the Python pair is `alt=""`; both sit inside a
-    captioned `<figure>`, so `alt=""` is right and `"output"` is noise read aloud.
+    Taliesin renders every inline matplotlib figure **twice** (light + dark foreground) and swaps them
+    on the theme toggle (`kernel.rs`'s `MPL_THEME_PREAMBLE`); measured on `corpus/analyst/` the Python
+    figure emits two genuinely different PNGs and the ggplot figure emits one, so a mixed-language
+    report has half its figures track the reader's theme and half baked. **Blocked on being a feature,
+    not a fix:** a real version re-renders the figure twice against two foregrounds. **Do NOT confuse
+    this with AN-2a, which is fixed** — the R device no longer paints opaque white under a transparent
+    figure; transparency lets the page show through, but the *ink* is still baked at one colour, and
+    that is what is left here. The documented workaround (a neutral mid-grey palette) is the second
+    instance of the convention named in item 18's F-02. Minor and separable: an R figure is emitted
+    `<img alt="output">` where the Python pair is `alt=""`; both sit inside a captioned `<figure>`, so
+    `alt=""` is right and `"output"` is noise read aloud.
 
-### E. Gated, not actionable now (kept visible, do not spin up)
+#### E. Gated, not actionable now (do not spin up)
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused 2026-07-17.
   Eviction drops the executor and kills its kernel child processes, so this is kernel lifecycle, not a
@@ -407,71 +421,65 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
   silently, which makes it a feature question not a defect). Edits `crates/core/src/cite/`, needs
   sign-off if revived.
 
-## Audit perspectives (pick ONE per session)
-
-Proactive, findings-generating angles the ordinary rounds structurally cannot see: they need the
-tool *run hard*, fed *hostile input*, or reasoned about as a *concurrent system*. **Working method:**
-one perspective per session, solo; write a dated findings doc in `notes/`; add a row to
-[AUDITS.md](AUDITS.md)'s round index; file the build-ready findings into "Open work" under their own
-prefix. **Every audit's first job is to falsify its own entry:** the last four rounds each found
-their entry overstated, misnamed, or already-shipped, so budget the first hour for that.
-
-**All twelve are RUN** (AP6 closed the set on 2026-07-25), **and so are all three non-AP lenses**
-(AP1's residuals closed the set on 2026-07-26). Nothing here is left to take: the table below is now
-a complete record, not a menu.
-
-| Round | Result | Work went to |
-|---|---|---|
-| [AP1 perf/scale](2026-07-23-ap1-performance-scale-audit.md) | no quadratic anywhere; the one tax is two full-site passes per warm save | PERF-1, shipped |
-| [AP2 fuzzing](2026-07-22-ap2-robustness-fuzzing-audit.md) | zero unexpected panics; two input-bound gaps (uncatchable abort, comrak O(n²) hang) | item 26, shipped |
-| [AP3 concurrency](2026-07-25-ap3-concurrency-audit.md) | every predicted race refuted; the cost is head-of-line blocking (0.11s → 12.15s) | AP3-1 shipped; AP3-3 fixed 2026-07-25 (wrong test AND wrong cause on file) |
-| [AP4 cache/freeze](2026-07-22-cache-correctness-audit.md) | design sound; one real cold-build stale hit | AP4-1 shipped, rest shipped |
-| [AP5 i18n/sourcepos](2026-07-22-i18n-unicode-sourcepos-audit.md) | premise mostly refuted; the real find is three position encodings in the LSP | item 12 |
-| [AP7 a11y](2026-07-25-ap7-accessibility-audit.md) | document sound, application not; defects are all "content changes silently" | all five shipped |
-| [AP8 determinism](2026-07-22-determinism-audit.md) | positive bill of health; byte-identical across processes | closed |
-| [AP9 semantic HTML](2026-07-22-semantic-html-audit.md) | strong positive; its one finding was a stale-artifact false lead | closed |
-| [AP10 codebase health](2026-07-23-ap10-codebase-health-audit.md) | healthy; dead code ~nil; lsp/mcp lacked a panic boundary | item 21, shipped |
-| [AP6 cross-browser](2026-07-25-ap6-cross-browser-audit.md) | **no findings**: Firefox == Chromium on every measured axis, 0 console errors | closed |
-| [AP11 chaos](2026-07-25-ap11-chaos-audit.md) | failure paths well-built; the defect is wording (a missing interpreter reported as an author exception) | shipped |
-| [AP12 offline](2026-07-22-offline-guarantee-audit.md) | own assets genuinely offline; gap is author-introduced external refs | item 13 |
-| [AP1-residual + docs-behaviour](2026-07-26-ap1-residual-and-docs-behaviour-audit.md) | kernel does NOT leak (saturates over 1,000 execs) — the freeze cache was count-capped, never byte-capped; and the guide documented `about:` for 9 days after its removal | AP1-R1 + DOCS-2/3/4/5, all shipped 2026-07-26 |
-
-**Lenses that were never AP-shaped** (proposed 2026-07-25) — **all three have now run.** Two ran on
-2026-07-25 (*diagnostics-message quality*, *docs-vs-behaviour drift*, findings in
-[2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md));
-the third (**AP1's unchased residuals**) ran on 2026-07-26 together with the *behavioural* half the
-docs lens had left untouched, findings in
-[2026-07-26-ap1-residual-and-docs-behaviour-audit.md](2026-07-26-ap1-residual-and-docs-behaviour-audit.md).
-Everything they filed has shipped.
-
-
 ## Tier 3: demand-driven (below every band above; build only when a real user asks)
 
-**Waits on demand, not on capacity.** The PMF audit's verdict is that what is missing is
-**real users, not more features**, so nothing here is scheduled. One line each; the reasoning lives
-in the linked audits.
+**Waits on demand, not on capacity.** The PMF audit's verdict is that what is missing is **real users,
+not more features**, so nothing here is scheduled. One line each; the reasoning lives in the linked
+audits.
 
-- **An end-to-end live-HTTP test for `mounts:` serving** (was item 10's second bullet). The F-04 work
-  landed and unit-pins the pure `match_mount`/`resolve_project`/`classify_change` helpers, and live
-  mount serving is browser-verified; what is missing is only the bin-crate gap of a real
-  `reqwest`/`TcpListener` harness. Mounts are preview-only, so this waits for a reason to exist.
-- **Companion (Phase 2):** editor commands (`.tmd`-buffer text transforms only, never preview gestures);
-- **LaTeX hover-preview in the VS Code editor** (Companion Phase 2, a sub-case of the LSP item below):
-- **`.tmd` format-on-save** (open question): a source pretty-printer must preserve `data-sourcepos` line
+- **An end-to-end live-HTTP test for `mounts:` serving.** The F-04 work unit-pins the pure
+  `match_mount`/`resolve_project`/`classify_change` helpers and live mount serving is browser-verified;
+  what is missing is only the bin-crate gap of a real `reqwest`/`TcpListener` harness. Mounts are
+  preview-only, so this waits for a reason to exist.
+- **Companion (Phase 2):** editor commands (insert block / reorder slide) — strictly `.tmd`-buffer text
+  transforms in the editor, never preview gestures.
+- **LaTeX hover-preview in the VS Code editor** — a sub-case of the LSP item below: a `HoverProvider`
+  resolving `@fig-2` to "Figure 2", a front-matter key's doc, or a `[@key]` reference, over data
+  `vocab`/`symbols` already carry.
+- **`.tmd` format-on-save** (open question). A source pretty-printer would write the editor *buffer*
+  (the allowed surface) but must preserve `data-sourcepos` line stability for click-to-source.
+  Brainstorm whether the reflow is worth the click-to-source risk before any work.
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto to Taliesin migration +
-- **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic).
-- **`taliesin publish` follow-ups:** optional `--init` wrapper for the one-time `wrangler` setup;
-- **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none pinned; promote with a corpus pin
-- **Wave 5** (`ROADMAP.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec, `{glsl}`
-- **Site-level shared bibliography + hygiene** (M). `bibliography:` is per-document only
+  portability stress test (exercises `book.rs`, includes, the freeze cache, file-mode portability). If
+  it renders clean, consider pinning a reduced version under `corpus/`.
+- **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic, kernel-free and
+  network-free).
+- **`taliesin publish` follow-ups:** an optional `--init` wrapper for the one-time `wrangler` setup.
+- **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none pinned; promote one only with a
+  corpus pin).
+- **Wave 5** (`ROADMAP.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec (RFC-2119
+  dialect + protocol reference), `{glsl}` cell-language registry, SEO completeness (sitemap/robots/JSON-LD
+  at publish with `url:`).
+- **Site-level shared bibliography + hygiene** (M). `bibliography:` is per-document only, so a growing
+  blog retypes keys per post and nothing reports an unused or duplicate entry. Allow `bibliography:` in
+  `_site.yml` merged under each page's own, plus two **read-only** diagnostics ("entry never cited",
+  "duplicate key"). Explicitly does not touch the BibTeX parser / CSL formatter.
 - **Author structure panel** (M/L). A read-only preview sidebar: the heading tree with per-section word
+  count and a badge per node for unresolved xref / TODO / over-goal length; click to scroll. This is the
+  *revision* view, not the reader TOC. Scope it as an annotation layer on the dev panel, or it grows to L.
 - **Session revision digest** (M). Surface the `BlockOp` stream the client already receives: a session
-- **Block-level transclusion** `{{< include file.tmd#sec-id >}}` (M). Reuse a section across a series.
-- **LSP for the language intelligence** (L). Everything an LSP needs is already in Rust (`check`,
-- **Image optimization** (WebP/AVIF + `srcset` + lazy-load behind a content-hashed cache) — until posts
+  word delta (`+340 / -180`) plus a feed of the last N ops, each click-to-source. Honest caveat: the pin
+  is behavioural (a `tools/live-edit-bench` assertion), not a corpus doc.
+- **Block-level transclusion** `{{< include file.tmd#sec-id >}}` (M). Reuse a section across a series
+  without copy-paste drift. Must ride **on top of** the `includes.rs` source-map pass (resolve the
+  fragment to a block range, hand the existing machinery a sub-slice), never rewrite it. Hard merge
+  gate: the source map must not perturb.
+- **LSP for the language intelligence, browser stays the view** (L). Everything an LSP needs is already
+  in Rust (`check`, `vocab`, `register_xref`, the bib parser, `closest()`); it is write-once for
+  Neovim/Helix/Zed/VS Code and removes the drift that causes the `#| label:` completion gap (JS regexes
+  reimplementing Rust knowledge). An LSP cannot render the preview and does not need to.
+- **Image optimization** (large): WebP/AVIF transcode + responsive `srcset` + lazy-load behind a
+  content-hashed asset cache. Deferred until posts get image-heavy.
 - **Marketing site** (deferred, feature-first; rolls into a demo-machine rebuild): `live-edit-hero-demo`
-- **`serde_yaml` fallback watch-item:** if 0.9 breaks against a future serde/edition, swap to
-- **PMF demand-driven tail** ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md), Tier C; each waits on a
+  clip; swap `site/_site.yml` placeholders; demo-led hero rebuild; mobile embed refine; deploy.
+- **`serde_yaml` fallback watch-item:** the `Cargo.toml` workspace comment names `serde_yml`, which
+  carries RUSTSEC-2025-0068 (unsound + unmaintained); `serde_norway` is 1+ yr stale. The maintained
+  continuation is **`serde_yaml_ng`** (v0.10). No urgency (trusted local config; 0.9 still builds). If
+  0.9 ever breaks against a future serde/edition, swap, gated on a test that `Error::location().line()`
+  still works. Fix the stale comment when touched.
+- **PMF demand-driven tail** ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md), Tier C): a
+  document-level reader show/hide-code toggle, a reader code+data download affordance, instant
+  client-side navigation polish. Each waits on a real ask.
 
 ## Quarto catalog (policy, not a task)
 
@@ -482,248 +490,99 @@ and were well-grounded on 2026-07-03, but the heading status is degenerate and t
 misleading. A skeptic verdict is evidence, never a ruling (its "drop Atom feeds" verdict was overruled;
 Atom shipped with autodiscovery).
 
-## Already shipped: do not re-add / re-scope
+## Do not re-add / re-scope
 
-A compact **do not re-add / re-scope** guard, not a changelog: each line names work that is
-finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
-than re-expanding this list.
+**One line per entry.** The detail is in git, in [AUDITS.md](AUDITS.md), and in the dated findings
+docs; look there rather than re-expanding this list.
 
-- **The 2026-07-26 owner-ruling batch (items 24, 17, 2 — band C, cleared by asking rather than by
-  waiting).** **`section-extents` = option (b)**: every heading block now carries
-  `data-section-end="<block-id>"`, the id of the last block its section covers. Extents **nest** (an
-  `##` contains its `###`s; the flat run is recoverable from the next heading, the nesting is not),
-  are **inclusive of the heading** (so an empty section has no missing-value case), and stop before
-  the **generated furniture** (References, footnotes) that no section owns. Decks are excluded:
-  `deck.rs` already emits a real `<section>` per slide. Pinned by `corpus/layout/structure.tmd` +
-  `tests/section_extents.rs`; declared in `token_contract.rs`'s `NO_RUNTIME_CONSUMER` because having
-  no consumer *yet* is the decision. Option (a), the real wrapper, stays deferred.
-  **`book-breadcrumb` = NO**, D114 stands. **F-01 PowerShell shipped**: a vendored MIT
-  `.sublime-syntax`, consulted last, pinned by `corpus/highlight.tmd`, with
-  `vendored_syntaxes_are_attributed_and_carry_their_licence` as the recurrence gate — and every
-  recorded fact about that fix turned out wrong (wrong licence filename, wrong feature, wrong file
-  format), which is the third re-derivation that entry has needed. **Deck presenter tools** declined
-  again on the same grounds.
-- **The 2026-07-26 reporting-surface batch (items 39 + 40, the last build-ready code in this
-  file).** **AN-5**: an unnumbered cross-page `@sec-` rendered as the bare word "Section". Fixed on
-  the *label*, not by harvesting a number (that path is refuted in `harvest_xref_numbers`'s own
-  comment): `XrefTarget` carries the target heading's text and a reference with no number names its
-  target — `Section “Is the canary still slower?”`. A number still wins where one exists, so a book
-  is untouched. The new field is inside `XrefTarget: PartialEq` deliberately, so editing a heading
-  re-renders the pages that name it. **AN-6**: per-document validation reported every *valid*
-  cross-page reference as `TAL-XREF-UNDEF` while `check <dir>` on the same tree was clean.
-  `site::anchors_defined_elsewhere_in_project` resolves the enclosing `_site.yml` and excuses what
-  the project defines — **scope, not severity**: an anchor no page defines is still an error. The
-  scan is render-free (it reads `#| label:` directly, because a *number* needs a render and a *name*
-  does not) and measures **1.0 ms on `docs/internals`**, against a buffer render the editor already
-  pays per keystroke; no cache, and none needed. Pinned by `corpus/analyst/methods.tmd`, which now
-  makes the cross-page `@sec-model` reference the finding was reported from. **AN-3 + AN-4**
-  documented in `docs/guide/using/code.tmd`, and that page's own `#| tbl-cap:` example — which was
-  itself the AN-4 trap, a bare `describe()` — corrected to the idiom it now describes.
-- **Demand probe #4, the computational-report analyst** (2026-07-26; detail:
-  [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md)).
-  `corpus/analyst/` is a two-page quarterly latency readout and **the only corpus project that runs
-  two languages in one document** (`{python}` pandas/matplotlib cleans + charts, `{r}`
-  broom/ggplot2/patchwork fits + diagnoses, both over one committed `data/latency.csv`). Pinned by
-  `crates/core/tests/analyst.rs` (render-time only, no kernel gated) and exhibited at
-  `/gallery/analyst`. **AN-1 fixed:** `exec::table_wrap` returned a labelled `tbl-` cell's output
-  unchanged when it held no `<table>`, so the spent number and the already-rewritten `@tbl-` link
-  pointed at an id nothing emitted — now it falls back to `table_figure_wrap`, the same degradation
-  `figure_wrap` always had. **AN-2a fixed:** `KernelSpec::r`'s `preambles` was empty where Python
-  has two, so R's inline device kept its default opaque-white background and every R figure came out
-  as a white slab on the dark theme even when the author made the plot's own backgrounds
-  transparent; it now carries `options(repr.plot.bg = "transparent")`. That is **additive, and
-  measured to be** — a default `ggplot` and base-R graphics still rasterise as alpha-less RGB, which
-  is what keeps it from turning every existing R figure dark-on-dark; `tests/r_kernel.rs` asserts
-  both halves. **Measured healthy, do not re-scope:** cross-language freeze isolation
-  (editing one language's cell re-runs 0 cells of the other, both directions, 123 of 140 samples);
-  the `MAX_BYTES` cap binding on a real page (140 edits, linear to ~16.75 MB then a plateau with the
-  entry count falling); one table counter spanning the authored and executed paths in document
-  order; one figure counter spanning both languages; cross-page `@tbl-`/`@fig-` to cell-produced
-  floats carrying the right page and number.
-- **The 2026-07-26 audit batch** (the last two lenses, run and shipped the same day; detail:
-  [2026-07-26-ap1-residual-and-docs-behaviour-audit.md](2026-07-26-ap1-residual-and-docs-behaviour-audit.md)).
-  **AP1-R1**: the freeze cache was capped by entry *count* (1024) and never by *bytes*, and an entry is a
-  whole rendered cell output — 150 edits to one matplotlib cell wrote a 6.71 MB `_freeze/<page>.json`,
-  linear, zero evictions. A 16 MB `MAX_BYTES` budget now bounds it (verified end-to-end: 450 edits
-  plateau at 16.77 MB with the entry count *falling*, where before it grew without limit). **The
-  kernel does NOT leak** — that was the residual's premise and it is refuted, so do not re-scope it.
-  **DOCS-2**: `about:` was removed at `dcf0588` (2026-07-17) and the guide kept documenting it in 28
-  places across 6 pages, including three whole sections and a nonexistent `ABOUT_KEYS`; all purged onto
-  `hero:`, and `frontmatter::guide_vocabulary_gate` (three tests) is the recurrence guard, the third
-  link in the front-matter chain beside the flag and env-var gates. **DOCS-3/4/5**: `footer:`/`logo:`
-  added to the reference page, the wrong `theme` default in `configuration.tmd` corrected (unset is
-  *auto*, not light), and the `image-alt` prose that contradicted PA-M13's own lint rewritten.
-- **The 2026-07-25 band-B batch** — the last three low-yield items, two of them closed on evidence
-  rather than code. **AP3-3** (item 10): the flake was neither the test nor the cause on file; the
-  port re-roll moved off the callers onto `Kernel::start_with_retry`, with a source-level guard
-  against a caller reaching the raw `Kernel::start` again. **PA-M3** (item 11): a listing is a `<ul>`
-  of `<li>`-wrapped cards with an explicit `role="list"` (WebKit drops list semantics under
-  `list-style: none`); the filter hides the item, not the card. **PA-M13**: `image:` without
-  `image-alt:` warns, reading parsed front matter so a YAML example in prose cannot trip it — and the
-  four real corpus omissions it found are fixed with described alt text. **PA-H1's residuals**: a
-  deck keeps `<meta name="theme-color">` with its canvas, and a standalone built deck emits the same
-  social block a standalone page does (a site deck's richer block still wins). **Items 29 and 10's
-  remaining bullets** were closed without code — see "Decided against".
-- **The 2026-07-25 band-A batch** — every build-ready audit finding: AP7-1 (relative heading
-  demotion + a title-block-aware heading rule), AP7-2 (a reactive `{js}` sink announces its output
-  when that output is text, and stays silent when it is a chart), AP7-3 (`.scrolly` /
-  `.code-walkthrough` steps are labelled groups pointing at the stage they drive), AP7-4 (a preview
-  block swap keeps keyboard focus), AP7-5 (a skip link to the in-page TOC), AP3-1 (a bypass lane for
-  cell-free rebuilds), AP11-1 (`TAL-KERNEL`: a cell that never ran is no longer reported as an author
-  exception), DIAG-1 (eight diagnostics catalogued + a zero-`GENERIC` gate), DOCS-1 (two env knobs
-  documented + a gate tying `--help` to the guide). Do not re-derive any of these from the findings
-  docs: the docs describe the *defects*, which no longer exist.
-- **The 2026-07-25 backlink-context + resume batch**
-- **The 2026-07-25 book-wayfinding batch**
-- **The 2026-07-25 hardening batch**
-- **Book-level `theorems:`**
-- **Live-executor mounts (F-04 full fix)**
-- **Structure-preserving, book-aware `read`**
-- **2026-07-22 (late) backlog-clearing pass**
-- **AP8-1 executed-output path scrub**
-- **DET-1 reproducibility guard**
-- **DX audit batch**
-- **E7 `taliesin lsp` (editor-agnostic language server over stdio) shipped 2026-07-22, all capabilities**
-- **DX17(a) headless executed-output (python/r) shipped 2026-07-21:**
-- **Click-to-source into `{{< include >}}`d files already works**
-- **Deck audit**
-- **Polish audit batch**
-- **PMF builds**
-- **Corpus-coverage**
-- **Machine-facing audit**
-- **AI-native packaging + guardrails**
-- **R/Python stream ANSI leak fixed 2026-07-21**
-- **Live defects**
-- **Reduction/modularity**
-- **Ungraceful-death reaping**
-- **`assets/js/*` `tsc`/`@ts-check`**
+### Shipped
 
-## Decided against / do-not-re-litigate
+- **2026-07-26 owner rulings (items 24, 17, 2):** `section-extents` shipped as option (b) —
+  `data-section-end` on every heading block, extents nesting, heading-inclusive, stopping before
+  generated furniture, decks excluded; `book-breadcrumb` ruled **no** (D114 stands); a vendored MIT
+  PowerShell `.sublime-syntax` consulted last; deck presenter tools declined again.
+- **2026-07-26 reporting surfaces (items 39, 40):** AN-5 (an unnumbered cross-page `@sec-` now names its
+  target instead of rendering the bare word "Section"), AN-6 (per-document validation no longer reports
+  valid cross-page refs as `TAL-XREF-UNDEF`; scope, not severity), AN-3 + AN-4 documented.
+- **2026-07-26 demand probe #4, the analyst** (`corpus/analyst/`, the only corpus project running two
+  languages in one document): AN-1 (a labelled `tbl-` cell with no `<table>` no longer emits a dangling
+  xref) and AN-2a (`KernelSpec::r` carries `options(repr.plot.bg = "transparent")`) fixed.
+- **2026-07-26 audit batch:** AP1-R1 (the freeze cache was capped by entry *count*, never by bytes; a
+  16 MB `MAX_BYTES` budget now bounds it) and DOCS-2/3/4/5 (`about:` purged from 28 places across 6
+  guide pages nine days after its removal, plus three smaller drifts).
+- **2026-07-25 band-A batch:** AP7-1..5 (a11y), AP3-1 (a bypass lane for cell-free rebuilds), AP11-1
+  (`TAL-KERNEL`), DIAG-1 (eight diagnostics catalogued + a zero-`GENERIC` gate), DOCS-1.
+- **2026-07-25 band-B batch:** AP3-3 (the port re-roll, above), PA-M3 (listing list semantics), PA-M13
+  (`image:` without `image-alt:` warns), PA-H1's residuals (deck `theme-color` + social meta).
+- **Earlier, closed:** the backlink-context + resume batch, the book-wayfinding batch, the hardening
+  batch, book-level `theorems:`, live-executor mounts (F-04), structure-preserving book-aware `read`,
+  AP8-1's output scrub, the DET-1 reproducibility guard, the DX audit batch, `taliesin lsp`, DX17(a)+(b)
+  headless executed output, the deck audit, the polish audit batch, the PMF builds, corpus-coverage, the
+  machine-facing audit, AI-native packaging, the R/Python ANSI leak, ungraceful-death reaping, and the
+  `assets/js` `tsc` gate.
 
-- **WS op-message batching** (was item 10's perf bullet; declined 2026-07-25 **on measurement, and
-  the premise was right**). `tools/live-edit-bench` on `corpus/posts/em-algorithm/index.tmd` confirms
-  the worst case exactly as filed: an insert near the top emits **55 ops, 53 of them `SetMeta`**, one
-  WebSocket frame each. It is still not worth the protocol churn, because the same run says where the
-  time actually goes: **warm edit 32.2 ms, of which the diff is 0.94 ms**. Batching would save ~4
-  bytes of framing per message (~220 bytes against a 32,303-byte payload, 0.7%) and 54 client
-  handler dispatches, none of it on the critical path. Reopen only if the render cost drops far
-  enough that framing is measurable, or if a profile shows the client's per-message work dominating.
-- **Item 29's two reduction-audit residuals, R1 and T2** (closed 2026-07-25 without code). **R1** —
-  the remaining fork between `text_content` (which decodes `&#8217;`/`&nbsp;` for `llms.txt`) and
-  `render::indexable_text` (which does not) is deliberate, pinned by a passing test, and its
-  sequencing hook is spent; equalizing them would leak raw entities into `llms.txt`. It is a
-  documented decision, not an open task. **T2** — "three site modules each run their own raw-source
-  pre-scan" is *partly rotted*: `site/book.rs` does not want a resolved source at all (it reads the
-  chapter's own leading `# H1`) and its own comment records that it already reads each file once.
-  The real duplication is a six-line read-then-`includes::resolve` idiom in **two** places
-  (`site/xref.rs`, `site/discovery.rs`), and the divergence that looked like a latent bug — xref
-  falling back to `Path::new(".")` where discovery falls back to `root` — is unreachable, because
-  `page.input` is always `root.join(rel)` and so always has a parent. That is below the bar the item
-  set for itself ("not as a standalone refactor").
-- **Deck-motion: the whole item is closed** (was Open-work item 28, lifted out 2026-07-25 because it
-  had no code left in it and "only open tasks live here"; detail:
-  [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)). Option A shipped 2026-07-24;
-  its two residuals (instant overview content flips via a `.tali-nofx` frame, magic-move resynced
-  onto `CAM.morph`/`morphFade`/`morphFadeDelay`) and **(5)** (one viewport-driven wrap count for the
-  whole overview map) shipped 2026-07-25. The owner delegated the remaining calls and they were
-  **ruled, not deferred**: **(3) no-change** — an out-of-order arrival stays visually identical to a
-  step, and distinguishing them buys a cue the reader has no vocabulary for; **(4) Option C (the
-  shared-element FLIP rewrite) is declined** — the overview is a glance at a ~20-slide talk, not a
-  navigator for 100+, and the readability floor closed most of the gap it existed for. **Do not
-  re-cost Option C a third time.** A coverage-weighted refinement of (5) was tried and measured
-  *worse* (15 of 25 slides against 23 of 25); the comment in the source says so — do not re-refine
-  without measuring. Two LOW tradeoffs were flagged to the author and left as-is, not defects:
-  ctrl+wheel-*down* claims browser page-zoom-out over the deck (that is the approved gesture), and
-  it also fires inside an embedded deck on a scrollable page. *(Option B, the mode-invariant
-  serpentine grid, is costed in the audit and was not chosen; the overview work is identical under
-  A and B, so nothing shipped is wasted if B is ever revisited.)*
-- **A separate per-page outline artifact for the book drawer** (`book-outline-artifact` Ship B's
-  own spec, declined 2026-07-25 while building it). Measured rather than argued: the search index
-  the sidecar would duplicate is **172 KB raw / 60 KB gzipped** on `docs/internals` (146 KB / 50 KB
-  on `docs/guide`), it is already lazy-loaded on every page via `TALIESIN_SEARCH_URL`, and Cmd-K
-  fetches it anyway — so a ~13x-smaller sidecar buys ~55 KB gzipped on one cached subresource in
-  exchange for a second copy of `search::page_fragment`'s render-then-number-then-resolve recipe, a
-  second whole-project assembly, a second `refresh_*_for_page` invalidation, a second serve route
-  and a second build write. The drawer reads the same index through the same loader
-  (`window.taliLoadSearchIndex`). Revisit only if the index ever grows past the point where loading
-  it on a drawer open is felt — and measure again before believing it has.
-- **`drawer-typeahead`, a filter box in the chapter drawer** (declined 2026-07-25 with the above).
-  The audit named the cheaper alternative itself: Cmd-K plus the drawer's collapsible outline
-  covers the need, and a second search-like box beside a Search button is a discoverability smell.
-- **A "~N min read" label on a book chapter** (decided 2026-07-25 while shipping the cost signal).
-  `prose::word_count` excludes fenced code and math, so a code-heavy chapter is understated — and
-  reading code is *slower* than reading prose, so a minutes label carries that error into a promise
-  about the reader's time, in the wrong direction, on exactly the chapters this tool exists for. The
-  drawer and Contents print words. (The dated-post reading-time estimate in `render/mod.rs` is a
-  different surface and is unchanged; `is_article` is test-pinned, do not touch it.)
-- **Flipping a book chapter's label to prefer `title:` over its `# H1`** (raised + resolved
-  2026-07-25 while building 23's Ship A). The symptom is real — a chapter's drawer / Contents /
-  Cmd-K label can differ from its `<title>` — but **measured across every book in the repo only 3
-  of 48 chapters differ, and in 2 of them the `# H1` is the BETTER nav label** (`docs/guide`'s
-  preface is `title: Taliesin` opening `# Why Taliesin`; `docs/internals`' is `title: Taliesin
-  Internals` opening `# How Taliesin works`). Flipping the precedence would relabel those to the
-  duller name to fix a divergence the author created on purpose. **The evidence I first filed was
-  overstated**: the "all these surfaces agree" claim I cited is a comment on a *website*-page test
-  and is true in the case it describes; a book chapter simply has a nav label distinct from its
-  page title. Resolved as documentation (a note in `docs/internals/sites.tmd` + a corrected comment
-  at `site/mod.rs`'s website-title test), not code. Nothing is searchable-only-by-one-name: the
-  page record's body carries the rendered title block, so both names find the page in Cmd-K.
+### Decided against
 
-- **CAD-as-code (`{openscad}` / CadQuery cell → live 3-D preview): researched 2026-07-23, NOT built**
-  (detail: [2026-07-23-cad-as-code-research.md](2026-07-23-cad-as-code-research.md); two background research
-  passes, feasibility + market). Technically **feasible and a clean fit** (user-installed `openscad`
-  subprocess → STL → bundled MIT three.js, the same shape as the shipped `graphics3d` viewer) and
-  commercially **legally green** (an arm's-length CLI call is FSF "mere aggregation"; the models are the
-  user's own). Killed on **demand**: wrong audience, tiny niche, and the peer group (Quarto, Jupyter Book,
-  mdBook) ships nothing like it with zero requests for it. **Do not bundle openscad-wasm (GPL).** Five
-  named revisit triggers, any one of which reopens it: (1) *author-pull* — you actually want to write a
-  `.tmd` that is better with a live parametric model (a 3-D-printing build log, a mechanism tutorial); under
-  corpus-plus-roadmap that alone is sufficient, just name the pin doc; (2) the peer group ships embedded
-  CAD; (3) notebook-CAD usage multiplies materially; (4) text-to-CAD becomes reliable *and* moves
-  in-document; (5) a concrete external ask (course, client, grant scope). The implementation path is
-  pre-decided in the doc so a revival needs no re-research.
-- **2026-07-22 rulings** (owner, this session): **DX16 update-nudge = SKIP** — a version check is network
-  egress that undercuts the offline-first identity; drop it (was item 7). **Cross-ref labels i18n = DEFER** —
-  no corpus doc demands it and full i18n is a real scope question; minimal-config says don't add speculative
-  config (was item 8; revive with a corpus pin + a real ask). **Item 9 design-Qs documented as-is** (owner
-  chose only the Vite banner, which shipped): the deck serif/sans inversion (`deck.css`), no `//| uses:`
-  alias (vocab sprawl), and the callout-namespaced/theorem-bare asymmetry all stay as intentional, not
-  bugs. **Deck presenter tools** (one-command publish / laser-spotlight / auto-advance) considered and NOT
-  selected — revive on a real speaker ask.
+- **Deck presenter tools** (one-command publish, laser/spotlight, auto-advance): declined 2026-07-22 and
+  **re-declined 2026-07-26** on the same grounds — no real speaker ask has appeared. Revive only when the
+  author actually presents from Taliesin. (`footer:`/`logo:` from that item did ship.)
+- **WS op-message batching** (declined 2026-07-25 **on measurement, premise confirmed**): the worst case
+  is 55 ops / 53 `SetMeta` in one frame each, but a warm edit is 32.2 ms of which the diff is 0.94 ms, so
+  batching saves ~220 bytes on a 32,303-byte payload (0.7%) and 54 handler dispatches, none on the
+  critical path. Reopen only if render cost drops far enough that framing is measurable.
+- **Item 29's reduction residuals R1 + T2** (closed 2026-07-25 without code): R1's `text_content` /
+  `indexable_text` fork is deliberate and equalizing them would leak raw entities into `llms.txt`; T2's
+  "three modules pre-scan" is partly rotted — the real duplication is a six-line idiom in two places, and
+  the divergence that looked like a latent bug is unreachable.
+- **Deck-motion, whole item** (detail: [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)):
+  Option A + residuals shipped; **(3) no-change** ruled; **(4) Option C (shared-element FLIP) declined —
+  do not re-cost it a third time**. A coverage-weighted refinement of (5) measured *worse* (15 of 25
+  slides vs 23 of 25); do not re-refine without measuring.
+- **A separate per-page outline artifact for the book drawer** (declined 2026-07-25 while building it):
+  the index it would duplicate is 172 KB raw / 60 KB gzipped on `docs/internals` and is already
+  lazy-loaded on every page, so a sidecar buys ~55 KB gzipped on one cached subresource in exchange for a
+  second copy of the render recipe, assembly, invalidation, route and build write.
+- **`drawer-typeahead`** (declined 2026-07-25): Cmd-K plus the drawer's collapsible outline covers it, and
+  a second search-like box beside a Search button is a discoverability smell.
+- **A "~N min read" label on a book chapter** (2026-07-25): `prose::word_count` excludes fenced code and
+  math, so a code-heavy chapter is understated — and reading code is *slower* than prose, so the error
+  goes into a promise about the reader's time in the wrong direction, on exactly the chapters this tool
+  exists for. (The dated-post estimate in `render/mod.rs` is a different surface; `is_article` is
+  test-pinned, do not touch it.)
+- **Flipping a book chapter's label to prefer `title:` over its `# H1`** (resolved 2026-07-25): measured
+  across every book in the repo, only 3 of 48 chapters differ and in 2 the `# H1` is the *better* nav
+  label. Resolved as documentation, not code; nothing is searchable by only one name.
+- **CAD-as-code** (`{openscad}` / CadQuery cell → live 3-D preview; researched 2026-07-23, NOT built):
+  technically feasible and legally green, killed on **demand**. **Do not bundle openscad-wasm (GPL).**
+  Five named revisit triggers in [2026-07-23-cad-as-code-research.md](2026-07-23-cad-as-code-research.md),
+  the first of which is simply author-pull with a named pin doc.
+- **2026-07-22 rulings:** DX16 update-nudge = **skip** (a version check is network egress that undercuts
+  the offline-first identity); cross-ref label i18n = **defer** (no corpus doc demands it); item 9's
+  design questions documented as intentional (the deck serif/sans inversion, no `//| uses:` alias, the
+  callout-namespaced / theorem-bare asymmetry).
 - **2026-07-12 wishlist cut to `FEATURE-IDEAS.md`** (revive only when a corpus doc needs one):
   cross-revision diff, repro manifest, List-of-Figures/Tables/Theorems, interactive tables, line-level
   code xrefs, image `dark=`. Reader text-size/line-spacing controls declined (a11y-exempt substrate in
-  `14-reader-prefs.js`). Stale `new-post`/`new-project` scaffolder skills retired (the `deploy` skill
-  stays).
-- **TODO / FIXME surfacing skipped** (owner ruled 2026-07-10): no `level` concept exists, so a TODO
-  warning would fail `check` on every draft. If revived, design A (preview-only `Diagnostic::info` at
-  `serve/mod.rs::compute_diagnostics`) beats re-plumbing a real `level`; the scan must NOT reuse
-  `prose::strip_inline` (it blanks code, where TODOs live).
+  `14-reader-prefs.js`).
+- **TODO / FIXME surfacing** (owner ruled 2026-07-10): no `level` concept exists, so a TODO warning would
+  fail `check` on every draft. If revived, a preview-only `Diagnostic::info` beats re-plumbing a real
+  `level`, and the scan must NOT reuse `prose::strip_inline` (it blanks code, where TODOs live).
 - **AI-native leftovers declined 2026-07-16:** `check --online` citation resolution (the only proposed
-  network egress; buys a link-rot check at the cost of the offline invariant; if ever revived, check-only,
-  off by default, never reachable from `build`/`publish`); numeric/quoted-claim-without-citation hint
-  (its own spec rates it FP-prone); per-page text/JSON sidecar (redundant, `taliesin read` +
-  `llms.txt`/`llms-full.txt` ship).
-- **Refuted by measurement (do NOT re-scope):** **heading-demotion (AP9's HTML-1 / former item 14) already
-  ships** (`7e60f6c`, 2026-07-12): a titled HTML doc demotes every body heading one level under its
-  `<h1 class="title">` (`demote_heading_html`, gated Html+titled+`!hide_title_block`, decks/books excluded by
-  construction), so a fresh render/build of a titled page emits exactly one `<h1>`. AP9's "12 `<h1>`" measured
-  a stale gitignored `corpus/bayesian-website/_site/index.html` (a pre-fix build artifact). The only corpus
-  docs with multiple `<h1>` are decks (`deck.tmd`/`deck-marginalia.tmd`/`embed/talk.tmd`), which are exempt by
-  design. `build` does not leak forkserver subtrees (the graceful
-  path is reaped; the *ungraceful* R residual is the only gap, above); the warm pool booting Python on
-  prose-only builds is hygiene, not latency; dev attributes are 0.29% of page bytes (don't strip); a
-  `--version -dirty` marker is stale-by-construction (refused); the `assets/css` stale-embed claim did
-  not reproduce (re-verify for `assets/js` before any touch-render workaround); the 390px `hero:`
-  overflow + theme/video desync are already fixed; include symlink-loop SIGABRT does not exist (Linux
-  caps at `MAXSYMLINKS=40`).
-- **`_redirects`/`_headers` preserved, never generated** (`build.rs:1881` treats them as author-placed
-  deploy metadata; `stale_sweep.rs` pins it). Auto-generating them is a "perfect the default vs add a
-  knob" call; leave as-is unless a real deploy proves it needs one.
+  network egress; check-only and off by default if ever revived), the numeric-claim-without-citation hint
+  (its own spec rates it FP-prone), and a per-page text/JSON sidecar (redundant).
+- **Refuted by measurement (do NOT re-scope):** heading demotion **already ships** (AP9's "12 `<h1>`"
+  measured a stale gitignored build artifact; the only multi-`<h1>` corpus docs are decks, exempt by
+  design); `build` does not leak forkserver subtrees; the warm pool booting Python on prose-only builds
+  is hygiene, not latency; dev attributes are 0.29% of page bytes (don't strip); a `--version -dirty`
+  marker is stale-by-construction; the `assets/css` stale-embed claim did not reproduce (re-verify for
+  `assets/js` before any touch-render workaround); the 390px `hero:` overflow + theme/video desync are
+  fixed; include symlink-loop SIGABRT does not exist (Linux caps at `MAXSYMLINKS=40`).
+- **`_redirects`/`_headers` preserved, never generated** (`build.rs` treats them as author-placed deploy
+  metadata; `stale_sweep.rs` pins it).
 - **Gate the gate:** a drift test that cannot fail is worse than none. Any new drift gate must be
   mutation-checked against exactly the shape it guards.
-- **Library outsourcing decided against** (each verified vs the invariants): hayagriva/biblatex,
-  schemars, jsonschema, morphdom/idiomorph, similar/dissimilar, clap, owo-colors, slug, html-escape,
+- **Library outsourcing decided against** (each verified vs the invariants): hayagriva/biblatex, schemars,
+  jsonschema, morphdom/idiomorph, similar/dissimilar, clap, owo-colors, slug, html-escape,
   lightningcss/palette, IntersectionObserver/scrollspy libs, deck micro-helpers. Keep `two_face` extras
   filling gaps only (the bundled syntect set is consulted first and must win).
 - **Reading-first defaults, research-validated keeps** (do NOT "fix"): serif body for long-form screen
@@ -740,6 +599,5 @@ than re-expanding this list.
 Resolved (2026-06-20): ship as **open source + personal tool**, no company for now (optionality kept:
 sole copyright + trademarkable name; `STARTUP-PLAN.md`). Per the PMF audit (2026-07-18) the tool is
 feature-complete for ~one real user, so the highest-leverage next move is **real users**, not more
-features; the owner is publishing soon to gather feedback. When publishing, lead the copy with the
-**speed moat** (warm server, block-level incremental, no per-edit rebuild), the single most-repeated
-Quarto grievance and the most under-marketed asset.
+features. When publishing, lead the copy with the **speed moat** (warm server, block-level incremental,
+no per-edit rebuild), the single most-repeated Quarto grievance and the most under-marketed asset.

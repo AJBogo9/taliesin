@@ -39,6 +39,7 @@ you run one.
 | [2026-07-25-ap11-chaos-audit](2026-07-25-ap11-chaos-audit.md) | **AP11** chaos / failure injection | was item **36**; degradation paths are well-built (corrupt cache self-heals, unwritable output exits 1), the defect was wording — **AP11-1 shipped 2026-07-25** |
 | [2026-07-25-ap6-cross-browser-audit](2026-07-25-ap6-cross-browser-audit.md) | **AP6** cross-browser (the last AP slot) | **no findings**: Firefox and Chromium byte-identical on every measured axis, 0 console errors. Coverage gaps (WebKit, mobile, the preview path, Windows/macOS) listed in the doc |
 | [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | was items **37** + **38**; **both shipped 2026-07-25**. The fall-through count was 6 in the doc and **8** in fact — the zero-GENERIC test found `.code-walkthrough` and, separately, the two build-only execution diagnostics the check-side sweep structurally could not see |
+| [2026-07-26-mobile-audit](2026-07-26-mobile-audit.md) | **mobile / touch reader experience** — author-proposed from real device testing; the first new lens after the AP slate closed | **eight findings; seven of them share one root cause**: the tree has **zero** input-capability queries (`pointer: coarse` / `hover: none` / `any-pointer`), so every keyboard hint, hover-reveal and presenter tool is gated on viewport *width* or deck *layout mode*. Filed as items **42-49** (band A). The phone slide-feed, page overflow, console and mobile typography all measured healthy. Two traps recorded: `resize_page` floors at ~500px (use viewport emulation), and the deck feed flag lives on `html`, not `.tali-deck` — probing the wrong element made a working feed look dead |
 | [2026-07-26-ap1-residual-and-docs-behaviour](2026-07-26-ap1-residual-and-docs-behaviour-audit.md) | the last two unstarted lenses: **AP1's residuals** + the **behavioural** half of the docs lens | **both shipped 2026-07-26**. Each entry was wrong about where its own defect was: the kernel does NOT leak (it saturates over 1,000 executions) — the unbounded growth was Taliesin's own freeze cache, capped by entry *count* and never by *bytes*; and the docs gates covered flag/env *existence* while the front-matter vocabulary had drifted totally (`about:` removed 2026-07-17, documented for nine more days) |
 
 Rounds with their own narrative entry below (and so already in the ledger): AP1, AP5, AP8, AP9, AP10,
@@ -49,9 +50,33 @@ audit, and the 2026-07-07 multi-surface deep audit.
 two that were still unstarted — AP1's unchased residuals and the *behavioural* half of the docs lens —
 ran on 2026-07-26 and both of their findings shipped the same day. With the analyst probe's own
 reporting-surface findings (AN-3/4/5/6) shipped that afternoon too, bands A and B of
-[backlog.md](backlog.md) are empty and **that file now has no code in it at all**. **There is no
-queued audit angle left**: a further round now needs a *new* lens proposed first, not one taken off
-a list, and the only other way forward is an owner ruling from band C.
+[backlog.md](backlog.md) are empty and **that file now has no code in it at all**. The table above is
+therefore a complete record, **not a menu**: a further round needs a *new* lens proposed first, not
+one taken off a list.
+
+**One such lens was proposed and RUN on 2026-07-26: the mobile audit** (row above; detail
+[2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md)). The author reported it from real device
+testing, and it refilled band A with eight findings after that band had been empty. Its result is one
+root cause behind every symptom: **there is not a single input-capability query in the tree** — zero
+`pointer: coarse`, zero `hover: none`, zero `any-pointer` across every `.css`/`.js`/`.rs` file in
+`crates/` + `web-client/` — so keyboard hints, hover-reveals and presenter tools are all gated on
+viewport *width* or deck *layout mode*, two proxies that both fail by treating a wide or stepped phone
+as a desktop. It was the right shape on the evidence: a **crossed dimension** rather than a stacked
+feature, and three earlier rounds (AP6, AP7, backlog item 4) had each named mobile as *their* explicit
+out-of-scope gap rather than measuring it.
+
+**The next lens is already named by that round's own "Not measured" section:** real iOS Safari and
+Android Chrome (the mobile round was Chromium emulation, which models viewport/DPR/pointer but not
+WebKit, momentum scrolling, the dynamic viewport toolbar or safe-area insets), a phone screen reader,
+tablet widths, and the `--host` QR phone-preview flow — a first-class phone feature with no coverage
+at all.
+
+**A standing lens menu now lives in [backlog.md](backlog.md) under "Proposed audit lenses"** (added
+2026-07-26, so this table can stay a record): six never-run lenses **L1-L6**, four re-runs ranked by
+age against churn measured in each round's *own* surface, and four directions that recent work has
+unblocked (a real device, HEALTH-1's panic boundary, `data-section-end`). Each entry carries the
+measurement that justified it, so a session picking one does not re-derive it. **L1 (path parity) ran
+2026-07-26** → [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md).
 
 What those two rounds left explicitly unmeasured, so it is not mistaken for a clean result: whether the
 freeze cache's per-edit rewrite costs warm-loop latency (the probe's 200 ms poll floors the
