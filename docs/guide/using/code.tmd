@@ -93,8 +93,43 @@ the other kinds of output:
 #| label: tbl-summary
 #| tbl-cap: "Summary statistics by group"
 import pandas as pd
-df.groupby("group").describe()
+from IPython.display import HTML, display
+
+summary = df.groupby("group").mean().reset_index()
+display(HTML(summary.to_html(index=False, border=0)))
 ```
+
+### Publishing a table, rather than printing one
+
+`#| tbl-cap:` captions whatever the cell **publishes**, and the shortest way to
+write a table in either language publishes something you did not mean. Both traps
+are quiet: the page builds, `taliesin check` is clean, and the defect is visible
+only in the rendered output.
+
+In Python, a bare `df` on its own line emits pandas' own repr: a table tagged
+`border="1"` and `class="dataframe"`, a row-index column, and a `<style scoped>`
+block. `scoped` was removed from the HTML standard and no current browser
+implements it, so that style element applies to the whole page instead of to its
+own table. `to_html(index=False, border=0)`, as above, emits plain markup that the
+page's own table styling reaches. Keep the index when its labels carry meaning (a
+`describe()` table, where they name the statistic) and drop it when it is a bare
+row number.
+
+In R, `knitr::kable(format = "html")` returns HTML as a *string*. A Jupyter R
+kernel prints that string, so the reader gets the markup as text (`<table>` and
+all, escaped) in a code block. The same call works under knitr/rmarkdown, which
+splices the string in itself, and that is what makes this a trap rather than an
+obvious mistake. Publish it as HTML instead:
+
+```r
+#| label: tbl-coefs
+#| tbl-cap: "Fitted coefficients"
+IRdisplay::display_html(as.character(
+  kable(tidy(fit), format = "html")
+))
+```
+
+`corpus/analyst/` uses both idioms, with a comment at each one saying why.
 
 ### Folded code
 
