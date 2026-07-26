@@ -77,6 +77,36 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
 /// suggesting they write it are different acts.
 pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 
+/// Vocabulary taliesin USED to honor. A key here is genuinely unknown now, so it still
+/// warns — but a removal and a misspelling are different mistakes and the author needs to
+/// be told which one they made. Consulted by [`unknown_key_message`] ahead of the
+/// did-you-mean search, which would otherwise either stay silent or offer whichever
+/// surviving key happens to be closest, both of which read as "you typed this wrong".
+///
+/// **No entry is phrased as a did-you-mean, even where a successor exists.**
+/// `codes::extract_suggestion` lifts that exact phrase into a structured fix an agent
+/// applies mechanically, and none of these are mechanical renames: `hero:` takes a
+/// different set of sub-keys than `about:` did, so a blind rename trades a warning for a
+/// document that is wrong in a new way. Same reasoning as `validate_unsupported_keys`.
+///
+/// `(scope, key, what to do instead)`, where `scope` is [`unknown_key_message`]'s `what`
+/// label, so a retired *sub*-key is only recognized in the map it actually lived in.
+pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "front-matter key",
+        "about",
+        "it was removed on 2026-07-17 and the landing banner is now `hero:`, which takes \
+         a different set of sub-keys (eyebrow / headline / lead / actions), so this is a \
+         rewrite rather than a rename",
+    ),
+    (
+        "theorems key",
+        "number-within",
+        "it was removed when theorem numbers started scoping to a book chapter \
+         automatically, so nothing replaces it: delete the key",
+    ),
+];
+
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
 pub(crate) const EXECUTE_KEYS: &[&str] = &["echo", "include", "cache"];
@@ -671,6 +701,14 @@ pub fn closest(key: &str, candidates: &[&'static str]) -> Option<&'static str> {
 /// known candidate is within edit distance 2. The single message format shared by the
 /// front-matter, cell-option, callout, and nested-config validators.
 pub(crate) fn unknown_key_message(what: &str, key: &str, candidates: &[&'static str]) -> String {
+    // A key we removed is still unknown, so the classified prefix stays (`codes::classify`
+    // resolves TAL-FM-KEY off it) — but it earns the reason instead of a rename hint.
+    if let Some((_, _, note)) = RETIRED_KEYS
+        .iter()
+        .find(|(scope, retired, _)| *scope == what && *retired == key)
+    {
+        return format!("unknown {what} `{key}`: {note}");
+    }
     match closest(key, candidates) {
         Some(s) => format!("unknown {what} `{key}` (did you mean `{s}`?)"),
         None => format!("unknown {what} `{key}`"),
@@ -735,7 +773,12 @@ mod tests {
         // `nested_key_line` (the sibling test pins `block_key_line`, the top-level one).
         let w = validate_front_matter("---\ntheorems:\n  number-within: chapter\n---\n\nbody\n");
         assert_eq!(w.len(), 1, "got: {w:?}");
-        assert_eq!(w[0].message, "unknown theorems key `number-within`");
+        assert_eq!(
+            w[0].message,
+            "unknown theorems key `number-within`: it was removed when theorem numbers \
+             started scoping to a book chapter automatically, so nothing replaces it: \
+             delete the key"
+        );
         assert_eq!(w[0].line, Some(3), "`number-within` is on file line 3");
     }
 
@@ -821,6 +864,49 @@ mod tests {
             a.iter()
                 .any(|m| m.contains("unknown front-matter key") && m.contains("about")),
             "a stale `about:` should warn now that the feature is gone, got {a:?}"
+        );
+    }
+
+    #[test]
+    fn a_retired_key_reads_as_a_removal_not_as_a_misspelling() {
+        // Removed vocabulary and a typo used to produce the same sentence, so an author
+        // carrying last month's front matter was told only that their key was unrecognized.
+        let a = msgs("---\ntitle: X\nabout:\n  template: jolla\n---\n");
+        assert!(
+            a.iter()
+                .any(|m| m.contains("`about`") && m.contains("removed") && m.contains("hero")),
+            "a removed key must name its successor: {a:?}"
+        );
+        // Retirement is scoped to where the key lived: `number-within` was a `theorems:`
+        // sub-key, never a top-level one.
+        let n = msgs("---\ntheorems:\n  number-within: chapter\n---\n");
+        assert!(
+            n.iter()
+                .any(|m| m.contains("`number-within`") && m.contains("removed")),
+            "a retired sub-key must be recognized in its own scope: {n:?}"
+        );
+        // NEVER phrased as a did-you-mean, even though `about:` has a successor:
+        // `codes::extract_suggestion` lifts that exact phrase into a structured fix an
+        // agent applies mechanically, and `hero:` takes different sub-keys, so a blind
+        // rename would produce a document that is wrong in a new way.
+        for m in a.iter().chain(n.iter()) {
+            assert!(
+                !m.contains("did you mean `"),
+                "no machine-applied rename: {m}"
+            );
+        }
+        // The classified prefix has to survive, or `codes::classify` stops resolving these
+        // to TAL-FM-KEY (it keys off this substring).
+        assert!(
+            a.iter().any(|m| m.starts_with("unknown front-matter key")),
+            "diagnostic-code classification keys off this prefix: {a:?}"
+        );
+        // And an ordinary typo must still get its suggestion: the registry adds a case, it
+        // does not replace the did-you-mean path.
+        let t = msgs("---\ntreme: dark\n---\n");
+        assert!(
+            t.iter().any(|m| m.contains("did you mean `theme`")),
+            "a real typo still gets its suggestion: {t:?}"
         );
     }
 
