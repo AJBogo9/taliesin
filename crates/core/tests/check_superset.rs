@@ -342,7 +342,7 @@ fn corpus_link_text_fixture_fires_once_and_stays_silent_on_its_near_misses() {
 fn all_diagnostics_for(path: &Path) -> Vec<taliesin_core::render::Warning> {
     let src = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
+    let doc = taliesin_core::render_single_doc(&src, base);
     let mut out: Vec<taliesin_core::render::Warning> = Vec::new();
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
         out.push(taliesin_core::render::Warning::new(message).at(None, line));

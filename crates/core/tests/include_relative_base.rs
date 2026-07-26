@@ -1,17 +1,22 @@
 //! Regression test for the relative-path `{{< include >}}` silent-drop bug.
 //!
 //! When `taliesin build/render` is given a *relative* path
-//! (`corpus/posts/pca-geometry/index.tmd`), the document's base dir is the
-//! relative parent `corpus/posts/pca-geometry`. The include resolver's
-//! containment check used to walk the parents of that *relative* path, which hit
-//! an empty component before reaching the absolute repo root that holds `.git`,
-//! fell back to the doc dir itself, and then rejected the legitimate
-//! `../../_includes/three-scene.tmd` include as "escaping" that fake root — so the
-//! include was silently dropped and the literal directive leaked into the HTML.
+//! (`corpus/tech-blog/posts/pca-geometry/index.tmd`), the document's base dir is the
+//! relative parent. The include resolver's containment check used to walk the parents of
+//! that *relative* path, which hit an empty component before reaching the absolute
+//! ancestor holding the project marker, fell back to the doc dir itself, and then
+//! rejected the legitimate `../../_includes/three-scene.tmd` include as "escaping" that
+//! fake root — so the include was silently dropped and the literal directive leaked into
+//! the HTML.
 //!
 //! The fix absolutizes the base dir before the parent-walk. This test pins it: a
 //! relative base must resolve the include (HTML contains the scene definition) and
 //! must NOT leave the literal `{{< include` directive behind.
+//!
+//! It walks for the project's `_site.yml`, deliberately not for the repository's `.git`.
+//! Pointed at `corpus/posts/` (which has no `_site.yml` above it) this test passed only
+//! inside a checkout and failed in any VCS-free copy of the same bytes — which is what
+//! kept the cargo-mutants baseline red. See `include_root_parity.rs` for the rule.
 
 mod common;
 use common::TempProj;
@@ -36,26 +41,28 @@ impl Drop for CwdGuard {
     }
 }
 
-/// The repo root (parent of `corpus/`), which holds `.git`.
+/// The repo root (parent of `corpus/`), so the relative paths below mean what they say.
 fn repo_root() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 #[test]
-fn relative_base_resolves_include_against_repo_root() {
+fn relative_base_resolves_include_against_the_project_root() {
     let _lock = cwd_lock();
     let prev = std::env::current_dir().expect("cwd");
     let _restore = CwdGuard(prev);
 
     std::env::set_current_dir(repo_root()).expect("cd to repo root");
 
-    // Exactly the CLI's `build corpus/posts/.../index.tmd` shape: a relative doc
+    // Exactly the CLI's `build corpus/tech-blog/posts/.../index.tmd` shape: a relative doc
     // path whose parent is the relative base.
-    let rel_doc = Path::new("corpus/posts/pca-geometry/index.tmd");
+    let rel_doc = Path::new("corpus/tech-blog/posts/pca-geometry/index.tmd");
     let src = std::fs::read_to_string(rel_doc).expect("read corpus doc");
     let base = rel_doc.parent().unwrap();
 
-    let html = taliesin_core::render_html_page_with_includes(&src, base, "pca");
+    // And exactly the entry point those commands call, so a divergence between the
+    // library and the product cannot hide here (PP-3).
+    let html = taliesin_core::render_single_doc(&src, base).body_html();
 
     // The include (`../../_includes/three-scene.tmd`) defines `makeScene3D`; it must
     // be present, proving the include was expanded rather than dropped.

@@ -570,14 +570,11 @@ pub(crate) fn open_in_browser(url: &str) {
 
 fn render_doc(app: &AppState) -> Option<RenderedDoc> {
     let src = std::fs::read_to_string(&app.path).ok()?;
-    // Single-document preview: confine includes/resources to the doc's own directory
-    // (PT-2) so an untrusted `.tmd` opened from inside a larger checkout cannot climb
-    // out to read a sibling repo-local file.
-    Some(taliesin_core::render_document_with_includes_rooted(
-        &src,
-        &app.base_dir,
-        Some(&app.base_dir),
-    ))
+    // Single-document preview: confine includes/resources to the document's own project
+    // (its nearest `_site.yml`, else its own directory), so an untrusted `.tmd` opened
+    // from inside a larger checkout cannot climb out to a sibling repo-local file (PT-2)
+    // while a page of a real project still previews as the site build renders it (PP-3).
+    Some(taliesin_core::render_single_doc(&src, &app.base_dir))
 }
 
 // --- HTTP ---------------------------------------------------------------

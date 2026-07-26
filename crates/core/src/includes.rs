@@ -507,6 +507,44 @@ fn containment_root(base_dir: &Path) -> PathBuf {
     }
 }
 
+/// The containment root for a **single invoked document** — `build`, `preview`, `check`,
+/// `read` or the LSP handed one `.tmd` rather than a project directory: the nearest
+/// ancestor of `doc_dir` holding `_site.yml`, else `doc_dir` itself.
+///
+/// This is deliberately *not* [`containment_root`], which also stops at `.git`. The two
+/// markers mean different things to a document that was named on a command line:
+///
+/// - `_site.yml` is an author declaring a project boundary, and it is the same root the
+///   site build passes. Honouring it is what makes `build <page>` and `build <site>` emit
+///   the same document (PP-3, 2026-07-26): before this, a page pulling
+///   `../../_includes/…` built one way with its include and the other way without it.
+/// - `.git` is a checkout, not a project the author pointed this tool at. Widening to it
+///   is exactly the escape PT-2 closed (`9359a2c`): an untrusted `.tmd` dropped anywhere
+///   inside a checkout could `../`-climb to a sibling repo-local file. It never widens a
+///   single invoked document again.
+///
+/// So the boundary a document gets is the project it belongs to, and a document with no
+/// declared project is its own project. Pinned by
+/// `crates/core/tests/include_root_parity.rs`.
+///
+/// **Known gap, deliberate:** a site with no `_site.yml` at all (`build <dir>` accepts a
+/// bare directory) declares no boundary, so a single-document render of one of its pages
+/// still roots at that page. Nothing in the tree can infer an undeclared boundary; the fix
+/// is to declare one.
+pub fn single_doc_root(doc_dir: &Path) -> PathBuf {
+    let base = absolutize(doc_dir);
+    let mut cur: &Path = &base;
+    loop {
+        if cur.join("_site.yml").exists() {
+            return cur.to_path_buf();
+        }
+        match cur.parent() {
+            Some(p) if !p.as_os_str().is_empty() => cur = p,
+            _ => return base.clone(),
+        }
+    }
+}
+
 /// The canonical repository boundary for `dir` (see [`symlink_root`]), for callers that
 /// walk the filesystem themselves instead of resolving a path through [`try_join_in`].
 /// Page discovery and the build's asset mirror are those callers: they read directories

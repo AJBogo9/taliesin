@@ -161,9 +161,21 @@ fn every_corpus_doc_renders_with_invariants() {
 #[test]
 fn includes_are_resolved_with_origin_files() {
     // pca-geometry pulls in _includes/three-scene.tmd via {{< include >}}.
-    let dir = corpus_dir().join("posts/pca-geometry");
+    //
+    // The tech-blog copy, not the loose `corpus/posts/` one, and deliberately: the loose
+    // copy's nearest project marker is the repository's own `.git`, so this assertion used
+    // to pass only inside a checkout and fail in any export, vendored copy or `docker COPY`
+    // without VCS metadata. That is not a hypothetical — it is what kept the unmutated
+    // cargo-mutants baseline red (its scratch copy carries no `.git`), which blocked the
+    // mutation re-run outright. The tech-blog page sits under a real `_site.yml`, so what
+    // bounds it is the project the author declared rather than a fact about the checkout.
+    let dir = corpus_dir().join("tech-blog/posts/pca-geometry");
     let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
-    let doc = taliesin_core::render_document_with_includes(&src, &dir);
+    // The entry point the commands use, not the library-only one. Rendering via
+    // `render_document_with_includes` here asserted something true of the library and
+    // false of the product: `build <this page>` dropped the include and warned while this
+    // test stayed green (PP-3).
+    let doc = taliesin_core::render_single_doc(&src, &dir);
 
     let body = doc.body_html();
     assert!(

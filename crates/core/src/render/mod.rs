@@ -179,19 +179,19 @@ pub fn render_document_scoped_with_theorems(
     render_doc_with_includes_impl(src, base_dir, chapter, None, book_theorems)
 }
 
-/// Like [`render_document_with_includes`], but confining `{{< include >}}` and the
-/// front-matter resource paths (`css:` / `bibliography:` / `csl:` / `include-*`) to an
-/// explicit containment `root` (see [`crate::includes::safe_join_in`]) instead of the
-/// inferred `.git`/`_site.yml` walk. First-party single-document preview/build passes the
-/// invoked doc's own directory here, so an untrusted document dropped inside a larger
-/// checkout cannot climb out of it to read a sibling repo-local file. `None` keeps the
-/// walk (the multi-page site path and the corpus's loose `../../_includes/` fixture).
-pub fn render_document_with_includes_rooted(
-    src: &str,
-    base_dir: &Path,
-    root: Option<&Path>,
-) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, None, root, None)
+/// Render one **invoked** document: `build`, `preview`, `check`, `read`, `map` or the LSP
+/// handed a single `.tmd` rather than a project directory.
+///
+/// The one place the single-document containment root is decided (see
+/// [`crate::includes::single_doc_root`]). It replaced a `..._rooted(src, base,
+/// Some(base))` written out at twelve call sites, which is one policy copied twelve
+/// times: the site build widened a page's root to its project and the single-file build
+/// did not, so one source built into two different documents (PP-3, 2026-07-26). The
+/// hand-rooted entry point was removed with them rather than left as a thirteenth way to
+/// answer the question. Route a new single-document command through here.
+pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
+    let root = crate::includes::single_doc_root(base_dir);
+    render_doc_with_includes_impl(src, base_dir, None, Some(&root), None)
 }
 
 fn render_doc_with_includes_impl(

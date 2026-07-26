@@ -771,7 +771,7 @@ fn render_buffer(uri: &lsp_types::Url, text: &str) -> Option<taliesin_core::Rend
         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     crate::serve::guarded(|| {
-        taliesin_core::render_document_with_includes_rooted(text, &base, Some(&base))
+        taliesin_core::render_single_doc(text, &base)
     })
     .ok()
 }

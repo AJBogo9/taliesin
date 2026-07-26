@@ -240,7 +240,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
 /// read from disk first.
 fn collect_file_diagnostics_from_src(path: &Path, src: &str) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = taliesin_core::render_document_with_includes_rooted(src, base, Some(base));
+    let doc = taliesin_core::render_single_doc(src, base);
     let path_str = path.display().to_string();
     // A document inside a site project may legitimately refer across its pages, so
     // resolve what the project defines before calling anything broken: this path is the
@@ -436,7 +436,7 @@ fn collect_environment(path: &Path) -> Vec<EnvEntry> {
             return Vec::new();
         };
         let base = path.parent().unwrap_or_else(|| Path::new("."));
-        let doc = taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
+        let doc = taliesin_core::render_single_doc(&src, base);
         used_languages(&doc.blocks)
             .into_iter()
             .map(|lang| {

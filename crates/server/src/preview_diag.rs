@@ -87,11 +87,7 @@ mod tests {
     fn static_diagnostics_flag_a_missing_local_image() {
         let base = tmp_base("static-img");
         let src = "# Title\n\n![a chart](nope.png)\n";
-        let doc = taliesin_core::render_document_with_includes_rooted(
-            src,
-            base.as_path(),
-            Some(base.as_path()),
-        );
+        let doc = taliesin_core::render_single_doc(src, base.as_path());
         let diags = static_diagnostics(
             src,
             &doc.blocks,
@@ -111,11 +107,7 @@ mod tests {
     fn static_diagnostics_are_empty_for_a_clean_doc() {
         let base = tmp_base("static-clean");
         let src = "# Title\n\nJust a paragraph of plain prose, no links or images.\n";
-        let doc = taliesin_core::render_document_with_includes_rooted(
-            src,
-            base.as_path(),
-            Some(base.as_path()),
-        );
+        let doc = taliesin_core::render_single_doc(src, base.as_path());
         let diags = static_diagnostics(
             src,
             &doc.blocks,
