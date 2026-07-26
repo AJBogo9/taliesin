@@ -38,6 +38,40 @@ fn vendored_js_is_attributed() {
     }
 }
 
+/// Every file under `assets/syntaxes/` is a vendored grammar: taliesin authors none of
+/// them, so each must be attributed by filename, and each must ship the upstream licence
+/// text beside it. The licence file is the part that is easy to forget and expensive to
+/// get wrong — an MIT grammar's one obligation is that its notice travels with it.
+#[test]
+fn vendored_syntaxes_are_attributed_and_carry_their_licence() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let doc = third_party_md();
+    let dir = core.join("assets/syntaxes");
+    let mut grammars = 0;
+    for entry in std::fs::read_dir(&dir).expect("assets/syntaxes should exist") {
+        let name = entry.unwrap().file_name().to_string_lossy().to_string();
+        if !name.ends_with(".sublime-syntax") {
+            continue;
+        }
+        grammars += 1;
+        assert!(
+            doc.contains(&name),
+            "vendored grammar `{name}` is not attributed in THIRD_PARTY.md"
+        );
+        let licence = name.replace(".sublime-syntax", ".LICENSE.txt");
+        assert!(
+            dir.join(&licence).is_file(),
+            "vendored grammar `{name}` ships no `{licence}` beside it; the upstream \
+             licence text has to travel with the grammar"
+        );
+    }
+    assert!(
+        grammars > 0,
+        "fixture precondition: at least one grammar should be vendored here, else this \
+         gate passes vacuously"
+    );
+}
+
 /// The Mermaid version is claimed in three places that can drift apart silently: the
 /// attribution line, the CDN fallback URL, and the doc comment on the vendored blob. A
 /// stale attribution is the failure mode that matters — it is what a downstream consumer

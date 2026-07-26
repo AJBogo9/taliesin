@@ -44,6 +44,31 @@ syntect = { version = "5", default-features = false, features = ["default-fancy"
 two-face = { version = "0.4", default-features = false }
 ```
 
+## A language neither set has at all
+
+PowerShell resolves in *neither* the bundled set nor the extras, so filling it needed
+a grammar vendored into the repo rather than a dependency turned on. It is
+[SublimeText/PowerShell](https://github.com/SublimeText/PowerShell)'s
+`.sublime-syntax` (MIT), and the file format is the whole reason for that choice:
+syntect loads `.sublime-syntax` only, so the more obvious upstream, Microsoft's own
+`PowerShell/EditorSyntax`, is unusable here — it ships a `.tmLanguage` plist, which
+syntect cannot read as a syntax at any feature level.
+
+The vendored set is consulted **last**, after the bundled set and the extras, so it
+can only fill a hole and can never re-highlight a language that already resolved.
+
+```powershell
+# Both `powershell` and `ps1` resolve to this grammar.
+$items = Get-ChildItem -Path "C:\logs" -Filter *.log
+foreach ($f in $items) {
+    Write-Host "reading $($f.Name)"
+}
+```
+
+```ps1
+Get-Process | Where-Object { $_.CPU -gt 10 } | Select-Object Name, CPU
+```
+
 ## Fences that stay plain on purpose
 
 `text` and `console` resolve to no syntax deliberately: a transcript or a chunk of

@@ -92,6 +92,21 @@ than only linking code:
   per-syntax attribution listing ships with the crate and is reachable at runtime
   via `two_face::acknowledgement::listing()`.
 
+One syntax definition is vendored directly, because neither set above has one
+(enumerated, not grepped: syntect's bundled set is 75 syntaxes and two-face's is
+199, and `powershell`/`ps1` resolve in neither):
+
+- **PowerShell.sublime-syntax** (MIT), from
+  [SublimeText/PowerShell](https://github.com/SublimeText/PowerShell), copyright
+  2011-2015 Guillermo López-Anglada and 2020-2025 Michael Lyons. Vendored at
+  `crates/core/assets/syntaxes/`, with the upstream licence text alongside it as
+  `PowerShell.LICENSE.txt`, and `include_str!`-compiled into the binary like every
+  other bundled asset. The **format** is why this source rather than the more
+  obvious `PowerShell/EditorSyntax` (also MIT, Microsoft): syntect loads
+  `.sublime-syntax` only, and EditorSyntax ships a `.tmLanguage` plist, which
+  syntect cannot consume as a syntax at all — its `plist-load` feature covers
+  themes and metadata.
+
 Two further build dependencies power the auto-generated social-card raster
 pipeline (`crates/core/src/site/card.rs`), called out individually because they
 replace what would otherwise be an external image tool; both are pure Rust with
