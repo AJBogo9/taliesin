@@ -17,19 +17,19 @@ public-release date rather than on a decision. Everything still listed is blocke
 real user (band D) or gated (band E). **A session cannot "take from the top" any more** — the only
 way forward is a new audit lens, argued for first. See "Next session: start here".
 
-**Branch `backlog/xref-reporting`**, on top of the earlier stack (`probe/analyst-persona` →
-`backlog/band-a-diagnostics` → `backlog/backlink-context-and-resume` → `origin/main`). **Nothing is
-pushed** — the author pushes on request only, and the stack has been growing for several sessions,
-so the next push is worth a deliberate look at what it carries.
+**The whole stack was pushed on 2026-07-26**, on the author's instruction: everything from the
+backlink-context batch through `backlog/xref-reporting` fast-forwarded onto `main` and went to
+`origin/main` in one push, pre-push hook green. That cleared a stack that had been growing across
+several sessions. **Do not read that as still true** — the author pushes mid-session with no signal
+in this file.
 
 **No commit counts are recorded here, deliberately.** They were wrong twice in one session: the
 first was written one commit stale, and the correction then mis-added the two branches' totals —
 because any count written *into* this file is invalidated by the commit that writes it. Same rule
-as a SHA (see Git under "Standing constraints"). Count them instead:
+as a SHA (see Git under "Standing constraints"). Ask git instead:
 
 ```sh
-git log --oneline origin/main..HEAD                    # everything unpushed, across the stack
-git log --oneline backlog/band-a-diagnostics..HEAD     # just this branch
+git log --oneline origin/main..main    # what is unpushed, right now
 ```
 
 **The demand-probe programme is finished, 4 of 4** (2026-07-26, second batch of the day). Persona 4
