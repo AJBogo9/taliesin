@@ -10,11 +10,12 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Bands A and B are BOTH empty, and this file now has no code in it at all.** The last build-ready
-batch (items **39** + **40**, the analyst probe's reporting-surface findings) landed on
-`backlog/xref-reporting`, so every remaining entry is blocked on an owner ruling (band C), on a
-device or a real user (band D), or is gated (band E). **A session cannot "take from the top" any
-more** — see "Next session: start here" for the only two ways forward.
+**Bands A, B and C are all empty of tasks.** Items **39** + **40** (the last build-ready code) landed
+on 2026-07-26, and the author then ruled on the whole of band C in one pass: **24** and **17** became
+shipped code the same day, **2** was declined again, and only **25** remains, parked on a
+public-release date rather than on a decision. Everything still listed is blocked on a device or a
+real user (band D) or gated (band E). **A session cannot "take from the top" any more** — the only
+way forward is a new audit lens, argued for first. See "Next session: start here".
 
 **Branch `backlog/xref-reporting`**, on top of the earlier stack (`probe/analyst-persona` →
 `backlog/band-a-diagnostics` → `backlog/backlink-context-and-resume` → `origin/main`). **Nothing is
@@ -182,14 +183,15 @@ their own prefix.
 
 ### Next session: start here
 
-**There is no build-ready code left in this file.** Items 39 + 40 landed together on 2026-07-26
-(see "Already shipped"), which was the last of it. A session now needs one of:
+**There is no build-ready code left in this file, and band C has been drained too.** Items 39 + 40
+landed on 2026-07-26, and the same day the author ruled on 24, 17 and 2 — two of which turned into
+shipped code (`section-extents` option (b), the vendored PowerShell grammar) and two into recorded
+decisions (`book-breadcrumb` = no, presenter tools = still deferred). Only item **25** is left in
+band C, and it waits on a public-release *date*, not on a decision.
 
-- **an owner ruling from band C** (the only work the author can unblock; see the list below). This
-  is the shorter path and the author is the only bottleneck: ask, then build what the ruling opens.
-- **a NEW audit lens, argued for first.** The twelve AP slots and all four non-AP lenses are run;
-  the "Audit perspectives" table is a complete record, not a menu. Do not go looking there for
-  something to take.
+**So a session now needs a NEW audit lens, argued for first.** The twelve AP slots and all four
+non-AP lenses are run; the "Audit perspectives" table is a complete record, not a menu. Do not go
+looking there for something to take.
 
 The most likely *productive* new lens, on the evidence of the last two rounds, is a **crossed
 dimension rather than a stacked feature**: persona 4 found two real defects by putting two kernels
@@ -204,12 +206,9 @@ re-scoped. **Item numbers are stable** and referenced from the findings docs and
 [AUDITS.md](AUDITS.md), so they are NOT renumbered when the order changes, and a closed item's number
 is never reused.
 
-**What only the author can unblock** (band C, in the order they are worth asking about): **25**
-(the public-release flip — ruled *deferred to end of summer*, so re-ask only when a date is set),
-**24** (`section-extents`: a recommendation is on file, option (b); and `book-breadcrumb`, which
-must be argued as a reversal of D114, not as a gap), **17** (F-01 PowerShell highlighting: needs a
-grammar vendored, and its licence establishing first — sharper now that the repo is going public),
-**2** (deck presenter tools: revive only on a real speaker ask).
+**Band C is down to one item, and it is not a task.** The author ruled on **24**, **17** and **2**
+on 2026-07-26 (see below); only **25** remains, and it is explicitly parked until a
+public-release date is set. Nothing in this file is buildable without a new audit lens.
 
 **Standing rule for a batch:** branch per batch, verify each fix by *mutation* (restore the bug,
 watch the named test fail), browser-verify anything client-side, and **delete the item from this
@@ -247,8 +246,9 @@ whether it should be. See "Decided against" for what was declined and on what me
 
 ### C. Blocked on an owner ruling or decision (not a task until then)
 
-Do not start these as code. Each needs a call from the author first; the item records what the
-question is and what the evidence says.
+**Three of the four were ruled on 2026-07-26 and are closed** (24, 17, 2 — kept below for their
+do-not-re-scope tails, not as tasks). Only **25** is genuinely still waiting, and it waits on a
+date rather than on a decision. Nothing here is startable as code.
 
 25. **Pre-public release checklist: one owner decision left** (detail:
     [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). The five code
@@ -271,32 +271,27 @@ question is and what the evidence says.
     in the C library, so grepping our source for it correctly finds nothing) and NET-3
     (non-constant-time token compare).
 
-24. **SKIM-3 residue: two owner calls, no build-ready task** (P3; detail:
-    [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)). The severity floor,
-    `taliesin skim`, the `TAL-SHAPE-*` lints and four of the five independent-medium items all
-    shipped 2026-07-25. What is left is not code:
-    - **`book-breadcrumb`, a static "Part, Chapter" ribbon: OWNER CALL.** It adds a fourth
-      persistent top element, and the dwell-time evidence says the first viewport is the screening
-      surface. The audit itself downgraded it to "cheap and mildly orienting" and notes it must be
-      argued as a reversal of D114's "no breadcrumbs", not as an unexamined gap.
-    - **`section-extents`: OWNER RULING.** The DOM has no section boundaries (zero `<section>`
-      wrapping content headings on 17 of 19 built guide pages; repo-wide `<section>` comes only from
-      `render/deck.rs` and the footnotes block), which blocks four proposals.
-      **Recommendation: option (b), a `data-section-end` marker computed from the walk
-      `lsp_outline.rs` already does** (purely additive, invisible to the diff and the corpus
-      invariants). Option (a), a real wrapper, would also unlock `content-visibility: auto` and
-      sticky section headings, but it changes the parent/child shape the incremental diff mounts,
-      which is a design question. Pin: `corpus/layout/structure.tmd` (named by `FEATURE-IDEAS` #26,
-      still does not exist).
+24. **RULED 2026-07-26, both calls made — no task left; kept only for its do-not-re-scope tail**
+    (detail: [2026-07-24-skimmability-audit.md](2026-07-24-skimmability-audit.md)).
+    - **`section-extents` = option (b)**, shipped the same day: `data-section-end` on every heading
+      block, pinned by `corpus/layout/structure.tmd` + `tests/section_extents.rs`. Option (a), the
+      real `<section>` wrapper, stays deferred exactly as the audit asked (it changes the
+      parent/child shape the incremental diff mounts). Three sub-decisions the ruling did not
+      cover are recorded in the commit and pinned by tests: extents **nest**, they are
+      **inclusive of the heading**, and generated furniture (References, footnotes) belongs to no
+      section. Decks are excluded — `deck.rs` already emits a real `<section>` per slide.
+    - **`book-breadcrumb` = NO**, D114 stands. The audit had already downgraded it to "cheap and
+      mildly orienting", and its own dwell-time evidence says the first viewport is the screening
+      surface, which a fourth persistent top element spends. Do not re-raise without new evidence.
     **Invariants for anything in this area:** the finding lands in the CLI or the editor and the
     **author** edits the `.tmd` (no preview gesture, no auto-fix, no write-back); no LLM anywhere
     (byte-identical build output is actively pinned, and `include_str!` cannot carry model weights);
     zero new YAML keys.
     **Deferred, do not schedule:** a reading-density fold (three unbuilt prerequisites, premise
-    measurably overstated); `content-visibility: auto` (needs option (a)); the `:~:text=` half of
-    deep links (669 of 876 dogfood paragraphs contain inline code, so fragments miss exactly the
-    identifier queries they exist for; the `?h=` half ships alone); `changed-since`; read-aloud
-    (out on cost, not principle).
+    measurably overstated); `content-visibility: auto` (needs option (a), which is deferred); the
+    `:~:text=` half of deep links (669 of 876 dogfood paragraphs contain inline code, so fragments
+    miss exactly the identifier queries they exist for; the `?h=` half ships alone);
+    `changed-since`; read-aloud (out on cost, not principle).
     **Killed by verification, do not re-scope:** section hover previews (built and deleted at
     `318f22f`, pinned by three tests), a TOC entry budget (the depth window is already relative),
     margin footnotes (two real footnotes exist in the whole repo), and `taliesin split` (it would
@@ -306,35 +301,27 @@ question is and what the evidence says.
     render, and `docs/internals` is 60,208 words with zero `{.definition}` blocks. A glossary, a term
     index and a float digest all produce near-empty output until an authoring pass happens.
 
-17. **Demand-probe (OSS docs-maintainer, persona #2) findings** (P3, in-scope; detail:
+17. **CLOSED 2026-07-26 — F-01 shipped, F-02 was never a defect** (detail:
     [2026-07-22-corpus-demand-probe-docs-maintainer.md](2026-07-22-corpus-demand-probe-docs-maintainer.md)).
-    A realistic library documentation site (`corpus/tarn/`, corpus-pinned by `tarn.rs` + a `/gallery/tarn`
-    marketing-site exhibit) probed the tabsets × full-text-search × API-reference cluster. The *stacked*
-    interactions (book × Guide/Reference parts × two `.panel-tabset`s per page × `.code-walkthrough` ×
-    guide→reference `.tmd#anchor` cross-page links × chapter-scoped `@sec-` refs × Cmd-K search spanning the
-    book incl. tabset-hidden content × version/deprecation callouts × mount) ALL work — 0 interaction-bugs.
-    Four P3 findings, all on secondary surfaces. **Highest-placed of the P3 demand-probe set because F-01 is
-    the only one a reader sees on the page:**
-    - **F-01 (friction, P3) — SYMPTOM REAL, RECORDED FIX WRONG (re-derived 2026-07-25).** The symptom
-      stands: `powershell` and `ps1` both render as unstyled plain text with a `TAL-CODE-LANG` warning
-      (`bash` highlights fine). But the filed one-liner cannot work: **`two-face` has no PowerShell
-      syntax at all.** Enumerated, not grepped — its set is 199 syntaxes and PowerShell is not among
-      them, and no feature flag adds one. (The "ordering trap" the old entry warned about is moot too:
-      `resolve()` already consults the bundled set first and falls back to the extras, so a syntax in
-      either set would already resolve.)
-      **A real fix means vendoring a grammar**, which is a decision, not a drive-by: the upstream
-      PowerShell/EditorSyntax grammar is a 43 KB `.tmLanguage` plist (needs syntect's `plist-load`
-      feature, which is not enabled) and its `LICENSE.txt` 404s, so its terms need establishing before
-      anything is vendored — particularly with the repo about to go public (item 25). Left to the
-      author with that groundwork done. A cheap alias to another language is NOT an option: it would
-      mean confidently wrong highlighting instead of honestly absent highlighting.
-    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API entries;
-      the linter is correct (demote entries to `##`). Recorded as an authoring-DX nuance, not a defect.
+    The probe itself found 0 interaction-bugs across the tabsets × full-text-search × API-reference
+    cluster; `corpus/tarn/` remains the fixture it produced.
+    - **F-01 shipped.** The author ruled "establish the licence, vendor if clean"; it is clean.
+      `SublimeText/PowerShell`'s `.sublime-syntax` (MIT) is vendored at
+      `crates/core/assets/syntaxes/`, consulted last so it can only fill a hole, and pinned by
+      `corpus/highlight.tmd`. **Every recorded fact about the fix was wrong and had to be
+      re-derived — the third time running for this entry.** The `LICENSE.txt` that "404s" is
+      `LICENSE` (MIT, Microsoft). `plist-load` is already enabled *and* irrelevant: it covers themes
+      and metadata, and syntect loads `.sublime-syntax` only, so vendoring the filed `.tmLanguage`
+      would have shipped a dead file. Only "two-face has no PowerShell" held up, and that was
+      re-verified by enumeration rather than trusted.
+    - **F-02 (WAI, no action):** the a11y heading-skip lint fires on a `#` title + flat `###` API
+      entries; the linter is correct (demote entries to `##`). An authoring-DX nuance, not a defect.
 
-2. **Deck presenter tools** *(owner deferred 2026-07-22 — NOT selected this round)*: one-command deck
+2. **Deck presenter tools — RE-RULED 2026-07-26: still nothing, keep deferred.** One-command deck
    publish (Share QR still encodes `localhost:PORT`), a presenter laser/spotlight, auto-advance. The
-   `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"); the presenter pieces
-   were considered and left for later. Revive only on a real speaker ask.
+   `footer:`/`logo:` threading from this item **shipped** (see "Already shipped"). Asked again on
+   2026-07-26 and declined again on the same grounds: no real speaker ask has appeared. Kept visible
+   so it is not re-scoped; revive only when the author actually presents from Taliesin.
 
 ### D. Blocked on a device, a real user, or is working-as-intended
 
@@ -501,6 +488,21 @@ A compact **do not re-add / re-scope** guard, not a changelog: each line names w
 finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
 than re-expanding this list.
 
+- **The 2026-07-26 owner-ruling batch (items 24, 17, 2 — band C, cleared by asking rather than by
+  waiting).** **`section-extents` = option (b)**: every heading block now carries
+  `data-section-end="<block-id>"`, the id of the last block its section covers. Extents **nest** (an
+  `##` contains its `###`s; the flat run is recoverable from the next heading, the nesting is not),
+  are **inclusive of the heading** (so an empty section has no missing-value case), and stop before
+  the **generated furniture** (References, footnotes) that no section owns. Decks are excluded:
+  `deck.rs` already emits a real `<section>` per slide. Pinned by `corpus/layout/structure.tmd` +
+  `tests/section_extents.rs`; declared in `token_contract.rs`'s `NO_RUNTIME_CONSUMER` because having
+  no consumer *yet* is the decision. Option (a), the real wrapper, stays deferred.
+  **`book-breadcrumb` = NO**, D114 stands. **F-01 PowerShell shipped**: a vendored MIT
+  `.sublime-syntax`, consulted last, pinned by `corpus/highlight.tmd`, with
+  `vendored_syntaxes_are_attributed_and_carry_their_licence` as the recurrence gate — and every
+  recorded fact about that fix turned out wrong (wrong licence filename, wrong feature, wrong file
+  format), which is the third re-derivation that entry has needed. **Deck presenter tools** declined
+  again on the same grounds.
 - **The 2026-07-26 reporting-surface batch (items 39 + 40, the last build-ready code in this
   file).** **AN-5**: an unnumbered cross-page `@sec-` rendered as the bare word "Section". Fixed on
   the *label*, not by harvesting a number (that path is refuted in `harvest_xref_numbers`'s own

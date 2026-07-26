@@ -29,7 +29,7 @@ you run one.
 | [2026-07-22-ap2-robustness-fuzzing-audit](2026-07-22-ap2-robustness-fuzzing-audit.md) | **AP2** fuzzing / hostile input | AP2-1/2/3 all shipped 2026-07-25 |
 | [2026-07-22-cache-correctness-audit](2026-07-22-cache-correctness-audit.md) | **AP4** adversarial freeze | AP4-1 shipped 07-22; AP4-2/3/4 shipped 07-25 |
 | [2026-07-22-demand-probe-course-author](2026-07-22-corpus-demand-probe-course-author.md) | demand probe, persona 1 | item **16** (F-03 open) |
-| [2026-07-22-demand-probe-docs-maintainer](2026-07-22-corpus-demand-probe-docs-maintainer.md) | demand probe, persona 2 | item **17** (F-01 corrected 07-25, F-04 open) |
+| [2026-07-22-demand-probe-docs-maintainer](2026-07-22-corpus-demand-probe-docs-maintainer.md) | demand probe, persona 2 | item **17**, **closed 2026-07-26**: F-01 shipped as a vendored MIT `.sublime-syntax`. Its recorded fix was wrong three times over (the licence file is `LICENSE` not `LICENSE.txt` and is plain MIT; `plist-load` is both already enabled and irrelevant; syntect loads `.sublime-syntax` only, so the filed `.tmLanguage` was unusable). F-02 was never a defect |
 | [2026-07-22-demand-probe-interactive-explainer](2026-07-22-corpus-demand-probe-interactive-explainer.md) | demand probe, persona 3 | item **18** (F-02, F-03 open) |
 | [2026-07-26-demand-probe-analyst](2026-07-26-corpus-demand-probe-analyst.md) | demand probe, persona 4 — **closes the slate 4/4**; the un-probed shape was *two languages in one document*, not volume, and both defects were "the R arm of a two-arm facility was never built" | AN-1 + AN-2a shipped 07-26; AN-3/4/5/6 (items **40** + **39**) shipped later the same day; only AN-2b (item **41**) is open |
 | [2026-07-23-cad-as-code-research](2026-07-23-cad-as-code-research.md) | CAD-as-code feasibility + market | **decided against** (feasible + legally green, no demand); 5 revisit triggers in the doc |
@@ -142,7 +142,13 @@ finding, evidence-backed: the leverage is on the **builder** side, not a reader 
 code: **roughly half the problem is content** (0 of 37 dogfood pages set `description:`, 8 xref links across 19
 chapters, 0 backlinks, 60,208 words of internals with zero `{.definition}` blocks), so glossary/term-index/float
 digest all render empty until an authoring pass happens. Build-ready work folded into Open-work items **22
-(band A), 23 (band B), 24 (band C)**. Explicitly ruled out and recorded so they are not rediscovered: section
+(band A), 23 (band B), 24 (band C)**. **Item 24 closed 2026-07-26** when the author ruled on both of its
+questions: `section-extents` took the audit's own recommendation, **option (b)**, and shipped that day as a
+`data-section-end` marker on every heading block (extents nest, are inclusive of the heading, and stop before
+the generated References/footnotes furniture; decks are excluded because `deck.rs` already emits a real
+`<section>` per slide). Option (a), the wrapper — and with it `content-visibility: auto` and sticky section
+headings — stays deferred on the diff-shape risk the audit named. `book-breadcrumb` was ruled **no**, on the
+audit's own dwell-time evidence: D114 stands. Explicitly ruled out and recorded so they are not rediscovered: section
 hover previews (built and deleted at `318f22f`), a TOC entry budget, margin footnotes, `taliesin split`, a
 reading-density fold, the `:~:text=` half of deep links, and anything LLM-generated (byte-identical build output
 is test-pinned). Also caught: `FEATURE-IDEAS.md` #9 is **falsely marked SHIPPED** (read-aloud; `speechSynthesis`
