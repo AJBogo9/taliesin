@@ -46,7 +46,13 @@ taliesin build ../corpus/course     --out _site/gallery/course
 taliesin build ../corpus/tarn       --out _site/gallery/tarn
 taliesin build ../corpus/descent    --out _site/gallery/descent
 taliesin build ../corpus/graphics3d --out _site/gallery/graphics3d
+taliesin build ../corpus/analyst    --out _site/gallery/analyst
 ```
+
+The `analyst` exhibit is the only one whose pages **execute**, and in two languages: it
+needs a python with `ipykernel` (`TALIESIN_PYTHON`) plus `pandas`/`matplotlib`, and an R
+with `IRkernel` (`TALIESIN_R`) plus `readr`/`dplyr`/`broom`/`ggplot2`/`patchwork`/`knitr`.
+Without them its figures and tables build as "cell did not run" placeholders.
 
 Deploy `_site/` to any static host with directory indexing.
 

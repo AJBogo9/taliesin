@@ -23,15 +23,30 @@ git log --oneline origin/main..HEAD                              # everything un
 git log --oneline backlog/backlink-context-and-resume..HEAD      # just this branch
 ```
 
-**Bands A and B are both empty as of the 2026-07-25 band-B batch.** It closed items **11**
+**The demand-probe programme is finished, 4 of 4** (2026-07-26, second batch of the day). Persona 4
+shipped as `corpus/analyst/` + `analyst.rs` + `/gallery/analyst` and closed item **30**. Its lesson is
+about *slate design*, not probe count: personas 1-3 each stacked features the corpus had never
+combined and found **0** interaction bugs, because the features compose. Persona 4 crossed a
+*dimension* the corpus had never crossed — **two languages executing in one document** — and found
+**two** real defects, both the same shape: *the R arm of a two-arm facility was never built.*
+`figure_wrap` had a fallback and `table_wrap` did not (AN-1: a labelled `tbl-` cell whose output is
+not a table emitted a dangling cross-reference, silently, with `check` clean). `KernelSpec::python`
+carried two startup preambles and `KernelSpec::r` carried an empty list (AN-2a: **every** R figure
+rasterised onto opaque white, on a page whose default theme is dark — found only in the browser, the
+markup looked right). Neither is visible from inside a single-language document, and every corpus
+document was single-language. **A fifth persona is not indicated; a fifth un-crossed dimension might
+be, and none is currently known.** Both defects are fixed and shipped; the remaining four findings
+are items **39** (band A), **40** (band B) and **41** (band D).
+
+**Bands A and B were both empty before that**, as of the 2026-07-25 band-B batch. It closed items **11**
 (PA-M3 list semantics, PA-M13 image-alt lint, PA-H1's deck theme-color + social meta), **29**
 (R1 + T2, both closed on evidence rather than built), and emptied item **10** of everything
 actionable (AP3-3 fixed; the rest split between won't-fix — which stays as item 10 in band D —
 demand-driven, and declined-on-measurement). Nothing in "Open work" is buildable today; the next
 entries come from the next audit round.
 
-**Band A is empty. Every build-ready audit finding has shipped**, so the backlog is clear for the
-next round of audits. The 2026-07-25 band-A batch closed items **34** (AP7, all five findings),
+**Band A had been empty; item 39 is the only thing in it, and it came from the probe above, not from
+an audit round.** The 2026-07-25 band-A batch closed items **34** (AP7, all five findings),
 **35** (AP3-1), **36** (AP11-1), **37** (DIAG-1) and **38** (DOCS-1); what is worth carrying forward
 is in [AUDITS.md](AUDITS.md) under "The 2026-07-25 band-A batch", not repeated here. Two findings
 turned out larger than filed: DIAG-1's six fall-through diagnostics were **eight** (the zero-GENERIC
@@ -169,9 +184,24 @@ file when it lands**. Read "Standing constraints" first; several of these have a
 
 ### A. Build now: measured, unblocked, and each one has its fix shape recorded
 
-**Empty.** Every finding the twelve AP rounds and the two non-AP lenses filed as build-ready has
-shipped; the 2026-07-25 band-A batch closed the last five (items 34, 35, 36, 37, 38 — deleted from
-this file, as the rule below requires). The next entries here come from the next audit round.
+39. **Cross-page references are misreported, in opposite directions** (P3, S; detail:
+    [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md), AN-5 +
+    AN-6). Both found on one page of `corpus/analyst/`, both about a *valid* cross-page ref:
+    - **AN-5 — a cross-page `@sec-` renders as the bare word "Section"** (no number, no title), so
+      the sentence reads "…as set out in Section." The same ref on its own page reads "Section 3".
+      **Do NOT "fix" this by harvesting the number:** `site/mod.rs`'s `harvest_xref_numbers`
+      excludes `sec-` deliberately and its comment gives the failure mode — a website target filled
+      with a flat "1" is then mislabelled **"Chapter 1"** by `rewrite_one_xref`. The open part is
+      the *label*: carry the heading title in `XrefTarget` (already in hand in `scan_page_anchors`)
+      and use it when the number is empty. Watch `XrefTarget: PartialEq` — it drives the dev
+      server's "did a target move" check, so a new field makes a heading edit re-render referring
+      pages (correct, but intend it). Cross-page `@fig-`/`@tbl-` are **fine** (right page + right
+      number, harvested from the render) — do not re-scope those.
+    - **AN-6 — the editor flags valid cross-page refs as `TAL-XREF-UNDEF` errors.** The LSP has no
+      `Site::discover` and is per-document, but the project is a site, so `check <dir>` is clean and
+      the built page resolves every ref while the author sees red squiggles on correct content.
+      Candidates: resolve the enclosing `_site.yml` in the LSP, or downgrade an unresolved xref to a
+      hint when the document sits inside a site project.
 
 **One residual is deliberately NOT closed, and is recorded where it belongs rather than left
 looking open:**
@@ -187,8 +217,25 @@ recorded version got wrong.)*
 
 ### B. Buildable, but low yield on its own
 
-**Empty.** The 2026-07-25 band-B batch cleared the last three: items **11** and **29** are closed and
-deleted, and item **10** is reduced to its two no-clean-fix kernel limitations and moved to band D.
+40. **Two authoring traps in the executed-table path, both worth one documented line** (P3, XS;
+    detail: [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md),
+    AN-3 + AN-4). Neither is engine work; both were hit while authoring `corpus/analyst/`, which now
+    demonstrates the right idiom with a comment saying why.
+    - **AN-3:** `knitr::kable(format = "html")` returns a *string*, so a bare R cell prints its own
+      markup and the reader sees escaped `&lt;table&gt;` in a `<pre>`. It works under
+      knitr/rmarkdown (knitr splices it), which is what makes it a trap. The wrapper is
+      `IRdisplay::display_html(as.character(kable(...)))`. `docs/guide/using/code.tmd` documents
+      `#| tbl-cap:` without saying an R cell must *publish* HTML rather than print it. **This is
+      also what exposed AN-1** (now fixed): the dangling anchor was only visible because the output
+      was not a table.
+    - **AN-4:** a bare pandas `display(df)` emits `<table border="1" class="dataframe">`, a row-index
+      column, and a `<style scoped>` block — `scoped` is a **removed** HTML attribute no current
+      browser implements, so that style element applies page-wide. `to_html(index=False, border=0)`
+      gives markup the page's own table styling reaches.
+
+**The band was empty before this.** The 2026-07-25 band-B batch cleared the last three: items **11**
+and **29** are closed and deleted, and item **10** is reduced to its two no-clean-fix kernel
+limitations and moved to band D.
 Two of the three closed
 on *evidence* rather than on code, which is the outcome this band is most likely to produce and is
 worth stating plainly: an item here is cheap to build and therefore easy to build without asking
@@ -335,15 +382,21 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
     unreachable). *Residual (not build-ready, demand-driven, do not spin up without a real ask): RTL
     layout, CJK line-breaking, non-ASCII heading-slug collisions.*
 
-30. **Demand-probe persona 4 (analyst) artifact** (P3, M, mostly writing; spec
-    `docs/superpowers/specs/2026-07-22-corpus-demand-probe-design.md` §4). The four-persona demand-probe
-    program ships each persona as one artifact in three roles — a green corpus pin, a findings doc, and a
-    `/gallery/<name>` exhibit. Personas 1-3 landed (`corpus/course/`, `corpus/tarn/`, `corpus/descent/`, all
-    pushed) and their findings are items 16-18. **Persona 4's `corpus/analyst/` was never authored**
-    (confirmed absent), so the program is 3 of 4 and its slate is the only remaining un-probed shape.
-    Diminishing returns are real and should set the priority: personas 1-3 each stacked the interactions the
-    corpus had never combined and found **0 interaction-bugs** between them, only P3 friction on secondary
-    surfaces. Worth finishing for corpus coverage, not because a fourth probe is likely to find a defect.
+41. **R graphics cannot follow the page theme; matplotlib figures can** (P3, M; detail:
+    [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md), AN-2b).
+    Taliesin renders every inline matplotlib figure **twice** (light + dark foreground) and swaps
+    them on the theme toggle (`kernel.rs`'s `MPL_THEME_PREAMBLE`); measured on `corpus/analyst/` the
+    Python figure emits two genuinely different PNGs and the ggplot figure emits one, so a
+    mixed-language report has half its figures track the reader's theme and half baked. **Blocked on
+    being a feature, not a fix:** a real version re-renders the figure twice against two
+    foregrounds — real design, and only worth it on a real ask. **Do NOT confuse this with AN-2a,
+    which is fixed:** the R device no longer paints opaque white under a transparent figure
+    (`KernelSpec::r` now carries `options(repr.plot.bg = "transparent")`). Transparency lets the page
+    show through; the *ink* is still baked at one colour, and that is what is left here. The
+    documented workaround (a neutral mid-grey palette) is in the corpus doc and is the second
+    instance of the "neutral-palette convention" option named in item 18's F-02. Minor and separable:
+    an R figure is emitted `<img alt="output">` where the Python pair is `alt=""`; both sit inside a
+    captioned `<figure>`, so `alt=""` is right and `"output"` is noise read aloud.
 
 ### E. Gated, not actionable now (kept visible, do not spin up)
 
@@ -444,6 +497,27 @@ A compact **do not re-add / re-scope** guard, not a changelog: each line names w
 finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
 than re-expanding this list.
 
+- **Demand probe #4, the computational-report analyst** (2026-07-26; detail:
+  [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md)).
+  `corpus/analyst/` is a two-page quarterly latency readout and **the only corpus project that runs
+  two languages in one document** (`{python}` pandas/matplotlib cleans + charts, `{r}`
+  broom/ggplot2/patchwork fits + diagnoses, both over one committed `data/latency.csv`). Pinned by
+  `crates/core/tests/analyst.rs` (render-time only, no kernel gated) and exhibited at
+  `/gallery/analyst`. **AN-1 fixed:** `exec::table_wrap` returned a labelled `tbl-` cell's output
+  unchanged when it held no `<table>`, so the spent number and the already-rewritten `@tbl-` link
+  pointed at an id nothing emitted — now it falls back to `table_figure_wrap`, the same degradation
+  `figure_wrap` always had. **AN-2a fixed:** `KernelSpec::r`'s `preambles` was empty where Python
+  has two, so R's inline device kept its default opaque-white background and every R figure came out
+  as a white slab on the dark theme even when the author made the plot's own backgrounds
+  transparent; it now carries `options(repr.plot.bg = "transparent")`. That is **additive, and
+  measured to be** — a default `ggplot` and base-R graphics still rasterise as alpha-less RGB, which
+  is what keeps it from turning every existing R figure dark-on-dark; `tests/r_kernel.rs` asserts
+  both halves. **Measured healthy, do not re-scope:** cross-language freeze isolation
+  (editing one language's cell re-runs 0 cells of the other, both directions, 123 of 140 samples);
+  the `MAX_BYTES` cap binding on a real page (140 edits, linear to ~16.75 MB then a plateau with the
+  entry count falling); one table counter spanning the authored and executed paths in document
+  order; one figure counter spanning both languages; cross-page `@tbl-`/`@fig-` to cell-produced
+  floats carrying the right page and number.
 - **The 2026-07-26 audit batch** (the last two lenses, run and shipped the same day; detail:
   [2026-07-26-ap1-residual-and-docs-behaviour-audit.md](2026-07-26-ap1-residual-and-docs-behaviour-audit.md)).
   **AP1-R1**: the freeze cache was capped by entry *count* (1024) and never by *bytes*, and an entry is a

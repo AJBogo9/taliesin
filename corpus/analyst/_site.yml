@@ -1,0 +1,11 @@
+# A two-page computational report (no `chapters:`, so a plain site, not a book).
+# `url:` is deliberately omitted so the standalone build stays offline-clean — no
+# canonical/OG self-URL on a self-contained exhibit, matching corpus/descent.
+title: "Queue latency, Q3"
+description: "A quarterly latency readout: three regions, two release channels, thirteen weeks. Data cleaned in Python, modelled in R, both in the same document."
+toc: true
+
+nav:
+  left:
+    - { text: "Readout", href: index.tmd }
+    - { text: "Methods", href: methods.tmd }

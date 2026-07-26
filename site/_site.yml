@@ -17,6 +17,7 @@ mounts:
   gallery/tarn: ../corpus/tarn
   gallery/descent: ../corpus/descent
   gallery/graphics3d: ../corpus/graphics3d
+  gallery/analyst: ../corpus/analyst
 
 nav:
   left:

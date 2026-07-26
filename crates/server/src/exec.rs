@@ -1297,16 +1297,9 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
 
 /// Inject a numbered `<caption>` (and the `#tbl-` anchor) into a cell's executed
 /// table output so `@tbl-x` resolves to "Table N". Finds the first `<table>` in the
-/// output; if there is none (the cell produced something that isn't a table), the
-/// output is returned unchanged.
+/// output; if there is none, the caption and anchor go on a wrapper instead (see
+/// [`table_figure_wrap`]) — never nowhere.
 fn table_wrap(tbl: &CellTable, inner: &str) -> String {
-    let Some(start) = inner.find("<table") else {
-        return inner.to_string();
-    };
-    let Some(rel_gt) = inner[start..].find('>') else {
-        return inner.to_string();
-    };
-    let gt = start + rel_gt + 1;
     let id_attr = tbl
         .anchor
         .as_deref()
@@ -1314,6 +1307,13 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
         .unwrap_or_default();
     let caption = tbl.caption.as_deref().unwrap_or("").trim();
     let sep = if caption.is_empty() { "" } else { ": " };
+    let Some(start) = inner.find("<table") else {
+        return table_figure_wrap(tbl, inner, &id_attr, caption, sep);
+    };
+    let Some(rel_gt) = inner[start..].find('>') else {
+        return table_figure_wrap(tbl, inner, &id_attr, caption, sep);
+    };
+    let gt = start + rel_gt + 1;
     let open = inner[start..gt].replacen("<table", &format!("<table{id_attr}"), 1);
     format!(
         "{}{open}<caption>Table&nbsp;{}{sep}{}</caption>{}",
@@ -1321,6 +1321,33 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
         tbl.number,
         esc(caption),
         &inner[gt..],
+    )
+}
+
+/// The fallback for a `#| label: tbl-x` cell whose output holds no `<table>`: an R
+/// `kable()` string printed as text, a `data.frame`'s fixed-width repr, a cell that
+/// errored, or one that never ran because no kernel was available.
+///
+/// The number is spent and the cross-reference is already rewritten by the time this
+/// runs — `apply_table_captions` numbers and registers `tbl-x` from the *label*, with
+/// no knowledge of what the cell will print — so returning the output untouched left
+/// `@tbl-x` a live link to an id nothing in the document emits, silently and with a
+/// clean `check` (which never executes a cell, so it cannot see this at all). Carry
+/// the caption and the anchor on a wrapper instead, exactly as [`figure_wrap`] has
+/// always done for a figure cell that produced no image. The caption leads, because a
+/// table's caption sits above it.
+fn table_figure_wrap(
+    tbl: &CellTable,
+    inner: &str,
+    id_attr: &str,
+    caption: &str,
+    sep: &str,
+) -> String {
+    format!(
+        "<figure{id_attr} class=\"tali-figure tali-table-figure\">\
+         <figcaption>Table&nbsp;{}{sep}{}</figcaption>{inner}</figure>",
+        tbl.number,
+        esc(caption),
     )
 }
 
@@ -2543,6 +2570,81 @@ mod tests {
             "bare number missing: {html}"
         );
         assert!(!html.contains(':'), "no caption -> no colon: {html}");
+    }
+
+    /// A labelled `tbl-` cell whose output is NOT an HTML table must still emit its
+    /// anchor, or `@tbl-x` (already rewritten into a link by `apply_table_captions`,
+    /// which never sees the output) points at an id nothing emits. Found by the
+    /// analyst demand probe: `knitr::kable(format = "html")` prints its markup to
+    /// stdout, so the cell's output is a `<pre>` of escaped text and the whole table
+    /// carrying the id disappeared — with `check` clean, since `check` never executes.
+    #[test]
+    fn a_labelled_table_cell_that_prints_text_still_carries_its_anchor() {
+        let tbl = CellTable {
+            anchor: Some("tbl-coefs".into()),
+            caption: Some("Fitted coefficients & SEs".into()),
+            number: "3".into(),
+        };
+        let html = table_wrap(&tbl, "<pre>&lt;table&gt; not really a table</pre>");
+        assert!(
+            html.contains("id=\"tbl-coefs\""),
+            "the anchor must survive a non-table output, else @tbl-coefs dangles: {html}"
+        );
+        assert!(
+            html.contains("<figcaption>Table&nbsp;3: Fitted coefficients &amp; SEs</figcaption>"),
+            "the spent number + escaped caption must still be shown: {html}"
+        );
+        assert!(
+            html.contains("<pre>&lt;table&gt; not really a table</pre>"),
+            "the cell's own output must be kept verbatim: {html}"
+        );
+        // The caption leads: a table's caption sits above it, unlike a figure's.
+        let cap = html.find("<figcaption>").expect("figcaption present");
+        let out = html.find("<pre>").expect("output present");
+        assert!(cap < out, "a table caption goes above its content: {html}");
+    }
+
+    /// The same fallback covers the no-kernel path, which is how a reader of a built
+    /// site most often meets it: the cell never ran, so there is certainly no table,
+    /// but the reference in the prose is still a link.
+    #[test]
+    fn a_table_cell_that_never_ran_still_carries_its_anchor() {
+        let tbl = CellTable {
+            anchor: Some("tbl-x".into()),
+            caption: None,
+            number: "1".into(),
+        };
+        let html = table_wrap(&tbl, "kernel unavailable");
+        assert!(html.contains("id=\"tbl-x\""), "{html}");
+        assert!(
+            html.contains("<figcaption>Table&nbsp;1</figcaption>"),
+            "no caption -> bare number, no colon: {html}"
+        );
+    }
+
+    /// The real-table path is unchanged: the id and caption go *inside* the `<table>`,
+    /// not on a wrapper, so existing pages keep their markup.
+    #[test]
+    fn a_real_table_output_is_still_captioned_in_place() {
+        let tbl = CellTable {
+            anchor: Some("tbl-cov".into()),
+            caption: Some("Coverage".into()),
+            number: "2".into(),
+        };
+        let html = table_wrap(
+            &tbl,
+            "<div><table border=\"0\"><tr><td>1</td></tr></table></div>",
+        );
+        assert!(
+            html.contains(
+                "<table id=\"tbl-cov\" border=\"0\"><caption>Table&nbsp;2: Coverage</caption>"
+            ),
+            "the in-place caption path regressed: {html}"
+        );
+        assert!(
+            !html.contains("tali-table-figure"),
+            "a real table must NOT get the fallback wrapper: {html}"
+        );
     }
 
     #[test]

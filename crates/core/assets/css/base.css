@@ -735,6 +735,12 @@
   html[data-theme="dark"] figure.tali-figure img.tali-img-light { display: none; }
   html[data-theme="dark"] figure.tali-figure img.tali-img-dark { display: inline; }
   figure.tali-figure figcaption { font-size: .9em; color: var(--tali-muted); margin-top: .5rem; }
+  /* A `#| label: tbl-` cell whose output is NOT an HTML table (an R `kable()` string
+     printed as text, a fixed-width data.frame repr, a cell that never ran) carries its
+     caption + `#tbl-` anchor on this wrapper instead — see `exec::table_figure_wrap`.
+     A table's caption leads, so flip the figure caption's margin to match `caption`
+     above (`caption-side: top`). */
+  figure.tali-table-figure figcaption { margin-top: 0; margin-bottom: .4rem; }
   .tali-listing { margin: 1.5rem 0; }
   .tali-listing-caption { font-size: .9em; color: var(--tali-muted); margin-bottom: .35rem; }
   .tali-figure-center { text-align: center; }

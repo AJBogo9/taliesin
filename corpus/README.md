@@ -42,6 +42,7 @@ author's own projects; provenance is below.
 | `course/` | Realistic course (demand-probe pilot) | a lecturer's interactive lecture-notes **book** + an embedded companion **deck**: theorems/proofs numbered + cross-referenced **across chapters** (shared counter × chapter scope), a `{{< embed >}}` deck inside a chapter, a `.code-walkthrough`, a `{python}` cell, and a draft appendix. The first corpus doc that *stacks* these interactions (single-feature pins never combine them). Pinned by `course.rs`; also the first marketing-site **gallery** exhibit (`/gallery/course`). See `notes/2026-07-22-corpus-demand-probe-course-author.md` | (purpose-built, demand-probe pilot) |
 | `tarn/` | Realistic library docs (demand-probe #2) | the documentation site for a small illustrative dataframe library: a **book** with Guide + API **Reference** parts, dual `.panel-tabset`s (package-manager + per-OS install, per-language usage), a `.code-walkthrough`, version/deprecation callouts, and **cross-page** guide→reference links; full-text Cmd-K search spans the book **including tabset-hidden panel content**. The first corpus doc to stack tabsets × search × an API reference. Pinned by `tarn.rs`; the second marketing-site **gallery** exhibit (`/gallery/tarn`). See `notes/2026-07-22-corpus-demand-probe-docs-maintainer.md` | (purpose-built, demand-probe #2) |
 | `descent/` | Interactive explainer (demand-probe #3) | a single-page **explorable explanation** of gradient descent that stacks the interactive cluster on one page: three `{{< input >}}` sliders driving a **draggable** `{js}` loss-surface graphic (once-cell + `tali.onInput` redraw + pointer-capture drag), a `.scrolly` whose sticky `{js}` figure redraws per scene, a reactive **Observable Plot** loss-curve over the same sliders, display **math**, and two numbered theme-adaptive **SVG figures** with `@fig-` cross-refs. The first corpus doc to stack reactive-input × drag × scrolly × Plot × math on one page (and the first single-page *website* gallery exhibit, vs the book personas). Pinned by `descent.rs`; the third marketing-site **gallery** exhibit (`/gallery/descent`). See `notes/2026-07-22-corpus-demand-probe-interactive-explainer.md` | (purpose-built, demand-probe #3) |
+| `analyst/` | Computational report (demand-probe #4) | a two-page quarterly latency **readout** and the only corpus project that runs **two languages in one document**: `{python}` (pandas/matplotlib) cleans and charts, `{r}` (broom/ggplot2/patchwork) fits and diagnoses, both reading one committed `data/latency.csv`. Stacks what no other doc combines: a table counter shared by the **authored** `: caption {#tbl-}` path and the **executed** `#\| label: tbl-` path in document order, a figure counter spanning both languages, and **cross-page** `@tbl-`/`@fig-` refs to *cell-produced* floats (harvested from the defining page's render, not the source scan). Pinned by `analyst.rs` (render-time only — no kernel gated); the fourth **gallery** exhibit (`/gallery/analyst`), and the only one that executes. See `notes/2026-07-26-corpus-demand-probe-analyst.md` | (purpose-built, demand-probe #4) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
@@ -49,7 +50,7 @@ author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
 corpus/tech-blog` emits a static `_site/`; `preview corpus/tech-blog` serves it
 live with cross-page navigation and per-page hot reload. Its `listing:` blocks
 (blog index, projects index, homepage recent-posts) render post cards, and the
-homepage's `about:` block renders a profile header (see `todo.md` §4).
+homepage's `hero:` block renders the Marginalia header (see `todo.md` §4).
 
 `posts/pca-geometry/index.tmd` pulls in `_includes/three-scene.tmd` via
 `{{< include ../../_includes/three-scene.tmd >}}`; the `posts/` + `_includes/`
@@ -77,8 +78,9 @@ diffing) lives in the separate `qmd-fast-testbed` repo, not here.
 edit-preview loop for the author's tech-blog: passing tests lock in the per-post
 features (math, callouts, citations, raw-`{=html}` passthrough, numbered/labelled
 equations + `@eq-` refs, collapsible callouts, `code-fold`, and live `{js}`
-cells). The remaining `#[ignore]`d tests encode the website-scope `listing:`/
-`about:` features. Run `cargo test --test tech_blog -- --ignored` for those.
+cells) plus the site-level surface (`listing:`, the `hero:` homepage header, cross-page
+refs, favicon, 404). One `#[ignore]`d test remains; run
+`cargo test --test tech_blog -- --ignored` for it.
 
 Live `{js}` cells need a real web server (a cell's relative `import()` is blocked over
 `file://`), so they are verified by `serve` + browser rather than a unit test; see

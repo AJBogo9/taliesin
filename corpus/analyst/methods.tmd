@@ -1,0 +1,179 @@
+---
+title: "Methods"
+subtitle: "The dataset, the generating process, and the model diagnostics"
+description: "How the Q3 latency dataset is built, what each column means, and the residual diagnostics behind the fitted model."
+toc: true
+---
+
+This page carries the parts of the readout that a reader only wants on demand: what
+each column is, how the file was generated, and whether the model in
+[the readout](index.tmd) is one you should believe.
+
+## The dataset {#sec-fields}
+
+One row per region-week-channel. Thirteen ISO weeks, three regions, two channels, so
+78 rows and no gaps: every combination is present, including the week-33 rows that the
+readout excludes.
+
+| Column | Type | Meaning |
+|--------|------|---------|
+| `week` | integer | ISO week number, 27 through 39 |
+| `region` | text | `eu-west`, `us-east`, or `ap-south` |
+| `channel` | text | `stable` (about 88% of traffic) or `canary` (about 12%) |
+| `requests_k` | float | Requests served that week, in thousands |
+| `p50_ms` | float | Median queue time in milliseconds |
+| `p95_ms` | float | 95th-percentile queue time in milliseconds |
+| `errors` | integer | Failed dequeues that week, as a count |
+
+: Every column in `data/latency.csv`. {#tbl-fields}
+
+`p50_ms` and `p95_ms` are percentiles of the *queue* time, the interval between a
+request being enqueued and a worker picking it up. They exclude the work itself, which
+is why a p95 near 150 ms is a meaningful objective rather than an alarming one.
+
+## How the file was generated {#sec-generating}
+
+The dataset is synthetic. It is written by the script below, which fixes a seed and
+rounds every column, so re-running it reproduces `data/latency.csv` byte for byte. The
+script is shown rather than executed: the CSV is committed, and a report that
+regenerates its own input on every build would quietly hide a change to the input.
+
+The generating process is not neutral, and saying so is the point of this section. It
+has a quarter-long downward drift built into it, a canary penalty that decays to zero
+by week 39, and a week-33 incident in `ap-south`. Those are exactly the three effects
+the readout goes looking for. Treat the readout as a demonstration that the analysis
+recovers a known signal, not as evidence about any real service.
+
+```python
+import numpy as np
+
+rng = np.random.default_rng(20260726)
+
+WEEKS = list(range(27, 40))       # Q3, ISO weeks 27-39
+REGIONS = {              # (baseline p50 ms, weekly kreq)
+    "eu-west":  (42.0, 310.0),
+    "us-east":  (38.0, 505.0),
+    "ap-south": (61.0, 148.0),
+}
+
+rows = []
+for week in WEEKS:
+    drift = 1.0 - 0.011 * (week - 27)   # caching work, week 27
+    for region, (base_p50, base_vol) in REGIONS.items():
+        for channel in ("stable", "canary"):
+            # Canary starts 24% worse, converging by week 39.
+            canary = channel == "canary"
+            decay = max(0.0, 1.0 - (week - 27) / 11.0)
+            penalty = 1.0 + 0.24 * decay
+            p50 = base_p50 * drift * rng.normal(1.0, 0.035)
+            p50 = p50 * penalty if canary else p50
+            p95 = p50 * (2.40 + rng.normal(0.0, 0.09))
+            share = 0.12 if canary else 0.88
+            requests = base_vol * share * rng.normal(1.0, 0.06)
+            err_rate = 0.0019 if canary else 0.0011
+            errors = rng.poisson(requests * 1000 * err_rate)
+
+            if week == 33 and region == "ap-south":
+                p50 *= 2.9          # the storage-layer incident
+                p95 *= 3.4
+                errors = int(errors * 7.5)
+
+            rows.append((week, region, channel,
+                         round(requests, 1), round(p50, 1),
+                         round(p95, 1), int(errors)))
+```
+
+## Model diagnostics {#sec-diagnostics}
+
+The readout fits `log(p95) ~ region + channel + week` by least squares: the model
+behind @tbl-coefs, and the reason @fig-p95 is read the way it is. Three assumptions
+carry it, and the residuals are where they show.
+
+```{r}
+#| label: diag-fit
+#| include: false
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(ggplot2)
+  library(patchwork)
+})
+
+options(repr.plot.width = 7, repr.plot.height = 3.4)
+
+INK <- "#7d7d7d"  # neutral on both themes; see the readout's setup cell
+
+clean <- read_csv("data/latency.csv", show_col_types = FALSE) |>
+  filter(!(week == 33 & region == "ap-south")) |>
+  mutate(
+    region  = factor(region, levels = c("eu-west", "us-east", "ap-south")),
+    channel = factor(channel, levels = c("stable", "canary")),
+    week_c  = week - 27
+  )
+
+fit <- lm(log(p95_ms) ~ region + channel + week_c, data = clean)
+
+diag <- clean |>
+  mutate(fitted = fitted(fit), resid = resid(fit))
+
+bare <- theme_minimal(base_size = 9) +
+  theme(
+    plot.background  = element_rect(fill = "transparent", colour = NA),
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(colour = INK, linewidth = 0.18),
+    text      = element_text(colour = INK),
+    axis.text = element_text(colour = INK),
+    plot.title = element_text(size = 9, colour = INK)
+  )
+```
+
+```{r}
+#| label: fig-residuals
+#| fig-cap: "Left: residuals against fitted values, testing constant variance on the log scale. Right: the same residuals as a normal quantile-quantile plot. Both are drawn from the pooled model in the readout."
+#| echo: false
+
+p_scale <- ggplot(diag, aes(x = fitted, y = resid)) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = INK, linewidth = 0.4) +
+  geom_point(aes(colour = region), size = 1.3, alpha = 0.85) +
+  scale_colour_manual(values = c("eu-west"  = "#3b82c4",
+                                 "us-east"  = "#c4713b",
+                                 "ap-south" = "#5a9e6f")) +
+  labs(title = "Residuals vs fitted", x = "Fitted log p95", y = "Residual") +
+  bare + theme(legend.position = "none")
+
+p_qq <- ggplot(diag, aes(sample = resid)) +
+  stat_qq(size = 1.3, colour = "#3b82c4", alpha = 0.85) +
+  stat_qq_line(colour = INK, linewidth = 0.4, linetype = "dashed") +
+  labs(title = "Normal Q-Q", x = "Theoretical quantile", y = "Sample quantile") +
+  bare
+
+# A patchwork composition draws its OWN background on top of the device, so making the
+# two sub-plots transparent is not enough: the wrapper needs telling as well.
+(p_scale | p_qq) +
+  plot_annotation(theme = theme(
+    plot.background = element_rect(fill = "transparent", colour = NA)
+  ))
+```
+
+@fig-residuals says the log transform did its job: the residual spread is flat across
+the fitted range rather than fanning out, which is what it would do if we had fitted
+raw milliseconds. The quantile plot is close to the line through the middle and drifts
+at both tails, which is ordinary for 76 points and not worth transforming further.
+
+What the residuals cannot tell us is whether the observations are independent. They are
+not, quite: consecutive weeks in the same region share whatever the platform was doing
+that fortnight, so the standard errors in the readout's coefficient table are, if
+anything, a little optimistic. That does not threaten the canary conclusion, which is a
+large effect, but it is the reason the readout stops at "measurably slower" rather than
+quoting an interval to three decimals.
+
+::: {.callout-note}
+## Reproducing this
+
+Both pages read `data/latency.csv` from the project directory. The Python cells need
+`pandas` and `matplotlib`; the R cells need `readr`, `dplyr`, `broom`, `ggplot2`,
+`patchwork`, and `knitr`. With those present, `taliesin preview .` renders the whole
+report, re-executing only the cells you actually edit.
+:::

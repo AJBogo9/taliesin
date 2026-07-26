@@ -31,6 +31,7 @@ you run one.
 | [2026-07-22-demand-probe-course-author](2026-07-22-corpus-demand-probe-course-author.md) | demand probe, persona 1 | item **16** (F-03 open) |
 | [2026-07-22-demand-probe-docs-maintainer](2026-07-22-corpus-demand-probe-docs-maintainer.md) | demand probe, persona 2 | item **17** (F-01 corrected 07-25, F-04 open) |
 | [2026-07-22-demand-probe-interactive-explainer](2026-07-22-corpus-demand-probe-interactive-explainer.md) | demand probe, persona 3 | item **18** (F-02, F-03 open) |
+| [2026-07-26-demand-probe-analyst](2026-07-26-corpus-demand-probe-analyst.md) | demand probe, persona 4 — **closes the slate 4/4**; the un-probed shape was *two languages in one document*, not volume, and both defects were "the R arm of a two-arm facility was never built" | AN-1 + AN-2a shipped; AN-2b/3/4/5/6 = items **41**, **40**, **39** |
 | [2026-07-23-cad-as-code-research](2026-07-23-cad-as-code-research.md) | CAD-as-code feasibility + market | **decided against** (feasible + legally green, no demand); 5 revisit triggers in the doc |
 | [2026-07-24-deck-motion-audit](2026-07-24-deck-motion-audit.md) | deck overview + every animation | Option A + both residuals shipped; 3 owner decisions = item **28** |
 | [2026-07-25-ap7-accessibility-audit](2026-07-25-ap7-accessibility-audit.md) | **AP7** deep a11y of the output | was item **34**; **all five findings shipped 2026-07-25** (see below). Static surfaces came back sound; the defects were all "content changes without an announcement" |

@@ -106,3 +106,105 @@ fn an_r_error_is_reported_not_swallowed() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The colour type byte of a PNG's IHDR: 2 = RGB (opaque), 6 = RGBA. Reading the header
+/// is enough — an 8-bit RGB PNG has no alpha channel at all, so it *cannot* be
+/// transparent, and that is the whole question here.
+fn png_colour_type(data_uri_png_b64: &str) -> u8 {
+    // The byte we want is at offset 25, so decoding the first 36 base64 chars (27 bytes)
+    // is plenty — and avoids pulling a base64 crate into the workspace for one header.
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = Vec::with_capacity(27);
+    let mut acc: u32 = 0;
+    let mut bits = 0;
+    for c in data_uri_png_b64.bytes().take(36) {
+        let Some(v) = ALPHABET.iter().position(|&a| a == c) else {
+            break;
+        };
+        acc = (acc << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    assert_eq!(&out[1..4], b"PNG", "inline figure is a PNG data URI");
+    // 8-byte signature, then the IHDR chunk: len(4) type(4) w(4) h(4) bitdepth(1) colour(1)
+    out[25]
+}
+
+/// Pull every inline PNG payload out of a built page, in document order.
+fn inline_pngs(html: &str) -> Vec<&str> {
+    html.match_indices("data:image/png;base64,")
+        .map(|(i, m)| {
+            let rest = &html[i + m.len()..];
+            &rest[..rest.find('"').expect("the src attribute closes")]
+        })
+        .collect()
+}
+
+/// R's inline device is opened with an opaque white background, so a figure whose own
+/// backgrounds the author made transparent still came out as a white slab — glaring on
+/// the dark theme, which is the default. `KernelSpec::r`'s preamble now asks the device
+/// for transparency.
+///
+/// Both halves are asserted, because the fix is only safe if it is *additive*: a figure
+/// that asks for transparency gets an alpha channel, and a DEFAULT ggplot (which paints
+/// its own white `plot.background`) is left exactly as opaque as it was. Without the
+/// second half this test would still pass on a change that made every existing R figure
+/// transparent, i.e. unreadable dark-on-dark.
+#[test]
+fn a_transparent_r_figure_keeps_its_alpha_and_a_default_one_stays_opaque() {
+    let Some(program) = r_program() else { return };
+    let dir = tmp_dir("figbg");
+    let doc = dir.join("doc.tmd");
+    std::fs::write(
+        &doc,
+        "---\ntitle: R figure background\n---\n\n\
+         ```{r}\n\
+         suppressPackageStartupMessages(library(ggplot2))\n\
+         options(repr.plot.width = 4, repr.plot.height = 3)\n\
+         ggplot(mtcars, aes(wt, mpg)) + geom_point() +\n\
+           theme(plot.background = element_rect(fill = \"transparent\", colour = NA),\n\
+                 panel.background = element_rect(fill = \"transparent\", colour = NA))\n\
+         ```\n\n\
+         ```{r}\nggplot(mtcars, aes(wt, mpg)) + geom_point()\n```\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", doc.to_str().unwrap()])
+        .env("TALIESIN_R", &program)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run build");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let html = std::fs::read_to_string(dir.join("doc.html")).expect("built page");
+    let pngs = inline_pngs(&html);
+    assert_eq!(
+        pngs.len(),
+        2,
+        "expected one figure per cell; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        png_colour_type(pngs[0]),
+        6,
+        "a figure that asked for a transparent background must keep an alpha channel — \
+         without the device preamble it rasterises onto opaque white, which reads as a \
+         white slab on the dark theme"
+    );
+    assert_eq!(
+        png_colour_type(pngs[1]),
+        2,
+        "a DEFAULT ggplot paints its own white plot.background and must stay opaque: the \
+         preamble is additive, and making every existing R figure transparent would make \
+         them unreadable dark-on-dark"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

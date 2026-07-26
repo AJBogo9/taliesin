@@ -83,6 +83,22 @@ fn push_rich(outputs: &mut Vec<Output>, rich_bytes: &mut usize, capped: &mut boo
     }
 }
 
+/// R's inline graphics device is opened with an **opaque white** background
+/// (`repr.plot.bg` defaults to `"white"`), so a figure whose own backgrounds the author
+/// made transparent still rasterises onto a white slab — on a page whose default theme
+/// is dark. Ask the device for transparency instead: the R counterpart of the
+/// `InlineBackend.print_figure_kwargs` facecolor that [`MPL_THEME_PREAMBLE`] already
+/// gives Python.
+///
+/// **This is additive, not a restyle.** A default `ggplot` (whose `theme_grey` paints
+/// its own white `plot.background`) and base-R graphics still rasterise opaque —
+/// measured through a real kernel, both stay 8-bit RGB with no alpha channel at all.
+/// All this removes is the white the *device* painted underneath a figure that had
+/// already asked to be transparent. Pinned by `tests/r_kernel.rs`.
+const R_TRANSPARENT_DEVICE_PREAMBLE: &str = r#"
+options(repr.plot.bg = "transparent")
+"#;
+
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
 /// `<script type="tali-define">` HTML output the native `{js}` runtime consumes
@@ -358,7 +374,7 @@ impl KernelSpec {
                     conn.display().to_string(),
                 ]
             },
-            preambles: &[],
+            preambles: &[R_TRANSPARENT_DEVICE_PREAMBLE],
         }
     }
 }
