@@ -226,11 +226,22 @@
   @media (hover: none) and (pointer: coarse) {
     .tali-search-kbd { display: none; }
     /* MOB-7: the burger appears only under 40rem, so a landscape phone gets the full 7-link
-       desktop nav at a 26px minimum link height — clearing the 24px AA floor but well under
-       the 44px AAA target. Deliberately NOT forcing the burger here: a tablet has room for
-       the real nav and would lose it. The measured defect is the target size, so that is
-       what this fixes, matching the 44px the burger above already chose for touch. */
-    .tali-nav-link { min-height: 44px; justify-content: center; }
+       desktop nav at a 26px minimum link height — clearing the 24px AA floor but under the
+       44px AAA target. Deliberately NOT forcing the burger: a tablet has room for the real
+       nav and would lose it.
+       The target grows via an overlay rather than `min-height`, and that is load-bearing.
+       Measured at 844x390: `min-height: 44px` took the STICKY bar from 52px to 75px, 13.3%
+       to 19.2% of a landscape phone's viewport — trading an AA-passing target for permanent
+       reading height on the device with the least of it, which is MOB-8's defect wearing a
+       different hat. The overlay is centred and 44px tall, so it reaches into the row's
+       existing .6rem padding and the bar does not move. Same idiom base.css already uses on
+       `.tali-anchor::after`; `::before` because `::after` is taken (bold-width reservation).
+       Adjacent links can only overlap vertically here, and vertically they are alone. */
+    .tali-nav-link { position: relative; }
+    .tali-nav-link::before { content: ""; position: absolute; left: 0; right: 0;
+      top: 50%; transform: translateY(-50%); height: 44px; }
+    /* Icon-only links are ~32px wide, so they need the width too. Horizontal only: it
+       cannot grow the bar's height, and above 40rem the row has the room. */
     .tali-nav-icon { min-width: 44px; }
   }
 

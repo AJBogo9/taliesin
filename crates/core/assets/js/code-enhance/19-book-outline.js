@@ -52,6 +52,14 @@ function taliBookOutline(list) {
   function abs(u, against) {
     try { return new URL(u, against).href.split('#')[0]; } catch (e) { return ''; }
   }
+  // Hydration re-parents chapter links (into `.tali-book-row` below), and moving an element
+  // in the DOM blurs it. The drawer focuses the current chapter's link the instant it opens,
+  // but this runs ~300ms later behind `taliLoadSearchIndex` — so opening the drawer put
+  // focus in the panel and then silently threw it back to `<body>`, which is exactly the
+  // "focus stays on .tali-book-body" the 2026-07-26 mobile audit measured (it read the
+  // settled state and concluded the trap was never wired; the trap is wired and correct).
+  // Remember who had focus and hand it back once the moves are done.
+  var hadFocus = document.activeElement;
   /** @type {Record<string, Array<{i: string, t: string, l: number}>>} */
   var byPage = {};
   /** @type {Record<string, number>} */
@@ -155,4 +163,13 @@ function taliBookOutline(list) {
       panel.hidden = false;
     }
   });
+  // Restore focus if a re-parent above dropped it. Guarded three ways: only when focus
+  // actually landed on `<body>`/null (never steal it from wherever the reader has since
+  // moved it), only for an element still in the document, and `preventScroll` because the
+  // drawer is a fixed overlay — a default `.focus()` would scroll the article underneath.
+  if (hadFocus instanceof HTMLElement && hadFocus !== document.activeElement &&
+      (document.activeElement === document.body || document.activeElement === null) &&
+      hadFocus.isConnected) {
+    try { hadFocus.focus({ preventScroll: true }); } catch (e) { /* older engines */ }
+  }
 }

@@ -331,19 +331,6 @@
   .tali-anchor:focus-visible { opacity: 1; }
   .tali-anchor:hover, .tali-anchor.tali-anchor-copied { color: var(--tali-link); opacity: 1; }
   @media print { .tali-anchor { display: none; } }
-  /* A device with no hover has no way to reach a hover-revealed control, so both of the
-     `opacity: 0` reader affordances above are simply invisible there (MOB-4). Note the
-     irony this fixes: the `::after` overlay two rules up sizes the anchor's TAP target for
-     WCAG 2.5.8 — the target was sized for touch on a control that on touch never appeared.
-     Copy-code goes to full strength: it matters MORE on a phone, where there is no easy
-     text selection across a scrolling `<pre>`. The anchor is dimmed rather than shown or
-     dropped (author ruling 2026-07-26): a `#` after every heading at full ink is noise on a
-     390px screen, but deep-linking should still be reachable. `:hover`/`.tali-anchor-copied`
-     above are more specific and still take it to 1, so the copied feedback survives. */
-  @media (hover: none) {
-    .tali-copy { opacity: 1; }
-    .tali-anchor { opacity: .45; }
-  }
   h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.011em; margin: 0 0 .6rem; }
   h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
   h3 { font-size: 1.35rem; line-height: 1.25; margin: 1.8rem 0 .55rem; }
@@ -414,6 +401,25 @@
   pre:hover .tali-copy, .tali-copy:focus-visible { opacity: 1; }
   .tali-copy:hover { color: var(--tali-fg); border-color: var(--tali-muted); }
   .tali-copy.tali-copied { color: var(--tali-callout-tip); border-color: var(--tali-callout-tip); }
+  /* A device with no hover has no way to reach a hover-revealed control, so both of the
+     `opacity: 0` reader affordances are simply invisible there (MOB-4). Note the irony this
+     fixes: `.tali-anchor::after` above sizes the anchor's TAP target for WCAG 2.5.8 — sized
+     for touch, on a control that on touch never appeared.
+     Copy-code goes to full strength: it matters MORE on a phone, where there is no easy text
+     selection across a scrolling `<pre>`. The anchor is dimmed rather than shown or dropped
+     (author ruling 2026-07-26): a `#` after every heading at full ink is noise on a 390px
+     screen, but deep-linking should stay reachable. `:hover` / `.tali-anchor-copied` are
+     more specific and still take it to 1, so the copied feedback survives.
+     POSITION IS LOAD-BEARING — this block must stay BELOW both `opacity: 0` declarations.
+     It first sat up beside the anchor rules, which is above `.tali-copy`'s own declaration
+     at the same (0,1,0) specificity, so the later `opacity: 0` won and copy stayed invisible
+     on touch. The anchor half worked, which is exactly why it looked fine: browser-measured
+     0.45 and 0 side by side. A `.tali-copy`-is-in-the-block test passes either way, so
+     `hover_revealed_copy_controls_stay_reachable_without_a_hover` asserts the ORDER. */
+  @media (hover: none) {
+    .tali-copy { opacity: 1; }
+    .tali-anchor { opacity: .45; }
+  }
   /* A wide diagram scrolls inside its own box (like a wide table / code block) rather than
      clamping to the reading column and shrinking labels to a few px on a narrow screen. A
      diagram narrower than the column keeps its natural size, centred. */

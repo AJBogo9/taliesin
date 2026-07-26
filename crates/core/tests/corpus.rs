@@ -1055,18 +1055,20 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         "book topbar + chapter drawer chrome missing"
     );
     // The drawer launcher promises `aria-haspopup="dialog"`, so the drawer panel must
-    // actually BE a dialog (role + accessible name). Batch 3g. `aria-modal` joined it as
-    // static markup in the mobile batch (MOB-5) — it used to be listed here as "wired at
-    // runtime", which was never true of anything but the focus trap (BOOK_DRAWER_SCRIPT +
-    // taliFocusTrap). On a phone the panel covers 93% of the viewport over a backdrop, so
-    // AT has to be told the rest of the page is inert.
+    // actually BE a dialog (role + accessible name); the focus trap / aria-modal are
+    // wired at runtime (BOOK_DRAWER_SCRIPT + taliFocusTrap). Batch 3g.
+    //
+    // `aria-modal` is deliberately NOT static here, re-confirmed by browser measurement in
+    // the 2026-07-26 mobile batch: `taliFocusTrap` SETS it on open and REMOVES it on
+    // release, which is the correct lifecycle (a hidden dialog is not modal). A static copy
+    // was tried and reverted — the trap's release stripped it, so the attribute was present
+    // on load and gone after the first close, which is worse than either end state.
     assert!(
         methods.contains("aria-haspopup=\"dialog\"")
             && methods.contains(
-                "class=\"tali-book-drawer-panel\" role=\"dialog\" aria-modal=\"true\" \
-                 aria-label=\"Chapters\""
+                "class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\""
             ),
-        "the chapter drawer must be a real modal role=dialog to honour aria-haspopup=dialog"
+        "the chapter drawer must be a real role=dialog to honour aria-haspopup=dialog"
     );
     assert!(
         !methods.contains("class=\"tali-book\""),

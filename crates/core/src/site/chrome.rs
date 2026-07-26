@@ -281,8 +281,7 @@ impl Site {
         s.push_str(
             "<div class=\"tali-book-drawer\" id=\"tali-book-drawer\" hidden>\
              <div class=\"tali-book-drawer-backdrop\" data-tali-drawer-close></div>\
-             <div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-modal=\"true\" \
-             aria-label=\"Chapters\">",
+             <div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\">",
         );
         // The `tali-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
         // inside the drawer panel rather than a left rail.
@@ -527,11 +526,19 @@ mod tests {
 
     // --- the chapter drawer is a modal, and must behave like one (MOB-5) --------------
     //
-    // Re-derived from source before writing, per the backlog's own warning that entries
-    // rot: two thirds of the filed finding was already fixed. `role="dialog"` HAS been on
-    // the panel since 2369d80 (2026-07-07), and `BOOK_DRAWER_SCRIPT` already calls
-    // `window.taliFocusTrap`, so "not a dialog / focus trap unused" was stale. What is
-    // genuinely absent is `aria-modal` and any scroll lock at all.
+    // Re-derived from source, then measured in a browser, because most of the filed finding
+    // had already been fixed: `role="dialog"` has been on the panel since 2369d80
+    // (2026-07-07), `BOOK_DRAWER_SCRIPT` already calls `window.taliFocusTrap`, and the trap
+    // itself both SETS `aria-modal` on open and REMOVES it on release — the correct
+    // lifecycle, since a closed dialog is not modal. A static `aria-modal="true"` was tried
+    // and reverted: the trap's release stripped it, leaving it present on load and absent
+    // after the first close.
+    //
+    // The audit's "focus stays on `.tali-book-body`" was nonetheless a REAL symptom with a
+    // wrong cause. Measured: focus lands in the panel synchronously, then returns to `<body>`
+    // about 300ms later — `19-book-outline.js` hydrates behind `taliLoadSearchIndex` and
+    // re-parents chapter links into `.tali-book-row`, and moving an element in the DOM blurs
+    // it. So the fix belongs in the outline, not in the dialog markup.
 
     fn book_page_html() -> String {
         let root = write_site(
@@ -552,17 +559,45 @@ mod tests {
     }
 
     #[test]
-    fn book_drawer_panel_is_announced_as_a_modal_dialog() {
+    fn book_drawer_panel_is_a_dialog_whose_modality_the_focus_trap_owns() {
         let html = book_page_html();
-        // Needle the WHOLE tag, not `aria-modal` alone: every page inlines the entire CSS +
-        // JS payload, so a bare substring is satisfied by a script that merely mentions it.
+        // Needle the WHOLE tag, not a bare attribute: every page inlines the entire CSS + JS
+        // payload, so a substring is satisfied by a script that merely mentions the name.
         assert!(
             html.contains(
-                "<div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-modal=\"true\" \
-                 aria-label=\"Chapters\">"
+                "<div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\">"
             ),
-            "drawer panel is not a modal dialog; it covers 93% of a phone viewport over a \
-             backdrop, so AT must be told the rest of the page is inert:\n{html}"
+            "drawer panel is not a named role=dialog:\n{html}"
+        );
+        // Modality is the trap's job, so the script must actually hand it the PANEL (handing
+        // it the outer container would trap against the backdrop and mark the wrong node).
+        assert!(
+            BOOK_DRAWER_SCRIPT.contains("release=window.taliFocusTrap(panel,f)"),
+            "the drawer must route through taliFocusTrap, which is what supplies aria-modal \
+             and the Tab confinement:\n{BOOK_DRAWER_SCRIPT}"
+        );
+    }
+
+    #[test]
+    fn book_outline_hydration_hands_focus_back_after_reparenting_a_chapter_link() {
+        // The drawer focuses the current chapter's link on open; hydration then moves that
+        // link into a new `.tali-book-row`, which blurs it. Browser-measured before the fix:
+        // focus in the panel at click, back on `.tali-book-body` 300ms later.
+        let js = include_str!("../../assets/js/code-enhance/19-book-outline.js");
+        assert!(
+            js.contains("var hadFocus = document.activeElement;"),
+            "hydration does not remember who had focus before it re-parents links:\n{js}"
+        );
+        assert!(
+            js.contains("hadFocus.focus({ preventScroll: true })"),
+            "focus is not handed back, or is handed back without preventScroll (the drawer \
+             is a fixed overlay, so a scrolling focus would move the article behind it)"
+        );
+        // Only reclaim focus the re-parent actually dropped — never steal it from wherever
+        // the reader has since moved it.
+        assert!(
+            js.contains("document.activeElement === document.body"),
+            "the restore is unguarded, so it can steal focus the reader placed elsewhere"
         );
     }
 

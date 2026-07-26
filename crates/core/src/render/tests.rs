@@ -5977,6 +5977,26 @@ fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
         !block.contains(".tali-anchor { display: none"),
         "the ruling was show-dimmed, not drop:\n{block}"
     );
+    // Presence is NOT enough, and this half of the test exists because presence passed while
+    // the fix did nothing. Both overrides and both `opacity: 0` declarations sit at (0,1,0),
+    // so the cascade is decided purely by source order. The block first landed beside the
+    // anchor rules — above `.tali-copy`'s own declaration — and browser measurement showed
+    // the anchor at 0.45 and copy still at 0. Assert the block comes LAST.
+    let zero_copy = BASE_CSS
+        .find(".tali-copy { position: absolute")
+        .expect("no .tali-copy base declaration");
+    let zero_anchor = BASE_CSS
+        .find(".tali-anchor { position: relative")
+        .expect("no .tali-anchor base declaration");
+    let gate = BASE_CSS
+        .find("@media (hover: none) {")
+        .expect("no capability block");
+    assert!(
+        gate > zero_copy && gate > zero_anchor,
+        "the capability block is above an `opacity: 0` of equal specificity, so the cascade \
+         silently discards it (gate at {gate}, .tali-copy at {zero_copy}, .tali-anchor at \
+         {zero_anchor})"
+    );
 }
 
 #[test]
@@ -6029,5 +6049,31 @@ fn book_drawer_close_button_clears_the_wcag_tap_target_floor() {
     assert!(
         panel.contains("overscroll-behavior: contain"),
         "panel scroll still chains to the page:\n{panel}"
+    );
+}
+
+#[test]
+fn touch_nav_tap_target_grows_without_growing_the_sticky_bar() {
+    // MOB-7. The obvious fix is `min-height: 44px` on `.tali-nav-link`, and it is wrong:
+    // browser-measured at 844x390 touch, it took the STICKY navbar from 52px to 75px —
+    // 13.3% to 19.2% of a landscape phone's viewport. That trades an already-AA-passing
+    // 26px target for permanent reading height on the device with the least of it, which
+    // is exactly MOB-8's defect in different clothes. The target is expanded by a centred
+    // overlay instead, which reaches into the row's existing padding and moves nothing.
+    let block = media_block(SITE_CSS, "(hover: none) and (pointer: coarse)")
+        .expect("site.css has no input-capability query");
+    assert!(
+        block.contains(".tali-nav-link::before"),
+        "no tap-target overlay on touch nav links:\n{block}"
+    );
+    let link_rule = block
+        .split(".tali-nav-link {")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .unwrap_or("");
+    assert!(
+        !link_rule.contains("min-height"),
+        "`min-height` on the nav link grows the sticky bar (measured 52px -> 75px); use the \
+         overlay:\n{link_rule}"
     );
 }
