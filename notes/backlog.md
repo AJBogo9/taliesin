@@ -11,16 +11,18 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Band A holds 16 items (4 HIGH, 8 MEDIUM, 3 LOW, plus one authoring pass), filed 2026-07-26 by five
-rounds in one day:** the mobile audit (42-49), path parity (50, 51, 57), and the L2/L3/L4/L5 lens
-batch (52-56). Band B is empty; band C holds only item **25**, parked on a public-release *date*
-rather than on a decision; the rest is blocked on a device or a real user (band D) or gated (band E).
+**Band A holds 8 items (0 HIGH, 7 MEDIUM/LOW, plus one authoring pass).** The mobile batch (42-49,
+every HIGH on the board) **shipped 2026-07-26**; what is left is path parity (50, 51, 57) and the
+L2/L3/L4/L5 lens batch (52-56). Band B is empty; band C holds only item **25**, parked on a
+public-release *date* rather than on a decision; the rest is blocked on a device or a real user
+(band D) or gated (band E).
 
-**They are four or five batches, not sixteen sessions** — most share a root cause. The suggested
-order is at the top of band A; start with the mobile batch (it holds every HIGH), then path parity
-(item **57** unblocks the mutation re-run). Read the band-A preamble before starting, the two traps
-under "The mobile audit RAN" before opening a browser, and the 2026-07-26 probe traps under Standing
-constraints before writing any probe.
+**They are two or three batches, not eight sessions** — most share a root cause. The suggested order
+is at the top of band A; start with path parity, where item **57** unblocks the mutation re-run. Read
+the band-A preamble before starting, and the 2026-07-26 probe traps under Standing constraints before
+writing any probe — plus the four the mobile batch added when it shipped (a scroll lock cannot be
+tested with `scrollBy`; a capability rule can be discarded by the cascade; a tap target on a sticky
+bar must grow by overlay; and a stale *cause* can sit under a real *symptom*).
 
 **A lens menu now exists** ("Proposed audit lenses", below): six never-run lenses (L1-L6), four
 re-runs ranked by age × measured churn in each round's own surface, and four directions that the last
@@ -152,14 +154,16 @@ still there, so a future change to the relay or the companion re-opens the same 
 
 ## Open work (priority order: take from the top)
 
-### The mobile audit RAN on 2026-07-26 — its findings are in band A
+### The mobile audit RAN on 2026-07-26, and its eight findings SHIPPED the same day
 
 Detail: [2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md). The author's reported symptom
-reproduces, and **seven of its eight findings share one root cause: the tool never asks what kind of device it is
-on.** Measured over every `.css`, `.js` and `.rs` file in `crates/` + `web-client/`: **zero**
-`pointer: coarse`, **zero** `hover: none`, **zero** `any-pointer`. Every keyboard hint, hover-reveal
-and presenter tool is gated on viewport *width* or on deck *layout mode* — two proxies that both fail
-the same way, by treating a wide or stepped phone as a desktop.
+reproduced, and **seven of its eight findings shared one root cause: the tool never asked what kind of
+device it was on.** Measured then over every `.css`, `.js` and `.rs` file in `crates/` +
+`web-client/`: **zero** `pointer: coarse`, **zero** `hover: none`, **zero** `any-pointer`. Every
+keyboard hint, hover-reveal and presenter tool was gated on viewport *width* or on deck *layout mode*
+— two proxies that both failed the same way, by treating a wide or stepped phone as a desktop.
+**Fixed 2026-07-26** (items 42-49 deleted; the four method lessons the build paid for are recorded
+where those items were, further down this section).
 
 **Two traps this round paid for, recorded so the next one doesn't:**
 - **`resize_page` floors at ~500px.** It resizes the *window*, and Chrome will not go narrower. Two
@@ -264,118 +268,53 @@ file when it lands**.
 
 #### A. Build now
 
-**Suggested order (2026-07-26), so a fresh session does not re-derive it.** The 16 items here are
-four or five *batches*, not sixteen sessions, because most share a root cause:
+**Suggested order (2026-07-26), so a fresh session does not re-derive it.** The 8 items here are two
+or three *batches*, not eight sessions, because most share a root cause. (Step 1, mobile / touch
+42-49, **shipped 2026-07-26**.)
 
-1. **Mobile / touch (42-49).** Every HIGH on the board, one root cause, and four of them are the same
-   edit at four sites. It came from real device use, which is the only source that produced a HIGH
-   this month. **Do this first.**
-2. **Path parity (50, 51, 57).** One root cause: page assembly is hand-wired at three sites with no
+1. **Path parity (50, 51, 57).** One root cause: page assembly is hand-wired at three sites with no
    shared owner. **57 is the keystone** — fixing the containment root also unblocks the mutation
    re-run, which currently cannot start at all.
-3. **The mutation re-run**, which becomes possible once 57 lands. Mechanical yield on code that has
+2. **The mutation re-run**, which becomes possible once 57 lands. Mechanical yield on code that has
    never been mutation-checked; scope it to files changed since 2026-07-18 and heed the cargo-mutants
    traps above.
-4. **Migration UX (53, 54)** and **deck weight (52)** and **hygiene (55)**: small, self-contained, any
+3. **Migration UX (53, 54)** and **deck weight (52)** and **hygiene (55)**: small, self-contained, any
    order.
-5. **56 is an authoring pass, not code**, and can run in parallel with any of the above.
+4. **56 is an authoring pass, not code**, and can run in parallel with any of the above.
 
 **Auditing is done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings, while the
 one round that produced four came from the author using the tool on a phone. The remaining menu
-entries are the weak ones; the next *audit* worth running is real-device mobile **after** batch 1
-ships, so it verifies rather than re-finds.
+entries are the weak ones; **the next *audit* worth running is real-device mobile, and it is now
+unblocked** — batch 1 has shipped, so that round verifies rather than re-finds. Everything it should
+check is the "Not measured" list in the mobile findings doc, and the *first* thing to confirm on real
+hardware is the drawer scroll lock: `overflow: hidden` on the root is known to hold less completely
+on iOS Safari than on Chromium, and only Chromium was measured.
 
 
-**The 2026-07-26 mobile audit's eight findings** (detail:
-[2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md)). They share one root cause and are cheapest
-built as **one batch**, because 1, 2, 3 and 4 are the same edit applied at four sites: replace a
-width/mode proxy with `@media (hover: none) and (pointer: coarse)`. **Verify in a browser with real
-viewport emulation, not window resize** (see the trap above), and pin what you can server-side —
-remember the inlined-asset needle trap when writing any assertion.
+**The 2026-07-26 mobile audit's eight findings SHIPPED** (MOB-1..8, detail:
+[2026-07-26-mobile-audit.md](2026-07-26-mobile-audit.md)). One root cause, one batch, as predicted:
+the tree now has input-capability queries and the width/mode proxies are gone from the decisions that
+were never about width. Items 42-49 are deleted. **Four things the round got wrong, kept here because
+they are method lessons, not history:**
 
-42. **MOB-1 (HIGH): the deck menu hands a touch reader a keyboard manual.** On a 390×844 phone the
-    menu renders a **125px "KEYBOARD" block listing ten shortcuts** (`→ ↓ Space`, `Home End`, `O`,
-    `F`, `S`, `B`, `?`, `Esc`) plus `O`/`S`/`F` hint badges — about a third of the menu, pushing the
-    controls that work out of reach. `deck.js`'s `buildMenu()` appends `KEYS_HTML` unconditionally
-    and always passes `tool()`'s `hint`. **Oversight, not decision, and the same function proves
-    it:** it already drops the theme row when embedded, hides Present outside the feed and hides
-    Speaker *in* the feed — so in portrait, Speaker view is correctly hidden from Tools **while the
-    legend still advertises `S` — Speaker view**. Fix: gate `.tali-menu-keys` (`deck.css:762`) and
-    `.tali-menu-hint` (`deck.css:745`) on capability.
+- **`window.scrollBy` cannot test a scroll lock.** `overflow: hidden` blocks USER scrolling and
+  deliberately still permits programmatic scrolling, so MOB-5's 328px reading is the same with and
+  without the fix. Use real key/gesture events: measured with PageDown, drawer closed the page moves
+  707px, drawer open it does not move at all while the panel scrolls instead.
+- **MOB-5's dialog half was already fixed** (`role="dialog"` since 2369d80; `taliFocusTrap` already
+  wired, and the trap owns `aria-modal`'s full lifecycle). A static `aria-modal` was tried and
+  reverted — the trap's release strips it. But **the symptom was real**: focus enters the panel and
+  leaves ~300ms later, because `19-book-outline.js` re-parents the focused chapter link during
+  hydration. Fixed there. This is the backlog's own "trust the symptom, never the stated cause".
+- **The obvious MOB-7 fix is a regression.** `min-height: 44px` on a nav link grew the *sticky* bar
+  from 52px to 75px at 844x390 — 19.2% of a landscape phone's viewport, i.e. MOB-8's defect
+  reintroduced while fixing MOB-7. Tap targets on a sticky bar must grow by overlay, not by height.
+- **A capability rule can be silently discarded by the cascade.** MOB-4's block first landed above
+  `.tali-copy`'s own `opacity: 0` at equal specificity; copy stayed invisible while the anchor half
+  worked, and a "selector is inside the block" test passed throughout. Assert source ORDER.
 
-43. **MOB-2 (HIGH): rotating a phone gives it desktop affordances.** The gates that exist key on deck
-    layout *mode*, and mode is chosen by orientation. Measured on one emulated phone, rotation only:
-    portrait hides Speaker view, landscape (844×390, `pointer: coarse` still true) **shows it**, along
-    with the badges and the legend. Speaker view opens a presenter window — a dead end on a phone, and
-    `deck.css:632-633` already knows it. Fix: gate presenter-only tools on input capability, which is
-    independent of feed/stepped.
-
-44. **MOB-3 (HIGH): the ⌘K hint appears on any touch device wider than 640px.** `site.css:197` hides
-    `.tali-search-kbd` under `max-width: 40rem`, and **its own comment states the intent as
-    capability** ("meaningless on a touch phone (no ⌘/Ctrl key)"). Measured at 844×390 touch: the badge
-    renders **"Ctrl K"**. `search.js:1064` compounds it — `IS_MAC` reads `navigator.platform`/
-    `userAgent` with **no touch check**, so an Android phone is told to press Ctrl+K and an iPad ⌘K.
-    Emitted at `site/chrome.rs:41` + `:506`. Keep `aria-keyshortcuts`; only the visible badge is wrong.
-
-45. **MOB-4 (HIGH): copy-code and copy-link are invisible on touch.** `.tali-copy`
-    (`base.css:394-401`) and `.tali-anchor` (`base.css:321-332`) sit at `opacity: 0`, revealed only by
-    `:hover`/`:focus-visible`, with no `hover: none` fallback. **Copy-code matters more on a phone**
-    (no easy selection across a scrolling `<pre>`) and is exactly where it cannot be found. Note the
-    irony to avoid re-deriving it: `base.css:324-327` adds a 24×24 `::after` tap target citing WCAG
-    2.5.8 — the size was solved *for touch* on a control that on touch never appears. Fix under
-    `@media (hover: none)`: show `.tali-copy` persistently; `.tali-anchor` wants an author ruling
-    (show, or drop).
-
-46. **MOB-5 (MEDIUM): the book chapter drawer does not behave like a drawer.** At 390×844 it covers
-    **93% of the viewport** over a backdrop, and: **(a)** page scroll is not locked —
-    `scrollBy(0,400)` moved the article behind it by **328px**; `body` is `position: static` /
-    `overflow: visible`, and the panel's `overscroll-behavior: auto` chains at either end. **There is
-    no scroll-lock code anywhere in the client JS** — never implemented, not broken. **(b)** It is not
-    a dialog: `role`/`aria-modal`/`aria-hidden` all absent and focus stays on `.tali-book-body` after
-    opening, though a focus trap already exists (`code-enhance/04-focus-trap.js`, built for Cmd-K).
-    **(c)** The close control is **26×22px**, under the 24px WCAG 2.5.8 AA floor on height. *Bounded:*
-    backdrop tap-to-dismiss and Escape both work (verified), so this is a size defect, not a trap —
-    (a) and (b) are the ones worth a session.
-
-47. **MOB-6 (MEDIUM): the marketing site tells phone readers to press keys.** `site/index.tmd:121`
-    ("press `F` for fullscreen") and `site/formats.tmd:42` ("click it, arrow through it, press `F`")
-    — verified rendered at 844×390 touch, describing a keyboard the reader lacks about a deck directly
-    above the sentence. Content fix. **Scope it precisely:** a *reference table* of shortcuts in the
-    guide is legitimate on any device and is NOT in scope; this is an *instruction* about the widget
-    on the page.
-
-49. **MOB-8 (MEDIUM): the book topbar grows instead of truncating on narrow screens.**
-    Author-reported, then measured: **the row never overflows horizontally at any width — it grows
-    vertically**, because the title wraps. 390px → 1 line / ~48px; 320px → 2 lines / 56px; **280px and
-    240px → 3 lines / 77px, 12-13% of the viewport**, and the topbar is *sticky*, so that is taken off
-    every screen of reading. `.tali-book-brand` (`site.css:291-292`) is `display: block` with no
-    `nowrap`, no `overflow: hidden`, no `text-overflow: ellipsis` and no `min-width: 0` — as a flex
-    item its default `min-width: auto` refuses to shrink below content, so it wraps instead of
-    truncating. **The same failure is already documented at `site.css:244-248`** (shrink pressure
-    landing on the item with no min-content floor; that fix protected the icon and left the title
-    exposed), and the correct idiom is already used at `deck.css:761`.
-    **Fix = two parts, and the label alone is not enough.** Measured at 240px: the title needs
-    **146px** for one line, the label + gap is worth **66px**, hiding it leaves **103px** — still
-    wrapping. So: **(a)** give the brand `min-width: 0; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis` — this is the real fix and bounds the bar at one line for *any* book
-    title at *any* width; **(b)** hide the `Chapters` label below ~**22rem** (measured: with the label
-    the title holds one line to ~360px and wraps at 320px; without it, to ~280px). **Safe to hide:**
-    the button is `<button aria-label="Chapters"><svg/><span>Chapters</span></button>`, so the
-    accessible name survives `display: none` on the span — no `.tali-sr-only` needed.
-
-48. **MOB-7 (LOW): the desktop nav is served to landscape phones.** The burger appears only under
-    40rem, so at 844×390 a touch phone gets the full **7-link desktop nav at 26px** minimum link
-    height (clears the 24px AA floor, misses 44px AAA), plus search and settings. Deck menu launcher
-    is 34×34. Same root cause as MOB-3.
-
-**Measured healthy in the same round — do not re-scope:** the phone slide-feed (A3) works
-(`html.tali-feed`, `scroll-snap-type: y mandatory`, 10,972px over 14 slides, one-viewport snapping,
-live rotation re-routing); zero horizontal overflow on any page or viewport; zero console
-errors/warnings; the ⌘K badge *is* correctly hidden at 390px; body typography on a phone is right
-(16px, 39 characters per line — the desktop ~70ch keep is unreachable at 390px and 39ch is normal
-mobile practice). **Observation, not a finding:** 11 of 18 code blocks scroll horizontally rather
-than wrap (`white-space: pre`, worst 368px); scrolled code is often better than wrapped code and the
-affordance is visible, so this looks deliberate — it becomes an item only if the author disagrees.
+MOB-6 also had a **third** instance the round did not enumerate (`docs/guide/index.tmd`), found by
+grep once the two named ones were known.
 
 **The 2026-07-26 path-parity round's two findings** (L1; detail:
 [2026-07-26-path-parity-audit.md](2026-07-26-path-parity-audit.md)). Same shape as the mobile batch,
@@ -659,6 +598,12 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-26 mobile batch (items 42-49, MOB-1..8):** the tree now asks what device it is on
+  (`hover`/`pointer` media features; it had none). Deck menu drops its keyboard legend + hint badges
+  and gates Speaker view on capability instead of orientation; the ⌘K badge is hidden on touch at any
+  width; copy-code shows and the heading anchor dims on touch; the book drawer locks page scroll and
+  keeps focus through outline hydration; touch nav targets grow by overlay; the sticky book topbar
+  truncates instead of wrapping. Three pages stopped instructing a keyboard about the deck above them.
 - **2026-07-26 owner rulings (items 24, 17, 2):** `section-extents` shipped as option (b) —
   `data-section-end` on every heading block, extents nesting, heading-inclusive, stopping before
   generated furniture, decks excluded; `book-breadcrumb` ruled **no** (D114 stands); a vendored MIT
