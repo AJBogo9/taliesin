@@ -16,7 +16,7 @@ flowchart TB
   dir[("directory:<br/>_site.yml + .tmd pages")] --> disc["Site::discover<br/>config · pages · order · xref registry · search index"]
   disc --> page["per page · render_page"]
   page --> core["core pipeline<br/>(.tmd → blocks → HTML)"]
-  core --> fm["expand front-matter blocks<br/>about: / hero: / listing:"]
+  core --> fm["expand front-matter blocks<br/>hero: / listing:"]
   fm --> chrome["wrap in chrome<br/>navbar / footer / sidebar / prev-next"]
   chrome --> links["rewrite .tmd→.html<br/>+ resolve cross-page xrefs"]
   links --> out["page HTML"]
@@ -181,15 +181,12 @@ chapters currently differ, all of them on purpose.
 
 ## Front-matter primitives
 
-Three front-matter blocks turn a page into something structured, and all three
+Two front-matter blocks turn a page into something structured, and both
 render into the **framework's own primitives with no bespoke HTML**, the same
 primitives the marketing site is built from:
 
-- **`about:`** replaces the title block with a centered profile header (image, name,
-  links).
-- **`hero:`** replaces it with the `.hero` band (eyebrow, headline, lead, CTA
-  buttons). `about:` and `hero:` are mutually exclusive, both stand in for the
-  title.
+- **`hero:`** replaces the title block with the `.hero` band (eyebrow, headline,
+  lead, CTA buttons).
 - **`listing:`** crawls a `contents:` directory and emits a card per document (image,
   date, title, description, categories), sorted by date and capped, as a grid or a
   stacked list, so a blog index or a projects page generates from front matter.

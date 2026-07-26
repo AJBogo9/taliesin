@@ -11,7 +11,7 @@ project config uses a flat, native schema. A nested config (a
 unknown top-level keys warn, and its nested values are ignored. Flatten it (see
 the note at the end).
 
-This page is the project (`_site.yml`) and page-block (`listing:` / `about:`)
+This page is the project (`_site.yml`) and page-block (`listing:`)
 reference. For the full per-key catalogue of a document's front matter, see
 [Front matter](frontmatter.tmd); for cell options and shortcodes, see
 [Cell options](cell-options.tmd) and [Shortcodes](shortcodes.tmd). The summary
@@ -23,7 +23,7 @@ table below repeats the front-matter keys most often paired with project config.
 |---|---|
 | `title`, `subtitle`, `author`, `date`, `description` | Metadata; `title` drives `<title>`, the title block, OpenGraph, and nav/listing labels |
 | `format` | `html` (default), `deck`, or a `<name>-deck` variant |
-| `theme` | `light` (default) / `dark`, or a `.css` file |
+| `theme` | `light` / `dark`, a `.css`/`.scss` file, or an installed `_extensions/<name>/` bundle. Only an explicit `light` (or `default`) / `dark` forces that mode; unset (or a custom theme) follows the reader's OS `prefers-color-scheme`, falling back to light |
 | `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
 | `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section (rendered in a single built-in IEEE style) |
@@ -32,7 +32,7 @@ table below repeats the front-matter keys most often paired with project config.
 | `css` | Stylesheet(s) wrapped in `<style>` and inlined |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
 | `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so it is never mistaken for a typo'd `css:`; delete it |
-| `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` sets the alt text on an `about:` profile image (listing-card images emit an empty `alt`) |
+| `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; set `image-alt` whenever you set `image:` (an `image:` with no `image-alt:` warns; use `image-alt: ""` to declare it decorative) |
 | `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings); `preview` still shows it, badged |
 | `prose-lint` | Opt-in prose linter: `true` enables the built-in rules (doubled words, weasel words), or `{ banned: [term, …] }` adds custom banned terms. Emits located, click-to-source warnings (code/math/links skipped); off by default |
 
@@ -147,7 +147,7 @@ when a known key is within edit distance 2, so a typo like `favicn:` doesn't sil
 nothing. Validation only **warns**: the document still renders, and every warning is
 **located**, so in the live preview you can click it straight to the source line. The same
 closed-vocabulary check covers unknown cell `#|` options and unknown immediate children of
-`execute:` / `listing:` / `about:` / `hero:`; `format:` sub-keys are intentionally left
+`execute:` / `listing:` / `hero:`; `format:` sub-keys are intentionally left
 unlinted, since a format extension may add its own. (The Internals book covers the design,
 and the drift-locked Draft 2020-12 schemas behind the `taliesin schema` command, in its
 *Validation & schemas* chapter.)
@@ -234,11 +234,10 @@ takes effect with that support; `_site.yml` needs no such setup.
 
 ### Page blocks (sites)
 
-Three front-matter blocks turn a page into something special: `listing:` (an
-index of other pages), `about:` (a profile header), and `hero:` (a landing
-banner). The first two are detailed below; `hero:` is documented in
-[Front matter](frontmatter.tmd) and shown in context in
-[Formats](../using/formats.tmd).
+Two front-matter blocks turn a page into something special: `listing:` (an
+index of other pages) and `hero:` (a landing banner). `listing:` is detailed
+below; `hero:` is documented in [Front matter](frontmatter.tmd) and shown in
+context in [Formats](../using/formats.tmd).
 
 #### `listing:` (an index page)
 
@@ -274,30 +273,9 @@ title: "A post about rust"
 date: 2026-06-20
 categories: [rust, performance]   # these become the card's badges + filter chips
 image: cover.png                  # card thumbnail in a `type: grid` or `type: list` listing
+image-alt: "A flame graph of the hot loop"   # required whenever you set `image:`
 ---
 ```
-
-#### `about:` (a profile header)
-
-An `about:` block replaces the page's title block with a centered profile
-header (round image, name, optional links), the usual shape for a homepage:
-
-```yaml
-about:
-  template: jolla
-  image: me.jpg
-  image-alt: "A photo of me"
-  links:
-    - { text: "GitHub", href: "https://github.com/…", icon: github }
-```
-
-| Key | Meaning |
-|---|---|
-| `template` | A style name. `jolla` is the confirmed, corpus-tested style (a centered column). The value is emitted as a `tali-about-<template>` CSS class hook, so another name still renders the centered layout but lets you target it from your own CSS |
-| `image` | Profile image, relative to the page; `image-alt` sets its alt text |
-| `links` | A list of `{ text, href, icon }` social/profile links (the same `icon:` glyph names as the navbar) |
-
-The page's `title:` supplies the displayed name.
 
 ## Project structure & reserved names
 

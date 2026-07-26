@@ -78,6 +78,25 @@ const FORMAT_VERSION: u32 = 4;
 /// few dozen cells, so this holds a deep edit history while staying small on disk.
 const MAX_ENTRIES: usize = 1024;
 
+/// Per-page byte budget, the bound [`MAX_ENTRIES`] cannot provide.
+///
+/// The count cap reasons about *cells* ("a page rarely has more than a few dozen"), but
+/// what the cache stores is one entry per distinct cell **version**, and each entry holds
+/// that cell's whole rendered output. For a text cell that is a few hundred bytes; for a
+/// plot cell it is a base64 PNG. Measured on a warm preview session editing one
+/// matplotlib cell: ~45 KB per entry, 150 edits, a 6.71 MB `_freeze/<page>.json` — growing
+/// strictly linearly, because 150 is nowhere near 1024. Left to reach the count cap that
+/// is ~45 MB resident per page and re-serialized on every save.
+///
+/// 16 MB because it has to clear two floors and stay under a ceiling: at least 2x
+/// `kernel::MAX_RICH_BYTES` (8 MB), so one legitimately huge output can never fill the
+/// budget by itself; several hundred ordinary rich outputs, which is more edit history
+/// than a session revisits; and small enough that the `serve_site` warm set
+/// (`MAX_WARM_PAGES` = 6) stays proportionate to the kernels it already holds
+/// (~80-150 MB each) rather than becoming the dominant cost. Text-output pages are
+/// unaffected: the entry cap still binds first for them.
+const MAX_BYTES: usize = 16 * 1024 * 1024;
+
 /// The cache key uses the **same** 64-bit FNV-1a as the core's block-id scheme — one
 /// shared definition in [`taliesin_core::hash`] (they must hash identically). The
 /// cumulative chain below feeds each step's hex digest into the next, so the per-cell
@@ -131,6 +150,9 @@ pub struct FreezeCache {
     entries: HashMap<String, String>,
     /// Keys oldest-first, kept in sync with `entries`, for bounded LRU-ish eviction.
     order: Vec<String>,
+    /// Live total of `key.len() + value.len()` across `entries`, maintained on every
+    /// insert and eviction so [`MAX_BYTES`] costs no walk of the map.
+    bytes: usize,
     dirty: bool,
 }
 
@@ -141,6 +163,7 @@ impl FreezeCache {
             path: None,
             entries: HashMap::new(),
             order: Vec::new(),
+            bytes: 0,
             dirty: false,
         }
     }
@@ -159,14 +182,20 @@ impl FreezeCache {
             .filter(|d| d.version == FORMAT_VERSION)
             .map(|d| {
                 let order: Vec<String> = d.entries.iter().map(|e| e.k.clone()).collect();
-                let map = d.entries.into_iter().map(|e| (e.k, e.v)).collect();
+                let map: HashMap<String, String> =
+                    d.entries.into_iter().map(|e| (e.k, e.v)).collect();
                 (map, order)
             })
             .unwrap_or_default();
+        let bytes = entries
+            .iter()
+            .map(|(k, v): (&String, &String)| k.len() + v.len())
+            .sum();
         FreezeCache {
             path: Some(path),
             entries,
             order,
+            bytes,
             dirty: false,
         }
     }
@@ -182,12 +211,23 @@ impl FreezeCache {
         if self.path.is_none() {
             return;
         }
+        // Re-putting a key replaces its value, so drop the old weight before adding the
+        // new one or the running total drifts up forever on a re-run of the same cell.
+        if let Some(prev) = self.entries.remove(&key) {
+            self.bytes -= key.len() + prev.len();
+        }
         self.order.retain(|k| k != &key);
+        self.bytes += key.len() + output.len();
         self.order.push(key.clone());
         self.entries.insert(key, output);
-        while self.order.len() > MAX_ENTRIES {
+        // `len() > 1` keeps the entry just inserted: a single output may legitimately be
+        // larger than the whole budget (`kernel::MAX_RICH_BYTES` allows 8 MB), and a cache
+        // that evicted its own newest entry would re-run that cell on every edit forever.
+        while self.order.len() > 1 && (self.order.len() > MAX_ENTRIES || self.bytes > MAX_BYTES) {
             let evicted = self.order.remove(0);
-            self.entries.remove(&evicted);
+            if let Some(v) = self.entries.remove(&evicted) {
+                self.bytes -= evicted.len() + v.len();
+            }
         }
         self.dirty = true;
     }
@@ -318,6 +358,74 @@ mod tests {
         c.put("k".into(), "v".into());
         assert_eq!(c.get("k"), None);
         c.save(); // no path -> no-op, no panic
+    }
+
+    /// The count cap alone does not bound the cache, because an entry is a whole
+    /// rendered cell output and a rich one is ~45 KB, not ~45 bytes.
+    ///
+    /// Measured (AP1-residual round, 2026-07-26): 150 edits to a single matplotlib cell
+    /// in ONE warm preview session wrote a **6.71 MB** `_freeze/<page>.json` holding 151
+    /// entries — linear, no eviction, with [`MAX_ENTRIES`] (1024) nowhere near binding.
+    /// Extrapolated to the count cap that is ~45 MB held in RAM per page **and** rewritten
+    /// to disk on every save. The cache is byte-bound in practice and was capped only by
+    /// count, so [`MAX_BYTES`] is the bound that actually applies to rich output.
+    #[test]
+    fn eviction_bounds_total_bytes_not_only_entry_count() {
+        let path = tmp();
+        let mut c = FreezeCache::for_page(path.clone());
+        let big = "x".repeat(1024 * 1024); // 1 MB, ~20x a real plot output
+        for i in 0..(MAX_BYTES / (1024 * 1024) + 8) {
+            c.put(format!("k{i}"), big.clone());
+        }
+        assert!(
+            c.bytes <= MAX_BYTES,
+            "cache holds {} bytes, over the {MAX_BYTES}-byte cap",
+            c.bytes
+        );
+        assert!(
+            c.order.len() < MAX_ENTRIES,
+            "the BYTE cap must bind long before the count cap for rich output ({} entries)",
+            c.order.len()
+        );
+        assert_eq!(
+            c.get("k0"),
+            None,
+            "oldest entry evicted to stay under the cap"
+        );
+        let newest = format!("k{}", MAX_BYTES / (1024 * 1024) + 7);
+        assert!(c.get(&newest).is_some(), "newest entry retained");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A single output bigger than the whole budget must still be cached, not evict
+    /// itself into a permanent miss. `MAX_RICH_BYTES` lets one output reach 8 MB, so this
+    /// is reachable, and a cache that refuses its own newest entry would re-run that cell
+    /// on every single edit.
+    #[test]
+    fn one_output_larger_than_the_budget_is_still_kept() {
+        let path = tmp();
+        let mut c = FreezeCache::for_page(path.clone());
+        c.put("small".into(), "v".into());
+        let huge = "x".repeat(MAX_BYTES + 1024);
+        c.put("huge".into(), huge.clone());
+        assert_eq!(c.get("huge"), Some(huge.as_str()), "newest entry survives");
+        assert_eq!(c.order.len(), 1, "everything else was evicted for it");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Byte accounting must survive a reload, or the cap silently stops applying to a
+    /// cache that was loaded from disk rather than filled in this process.
+    #[test]
+    fn byte_accounting_is_restored_on_load() {
+        let path = tmp();
+        let mut c = FreezeCache::for_page(path.clone());
+        c.put("k1".into(), "a".repeat(1000));
+        c.put("k2".into(), "b".repeat(2000));
+        c.save();
+        let reloaded = FreezeCache::for_page(path.clone());
+        assert_eq!(reloaded.bytes, c.bytes, "reload recomputes the byte total");
+        assert_eq!(reloaded.bytes, 2 + 1000 + 2 + 2000);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

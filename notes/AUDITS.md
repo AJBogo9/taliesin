@@ -38,16 +38,23 @@ you run one.
 | [2026-07-25-ap11-chaos-audit](2026-07-25-ap11-chaos-audit.md) | **AP11** chaos / failure injection | was item **36**; degradation paths are well-built (corrupt cache self-heals, unwritable output exits 1), the defect was wording — **AP11-1 shipped 2026-07-25** |
 | [2026-07-25-ap6-cross-browser-audit](2026-07-25-ap6-cross-browser-audit.md) | **AP6** cross-browser (the last AP slot) | **no findings**: Firefox and Chromium byte-identical on every measured axis, 0 console errors. Coverage gaps (WebKit, mobile, the preview path, Windows/macOS) listed in the doc |
 | [2026-07-25-diagnostics-and-docs-drift](2026-07-25-diagnostics-and-docs-drift-audit.md) | two non-AP lenses: diagnostic-message quality + docs drift | was items **37** + **38**; **both shipped 2026-07-25**. The fall-through count was 6 in the doc and **8** in fact — the zero-GENERIC test found `.code-walkthrough` and, separately, the two build-only execution diagnostics the check-side sweep structurally could not see |
+| [2026-07-26-ap1-residual-and-docs-behaviour](2026-07-26-ap1-residual-and-docs-behaviour-audit.md) | the last two unstarted lenses: **AP1's residuals** + the **behavioural** half of the docs lens | **both shipped 2026-07-26**. Each entry was wrong about where its own defect was: the kernel does NOT leak (it saturates over 1,000 executions) — the unbounded growth was Taliesin's own freeze cache, capped by entry *count* and never by *bytes*; and the docs gates covered flag/env *existence* while the front-matter vocabulary had drifted totally (`about:` removed 2026-07-17, documented for nine more days) |
 
 Rounds with their own narrative entry below (and so already in the ledger): AP1, AP5, AP8, AP9, AP10,
 AP12, the 2026-07-19 polish audit, the 2026-07-18 vacuous-test audit, the 2026-07-24 skimmability
 audit, and the 2026-07-07 multi-surface deep audit.
 
-**All twelve AP slots are run**, and as of 2026-07-25 **every build-ready finding any of them produced
-has shipped** — bands A *and* B of [backlog.md](backlog.md) are both empty. The only audit work with
-code left in it is AP1's unchased residuals (kernel RSS drift, multi-hour warm RSS) and the
-*behavioural* half of the docs lens (what a flag does, not whether it exists); neither has been
-started.
+**All twelve AP slots are run**, and as of 2026-07-26 **so is every proposed non-AP lens.** Both of the
+two that were still unstarted — AP1's unchased residuals and the *behavioural* half of the docs lens —
+ran on 2026-07-26 and both of their findings shipped the same day, so bands A and B of
+[backlog.md](backlog.md) are empty again. **There is no queued audit angle left**: a further round now
+needs a *new* lens proposed first, not one taken off a list.
+
+What those two rounds left explicitly unmeasured, so it is not mistaken for a clean result: whether the
+freeze cache's per-edit rewrite costs warm-loop latency (the probe's 200 ms poll floors the
+measurement), multi-hour wall-clock drift as distinct from execution *volume*, R kernels, cold-build RSS
+peak at 400+ pages, `notify` at extreme directory counts, and the docs lens's own remaining half —
+behavioural claims that are prose rather than a default value or a key.
 
 ### The 2026-07-25 band-B batch (AP3-3 + PA-M3 + PA-M13 + PA-H1's residuals)
 

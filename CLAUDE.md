@@ -67,7 +67,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/highlight.rs server-side syntax highlighting (syntect → `qhl-` scope classes)
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
   src/site/        multi-page project (mod.rs): _site.yml config (config/), page
-                   discovery, chrome, link rewrite, listings + about/`hero:` blocks,
+                   discovery, chrome, link rewrite, listings + `hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs),
                    Cmd-K search (search.rs), the skim layer-cake projection (skim.rs,
                    shares search's render recipe, not its text extraction),

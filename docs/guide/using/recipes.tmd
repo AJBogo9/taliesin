@@ -54,15 +54,16 @@ footer:
     - { icon: github, href: "https://github.com/jane" }
 ```
 
-The home page leads with an `about:` header and fills a `listing:` with the two most
+The home page leads with a `hero:` header and fills a `listing:` with the two most
 recent posts. The `id:` makes the listing fill a `::: {#recent}` block where you put
 it, instead of appending to the end of the page:
 
 ```yaml
 ---
 title: "Jane Doe"
-about:
-  template: jolla
+hero:
+  headline: "Jane Doe"
+  lead: "Notes on things I'm learning."
   image: profile.webp
   image-alt: "Jane Doe"
 toc: false
@@ -111,6 +112,7 @@ title: "My first post"
 description: "What it's about, in one sentence."
 date: 2026-05-08
 image: "thumbnail.webp"
+image-alt: "A scatter plot of the fitted model"
 categories: [machine learning, statistics]
 ---
 ```
@@ -399,7 +401,7 @@ fig-…` and `#| fig-cap: "…"` options; see [Running code](code.tmd) and
 - [Configuration reference](../reference/configuration.tmd): every `_site.yml` key, in
   full.
 - [Front matter reference](../reference/frontmatter.tmd): every per-page `---` key the
-  recipes set (`listing:`, `about:`, `hero:`, `image:`, and the rest).
+  recipes set (`listing:`, `hero:`, `image:`, and the rest).
 - [Cell options reference](../reference/cell-options.tmd): every `#|` cell option,
   including the `label: fig-…` / `fig-cap:` keys used in recipe 5.
 - [CLI reference](../reference/cli.tmd): every command and flag used above.

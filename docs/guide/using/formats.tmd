@@ -332,11 +332,10 @@ Config is **two levels, no cascade**: the root `_site.yml` sets project-wide
 defaults and a page's own front matter overrides them. There is deliberately no
 `_metadata.yml` directory-merge cascade.
 
-Three front-matter blocks generate whole page sections so you do not hand-write the
-chrome: `hero:` (a landing header), `about:` (a profile header), and `listing:` (an
-index that crawls a directory). All three are page front matter, documented in full in
-the [front-matter reference](../reference/frontmatter.tmd); the practical shapes
-follow.
+Two front-matter blocks generate whole page sections so you do not hand-write the
+chrome: `hero:` (a landing header) and `listing:` (an index that crawls a directory).
+Both are page front matter, documented in full in the
+[front-matter reference](../reference/frontmatter.tmd); the practical shapes follow.
 
 ### A landing header with `hero:`
 
@@ -355,29 +354,6 @@ hero:
     - { text: "Get started", href: docs/index.html, primary: true }
     - { text: "Source", href: "https://github.com/me/proj" }
 ```
-
-### A profile header with `about:`
-
-`about:` builds a centered profile header (a round `image:`, the page `title:` as the
-name, and a row of `links:`). The default `template:` is `jolla`, the centered style
-the corpus uses; it is kept as a CSS class on the header so a theme can restyle it.
-
-```yaml
-title: "Jane Rivera"
-about:
-  template: jolla
-  image: avatar.jpg
-  image-alt: "Jane Rivera"
-  links:
-    - { text: GitHub, href: "https://github.com/jane", icon: github }
-    - { text: Email, href: "mailto:jane@example.com", icon: email }
-```
-
-`hero:` and `about:` are alternative treatments of the same page header, so a page
-declares one or the other (each replaces the title block; if both are somehow present,
-`hero:` wins). Reach for `hero:` on a marketing or landing page where you want a
-pitch plus buttons, and `about:` on a person-or-project page where you want an avatar
-plus profile links.
 
 ### An index of pages with `listing:`
 

@@ -1271,3 +1271,184 @@ mod tests {
         );
     }
 }
+
+/// The third link in the front-matter documentation chain.
+///
+/// `vocab.rs` already ties [`KNOWN_KEYS`] to the editor vocabulary, and `schema.rs`
+/// generates the JSON schema from the same consts — but **nothing tied either to the
+/// User Guide**, which is the surface a reader actually copies from. The gap is not
+/// hypothetical: `about:` was removed at `dcf0588` (2026-07-17), which correctly
+/// scrubbed the code, the schema, the vocab, the CSS and `AGENTS.md` and never touched
+/// `docs/`. For the nine days after, the guide kept a dedicated `## about:` reference
+/// section, a sub-key table, a worked recipe and a `formats.tmd` subsection for a key
+/// that had become an `unknown front-matter key` **warning** — so a reader following
+/// the guide failed `check`, `build --strict` and `publish`.
+///
+/// Same drift shape, and the same fix shape, as the CLI-flag and env-var gates in
+/// `crates/server/src/main.rs`: make the docs mechanically answerable to the code.
+#[cfg(test)]
+mod guide_vocabulary_gate {
+    use super::KNOWN_KEYS;
+    use std::path::{Path, PathBuf};
+
+    fn guide_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guide")
+    }
+
+    /// Every `.tmd` under `docs/guide`, skipping the gitignored build/exec artifacts
+    /// (`_book/`, `_freeze/`) — those are stale copies of the very pages being checked,
+    /// so including them would report each finding twice and keep reporting it after a fix.
+    fn guide_pages() -> Vec<PathBuf> {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                if p.is_dir() {
+                    if name != "_book" && name != "_freeze" {
+                        walk(&p, out);
+                    }
+                } else if p.extension().and_then(|s| s.to_str()) == Some("tmd") {
+                    out.push(p);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&guide_root(), &mut out);
+        out.sort();
+        assert!(
+            !out.is_empty(),
+            "no guide pages found under {:?}",
+            guide_root()
+        );
+        out
+    }
+
+    /// The top-level keys of every fenced ```yaml block in `src` that is a **front-matter**
+    /// example (opens with `---`). Yields `(key, line)`.
+    ///
+    /// Scoped to front matter on purpose: the same pages also show `_site.yml` blocks and
+    /// a GitHub Actions workflow, which are different vocabularies and would be pure noise
+    /// here. Only column-zero `key:` lines count, so a nested `about:` sub-key like
+    /// `template:` is not mistaken for a top-level key.
+    fn front_matter_example_keys(src: &str) -> Vec<(String, usize)> {
+        let lines: Vec<&str> = src.lines().collect();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < lines.len() {
+            if lines[i].trim_end() != "```yaml" {
+                i += 1;
+                continue;
+            }
+            let start = i + 1;
+            let mut j = start;
+            while j < lines.len() && lines[j].trim_end() != "```" {
+                j += 1;
+            }
+            let body = &lines[start..j.min(lines.len())];
+            // A front-matter example opens with the `---` fence.
+            if body.first().map(|l| l.trim_end()) == Some("---") {
+                for (k, line) in body.iter().enumerate() {
+                    if line.starts_with(['-', ' ', '\t', '#']) || line.trim().is_empty() {
+                        continue;
+                    }
+                    if let Some((key, _)) = line.split_once(':')
+                        && !key.is_empty()
+                        && key
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    {
+                        out.push((key.to_string(), start + k + 1));
+                    }
+                }
+            }
+            i = j + 1;
+        }
+        out
+    }
+
+    /// Every top-level key the guide SHOWS in a front-matter example is a real key.
+    ///
+    /// This is the copy-paste surface: a reader reproduces an example verbatim far more
+    /// often than they read a table row, so an example naming a removed key is the most
+    /// expensive kind of drift.
+    #[test]
+    fn every_front_matter_example_in_the_guide_uses_only_real_keys() {
+        let mut bad = Vec::new();
+        for page in guide_pages() {
+            let src = std::fs::read_to_string(&page).unwrap();
+            for (key, line) in front_matter_example_keys(&src) {
+                if !KNOWN_KEYS.contains(&key.as_str()) {
+                    let rel = page
+                        .strip_prefix(guide_root().parent().unwrap())
+                        .unwrap_or(&page)
+                        .display()
+                        .to_string();
+                    bad.push(format!("{rel}:{line}: `{key}`"));
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "the User Guide shows front-matter examples using keys that are NOT in \
+             KNOWN_KEYS, so a reader copying them gets an `unknown front-matter key` \
+             warning (which fails `check`, `build --strict` and `publish`):\n  {}",
+            bad.join("\n  ")
+        );
+    }
+
+    /// No nested-block reference section documents a key that no longer exists.
+    ///
+    /// `frontmatter.tmd` gives each nested block (`execute:`, `listing:`, `hero:`,
+    /// `prose-lint:`) its own `## \`name:\`` section with a sub-key table. A section for a
+    /// removed key is worse than a stale table row: it reads as a whole supported feature.
+    #[test]
+    fn every_nested_block_section_in_the_reference_names_a_real_key() {
+        let path = guide_root().join("reference/frontmatter.tmd");
+        let src = std::fs::read_to_string(&path).unwrap();
+        let mut bad = Vec::new();
+        for (i, line) in src.lines().enumerate() {
+            // `## \`about:\` (a profile page) {#…}`
+            let Some(rest) = line.strip_prefix("## `") else {
+                continue;
+            };
+            let Some((name, _)) = rest.split_once("`") else {
+                continue;
+            };
+            let key = name.trim_end_matches(':');
+            if !KNOWN_KEYS.contains(&key) {
+                bad.push(format!("reference/frontmatter.tmd:{}: `{key}`", i + 1));
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "the front-matter reference documents a nested block whose key is not in \
+             KNOWN_KEYS:\n  {}",
+            bad.join("\n  ")
+        );
+    }
+
+    /// …and the other direction: the reference page claims to be "the full vocabulary,
+    /// every top-level key Taliesin reads", so every [`KNOWN_KEYS`] entry must appear on
+    /// it. Completeness is the half the existing `--help`/guide gates already enforce for
+    /// flags and env vars; without it a key can ship undocumented, which is how
+    /// `footer:`/`logo:` (real deck chrome) stayed off the reference page.
+    #[test]
+    fn the_reference_page_documents_every_known_key() {
+        let path = guide_root().join("reference/frontmatter.tmd");
+        let src = std::fs::read_to_string(&path).unwrap();
+        let missing: Vec<&str> = KNOWN_KEYS
+            .iter()
+            .copied()
+            .filter(|k| !src.contains(&format!("`{k}`")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "`docs/guide/reference/frontmatter.tmd` calls itself the full front-matter \
+             vocabulary but never mentions: {missing:?}"
+        );
+    }
+}

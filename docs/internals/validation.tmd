@@ -31,7 +31,7 @@ surfaces, each a list-membership check:
 | Surface | Checked against | Where |
 |---|---|---|
 | Front-matter top-level keys | `KNOWN_KEYS` | `frontmatter.rs` |
-| Nested `execute:` / `about:` / `hero:` children | `EXECUTE_KEYS` / `ABOUT_KEYS` / `HERO_KEYS` | `frontmatter.rs` |
+| Nested `execute:` / `listing:` / `hero:` children | `EXECUTE_KEYS` / `LISTING_KEYS` / `HERO_KEYS` | `frontmatter.rs` |
 | Code-cell `#|` / `//|` / `%%|` options | `CELL_OPTION_KEYS` | `render/validate.rs` (called from the pipeline) |
 | Callout kinds (`.callout-<kind>`) | `CALLOUT_KINDS` | `render/validate.rs` (called from `divs.rs`) |
 | `_site.yml` keys | `NATIVE_KEYS` | `site/config/` |

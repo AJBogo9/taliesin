@@ -8,7 +8,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [ROADMAP.md](ROADMAP.md); delete an item when it lands, don't leave a `[x]`. The "already shipped"
 > list near the bottom is the compact anti-rot guard (do not re-add / re-scope), not a changelog.
 
-## State (2026-07-25)
+## State (2026-07-26)
 
 **Branch `backlog/band-a-diagnostics`**, stacked on `backlog/backlink-context-and-resume`, which is
 itself stacked on `origin/main`. **Nothing is pushed** — the author pushes on request only.
@@ -55,11 +55,21 @@ directions, but the harness stops at the relay and cannot see whether the editor
 cursor. That gap is still there, so a future change to the relay or the companion re-opens the same
 manual check.
 
-**Every AP slot is now run.** The only audit work with code left in it is **AP1's unchased
-residuals** (kernel RSS drift, multi-hour warm RSS) and the *behavioural* half of the docs lens.
+**Every AP slot is run, and as of 2026-07-26 so is every proposed non-AP lens.** The last two —
+**AP1's unchased residuals** and the **behavioural half of the docs lens** — ran on 2026-07-26 and
+both of their findings shipped the same day (the 2026-07-26 audit batch, below). **There is no
+queued audit angle left.** A further round now needs a *new* lens argued for first, not one taken
+off a list; what those two rounds deliberately did not measure is recorded in
+[AUDITS.md](AUDITS.md) rather than left looking like an open task.
+
+Both entries were wrong about where their own defect was, in opposite directions, which is the
+fourth and fifth time running that an audit's first job (falsify its own entry) paid for itself.
+AP1's residual predicted a *kernel* leak; over 1,000 real executions the kernel **saturates**, and
+the unbounded growth was Taliesin's own freeze cache. The docs lens's existing gates covered flag
+and env-var *existence* thoroughly; the vocabulary they did not cover had drifted **totally**.
 Working method is in "Audit perspectives": a dated findings doc, a row in
 [AUDITS.md](AUDITS.md)'s round index, and the build-ready findings filed into "Open work" under
-their own prefix. No ruling requires the next session to take one.
+their own prefix.
 
 ## Standing constraints (read before working)
 
@@ -362,8 +372,9 @@ one perspective per session, solo; write a dated findings doc in `notes/`; add a
 prefix. **Every audit's first job is to falsify its own entry:** the last four rounds each found
 their entry overstated, misnamed, or already-shipped, so budget the first hour for that.
 
-**All twelve are RUN** (AP6 closed the set on 2026-07-25). Two of the three non-AP lenses have also
-run; only **AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS) is left unstarted.
+**All twelve are RUN** (AP6 closed the set on 2026-07-25), **and so are all three non-AP lenses**
+(AP1's residuals closed the set on 2026-07-26). Nothing here is left to take: the table below is now
+a complete record, not a menu.
 
 | Round | Result | Work went to |
 |---|---|---|
@@ -379,13 +390,15 @@ run; only **AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS) i
 | [AP6 cross-browser](2026-07-25-ap6-cross-browser-audit.md) | **no findings**: Firefox == Chromium on every measured axis, 0 console errors | closed |
 | [AP11 chaos](2026-07-25-ap11-chaos-audit.md) | failure paths well-built; the defect is wording (a missing interpreter reported as an author exception) | shipped |
 | [AP12 offline](2026-07-22-offline-guarantee-audit.md) | own assets genuinely offline; gap is author-introduced external refs | item 13 |
+| [AP1-residual + docs-behaviour](2026-07-26-ap1-residual-and-docs-behaviour-audit.md) | kernel does NOT leak (saturates over 1,000 execs) — the freeze cache was count-capped, never byte-capped; and the guide documented `about:` for 9 days after its removal | AP1-R1 + DOCS-2/3/4/5, all shipped 2026-07-26 |
 
-**Lenses that were never AP-shaped** (proposed 2026-07-25). **Two ran the same day**:
-*diagnostics-message quality* and *docs-vs-behaviour drift* (**both shipped**), findings in
-[2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md).
-**One is left and unstarted: AP1's unchased residuals** (kernel RSS drift, multi-hour warm RSS), a
-narrow round, but it targets the warm-server moat. The docs lens also left its expensive half
-untouched: *behavioural* claims in the two dogfood books (what a flag does, not whether it exists).
+**Lenses that were never AP-shaped** (proposed 2026-07-25) — **all three have now run.** Two ran on
+2026-07-25 (*diagnostics-message quality*, *docs-vs-behaviour drift*, findings in
+[2026-07-25-diagnostics-and-docs-drift-audit.md](2026-07-25-diagnostics-and-docs-drift-audit.md));
+the third (**AP1's unchased residuals**) ran on 2026-07-26 together with the *behavioural* half the
+docs lens had left untouched, findings in
+[2026-07-26-ap1-residual-and-docs-behaviour-audit.md](2026-07-26-ap1-residual-and-docs-behaviour-audit.md).
+Everything they filed has shipped.
 
 
 ## Tier 3: demand-driven (below every band above; build only when a real user asks)
@@ -431,6 +444,19 @@ A compact **do not re-add / re-scope** guard, not a changelog: each line names w
 finished. The detail is in git and in [AUDITS.md](AUDITS.md); if you need it, look there rather
 than re-expanding this list.
 
+- **The 2026-07-26 audit batch** (the last two lenses, run and shipped the same day; detail:
+  [2026-07-26-ap1-residual-and-docs-behaviour-audit.md](2026-07-26-ap1-residual-and-docs-behaviour-audit.md)).
+  **AP1-R1**: the freeze cache was capped by entry *count* (1024) and never by *bytes*, and an entry is a
+  whole rendered cell output — 150 edits to one matplotlib cell wrote a 6.71 MB `_freeze/<page>.json`,
+  linear, zero evictions. A 16 MB `MAX_BYTES` budget now bounds it (verified end-to-end: 450 edits
+  plateau at 16.77 MB with the entry count *falling*, where before it grew without limit). **The
+  kernel does NOT leak** — that was the residual's premise and it is refuted, so do not re-scope it.
+  **DOCS-2**: `about:` was removed at `dcf0588` (2026-07-17) and the guide kept documenting it in 28
+  places across 6 pages, including three whole sections and a nonexistent `ABOUT_KEYS`; all purged onto
+  `hero:`, and `frontmatter::guide_vocabulary_gate` (three tests) is the recurrence guard, the third
+  link in the front-matter chain beside the flag and env-var gates. **DOCS-3/4/5**: `footer:`/`logo:`
+  added to the reference page, the wrong `theme` default in `configuration.tmd` corrected (unset is
+  *auto*, not light), and the `image-alt` prose that contradicted PA-M13's own lint rewritten.
 - **The 2026-07-25 band-B batch** — the last three low-yield items, two of them closed on evidence
   rather than code. **AP3-3** (item 10): the flake was neither the test nor the cause on file; the
   port re-roll moved off the callers onto `Kernel::start_with_retry`, with a source-level guard
