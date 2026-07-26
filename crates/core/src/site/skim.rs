@@ -586,6 +586,69 @@ mod tests {
     }
 
     #[test]
+    fn a_pages_own_title_heading_is_not_also_one_of_its_sections() {
+        // `page_skim` re-implements a rule that `search.rs:110` also implements, under the
+        // same name, from the same reasoning ("same rule as the search index", it says).
+        // Only search's copy was pinned, so all three of this copy's decisions could be
+        // inverted undetected. Two pages, because the rule is a conjunction: it fires only
+        // when the page emits NO title block AND its first heading is an `<h1>`.
+        let dir = std::env::temp_dir().join(format!(
+            "tali-skim-title-heading-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: \"T\"\nchapters:\n  - untitled.tmd\n  - titled.tmd\n",
+        )
+        .unwrap();
+        // No front-matter title: the opening `# Alpha` IS the page's title, so it must not
+        // ALSO be listed as a section a reader could navigate to.
+        std::fs::write(
+            dir.join("untitled.tmd"),
+            "# Alpha\n\nOpening prose.\n\n## One\n\nSection prose.\n",
+        )
+        .unwrap();
+        // A front-matter title means the title block comes from there, so a body `# Gamma`
+        // is ordinary content and stays a section.
+        std::fs::write(
+            dir.join("titled.tmd"),
+            "---\ntitle: \"Beta\"\n---\n\n# Gamma\n\nSection prose.\n",
+        )
+        .unwrap();
+        let site = crate::site::Site::discover(&dir);
+        let skimmed = site.skim();
+        std::fs::remove_dir_all(&dir).ok();
+
+        let untitled = skimmed
+            .iter()
+            .find(|p| p.url == "untitled.html")
+            .expect("untitled page skims");
+        let heads: Vec<&str> = untitled.sections.iter().map(|s| s.title.as_str()).collect();
+        assert!(
+            !heads.iter().any(|t| t.contains("Alpha")),
+            "the page's own title heading must not be a section too: {heads:?}"
+        );
+        assert!(
+            heads.iter().any(|t| t.contains("One")),
+            "the real section must survive the skip: {heads:?}"
+        );
+
+        let titled = skimmed
+            .iter()
+            .find(|p| p.url == "titled.html")
+            .expect("titled page skims");
+        let heads: Vec<&str> = titled.sections.iter().map(|s| s.title.as_str()).collect();
+        assert!(
+            heads.iter().any(|t| t.contains("Gamma")),
+            "with a front-matter title the body heading is a real section: {heads:?}"
+        );
+    }
+
+    #[test]
     fn plain_closes_the_gap_on_both_sides_of_a_bracketed_inline_element() {
         // `indexable_text` puts a space at every tag boundary, so a parenthesised inline
         // element gets one on EACH side. The closing half was already handled; the
