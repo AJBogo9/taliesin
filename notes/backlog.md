@@ -11,22 +11,21 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-26)
 
-**Band A holds 2 items (0 HIGH): 52 and 55.** Four batches shipped on 2026-07-26: mobile (42-49,
-every HIGH on the board), path parity (50, 51, 57), migration UX (53, 54), and the metadata half of
-56. The **mutation re-run ran its `crates/core` half** the same day and its `crates/server` half
-(1,152 mutants) is the largest single piece of work now on the board. Band B is empty; band C holds
-only item **25**, parked on a public-release *date* rather than on a decision; the rest is blocked on
-a device or a real user (band D) or gated (band E).
+**Band A holds no code item but one: the mutation re-run's `crates/server` half** (1,152 mutants),
+plus item **56**'s residual, which is a *feature proposal* and an authoring judgment rather than a
+task. Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
+(50, 51, 57), migration UX (53, 54), the metadata half of 56, and **deck weight + headless-JS
+bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day. Band B is empty;
+band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
+is blocked on a device or a real user (band D) or gated (band E).
 
 **Verified 2026-07-26 at the last landing:** full workspace suite with all three gates and
 `--test-threads=1` is **94 binaries, 0 failures**; `cargo fmt --check`, `clippy --workspace
---all-targets` and both JS `tsc` gates clean.
+--all-targets` and both JS `tsc` gates clean. The live-Chrome suite
+(`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) is a **fourth** gate nothing else runs, and 55 is
+the reason to remember it exists.
 
-**The two items left are both bigger than their own summary line**, and each says why in the band-A
-preamble: 52 because `DeckParts` has no `AssetMode` to flip, and 55 because its actual failure (a
-wedged Chrome) has no automated reproduction and the obvious outer timeout re-creates the leak.
-
-**What is left is one batch plus an authoring pass, not five sessions.** Read the band-A preamble
+**What is left is one compute job, not five sessions.** Read the band-A preamble
 before starting, and the 2026-07-26 probe traps under Standing constraints before writing any probe
 — plus the four the mobile batch added (a scroll lock cannot be tested with `scrollBy`; a capability
 rule can be discarded by the cascade; a tap target on a sticky bar must grow by overlay; a stale
@@ -329,19 +328,40 @@ file when it lands**.
 touch 42-49, then path parity 50/51/57 — **both shipped 2026-07-26**.)
 
 Steps 1 (mutation re-run, core half), 2's **migration UX (53, 54)** and 3 (**56**, its metadata half)
-all shipped 2026-07-26. What is left:
+all shipped 2026-07-26, and so did **52 and 55** — so the only *code* item left in this band is:
 
 1. **The mutation re-run's `crates/server` half** — 1,152 mutants, detail in the re-runs entry above.
    Start with `lsp_nav.rs`. Cheaper per mutant than the core half, because a server mutant needs only
    `-p taliesin-server`.
-2. **Deck weight (52)** and **hygiene (55)**: self-contained, either order. **52 is bigger than its
-   own "narrow fix" line suggests** — `DeckParts` (`render/deck.rs:19`) carries no `AssetMode` at all
-   and the deck skeleton bundles its own CSS/JS, so this is threading external-asset awareness through
-   `assemble_deck_page` and deciding which bundled assets become `_assets/` links, not flipping a flag.
-   **55 has no automated reproduction for its actual failure** (a wedged Chrome): only the eval is
-   bounded (`headless_js.rs:312`) while `Browser::launch`, `new_page`, `goto`, `close` and `wait` are
-   not, and a naive outer timeout would drop the future and orphan Chrome plus its temp profile, which
-   is the very thing being fixed. Bound each phase and keep teardown reachable.
+
+**Deck weight (52) and headless-JS bounding (55) SHIPPED 2026-07-26.** Both were correctly sized in
+the preamble that used to sit here — 52 really did need external-asset awareness threaded through
+`assemble_deck_page` rather than a flag, and 55 really did need every phase bounded with teardown
+kept reachable. Measured: a site deck went **4,583,261 → 6,962 bytes** (the standalone artifact stays
+4.4 MB and self-contained on purpose). **Four method lessons, since each changed the work:**
+
+- **Read the dependency's source before believing an item's "unbounded" claim.** 55 listed
+  `Browser::launch`, `new_page` and `goto` as unbounded; chromiumoxide bounds all three (a silent
+  20 s `launch_timeout`, a 30 s `request_timeout`). The real gaps were the websocket connect that
+  `launch_timeout` does *not* cover, and `close()`/`wait()`, which have no bound at all — `wait()`
+  being the sharp one, since a browser can accept `Browser.close` and then simply not exit. The
+  symptom was real and every stated cause but one was wrong.
+- **"No automated reproduction" can be false.** A wedged browser is reproducible without a wedged
+  browser: point `CHROME_PATH` at a program that launches and then sleeps, which is exactly what the
+  launch path blocks on reading. 20.00 s before, 7 s after — the assertion is on the clock.
+- **That test passed vacuously in 0.02 s** whenever it raced the other `CHROME_PATH` test: it read
+  that test's `/nonexistent/…`, skipped every cell instantly as "chrome unavailable", and satisfied
+  its own elapsed-time assertion by never launching anything. **A test whose subject is an env var
+  needs a lock, and an assertion on *why* it skipped**, or the fast path is a green light.
+- **A deck cannot link the page's `app.js`.** The obvious "let a deck take `AssetMode::External`"
+  shares the page bundle — which carries `search.js`, binding a capture-phase Cmd/Ctrl-K on
+  `document` and `preventDefault()`ing it. That would hand decks a palette they have never had and
+  take a key from the deck's own handling. A separate `deck.<hash>.{css,js}` pair, written only when
+  the build has a deck, keeps behaviour identical; the duplicated `code-enhance.js` is the price.
+
+**Adjacent, surfaced not fixed (do not re-file):** `404.html` is built through the *inline* renderer
+(`site/mod.rs:1108` → `render_doc_to_page`), so a site whose pages are ~19 KB ships a 356 KB 404 page.
+Same shape as 52, one page over.
 
 **Auditing is done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings, while the
 one round that produced four came from the author using the tool on a phone. The remaining menu
@@ -435,18 +455,6 @@ to `build <file>`; the `--bare` zero-`<script>` contract holds; site-build exter
 after L1 closed. Ordinary-page performance came back healthy on a throttled phone (every LCP inside
 the 2,500 ms band), so the items below are the outliers, not a general problem.
 
-52. **L2-1 (MEDIUM): a deck in a site build ignores `_assets/` and re-inlines the whole framework.**
-    Measured on a site whose only deck draws one mermaid diagram: `talk.html` is **4,583,261 bytes**
-    (1,375,317 gzipped) and links `_assets/` **zero** times, while the ordinary page beside it is
-    24,718 bytes and links the shared, content-hashed assets — so **mermaid ships twice in one output
-    tree**, and a second deck would ship a third copy. The fixed per-deck duplicate is ~1 MB raw /
-    ~390 KB gzipped (measured by removing the mermaid block: 1,011,028 / 396,685). Over Slow 3G + 4×
-    CPU the deck takes **94.0 s** to load against 10.7 s for a 365 KB page. **Name the trade-off:** a
-    *standalone* deck should stay self-contained (that is the artifact you hand someone, and
-    `site/mod.rs` deliberately builds an embedded deck as a standalone document). The narrow fix is to
-    let a deck page inside `build <dir>` take `AssetMode::External` like every other page in that
-    build, leaving the standalone path untouched.
-
 **Migration UX (53, 54) SHIPPED 2026-07-26.** Both were "the tool says nothing useful to a document
 written against last month's build", and both fixes were smaller than the items assumed. **Three
 method lessons, since each one changed the fix:**
@@ -470,15 +478,6 @@ method lessons, since each one changed the fix:**
 Also kept: the messages append to the classified prefix rather than replacing it, because
 `codes::classify` resolves TAL-FM-KEY off the `unknown <scope> key` substring — so neither fix needed
 a new diagnostic code, explanation, or regenerated `docs/DIAGNOSTICS.md`.
-
-55. **L3-1 (LOW/MEDIUM): the headless `{js}` observation is not bounded end to end.** `tokio::time::
-    timeout` bounds the eval (`headless_js.rs:312`), but `Browser::launch`, navigation,
-    `browser.close()` and `browser.wait()` are unbounded, and the only call site is a bare
-    `rt.block_on(...)` (`query.rs:371`). The module's contract covers a launch/navigation/eval
-    *failure*, not a **hang**, so a wedged Chrome hangs `taliesin read --run-js` with no diagnostic.
-    The pattern already exists (`TALIESIN_CELL_TIMEOUT`). Fold in **L3-2 (LOW)**: `.no_sandbox()` at
-    `headless_js.rs:260` is unconditional with no recorded justification (probably correct, but every
-    comparable decision here carries its reasoning).
 
 56. **L5-1 residual: the manual's cross-page references, not its metadata.** The `description:`
     half **SHIPPED 2026-07-26**: 0 of 36 tracked pages → 36 of 36. Both figures the item carried
