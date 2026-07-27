@@ -1039,9 +1039,9 @@ mod tests {
     /// The two tests above reach this scanner only through canonical, complete entries, which
     /// leaves 17 mutants alive: every one of its four bounds checks can be widened past the end of
     /// the buffer, and both of its whitespace-skipping loops can be made no-ops, without a fixture
-    /// noticing. A `.bib` truncated mid-header is exactly what an author's file looks like while
-    /// they are typing it, and the LSP scans it on every keystroke — so reading one char past the
-    /// end is not hypothetical.
+    /// noticing. Both are reachable in practice — `.bib` files are written by hand and by export
+    /// tools, and this scans one straight off disk on every hover and every go-to-definition of a
+    /// `[@key]`, including while the author has that file open and half-written.
     #[test]
     fn bib_entry_offset_skips_whitespace_and_stops_at_the_end_of_a_truncated_bib() {
         // Canonical, and the offset is the `@`, not the key.
@@ -1133,9 +1133,9 @@ mod tests {
 
     /// A `bibliography:` list ends at its first non-item, and an empty `-` is a non-item.
     ///
-    /// Accepting one pushes an empty path, which the LSP then resolves against the document's
-    /// directory — i.e. it turns a half-typed list into a `bibliography:` pointing at the
-    /// directory itself.
+    /// The guard is the whole stopping rule: without it an empty `-` yields an empty path (which
+    /// `dir.join` resolves to the document's own directory) and the scan carries on past the end
+    /// of the list, so a half-typed entry silently changes which files are read.
     #[test]
     fn a_bibliography_list_stops_at_the_first_non_item() {
         assert_eq!(

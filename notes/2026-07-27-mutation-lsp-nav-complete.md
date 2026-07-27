@@ -110,3 +110,50 @@ lsp_nav.rs:503:11: replace += with -= in frontmatter_bib_paths
 ```
 
 Plus the unmeasured `lsp_nav.rs:503:11 += → *=`.
+
+## Closed (item 69): 25 of 25, and one campaign rule needed sharpening
+
+All 24 survivors plus the unmeasured mutant are now detected — **22 killed by a named assertion, 3
+by hanging** — each verified by restoring the mutant by hand, running one *named* test, and
+restoring by inverse edit. Five tests, all in `lsp_nav.rs`'s own module:
+
+| test | kills |
+|---|---|
+| `bib_entry_offset_skips_whitespace_and_stops_at_the_end_of_a_truncated_bib` | 17 |
+| `frontmatter_bib_paths_scans_forwards_and_only_inside_the_front_matter` | 4 |
+| `anchor_at_needs_the_cursor_on_the_token_and_a_sigil_before_it` | 2 |
+| `only_include_and_embed_shortcodes_are_navigable` | 1 |
+| `a_bibliography_list_stops_at_the_first_non_item` | 1 |
+
+**Item 69's own framing was wrong in the same way item 61's was, and for the same reason.** It said
+`bib_entry_offset` "has NO test at all", measured as zero occurrences of the name in the test
+module. The name is absent; the function is not untested — `bib_entry_site_finds_the_entry_header`
+and `bib_entry_text_is_brace_balanced` both drive it through its two wrappers. What was missing was
+not a test but a *fixture shape*: every existing one is a canonical, complete `@type{key,` header,
+so neither whitespace-skipping loop ever ran a single iteration and no bounds check was ever
+evaluated at the end of the buffer. **Counting occurrences of a private function's name measures
+whether it is called directly, not whether it is tested** — for a helper reached through a wrapper
+the count is always zero and always says nothing.
+
+Eleven of the seventeen are killed only by the malformed axis (item 58's lesson, third batch
+running): six truncations, one per part of the header, each of which makes some widened bound read
+one char past the end. The rest are the whitespace arms, which need `@article {key,` and
+`@article{ key,` — both legal BibTeX, both absent from every fixture in the tree.
+
+### The sharpening: a `*=` in the *missed* column is not a counter-example, it is a dead loop
+
+The campaign's standing rule is that a `+= → *=` on a scan cursor hangs, and the hang is the
+detection — 62 of 62 with no counter-example. **Two of this batch's survivors looked like exactly
+that counter-example:** `401:23 += → *=` and `406:27 += → *=` were recorded as MISSED, not as
+timeouts. They are cursor increments in scan loops, so by the rule they should have hung.
+
+They did not hang because **nothing entered the loop.** Both sit in the whitespace skips that no
+fixture ever reached, and a loop with zero iterations cannot spin. Adding the fixture flipped both
+from SURVIVED to hang, measured here (120 s wall, killed by timeout). The previously unmeasured
+`503:11 += → *=` behaves the same way, so the tally is **65 of 65, still with no counter-example**.
+
+**The transferable form: "a hang is a detection" presupposes a fixture that enters the loop.** When
+a `*=` cursor mutant appears in the missed column rather than the timeout column, the finding is
+not "the rule has an exception" — it is "this loop is never executed by any test", which is a
+strictly *worse* gap than the boundary mutants next to it and is invisible from the survivor list
+alone. Both readings produce the same list; only one of them explains it.

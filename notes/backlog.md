@@ -11,23 +11,23 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-27)
 
-**The mutation re-run is now MEASURED end to end, and band A's remaining code work is the
-test-writing it exposed, not more compute.** The `crates/server` half finished 2026-07-27
-(707 mutants in 1 h 32 min, **156 survivors** —
-[2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
-only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
+**The mutation campaign is FINISHED.** It ran this file from 2026-07-18 and closed 2026-07-27 with
+item 69: measured end to end (`crates/core`'s five post-07-18 files, then the ten `crates/server`
+files, then `lsp_nav.rs` whole), every survivor triaged, and items 58-65 + 68-69 shipped as pins.
+No compute is owed and no survivor list is outstanding.
 
-**Start here: band A is ranked 58-69 and 58-68 all shipped 2026-07-27, so the next item is 69** —
-the 24 survivors item 68's run measured, which is the campaign's **last** pin batch and is already
-scoped down to one function that carries 17 of them. **When 69 closes, band A holds nothing but
-item 56's authoring residual and the mutation campaign that has driven this file since 2026-07-18
-is finished** — so the session after that opens with which lens to run, not which item to take. The
-menu is under "Proposed audit lenses"; the standing recommendation is real-device mobile, now
-unblocked. Each remaining item names its file, its survivor list and its reason for
-ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
-the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
-more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
-an authoring judgment rather than a task.
+**Start here: band A holds only item 56, which is an authoring judgment and a feature proposal
+rather than a task — so this session opens with WHICH LENS TO RUN, not which item to take.** The
+menu is under "Proposed audit lenses"; **the standing recommendation is real-device mobile**, now
+unblocked (batch 1 shipped, so that round verifies rather than re-finds, and the first thing to
+check on real hardware is the drawer scroll lock — `overflow: hidden` on the root holds less
+completely on iOS Safari than on Chromium, and only Chromium was measured). L3 is the other live
+one: it is still only partial (`headless_js.rs` read; `lsp.rs`, `complete.rs`, `skim.rs`,
+`manifest.rs` unread), though the campaign has since pinned much of what it would have looked at.
+
+**What the campaign is worth reading for now is its method, not its results** — the four pin rules
+in the band-A preamble and the lessons attached to items 58-65 and 68-69 are the transferable part,
+and three of them corrected a *stated* rule in this file rather than finding a new one.
 
 Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
 (50, 51, 57), migration UX (53, 54), the metadata half of 56, and **deck weight + headless-JS
@@ -35,17 +35,15 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (`6e677f0`, **pushed**): full workspace suite with all
-three gates and `--test-threads=1` is **95 binaries, 1,619 tests, 0 failures**, and the pre-push
-gate passed on top of it;
+**Verified 2026-07-27 at the last landing**: full workspace suite with all
+three gates and `--test-threads=1` is **95 binaries, 1,624 tests, 0 failures**;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
 (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) is a **fourth** gate nothing else runs, and 55 is
 the reason to remember it exists.
 
-**What is left is one compute job, not five sessions.** Read the band-A preamble
-before starting, and the 2026-07-26 probe traps under Standing constraints before writing any probe
+Read the 2026-07-26 probe traps under Standing constraints before writing any probe
 — plus the four the mobile batch added (a scroll lock cannot be tested with `scrollBy`; a capability
 rule can be discarded by the cascade; a tap target on a sticky bar must grow by overlay; a stale
 *cause* can sit under a real *symptom*) and the four the path-parity batch added (an audit's stated
@@ -54,11 +52,11 @@ that names one instance has not enumerated the shape; a hidden overlay still ren
 
 **A lens menu now exists** ("Proposed audit lenses", below): six never-run lenses (L1-L6), four
 re-runs ranked by age × measured churn in each round's own surface, and four directions that the last
-weeks' work has *unblocked*. As of 2026-07-26, **L1, L2, L4 and L5 have run** (items 50-51 and 52-56);
+weeks' work has *unblocked*. As of 2026-07-27, **L1, L2, L4 and L5 have run** (items 50-51 and 52-56);
 **L3 is partial** (only `headless_js.rs`; `lsp.rs`, `complete.rs`, `skim.rs`, `manifest.rs` unread);
-**L6 is blocked** on a repository that is not on this machine; and **none of the four re-runs has been
-done** — the mutation re-run is the one worth scheduling, since it is a long compute job rather than a
-read.
+**L6 is blocked** on a repository that is not on this machine; **the mutation re-run has run to
+completion and is closed**; and the other three re-runs are un-run, the deck audit being the most
+rotted of them.
 
 **Do not trust this file's freshness.** The author pushes mid-session with no signal here, and a
 scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are recorded**
@@ -281,41 +279,29 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   since, and the mode-model was deliberately reshaped after it (reader + PDF deleted, phone feed
   added, motion round 07-24). AUDITS.md already warns the doc describes *outgoing* behaviour. Re-run
   it **crossed with touch**, not as-is: MOB-1 and MOB-2 just put the deck back at the top of band A.
-- **The mutation / vacuous-test round (07-18) RAN 2026-07-26 on its `crates/core` half, and the
-  `crates/server` half is still owed.** Scope taken: the 5 core files first committed after 07-18
-  (`skim.rs`, `shape.rs`, `cite_this.rs`, `manifest.rs`, `book_toc.rs`) = **298 mutants → 187 caught,
-  96 missed, 7 timeout, 8 unviable**; re-testing the 96 against the full workspace suite flipped 51 to
-  CAUGHT, leaving **44 real survivors**. Nine pins landed across three commits, each verified by
-  restoring the mutant and watching the named test fail. **A timeout is a detection, not a gap:** all
-  7 were cursor arithmetic in scan loops that spins instead of returning a wrong answer.
-  **The `crates/server` half ran `lsp_nav.rs` to 338 of 444 on 2026-07-26 and was stopped there**
-  (end of session; the job was not left running overnight). Its findings are written up — the run
-  itself is gone, `cargo-mutants` has no resume, and the scratch output was under `/tmp` — in
-  [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md):
-  **282 caught, 36 missed, 16 timeout, 4 unviable**, at ~2.3 mutants/min, matching the 2.2 estimate.
-  **Read that file before spending the 3.5 h to re-run this one**, because it already answers the
-  question the compute was for: **all 36 survivors are one shape** — a boundary comparison or a
-  cursor operator inside a click-to-source position classifier (`classify_target`,
-  `classify_include`, `classify_frontmatter_key`, `nested_parent_of`, `definition_site`,
-  `is_anchor_site`, `anchor_occurrences`, `is_cite_key_char`), and **one table-driven test that walks
-  the cursor across every byte of a fixture line kills most of them at once.** All 16 timeouts are
-  again scan-cursor arithmetic, i.e. detections, not gaps. Writing that test does not need the run
-  repeated; re-running is how you'd *confirm* it, and that is the cheaper order.
-  **Those other ten files RAN TO COMPLETION on 2026-07-27** —
-  [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md):
-  **707 mutants → 497 caught, 156 missed, 16 timeout, 38 unviable**, and the scoping was *verified*
-  this time (no `crates/core` test spawns the taliesin binary, so no workspace recheck is owed and
-  every MISSED is real). **The survivors are three shapes, not one:** 25 whole-function replacements
-  (a function with no behavioural test at all — `runtime_dirs.rs` is 5 of 5, `lsp.rs::server_capabilities`
-  alone is 11), 131 boundary/cursor operators in line scanners, and 16 timeouts that are again
-  detections. **Read that doc for the ranked list before writing any pin.**
-  **Kill the 2.3-mutants/min cost model on sight:** the real rate over ten files is **7.8/min** and
-  the whole half took **92 minutes**, not the three hours budgeted here. 2.3 was an artefact of
-  `lsp_nav.rs`'s slow tests — a caught mutant aborts its test run early, so a file's rate tracks its
-  survivor density and only a *bad* file is slow.
-  **The core half's measured residual is now item 65** (13 `skim.rs` survivors + `cite_this.rs:125`,
-  two of them probably equivalent). Each remaining one needs a test that means something on its own —
-  chasing the number green is the failure mode this round exists to remove, not the goal.
+- **The mutation / vacuous-test round (07-18) RAN TO COMPLETION 2026-07-26/27 and is CLOSED.** Do
+  not re-scope it; **do not re-run it against the same scope** — every survivor it measured is
+  triaged, and a re-run's only new information would be about code written since. Scope and
+  results — **the core half has no findings doc of its own, so these are its only numbers**: the 5
+  post-07-18 core files (`skim.rs`, `shape.rs`, `cite_this.rs`, `manifest.rs`, `book_toc.rs`) =
+  298 mutants → 187 caught, 96 missed, 7 timeout, 8 unviable, and re-testing the 96 against the
+  full workspace suite flipped **51** to CAUGHT, leaving 44 real survivors (residual = item 65).
+  The other two are banked in-repo:
+  [server half](2026-07-27-mutation-server-half-complete.md) (ten files: 707 mutants → 156
+  survivors, at **7.8/min**, 92 minutes) and
+  [`lsp_nav.rs` whole](2026-07-27-mutation-lsp-nav-complete.md) (444 mutants → 24 survivors, at
+  **9.0/min**, 48 minutes). Pins landed as items 58-65 and 68-69. **Four durable rules came out of
+  it, and each corrected something this file previously stated:**
+  - **Scoping the test command fabricates MISSED** (the `--lib` and `-p` traps, recorded in full
+    under Standing constraints). For a `crates/core` file `--test-workspace=true` is not optional.
+  - **A caught mutant aborts its test run early, so a file's mutants/min tracks its survivor
+    density** — a *slow* file is a *bad* file. The 2.3/min figure that argued for a 3.5 h budget
+    was an artefact of one such file, and cost two sessions of deferral.
+  - **A partial run's shape-conclusion describes the part it measured, not the file** (item 68:
+    "all 36 survivors are one shape" was true of 338 mutants and wrong about `lsp_nav.rs`).
+  - **A hang IS the detection — 65 of 65, no counter-example — but only once a fixture enters the
+    loop.** A `+= → *=` cursor mutant sitting in the *missed* column means nothing executes that
+    loop at all, which is the worse finding of the two (item 69).
 - **The website/brand audit (07-11):** its headline performance finding measured per-page inlining and
   is now obsolete (hashed `_assets/`), which is itself the signal. Its Lighthouse pass was desktop-mode
   only, which is how it missed the touch-target defects the mobile round found.
@@ -352,15 +338,14 @@ file when it lands**.
 
 #### A. Build now
 
-**Ranked 2026-07-27. Take from the top; the order is risk × cost, not survivor count.** Items 58-64
-are the pins the mutation campaign exposed — the compute is *done*, so what remains is test-writing
-against a measured list. Detail for all of them:
-[2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md) (the ten
-completed server files, **156 survivors**) and
-[2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md)
-(`lsp_nav.rs`, 338 of 444, **36 survivors**).
+**Band A holds one item: 56, and it is an authoring judgment plus a feature proposal rather than a
+task.** Items 58-69 all shipped 2026-07-27 and are kept below as *lessons*, not work — each one's
+entry records what its own scoping got wrong, which is the part that transfers. **The next thing
+to take is a lens, not an item** (see "Proposed audit lenses"; standing recommendation is
+real-device mobile).
 
-**Four rules that apply to every pin item below** (58/59/61 paid for all four on 2026-07-27):
+**Four rules that governed every pin item below** (58/59/61 paid for all four on 2026-07-27), kept
+because the next test-writing batch of any kind will need them:
 
 1. **Verify each pin by *mutation*:** restore the mutant by hand, watch the *named* test fail, then
    restore the fix. A pin never seen to fail is not a pin. **Revert by inverse edit, never
@@ -375,9 +360,13 @@ completed server files, **156 survivors**) and
    drove the real path and *discarded its result* (`let _ = recv()` on the LSP handshake), and a
    fixture that *could not reach the assertion* (a `.hidden` dotfile in a filter that only emits
    `.tmd`).
-4. **Never write a test for a timeout**, and expect some survivors to be **unkillable**: 41 of 41
-   campaign timeouts are `+=`→`*=` on a scan cursor, where a stalled loop spins instead of returning
-   a wrong answer, so the hang *is* the detection. Four mutants are proven equivalent or `cfg`-dead
+4. **Never write a test for a timeout**, and expect some survivors to be **unkillable**: 65 of 65
+   campaign timeouts are cursor arithmetic in a scan loop (mostly `+=`→`*=`, plus a few `-=`→`/=`
+   and `+=`→`-=`), where a stalled loop spins instead of returning a wrong answer, so the hang *is*
+   the detection. **But that rule assumes a fixture reaches the
+   loop** — a `*=` cursor mutant that shows up as MISSED rather than TIMEOUT means no test executes
+   that loop at all (item 69: two did, and the fixture that killed the boundary mutants next to
+   them turned both into hangs). Four mutants are proven equivalent or `cfg`-dead
    (listed in the 07-27 findings doc); `cargo-mutants` does not evaluate `cfg`, so the `cfg`-dead one
    **reappears on every run**. Prove, record, move on — do not chase a score.
 
@@ -512,23 +501,25 @@ completed server files, **156 survivors**) and
     **Banked as the transferable rule: a partial run's shape-conclusion describes the part it
     measured, not the file.** The 24 survivors are item **69**.
 
-69. **`lsp_nav.rs`'s 24 measured survivors** — the successor to 68, and the campaign's last pin
-    batch. Exact locations in
-    [2026-07-27-mutation-lsp-nav-complete.md](2026-07-27-mutation-lsp-nav-complete.md). Ranked by
-    what each one is, not by count:
-    - **`bib_entry_offset` (17) — the function has NO test at all**, zero occurrences in the test
-      module against three in the file. Not an unpinned edge, an unpinned *function*, the same
-      shape as item 59's `server_capabilities` and item 61's `runtime_dirs.rs`. It is the scanner
-      that locates a BibTeX entry by key, i.e. what makes `[@key]` go-to-definition land on the
-      right entry, and every boundary in its brace/whitespace walk is free to move. **Start here:
-      one behavioural test of the function is likely to take most of the 17 at once**, then the
-      malformed-input axis (item 58's lesson) for the guards that reject.
-    - **`frontmatter_bib_paths` (4)** and **`anchor_at` (2)** are exercised by the test module
-      already, so these are the finer-grained inside-the-function kind.
-    - **`classify_include:150:38` (1)**, the single pre-pin survivor item 58 did not reach.
-    - **One mutant is unmeasured**, not caught: `frontmatter_bib_paths:503:11 += → *=` was in
-      flight when the machine died. **Do not file it as a timeout on the campaign's rule** — its
-      own same-line sibling survived rather than hanging, so it needs measuring with the batch.
+69. **SHIPPED 2026-07-27** — `lsp_nav.rs`'s 24 measured survivors plus the one unmeasured mutant.
+    **25 of 25 detected: 22 killed by a named assertion, 3 by hanging**, each verified by
+    restoring the mutant and watching the named test fail. Five tests, the largest killing 17.
+    **The campaign ends here.** Detail:
+    [2026-07-27-mutation-lsp-nav-complete.md](2026-07-27-mutation-lsp-nav-complete.md). **Two
+    lessons, and the second one corrects a rule this file has been repeating since 07-26:**
+    (a) this item's "`bib_entry_offset` has NO test at all" was **wrong in the same way item 61's
+    was** — it counted occurrences of the *name* in the test module, and the function is reached
+    by two existing tests through its two wrappers. **A private helper's name count measures
+    whether it is called directly, never whether it is tested.** What was actually missing was a
+    fixture *shape*: every one is a canonical complete `@type{key,`, so neither whitespace loop
+    ran a single iteration and no bounds check was ever evaluated at the end of the buffer (11 of
+    the 17 need a truncated `.bib`, item 58's malformed axis for the third batch running).
+    (b) **A `+= → *=` cursor mutant in the MISSED column is not a counter-example to the
+    timeout rule — it means nothing enters the loop.** `401:23` and `406:27` looked like the
+    first counter-examples to "62 of 62 hangs are detections"; they survived because a loop with
+    zero iterations cannot spin, and adding the fixture flipped both to hangs. Tally is now
+    **65 of 65**. The rule holds, but it *presupposes a fixture that enters the loop*, and a
+    missed `*=` is the strictly worse finding of the two.
 
 **A knowing skip, recorded so it is not re-litigated:** `interactive.rs` (5 of 5 survivors) is the TTY
 wizard layer — `is_interactive`, `select`, `input`. Pinning it needs a PTY harness, and the *non*-TTY
