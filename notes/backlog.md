@@ -11,14 +11,18 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-27)
 
-- **No code item is queued.** The mutation campaign closed 2026-07-27 (every survivor triaged, no
-  compute owed). Band A holds only item **56**, which is an authoring judgment plus a feature
-  proposal rather than a task; band B is empty; the rest is blocked on a device, a real user, a date
-  or a ruling.
-- **So a session opens with WHICH LENS TO RUN, not which item to take.** Standing recommendation:
-  **real-device mobile** — now unblocked, and that round verifies rather than re-finds since batch 1
-  shipped. First thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the
-  root holds less completely on iOS Safari than on Chromium, and only Chromium was measured.
+- **Four code items are queued (72-75), from an author-reported round filed 2026-07-27.** The author
+  brought six observations; five validated, one was already shipped. They are small and mutually
+  independent, so they parallelize cleanly across sessions. Item **76** needs an author ruling before
+  anyone builds it. Item **56** remains an authoring judgment plus a feature proposal, not a task.
+- **A lens is still the better opener once 72-75 are gone.** Standing recommendation: **real-device
+  mobile** — now unblocked, and that round verifies rather than re-finds since batch 1 shipped. First
+  thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the root holds less
+  completely on iOS Safari than on Chromium, and only Chromium was measured.
+- **The author-reported round is worth a method note** ([LESSONS.md](LESSONS.md) candidate): six
+  observations from *using* the product produced four real defects, one broader than reported (72) and
+  one already fixed but still advertised (75). Two of the four are stale strings that every automated
+  gate passes over, because no gate compares prose against behaviour.
 - **Nothing is owed by the author.** The last item needing a human (the in-editor click-to-source
   round-trip) was verified 2026-07-25. **That coverage gap is permanent:** the relay harness passes
   both directions but stops at the relay and cannot see whether the editor lands the cursor, so any
@@ -141,6 +145,85 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### A. Build now
 
+**72-75 are one author-reported round (2026-07-27), filed separately because they touch four disjoint
+subsystems and can go to four sessions at once.** Each was validated against source; 72 and 76 were
+also measured in a browser. Nothing here is blocked.
+
+72. **Every 3D scene that does not opt into `alpha: true` paints an opaque dark slab in light mode.**
+    Measured on the running preview at 1440 px, light theme, `body` background `rgb(255,255,255)`:
+    `readPixels` on the showcase Lorenz canvas returns **`[11,15,26,255]`** — fully opaque `#0b0f1a`
+    on a white page. Screenshot in the round's scratch, and it reads exactly as bad as it sounds.
+    **Broader than the author reported (they saw it on the marketing site only).** The helper
+    `makeScene3D` defaults `bgColor = 0x111827, alpha = false` and then does
+    `setClearColor(bgColor, alpha ? 0 : 1)` (`site/_includes/three-scene.tmd:17-18,31`), so **every**
+    caller that does not pass `alpha: true` bakes a dark rectangle:
+    - `site/showcase.tmd:402` + `:468` (`0x0b0f1a`) — the two the author saw.
+    - `corpus/posts/pca-geometry/index.tmd` and `corpus/tech-blog/…/pca-geometry` — **three scenes
+      each, calling `}, invalidation);` with no opts at all**, so they take the `0x111827` default.
+      That is the **forward-facing brand blog** (see Standing constraints), not a demo page.
+    - the `corpus/graphics3d/` gallery mounts: `molecules.tmd` (`0x0e1420`), `lorenz.tmd`, `cad.tmd`
+      (`0x11151f`).
+    **Verified NOT affected** (they already pass `alpha: true`, corner pixel `[0,0,0,0]`): the index
+    hero and the showcase surface scene. **The fix touches four files, not one:** `three-scene.tmd` is
+    duplicated at `site/_includes/`, `corpus/_includes/`, `corpus/tech-blog/_includes/` and
+    `corpus/graphics3d/_includes/`, in **two different variants** (site+graphics3d share one hash, the
+    other two share an older one lacking `controls`/`autoRotate`/`rebuild`/`loadGLTF`). A memory note
+    claiming "2 copies, byte-identical" is stale — re-check before trusting any count.
+    Two further theme-blind spots in the same helper, cheap to fix in the same pass: the Fullscreen
+    button is hard-coded `rgba(30,30,30,.75)` / `#ddd` (`:166`), and `spriteLabel` takes a
+    caller-supplied CSS colour that will not flip either.
+    **Not measured:** dark mode (assumed fine, unverified), and the fourth showcase scene never built
+    under the probe because its tabset panel stayed closed.
+
+73. **`{{< video >}}` gives the reader no player controls at all.** Not "a rough player" — there is no
+    `controls` attribute on the inline `<video>` (`render/extension/mod.rs:356`) nor on the lightbox
+    copy (`11-lightbox.js:52`). So: no play/pause, **no scrubber** (a reader cannot go back five
+    seconds), no speed, no volume, and `muted` is hard-coded, which makes narrated video impossible.
+    The shortcode accepts exactly four arguments — `src`, `dark=`, `poster=`, `caption=`.
+    That is coherent for the **one** case it was built for: a silent hover-to-play screencast, where
+    autoplay would fail WCAG 2.2.2. It falls apart for a narrated explainer.
+    **The author asked whether to take a video-player dependency. Recommended: no, and it is not
+    close.** Adding `controls` yields native scrubbing, keyboard, fullscreen, captions and PiP for
+    about a one-line change; Video.js / Plyr is 50-150 KB to *restyle* controls the browser already
+    ships, and it fights three invariants at once (offline `include_str!` bundling, `--tali-*` tokens,
+    "perfect the default before adding a knob"). Proposed shape: `{{< video clip.mp4 controls audio >}}`
+    where `controls` emits native controls and drops the hover-play wiring, `audio` drops
+    `muted`+`loop`; add `captions=clip.vtt` for a `<track>`. **The one genuinely open sub-question** is
+    whether bare native controls look acceptable against the `.tali-video` frame — answer it by
+    looking, and only then consider styling. Reversing to a dependency is an author call, not a
+    session's.
+    **Same pass, same subsystem:** two docs still claim the video **"autoplays"**
+    (`render/extension/mod.rs:135`, `docs/guide/reference/shortcodes.tmd:121`), which the
+    implementation explicitly reversed — `video_html`'s own doc comment at `:327` contradicts them.
+
+74. **`logo:` exists for decks only; the book topbar and the website navbar are text-only.** Grep is
+    unambiguous: `logo` occurs **zero** times in `crates/core/src/site/`. `SiteConfig` carries `title`
+    and `favicon` but no logo, and both brand links render escaped text — `chrome.rs:86` (website),
+    `:256` + `:302` (book). Decks already ship it (`render/deck.rs:140`, pinned by
+    `render/tests.rs:1428`), so this is 1 of 3 surfaces done.
+    **This is the item with a stated commercial justification** ("important if customers want branded
+    books, websites and slides"), which is rare on this list — most items here are the author's own
+    itch. Shape: a `logo:` key in `_site.yml` rendered as an `<img>` **inside** the existing brand
+    `<a>`, with the title text as `alt` and as the fallback when the key is absent; reuse the path
+    resolution `favicon:` already has. Check it against the "minimal config" rule before widening it
+    with size/position knobs — a good default is one image slot, not four.
+
+75. **Two shipped strings that contradict shipped behaviour.** Independent one-liners, but they share a
+    root: no gate compares prose against behaviour, so both drifted silently and neither is caught by
+    fmt, clippy, the suite or `check`. Ship together.
+    - **The preview hint names the wrong corner.** `log.rs:117` says the `◇` dev menu is `(top-right)`;
+      it is **bottom-left** — `serve/mod.rs:790` sets `position: fixed; bottom: .6rem; left: .6rem`,
+      and `:842` says so in prose ("the dev menu owns the bottom-left corner"). Confirmed in a
+      browser screenshot. The hint's own test (`log.rs:262`) asserts only `"browser"` and `'◇'`, which
+      is exactly why it rotted — **the fix must add the corner to that assertion**, or it rots again.
+      The hint is TTY-gated, so it never appears in captured logs; that is why it survived this long.
+    - **The site advertises a deck feature that was deleted.** `site/index.tmd:95` ("fragments,
+      presenter view, **PDF export**, code stepping") and `site/formats.tmd:35` ("one-slide-per-page
+      **PDF export**"). Deck PDF export was removed in the 2026-07-12 deck audit (A2) and is pinned
+      gone by `render/tests.rs:1950`. Note `2026-07-12-deck-audit.md:420` claims the stale "PDF
+      export" claims "were all stale and are now corrected" — **that sweep missed these two**, so do
+      not trust a findings doc's own completion claim here either.
+
 70. **The slides either side of the current one paint into the deck's letterbox** (DT-5, detail:
     [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)). The stage is a fixed 16:9
     cell scaled by the camera, `.tali-slides` is `overflow: visible`, and a `section` declares no
@@ -179,6 +262,28 @@ of the last three closed on **evidence rather than code**, which is the outcome 
 likely to produce.
 
 ### C. Blocked on an owner ruling (not a task until then)
+
+76. **Remove the book's right-rail `#TOC`?** Author question, 2026-07-27: *"Should I remove side
+    navigation? Is it useful? You can just view the chapters menu for in-chapter navigation."*
+    **The premise checks out, and by a wider margin than the author claimed.** Measured in a browser
+    on `docs/guide/using/formats.html` (1440 px): the Chapters drawer **auto-expands the current
+    chapter** and lists it to h3 — `8.1 Slide decks`, then `8.1.1` … `8.1.9`, `8.2`, `8.3.1`, `8.3.2`
+    — 18 outline toggles and 181 section links across 19 chapters. The right rail showed **four**
+    entries for the same chapter (h2 only: `8.1`-`8.4`). So the drawer is not a substitute for the
+    rail; it is **strictly more detailed**.
+    **What removal actually costs is scrollspy** — "you are here" while reading, zero clicks, no
+    overlay covering the text. That is the rail's only unique property.
+    **What it buys:** `site.css:283-288` reserves the 14rem track on *every* chapter, TOC or not,
+    purely so the text column does not jump between chapters that have a TOC and chapters that do not.
+    Delete the rail and that compromise goes with it, along with `toc-spy.js` and the mobile TOC sheet.
+    **Why this is a ruling and not a task:** it reverses the documented **2026-07-06 "keep both nav
+    surfaces" decision** (recorded at `site/book_toc.rs:7`) and removes a reader-facing surface, so it
+    needs the author's word, not a session's judgment. **Recommendation: remove.** The drawer dominates
+    on content and scrollspy is a nice-to-have paying rent as a permanent column. A one-word ruling
+    unblocks it into band A.
+    **Not measured:** whether scrollspy is what makes the rail feel useful in *long* chapters
+    specifically — the probe read one chapter at one width, and `tocSpyActive` was false at scroll
+    top, which is expected but was not re-checked mid-scroll.
 
 71. **Two deck-on-touch behaviours that are working-as-written, and may be working-as-wrong**
     (DT-3 + DT-4, detail: [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)).
@@ -367,6 +472,10 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **Deck PDF export: already deleted (2026-07-12 deck audit, A2), do not re-scope "remove it."** Asked
+  again 2026-07-27; pinned gone by `render/tests.rs:1950`. What survives is ~25 lines of `@media print`
+  in `deck.css:522` that keep a stray Cmd/Ctrl+P legible — **that is a don't-emit-garbage guard, not
+  PDF export, and it is already free, so keep it.** (The stale *marketing claims* are live work: item 75.)
 - **2026-07-27 mutation campaign (items 58-69):** every measured survivor in `crates/core`'s five
   post-07-18 files, the ten `crates/server` files and `lsp_nav.rs` is triaged and pinned; the
   unkillable ones are recorded in the two findings docs' tables. **Do not re-run it against the same
