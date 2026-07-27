@@ -299,16 +299,9 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   the whole half took **92 minutes**, not the three hours budgeted here. 2.3 was an artefact of
   `lsp_nav.rs`'s slow tests — a caught mutant aborts its test run early, so a file's rate tracks its
   survivor density and only a *bad* file is slow.
-  **Residual in the core half, measured rather than estimated** (the 35 `skim.rs` survivors were
-  re-run against the post-pin tree): **20 are now caught, 13 remain**, plus `cite_this.rs:125` (the
-  `venue` filter for a blank `title:`, never triaged). What is left is all boundary comparisons and
-  cursor arithmetic: `sentence_at:466` (3), `first_sentence:414/437/440` (3), `class_spans:334/352/368`
-  (4), `in_class_attr:379`, `first_prose_sentence:274:74`, and `page_skim:121:13`. **Two of those are
-  probably equivalent, so do not burn a session forcing them:** `page_skim`'s `&&`→`||` needs a page
-  that emits a title block *and* still opens with an `<h1>`, which the heading-demotion rule appears
-  to make unreachable; and `first_prose_sentence`'s `>`→`>=` needs a `<p>` that is *itself* the
-  excluded element. Each remaining one needs a test that means something on its own — chasing the
-  number green is the failure mode this round exists to remove, not the goal.
+  **The core half's measured residual is now item 65** (13 `skim.rs` survivors + `cite_this.rs:125`,
+  two of them probably equivalent). Each remaining one needs a test that means something on its own —
+  chasing the number green is the failure mode this round exists to remove, not the goal.
 - **The website/brand audit (07-11):** its headline performance finding measured per-page inlining and
   is now obsolete (hashed `_assets/`), which is itself the signal. Its Lighthouse pass was desktop-mode
   only, which is how it missed the touch-target defects the mobile round found.
@@ -345,31 +338,92 @@ file when it lands**.
 
 #### A. Build now
 
-**Suggested order (2026-07-26), so a fresh session does not re-derive it.** (Steps 1 and 2 — mobile /
-touch 42-49, then path parity 50/51/57 — **both shipped 2026-07-26**.)
+**Ranked 2026-07-27. Take from the top; the order is risk × cost, not survivor count.** Items 58-64
+are the pins the mutation campaign exposed — the compute is *done*, so what remains is test-writing
+against a measured list. Detail for all of them:
+[2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md) (the ten
+completed server files, **156 survivors**) and
+[2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md)
+(`lsp_nav.rs`, 338 of 444, **36 survivors**).
 
-Steps 1 (mutation re-run, core half), 2's **migration UX (53, 54)** and 3 (**56**, its metadata half)
-all shipped 2026-07-26, and so did **52 and 55** — so the only *code* item left in this band is:
+**Two rules that apply to every item below.** Verify each pin by *mutation*: restore the mutant by
+hand, watch the named test fail, then restore the fix — a pin that was never seen to fail is not a
+pin. And **never write a test for a timeout**: 39 of 39 across the campaign are `+=`→`*=` on a scan
+cursor, where a loop that stops advancing spins rather than returning a wrong answer, so the hang
+*is* the detection.
 
-1. **Write the pins the mutation re-run exposed.** The compute is *done*: `lsp_nav.rs` is banked as a
-   partial (338 of 444,
-   [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md)) and the
-   other ten server files ran to completion on 2026-07-27
-   ([2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md),
-   **156 survivors**). Ranked, cheapest-first:
-   1. **One table-driven cursor-walk test covering `lsp_nav.rs` *and* `lsp_complete.rs`** — walk the
-      cursor across every byte of a fixture line per construct and assert the classification at each
-      offset. **~85 of the 192 server survivors**, because both files' scanners are the same shape.
-   2. **One assertion on `lsp.rs::server_capabilities`** — 11 survivors; `Default::default()` survives
-      today, so nothing checks the LSP handshake advertises completion/definition/symbol support, and
-      click-to-source depends on it.
-   3. **`runtime_dirs.rs`** — 5 of 5 survivors, zero tests. `pid_alive` can return `false` and
-      `sweep_stale_runtime_dirs` can become `()`, so the reaping subsystem shipped at `bccb210` could
-      be a silent no-op.
-   4. **`complete.rs`** (30) and **`doctor.rs`** (14, minus the cosmetic `colored`/`paint`).
-   `interactive.rs` (5 of 5) is a **knowing skip** — TTY wizard, needs a PTY, and the non-TTY path is
-   already pinned by `tests/wizard_gate.rs`. Do not write tests for any timeout: 39 of 39 across the
-   campaign are scan-cursor arithmetic, i.e. the hang *is* the detection.
+58. **One table-driven cursor-walk test, serving `lsp_nav.rs` and `lsp_complete.rs` at once.**
+    **~85 of the 192 server survivors**, which is why it is first. Both files' scanners are the same
+    construct: a cursor walks a line and classifies what it is on. Every survivor is an *edge* —
+    `lsp_nav.rs`'s `classify_target`/`classify_include`/`classify_frontmatter_key`/`nested_parent_of`/
+    `definition_site`/`is_anchor_site`/`anchor_occurrences`/`is_cite_key_char`, and
+    `lsp_complete.rs`'s `harvest_bib_keys` (20), `harvest_anchor_ids` (10), `is_div_class_context` (8),
+    `detect_shortcode_path` (6), `nested_parent` (4), `frontmatter_value` (3). Shape: one fixture line
+    per construct, walk the cursor across **every byte**, assert the classification at each offset.
+    That is a test that means something on its own, as opposed to 85 tests chasing a number green.
+    This is load-bearing: deciding what the cursor is on *is* click-to-source.
+59. **SHIPPED 2026-07-27** (`6015c13`) — the `server_capabilities` assertion, all 12 killed. **The
+    lesson is the cause, not the fix:** the tests all *performed* the handshake and threw the result
+    away, because `handshake()` does `let _ = client.receiver.recv()` on the `InitializeResult`. A
+    server advertising **nothing** passed the entire suite. Look for that shape elsewhere — a helper
+    that drives the real path and discards what it returns is a coverage hole no line-coverage tool
+    reports, since every line ran.
+60. **The rest of `lsp.rs`'s request surface** (21): `resolve_completion` (10), `resolve_definition`
+    (3), `to_document_symbol`, `resolve_code_actions`, `merged_xref_targets`, `handle_request`,
+    `frontmatter_key_doc` (3 incl. two whole-body replacements), `cmd_lsp`. Ranked here because you
+    are already in the file for 59, so the marginal cost is small.
+61. **SHIPPED 2026-07-27** (`02a35da`) — `runtime_dirs.rs`, 4 of its 5 killed. **This item was
+    written wrong and the correction is the useful part.** It claimed the file had zero tests and
+    that `pid_alive` was unpinned; both were false. The file has two good tests, the sweep logic is
+    well covered (dead owner, live owner, own pid, legacy dir), and `pid_alive` is pinned by the
+    live-owner case. The real gaps were narrower: **the producer and consumer were tested apart** —
+    `owner_pid` against hand-*written* names, `sweep_in` against hand-*built* dirs — so nothing
+    checked that the names `tagged` actually produces parse back, and the public
+    `sweep_stale_runtime_dirs` was never called at all (every test used `sweep_in` with an isolated
+    base). The 5th is a **false survivor**: `pid_alive -> false` at line 103 is the
+    `#[cfg(not(unix))]` arm, dead code here, and cargo-mutants parses without evaluating `cfg`, so
+    **it will reappear on every future run of this file.**
+62. **`headless_js.rs`** (7): `observe_inner` (3), `observe_page`, `settle_timeout` (2),
+    `chrome_available`. Above 63 because this is the newest code in the crate, it spawns browser
+    processes, and the security audit entry already singles it out for post-dating that round. Note
+    `chrome_available` can return `true` — the opposite of the failure the 2026-07-26 bounding work
+    (item 55) was about.
+63. **`complete.rs`** (30 — the largest single count, deliberately mid-table): `dir_contains_tmd` (6),
+    `positionals_seen` (6), `complete_line` (4), `flags_for` (4), `complete_paths` (3),
+    `cmd_completions` (3 incl. its whole body), `install_completions`, `command_desc`,
+    `positional_kind`. A wrong shell completion is visible to the author the moment it happens and
+    breaks nothing, so raw count overstates its priority.
+64. **The tail** (16): `doctor.rs` (14, **minus the 4 cosmetic** `colored`/`paint` mutants — terminal
+    colour, not behaviour), `lsp_outline.rs` (4: `clean_title` 3, `headings`), `zip.rs` (2:
+    `build_zip`).
+65. **The `crates/core` half's measured residual** (14). Re-run against the post-pin tree, 20 of the
+    35 `skim.rs` survivors are now caught and **13 remain**, plus `cite_this.rs:125` (the `venue`
+    filter for a blank `title:`, never triaged): `sentence_at:466` (3),
+    `first_sentence:414/437/440` (3), `class_spans:334/352/368` (4), `in_class_attr:379`,
+    `first_prose_sentence:274:74`, `page_skim:121:13`. **Two are probably equivalent — do not burn a
+    session forcing them:** `page_skim`'s `&&`→`||` needs a page that emits a title block *and* opens
+    with an `<h1>`, which heading demotion appears to make unreachable, and
+    `first_prose_sentence`'s `>`→`>=` needs a `<p>` that is itself the excluded element.
+66. **`404.html` is built through the *inline* renderer** (`site/mod.rs:1108` → `render_doc_to_page`),
+    so a site whose pages are ~19 KB ships a **356 KB** 404 page. Same shape as item 52, one page
+    over. Surfaced by the 52/55 batch and previously recorded only as prose; filed here so it is
+    actionable rather than a footnote.
+67. **The `taliesin` launcher rebuilds the release binary during tab completion**, so
+    `taliesin preview <TAB>` hangs ~15 s. Root cause measured: `~/.local/bin/taliesin` shells out to
+    `cargo build --release` on a stale binary, and completion invokes it via `taliesin __complete`.
+    (It is *not* the `dir_contains_tmd` depth-6 walk, which is <10 ms even at 60k files.) Fix: guard
+    the launcher so `__complete`/`completions` skips the rebuild. **The author deferred this once** —
+    it lives outside the repo, in a shell script — so confirm before spending time on it. Ranked this
+    low only because of that deferral; by felt cost it is the item on this list the author hits most
+    often.
+68. **`lsp_nav.rs`'s untested 106-mutant tail** — confirmation compute, not discovery. Do it *after*
+    58 lands, so the same run measures whether the cursor-walk test killed what it was written for.
+    Budget it off **7.8 mutants/min**, the rate measured over ten files, not the 2.3 that one slow
+    file suggested.
+
+**A knowing skip, recorded so it is not re-litigated:** `interactive.rs` (5 of 5 survivors) is the TTY
+wizard layer — `is_interactive`, `select`, `input`. Pinning it needs a PTY harness, and the *non*-TTY
+path is already pinned by `crates/server/tests/wizard_gate.rs`. Poor cost/benefit; skip deliberately.
 
 **Deck weight (52) and headless-JS bounding (55) SHIPPED 2026-07-26.** Both were correctly sized in
 the preamble that used to sit here — 52 really did need external-asset awareness threaded through
@@ -396,9 +450,8 @@ kept reachable. Measured: a site deck went **4,583,261 → 6,962 bytes** (the st
   take a key from the deck's own handling. A separate `deck.<hash>.{css,js}` pair, written only when
   the build has a deck, keeps behaviour identical; the duplicated `code-enhance.js` is the price.
 
-**Adjacent, surfaced not fixed (do not re-file):** `404.html` is built through the *inline* renderer
-(`site/mod.rs:1108` → `render_doc_to_page`), so a site whose pages are ~19 KB ships a 356 KB 404 page.
-Same shape as 52, one page over.
+**Adjacent, surfaced by this batch and now filed as item 66** (do not re-file it a third time):
+`404.html` still builds through the *inline* renderer, so a site of ~19 KB pages ships a 356 KB 404.
 
 **Auditing is done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings, while the
 one round that produced four came from the author using the tool on a phone. The remaining menu
