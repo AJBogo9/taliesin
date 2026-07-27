@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 36" width="200" height="36" role="img" aria-label="A Short Demo Book">
   <style>
-    /* Dark mode is the default theme; an SVG loaded through `<img>` cannot inherit
-       `currentColor`, so the file carries both schemes itself. */
+    /* Dark mode is the default theme; an SVG loaded through an img element cannot inherit
+       `currentColor`, so the file carries both schemes itself. NOTE: an SVG style element
+       is XML, not HTML -- it is not an implicit CDATA section, so a bare angle bracket or
+       ampersand in here (even inside a comment) makes the whole file un-parseable and the
+       browser renders a broken image. Spell tag names out in words. */
     .mark { stroke: #ffffff; }
     .word { fill: #ffffff; }
     @media (prefers-color-scheme: light) {

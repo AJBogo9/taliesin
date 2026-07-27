@@ -11,11 +11,18 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-27)
 
-- **Four code items are queued (72-75), from an author-reported round filed 2026-07-27.** The author
-  brought six observations; five validated, one was already shipped. They are small and mutually
-  independent, so they parallelize cleanly across sessions. Item **76 was ruled 2026-07-27 (remove the
-  right-rail TOC) and is now in band A**, unblocked but not yet built. Item **56** remains an authoring
-  judgment plus a feature proposal, not a task.
+- **The author-reported round (72-75) SHIPPED 2026-07-27; only 76 is left of it.** Six observations
+  from the author, five validated, one already shipped. 72 (3D scenes opaque in light mode), 73
+  (`{{< video >}}` had no controls), 74 (`logo:` for the website navbar + both book slots) and 75
+  (three shipped strings contradicting behaviour) all landed with mutation-verified pins. Item **76
+  was ruled 2026-07-27 (remove the right-rail TOC) and is now in band A**, unblocked but not built.
+  Item **56** remains an authoring judgment plus a feature proposal, not a task.
+- **That round's own defect is the one worth remembering.** Item 74 shipped two brand SVGs that were
+  served `200 image/svg+xml`, were copied into the build correctly, and painted a **broken image** on
+  the forward-facing blog: each carried a CSS comment naming a tag in angle brackets, and an SVG
+  `style` element is XML, not HTML, so it is not an implicit CDATA section. Every check passed because
+  "the file exists and is served" is not "the file renders" — it took a browser to see it.
+  `crates/core/tests/svg_assets_render.rs` now pins both properties an `img`-loaded SVG needs.
 - **The duplicate item 70 resolved itself, and not the way it first looked.** Two items were filed as
   70 on the same day, and the obvious fix was to keep the deck-letterbox one (AUDITS.md pointed at it
   as "items 70-71") and renumber the `_site.yml`-boundary one. **That would have renumbered the
@@ -26,7 +33,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
   was ever issued. **The lesson is about this file, not about decks:** a numbering collision can be
   the symptom of a bad filing rather than a clerical slip, so check whether both items are *real*
   before renumbering either.
-- **A lens is still the better opener once 72-75 are gone.** Standing recommendation: **real-device
+- **A lens is now the better opener, since 72-75 are gone.** Standing recommendation: **real-device
   mobile** — now unblocked, and that round verifies rather than re-finds since batch 1 shipped. First
   thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the root holds less
   completely on iOS Safari than on Chromium, and only Chromium was measured.
@@ -42,11 +49,13 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
   scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are
   recorded** — a count written *into* this file is invalidated by the commit that writes it. Ask git:
   `git log --oneline origin/main..main`.
-- **Gates at the last code landing (2026-07-27), re-run before trusting them:** full workspace suite
-  with all three gates and `--test-threads=1` = 95 binaries, 1,624 tests, 0 failures; `cargo fmt
-  --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates were last
-  run 2026-07-26 (that batch touched no JS). `check` clean on `corpus/tarn`, `docs/guide`,
-  `docs/internals`, `site`.
+- **Gates at the last code landing (2026-07-27, the 72-75 batch), re-run before trusting them:** full
+  workspace suite with all three gates and `--test-threads=1` = **98 binaries, 1,655 tests, 0 failures,
+  0 ignored** (zero ignored is the check that the gates were live, not skipping); `cargo fmt --check`
+  and `clippy --workspace --all-targets -D warnings` clean. **Both JS `tsc` gates re-run and clean**
+  (that batch touched `11-lightbox.js` + `18-media.js`), as was `node --test
+  crates/server/src/assets/_middleware.test.mjs` (6 pass). `check` clean on `corpus/tarn`,
+  `corpus/media`, `corpus/tech-blog`, `corpus/graphics3d`, `docs/guide`, `docs/internals`, `site`.
 
 ## Standing constraints (read before working)
 
@@ -159,73 +168,6 @@ anything client-side, and **delete the item from this file when it lands**.
 **72-75 are one author-reported round (2026-07-27), filed separately because they touch four disjoint
 subsystems and can go to four sessions at once.** Each was validated against source; 72 and 76 were
 also measured in a browser. Nothing here is blocked.
-
-72. **Every 3D scene that does not opt into `alpha: true` paints an opaque dark slab in light mode.**
-    Measured on the running preview at 1440 px, light theme, `body` background `rgb(255,255,255)`:
-    `readPixels` on the showcase Lorenz canvas returns **`[11,15,26,255]`** — fully opaque `#0b0f1a`
-    on a white page. Screenshot in the round's scratch, and it reads exactly as bad as it sounds.
-    **Broader than the author reported (they saw it on the marketing site only).** The helper
-    `makeScene3D` defaults `bgColor = 0x111827, alpha = false` and then does
-    `setClearColor(bgColor, alpha ? 0 : 1)` (`site/_includes/three-scene.tmd:17-18,31`), so **every**
-    caller that does not pass `alpha: true` bakes a dark rectangle:
-    - `site/showcase.tmd:402` + `:468` (`0x0b0f1a`) — the two the author saw.
-    - `corpus/posts/pca-geometry/index.tmd` and `corpus/tech-blog/…/pca-geometry` — **three scenes
-      each, calling `}, invalidation);` with no opts at all**, so they take the `0x111827` default.
-      That is the **forward-facing brand blog** (see Standing constraints), not a demo page.
-    - the `corpus/graphics3d/` gallery mounts: `molecules.tmd` (`0x0e1420`), `lorenz.tmd`, `cad.tmd`
-      (`0x11151f`).
-    **Verified NOT affected** (they already pass `alpha: true`, corner pixel `[0,0,0,0]`): the index
-    hero and the showcase surface scene.
-    **The fix touches four copies of the helper, in two variants, and two of them are test-pinned
-    twins — read this before editing anything.** `three-scene.tmd` exists at `site/_includes/`,
-    `corpus/graphics3d/_includes/` (these two share one hash: the *extended* variant with
-    `controls`/`autoRotate`/`rebuild`/`loadGLTF`) and at `corpus/_includes/`,
-    `corpus/tech-blog/_includes/` (the *older* variant, sharing a different hash).
-    `crates/core/tests/corpus.rs:1317` (`twinned_corpus_sources_stay_byte_identical`) pins
-    `corpus/_includes/` ↔ `corpus/tech-blog/_includes/` **and** `corpus/posts/` ↔
-    `corpus/tech-blog/posts/` byte-identical, so **a fix landing in one twin and not the other turns
-    that test red** — and since item 72's other half is the pca-geometry scenes, which are themselves
-    twinned posts, this will bite. Land each fix in both halves of a pair in the same commit. Do not
-    "sync" the older variant up to the extended one as a drive-by: that is a separate change, and a
-    prior sync attempt silently dropped `autoRotate` and regressed the showcase.
-    Two further theme-blind spots in the same helper, cheap to fix in the same pass: the Fullscreen
-    button is hard-coded `rgba(30,30,30,.75)` / `#ddd` (`:166`), and `spriteLabel` takes a
-    caller-supplied CSS colour that will not flip either.
-    **Not measured:** dark mode (assumed fine, unverified), and the fourth showcase scene never built
-    under the probe because its tabset panel stayed closed.
-
-73. **`{{< video >}}` gives the reader no player controls at all.** Not "a rough player" — there is no
-    `controls` attribute on the inline `<video>` (`render/extension/mod.rs:356`) nor on the lightbox
-    copy (`11-lightbox.js:52`). So: no play/pause, **no scrubber** (a reader cannot go back five
-    seconds), no speed, no volume, and `muted` is hard-coded, which makes narrated video impossible.
-    The shortcode accepts exactly four arguments — `src`, `dark=`, `poster=`, `caption=`.
-    That is coherent for the **one** case it was built for: a silent hover-to-play screencast, where
-    autoplay would fail WCAG 2.2.2. It falls apart for a narrated explainer.
-    **The author asked whether to take a video-player dependency. Recommended: no, and it is not
-    close.** Adding `controls` yields native scrubbing, keyboard, fullscreen, captions and PiP for
-    about a one-line change; Video.js / Plyr is 50-150 KB to *restyle* controls the browser already
-    ships, and it fights three invariants at once (offline `include_str!` bundling, `--tali-*` tokens,
-    "perfect the default before adding a knob"). Proposed shape: `{{< video clip.mp4 controls audio >}}`
-    where `controls` emits native controls and drops the hover-play wiring, `audio` drops
-    `muted`+`loop`; add `captions=clip.vtt` for a `<track>`. **The one genuinely open sub-question** is
-    whether bare native controls look acceptable against the `.tali-video` frame — answer it by
-    looking, and only then consider styling. Reversing to a dependency is an author call, not a
-    session's.
-    **Same pass, same subsystem:** two docs still claim the video **"autoplays"**
-    (`render/extension/mod.rs:135`, `docs/guide/reference/shortcodes.tmd:121`), which the
-    implementation explicitly reversed — `video_html`'s own doc comment at `:327` contradicts them.
-
-74. **`logo:` exists for decks only; the book topbar and the website navbar are text-only.** Grep is
-    unambiguous: `logo` occurs **zero** times in `crates/core/src/site/`. `SiteConfig` carries `title`
-    and `favicon` but no logo, and both brand links render escaped text — `chrome.rs:86` (website),
-    `:256` + `:302` (book). Decks already ship it (`render/deck.rs:140`, pinned by
-    `render/tests.rs:1428`), so this is 1 of 3 surfaces done.
-    **This is the item with a stated commercial justification** ("important if customers want branded
-    books, websites and slides"), which is rare on this list — most items here are the author's own
-    itch. Shape: a `logo:` key in `_site.yml` rendered as an `<img>` **inside** the existing brand
-    `<a>`, with the title text as `alt` and as the fallback when the key is absent; reuse the path
-    resolution `favicon:` already has. Check it against the "minimal config" rule before widening it
-    with size/position knobs — a good default is one image slot, not four.
 
 76. **Remove the book's right-rail `#TOC`. RULED 2026-07-27: remove.** The author asked *"Should I
     remove side navigation? Is it useful? You can just view the chapters menu for in-chapter

@@ -1,7 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 40" width="260" height="40" role="img" aria-label="Andreas Bogossian">
   <style>
-    /* Dark mode (the default theme), matching bell-curve.svg's convention. An SVG in an
-       `<img>` cannot inherit `currentColor`, so it carries its own two-scheme palette. */
+    /* Dark mode (the default theme), matching bell-curve.svg's convention. An SVG loaded
+       through an img element cannot inherit `currentColor`, so it carries its own
+       two-scheme palette. NOTE: an SVG style element is XML, not HTML -- it is not an
+       implicit CDATA section, so a bare angle bracket or ampersand in here (even inside a
+       comment) makes the whole file un-parseable and the browser renders a broken image.
+       Spell tag names out in words. */
     .mark { stroke: #ffffff; }
     .word { fill: #ffffff; }
     @media (prefers-color-scheme: light) {
