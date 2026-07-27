@@ -255,6 +255,11 @@
     background: rgba(20, 20, 22, .55); color: #fff; font-size: 1.25rem; line-height: 1;
     pointer-events: none; opacity: 1; transition: opacity var(--tali-dur) ease; }
   .tali-video[data-playing]::after { opacity: 0; }
+  /* A `controls` / `audio` clip is played through the browser's own control bar (which draws
+     its own play button), so this badge would stack a second, non-functional one on top of
+     it — and nothing toggles `data-playing` there, since 18-media.js does not wire such a
+     clip. Browsers without `:has()` simply skip the rule. */
+  .tali-video:has(video[controls])::after { content: none; }
   /* `dark=` variant: show the clip that matches the page theme (selectors carry the
      element so they beat the `.tali-video video` base rule). */
   .tali-video video.tali-video-dark { display: none; }

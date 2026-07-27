@@ -111,27 +111,54 @@ exist. Use a site build, or build the deck yourself alongside the page.
 The deck syntax the embed points at is covered in
 [Output formats](../using/formats.tmd).
 
-## `{{< video >}}`: a framed screencast
+## `{{< video >}}`: a framed screencast or a narrated clip
 
 ```markdown
 {{< video tour.mp4 >}}
+{{< video tour.mp4 controls >}}
+{{< video talk.mp4 audio captions=talk.vtt >}}
 {{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption="A quick tour" >}}
 ```
 
-Emits a framed `<video>` that **autoplays, is muted, loops, and plays inline**: the
-silent-screencast pattern, authored in Markdown so a page never needs raw `<video>`
-HTML. It renders as a `<figure class="tali-video">`.
+Emits a framed `<video>`, authored in Markdown so a page never needs raw `<video>`
+HTML. It renders as a `<figure class="tali-video">`. It **never autoplays**: an
+auto-starting loop beside body text is a WCAG 2.2.2 ("Pause, Stop, Hide") failure,
+so the reader always starts it.
+
+*How* the reader starts it is one ladder with three steps, chosen so the incoherent
+combinations cannot be written at all:
+
+| Written | What the reader gets |
+|---|---|
+| (nothing) | **A silent screencast.** Muted and looping, with no control bar. Hovering plays a preview, keyboard focus plays it too, and a click opens it enlarged (paused, scrubbable) in the viewer. This is the default because it is what a short UI clip beside prose should be: a still frame that comes alive, not a media player. |
+| `controls` | **The browser's own player**, for a clip long enough that a reader needs to go back five seconds: a scrubber, play/pause, speed, keyboard, native fullscreen, and picture-in-picture. Still muted and looping. The hover preview and the click-to-enlarge stand down, because the control bar now owns those clicks. |
+| `audio` | **A narrated explainer.** Drops `muted` (you cannot hear a muted narration) and `loop` (a lecture that silently restarts itself is hostile), and implies `controls` — sound with no way to pause or lower it is a failure of its own. |
+
+Those controls are the browser's, not Taliesin's: no player library is bundled, and
+none is restyled. That is also why there is no size, position, speed or autoplay
+knob — the ones worth having, the browser already ships.
 
 | Argument | Required | Default | Effect |
 |---|---|---|---|
-| *src* (positional) | yes | (none) | The video file, relative to the page. A query string is fine: `clip.mp4?v=2` is treated as a path, not a named argument. |
+| *src* (positional) | yes | (none) | The video file, relative to the page. A query string is fine: `clip.mp4?v=2` is treated as a path, not a named argument. Order is free: the bare flags below are never mistaken for the path, so `{{< video controls tour.mp4 >}}` works. |
+| `controls` (flag) | no | off | Native player controls (see the ladder above). |
+| `audio` (flag) | no | off | The clip is narrated: unmuted, non-looping, and `controls` is implied. |
+| `captions=…` | no | (none) | A WebVTT caption track for the narration, shown by default. Implies `controls`, so the reader can switch it off. |
 | `dark=…` | no | (none) | A second clip for dark theme. Both clips are emitted; CSS shows the one matching `html[data-theme]`, so the screencast matches the surrounding theme. |
 | `poster=…` | no | (none) | A poster image shown before the video paints. |
-| `caption="…"` | no | (none) | A `<figcaption>` under the clip (quote it if it has spaces). |
+| `caption="…"` | no | (none) | A `<figcaption>` under the clip (quote it if it has spaces). It also becomes the clip's accessible name; without it the clip is announced as "Screencast", or "Video" under `audio`. |
 
 A `{{< video >}}` (and any raw `<video src>`) whose local file is missing is flagged
 by `taliesin check` as a broken local asset, so a renamed clip does not slip
 through.
+
+::: {.callout-note}
+## Captions are yours to write
+
+`captions=` points at a WebVTT file you supply; nothing transcribes the audio for
+you. A narrated clip without one fails WCAG 1.2.2, so treat the `.vtt` as part of
+shipping the video rather than as a later polish pass.
+:::
 
 ## `{{< input >}}`: a reactive control
 

@@ -132,21 +132,58 @@ fn render_shortcode(inner: &str) -> Option<String> {
     if name == "embed" {
         return embed_path(args).map(|p| embed_html(&p, embed_title(args).as_deref()));
     }
-    // `{{< video clip.mp4 [dark=clip-dark.mp4] [poster=…] [caption="…"] >}}` — a framed,
-    // autoplaying, muted, looping screencast, authored in Markdown so a page needs no raw
+    // `{{< video clip.mp4 [controls] [audio] [captions=clip.vtt] [dark=clip-dark.mp4]
+    // [poster=…] [caption="…"] >}}` — a framed screencast (never autoplaying: playback is
+    // user-initiated, see `video_html`), authored in Markdown so a page needs no raw
     // `<video>` HTML. With `dark=`, the light clip plays on a light page and the dark clip
     // on a dark page (toggled by `html[data-theme]`), so the screencast matches the theme.
     if name == "video" {
-        return embed_path(args).map(|src| {
+        return video_path(args).map(|src| {
             video_html(
                 &src,
                 shortcode_named(args, "dark").as_deref(),
                 shortcode_named(args, "poster").as_deref(),
                 shortcode_named(args, "caption").as_deref(),
+                shortcode_named(args, "captions").as_deref(),
+                playback_mode(args),
             )
         });
     }
     None
+}
+
+/// How a `{{< video >}}` plays back: a three-step ladder, not independent switches, so the
+/// incoherent combinations cannot be authored at all.
+///
+/// * [`Playback::Preview`] (the default) — the silent screencast: muted, looping, no control
+///   bar. Playback is the `18-media.js` hover/focus preview plus the lightbox on click.
+/// * [`Playback::Controls`] (`controls`) — a long silent clip a reader needs to *scrub*:
+///   native controls (scrubber, keyboard, fullscreen, PiP), still muted + looping, and the
+///   hover-preview/lightbox wiring stands down (the browser's own bar owns the clicks).
+/// * [`Playback::Sound`] (`audio`) — a narrated explainer: native controls, and neither
+///   `muted` nor `loop` (narration you cannot hear is pointless; narration that restarts
+///   itself is hostile).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Playback {
+    Preview,
+    Controls,
+    Sound,
+}
+
+/// Read the playback ladder off a `{{< video >}}`'s arguments.
+///
+/// `audio` implies `controls` (unmuted media with no pause/volume control is a WCAG 1.4.2
+/// failure), and so does `captions=` (a `<track default>` with no control bar shows captions
+/// the reader cannot turn off). That is why these are one ladder and not three booleans:
+/// two of the eight flag combinations are incoherent, and neither can be spelled here.
+fn playback_mode(args: &[String]) -> Playback {
+    if shortcode_flag(args, "audio") {
+        Playback::Sound
+    } else if shortcode_flag(args, "controls") || shortcode_named(args, "captions").is_some() {
+        Playback::Controls
+    } else {
+        Playback::Preview
+    }
 }
 
 /// Whitespace-split `inner`, keeping quoted values (`key="a b"`) as one token and
@@ -201,6 +238,25 @@ fn is_named_arg(tok: &str) -> bool {
     let mut chars = key.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic())
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// The bare (valueless) flags `{{< video >}}` accepts. They are not paths, so
+/// [`video_path`] must skip them: the positional source is otherwise "the first token that
+/// is not `key=value`", and `{{< video controls clip.mp4 >}}` would take `controls` as the
+/// clip.
+const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
+
+/// The positional source path of a `{{< video >}}`: the first argument that is neither a
+/// `key=value` named argument nor one of the bare [`VIDEO_FLAGS`], so flag order is free.
+fn video_path(args: &[String]) -> Option<String> {
+    args.iter()
+        .find(|a| !is_named_arg(a) && !VIDEO_FLAGS.contains(&a.as_str()))
+        .cloned()
+}
+
+/// Whether a bare (valueless) flag token is present, matched whole.
+fn shortcode_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|a| a == flag)
 }
 
 /// The optional `title="…"` argument (used as the iframe's accessible name).
@@ -323,25 +379,55 @@ fn input_shortcode(
     )
 }
 
-/// The HTML for a `{{< video >}}`: a framed muted/looping `<video>` (a silent screencast)
-/// with an optional caption. Playback is **user-initiated** (hover / focus / tap via the
-/// `18-media.js` enhancer), never `autoplay` — an autoplaying loop beside body text is a
-/// WCAG 2.2.2 ("Pause, Stop, Hide") failure. With a `dark` source, both clips are emitted
-/// and CSS shows the one matching `html[data-theme]`. Raw-HTML, passed through.
+/// The HTML for a `{{< video >}}`: a framed `<video>` with an optional caption. Playback is
+/// **never** `autoplay` — an autoplaying loop beside body text is a WCAG 2.2.2 ("Pause,
+/// Stop, Hide") failure — and the [`Playback`] ladder decides how the reader starts it: the
+/// default silent screencast is muted + looping and driven by the `18-media.js`
+/// hover/focus/lightbox enhancer, while `controls`/`audio` hand the clip to the browser's own
+/// player (scrubber, keyboard, volume, fullscreen, PiP — no player library, and no restyling
+/// of controls the browser already ships). `captions=` adds a caption `<track>`. With a
+/// `dark` source, both clips are emitted and CSS shows the one matching `html[data-theme]`.
+/// Raw-HTML, passed through.
 fn video_html(
     src: &str,
     dark: Option<&str>,
     poster: Option<&str>,
     caption: Option<&str>,
+    captions: Option<&str>,
+    playback: Playback,
 ) -> String {
     let poster_attr = poster
         .map(|p| format!(" poster=\"{}\"", escape_attr(p)))
         .unwrap_or_default();
-    // The caption names the video for assistive tech; a caption-less clip is a generic
-    // "Screencast". Escaped since it lands in a double-quoted attribute.
+    // `muted loop` is the silent-screencast contract; a narrated clip drops both (you cannot
+    // hear a muted narration, and a lecture that silently restarts itself is hostile).
+    // `controls` hands playback to the browser's native player.
+    let (silent_attrs, controls_attr) = match playback {
+        Playback::Preview => (" muted loop", ""),
+        Playback::Controls => (" muted loop", " controls"),
+        Playback::Sound => ("", " controls"),
+    };
+    // A caption track for the narration (WCAG 1.2.2). `default` shows it without a click;
+    // the control bar `controls` guarantees (see `playback_mode`) is what lets it be turned
+    // back off. No `srclang`: it is optional for `kind="captions"`, and guessing a language
+    // would be worse than omitting it.
+    let track = captions
+        .map(|c| {
+            format!(
+                "<track kind=\"captions\" src=\"{}\" label=\"Captions\" default>",
+                escape_attr(c)
+            )
+        })
+        .unwrap_or_default();
+    // The caption names the video for assistive tech; a caption-less clip falls back to what
+    // it is — a silent "Screencast", or a narrated "Video". Escaped since it lands in a
+    // double-quoted attribute.
     let label_attr = format!(
         " aria-label=\"{}\"",
-        escape_attr(caption.unwrap_or("Screencast"))
+        escape_attr(caption.unwrap_or(match playback {
+            Playback::Sound => "Video",
+            _ => "Screencast",
+        }))
     );
     // A light/dark PAIR ships both clips but only one is ever visible, so the theme-hidden
     // one must not download. The pair carries `data-src` (no `src`); `syncThemeVideos`
@@ -353,7 +439,7 @@ fn video_html(
     let video = |s: &str, class: &str, lazy: bool| {
         let src_attr = if lazy { "data-src" } else { "src" };
         format!(
-            "<video{cls} {src_attr}=\"{}\"{poster_attr} muted loop playsinline preload=\"metadata\" tabindex=\"0\"{label_attr}></video>",
+            "<video{cls} {src_attr}=\"{}\"{poster_attr}{silent_attrs}{controls_attr} playsinline preload=\"metadata\" tabindex=\"0\"{label_attr}>{track}</video>",
             escape_attr(s),
             cls = if class.is_empty() {
                 String::new()
