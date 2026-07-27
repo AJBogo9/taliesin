@@ -68,13 +68,18 @@ fn settings_button() -> String {
     )
 }
 
-/// Resolve a `_site.yml` asset path (today `logo:`) for a page whose depth prefix is
-/// `up`. A project-relative path gets the same `../` prefix `favicon:` gets
-/// (`Site::page_chrome`); a site-absolute (`/brand.svg`) or external (`https://…`,
-/// `//cdn/…`) source is left exactly as written, since prefixing those produces a
-/// path that resolves nowhere. Never `.tmd`→`.html` rewritten: this is an image, not
-/// a page link, so `resolve_href` is the wrong helper.
-fn site_asset_href(src: &str, up: &str) -> String {
+/// Resolve a `_site.yml` asset path (`logo:` and `favicon:`) for a page whose depth prefix
+/// is `up`. A project-relative path gets the `../` climb back to the site root; a
+/// site-absolute (`/brand.svg`) or external (`https://…`, `//cdn/…`) source is left exactly
+/// as written, since prefixing those produces a path that resolves nowhere. Never
+/// `.tmd`→`.html` rewritten: this is an image, not a page link, so `resolve_href` is the
+/// wrong helper.
+///
+/// `favicon:` shipped before this guard existed and prefixed unconditionally, so
+/// `favicon: /brand.svg` on a nested page emitted `..//brand.svg` and 404'd — which is the
+/// one case an author writes a site-absolute path *for*. Both keys name a project asset,
+/// so both go through here.
+pub(super) fn site_asset_href(src: &str, up: &str) -> String {
     if src.starts_with('/') || src.starts_with("//") || src.contains("://") {
         src.to_string()
     } else {
@@ -274,6 +279,32 @@ impl Site {
 }
 
 impl Site {
+    /// The book's brand link, for both slots that carry one (the sticky topbar and the
+    /// drawer's head). Empty when the book is unbranded — no `title:` and no `logo:` —
+    /// because a bare "Home" wordmark where a book's name belongs is noise, unlike a
+    /// website navbar, which is a row of links that needs an anchored left edge.
+    ///
+    /// **A `logo:` alone is enough.** The gate used to be `title:` only, which predates
+    /// `logo:`: a book that configured a logo and no title emitted no brand at all, though
+    /// the logo *is* the brand and a missing title costs only the accessible label — which
+    /// `brand_content` already falls back to "Home" for. One helper rather than two copies,
+    /// since the slot is emitted twice and fixing one is exactly the shape of the bug
+    /// `book_brand_renders_the_logo_in_both_the_topbar_and_the_drawer_head` pins against.
+    fn book_brand_html(&self, title: Option<&String>, up: &str) -> String {
+        let has_logo = self
+            .config
+            .logo
+            .as_deref()
+            .is_some_and(|l| !l.trim().is_empty());
+        if title.is_none() && !has_logo {
+            return String::new();
+        }
+        format!(
+            "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
+            self.brand_content(title.map(String::as_str).unwrap_or(""), up)
+        )
+    }
+
     /// The book chrome: a slim sticky topbar (a "Chapters" drawer launcher, the title
     /// linking home, a search button, and the light/dark toggle) followed by the chapter
     /// list inside an off-canvas drawer. A book reads as one centred column, so the chapter
@@ -299,12 +330,7 @@ impl Site {
              stroke-width='1.6' stroke-linecap='round' aria-hidden='true'>\
              <path d='M2 4h12M2 8h12M2 12h12'/></svg><span>Chapters</span></button>",
         );
-        if let Some(t) = &book.title {
-            s.push_str(&format!(
-                "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
-                self.brand_content(t, &up)
-            ));
-        }
+        s.push_str(&self.book_brand_html(book.title.as_ref(), &up));
         s.push_str("<span class=\"tali-nav-spacer\"></span>");
         // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
         // focus / shortcuts). The gear replaces the old light/dark toggle that lived here.
@@ -338,19 +364,15 @@ impl Site {
         // book-scoped Continue pill). It is the landing page's href, relative here and
         // resolved to an absolute path by the client, so every page of one book agrees
         // and two books never collide. Deliberately NOT the title or `archive_name`: a
-        // rename would silently orphan every reader's position, and an untitled book
-        // emits no brand link at all, so those two have no stable value to key on.
+        // rename would silently orphan every reader's position, and a book need not have
+        // a title at all (it can brand on `logo:` alone, or carry no brand), so neither
+        // has a stable value to key on.
         s.push_str(&format!(
             "<nav class=\"tali-book-sidebar\" data-tali-src=\"_site.yml\" \
              data-tali-book=\"{up}index.html\" aria-label=\"Chapters\">"
         ));
         s.push_str("<div class=\"tali-book-sidebar-head\">");
-        if let Some(t) = &book.title {
-            s.push_str(&format!(
-                "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
-                self.brand_content(t, &up)
-            ));
-        }
+        s.push_str(&self.book_brand_html(book.title.as_ref(), &up));
         s.push_str(
             "<button type=\"button\" class=\"tali-book-drawer-close\" data-tali-drawer-close \
              aria-label=\"Close chapters\">\u{2715}</button>",
@@ -673,6 +695,106 @@ mod tests {
             site_asset_href("//cdn.example/b.svg", "../"),
             "//cdn.example/b.svg"
         );
+    }
+
+    #[test]
+    fn a_titleless_book_with_a_logo_still_brands_on_the_logo_alone() {
+        // Item 77 residual: both `.tali-book-brand` slots were gated on `book.title`, a
+        // gate that predates `logo:` — so a book that configured a logo and no title got
+        // no brand link at all, while a website in the same shape brands fine (its brand
+        // always renders, falling back to "Home"). The logo IS the brand; a missing title
+        // only costs the *label*, which is what the "Home" fallback is for.
+        let root = write_site(
+            "booklogonotitle",
+            &[
+                ("_site.yml", "logo: brand.svg\nchapters:\n  - index.tmd\n"),
+                ("index.tmd", "---\ntitle: One\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        let brand = "<a class=\"tali-book-brand\" href=\"index.html\">\
+                     <img class=\"tali-brand-logo\" src=\"brand.svg\" alt=\"Home\" /></a>";
+        assert_eq!(
+            html.matches(brand).count(),
+            2,
+            "both book brand slots must render the logo without a title:\n{html}"
+        );
+    }
+
+    #[test]
+    fn a_book_with_neither_title_nor_logo_emits_no_brand_link() {
+        // The negative control, and a deliberate non-change: a bare "Home" wordmark where
+        // a book's name belongs is noise, so an unbranded book still shows nothing. Without
+        // this, the fix above passes on a topbar that brands unconditionally.
+        let root = write_site(
+            "booknobrand",
+            &[
+                ("_site.yml", "chapters:\n  - index.tmd\n"),
+                ("index.tmd", "---\ntitle: One\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        // The full opening tag, not the bare class: `site.css` ships `.tali-book-brand`
+        // rules and the page inlines the whole stylesheet, so the short needle matches on
+        // a page that renders no brand at all.
+        assert!(
+            !html.contains("<a class=\"tali-book-brand\""),
+            "an unbranded book must emit no brand link:\n{html}"
+        );
+    }
+
+    #[test]
+    fn a_favicon_resolves_by_depth_but_leaves_a_site_absolute_or_external_one_alone() {
+        // Item 77 residual: `favicon:` predates `logo:`'s guard and prefixed
+        // unconditionally, so `favicon: /brand.svg` on a nested page emitted
+        // `../brand.svg` and 404'd — the author writes a site-absolute path precisely
+        // BECAUSE they want one path that works from every depth. Both keys name a
+        // project asset, so both resolve the same way.
+        let root = write_site(
+            "favicondepth",
+            &[
+                ("_site.yml", "title: Acme\nfavicon: icon.svg\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+                ("posts/deep.tmd", "---\ntitle: Deep\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let deep = site.page("posts/deep.tmd").unwrap().clone();
+        let home = site.page("index.tmd").unwrap().clone();
+        let _ = std::fs::remove_dir_all(&root);
+        // The project-relative case is unchanged: still climbs out per page depth.
+        assert_eq!(site.page_chrome(&home, false).favicon, "icon.svg");
+        assert_eq!(site.page_chrome(&deep, false).favicon, "../icon.svg");
+
+        for (written, expect_deep) in [
+            ("/brand.svg", "/brand.svg"),
+            ("https://cdn.example/i.png", "https://cdn.example/i.png"),
+            ("//cdn.example/i.png", "//cdn.example/i.png"),
+        ] {
+            let root = write_site(
+                &format!("faviconabs{}", written.len()),
+                &[
+                    (
+                        "_site.yml",
+                        &format!("title: Acme\nfavicon: \"{written}\"\n"),
+                    ),
+                    ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+                    ("posts/deep.tmd", "---\ntitle: Deep\n---\n\ny\n"),
+                ],
+            );
+            let site = Site::discover(&root);
+            let deep = site.page("posts/deep.tmd").unwrap().clone();
+            let _ = std::fs::remove_dir_all(&root);
+            assert_eq!(
+                site.page_chrome(&deep, false).favicon,
+                expect_deep,
+                "`favicon: {written}` must survive a nested page unprefixed"
+            );
+        }
     }
 
     #[test]

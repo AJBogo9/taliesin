@@ -677,8 +677,10 @@ impl Site {
     /// live-preview topbar must not link a file that isn't there.
     pub fn page_chrome(&self, page: &Page, downloads: bool) -> SiteCtx {
         let depth = page.url.matches('/').count(); // links are relative to the page
+        // Same resolution `logo:` uses (`chrome::site_asset_href`): climb to the site root
+        // for a project-relative path, leave a site-absolute or external one as written.
         let favicon = match &self.config.favicon {
-            Some(f) if !f.is_empty() => format!("{}{}", "../".repeat(depth), f),
+            Some(f) if !f.is_empty() => chrome::site_asset_href(f, &"../".repeat(depth)),
             _ => String::new(),
         };
         let book = self.is_book();
