@@ -141,24 +141,6 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### A. Build now
 
-70. **The slides either side of the current one paint into the deck's letterbox** (DT-5, detail:
-    [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)). The stage is a fixed 16:9
-    cell scaled by the camera, `.tali-slides` is `overflow: visible`, and a `section` declares no
-    background — so at **any viewport aspect that is not exactly 16:9**, whatever sits next to the
-    current cell in world space paints into the fit slack. **At rest, not mid-pan.** Measured on the
-    built artifact: at 844×390 (phone, landscape) **both** neighbours are visible, 75 px each side =
-    **17.9% of the viewport**; at 1440×900 (**16:10 — the most common laptop aspect there is**) a
-    slide in the stack row shows the slide above as a 45 px strip across the full width, **5%**.
-    16:9 exactly is the only clean aspect. **This is not a touch defect** — touch is only how it was
-    found, since a landscape phone is the widest-aspect device anyone owns. It lands on the deck's
-    *primary* use: presenting.
-    **Needs a ruling, because the three fixes are not equivalent:** (1) an opaque letterbox mask in
-    present mode — smallest, keeps the camera pan exactly as the 07-24 motion round tuned it, and
-    the **recommendation**; (2) hide non-current slides in present mode — also works, but *changes
-    the pan*, which sweeps intermediate slides deliberately, so it would silently undo tuned work;
-    (3) clip the stage — cannot be unconditional, the overview needs `overflow: visible` to show the
-    map at all.
-
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
     assumed, and splits two ways:
@@ -421,6 +403,14 @@ docs; look there rather than re-expanding this list.
 
 ### Decided against
 
+- **"Adjacent slides bleed into the deck's letterbox" (DT-5, filed and RETRACTED 2026-07-27, same
+  day):** **false — the letterbox is empty.** `.tali-deck` is sized to the 16:9 stage
+  (`min(100%, 100vh*16/9)`) with `overflow: hidden`, and its comment already says "adjacent cells
+  fall outside and are clipped (no peek)". The probe intersected each neighbour with the
+  **viewport** instead of with its **clipping ancestor**, and `getBoundingClientRect` knows nothing
+  about `overflow: hidden` — re-measured, the neighbour contributes **0 px** inside the clip box and
+  `elementFromPoint` returns `BODY` there. **Do not re-file it from a rect measurement**; if it ever
+  looks true again, the only valid evidence is a rendered pixel, not a rectangle.
 - **Deck presenter tools** (one-command publish, laser/spotlight, auto-advance): declined 2026-07-22 and
   **re-declined 2026-07-26** on the same grounds — no real speaker ask has appeared. Revive only when the
   author actually presents from Taliesin. (`footer:`/`logo:` from that item did ship.)
