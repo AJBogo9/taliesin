@@ -211,7 +211,9 @@ makeScene3D((scene, THREE, ctx) => {
   };
   showFn("c60");
 }, invalidation, {
-  bgColor: 0x0e1420,
+  // Below the 1.0 default: CPK white (hydrogen) needs real modelling to read as a sphere
+  // on a white page, and flat ambient light would blow it out to a featureless blob.
+  ambientIntensity: 0.55,
   controls: [{
     type: "select",
     label: "Molecule",

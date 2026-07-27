@@ -57,12 +57,12 @@ const el = document.createElement("div");
 makeScene3D((scene, THREE, ctx) => {
   THREEref = THREE;
   geom = new THREE.BufferGeometry();
-  const mat = new THREE.LineBasicMaterial({ color: 0x8bd3ff });
+  const mat = new THREE.LineBasicMaterial({ color: 0x3f7fbf });
   scene.add(new THREE.Line(geom, mat));
   rebuildLine();
 }, invalidation, {
   cameraPos: [0, 0, 9], fov: 45, target: [0, 0, 0],
-  minDistance: 3, maxDistance: 25, bgColor: 0x0b0f1a,
+  minDistance: 3, maxDistance: 25,
   onFrame: () => {                       // reveal ~40 new points/frame
     if (!geom) return;
     drawn = Math.min(drawn + 40, N);
