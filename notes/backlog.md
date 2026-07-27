@@ -11,12 +11,23 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## State (2026-07-27)
 
-- **The author-reported round (72-75) SHIPPED 2026-07-27; only 76 is left of it.** Six observations
-  from the author, five validated, one already shipped. 72 (3D scenes opaque in light mode), 73
-  (`{{< video >}}` had no controls), 74 (`logo:` for the website navbar + both book slots) and 75
-  (three shipped strings contradicting behaviour) all landed with mutation-verified pins. Item **76
-  was ruled 2026-07-27 (remove the right-rail TOC) and is now in band A**, unblocked but not built.
-  Item **56** remains an authoring judgment plus a feature proposal, not a task.
+- **The author-reported round is fully closed: 72-76 plus item 77's four residuals all SHIPPED
+  2026-07-27.** 76 removed the book's right-rail TOC (owner ruling, reversing the 2026-07-06 "keep
+  both nav surfaces" decision): `Site::page_toc` returns false for a book *ahead of* the page's own
+  `toc:`, so one gate covers both builds and both previews, and the 14rem track the layout reserved on
+  *every* chapter went with it at an unchanged text measure. `toc:` is inert in a book now, so
+  `_site.yml` validation says so and the six book configs plus the `init` scaffold dropped the key.
+  77 shipped as three code fixes and one refutation (next bullet). Item **56** remains an authoring
+  judgment plus a feature proposal, not a task — and it is now the only thing in band A.
+- **One of item 77's four was false, and the false one is the lesson.** Filed as "the pca-geometry
+  scree plot bakes `tick_params(colors=\"white\")` into a PNG, so it is unreadable on a light page."
+  Rendered through a real kernel and read in a browser: **perfectly legible.**
+  `MPL_THEME_PREAMBLE`'s `_tali_recolour` overrides every `Text`, spine and tickline before each of
+  the two inline PNGs, so a hardcoded foreground never reaches the page. The item's *second* claim was
+  the real defect (the bars still carried the pre-72 light-on-dark palette while the neighbouring 3-D
+  arrows had been retuned, so two adjacent figures named one colour in two shades). Same shape as
+  DT-5: **a filed cause is a hypothesis, and this is the second in two days that did not survive being
+  measured.**
 - **That round's own defect is the one worth remembering.** Item 74 shipped two brand SVGs that were
   served `200 image/svg+xml`, were copied into the build correctly, and painted a **broken image** on
   the forward-facing blog: each carried a CSS comment naming a tag in angle brackets, and an SVG
@@ -29,14 +40,17 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
   survivor.** The letterbox item was DT-5, which was **retracted the same day as false** (`5e92816`,
   on `origin/main`): the probe intersected each neighbour with the *viewport* instead of its
   *clipping ancestor*, and `.tali-deck`'s `overflow: hidden` had been clipping them all along. So
-  band A's 70 no longer exists, the `_site.yml` item keeps **70** as the original claimant, and no 77
-  was ever issued. **The lesson is about this file, not about decks:** a numbering collision can be
+  band A's 70 no longer exists and the `_site.yml` item keeps **70** as the original claimant. (77 was
+  later issued for something unrelated, and has since shipped.) **The lesson is about this file, not
+  about decks:** a numbering collision can be
   the symptom of a bad filing rather than a clerical slip, so check whether both items are *real*
   before renumbering either.
-- **A lens is now the better opener, since 72-75 are gone.** Standing recommendation: **real-device
-  mobile** — now unblocked, and that round verifies rather than re-finds since batch 1 shipped. First
-  thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the root holds less
-  completely on iOS Safari than on Chromium, and only Chromium was measured.
+- **A lens is now the only opener: bands A and B hold no code work at all.** Standing recommendation:
+  **real-device mobile** — unblocked, and that round verifies rather than re-finds since batch 1
+  shipped. First thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the
+  root holds less completely on iOS Safari than on Chromium, and only Chromium was measured. The
+  drawer also just became a book's *only* navigation surface (item 76), which raises what a
+  real-device failure there would cost.
 - **The author-reported round is worth a method note** ([LESSONS.md](LESSONS.md) candidate): six
   observations from *using* the product produced four real defects, one broader than reported (72) and
   one already fixed but still advertised (75). Two of the four are stale strings that every automated
@@ -49,13 +63,15 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
   scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are
   recorded** — a count written *into* this file is invalidated by the commit that writes it. Ask git:
   `git log --oneline origin/main..main`.
-- **Gates at the last code landing (2026-07-27, the 72-75 batch), re-run before trusting them:** full
-  workspace suite with all three gates and `--test-threads=1` = **98 binaries, 1,655 tests, 0 failures,
-  0 ignored** (zero ignored is the check that the gates were live, not skipping); `cargo fmt --check`
-  and `clippy --workspace --all-targets -D warnings` clean. **Both JS `tsc` gates re-run and clean**
-  (that batch touched `11-lightbox.js` + `18-media.js`), as was `node --test
-  crates/server/src/assets/_middleware.test.mjs` (6 pass). `check` clean on `corpus/tarn`,
-  `corpus/media`, `corpus/tech-blog`, `corpus/graphics3d`, `docs/guide`, `docs/internals`, `site`.
+- **Gates at the last code landing (2026-07-27, the 76 + 77 batch), re-run before trusting them:**
+  full workspace suite with all three gates and `--test-threads=1` = **99 binaries, 1,671 tests, 0
+  failures, 0 ignored** (zero ignored is the check that the gates were live, not skipping); `cargo fmt
+  --check` and `clippy --workspace --all-targets -D warnings` clean. The **fourth** gate
+  (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`, 3 pass) was run too. **Both JS `tsc` gates clean**,
+  as was `node --test crates/server/src/assets/_middleware.test.mjs` (6 pass). `check` clean on all
+  15 corpus/docs projects. Item 76 was browser-verified at 1440px and at narrow width; item 77's
+  figure was browser-verified on both themes after a `TALIESIN_NO_CACHE=1` rebuild through a live
+  Python kernel.
 
 ## Standing constraints (read before working)
 
@@ -165,33 +181,9 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### A. Build now
 
-**72-75 are one author-reported round (2026-07-27), filed separately because they touch four disjoint
-subsystems and can go to four sessions at once.** Each was validated against source; 72 and 76 were
-also measured in a browser. Nothing here is blocked.
-
-76. **Remove the book's right-rail `#TOC`. RULED 2026-07-27: remove.** The author asked *"Should I
-    remove side navigation? Is it useful? You can just view the chapters menu for in-chapter
-    navigation."* and, shown the measurement below, ruled **remove**. This **reverses the documented
-    2026-07-06 "keep both nav surfaces" decision** recorded at `site/book_toc.rs:7` — update that
-    comment as part of the change rather than leaving a doc-comment that contradicts the tree.
-    **The premise checks out, and by a wider margin than the author claimed.** Measured in a browser
-    on `docs/guide/using/formats.html` (1440 px): the Chapters drawer **auto-expands the current
-    chapter** and lists it to h3 — `8.1 Slide decks`, then `8.1.1` … `8.1.9`, `8.2`, `8.3.1`, `8.3.2`
-    — 18 outline toggles and 181 section links across 19 chapters. The right rail showed **four**
-    entries for the same chapter (h2 only: `8.1`-`8.4`). So the drawer is not a substitute for the
-    rail; it is **strictly more detailed**.
-    **What removal costs is scrollspy** — "you are here" while reading, zero clicks, no overlay
-    covering the text. That is the rail's only unique property, and the ruling accepts losing it.
-    **What it buys:** `site.css:283-288` reserves the 14rem track on *every* chapter, TOC or not,
-    purely so the text column does not jump between chapters that have a TOC and chapters that do not.
-    Delete the rail and that compromise goes with it, along with `toc-spy.js` and the mobile TOC sheet.
-    **Scope trap: the mobile TOC sheet is shared.** `TOC_SHEET_MARKUP` was made the single copy all
-    four assemblers emit in the 2026-07-26 path-parity batch (items 50/51/57) — removing it is a
-    four-surface change, not a book-only one, and re-forking it would revert that work. Check what
-    the single-doc preview and the non-book site pages still need from the sheet before deleting it.
-    **Not measured:** whether scrollspy is what makes the rail feel useful in *long* chapters
-    specifically — the probe read one chapter at one width, and `tocSpyActive` was false at scroll
-    top, which is expected but was not re-checked mid-scroll. The ruling was made without it.
+**One item, and it is not a coding task.** The author-reported round (72-76) and its four residuals
+(77) all shipped 2026-07-27. What is left here is an authoring judgment plus a feature proposal;
+nothing in this band is blocked, and nothing in it is a session's work.
 
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
@@ -208,35 +200,11 @@ also measured in a browser. Nothing here is blocked.
 
 ### B. Buildable, but low yield on its own
 
-An item here is cheap to build and therefore easy to build *without asking whether it should be*. Two
-of the last three closed on **evidence rather than code**, which is the outcome this band is most
-likely to produce.
-
-77. **Four residuals surfaced by the 72-75 batch, none of them fixed there.** Filed together because
-    each is a one-sitting change and none justifies a session; they are unrelated apart from being
-    found the same day. **Verify each against source before starting** — they are recorded from the
-    implementing sessions, not re-derived.
-    - **A typo'd bare shortcode flag is silently ignored.** `{{< video x.mp4 control >}}` (for
-      `controls`) gets no controls and no warning, because `render_shortcode` has no warning sink.
-      **Systemic, not new:** a typo'd *named* argument (`postr=`) is equally silent today, and
-      front-matter typo linting does not reach shortcodes. Fixing it means threading a sink into the
-      pre-parse expander, which is why the video work left it. The value is that every other typo
-      surface in the tool warns.
-    - **`favicon:` prefixes its path unconditionally** (`site/mod.rs:681`), so a site-absolute
-      `favicon: /brand.svg` on a nested page emits `../brand.svg` and 404s. Item 74's `logo:` guards
-      against exactly this (site-absolute and external hrefs pass through as written); `favicon:`
-      predates the guard. Changing it is a behaviour change to a shipped key, so it is its own item.
-    - **A book with `logo:` but no `title:` emits no brand link at all.** The `if let Some(t) =
-      &book.title` gate predates `logo:` and was deliberately left alone. A website is unaffected —
-      its brand always renders, falling back to "Home". Decide whether a titleless book should brand
-      on the logo alone.
-    - **The pca-geometry scree plot is still dark-tuned.** Item 72 retuned the three WebGL scenes to
-      read on both backgrounds, but the neighbouring **matplotlib** figure bakes `tick_params(colors=
-      "white")` and white value labels into a PNG, so it is unreadable on a light page. This is item
-      41's class (a baked raster cannot follow the theme), not item 72's, and recolouring only its
-      bars would not help while its axis text stays white. Visible consequence today: the 3-D PC
-      arrows are a darker orange/green/blue than the scree bars, so the caption's "PC1 (orange), PC2
-      (green), PC3 (blue)" still reads true but the two figures no longer match exactly.
+**Empty.** Item 77's four residuals were the last occupants and shipped 2026-07-27. The band's own
+lesson held again: an item here is cheap to build and therefore easy to build *without asking whether
+it should be*, and **one of the four closed on evidence rather than code** (77's scree plot was filed
+as unreadable-on-a-light-page and measured perfectly readable). Refile here only after re-deriving
+the cause from source.
 
 ### C. Blocked on an owner ruling (not a task until then)
 
@@ -431,6 +399,18 @@ docs; look there rather than re-expanding this list.
   again 2026-07-27; pinned gone by `render/tests.rs:1950`. What survives is ~25 lines of `@media print`
   in `deck.css:522` that keep a stray Cmd/Ctrl+P legible — **that is a don't-emit-garbage guard, not
   PDF export, and it is already free, so keep it.** (The stale *marketing claims* are live work: item 75.)
+- **2026-07-27 item 76 — a book has no right-rail TOC.** The gate is `Site::page_toc`, ahead of the
+  page's own `toc:`, so a page-level `toc: true` cannot reinstate it and all four assemblers share one
+  decision. **Do not re-scope as "give books their TOC back"** (owner ruling, reversing 2026-07-06)
+  **or as "delete the rail everywhere"**: websites and single documents keep the rail, `toc-spy.js`
+  and the shared `TOC_SHEET_MARKUP` (still the one copy — a book simply never reaches it). `toc:` is a
+  website key now, and `validate_toc_scope` tells a book author the key is inert.
+- **2026-07-27 item 77 (the four 72-75 residuals):** shortcode arguments are linted against a closed
+  vocabulary with did-you-mean, and shortcode diagnostics became the **`TAL-SHORTCODE` WARNING**
+  family instead of falling through to `(TAL-CHECK, ERROR)`, where a one-letter typo blocked
+  `build --strict`/`publish`. `favicon:` resolves through `chrome::site_asset_href` like `logo:`
+  (site-absolute and external pass through unprefixed). A book brands on `logo:` alone; **a book with
+  neither title nor logo still emits no brand link, deliberately.** The fourth was refuted — see State.
 - **2026-07-27 mutation campaign (items 58-69):** every measured survivor in `crates/core`'s five
   post-07-18 files, the ten `crates/server` files and `lsp_nav.rs` is triaged and pinned; the
   unkillable ones are recorded in the two findings docs' tables. **Do not re-run it against the same
