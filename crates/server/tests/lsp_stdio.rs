@@ -128,7 +128,11 @@ fn a_tmd_buffer_is_linted_whatever_language_id_the_editor_sends() {
             frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
         );
         let (code, stdout, stderr) = lsp_session(&input);
-        assert_eq!(code, Some(0), "languageId {language_id:?}: stderr:\n{stderr}");
+        assert_eq!(
+            code,
+            Some(0),
+            "languageId {language_id:?}: stderr:\n{stderr}"
+        );
         assert!(
             stdout.contains("textDocument/publishDiagnostics"),
             "languageId {language_id:?}: a .tmd buffer must be linted whatever the \
