@@ -146,6 +146,75 @@ mod tests {
         assert_eq!(owner_pid("tali-interp-python3", KERNEL_PREFIX), None);
     }
 
+    /// The producer and the consumer were only ever tested apart: `owner_pid` against
+    /// hand-written names, `sweep_in` against hand-built dirs. So nothing checked that the names
+    /// `tagged` actually *produces* are the ones `owner_pid` can read back — and all three
+    /// producers survived being replaced by `PathBuf::default()` in the 2026-07-27 mutation run.
+    /// If the tag format ever drifted, the sweep would silently stop matching real dirs while
+    /// every test above stayed green. Close the loop.
+    #[test]
+    fn a_produced_dir_name_round_trips_through_the_owner_pid_reader() {
+        let own = std::process::id();
+        for (path, prefix) in [
+            (kernel_conn_dir(), KERNEL_PREFIX),
+            (warmpool_dir(), WARMPOOL_PREFIX),
+        ] {
+            assert_eq!(
+                path.parent(),
+                Some(std::env::temp_dir().as_path()),
+                "a runtime dir belongs under the system temp dir, got {path:?}"
+            );
+            let name = path.file_name().unwrap().to_str().unwrap();
+            assert!(name.starts_with(prefix), "{name:?} must carry {prefix:?}");
+            assert_eq!(
+                owner_pid(name, prefix),
+                Some(own),
+                "the sweep must read this process's pid back out of {name:?}"
+            );
+        }
+        // The uuid half keeps two dirs from the same server apart, so a second kernel never
+        // reuses the first one's connection dir.
+        assert_ne!(kernel_conn_dir(), kernel_conn_dir());
+    }
+
+    /// `sweep_stale_runtime_dirs` is the entry point `main` actually calls, and replacing its
+    /// whole body with `()` survived: every test here calls `sweep_in` directly with an isolated
+    /// base, so the delegation itself — and the choice of the *system temp dir* as the base — was
+    /// never exercised. Plant one dead-owner orphan in the real temp dir and watch the real entry
+    /// point reclaim it.
+    ///
+    /// Safe by construction: the only thing this can remove is a `tali-kernel-`/`tali-warmpool-`
+    /// dir whose owner pid is provably dead, which is exactly what the function exists to remove.
+    /// The sibling test's fixtures live inside its own subdirectory, so a top-level scan cannot
+    /// see them.
+    #[test]
+    #[cfg(unix)]
+    fn the_public_sweep_reclaims_an_orphan_under_the_real_temp_dir() {
+        // A genuinely-dead pid: spawn, kill, reap, so the pid is free.
+        let mut dead_child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let dead_pid = dead_child.id();
+        dead_child.kill().unwrap();
+        dead_child.wait().unwrap();
+
+        let orphan = std::env::temp_dir().join(format!(
+            "{KERNEL_PREFIX}{dead_pid}_{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&orphan).unwrap();
+
+        sweep_stale_runtime_dirs();
+
+        let reclaimed = !orphan.exists();
+        let _ = std::fs::remove_dir_all(&orphan); // a no-op when the sweep did its job
+        assert!(
+            reclaimed,
+            "the public sweep must reclaim the orphan it was given: {orphan:?}"
+        );
+    }
+
     #[test]
     #[cfg(unix)]
     fn sweep_removes_dead_owner_dirs_and_keeps_the_rest() {
