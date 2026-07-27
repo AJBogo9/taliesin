@@ -995,6 +995,88 @@ mod tests {
         );
     }
 
+    /// `{{< embed >}}` is navigable and every *other* shortcode is not.
+    ///
+    /// The include scan accepts exactly two keywords, and only `include` was ever typed here, so
+    /// the `embed` arm was free to invert: dropping `embed` costs go-to-definition on an embedded
+    /// deck, and accepting everything else makes the first argument of `{{< video … >}}` (or any
+    /// future shortcode) look like a document to open.
+    #[test]
+    fn only_include_and_embed_shortcodes_are_navigable() {
+        match classify_target("{{< embed deck.tmd >}}", 0, 12) {
+            Target::Include { path, .. } => assert_eq!(path, "deck.tmd"),
+            other => panic!("expected `embed` to be a navigable include, got {other:?}"),
+        }
+        assert_eq!(
+            classify_target("{{< video clip.mp4 >}}", 0, 12),
+            Target::None
+        );
+    }
+
+    /// `anchor_at`'s definition form needs *both* the cursor on the token and a sigil before it.
+    ///
+    /// Its guard is three `||`ed rejections, and every fixture above puts the cursor squarely on a
+    /// real anchor, so two of the three could be `&&`ed away unseen: one lets a cursor that is
+    /// nowhere near the token rename it anyway, the other makes any bare id in prose a rename site.
+    #[test]
+    fn anchor_at_needs_the_cursor_on_the_token_and_a_sigil_before_it() {
+        // One past the last char still hovers the token (`covers` is inclusive of both ends)…
+        assert_eq!(anchor_at("@fig-1", 0, 6), Some(("fig-1".to_string(), 1, 6)));
+        // …two past does not, even though the backwards walk still finds the id.
+        assert_eq!(anchor_at("@fig-1", 0, 7), None);
+        // A bare id with no `@` / `#` / `label:` sigil is prose, not a rename site.
+        assert_eq!(anchor_at("fig-1 is here", 0, 2), None);
+    }
+
+    fn bib_offset(bib: &str, key: &str) -> Option<usize> {
+        let chars: Vec<char> = bib.chars().collect();
+        let keyc: Vec<char> = key.chars().collect();
+        bib_entry_offset(&chars, &keyc)
+    }
+
+    /// The `@type{key,` scan: whitespace tolerance, and stopping at the end of a truncated `.bib`.
+    ///
+    /// The two tests above reach this scanner only through canonical, complete entries, which
+    /// leaves 17 mutants alive: every one of its four bounds checks can be widened past the end of
+    /// the buffer, and both of its whitespace-skipping loops can be made no-ops, without a fixture
+    /// noticing. A `.bib` truncated mid-header is exactly what an author's file looks like while
+    /// they are typing it, and the LSP scans it on every keystroke — so reading one char past the
+    /// end is not hypothetical.
+    #[test]
+    fn bib_entry_offset_skips_whitespace_and_stops_at_the_end_of_a_truncated_bib() {
+        // Canonical, and the offset is the `@`, not the key.
+        assert_eq!(
+            bib_offset("x\n@article{smith2020,\n}", "smith2020"),
+            Some(2)
+        );
+        // BibTeX allows whitespace before the brace and after it, so both must be skipped.
+        assert_eq!(bib_offset("@article {key,\n}", "key"), Some(0));
+        assert_eq!(bib_offset("@article{ key,\n}", "key"), Some(0));
+        assert_eq!(bib_offset("@article { key ,\n}", "key"), Some(0));
+        // …but the key itself must match whole: a longer key is not a hit on its prefix.
+        assert_eq!(bib_offset("@article{keyword,\n}", "key"), None);
+        // An entry needs a type; `@{…}` is not a header.
+        assert_eq!(bib_offset("@{key,\n}", "key"), None);
+        // An empty key matches nothing rather than every entry.
+        assert_eq!(bib_offset("@article{key,\n}", ""), None);
+
+        // Truncated after each part of the header in turn: None, never a read past the end.
+        for truncated in [
+            "@article",
+            "@article ",
+            "@article{",
+            "@article{ ",
+            "@article{key",
+            "@article{key ",
+        ] {
+            assert_eq!(
+                bib_offset(truncated, "key"),
+                None,
+                "a `.bib` truncated at {truncated:?} must not resolve a key"
+            );
+        }
+    }
+
     #[test]
     fn frontmatter_bib_paths_reads_scalar_and_list() {
         assert_eq!(
@@ -1016,6 +1098,49 @@ mod tests {
         assert_eq!(
             frontmatter_bib_paths("bibliography: x.bib"),
             Vec::<String>::new()
+        );
+    }
+
+    /// Where the front-matter scan starts, where it stops, and that it walks forwards.
+    ///
+    /// Every fixture above puts `bibliography:` on the *first* line of a *terminated* front
+    /// matter, which is the one shape that hides all three of this loop's defects: a cursor that
+    /// walks backwards still reads line 1, a scan that never terminates still finds the key, and a
+    /// bound one line too wide is only reached when the document has no closing `---`.
+    #[test]
+    fn frontmatter_bib_paths_scans_forwards_and_only_inside_the_front_matter() {
+        // Not the first key: the scan has to walk forwards to reach it.
+        assert_eq!(
+            frontmatter_bib_paths("---\ntitle: x\nbibliography: refs.bib\n---\n"),
+            vec!["refs.bib".to_string()]
+        );
+        // A `bibliography:` line in the body is not front matter.
+        assert_eq!(
+            frontmatter_bib_paths("---\nbibliography: a.bib\n---\n\nbibliography: body.bib\n"),
+            vec!["a.bib".to_string()]
+        );
+        // `...` closes front matter as well as `---`.
+        assert_eq!(
+            frontmatter_bib_paths("---\nbibliography: a.bib\n...\nbibliography: body.bib\n"),
+            vec!["a.bib".to_string()]
+        );
+        // Unterminated front matter (an author mid-edit): stop at the last line, not past it.
+        assert_eq!(
+            frontmatter_bib_paths("---\nbibliography: a.bib\n"),
+            vec!["a.bib".to_string()]
+        );
+    }
+
+    /// A `bibliography:` list ends at its first non-item, and an empty `-` is a non-item.
+    ///
+    /// Accepting one pushes an empty path, which the LSP then resolves against the document's
+    /// directory — i.e. it turns a half-typed list into a `bibliography:` pointing at the
+    /// directory itself.
+    #[test]
+    fn a_bibliography_list_stops_at_the_first_non_item() {
+        assert_eq!(
+            frontmatter_bib_paths("---\nbibliography:\n  - a.bib\n  -\n  - b.bib\n---\n"),
+            vec!["a.bib".to_string()]
         );
     }
 }
