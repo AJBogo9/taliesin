@@ -14,7 +14,7 @@ evidence — never claim green without command output to back it.
 2. If client JS changed: `cd web-client && npx -y -p typescript tsc -p jsconfig.json`
    (type-check only, no build step).
 3. `cargo fmt --check` and `cargo clippy -p taliesin-core -p taliesin-server` if the
-   diff touched `.rs` (CI enforces fmt; a PostToolUse hook already runs rustfmt on edits).
+   diff touched `.rs` (the pre-push hook enforces fmt; a PostToolUse hook already runs rustfmt on edits).
 
 ## Reporting rules
 - Lead with a one-line PASS/FAIL verdict per check.

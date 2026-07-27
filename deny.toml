@@ -1,4 +1,5 @@
-# cargo-deny configuration. Run `cargo deny check` (wired into CI alongside cargo-audit).
+# cargo-deny configuration. Run `cargo deny check` by hand (alongside cargo-audit) on
+# any dependency change — there is no CI, and the pre-push hook does not cover it.
 # Keeps the dependency tree to redistribution-friendly licenses and flags advisories,
 # mirroring the licenses we actually ship (MIT/Apache/ISC/BSD/…).
 [advisories]
