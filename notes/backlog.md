@@ -17,12 +17,13 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and 58-67 all shipped 2026-07-27, leaving only 68**
-(confirmation compute: re-run `lsp_nav.rs` now that the cursor-walk test it was waiting on has
-landed). **When 68 closes, band A holds nothing but item 56's authoring residual, and the mutation
-campaign that has driven this file since 2026-07-18 is finished** — so the next session's real
-question is which lens to run, not which item to take. The menu is under "Proposed audit lenses";
-the standing recommendation there is real-device mobile, which is now unblocked. Each remaining item names its file, its survivor list and its reason for
+**Start here: band A is ranked 58-69 and 58-68 all shipped 2026-07-27, so the next item is 69** —
+the 24 survivors item 68's run measured, which is the campaign's **last** pin batch and is already
+scoped down to one function that carries 17 of them. **When 69 closes, band A holds nothing but
+item 56's authoring residual and the mutation campaign that has driven this file since 2026-07-18
+is finished** — so the session after that opens with which lens to run, not which item to take. The
+menu is under "Proposed audit lenses"; the standing recommendation is real-device mobile, now
+unblocked. Each remaining item names its file, its survivor list and its reason for
 ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
 the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
 more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
@@ -499,10 +500,35 @@ completed server files, **156 survivors**) and
     is right for something that fires on a keystroke; slow-and-correct is right for a one-off.
     Verified with three controls: a real command still rebuilds, `completions` still rebuilds, and
     a missing binary produces zero bytes on both streams.
-68. **`lsp_nav.rs`'s untested 106-mutant tail** — confirmation compute, not discovery. Do it *after*
-    58 lands, so the same run measures whether the cursor-walk test killed what it was written for.
-    Budget it off **7.8 mutants/min**, the rate measured over ten files, not the 2.3 that one slow
-    file suggested.
+68. **SHIPPED 2026-07-27** — `lsp_nav.rs` measured end to end, **443 of 444** (detail:
+    [2026-07-27-mutation-lsp-nav-complete.md](2026-07-27-mutation-lsp-nav-complete.md)):
+    394 caught, **24 missed**, 21 timeout, 4 unviable, at **9.0 mutants/min** — 48 minutes, against
+    the 3 hours the old 2.3/min estimate would have argued for. **It answered both its questions.**
+    *Confirmation:* item 58's pins killed **35 of the 36** pre-pin survivors; seven of the eight
+    functions that held them are now at zero. *Discovery, and the reason running the tail was worth
+    it:* the partial run's conclusion that **"all 36 survivors are one shape"** was true of the 338
+    it measured and **wrong as a description of the file** — 23 of the 24 remaining survivors are in
+    the tail it never reached, and the biggest hole there is not a position classifier at all.
+    **Banked as the transferable rule: a partial run's shape-conclusion describes the part it
+    measured, not the file.** The 24 survivors are item **69**.
+
+69. **`lsp_nav.rs`'s 24 measured survivors** — the successor to 68, and the campaign's last pin
+    batch. Exact locations in
+    [2026-07-27-mutation-lsp-nav-complete.md](2026-07-27-mutation-lsp-nav-complete.md). Ranked by
+    what each one is, not by count:
+    - **`bib_entry_offset` (17) — the function has NO test at all**, zero occurrences in the test
+      module against three in the file. Not an unpinned edge, an unpinned *function*, the same
+      shape as item 59's `server_capabilities` and item 61's `runtime_dirs.rs`. It is the scanner
+      that locates a BibTeX entry by key, i.e. what makes `[@key]` go-to-definition land on the
+      right entry, and every boundary in its brace/whitespace walk is free to move. **Start here:
+      one behavioural test of the function is likely to take most of the 17 at once**, then the
+      malformed-input axis (item 58's lesson) for the guards that reject.
+    - **`frontmatter_bib_paths` (4)** and **`anchor_at` (2)** are exercised by the test module
+      already, so these are the finer-grained inside-the-function kind.
+    - **`classify_include:150:38` (1)**, the single pre-pin survivor item 58 did not reach.
+    - **One mutant is unmeasured**, not caught: `frontmatter_bib_paths:503:11 += → *=` was in
+      flight when the machine died. **Do not file it as a timeout on the campaign's rule** — its
+      own same-line sibling survived rather than hanging, so it needs measuring with the batch.
 
 **A knowing skip, recorded so it is not re-litigated:** `interactive.rs` (5 of 5 survivors) is the TTY
 wizard layer — `is_interactive`, `select`, `input`. Pinning it needs a PTY harness, and the *non*-TTY
