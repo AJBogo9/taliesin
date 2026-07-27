@@ -602,7 +602,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("_site.yml"),
-            "title: \"T\"\nchapters:\n  - untitled.tmd\n  - titled.tmd\n",
+            "title: \"T\"\nchapters:\n  - untitled.tmd\n  - titled.tmd\n  - noh1.tmd\n",
         )
         .unwrap();
         // No front-matter title: the opening `# Alpha` IS the page's title, so it must not
@@ -617,6 +617,15 @@ mod tests {
         std::fs::write(
             dir.join("titled.tmd"),
             "---\ntitle: \"Beta\"\n---\n\n# Gamma\n\nSection prose.\n",
+        )
+        .unwrap();
+        // The third combination, and the one that shows the rule is a CONJUNCTION rather
+        // than either half: no front-matter title, but the page opens at `##`. Nothing is
+        // standing in for a title here, so the first section is a real section — a rule
+        // reading "no title block" alone would swallow it.
+        std::fs::write(
+            dir.join("noh1.tmd"),
+            "## Solo\n\nSection prose.\n\n## Duo\n\nMore prose.\n",
         )
         .unwrap();
         let site = crate::site::Site::discover(&dir);
@@ -646,6 +655,60 @@ mod tests {
             heads.iter().any(|t| t.contains("Gamma")),
             "with a front-matter title the body heading is a real section: {heads:?}"
         );
+
+        let noh1 = skimmed
+            .iter()
+            .find(|p| p.url == "noh1.html")
+            .expect("the `##`-rooted page skims");
+        let heads: Vec<&str> = noh1.sections.iter().map(|s| s.title.as_str()).collect();
+        assert!(
+            heads.iter().any(|t| t.contains("Solo")),
+            "a page with no title block and no `# H1` keeps its first section: {heads:?}"
+        );
+        assert!(
+            heads.iter().any(|t| t.contains("Duo")),
+            "and the rest of them: {heads:?}"
+        );
+    }
+
+    /// The scan advances past each element it reports. The empty element is what separates
+    /// advancing from rewinding, exactly as in `tag_spans` above — but here the rewind has to
+    /// reach back to the class token to be visible, so the fixture uses a one-letter tag and a
+    /// two-letter class. With `<div class="callout">` the same rewind lands harmlessly past
+    /// the token and the two spellings agree, which is why the realistic-looking fixture is
+    /// the one that cannot see this.
+    #[test]
+    fn class_spans_advances_past_an_empty_element() {
+        let html = r#"<a class="ab"></a><a class="ab">x</a>"#;
+        let got = class_spans(html, "ab");
+        assert_eq!(got.len(), 2, "both elements: {got:?}");
+        assert_eq!(got[0].2, "", "the first is empty");
+        assert_eq!(got[1].2, "x");
+    }
+
+    /// A class token has to be inside the `class` attribute, and "inside" is decided by
+    /// comparing the position of `class="` against the nearest quote before the token. An
+    /// element that carries BOTH a class and a later attribute holding the same word is the
+    /// case that tells a real comparison from one that is merely usually true.
+    #[test]
+    fn class_spans_ignores_the_same_word_in_a_later_attribute() {
+        let html = r#"<div class="a" title="callout">x</div>"#;
+        assert!(
+            class_spans(html, "callout").is_empty(),
+            "`title=\"callout\"` is not a class"
+        );
+        // The control: the same word in the class attribute of the same shape does match.
+        let html = r#"<div class="callout" title="a">x</div>"#;
+        assert_eq!(class_spans(html, "callout").len(), 1);
+    }
+
+    /// The scan terminates on input it cannot make sense of. A class token with no element
+    /// around it at all (no `<` before it) reaches the one branch that gives up on a match,
+    /// and that branch still has to move the cursor forward — otherwise the scanner spins
+    /// forever on a string it should have skipped in two steps.
+    #[test]
+    fn class_spans_gives_up_on_a_class_token_with_no_element() {
+        assert!(class_spans(r#"class="note" note"#, "note").is_empty());
     }
 
     #[test]
@@ -809,6 +872,56 @@ mod tests {
             first_sentence("Edit the file client.js then rebuild. Done."),
             Some("Edit the file client.js then rebuild.".to_string())
         );
+    }
+
+    /// A sentence that ends on a proper noun still ends. The initial rule (`A. Turing`) is a
+    /// conjunction of four conditions, and dropping the "the word is a single character" half
+    /// leaves "the word before the dot is capitalised" — which is every sentence ending in a
+    /// name, a place or a product, so the projection would silently weld two sentences
+    /// together for a whole class of ordinary prose.
+    #[test]
+    fn a_capitalised_last_word_is_not_an_initial() {
+        assert_eq!(
+            first_sentence("He went to Rome. Then home."),
+            Some("He went to Rome.".to_string())
+        );
+    }
+
+    /// A sentence may open on a quotation mark or a bracket, not only a capital or a digit.
+    /// Reported dialogue and a parenthesised aside are both ordinary in the prose this
+    /// projects, and neither is a capital letter.
+    #[test]
+    fn a_quote_or_bracket_opens_a_new_sentence() {
+        assert_eq!(
+            first_sentence("He paused. \"Then what?\" she asked."),
+            Some("He paused.".to_string())
+        );
+        assert_eq!(
+            first_sentence("It shipped. (Late, but it shipped.)"),
+            Some("It shipped.".to_string())
+        );
+    }
+
+    /// `sentence_at` walks `first_sentence` forward to find the sentence containing an
+    /// offset. Nothing exercised it directly — it is reached through the backlink line, which
+    /// quotes the sentence a cross-reference was made in, so a wrong answer there is a
+    /// plausible-looking quotation of the wrong sentence.
+    #[test]
+    fn sentence_at_returns_the_sentence_containing_the_offset() {
+        //             0.........10........20........30
+        let text = "First one. Second two. Third three.";
+        assert_eq!(sentence_at(text, 0).as_deref(), Some("First one."));
+        assert_eq!(sentence_at(text, 5).as_deref(), Some("First one."));
+        assert_eq!(sentence_at(text, 12).as_deref(), Some("Second two."));
+        assert_eq!(sentence_at(text, 30).as_deref(), Some("Third three."));
+        // The boundary itself: offset 10 is the space AFTER the first sentence's stop, so it
+        // belongs to what follows, not to what it terminates.
+        assert_eq!(sentence_at(text, 10).as_deref(), Some("Second two."));
+        // Past the end clamps to the last sentence rather than answering nothing — the
+        // caller's offset comes from a marker in this same string, so `None` would be a
+        // silently dropped backlink quote.
+        assert_eq!(sentence_at(text, 999).as_deref(), Some("Third three."));
+        assert_eq!(sentence_at("", 0), None);
     }
 
     #[test]

@@ -600,6 +600,33 @@ ER  -";
         assert!(resolve(&page(Some("T"), Some("2026"), &["A B"]), &cfg, None).is_none());
     }
 
+    /// The venue is the site title, and a site with no usable title has no venue rather than
+    /// an empty one. An empty `container-title` is worse than a missing one: it reaches the
+    /// exported BibTeX/RIS and the JSON-LD as a field the reader's reference manager shows as
+    /// blank, and `to_bibtex` emits the key on the strength of `Some`, not of its contents.
+    #[test]
+    fn a_site_with_no_usable_title_has_no_venue() {
+        let with = |title: Option<&str>| {
+            let cfg = SiteConfig {
+                title: title.map(Into::into),
+                authors: vec!["Ada Lovelace".into()],
+                ..Default::default()
+            };
+            resolve(&page(Some("T"), Some("2026-04-14"), &[]), &cfg, None)
+                .expect("resolves")
+                .venue
+        };
+        assert_eq!(
+            with(Some("Andreas Bogossian")).as_deref(),
+            Some("Andreas Bogossian")
+        );
+        assert_eq!(with(None), None, "no site title at all");
+        assert_eq!(with(Some("")), None, "an empty title is not a venue");
+        assert_eq!(with(Some("   ")), None, "nor is a whitespace one");
+        // And the title that survives is trimmed, so the venue never carries stray padding.
+        assert_eq!(with(Some("  Padded  ")).as_deref(), Some("Padded"));
+    }
+
     #[test]
     fn resolve_falls_back_to_site_author_not_site_title() {
         // No site author yet: the site title is NOT a valid author fallback.
