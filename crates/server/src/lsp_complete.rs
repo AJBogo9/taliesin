@@ -151,18 +151,46 @@ fn detect_xref(line_prefix: &str) -> Option<String> {
     Some(chars[j..].iter().collect())
 }
 
-/// A fenced-div class position: `:::{.` / `::: {.` then a partial class name.
-/// `/:::\s*\{\.[\w-]*$/`.
+/// A fenced-div class position: `:::{.` / `::: {.` then a partial class name — at **any**
+/// attribute slot, not just the first.
+///
+/// The port's original `/:::\s*\{\.[\w-]*$/` required the `{` immediately before the `.`, so
+/// only the opening class completed: in `::: {.theorem .proof` the second `.` saw a space and
+/// gave up. `divs.rs` collects classes into a `Vec` and joins them, so a multi-class div is
+/// rendered syntax, not a typo — the completion was the only half that stopped at one. So walk
+/// back over any already-typed attributes (`.class`, `#id`, and the spaces between) to reach
+/// the `{`, then require the `:::`.
 fn is_div_class_context(line_prefix: &str) -> bool {
     let chars: Vec<char> = line_prefix.chars().collect();
     let mut j = chars.len();
     while j > 0 && is_id_char(chars[j - 1]) {
         j -= 1;
     }
-    if j < 2 || chars[j - 1] != '.' || chars[j - 2] != '{' {
+    if j == 0 || chars[j - 1] != '.' {
         return false;
     }
-    let mut k = j - 2; // the `{`
+    let mut k = j - 1; // the `.` opening the class being typed
+    loop {
+        while k > 0 && is_hspace(chars[k - 1]) {
+            k -= 1;
+        }
+        if k > 0 && chars[k - 1] == '{' {
+            k -= 1;
+            break;
+        }
+        // Another attribute token (`.class` / `#id`); no progress means this is not an
+        // attribute list at all (e.g. a bare `word .foo` in prose), so give up.
+        let end = k;
+        while k > 0 && is_id_char(chars[k - 1]) {
+            k -= 1;
+        }
+        if k > 0 && (chars[k - 1] == '.' || chars[k - 1] == '#') {
+            k -= 1;
+        }
+        if k == end {
+            return false;
+        }
+    }
     while k > 0 && is_hspace(chars[k - 1]) {
         k -= 1;
     }
@@ -268,8 +296,15 @@ fn frontmatter_value(line_prefix: &str) -> Option<(String, String)> {
 }
 
 /// A front-matter key position: a partial word so far, no colon yet. `/^\s*[\w-]*$/`.
+///
+/// A key never opens with `-` or `.`, and excluding those is what keeps the **closing**
+/// `---` out: it is all `-`, which `is_id_char` admits, so typing the delimiter that ends
+/// the front matter used to pop the entire 27-key list. [`in_frontmatter`] cannot catch it,
+/// because it deliberately ignores the current line so a cursor *on* a key line still counts
+/// as inside. The same exclusion covers the rarer `...` terminator and a YAML `- ` list dash.
 fn is_frontmatter_key_line(line_prefix: &str) -> bool {
-    line_prefix.trim_start().chars().all(is_id_char)
+    let t = line_prefix.trim_start();
+    !t.starts_with('-') && !t.starts_with('.') && t.chars().all(is_id_char)
 }
 
 /// Harvest `{#id}` anchors (heading ids + figure/table labels) from the buffer, deduplicated
@@ -457,6 +492,50 @@ mod tests {
             CompletionContext::DivClass
         );
         assert_eq!(ctx(":::{.col", ":::{.col"), CompletionContext::DivClass);
+    }
+
+    // A class is completable at every attribute slot, not just the first: `divs.rs` joins a
+    // `Vec` of classes, so `{.a .b}` is rendered syntax. Previously only the opening class
+    // completed, because the check demanded `{` immediately before the `.`.
+    #[test]
+    fn detects_a_div_class_after_earlier_attributes() {
+        for line in [
+            "::: {.theorem .",
+            "::: {.theorem .pro",
+            "::: {.theorem #thm-a .",
+            ":::{.a .b .c",
+        ] {
+            assert_eq!(ctx(line, line), CompletionContext::DivClass, "line: {line}");
+        }
+        // Still not a class list: a bare dotted word in prose, and an attribute brace with
+        // no `:::` fence in front of it.
+        for line in ["see the .foo", "{.foo", "text {.a .b"] {
+            assert_eq!(ctx(line, line), CompletionContext::None, "line: {line}");
+        }
+    }
+
+    // The CLOSING `---` is the front-matter boundary, not a key position. It is all `-`,
+    // which `is_id_char` admits, so typing it used to pop the whole front-matter key list.
+    #[test]
+    fn the_closing_frontmatter_delimiter_is_not_a_key_position() {
+        for closer in ["-", "--", "---", "..."] {
+            let doc = format!("---\ntitle: Hi\n{closer}");
+            assert_eq!(
+                ctx(closer, &doc),
+                CompletionContext::None,
+                "closer: {closer}"
+            );
+        }
+        // A real key position in the same buffer still completes.
+        assert_eq!(
+            ctx("dat", "---\ntitle: Hi\ndat"),
+            CompletionContext::FrontmatterKey { parent: None }
+        );
+        // And a blank line inside the block still offers keys.
+        assert_eq!(
+            ctx("", "---\ntitle: Hi\n"),
+            CompletionContext::FrontmatterKey { parent: None }
+        );
     }
 
     #[test]
