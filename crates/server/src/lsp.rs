@@ -96,38 +96,65 @@ fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + 
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                // A panic in one request must not take the session down with it: without the
-                // guard it unwinds out of this loop and every later request from the editor
-                // goes unanswered, silently. Answer the offending request with an
-                // InternalError instead, so the client sees one failed call rather than a
-                // dead server. `id`/`method` are cloned because dispatch consumes `req`.
+                // One bad request must not take the session down with it: unhandled, it leaves
+                // this loop and every later request from the editor goes unanswered, silently.
+                // A request fails two ways and BOTH must end here, in an error reply:
+                //
+                //   * it panics — the residual panic surface `guarded` was added for;
+                //   * its params do not deserialize — an `Err`, which `guarded` never sees.
+                //
+                // The second is by far the likelier, and it used to be the more damaging:
+                // `?` propagated it out of `main_loop` → `run` → `cmd_lsp`, which logged it
+                // and returned `ExitCode::FAILURE`, so the process *exited* rather than
+                // merely going quiet. Four of eight plausible client message shapes hit it.
+                // `id`/`method` are cloned because dispatch consumes `req`.
+                //
+                // InvalidParams is accurate for every *reachable* error: `handle_request`'s
+                // other two error sites are serializing our own response (lsp_types structs,
+                // which cannot fail) and the channel send, which only fails once the client
+                // is gone — and then the reply below fails too and `?` ends the session, as
+                // it should.
                 let (id, method) = (req.id.clone(), req.method.clone());
-                match crate::serve::guarded(|| handle_request(connection, &docs, req)) {
-                    Ok(sent) => sent?,
+                let failure = match crate::serve::guarded(|| handle_request(connection, &docs, req))
+                {
+                    Ok(Ok(())) => None,
+                    // JSON-RPC InvalidParams.
+                    Ok(Err(e)) => {
+                        crate::log::error(&format!("lsp: invalid params for {method}: {e}"));
+                        Some((-32602, format!("invalid params for {method}")))
+                    }
+                    // JSON-RPC InternalError.
                     Err(panic) => {
                         crate::log::error(&format!("lsp: panic handling {method}: {panic}"));
-                        connection
-                            .sender
-                            .send(Message::Response(lsp_server::Response {
-                                id,
-                                result: None,
-                                // JSON-RPC InternalError.
-                                error: Some(lsp_server::ResponseError {
-                                    code: -32603,
-                                    message: format!("internal error handling {method}"),
-                                    data: None,
-                                }),
-                            }))?;
+                        Some((-32603, format!("internal error handling {method}")))
                     }
+                };
+                if let Some((code, message)) = failure {
+                    connection
+                        .sender
+                        .send(Message::Response(lsp_server::Response {
+                            id,
+                            result: None,
+                            error: Some(lsp_server::ResponseError {
+                                code,
+                                message,
+                                data: None,
+                            }),
+                        }))?;
                 }
             }
-            // Same guard for notifications, which is the higher-traffic half: `publish` →
-            // `buffer_diagnostics` renders the buffer on *every keystroke*. A notification
-            // has no reply channel, so a panic is logged and skipped.
+            // Same two failure modes on the higher-traffic half: `publish` →
+            // `buffer_diagnostics` renders the buffer on *every keystroke*. A notification has
+            // no reply channel, so both are logged and skipped. Swallowing the `Err` is safe
+            // for the one non-deserialization case too (a failed `publish` send): the client
+            // is then gone, and `connection.receiver` ends this loop on its own.
             Message::Notification(notif) => {
                 let method = notif.method.clone();
                 match crate::serve::guarded(|| handle_notification(connection, &mut docs, notif)) {
-                    Ok(handled) => handled?,
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        crate::log::error(&format!("lsp: invalid params for {method}: {e}"))
+                    }
                     Err(panic) => {
                         crate::log::error(&format!("lsp: panic handling {method}: {panic}"))
                     }
@@ -1272,6 +1299,62 @@ mod tests {
 
         shutdown(&client);
         std::panic::set_hook(prior);
+        thread.join().unwrap().expect("server loop should exit Ok");
+    }
+
+    // The sibling half of the guard above, and the likelier one: a message whose params do
+    // not deserialize is an `Err`, not a panic, so `guarded` never sees it. Every `let params
+    // = serde_json::from_value(…)?` in the dispatch used to propagate straight out of
+    // `main_loop` → `run` → `cmd_lsp`, which logged it and returned `ExitCode::FAILURE` — the
+    // offending request unanswered and the whole session dead, which is exactly the outcome
+    // the panic guard exists to prevent. Measured against the release binary before the fix,
+    // four of eight plausible client message shapes killed the process (exit code 1):
+    // a `completion` carrying `context: {}` (no `triggerKind`), a float `position`, a
+    // negative `position`, and a `rename` with `newName: null`. `taliesin lsp` serves the
+    // editors the VS Code companion does not (it has its own TS providers), so these shapes
+    // come from clients this repo does not control. Mutation check: restore either `?` in
+    // `main_loop`'s dispatch arms and this test fails on the join, not the timeout.
+    #[test]
+    fn a_malformed_message_does_not_kill_the_session() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        // (1) A REQUEST whose params fail to deserialize (`hover` with no `position`) is
+        // answered with InvalidParams rather than killing the process mid-flight.
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(20),
+                method: lsp_types::request::HoverRequest::METHOD.to_owned(),
+                params: serde_json::json!({ "textDocument": { "uri": "file:///x.tmd" } }),
+            }))
+            .unwrap();
+        let err = recv_response(&client, RequestId::from(20))
+            .error
+            .expect("a malformed request must be answered with an error, not silence");
+        assert_eq!(err.code, -32602, "JSON-RPC InvalidParams");
+
+        // (2) A malformed NOTIFICATION on the every-keystroke channel is logged and skipped.
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: DidChangeTextDocument::METHOD.to_owned(),
+                params: serde_json::json!({ "textDocument": { "uri": "file:///x.tmd" } }),
+            }))
+            .unwrap();
+
+        // (3) The session still answers real work after both.
+        let path = corpus("typos.tmd");
+        let uri = Url::from_file_path(&path).unwrap();
+        did_open(&client, &uri, std::fs::read_to_string(&path).unwrap());
+        let published = recv_publish(&client);
+        assert_eq!(
+            published.uri, uri,
+            "diagnostics still flow after two malformed messages"
+        );
+
+        shutdown(&client);
         thread.join().unwrap().expect("server loop should exit Ok");
     }
 
