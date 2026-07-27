@@ -512,6 +512,181 @@ mod tests {
         assert!(harvest_bib_keys("% just a comment\nno entries").is_empty());
     }
 
+    /// Every trigger in `detect_context` is decided from the *end* of the line prefix, so its
+    /// edges are "one character before the trigger completes" and "one character past the token".
+    /// The 2026-07-27 mutation round found 24 survivors across these deciders because the tests
+    /// above only ever pass a prefix sitting comfortably in the middle of a context. This table is
+    /// written the other way round: every row is an edge, and the rows that expect `None` are the
+    /// ones that matter most, since a mutated boundary shows up as a context appearing too early
+    /// or lasting too long.
+    ///
+    /// Written as an explicit table rather than a mechanical sweep on purpose — an expectation
+    /// computed from the prefix would just re-derive the implementation and could not fail.
+    #[test]
+    fn every_completion_trigger_is_pinned_one_character_either_side_of_its_edge() {
+        const FM: &str = "---\n"; // an open front-matter block, for the key/value rows
+        const CELL: &str = "```{python}\n"; // an open code cell, for the cell-option rows
+        // (document text *before* the current line, the line prefix at the cursor, expected)
+        let cases: Vec<(&str, &str, CompletionContext)> = vec![
+            // --- shortcode path: the keyword needs a separating space, and the path ends at ws/`>`
+            ("", "{{<", CompletionContext::None),
+            ("", "{{< include", CompletionContext::None),
+            (
+                "",
+                "{{< include ",
+                CompletionContext::ShortcodePath {
+                    shortcode: Shortcode::Include,
+                    typed: String::new(),
+                },
+            ),
+            (
+                "",
+                "{{< embed a",
+                CompletionContext::ShortcodePath {
+                    shortcode: Shortcode::Embed,
+                    typed: "a".to_string(),
+                },
+            ),
+            // One space past the path token, and the closer, are both outside it.
+            ("", "{{< embed a ", CompletionContext::None),
+            ("", "{{< embed a>", CompletionContext::None),
+            ("", "{{< inclu x", CompletionContext::None),
+            ("", "{{ include x", CompletionContext::None),
+            // Only the *last* `{{<` can still be an open path token.
+            (
+                "",
+                "{{< include a >}} {{< embed b",
+                CompletionContext::ShortcodePath {
+                    shortcode: Shortcode::Embed,
+                    typed: "b".to_string(),
+                },
+            ),
+            // --- citation: open on `[@`, closed by `]`, and the last `[@` wins
+            ("", "see [@", CompletionContext::Cite),
+            ("", "see [@a]", CompletionContext::None),
+            ("", "see [@a] [@b", CompletionContext::Cite),
+            // --- xref: a bare `@` is already a context; an email local part never is
+            (
+                "",
+                "@",
+                CompletionContext::Xref {
+                    typed: String::new(),
+                },
+            ),
+            ("", "a@b", CompletionContext::None),
+            // --- div class: needs exactly three colons, then `{.`
+            ("", ":::{.", CompletionContext::DivClass),
+            ("", "::: {.", CompletionContext::DivClass),
+            ("", ":::  {.", CompletionContext::DivClass),
+            ("", "::{.", CompletionContext::None),
+            ("", ":::{", CompletionContext::None),
+            // --- cell option: only inside an open fence, and only in key position
+            (CELL, "#|", CompletionContext::CellOption),
+            (CELL, "//| ec", CompletionContext::CellOption),
+            (CELL, "%%| ec", CompletionContext::CellOption),
+            // Past the key, into the value: no longer a cell-option key position.
+            (CELL, "#| ec: 1", CompletionContext::None),
+            // The same line with no open fence above it is not a cell option at all.
+            ("", "#| ec", CompletionContext::None),
+            // --- front matter: the block must be open, and `key:` splits key from value
+            (FM, "", CompletionContext::FrontmatterKey { parent: None }),
+            (
+                FM,
+                "format:",
+                CompletionContext::FrontmatterValue {
+                    key: "format".to_string(),
+                    typed: String::new(),
+                },
+            ),
+            // A value is a single token: a space inside it means we are past it.
+            (FM, "format: a b", CompletionContext::None),
+            (FM, ":", CompletionContext::None),
+            (
+                "---\nexecute:\n",
+                "  echo",
+                CompletionContext::FrontmatterKey {
+                    parent: Some("execute".to_string()),
+                },
+            ),
+            // A blank line between the parent and the child must not break the look-back.
+            (
+                "---\nexecute:\n\n",
+                "  echo",
+                CompletionContext::FrontmatterKey {
+                    parent: Some("execute".to_string()),
+                },
+            ),
+            // Indented under a key that is not a recognized nested parent.
+            (
+                "---\ntitle: x\n",
+                "  echo",
+                CompletionContext::FrontmatterKey { parent: None },
+            ),
+            // Below the closing fence the block is shut, so a bare word is prose.
+            ("---\ntitle: x\n---\n", "titl", CompletionContext::None),
+        ];
+
+        for (before, line_prefix, want) in &cases {
+            let doc_prefix = format!("{before}{line_prefix}");
+            assert_eq!(
+                &detect_context(line_prefix, &doc_prefix),
+                want,
+                "line prefix {line_prefix:?} (doc {doc_prefix:?})"
+            );
+        }
+    }
+
+    /// `harvest_bib_keys` scans a whole `.bib` with a hand-rolled cursor, and 20 of its boundary
+    /// mutants survived: nothing fed it an entry that ends at EOF, an empty key, or whitespace in
+    /// the places BibTeX allows it. Each row below is one of those shapes.
+    #[test]
+    fn harvest_bib_keys_is_pinned_at_the_shapes_a_real_bib_contains() {
+        // Whitespace is legal between the type, the brace, the key and the comma.
+        assert_eq!(
+            harvest_bib_keys("@article {k1 ,\n}"),
+            vec!["k1".to_string()]
+        );
+        assert_eq!(
+            harvest_bib_keys("@article{\n  k1,\n}"),
+            vec!["k1".to_string()]
+        );
+        // A key must be followed by a comma to be an entry header.
+        assert!(harvest_bib_keys("@article{k1}").is_empty());
+        // Truncated at EOF, mid-key: the scan must stop at the end, not read past it.
+        assert!(harvest_bib_keys("@article{k1").is_empty());
+        assert!(harvest_bib_keys("@article{").is_empty());
+        // `@` with no entry type, and an entry with no key.
+        assert!(harvest_bib_keys("@{k1,}").is_empty());
+        assert!(harvest_bib_keys("@article{,x}").is_empty());
+        // A bare `@` in prose is not an entry.
+        assert!(harvest_bib_keys("mail a@b.com").is_empty());
+        // Deduplicated and sorted.
+        assert_eq!(
+            harvest_bib_keys("@a{dup,}\n@b{dup,}\n@c{alpha,}"),
+            vec!["alpha".to_string(), "dup".to_string()]
+        );
+    }
+
+    /// Same story for `harvest_anchor_ids` (10 survivors): the fixtures above never put an anchor
+    /// at offset 0, never put two of them back to back, and never truncated one at EOF.
+    #[test]
+    fn harvest_anchor_ids_is_pinned_at_the_text_edges() {
+        // At the very start, and as the entire text.
+        assert_eq!(harvest_anchor_ids("{#a}"), vec!["a".to_string()]);
+        // Back to back: the scan must resume after the `}`, not inside it.
+        assert_eq!(
+            harvest_anchor_ids("{#a}{#b}"),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        // Empty id, truncated at EOF, and a space where an id char must be.
+        assert!(harvest_anchor_ids("{#}").is_empty());
+        assert!(harvest_anchor_ids("x{#a").is_empty());
+        assert!(harvest_anchor_ids("{# a}").is_empty());
+        assert!(harvest_anchor_ids("{#a b}").is_empty());
+        // Deduplicated.
+        assert_eq!(harvest_anchor_ids("{#a}\n{#a}"), vec!["a".to_string()]);
+    }
+
     #[test]
     fn shortcode_path_candidates_sorts_dirs_then_tmd_files() {
         let entries = vec![

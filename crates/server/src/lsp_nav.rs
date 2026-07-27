@@ -666,6 +666,162 @@ mod tests {
         );
     }
 
+    /// One fixture line for the cursor walk. `span` is the **inclusive** `[first, last]` cursor
+    /// range over which `classify_target` must report `expect`; `None` means no cursor position
+    /// on the line classifies as anything.
+    struct Walk {
+        what: &'static str,
+        text: &'static str,
+        line: usize,
+        span: Option<(usize, usize)>,
+        expect: Target,
+    }
+
+    /// Walk the cursor across **every** character of each fixture line, one past its end
+    /// included, and assert the classification at each offset.
+    ///
+    /// The 2026-07-26 mutation round found that every *edge* of every classified span was
+    /// unpinned: 31 boundary and cursor-arithmetic mutants survived across these classifiers
+    /// because the tests above only ever put the cursor squarely inside a token. A span's edges
+    /// are the whole contract here — one character before the `@`, the last character of a key,
+    /// the closing `)` of an include — so this asserts them exhaustively rather than at the
+    /// handful of offsets someone thought to write down.
+    #[test]
+    fn a_cursor_walk_pins_every_edge_of_every_classified_span() {
+        let walks = vec![
+            Walk {
+                what: "xref mid-line",
+                text: "see @fig-1 here",
+                line: 0,
+                span: Some((4, 10)),
+                expect: Target::Xref {
+                    id: "fig-1".to_string(),
+                    start: 4,
+                    end: 10,
+                },
+            },
+            // A citation key may contain `:` and `.`; nothing above ever typed one, which is why
+            // both of `is_cite_key_char`'s `||`s survived.
+            Walk {
+                what: "cite key containing `:` and `.`",
+                text: "[@sec:intro.1] x",
+                line: 0,
+                span: Some((1, 13)),
+                expect: Target::Cite {
+                    key: "sec:intro.1".to_string(),
+                    start: 1,
+                    end: 13,
+                },
+            },
+            // The key runs to the end of the line with no `]`, so the scan must stop at the line
+            // end instead of reading past it.
+            Walk {
+                what: "unterminated cite at end of line",
+                text: "see [@smith",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "include path",
+                text: "{{< include intro.tmd >}}",
+                line: 0,
+                span: Some((12, 21)),
+                expect: Target::Include {
+                    path: "intro.tmd".to_string(),
+                    start: 12,
+                    end: 21,
+                },
+            },
+            // `include` must be followed by whitespace before a path begins.
+            Walk {
+                what: "include keyword with no separating space",
+                text: "{{< include/x.tmd >}}",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "top-level front-matter key",
+                text: "---\ntitle: Hi\n---\n",
+                line: 1,
+                span: Some((0, 5)),
+                expect: Target::FrontmatterKey {
+                    key: "title".to_string(),
+                    parent: None,
+                    start: 0,
+                    end: 5,
+                },
+            },
+            // The span starts at the indent, not at the key, so both indent columns are inside it.
+            Walk {
+                what: "nested front-matter key under a recognized parent",
+                text: "---\nexecute:\n  echo: true\n---\n",
+                line: 2,
+                span: Some((2, 6)),
+                expect: Target::FrontmatterKey {
+                    key: "echo".to_string(),
+                    parent: Some("execute".to_string()),
+                    start: 2,
+                    end: 6,
+                },
+            },
+            // Below the closing fence, a `key:` line is prose.
+            Walk {
+                what: "key-shaped line after the closing fence",
+                text: "---\ntitle: Hi\n---\nother: x\n",
+                line: 3,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "key-shaped line with no front matter at all",
+                text: "other: x",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+        ];
+
+        for w in &walks {
+            let len = w.text.split('\n').nth(w.line).unwrap_or("").chars().count();
+            for ch in 0..=len + 1 {
+                let got = classify_target(w.text, w.line, ch);
+                let inside = w.span.is_some_and(|(a, b)| ch >= a && ch <= b);
+                let want = if inside { &w.expect } else { &Target::None };
+                assert_eq!(
+                    &got, want,
+                    "{}: cursor at character {ch} of {:?} (line {})",
+                    w.what, w.text, w.line
+                );
+            }
+        }
+    }
+
+    /// The anchor scanners walk backwards from a match, so their edge is the *start of the text*
+    /// rather than a span boundary. Every fixture here is one the mutation round showed nothing
+    /// reached: an id at offset 0, an id preceded only by whitespace, `label:` with no space, and
+    /// a text that is nothing but the id.
+    #[test]
+    fn anchor_scanners_are_pinned_at_the_start_of_the_text() {
+        // At offset 0 there is no sigil to inspect, and looking for one must not read backwards.
+        assert_eq!(definition_site("fig-1 is here", "fig-1"), None);
+        // Preceded only by whitespace: the `label:` look-back walks to offset 0 and stops.
+        assert_eq!(definition_site("  fig-1", "fig-1"), None);
+        assert_eq!(definition_site("{#fig-1}", "fig-1"), Some((0, 2)));
+        assert_eq!(definition_site("#| label: fig-1", "fig-1"), Some((0, 10)));
+
+        // `label:` must be followed by whitespace to introduce a label.
+        assert!(anchor_occurrences("label:fig-1", "fig-1").is_empty());
+        assert!(anchor_occurrences("  fig-1", "fig-1").is_empty());
+        // The whole text is the id: there is no trailing character to test for a boundary.
+        assert!(anchor_occurrences("fig-1", "fig-1").is_empty());
+        assert_eq!(
+            anchor_occurrences("{#fig-1} @fig-1 @fig-1", "fig-1"),
+            vec![(0, 2, 7), (0, 10, 15), (0, 17, 22)]
+        );
+    }
+
     #[test]
     fn frontmatter_bib_paths_reads_scalar_and_list() {
         assert_eq!(
