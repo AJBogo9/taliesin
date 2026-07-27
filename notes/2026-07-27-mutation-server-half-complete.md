@@ -153,7 +153,7 @@ remaining 3 are provably equivalent.
   `.tmd`, so it never reaches the output whether the dotfile filter ran or not. A dotfile that *is*
   a `.tmd` is what makes the rule observable.
 
-**Five unkillable mutants, recorded so no future session burns time on them.** A mutation *score*
+**Eight unkillable mutants, recorded so no future session burns time on them.** A mutation *score*
 cannot tell these from real gaps, which is the whole argument for reading the survivor list:
 
 | mutant | why no test can kill it |
@@ -162,6 +162,9 @@ cannot tell these from real gaps, which is the whole argument for reading the su
 | `harvest_anchor_ids` `i = j + 1` → `i = j` | `chars[j]` is always the closing `}`, which cannot begin a `{#` |
 | `harvest_anchor_ids` `i = j + 1` → `i = j - 1` | `chars[j - 1]` is the last id character; rescanning it finds nothing new, and results land in a `BTreeSet` |
 | `runtime_dirs.rs:103` `pid_alive -> false` | the `#[cfg(not(unix))]` arm, dead code here. cargo-mutants parses **without evaluating `cfg`**, so **this reappears on every future run of that file** |
+| `skim.rs:274:74` `at > s` → `at >= s` (item 65) | needs a `<p>` that IS the excluded element. Every non-prose CLASS is emitted on a `<div>` and no non-prose TAG is `p`, so `at == s` cannot occur — and the mutant's answer (exclude it) is arguably the *better* one, so pinning today's behaviour here would fix nonsense as a contract |
+| `skim.rs:352:41` `o < c` → `o <= c` (item 65) | `o` indexes `<div` and `c` indexes `</div>`; one byte cannot begin both, so `o == c` is impossible |
+| `skim.rs:414:26` `end = at + 1` → `end = at * 1` (item 65) | the next statement is the terminator-run loop, which re-consumes `bytes[at]` (a terminator by construction) and arrives at the identical `end` |
 | `lsp.rs:672` `&typed[..s + 1]` → `&typed[..s * 1]` (item 60) | `dir_part` is consumed only by `doc_dir.join(dir_part)`, and `join("sub/")` and `join("sub")` name the same directory — so for **every relative path** the two list identical entries. They diverge only at `s == 0`, i.e. a `typed` beginning with `/`: `join("/")` is the filesystem root, `join("")` is the document's own directory. But `includes::try_join_in` **refuses** any absolute path (`Refused::OutsideRoot`), so pinning that case would fix as a contract the offering of paths the shortcode cannot accept. Its `+` → `-` sibling **is** killed |
 
 **The timeout rule held a fourth time:** both timeouts in the re-measure (`harvest_bib_keys` 315:23,
