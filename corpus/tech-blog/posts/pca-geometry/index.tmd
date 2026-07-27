@@ -329,7 +329,12 @@ ax2 = ax1.twinx()
 bars = ax1.bar(
     range(1, 4),
     explained_var * 100,
-    color=["#f0956a", "#6ddc8b", "#7eb8f7"],
+    # The SAME three hues the 3-D scenes give the PC arrows (`pcCssCol` above), so
+    # the two neighbouring figures name one colour per component instead of two
+    # shades of it. Data colours are the one thing the dual-theme inline render
+    # never recolours, so these are picked to read on both page backgrounds --
+    # which is exactly what that palette was retuned for.
+    color=["#c2622c", "#2d8b4e", "#3f7fbf"],
     alpha=0.85,
     width=0.5,
 )
@@ -351,8 +356,6 @@ ax2.plot(
 )
 ax2.set_ylabel("Cumulative variance (%)")
 ax2.set_ylim(0, 105)
-ax2.tick_params(colors="white")
-ax2.spines["right"].set_color("#374151")
 
 for i, v in enumerate(explained_var):
     ax1.text(
@@ -361,7 +364,6 @@ for i, v in enumerate(explained_var):
         f"{v * 100:.1f}%",
         ha="center",
         va="bottom",
-        color="white",
         fontsize=11,
     )
 
