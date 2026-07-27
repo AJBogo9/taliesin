@@ -1034,6 +1034,27 @@ mod tests {
         }
     }
 
+    // Send a goto-definition request and return what the server answered — `None` when it
+    // answered `null` ("this token points nowhere"), which the editor surfaces as a no-op.
+    fn definition_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+    ) -> Option<lsp_types::GotoDefinitionResponse> {
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::GotoDefinition::METHOD.to_owned(),
+                params: serde_json::to_value(goto_params(uri, line, character)).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(client, RequestId::from(id));
+        serde_json::from_value(resp.result.expect("a definition result")).unwrap()
+    }
+
     fn hover_params(uri: &Url, line: u32, character: u32) -> lsp_types::HoverParams {
         lsp_types::HoverParams {
             text_document_position_params: lsp_types::TextDocumentPositionParams {
@@ -1042,6 +1063,28 @@ mod tests {
             },
             work_done_progress_params: Default::default(),
         }
+    }
+
+    // Send a hover request and return what the server answered — `None` when it answered
+    // `null` ("nothing to show here"), which is a real outcome and not a failure: a hover
+    // that appears where none should is how a wrong lookup shows up.
+    fn hover_raw_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+    ) -> Option<lsp_types::Hover> {
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::HoverRequest::METHOD.to_owned(),
+                params: serde_json::to_value(hover_params(uri, line, character)).unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(client, RequestId::from(id));
+        serde_json::from_value(resp.result.expect("a hover result")).unwrap()
     }
 
     // Send a hover request and return its resolved `Hover`, failing if the server answered
@@ -1053,16 +1096,7 @@ mod tests {
         line: u32,
         character: u32,
     ) -> lsp_types::Hover {
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(id),
-                method: lsp_types::request::HoverRequest::METHOD.to_owned(),
-                params: serde_json::to_value(hover_params(uri, line, character)).unwrap(),
-            }))
-            .unwrap();
-        let resp = recv_response(client, RequestId::from(id));
-        serde_json::from_value(resp.result.expect("a hover result (got null)")).unwrap()
+        hover_raw_at(client, uri, id, line, character).expect("a hover (got null)")
     }
 
     fn complete_params(uri: &Url, line: u32, character: u32) -> lsp_types::CompletionParams {
@@ -1077,14 +1111,15 @@ mod tests {
         }
     }
 
-    // Send a completion request and return the item list.
-    fn complete_at(
+    // Send a completion request and return what the server answered — `None` for `null`
+    // ("no completion applies here"), which is distinct from an empty item list.
+    fn complete_raw_at(
         client: &Connection,
         uri: &Url,
         id: i32,
         line: u32,
         character: u32,
-    ) -> Vec<lsp_types::CompletionItem> {
+    ) -> Option<Vec<lsp_types::CompletionItem>> {
         client
             .sender
             .send(Message::Request(Request {
@@ -1094,10 +1129,23 @@ mod tests {
             }))
             .unwrap();
         let resp = recv_response(client, RequestId::from(id));
-        match serde_json::from_value(resp.result.expect("a completion result")).unwrap() {
+        let response: Option<lsp_types::CompletionResponse> =
+            serde_json::from_value(resp.result.expect("a completion result")).unwrap();
+        response.map(|r| match r {
             lsp_types::CompletionResponse::Array(items) => items,
             lsp_types::CompletionResponse::List(l) => l.items,
-        }
+        })
+    }
+
+    // Send a completion request and return the item list.
+    fn complete_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+    ) -> Vec<lsp_types::CompletionItem> {
+        complete_raw_at(client, uri, id, line, character).expect("a completion list (got null)")
     }
 
     // Send a prepareRename request and return its response (None when the server answered null).
@@ -1411,9 +1459,94 @@ mod tests {
             lsp_types::GotoDefinitionResponse::Scalar(loc) => {
                 assert_eq!(loc.uri, uri);
                 assert_eq!(loc.range.start, lsp_types::Position::new(0, 10));
+                // The range covers the id itself — `fig-1` is columns 10..15 of
+                // `# Title {#fig-1}` — so the editor highlights the anchor it jumped to and
+                // nothing else. Only asserting the start left the end arithmetic unpinned.
+                assert_eq!(
+                    loc.range.end,
+                    lsp_types::Position::new(0, 15),
+                    "the range should end at the id's last character"
+                );
             }
             other => panic!("expected a scalar location, got {other:?}"),
         }
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // Two axes: an include whose file is on disk jumps to it, and one whose file is missing
+    // resolves to nothing. The `!abs.exists()` guard is what separates them, and a test that
+    // only ever asks about a file that exists cannot see it inverted.
+    #[test]
+    fn goto_definition_on_an_include_resolves_only_a_file_that_exists() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-include-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = dir.join("part.tmd");
+        std::fs::write(&part, "Some shared prose.\n").unwrap();
+        let doc = dir.join("book.tmd");
+        let text = "{{< include part.tmd >}}\n\n{{< include gone.tmd >}}\n".to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // `{{< include ` is 12 characters, so char 14 is inside the path token on both lines.
+        match definition_at(&client, &uri, 41, 0, 14) {
+            Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                assert_eq!(loc.uri, Url::from_file_path(&part).unwrap());
+                assert_eq!(loc.range.start, lsp_types::Position::new(0, 0));
+            }
+            other => panic!("expected a location into part.tmd, got {other:?}"),
+        }
+        assert_eq!(
+            definition_at(&client, &uri, 42, 2, 14),
+            None,
+            "an include of a file that is not on disk must resolve to nothing, not to a \
+             location the editor then fails to open"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // A method the server does not implement is answered with JSON-RPC MethodNotFound. The
+    // code is the whole contract here: a client reads it to decide between "this server
+    // can't do that" and a real failure, and no test looked at it.
+    #[test]
+    fn an_unhandled_request_is_answered_with_method_not_found() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(43),
+                method: lsp_types::request::Formatting::METHOD.to_owned(),
+                params: serde_json::Value::Null,
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(43));
+        assert!(
+            resp.result.is_none(),
+            "an unhandled method must not answer with a result"
+        );
+        let err = resp
+            .error
+            .expect("an unhandled method must be answered, not met with silence");
+        assert_eq!(err.code, -32601, "JSON-RPC MethodNotFound");
+        assert!(
+            err.message.contains(lsp_types::request::Formatting::METHOD),
+            "the message should name the method, got {:?}",
+            err.message
+        );
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
@@ -1565,6 +1698,49 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
+    // A section with no prose at all carries NO detail — not "0 words". The zero is the
+    // boundary the `words > 0` gate exists for, and every fixture above is well past it: a
+    // heading's own text counts as prose, so reaching zero needs an untitled heading over a
+    // body that is entirely fenced code.
+    #[test]
+    fn document_symbol_detail_is_omitted_for_a_wordless_section() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-outline-empty.tmd").unwrap();
+        let text = "# \n\n```\nlet x = 1;\n```\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(55),
+                method: lsp_types::request::DocumentSymbolRequest::METHOD.to_owned(),
+                params: serde_json::to_value(lsp_types::DocumentSymbolParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(55));
+        let syms: Vec<lsp_types::DocumentSymbol> =
+            serde_json::from_value(resp.result.expect("a documentSymbol result")).unwrap();
+
+        assert_eq!(syms.len(), 1, "one heading, got {syms:?}");
+        assert_eq!(syms[0].name, "(untitled)");
+        assert_eq!(
+            syms[0].detail, None,
+            "a wordless section states nothing rather than promising `0 words`"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
     #[test]
     fn hover_on_an_xref_shows_the_rendered_label_and_number() {
         let (server, client) = Connection::memory();
@@ -1611,9 +1787,45 @@ mod tests {
             md.starts_with("`title:`"),
             "expected the key header, got {md:?}"
         );
+        // The documentation must be THIS key's, quoted from the vocab. A `contains("title")`
+        // here was satisfied by the header alone, so a lookup returning any other key's
+        // description — or an empty one, or a constant — passed unnoticed.
+        let expected = taliesin_core::vocab::vocab()["frontmatter"]["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == "title")
+            .and_then(|e| e["description"].as_str())
+            .expect("the vocab documents `title:`")
+            .to_string();
+        assert!(!expected.is_empty(), "the vocab entry must carry prose");
         assert!(
-            md.contains("title"),
-            "expected the key's documentation, got {md:?}"
+            md.contains(&expected),
+            "expected `title:`'s own documentation ({expected:?}), got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // The reject axis for the same lookup: a key the vocab does not document gets NO hover.
+    // Without this, a lookup that always answers something (a constant, or "the first entry
+    // that isn't this one") looks correct from the positive case alone — and would invent
+    // documentation for a key that has none, which is worse than saying nothing.
+    #[test]
+    fn hover_on_an_undocumented_frontmatter_key_shows_nothing() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-hover-fm-unknown.tmd").unwrap();
+        let text = "---\nfrobnicate: Hello\n---\n\nBody.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        assert!(
+            hover_raw_at(&client, &uri, 53, 1, 2).is_none(),
+            "an undocumented key must not be handed another key's documentation"
         );
 
         shutdown(&client);
@@ -1673,13 +1885,168 @@ mod tests {
 
         let items = complete_at(&client, &uri, 21, 2, 2);
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-        assert!(
-            labels.contains(&"echo"),
-            "expected an `execute:` child key, got {labels:?}"
+        let echo = items
+            .iter()
+            .find(|i| i.label == "echo")
+            .unwrap_or_else(|| panic!("expected an `execute:` child key, got {labels:?}"));
+        // Every item carries its kind, which is what the editor draws an icon from and
+        // sorts by; without one the list degrades to undifferentiated text.
+        assert_eq!(
+            echo.kind,
+            Some(lsp_types::CompletionItemKind::PROPERTY),
+            "a front-matter key completes as a property"
         );
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    // The typed-prefix filter, on the axis the `||` short-circuit hides: with nothing typed
+    // every value is offered (covered by the tests above, which complete from an empty
+    // token), so only a NON-empty prefix shows whether the filter runs at all — and shows
+    // it in both directions, since the match must survive and the non-match must not.
+    #[test]
+    fn completion_filters_frontmatter_values_by_the_typed_prefix() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-fmvalue.tmd").unwrap();
+        let text = "---\nformat: d\n---\n\nBody.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Line 1 is `format: d`; the cursor sits after the `d`, so `html` cannot match.
+        let items = complete_at(&client, &uri, 45, 1, 9);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec!["deck"],
+            "only the values matching what is typed should be offered"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // Same axis for cross-reference ids, which are the higher-traffic half: an author types
+    // `@fig` to narrow a long list, and a filter that drops everything (or filters nothing)
+    // is equally useless.
+    #[test]
+    fn completion_filters_xref_targets_by_the_typed_prefix() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-xref-typed.tmd").unwrap();
+        let text = "![A scree plot](img.png){#fig-scree}\n\n## Intro {#sec-intro}\n\nSee @fig\n"
+            .to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Cursor at the end of `See @fig` on line 4.
+        let items = complete_at(&client, &uri, 47, 4, 8);
+        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        assert!(
+            labels.contains(&"fig-scree"),
+            "a target matching the typed prefix should survive, got {labels:?}"
+        );
+        assert!(
+            !labels.contains(&"sec-intro"),
+            "a target that does not match the typed prefix should be filtered out, got \
+             {labels:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // An id'd but unnumbered target (`theorems: numbered: false`) registers with an EMPTY
+    // number. It must fall back to the generic detail rather than render its label with the
+    // number missing — "Theorem " with a trailing space is what the guard exists to prevent.
+    #[test]
+    fn completion_detail_stays_generic_for_an_unnumbered_target() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-unnumbered.tmd").unwrap();
+        let text = "---\ntheorems:\n  numbered: false\n---\n\n::: {.theorem #thm-key}\n\
+                    A claim that carries no number.\n:::\n\nSee @\n"
+            .to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Cursor right after the `@` on line 9.
+        let items = complete_at(&client, &uri, 49, 9, 5);
+        let hit = items
+            .iter()
+            .find(|i| i.label == "thm-key")
+            .expect("the unnumbered theorem's anchor should still be offered");
+        assert_eq!(
+            hit.detail.as_deref(),
+            Some("cross-reference target"),
+            "an unnumbered target has no number to show, so it must not claim a label"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // A shortcode path completion inside a subdirectory: the directory prefix decides which
+    // directory is listed, and the item is a full `TextEdit` replacing the whole typed path
+    // (label/kind/detail/filterText/textEdit), so descending overwrites rather than appends.
+    #[test]
+    fn completion_offers_a_shortcode_path_inside_a_subdirectory() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-shortcode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub/part.tmd"), "Shared prose.\n").unwrap();
+        let doc = dir.join("book.tmd");
+        let text = "{{< include sub/\n".to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // Cursor at the end of `{{< include sub/` (16 characters) on line 0.
+        let items = complete_at(&client, &uri, 51, 0, 16);
+        assert_eq!(
+            items.iter().map(|i| i.label.as_str()).collect::<Vec<_>>(),
+            vec!["sub/part.tmd"],
+            "the subdirectory's own .tmd file is what should be offered"
+        );
+        let it = &items[0];
+        assert_eq!(it.kind, Some(lsp_types::CompletionItemKind::FILE));
+        assert_eq!(it.detail.as_deref(), Some("partial"));
+        assert_eq!(
+            it.filter_text.as_deref(),
+            Some("sub/part.tmd"),
+            "the filter text must be the full path, or the editor filters the leaf against \
+             the whole typed prefix and hides the item"
+        );
+        match it.text_edit.as_ref().expect("a text edit") {
+            lsp_types::CompletionTextEdit::Edit(e) => {
+                assert_eq!(e.new_text, "sub/part.tmd");
+                assert_eq!(
+                    e.range,
+                    lsp_types::Range::new(
+                        lsp_types::Position::new(0, 12),
+                        lsp_types::Position::new(0, 16)
+                    ),
+                    "the edit replaces the whole typed path, `sub/` included"
+                );
+            }
+            other => panic!("expected a plain edit, got {other:?}"),
+        }
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1796,6 +2163,16 @@ mod tests {
                 assert_eq!(a.title, "Change to `title`");
                 assert_eq!(a.kind, Some(lsp_types::CodeActionKind::QUICKFIX));
                 assert_eq!(a.is_preferred, Some(true));
+                // The action carries back the diagnostic it fixes: that is what lets the
+                // editor clear the squiggle when the fix is applied, and what scopes the
+                // lightbulb to the offending token instead of the whole line.
+                let carried = a
+                    .diagnostics
+                    .as_ref()
+                    .expect("the quick-fix must name the diagnostic it resolves");
+                assert_eq!(carried.len(), 1);
+                assert_eq!(carried[0].range, diag.range);
+                assert_eq!(carried[0].message, diag.message);
                 let edits = a
                     .edit
                     .as_ref()
