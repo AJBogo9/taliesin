@@ -9,11 +9,16 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > list near the bottom is a compact anti-rot guard, **one line per entry**, not a changelog — if an
 > entry there needs a paragraph, the paragraph belongs in its dated findings doc.
 
-## State (2026-07-26)
+## State (2026-07-27)
 
-**Band A holds no code item but one: the mutation re-run's `crates/server` half** (1,152 mutants),
-plus item **56**'s residual, which is a *feature proposal* and an authoring judgment rather than a
-task. Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
+**The mutation re-run is now MEASURED end to end, and band A's remaining code work is the
+test-writing it exposed, not more compute.** The `crates/server` half finished 2026-07-27
+(707 mutants in 1 h 32 min, **156 survivors** —
+[2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
+only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work. What band A now holds is
+item **56**'s residual (a *feature proposal* and an authoring judgment rather than a task) plus the
+ranked pin-writing list in that findings doc, headed by **one table-driven cursor-walk test that
+serves `lsp_nav.rs` and `lsp_complete.rs` at once (~85 survivors)**. Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
 (50, 51, 57), migration UX (53, 54), the metadata half of 56, and **deck weight + headless-JS
 bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day. Band B is empty;
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
@@ -282,13 +287,18 @@ carries the measurement that justifies it so none has to be re-derived. **Ranked
   the cursor across every byte of a fixture line kills most of them at once.** All 16 timeouts are
   again scan-cursor arithmetic, i.e. detections, not gaps. Writing that test does not need the run
   repeated; re-running is how you'd *confirm* it, and that is the cheaper order.
-  **Still owed: the other 11 server files, ~708 mutants** (`lsp_complete.rs` 294, `complete.rs` 149,
-  `lsp.rs` 98, then eight smaller). Budget roughly three hours: measured at `-j 4`, a server mutant
-  runs at **2.3/min** against `-p taliesin-server` (correct scoping there, since core tests cannot
-  reach server code) versus **1.7/min** for a core mutant, which must also rebuild core. Cheaper, but
-  not by much — both still relink the server crate's ~50 test binaries every time, and that relink,
-  not the test run, is what the clock goes on. Note `headless_js.rs` gained tests on 2026-07-26
-  (item 55), so it is no longer the file this scope was drawn against.
+  **Those other ten files RAN TO COMPLETION on 2026-07-27** —
+  [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md):
+  **707 mutants → 497 caught, 156 missed, 16 timeout, 38 unviable**, and the scoping was *verified*
+  this time (no `crates/core` test spawns the taliesin binary, so no workspace recheck is owed and
+  every MISSED is real). **The survivors are three shapes, not one:** 25 whole-function replacements
+  (a function with no behavioural test at all — `runtime_dirs.rs` is 5 of 5, `lsp.rs::server_capabilities`
+  alone is 11), 131 boundary/cursor operators in line scanners, and 16 timeouts that are again
+  detections. **Read that doc for the ranked list before writing any pin.**
+  **Kill the 2.3-mutants/min cost model on sight:** the real rate over ten files is **7.8/min** and
+  the whole half took **92 minutes**, not the three hours budgeted here. 2.3 was an artefact of
+  `lsp_nav.rs`'s slow tests — a caught mutant aborts its test run early, so a file's rate tracks its
+  survivor density and only a *bad* file is slow.
   **Residual in the core half, measured rather than estimated** (the 35 `skim.rs` survivors were
   re-run against the post-pin tree): **20 are now caught, 13 remain**, plus `cite_this.rs:125` (the
   `venue` filter for a blank `title:`, never triaged). What is left is all boundary comparisons and
@@ -341,12 +351,25 @@ touch 42-49, then path parity 50/51/57 — **both shipped 2026-07-26**.)
 Steps 1 (mutation re-run, core half), 2's **migration UX (53, 54)** and 3 (**56**, its metadata half)
 all shipped 2026-07-26, and so did **52 and 55** — so the only *code* item left in this band is:
 
-1. **The mutation re-run's `crates/server` half.** `lsp_nav.rs` ran to 338 of 444 on 2026-07-26 and
-   its findings are banked in
-   [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md), so
-   **the next move is to write the test that file names — one table-driven cursor walk that kills
-   most of the 36 survivors — not to re-run the 3.5 h job.** Detail, including the remaining 11
-   files (~708 mutants), in the re-runs entry above.
+1. **Write the pins the mutation re-run exposed.** The compute is *done*: `lsp_nav.rs` is banked as a
+   partial (338 of 444,
+   [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md)) and the
+   other ten server files ran to completion on 2026-07-27
+   ([2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md),
+   **156 survivors**). Ranked, cheapest-first:
+   1. **One table-driven cursor-walk test covering `lsp_nav.rs` *and* `lsp_complete.rs`** — walk the
+      cursor across every byte of a fixture line per construct and assert the classification at each
+      offset. **~85 of the 192 server survivors**, because both files' scanners are the same shape.
+   2. **One assertion on `lsp.rs::server_capabilities`** — 11 survivors; `Default::default()` survives
+      today, so nothing checks the LSP handshake advertises completion/definition/symbol support, and
+      click-to-source depends on it.
+   3. **`runtime_dirs.rs`** — 5 of 5 survivors, zero tests. `pid_alive` can return `false` and
+      `sweep_stale_runtime_dirs` can become `()`, so the reaping subsystem shipped at `bccb210` could
+      be a silent no-op.
+   4. **`complete.rs`** (30) and **`doctor.rs`** (14, minus the cosmetic `colored`/`paint`).
+   `interactive.rs` (5 of 5) is a **knowing skip** — TTY wizard, needs a PTY, and the non-TTY path is
+   already pinned by `tests/wizard_gate.rs`. Do not write tests for any timeout: 39 of 39 across the
+   campaign are scan-cursor arithmetic, i.e. the hang *is* the detection.
 
 **Deck weight (52) and headless-JS bounding (55) SHIPPED 2026-07-26.** Both were correctly sized in
 the preamble that used to sit here — 52 really did need external-asset awareness threaded through
