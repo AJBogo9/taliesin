@@ -279,7 +279,19 @@ real-device lens to check first**, because it can only be answered on hardware.
 
 - **Real iOS Safari / Android Chrome.** This is Chromium emulation: no WebKit, no momentum scroll,
   no dynamic viewport toolbar, no safe-area insets.
-- **An embedded `{{< embed >}}` deck on touch** — needs a host page; not built this round.
+- ~~An embedded `{{< embed >}}` deck on touch~~ — **measured after the retraction, and healthy.**
+  Built `corpus/embed` and served it over HTTP (a `file://` iframe is cross-origin, so
+  `contentDocument` is `null` and the parent cannot introspect it — serve it to measure it). At
+  390 × 844 with touch: `taliDeckEmbedded` is `true`, the embed correctly **never enters the feed**
+  even on a portrait phone (the documented contract), the iframe is 358 × 201 at **exactly 16:9**
+  so there is no letterbox at all, the page does not scroll horizontally, the capability queries
+  resolve *inside* the iframe (`pointer: coarse` + `hover: none` both true), and the host-side
+  Fullscreen / Open buttons render below it. Zero console errors.
+  **It also confirms DT-2 reaches this path:** the embedded deck's controls measure 44 × 44, 0
+  under the floor. The one consequence worth the author's eye: in a *small* embed those controls
+  are a bigger share of the frame — the control band goes from ~24% to **~28.9%** of a 201 px-tall
+  embed's height. They are idle-hidden by default and float over the slide rather than displacing
+  it, so this is a note, not a regression.
 - **Overview pan while zoomed past fit.** At fit scale `clampOv` has nothing to pan, so the probe
   proved only that pan does not navigate or exit, not that panning itself works on touch.
 - **A phone screen reader**, and the `--host` QR phone-preview flow.
