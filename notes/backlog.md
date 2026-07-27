@@ -17,8 +17,9 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and 58-64 all shipped 2026-07-27, so the next item is 65**
-(the `crates/core` half's residual). What is left of the mutation campaign is 65, 66, 67 and 68. Each remaining item names its file, its survivor list and its reason for
+**Start here: band A is ranked 58-68 and 58-65 all shipped 2026-07-27, so the next item is 66**
+(the `404.html` inline-renderer fix — the first non-test item on the list). What is left after it is
+67 (the launcher, which the author deferred once, so ask) and 68 (confirmation compute). Each remaining item names its file, its survivor list and its reason for
 ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
 the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
 more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
@@ -30,8 +31,8 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `tail-pins`): full workspace
-suite with all three gates and `--test-threads=1` is **95 binaries, 1,611 tests, 0 failures**;
+**Verified 2026-07-27 at the last landing** (branch `core-residual-pins`): full workspace
+suite with all three gates and `--test-threads=1` is **95 binaries, 1,618 tests, 0 failures**;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
@@ -455,14 +456,19 @@ completed server files, **156 survivors**) and
     way an extractor does — its three existing tests read **fixed byte offsets**, which stay right
     even when the central directory does not. Detail:
     [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
-65. **The `crates/core` half's measured residual** (14). Re-run against the post-pin tree, 20 of the
-    35 `skim.rs` survivors are now caught and **13 remain**, plus `cite_this.rs:125` (the `venue`
-    filter for a blank `title:`, never triaged): `sentence_at:466` (3),
-    `first_sentence:414/437/440` (3), `class_spans:334/352/368` (4), `in_class_attr:379`,
-    `first_prose_sentence:274:74`, `page_skim:121:13`. **Two are probably equivalent — do not burn a
-    session forcing them:** `page_skim`'s `&&`→`||` needs a page that emits a title block *and* opens
-    with an `<h1>`, which heading demotion appears to make unreachable, and
-    `first_prose_sentence`'s `>`→`>=` needs a `<p>` that is itself the excluded element.
+65. **SHIPPED 2026-07-27** (`1f9e1f6`) — the `crates/core` half's residual. **18 mutants at the 14
+    recorded locations: 15 killed, 3 proven equivalent.** **This item's own equivalence guess was
+    wrong on the one that mattered, and the way it was wrong is the lesson:** `page_skim`'s
+    `&&`→`||` was filed as needing "a page that emits a title block *and* opens with an `<h1>`",
+    which reads only **one side** of the conjunction — the other side is trivially reachable (a page
+    with **no** title block whose first heading is a `##`), and under the mutant that page's first
+    section vanishes from the projection. **When an item calls a boolean mutant equivalent, check
+    both sides before believing it.** Its second guess (`first_prose_sentence`'s `>`→`>=`) held.
+    Two survivors are killed by **hanging**, which is the campaign's timeout rule again: both are
+    cursor rewinds in the class scanner, and a scanner that fails to advance spins instead of
+    answering wrongly. `sentence_at` turned out to have **no test at all** — it is reached through
+    the backlink line, so a wrong answer is a plausible quotation of the wrong sentence. The three
+    equivalents are in the findings doc's now-eight-row table.
 66. **`404.html` is built through the *inline* renderer** (`site/mod.rs:1108` → `render_doc_to_page`),
     so a site whose pages are ~19 KB ships a **356 KB** 404 page. Same shape as item 52, one page
     over. Surfaced by the 52/55 batch and previously recorded only as prose; filed here so it is
