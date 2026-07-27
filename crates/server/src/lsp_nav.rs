@@ -781,6 +781,179 @@ mod tests {
                 span: None,
                 expect: Target::None,
             },
+            // --- a well-formed construct pins a span; these pin the guards that REJECT, which a
+            // weakened comparison turns into an acceptance of nonsense.
+            // A trailing `[` is the last character, so the `[@` probe must not read past it.
+            Walk {
+                what: "cite followed by a dangling `[` at the line end",
+                text: "see [@k] [",
+                line: 0,
+                span: Some((5, 7)),
+                expect: Target::Cite {
+                    key: "k".to_string(),
+                    start: 5,
+                    end: 7,
+                },
+            },
+            // A stray `]` after an xref does not retroactively make it a citation: the `[` is
+            // what distinguishes them, not the `@`.
+            Walk {
+                what: "xref with a stray closing bracket after it",
+                text: "see @smith2020] more",
+                line: 0,
+                span: Some((4, 14)),
+                expect: Target::Xref {
+                    id: "smith2020".to_string(),
+                    start: 4,
+                    end: 14,
+                },
+            },
+            // Empty key and empty id: a token needs at least one character to exist.
+            Walk {
+                what: "citation brackets with no key",
+                text: "[@] x",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "a bare `@` with no id after it",
+                text: "see @ here",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            // --- the include scanner, at each point its cursor can reach the line end
+            Walk {
+                what: "shortcode opener and nothing else",
+                text: "{{<",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "include keyword ending the line",
+                text: "{{< include",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "include with trailing space and no path",
+                text: "{{< include ",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "include with no path before the closer",
+                text: "{{< include >}}",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            // An unterminated shortcode still yields its path: the span ends at the line end.
+            Walk {
+                what: "include path running to the line end, unclosed",
+                text: "{{< include intro.tmd",
+                line: 0,
+                span: Some((12, 21)),
+                expect: Target::Include {
+                    path: "intro.tmd".to_string(),
+                    start: 12,
+                    end: 21,
+                },
+            },
+            // The opener is found by scanning the whole line, so it must still be found well
+            // past the start.
+            Walk {
+                what: "include preceded by prose",
+                text: "some text here {{< include a.tmd >}}",
+                line: 0,
+                span: Some((27, 32)),
+                expect: Target::Include {
+                    path: "a.tmd".to_string(),
+                    start: 27,
+                    end: 32,
+                },
+            },
+            // All three characters of `{{<` are checked at their own offsets, and a `{` inside
+            // the path is not a new opener.
+            Walk {
+                what: "opener with a wrong second character",
+                text: "{x< include a",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "opener with a wrong third character",
+                text: "{{x include a",
+                line: 0,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "a brace inside the include path",
+                text: "{{< include a{b",
+                line: 0,
+                span: Some((12, 15)),
+                expect: Target::Include {
+                    path: "a{b".to_string(),
+                    start: 12,
+                    end: 15,
+                },
+            },
+            // --- front-matter key lines whose scan reaches the end of the line
+            Walk {
+                what: "whitespace-only front-matter line",
+                text: "---\ntitle: x\n   \n---\n",
+                line: 2,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "front-matter word with no colon",
+                text: "---\ntitle\n---\n",
+                line: 1,
+                span: None,
+                expect: Target::None,
+            },
+            Walk {
+                what: "front-matter line starting with the colon",
+                text: "---\n: x\n---\n",
+                line: 1,
+                span: None,
+                expect: Target::None,
+            },
+            // A sibling key at the same indent sits between the cursor and its parent: the
+            // look-back must step over it, and both indents must be measured, not divided.
+            Walk {
+                what: "nested key with a sibling above it",
+                text: "---\nexecute:\n  echo: true\n  ca: 1\n---\n",
+                line: 3,
+                span: Some((2, 4)),
+                expect: Target::FrontmatterKey {
+                    key: "ca".to_string(),
+                    parent: Some("execute".to_string()),
+                    start: 2,
+                    end: 4,
+                },
+            },
+            // Indented under a key that is not a recognized nested parent: having a colon is not
+            // enough to be one.
+            Walk {
+                what: "nested key under an unrecognized parent",
+                text: "---\ntitle: x\n  ca: 1\n---\n",
+                line: 2,
+                span: Some((2, 4)),
+                expect: Target::FrontmatterKey {
+                    key: "ca".to_string(),
+                    parent: None,
+                    start: 2,
+                    end: 4,
+                },
+            },
         ];
 
         for w in &walks {
