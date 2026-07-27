@@ -698,6 +698,13 @@ mod tests {
         // Truncated at EOF, mid-key: the scan must stop at the end, not read past it.
         assert!(harvest_bib_keys("@article{k1").is_empty());
         assert!(harvest_bib_keys("@article{").is_empty());
+        // Truncated with no brace at all: the type scan and the whitespace skip after it must
+        // both stop at the end of the buffer.
+        assert!(harvest_bib_keys("@article").is_empty());
+        assert!(harvest_bib_keys("@article ").is_empty());
+        // A `@type` *not* followed by `{` is not an entry header, however entry-shaped the rest
+        // of the line looks.
+        assert!(harvest_bib_keys("@article xyz,").is_empty());
         // `@` with no entry type, and an entry with no key.
         assert!(harvest_bib_keys("@{k1,}").is_empty());
         assert!(harvest_bib_keys("@article{,x}").is_empty());
