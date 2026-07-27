@@ -374,7 +374,7 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
     Minor and separable: an R figure is emitted `<img alt="output">` where the Python pair is `alt=""`;
     both sit inside a captioned `<figure>`, so `alt=""` is right and `"output"` is noise read aloud.
 
-70. **A project with no `_site.yml` declares no boundary** (P3, filed 2026-07-27 from the path-parity
+77. **A project with no `_site.yml` declares no boundary** (P3, filed 2026-07-27 from the path-parity
     batch's "surfaced, not fixed"). `build <dir>` accepts a bare directory, so a single-document render
     of one of its pages roots at that page, and the site path's own inference can still widen to
     `.git`. Nothing can infer an undeclared boundary; the fix is for the author to declare one. Live
