@@ -1068,7 +1068,10 @@ impl Site {
     /// project-subpath deploy (`user.github.io/repo/`) would need a base path the
     /// config doesn't model yet. Served (with a 404 status) by the live preview's
     /// fallback too, so preview matches production.
-    pub fn render_404_page(&self) -> String {
+    ///
+    /// The document itself; the two renderers below differ only in how the framework
+    /// CSS/JS is delivered.
+    fn not_found_doc(&self) -> render::RenderedDoc {
         // Scoped styling for the centred 404 body, injected into the head. Uses the
         // theme `--tali-*` vars so it tracks light/dark like the rest of the site.
         const NOT_FOUND_STYLE: &str = "\n<style>\n\
@@ -1105,7 +1108,32 @@ impl Site {
             html: body,
             cell: None,
         }];
-        render::render_doc_to_page(&doc, "Page not found", render::OutputMode::Build)
+        doc
+    }
+
+    /// The built-in `404.html`, inlining the framework. See [`not_found_doc`](Self::not_found_doc)
+    /// for what the page is and why its links are root-absolute.
+    pub fn render_404_page(&self) -> String {
+        render::render_doc_to_page(
+            &self.not_found_doc(),
+            "Page not found",
+            render::OutputMode::Build,
+        )
+    }
+
+    /// The same page for a multi-page `build <dir>`, linking the shared `_assets/` bundle
+    /// instead of inlining it. This is the one page in a build that was still assembled by
+    /// the inline renderer, so a site of ~26 KB pages shipped a **356 KB** 404.
+    ///
+    /// The hrefs the caller passes must be **root-absolute** (`/_assets/…`), for the same
+    /// reason the home link is: the host serves this one file for any unknown path, so a
+    /// depth-relative href resolves against whatever directory the reader guessed at. That
+    /// makes the page's existing root-deploy assumption load-bearing for its styling as well
+    /// as its home link — on a project-subpath deploy it degrades to unstyled rather than
+    /// merely mislinking. The page keeps its own `<style>` block inline either way, so the
+    /// layout survives even if the stylesheet does not resolve.
+    pub fn render_404_page_external(&self, assets: render::ExternalAssets) -> String {
+        render::render_doc_to_page_external(&self.not_found_doc(), "Page not found", assets)
     }
 
     /// Whether a page shows a table of contents: its own front-matter `toc:` wins

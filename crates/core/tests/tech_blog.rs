@@ -523,6 +523,46 @@ fn site_404_page_is_self_contained_with_absolute_links() {
     );
 }
 
+/// The build's form of the same page links the shared `_assets/` bundle. Both renderers
+/// exist on purpose: the live preview has no `_assets/` to link, so it keeps the
+/// self-contained form above, and a build has one for every other page.
+#[test]
+fn site_404_page_links_the_shared_bundle_in_a_build() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let page = site.render_404_page_external(taliesin_core::ExternalAssets {
+        app_css: "/_assets/app.aaaa.css",
+        katex_css: "/_assets/katex.bbbb.css",
+        app_js: "/_assets/app.cccc.js",
+        mermaid_js: "",
+        jslibs_js: "",
+        deck_css: "",
+        deck_js: "",
+    });
+    assert!(
+        page.contains(r#"<link rel="stylesheet" href="/_assets/app.aaaa.css">"#),
+        "the framework CSS is linked, not inlined"
+    );
+    assert!(
+        page.contains(r#"<script src="/_assets/app.cccc.js" defer></script>"#),
+        "the enhancers are linked, not inlined"
+    );
+    // The page's own scoped style stays inline, so the layout survives even where the
+    // stylesheet does not resolve (a project-subpath deploy, which the root-absolute hrefs
+    // do not support any more than the `/` home link does).
+    assert!(
+        page.contains(".tali-404-code{"),
+        "scoped style still inline"
+    );
+    // Still a 404 page, still absolutely linked.
+    assert!(
+        page.contains(r#"href="/""#),
+        "home link still root-absolute"
+    );
+    assert!(!page.contains("href=\"../"), "no depth-relative link");
+    // Nothing conditional got linked: this page has no math and no mermaid.
+    assert!(!page.contains("katex."), "no katex on a page with no math");
+}
+
 /// Every `{js}` cell across the interactive posts is a live placeholder whose
 /// target div id matches its `application/tali-js` script's `data-target`.
 #[test]

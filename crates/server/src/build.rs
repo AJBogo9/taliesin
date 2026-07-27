@@ -1802,7 +1802,23 @@ async fn build_site_async(
     if site.has_author_404() {
         not_found = "  ·  404.html (yours)";
     } else {
-        match std::fs::write(out.join("404.html"), site.render_404_page()) {
+        // Root-ABSOLUTE asset hrefs, unlike every other page in this build: this one file is
+        // served for any unknown path, so `../_assets/…` would resolve against whatever
+        // directory the reader landed in. Same reasoning as the page's own `/` home link.
+        let abs = |root_rel: &str| format!("/{root_rel}");
+        let (app_css, katex_css) = (abs(&bundle.app_css), abs(&bundle.katex_css));
+        let (app_js, mermaid_js) = (abs(&bundle.app_js), abs(&bundle.mermaid_js));
+        let jslibs_js = abs(&bundle.jslibs_js);
+        let ext = taliesin_core::ExternalAssets {
+            app_css: &app_css,
+            katex_css: &katex_css,
+            app_js: &app_js,
+            mermaid_js: &mermaid_js,
+            jslibs_js: &jslibs_js,
+            deck_css: "",
+            deck_js: "",
+        };
+        match std::fs::write(out.join("404.html"), site.render_404_page_external(ext)) {
             Ok(()) => not_found = "  ·  404.html",
             Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
         }

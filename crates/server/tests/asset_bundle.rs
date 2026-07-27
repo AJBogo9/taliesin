@@ -83,6 +83,32 @@ fn site_build_externalizes_shared_assets() {
     assert!(sub.contains("_assets/katex."), "math page links katex");
     assert!(!index.contains("katex."), "prose page does not link katex");
 
+    // The built-in `404.html` links the same bundle — it was the one page in a build still
+    // assembled by the INLINE renderer, so a site of ~26 KB pages shipped a 356 KB 404.
+    let not_found = std::fs::read_to_string(out.join("404.html")).unwrap();
+    assert!(
+        !not_found.contains(MARKER_BASE),
+        "the 404 page must not inline the framework CSS either"
+    );
+    // ROOT-ABSOLUTE, unlike every other page: a static host serves this one file for any
+    // unknown path, so a depth-relative href resolves against the directory the reader
+    // guessed at. This is the same rule the page's `/` home link already follows, and it is
+    // the reason the 404 cannot simply reuse a page's depth-adjusted hrefs.
+    assert!(
+        not_found.contains(&format!("href=\"/_assets/{app_css}\"")),
+        "404 links the shared css root-absolutely"
+    );
+    assert!(
+        !not_found.contains("href=\"../") && !not_found.contains("src=\"../"),
+        "no depth-relative reference may appear in a page served at arbitrary depth"
+    );
+    assert!(
+        not_found.len() < index.len(),
+        "the 404 is the smallest page in the build, not the largest: {} vs {}",
+        not_found.len(),
+        index.len()
+    );
+
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&out);
 }

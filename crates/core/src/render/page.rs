@@ -44,6 +44,28 @@ pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputM
     page_from_doc(doc, fallback_title, mode)
 }
 
+/// Like [`render_doc_to_page`] but links the shared `_assets/` files instead of inlining the
+/// framework. For a chrome-less page emitted *inside* a multi-page build — today only
+/// `404.html`, which is not one of the site's pages and so never passes through
+/// [`html_page_from_doc_in_site_external`].
+///
+/// The caller owns the href form. Every other page in a build gets depth-relative hrefs;
+/// this one must be handed **root-absolute** ones, because a static host serves it for any
+/// unknown path at any depth and a `../` prefix would resolve against the wrong directory.
+pub fn render_doc_to_page_external(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    assets: ExternalAssets,
+) -> String {
+    html_page_inner(
+        doc,
+        fallback_title,
+        None,
+        OutputMode::Build,
+        AssetMode::External(assets),
+    )
+}
+
 /// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
 /// footer, and post prev/next HTML. Built by `taliesin_core::site` and injected
 /// around the page body. Empty fields render nothing.
