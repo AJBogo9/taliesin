@@ -17,8 +17,8 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and the top six (58, 59, 60, 61, 62, 63) shipped 2026-07-27,
-so the next item is 64.** Each remaining item names its file, its survivor list and its reason for
+**Start here: band A is ranked 58-68 and 58-64 all shipped 2026-07-27, so the next item is 65**
+(the `crates/core` half's residual). What is left of the mutation campaign is 65, 66, 67 and 68. Each remaining item names its file, its survivor list and its reason for
 ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
 the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
 more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
@@ -30,8 +30,8 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `complete-rs-pins`): full workspace
-suite with all three gates and `--test-threads=1` is **95 binaries, 1,607 tests, 0 failures**;
+**Verified 2026-07-27 at the last landing** (branch `tail-pins`): full workspace
+suite with all three gates and `--test-threads=1` is **95 binaries, 1,611 tests, 0 failures**;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
@@ -443,9 +443,18 @@ completed server files, **156 survivors**) and
     so the directory-prefix split was unreachable, and the dotfile rule again needed a dotfile that
     *is* a `.tmd`. Detail:
     [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
-64. **The tail** (16): `doctor.rs` (14, **minus the 4 cosmetic** `colored`/`paint` mutants — terminal
-    colour, not behaviour), `lsp_outline.rs` (4: `clean_title` 3, `headings`), `zip.rs` (2:
-    `build_zip`).
+64. **SHIPPED 2026-07-27** (`da4bf55`) — the tail. **20 survivors, 15 killed, 5 recorded as
+    unkillable** (3 need a TTY, 2 are provably equivalent, 1 effectively so). **This item's own
+    dismissal was the thing worth checking:** "minus the 4 cosmetic `colored`/`paint` mutants"
+    was wrong — colour is not cosmetic when the question is whether it appears *at all*, and two
+    of those make a **piped** run emit ANSI escapes, which a subprocess sees perfectly well. Only
+    three of the fourteen truly need a terminal. Two real defect-shaped holes came out of it: the
+    readiness **summary** looked its verdict up by name over a list where picking the wrong entry
+    still emits a plausible sentence, and an **empty** `CONDA_PREFIX`/`VIRTUAL_ENV` counted as an
+    active env (shells export them empty on deactivate). `zip.rs` now reads its archive back the
+    way an extractor does — its three existing tests read **fixed byte offsets**, which stay right
+    even when the central directory does not. Detail:
+    [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
 65. **The `crates/core` half's measured residual** (14). Re-run against the post-pin tree, 20 of the
     35 `skim.rs` survivors are now caught and **13 remain**, plus `cite_this.rs:125` (the `venue`
     filter for a blank `title:`, never triaged): `sentence_at:466` (3),

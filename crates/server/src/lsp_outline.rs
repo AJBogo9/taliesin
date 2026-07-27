@@ -225,7 +225,10 @@ mod tests {
         assert_eq!(clean_title("Intro {#sec-x"), "Intro {#sec-x");
         assert_eq!(clean_title("Intro {"), "Intro {");
         // A `}` before the block belongs to the title, and the block after it still goes.
-        assert_eq!(clean_title("Intro } {#sec-x}"), "Intro }");
+        // Written with no space between them on purpose: the candidate span starts at the
+        // character AFTER the `{`, and a span that starts one character earlier swallows
+        // this `}` and concludes the block is malformed.
+        assert_eq!(clean_title("Intro }{#sec-x}"), "Intro }");
         // Two blocks are not one block: the candidate span contains a `}`, so nothing is
         // stripped rather than the wrong amount.
         assert_eq!(clean_title("Intro {.a} {#b} c}"), "Intro {.a} {#b} c}");

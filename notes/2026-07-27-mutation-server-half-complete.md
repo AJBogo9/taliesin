@@ -347,7 +347,24 @@ complete.rs:688:42: replace && with || in complete_line
 complete.rs:688:60: replace == with != in complete_line
 ```
 
-### `doctor.rs` — item 64 (14 survivors)
+### `doctor.rs` — item 64 (14 survivors) — **CLOSED 2026-07-27: 11 killed, 3 need a TTY**
+
+**The item's own note — "14, minus the 4 cosmetic `colored`/`paint` mutants — terminal colour, not
+behaviour" — was wrong in a useful way.** Colour is not cosmetic when the question is whether it
+appears *at all*: `colored -> true` and its `&&` → `||` sibling both make a **piped** run emit ANSI
+escapes, which is noise in whatever reads the output, and a subprocess sees that perfectly well.
+`paint` likewise carries the glyph, so replacing it with a constant deletes the status column
+rather than the colour. Only **three** of the fourteen truly need a terminal: `Status::color`'s two
+(the escape codes are unreachable while `colored()` is false) and `colored -> false` (a piped run
+is uncoloured anyway). That is the same PTY-harness trade the `interactive.rs` skip refused, for
+less, so they are a knowing skip.
+
+The two behavioural holes were worth the round on their own: the readiness **summary** read each
+language's verdict by find-by-name over the check list, and with two checks in the list a lookup
+that picks the wrong one still emits a plausible sentence — so the fixtures now disagree; and an
+**empty** `CONDA_PREFIX`/`VIRTUAL_ENV` counted as an active environment, which matters because
+shells export those empty on deactivate rather than unsetting them.
+
 
 ```
 doctor.rs:26:9: replace Status::glyph -> char with Default::default()
@@ -366,7 +383,24 @@ doctor.rs:188:13: delete match arm Some(Status::Ok) in summary
 doctor.rs:244:18: replace match guard s.starts_with("--") with false in cmd_doctor
 ```
 
-### `lsp_outline.rs` — item 64 (4 survivors)
+### `lsp_outline.rs` — item 64 (4 survivors) — **CLOSED 2026-07-27: 2 killed, 2 equivalent**
+
+The real one is the brace rule: an **unclosed** `{` is not an attribute block. The outline runs on
+the buffer while it is being typed, so `# Intro {#sec-` is a heading mid-keystroke and stripping
+there makes the label jump about as the author types the id.
+
+**The `+` → `-` sibling took two attempts, and the near-miss is the lesson:** the fixture
+`"Intro } {#sec-x}"` looks like it exercises "a `}` just before the block" and does not — with the
+space, the character one position earlier is the space, not the `}`. `"Intro }{#sec-x}"` (no space)
+is what reaches the boundary. **A fixture aimed at an off-by-one has to be counted, not eyeballed.**
+
+**Two are provably equivalent:**
+
+| mutant | why no test can kill it |
+|---|---|
+| `clean_title` `s[open + 1..]` → `s[open * 1..]` | the span is scanned for a `}`, and `s[open]` is the `{` that `rfind` just returned, so the extra character can never be the one being looked for. (The slice cannot go out of bounds either: the guard's first conjunct requires `s` to end with `}`, so `{` is never the last byte) |
+| `headings` `start = i + 1` → `start = i * 1` | `i` is the line of the front matter's closing `---`/`...`, so the mutant scans exactly one extra line — and that line is neither a fence marker nor an ATX heading, so it yields nothing |
+
 
 ```
 lsp_outline.rs:31:40: replace && with || in clean_title
@@ -375,7 +409,22 @@ lsp_outline.rs:31:51: replace + with * in clean_title
 lsp_outline.rs:85:27: replace + with * in headings
 ```
 
-### `zip.rs` — item 64 (2 survivors)
+### `zip.rs` — item 64 (2 survivors) — **CLOSED 2026-07-27: 1 killed, 1 effectively equivalent**
+
+`cd_size` is now pinned by reading the archive back **the way an extractor does**: find the EOCD,
+walk the central directory it delimits, follow each record's offset to the local header, inflate,
+check the CRC. The three tests that were there read **fixed byte offsets**, which stay right even
+when the directory that makes the file extractable does not — a shape worth recognising, since a
+hand-rolled binary format invites exactly that kind of test.
+
+`48:89 <` → `<=` is **effectively equivalent and should not be chased.** It only changes the
+store-vs-deflate choice when the deflated payload is *exactly* the same size as the raw one: both
+branches emit a valid archive of identical size, and the documented contract ("already-compressed
+images never grow") holds either way. A killing fixture does exist (a 269-byte `i % 251` ramp ties
+under zlib level 6) but it would pin a byte-level tie-break with no user-visible consequence,
+keyed to the deflate implementation's exact output — so a flate2 bump would either break the build
+or, worse, silently stop being a tie and leave the test green and vacuous.
+
 
 ```
 zip.rs:48:89: replace < with <= in build_zip
