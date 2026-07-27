@@ -951,8 +951,13 @@ fn a_leading_dot_fence_is_display_only_and_never_executes() {
         "a `{{.python}}` fence is display-only and must not become an executable cell"
     );
     // It must still render AS python: the dot only suppresses execution, not highlighting.
+    // Assert the highlighter's own class prefix, not `language-python`: that class is
+    // emitted whether or not highlighting ran, so it cannot witness this claim. (This
+    // assertion previously read `contains("qhl-") || contains("language-python")`; the
+    // prefix was renamed to `tali-hl-` long ago, so the first disjunct was dead and the
+    // whole check rode on the second, which is furniture.)
     assert!(
-        b.html.contains("qhl-") || b.html.contains("language-python"),
+        b.html.contains("tali-hl-"),
         "the dot form must still be syntax-highlighted as python: {}",
         b.html
     );

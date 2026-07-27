@@ -52,8 +52,11 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
     divs.rs          `:::` fenced divs (callouts, columns, magic-move)
     figure.rs        numbered figures + captions
-    extension/       format extensions (`_extensions/`) + shortcode expansion, incl. the
-                     built-in `{{< embed deck.tmd >}}` + `{{< video clip.mp4 dark= >}}`
+    extension/       shortcode expansion, incl. the built-in `{{< embed deck.tmd >}}`
+                     + `{{< video clip.mp4 dark= >}}`. NOT `_extensions/`, which is a
+                     theme-CSS lookup in `theme.rs` and nothing else: there is no
+                     format-extension mechanism (`frontmatter.rs` says so at the
+                     `format:` sub-key validator)
     theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes).
                      The storage key is `tali-theme` and the event is
                      `tali:themechange`; `crates/core/tests/retired_names.rs` keeps the
@@ -64,23 +67,28 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
-  src/highlight.rs server-side syntax highlighting (syntect → `qhl-` scope classes)
-  src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
+  src/highlight.rs server-side syntax highlighting (syntect → `tali-hl-` scope classes)
+  src/cite/        citations ([@key]) + cross-references (@fig-, @sec-): a module dir
+                   (parse/render/format/validate/author/clean)
   src/site/        multi-page project (mod.rs): _site.yml config (config/), page
                    discovery, chrome, link rewrite, listings + `hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs),
+                   Atom feeds per dated listing (feed.rs),
                    Cmd-K search (search.rs), the skim layer-cake projection (skim.rs,
                    shares search's render recipe, not its text extraction),
                    cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview
   assets/          bundled offline: css/ (base, dark, deck, site),
-                   js/ (deck.js, code-enhance.js, mermaid.js, tali-js.js + vendored
+                   js/ (deck.js, code-enhance/ fragments, mermaid.js, tali-js.js,
+                   scrolly.js, tabset.js, walkthrough.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
-  src/serve.rs     single-doc axum websocket + notify file watcher
-  src/serve_site.rs multi-page site server (per-page state/executor, cross-page nav, hot reload)
+  src/cli.rs       CLI arg parsing + subcommand dispatch
+  src/serve/       single-doc axum websocket + notify file watcher (mod.rs, security.rs)
+  src/serve_site/  multi-page site server (mod.rs: per-page state/executor, cross-page
+                   nav, hot reload; exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze)
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks; plans
                    what re-runs via cumulative-hash keys (warm reuse + cold replay)
   src/freeze.rs    persistent execution cache (`_freeze/<page>.json`): rendered cell
