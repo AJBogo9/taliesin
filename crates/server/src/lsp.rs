@@ -1916,4 +1916,71 @@ mod tests {
         shutdown(&client);
         thread.join().unwrap().unwrap();
     }
+
+    /// The initialize handshake is the *only* thing that tells an editor which features exist:
+    /// an unadvertised capability is one the editor never asks for, so it silently does not
+    /// exist. Every other test here throws the `InitializeResult` away (`handshake` does
+    /// `let _ = recv()`), which is why all twelve mutants in `server_capabilities` survived the
+    /// 2026-07-27 mutation run — including replacing its whole body with `Default::default()`.
+    /// A server advertising *nothing* passed the entire suite.
+    ///
+    /// So assert the value that actually goes over the wire, field by field, since each deleted
+    /// field is its own silent feature loss. `renameProvider` and `definitionProvider` are the
+    /// load-bearing pair: they are click-to-source and its rename counterpart.
+    #[test]
+    fn the_initialize_handshake_advertises_every_feature_the_editor_needs() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(1),
+                method: "initialize".to_owned(),
+                params: serde_json::json!({ "capabilities": {} }),
+            }))
+            .unwrap();
+        let result = match client.receiver.recv().unwrap() {
+            Message::Response(Response {
+                result: Some(v),
+                error: None,
+                ..
+            }) => v,
+            other => panic!("expected an InitializeResult, got {other:?}"),
+        };
+        let caps = &result["capabilities"];
+
+        // The wire encoding `lsp_pos` converts at; advertised explicitly, not left implicit.
+        assert_eq!(caps["positionEncoding"], "utf-16");
+        // Whole-buffer sync, plus the open/close notifications the buffer cache is keyed on.
+        assert_eq!(caps["textDocumentSync"]["openClose"], true);
+        assert_eq!(
+            caps["textDocumentSync"]["change"], 1,
+            "TextDocumentSyncKind::FULL — incremental sync would desync the cached buffer"
+        );
+        assert_eq!(caps["definitionProvider"], true);
+        assert_eq!(caps["documentSymbolProvider"], true);
+        assert_eq!(caps["hoverProvider"], true);
+        assert_eq!(caps["codeActionProvider"], true);
+        assert_eq!(
+            caps["renameProvider"]["prepareProvider"], true,
+            "without prepareRename the editor offers rename on anything, not just an anchor"
+        );
+        // `@` xref/cite, `.` div class, `|` cell option, `-` xref prefix, `/` path,
+        // `:` front-matter value. A dropped trigger character is a completion that never opens.
+        assert_eq!(
+            caps["completionProvider"]["triggerCharacters"],
+            serde_json::json!(["@", ".", "|", "-", "/", ":"])
+        );
+
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: "initialized".to_owned(),
+                params: serde_json::json!({}),
+            }))
+            .unwrap();
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
 }
