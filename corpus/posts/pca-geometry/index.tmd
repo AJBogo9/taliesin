@@ -24,18 +24,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
+# Only what the page theme does NOT own. The inline render recolours every
+# figure's text, spines, ticks and grid to the reader's foreground and emits the
+# figure twice (light + dark), so a colour set here is overridden anyway -- it
+# only makes the source claim a control it does not have. Data colours ARE ours:
+# those survive the recolour, so they must read on both backgrounds by choice.
 plt.rcParams.update({
-    'figure.facecolor': '#111827',
-    'axes.facecolor':   '#111827',
-    'savefig.facecolor':'#111827',
-    'text.color':       'white',
-    'axes.labelcolor':  'white',
-    'xtick.color':      'white',
-    'ytick.color':      'white',
-    'axes.edgecolor':   '#374151',
-    'grid.color':       '#374151',
-    'axes.grid':        True,
-    'grid.linewidth':   0.5,
+    'axes.grid':      True,
+    'grid.linewidth': 0.5,
 })
 ```
 
@@ -73,11 +69,15 @@ X_raw = Z * stds + means
 
 fig = plt.figure(figsize=(8, 6), tight_layout=True)
 ax = fig.add_subplot(111, projection="3d")
-ax.scatter(X_raw[:, 0], X_raw[:, 1], X_raw[:, 2], alpha=0.55, s=14, color="#aaaacc")
+ax.scatter(X_raw[:, 0], X_raw[:, 1], X_raw[:, 2], alpha=0.8, s=14, color="#7a7a9e")
+# The scene sits ON the page instead of painting a slab behind itself. A filled
+# pane is a baked background and a 3-D pane is not a Text, a spine or ax.patch,
+# so the dual-theme recolour never reached it: on a light page this rendered as a
+# dark rectangle with the cloud all but invisible inside it. Item 72's ruling,
+# one subsystem over.
 for pane in [ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane]:
-    pane.fill = True
-    pane.set_facecolor("#1c2333")
-    pane.set_edgecolor("#374151")
+    pane.fill = False
+    pane.set_edgecolor("#8a8a9a")
 ax.set_xlabel("Height (cm)", labelpad=8)
 ax.set_ylabel("Wingspan (cm)", labelpad=8)
 fig.text(
@@ -87,7 +87,6 @@ fig.text(
     rotation=90,
     va="center",
     ha="right",
-    color="white",
     fontsize=9,
 )
 ax.set_title("Raw player measurements")
