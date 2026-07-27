@@ -17,9 +17,11 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and 58-65 all shipped 2026-07-27, so the next item is 66**
-(the `404.html` inline-renderer fix — the first non-test item on the list). What is left after it is
-67 (the launcher, which the author deferred once, so ask) and 68 (confirmation compute). Each remaining item names its file, its survivor list and its reason for
+**Start here: band A is ranked 58-68 and 58-66 all shipped 2026-07-27. What is left of the whole
+mutation campaign is two items, and neither is more test-writing:** 67 (the launcher tab-completion
+hang — it lives OUTSIDE the repo, in a shell script, and the author deferred it once, so ask before
+spending time on it) and 68 (confirmation compute: re-run `lsp_nav.rs`'s untested 106-mutant tail
+now that the cursor-walk test it was waiting on has landed). Each remaining item names its file, its survivor list and its reason for
 ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
 the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
 more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
@@ -31,8 +33,8 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `core-residual-pins`): full workspace
-suite with all three gates and `--test-threads=1` is **95 binaries, 1,618 tests, 0 failures**;
+**Verified 2026-07-27 at the last landing** (branch `fix-404-weight`): full workspace
+suite with all three gates and `--test-threads=1` is **95 binaries, 1,619 tests, 0 failures**;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
@@ -469,10 +471,18 @@ completed server files, **156 survivors**) and
     answering wrongly. `sentence_at` turned out to have **no test at all** — it is reached through
     the backlink line, so a wrong answer is a plausible quotation of the wrong sentence. The three
     equivalents are in the findings doc's now-eight-row table.
-66. **`404.html` is built through the *inline* renderer** (`site/mod.rs:1108` → `render_doc_to_page`),
-    so a site whose pages are ~19 KB ships a **356 KB** 404 page. Same shape as item 52, one page
-    over. Surfaced by the 52/55 batch and previously recorded only as prose; filed here so it is
-    actionable rather than a footnote.
+66. **SHIPPED 2026-07-27** (`df84db2`) — `404.html` links the shared `_assets/` bundle.
+    Measured on `corpus/tarn`: **355,700 → 16,185 bytes** (the site's own index is 26,463), and
+    what is left is the theme-bootstrap + enhancer-registry pair *every* page inlines, so the 404
+    is no longer a special case. **Its hrefs are root-absolute, unlike every other page**, for the
+    same reason its home link already was: the host serves this one file for any unknown path, so
+    `../_assets/…` resolves against whatever directory the reader guessed at. Browser-verified at
+    `/404.html` and at `/deep/deeper/oops.html`. **The cost is recorded in the doc comment rather
+    than hidden:** this makes the page's existing root-deploy assumption load-bearing for styling
+    too, so a project-subpath deploy now degrades to *unstyled* rather than merely mislinking —
+    acceptable because the tool's own publish path (Cloudflare Pages) is a root deploy and the
+    scoped `<style>` stays inline, so the layout survives regardless. The preview keeps the
+    self-contained form (it has no `_assets/` to link).
 67. **The `taliesin` launcher rebuilds the release binary during tab completion**, so
     `taliesin preview <TAB>` hangs ~15 s. Root cause measured: `~/.local/bin/taliesin` shells out to
     `cargo build --release` on a stale binary, and completion invokes it via `taliesin __complete`.
