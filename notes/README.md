@@ -8,7 +8,8 @@ root.
 
 | File | What it is |
 |---|---|
-| `backlog.md` | The **canonical** to-do list (what is still to build). |
+| `backlog.md` | The **canonical** to-do list (what is still to build). Open items only. |
+| `LESSONS.md` | Method: how to probe, measure and pin without getting a false result. Read before writing a probe or a test. |
 | `ROADMAP.md` | The **active** roadmap: the corpus-plus-roadmap initiative. |
 | `native-rewrite.md` | The completed predecessor initiative (native engine, dropped the legacy compat layer). |
 | `AUDITS.md` | Consolidated historical audit reports. |
