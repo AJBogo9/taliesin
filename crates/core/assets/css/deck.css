@@ -777,6 +777,24 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 @media (hover: none) and (pointer: coarse) {
   .tali-keys-head, .tali-menu-keys, .tali-menu-hint { display: none; }
   .tali-menu-item[data-action="speaker"] { display: none; }
+  /* Tap targets. This block used to only HIDE things; every deck control was left at the
+     size a mouse wants — measured 34x34 for prev/next/menu (6px apart), 30.6 for a jump-list
+     row, 30.9 for a theme option, 30x30 for the share close. All clear the 24px AA floor and
+     all miss the 44px the tree adopted for chrome on 2026-07-26 (`.tali-book-drawer-close`,
+     site.css), so this is that same standard reaching the one surface it skipped.
+     `min-*` is used deliberately: it beats the explicit `width`/`height` on `.tali-ctl` and
+     `.tali-share-close` regardless of source order, since it is a different property rather
+     than a cascade contest — which is why this half can live here while the `.tali-copy`
+     half cannot (see the note further down).
+     MOB-7's overlay trick is NOT needed here: it exists because growing a STICKY bar costs
+     permanent reading height (52px -> 75px, 19.2% of a landscape phone). These controls float
+     over a fixed 960x540 stage with 14px of edge clearance, so growing them costs nothing.
+     The menu already scrolls (`max-height` + `overflow-y: auto`), so taller rows mean more
+     scrolling, never a clipped item — a scrollable list of reachable targets beats a compact
+     list of unreachable ones. */
+  .tali-ctl { min-width: 44px; min-height: 44px; }
+  .tali-menu-item, .tali-menu-slide, .tali-theme-opt { min-height: 44px; }
+  .tali-share-close, .tali-share-copy { min-width: 44px; min-height: 44px; }
 }
 
 /* live-presenting chrome only: gone in overview (print is handled by @media print). It
@@ -977,6 +995,25 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
    panel; keyboard users still reach it via :focus-visible. */
 .tali-deck pre:hover .tali-copy, .tali-deck .tali-copy:focus-visible { opacity: 1; }
 .tali-deck .tali-copy.tali-copied { color: var(--tali-callout-tip); border-color: var(--tali-callout-tip); }
+/* Both reveals above are unreachable on a phone: `pre:hover` is a pointer a touch device
+   does not have, and `:focus-visible` needs a keyboard. So without this the button ships in
+   the DOM of every deck, sized under the WCAG 2.5.8 floor, and permanently invisible
+   (browser-measured `opacity: 0` at 390x844 on the BUILT artifact, not just in preview).
+   base.css's MOB-4 fix cannot reach it and reordering base.css would not have helped:
+   `.tali-copy` there is (0,1,0), `.tali-deck .tali-copy` above is (0,2,0), and a media query
+   contributes NO specificity — so the deck's rule wins outright wherever it sits.
+   POSITION IS LOAD-BEARING, for the same reason it is in base.css: this block only MATCHES
+   the (0,2,0) it overrides, so it must stay BELOW that declaration. The deck's other
+   capability block (~line 777) is ABOVE it and would silently lose — which is MOB-4's own
+   trap, one file over. `deck_copy_button_is_reachable_on_touch` asserts the order.
+   The tap target grows by a centred overlay rather than by inflating the chip, matching
+   `.tali-anchor::after` in base.css: a 44px chip would blanket a short code block, and the
+   AA floor for an in-content affordance is 24. */
+@media (hover: none) and (pointer: coarse) {
+  .tali-deck .tali-copy { opacity: 1; }
+  .tali-deck .tali-copy::after { content: ""; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); width: 24px; height: 24px; }
+}
 .tali-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
 
 /* server-side syntax-highlight palette (syntect); keep in sync with base.css.

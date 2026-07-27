@@ -4951,13 +4951,30 @@ fn filled_chrome_controls_use_the_aa_accent_fill_not_raw_accent() {
         "cite-copy confirmed must fill with --tali-accent-fill + --tali-on-accent, not raw --tali-accent: {rule}"
     );
     // The deck's two filled controls (speaker "Read mode" active + share "Copy").
+    //
+    // Match the rule that sets the FILL, not merely the first rule naming the selector: a
+    // selector may legitimately appear more than once (the touch tap-target floor added a
+    // `.tali-share-close, .tali-share-copy { min-* }` rule ABOVE this one in 2026-07-27), and
+    // `find` would then assert the accent contract against a rule that sets no colour at all.
+    // Requiring exactly one background-setting rule keeps this STRONGER than a first-match
+    // lookup: it also fails if the fill declaration disappears entirely.
     let d = super::deck::DECK_CSS;
     for (name, needle) in [
         ("speaker read-mode active", ".tali-speaker.read .sp-read {"),
         ("share copy", ".tali-share-copy {"),
     ] {
-        let j = d.find(needle).unwrap_or_else(|| panic!("{needle}"));
-        let rule = &d[j..j + d[j..].find('}').expect("closing brace")];
+        let filled: Vec<&str> = d
+            .match_indices(needle)
+            .map(|(j, _)| &d[j..j + d[j..].find('}').expect("closing brace")])
+            .filter(|rule| rule.contains("background"))
+            .collect();
+        assert_eq!(
+            filled.len(),
+            1,
+            "expected exactly one rule filling `{needle}`, found {}",
+            filled.len()
+        );
+        let rule = filled[0];
         assert!(
             rule.contains("var(--tali-accent-fill)") && rule.contains("var(--tali-on-accent)"),
             "deck {name} must fill with --tali-accent-fill + --tali-on-accent: {rule}"
@@ -5996,6 +6013,88 @@ fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
         "the capability block is above an `opacity: 0` of equal specificity, so the cascade \
          silently discards it (gate at {gate}, .tali-copy at {zero_copy}, .tali-anchor at \
          {zero_anchor})"
+    );
+}
+
+#[test]
+fn deck_copy_button_is_reachable_on_touch() {
+    // 2026-07-27 deck x touch round, DT-1: measured `opacity: 0` at 390x844 with
+    // `hover: none` + `pointer: coarse`, on the BUILT artifact as well as in preview — so
+    // copy-code was invisible on every deck for every touch reader. The deck's only reveals
+    // are `pre:hover` (a pointer a phone does not have) and `:focus-visible` (a keyboard).
+    //
+    // MOB-4 fixed the PAGE surface and could not reach this one: base.css's override is
+    // `.tali-copy` at (0,1,0), the deck declares `.tali-deck .tali-copy` at (0,2,0), and a
+    // media query adds NO specificity — so the deck's `opacity: 0` wins wherever it sits and
+    // no reordering of base.css would have helped. The test above asserts base.css's order;
+    // it is structurally blind to a higher-specificity override in another file, which is
+    // exactly how this shipped green.
+    let css = super::deck::DECK_CSS;
+    let zero = css
+        .find(".tali-deck .tali-copy {")
+        .expect("no `.tali-deck .tali-copy` declaration");
+    let reveal = css
+        .find(".tali-deck .tali-copy { opacity: 1;")
+        .expect("copy-code is still hover-only on a deck, so it is invisible on touch");
+    // Order, not just presence: this override only MATCHES the specificity it overrides
+    // (0,2,0 both), so above the `opacity: 0` it would lose silently — MOB-4's own trap, one
+    // file over. The deck's other capability block sits above that declaration.
+    assert!(
+        reveal > zero,
+        "the touch reveal is ABOVE the `opacity: 0` it must beat, where an equal-specificity \
+         rule is discarded by the cascade (reveal at {reveal}, opacity: 0 at {zero})"
+    );
+    // …and it must be gated on capability, not unconditional: a mouse deck keeps the
+    // hover-reveal so the chip stops cluttering every code panel.
+    let gate = css[..reveal]
+        .rfind("@media (hover: none) and (pointer: coarse)")
+        .expect("the touch reveal is not inside an input-capability query");
+    let block = media_block(&css[gate..], "(hover: none) and (pointer: coarse)")
+        .expect("unbalanced capability block");
+    assert!(
+        block.contains(".tali-deck .tali-copy { opacity: 1;"),
+        "the reveal is not inside the capability block that precedes it:\n{block}"
+    );
+    // The tap target grows by overlay (`.tali-anchor::after`'s idiom), because a 44px chip
+    // would blanket a short code block. 24px is the AA floor for an in-content affordance;
+    // the button itself measured 20.5x19.1, which fails it.
+    assert!(
+        block.contains(".tali-deck .tali-copy::after"),
+        "no tap-target overlay: the visible chip measured 20.5x19.1, under the 24px AA \
+         floor:\n{block}"
+    );
+}
+
+#[test]
+fn deck_touch_targets_meet_the_floor_the_tree_adopted() {
+    // 2026-07-27 deck x touch round, DT-2. The deck's capability block only ever HID things
+    // (key hints, Speaker); every control kept the size a mouse wants. Measured on a coarse
+    // pointer: 34x34 for prev/next/menu 6px apart, 30.6 for a jump-list row, 30.9 for a theme
+    // option, 30x30 for the share close — all clearing the 24px AA floor, all missing the
+    // 44px the tree adopted for chrome on 2026-07-26 (`.tali-book-drawer-close`, site.css).
+    //
+    // `min-*` rather than `width`/`height` is load-bearing: `.tali-ctl` and `.tali-share-close`
+    // carry explicit `width`/`height`, and `min-width` beats them by definition of the used
+    // value, so this survives regardless of where the block sits relative to them.
+    let block = media_block(super::deck::DECK_CSS, "(hover: none) and (pointer: coarse)")
+        .expect("deck.css has no input-capability query");
+    for sel in [
+        ".tali-ctl",
+        ".tali-menu-item",
+        ".tali-menu-slide",
+        ".tali-theme-opt",
+        ".tali-share-close",
+        ".tali-share-copy",
+    ] {
+        assert!(
+            block.contains(sel),
+            "{sel} is still sized for a mouse on a touch device:\n{block}"
+        );
+    }
+    assert!(
+        block.matches("min-height: 44px").count() >= 3,
+        "the capability block names the controls but does not raise them to the adopted \
+         44px floor:\n{block}"
     );
 }
 
