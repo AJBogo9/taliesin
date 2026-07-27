@@ -17,11 +17,12 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and 58-66 all shipped 2026-07-27. What is left of the whole
-mutation campaign is two items, and neither is more test-writing:** 67 (the launcher tab-completion
-hang — it lives OUTSIDE the repo, in a shell script, and the author deferred it once, so ask before
-spending time on it) and 68 (confirmation compute: re-run `lsp_nav.rs`'s untested 106-mutant tail
-now that the cursor-walk test it was waiting on has landed). Each remaining item names its file, its survivor list and its reason for
+**Start here: band A is ranked 58-68 and 58-67 all shipped 2026-07-27, leaving only 68**
+(confirmation compute: re-run `lsp_nav.rs` now that the cursor-walk test it was waiting on has
+landed). **When 68 closes, band A holds nothing but item 56's authoring residual, and the mutation
+campaign that has driven this file since 2026-07-18 is finished** — so the next session's real
+question is which lens to run, not which item to take. The menu is under "Proposed audit lenses";
+the standing recommendation there is real-device mobile, which is now unblocked. Each remaining item names its file, its survivor list and its reason for
 ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
 the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
 more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
@@ -33,8 +34,9 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `fix-404-weight`): full workspace
-suite with all three gates and `--test-threads=1` is **95 binaries, 1,619 tests, 0 failures**;
+**Verified 2026-07-27 at the last landing** (`6e677f0`, **pushed**): full workspace suite with all
+three gates and `--test-threads=1` is **95 binaries, 1,619 tests, 0 failures**, and the pre-push
+gate passed on top of it;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
@@ -483,14 +485,20 @@ completed server files, **156 survivors**) and
     acceptable because the tool's own publish path (Cloudflare Pages) is a root deploy and the
     scoped `<style>` stays inline, so the layout survives regardless. The preview keeps the
     self-contained form (it has no `_assets/` to link).
-67. **The `taliesin` launcher rebuilds the release binary during tab completion**, so
-    `taliesin preview <TAB>` hangs ~15 s. Root cause measured: `~/.local/bin/taliesin` shells out to
-    `cargo build --release` on a stale binary, and completion invokes it via `taliesin __complete`.
-    (It is *not* the `dir_contains_tmd` depth-6 walk, which is <10 ms even at 60k files.) Fix: guard
-    the launcher so `__complete`/`completions` skips the rebuild. **The author deferred this once** —
-    it lives outside the repo, in a shell script — so confirm before spending time on it. Ranked this
-    low only because of that deferral; by felt cost it is the item on this list the author hits most
-    often.
+67. **SHIPPED 2026-07-27** (outside the repo: `~/.local/bin/taliesin`, so there is no commit for
+    it — the change is the guard described here). The author lifted the deferral. **Measured
+    before: 24.3 s for a single `taliesin __complete preview ""` on a stale binary; after:
+    0.024 s** — a thousandfold, and the ~15 s in the old entry was an understatement. Cause was
+    exactly as recorded: the launcher shells out to `cargo build --release` whenever any source is
+    newer than the binary, and the shell shim calls it on every tab press. The guard exits early
+    for `__complete` only, running whatever binary is there and exiting **0 with no output** when
+    there is none (an error message would be rendered by the shell as a completion candidate).
+    **`completions` is deliberately NOT exempt**, against what the old entry proposed: it is run by
+    hand once to generate or install the shim, it generates that shim from the binary's own command
+    list, and a stale binary would install a script that has drifted from the tool. Fast-and-stale
+    is right for something that fires on a keystroke; slow-and-correct is right for a one-off.
+    Verified with three controls: a real command still rebuilds, `completions` still rebuilds, and
+    a missing binary produces zero bytes on both streams.
 68. **`lsp_nav.rs`'s untested 106-mutant tail** — confirmation compute, not discovery. Do it *after*
     58 lands, so the same run measures whether the cursor-walk test killed what it was written for.
     Budget it off **7.8 mutants/min**, the rate measured over ten files, not the 2.3 that one slow
