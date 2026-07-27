@@ -14,8 +14,6 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     cameraPos        = [6, 4, 7],
     fov              = 40,
     far              = 100,
-    bgColor          = 0x111827,
-    alpha            = false,
     target           = [0, 0, 0],
     minDistance      = 3,
     maxDistance      = 20,
@@ -23,10 +21,15 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     onFrame          = null,
   } = opts;
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha });
+  // The canvas is ALWAYS transparent, and there is deliberately no clear-colour knob.
+  // The page background already flips with the theme (`--tali-bg`), so a scene that
+  // clears to a fixed colour is wrong in one of the two themes by construction: that is
+  // exactly how every caller that forgot `alpha: true` came to paint an opaque dark slab
+  // on a white page. Let the page show through and the scene is right in both themes.
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(bgColor, alpha ? 0 : 1);
+  renderer.setClearAlpha(0);
 
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(fov, width / height, 0.1, far);
@@ -35,21 +38,44 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
 
   const O = new THREE.Vector3(0, 0, 0);
 
-  function spriteLabel(text, cssColor, scale = 1.6) {
-    const c = document.createElement("canvas");
-    c.width = 320; c.height = 72;
-    const ctx = c.getContext("2d");
+  // A sprite label BAKES its text into a canvas texture, so a theme-following label has to
+  // be repainted on a toggle, not merely re-rendered. `cssColor` is optional: omit it and
+  // the label takes the page's text colour and keeps following it across a theme change.
+  const themedLabels = [];
+  const pageFg = () =>
+    getComputedStyle(document.documentElement).getPropertyValue("--tali-fg").trim() || "#1a1a1a";
+
+  function paintLabel(canvas, text, cssColor) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.font = "bold 26px sans-serif";
     ctx.fillStyle = cssColor;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+    // The 320px texture is minified ~3x on screen, so mipmapping thins the glyphs toward
+    // the background: on the old dark slab that only dulled them, on paper it washed them
+    // out. Stroking before the fill keeps enough ink to survive the downsample.
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = cssColor;
+    ctx.strokeText(text, 160, 36);
     ctx.fillText(text, 160, 36);
+  }
+
+  function spriteLabel(text, cssColor, scale = 1.6) {
+    const c = document.createElement("canvas");
+    c.width = 320; c.height = 72;
+    paintLabel(c, text, cssColor || pageFg());
+    const tex = new THREE.CanvasTexture(c);
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: new THREE.CanvasTexture(c), transparent: true, depthTest: false
+      map: tex, transparent: true, depthTest: false
     }));
     spr.scale.set(scale, 0.36, 1);
+    if (!cssColor) themedLabels.push(() => { paintLabel(c, text, pageFg()); tex.needsUpdate = true; });
     return spr;
   }
+
+  function onThemeChange() { for (const repaint of themedLabels) repaint(); }
+  window.addEventListener("tali:themechange", onThemeChange);
 
   // ctrl is created before buildScene so the callback can configure it
   const ctrl = new OrbitControls(camera, renderer.domElement);
@@ -76,10 +102,14 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     `position:relative;display:inline-block;width:${width}px;max-width:100%;`;
   container.appendChild(renderer.domElement);
 
+  // Chrome colours come from the page's design tokens, so the button flips with the theme
+  // instead of being a fixed dark chip sitting on a white page.
   const btnStyle = [
     "padding:4px 10px", "font-size:12px", "cursor:pointer",
-    "background:rgba(30,30,30,0.75)", "color:#ddd",
-    "border:1px solid #555", "border-radius:4px",
+    "background:color-mix(in srgb, var(--tali-bg) 78%, transparent)",
+    "color:var(--tali-fg)",
+    "border:1px solid var(--tali-border-strong)",
+    "border-radius:var(--tali-radius-sm)",
     "backdrop-filter:blur(4px)", "z-index:10",
   ].join(";");
 
@@ -94,11 +124,15 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
 
   function onFSChange() {
     if (document.fullscreenElement === container) {
+      // A transparent canvas in fullscreen sits on the browser's black ::backdrop, where a
+      // light-theme scene would be invisible. Paint the page background under it instead.
+      container.style.background = "var(--tali-bg)";
       renderer.setSize(screen.width, screen.height);
       camera.aspect = screen.width / screen.height;
       camera.updateProjectionMatrix();
       fsBtn.textContent = "✕ Exit fullscreen";
     } else {
+      container.style.background = "";
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -112,6 +146,7 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     ctrl.dispose();
     renderer.dispose();
     document.removeEventListener("fullscreenchange", onFSChange);
+    window.removeEventListener("tali:themechange", onThemeChange);
   });
 
   return container;

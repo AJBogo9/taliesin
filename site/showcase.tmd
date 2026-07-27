@@ -43,7 +43,7 @@ const build = async () => {
       key.position.set(4, 6, 5);
       scene.add(key);
     }, invalidation, {
-      width: 640, height: 460, alpha: true, cameraPos: [0, 5.5, 7.5],
+      width: 640, height: 460, cameraPos: [0, 5.5, 7.5],
       ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
       onFrame: () => {
         if (!S) return;
@@ -110,7 +110,7 @@ const build = async () => {
       key.position.set(4, 6, 5);
       scene.add(key);
     }, invalidation, {
-      width: 640, height: 460, alpha: true, cameraPos: [0, 5.5, 7.5],
+      width: 640, height: 460, cameraPos: [0, 5.5, 7.5],
       ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
       onFrame: () => {
         if (!S) return;
@@ -394,12 +394,12 @@ const el = document.createElement("div");
 makeScene3D((scene, THREE, ctx) => {
   THREEref = THREE;
   geom = new THREE.BufferGeometry();
-  const mat = new THREE.LineBasicMaterial({ color: 0x8bd3ff });
+  const mat = new THREE.LineBasicMaterial({ color: 0x3f7fbf });
   scene.add(new THREE.Line(geom, mat));
   rebuildLine();
 }, invalidation, {
   cameraPos: [0, 0, 9], fov: 45, target: [0, 0, 0],
-  minDistance: 3, maxDistance: 25, bgColor: 0x0b0f1a,
+  minDistance: 3, maxDistance: 25,
   onFrame: () => { if (!geom) return; drawn = Math.min(drawn + 40, N); geom.setDrawRange(0, drawn); },
   controls: [
     { type: "range", label: "σ", min: 1, max: 20, step: 0.5, value: P.sigma,
@@ -460,12 +460,12 @@ const el = document.createElement("div");
 makeScene3D((scene, THREE, ctx) => {
   THREEref = THREE;
   geom = new THREE.BufferGeometry();
-  const mat = new THREE.LineBasicMaterial({ color: 0x8bd3ff });
+  const mat = new THREE.LineBasicMaterial({ color: 0x3f7fbf });
   scene.add(new THREE.Line(geom, mat));
   rebuildLine();
 }, invalidation, {
   cameraPos: [0, 0, 9], fov: 45, target: [0, 0, 0],
-  minDistance: 3, maxDistance: 25, bgColor: 0x0b0f1a,
+  minDistance: 3, maxDistance: 25,
   onFrame: () => { if (!geom) return; drawn = Math.min(drawn + 40, N); geom.setDrawRange(0, drawn); },
   controls: [
     { type: "range", label: "σ", min: 1, max: 20, step: 0.5, value: P.sigma,

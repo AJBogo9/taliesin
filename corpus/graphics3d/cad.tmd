@@ -26,7 +26,7 @@ makeScene3D(async (scene, THREE, ctx) => {
   const fill = new THREE.DirectionalLight(0xffffff, 0.4);
   fill.position.set(-6, -3, -8); scene.add(fill);
   await ctx.loadGLTF(MODEL_FILE);   // auto-frames the camera to the model
-}, invalidation, { bgColor: 0x11151f }).then((n) => el.appendChild(n));
+}, invalidation).then((n) => el.appendChild(n));
 return el;
 ```
 
@@ -109,7 +109,7 @@ makeScene3D((scene, THREE, ctx) => {
   regen = () => { ctx.rebuild(gearGroup, makeGear); ctx.frameObject(gearGroup, 1.5); };
   regen();
 }, invalidation, {
-  cameraPos: [0, 4, 10], bgColor: 0x11151f,
+  cameraPos: [0, 4, 10],
   controls: [
     { type: "range", label: "Teeth", min: 6, max: 40, step: 1, value: P.teeth,
       onInput: (v) => { P.teeth = v; regen(); } },

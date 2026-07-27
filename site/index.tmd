@@ -45,7 +45,7 @@ const build = async () => {
       key.position.set(4, 6, 5);
       scene.add(key);
     }, invalidation, {
-      width: 720, height: 440, alpha: true, cameraPos: [0, 5.5, 7.5],
+      width: 720, height: 440, cameraPos: [0, 5.5, 7.5],
       ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
     });
   } catch (e) {

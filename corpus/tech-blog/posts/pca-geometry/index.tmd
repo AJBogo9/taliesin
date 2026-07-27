@@ -123,16 +123,19 @@ define(std_pts = X.tolist())
 const std_pts = tali.defines.std_pts; if (!std_pts) return;
 const makeScene3D = tali.get("makeScene3D");
 
+// The canvas is transparent, so every colour here has to read on BOTH page backgrounds
+// (white and #16181d). These sit near the midpoint of that range: ~4:1 either way, where
+// the old dark-tuned pastels dropped to ~1.5:1 the moment the slab behind them went away.
 return makeScene3D((scene, THREE, { O, spriteLabel }) => {
   const flat = new Float32Array(std_pts.flatMap(p => p));
   const ptGeo = new THREE.BufferGeometry();
   ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
   scene.add(new THREE.Points(ptGeo,
-    new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
+    new THREE.PointsMaterial({ color: 0x7a7a9e, size: 0.07, transparent: true, opacity: 0.8 })
   ));
 
   const axLen    = 3.8;
-  const axColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
+  const axColors = [0xc2622c, 0x2d8b4e, 0x3f7fbf];
   const axNames  = ["Height", "Wingspan", "S. Reach"];
   [[1,0,0],[0,1,0],[0,0,1]].forEach(([x,y,z], i) => {
     const hex = "#" + axColors[i].toString(16).padStart(6, "0");
@@ -263,13 +266,13 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
   const ptGeo = new THREE.BufferGeometry();
   ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
   scene.add(new THREE.Points(ptGeo,
-    new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
+    new THREE.PointsMaterial({ color: 0x7a7a9e, size: 0.07, transparent: true, opacity: 0.8 })
   ));
 
   // ── PC1–PC2 plane ────────────────────────────────────────────────────────
   const planeGeo = new THREE.PlaneGeometry(7, 7, 14, 14);
   const planeMesh = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({
-    color: 0x7eb8f7, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false
+    color: 0x3f7fbf, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false
   }));
   planeMesh.quaternion.setFromUnitVectors(
     new THREE.Vector3(0, 0, 1),
@@ -278,12 +281,12 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
   scene.add(planeMesh);
   planeMesh.add(new THREE.LineSegments(
     new THREE.WireframeGeometry(planeGeo),
-    new THREE.LineBasicMaterial({ color: 0x7eb8f7, transparent: true, opacity: 0.12, depthWrite: false })
+    new THREE.LineBasicMaterial({ color: 0x3f7fbf, transparent: true, opacity: 0.22, depthWrite: false })
   ));
 
   // ── PC arrows ────────────────────────────────────────────────────────────
-  const pcColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
-  const pcCssCol = ["#f0956a", "#6ddc8b", "#7eb8f7"];
+  const pcColors = [0xc2622c, 0x2d8b4e, 0x3f7fbf];
+  const pcCssCol = ["#c2622c", "#2d8b4e", "#3f7fbf"];
   pcs.forEach((pc, i) => {
     const len  = Math.sqrt(eigs[i]) * 2.2;
     const hLen = Math.min(0.22, len * 0.14);
@@ -296,12 +299,15 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
   });
 
   // ── Feature axes (faint) ─────────────────────────────────────────────────
+  // A mid grey stays quiet on both backgrounds; the old near-black navy was faint on the
+  // dark slab but turned into the loudest thing in the scene once the page showed through.
   const axLen = 3.8;
   [[1,0,0],[0,1,0],[0,0,1]].forEach(dir => {
-    scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x3a3a55, 0.12, 0.07));
+    scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x8a8a9a, 0.12, 0.07));
   });
+  // No colour: the label follows the page's text colour, and repaints on a theme toggle.
   [["Height", [axLen+0.3,0,0]], ["Wingspan", [0,axLen+0.3,0]], ["S. Reach", [0,0,axLen+0.3]]].forEach(([t,p]) => {
-    const lbl = spriteLabel(t, "#555577", 1.5);
+    const lbl = spriteLabel(t, null, 1.5);
     lbl.position.set(...p);
     scene.add(lbl);
   });
@@ -438,7 +444,7 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
     const ptGeo = new THREE.BufferGeometry();
     ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
     scene.add(new THREE.Points(ptGeo,
-      new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.25 })
+      new THREE.PointsMaterial({ color: 0x7a7a9e, size: 0.07, transparent: true, opacity: 0.35 })
     ));
 
     // Reconstructed points
@@ -446,7 +452,7 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
     const rGeo = new THREE.BufferGeometry();
     rGeo.setAttribute("position", new THREE.Float32BufferAttribute(rFlat, 3));
     scene.add(new THREE.Points(rGeo,
-      new THREE.PointsMaterial({ color: 0xf0956a, size: 0.1, transparent: true, opacity: 0.85 })
+      new THREE.PointsMaterial({ color: 0xc2622c, size: 0.1, transparent: true, opacity: 0.85 })
     ));
 
     // Projection lines (original → reconstructed)
@@ -455,12 +461,12 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
     const lineGeo = new THREE.BufferGeometry();
     lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(linePos), 3));
     scene.add(new THREE.LineSegments(lineGeo,
-      new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.2 })
+      new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.4 })
     ));
 
     // PC arrows (kept PCs bright, discarded faint)
-    const pcColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
-    const pcCssCol = ["#f0956a", "#6ddc8b", "#7eb8f7"];
+    const pcColors = [0xc2622c, 0x2d8b4e, 0x3f7fbf];
+    const pcCssCol = ["#c2622c", "#2d8b4e", "#3f7fbf"];
     pcs.forEach((pc, i) => {
       const len  = Math.sqrt(eigs[i]) * 2.2;
       const hLen = Math.min(0.22, len * 0.14);
@@ -480,10 +486,10 @@ return makeScene3D((scene, THREE, { O, spriteLabel }) => {
     // Feature axes (very faint)
     const axLen = 3.8;
     [[1,0,0],[0,1,0],[0,0,1]].forEach(dir => {
-      scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x3a3a55, 0.12, 0.07));
+      scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x8a8a9a, 0.12, 0.07));
     });
     [["Height",[axLen+0.3,0,0]],["Wingspan",[0,axLen+0.3,0]],["S. Reach",[0,0,axLen+0.3]]].forEach(([t,p]) => {
-      const lbl = spriteLabel(t, "#555577", 1.5);
+      const lbl = spriteLabel(t, null, 1.5);
       lbl.position.set(...p);
       scene.add(lbl);
     });
