@@ -247,10 +247,11 @@ automatically alongside the page. Here is this manual's own feature deck:
 
 ## Books and a live table of contents
 
-A document with `toc: true` gains a table of contents built from its heading
-anchors and rebuilt live as you edit, with the current section highlighted as you
-scroll (a scrollspy). On a wide screen it's a sticky sidebar; on a phone it
-collapses into a pull-up sheet.
+A **page** with `toc: true` gains a table of contents built from its heading anchors
+and rebuilt live as you edit, with the current section highlighted as you scroll (a
+scrollspy). On a wide screen it's a sticky sidebar; on a phone it collapses into a
+pull-up sheet. A **book** has no such rail: its Chapters drawer already lists the
+chapter you are reading down to its sub-subsections, described below.
 
 A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:`:
 their presence makes it a book (no `type:` needed), optionally grouped into
@@ -274,7 +275,6 @@ assembled from partials is measured at what you will actually read.
 
 ```yaml
 title: "My Book"
-toc: true
 chapters:
   - index.tmd
   - part: "Part One"

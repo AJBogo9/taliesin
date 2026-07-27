@@ -805,23 +805,15 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         Some(sidebar) => {
             // Keep this layout byte-aligned with the build path (`render/page.rs` book
             // branch): a sticky topbar + off-canvas chapter drawer (`sidebar`), then the
-            // reading content centred in `.tali-book-main`, widened to the content+TOC grid
-            // only when the chapter carries a TOC.
-            let main_cls = if toc_nav.is_empty() {
-                "tali-book-main"
-            } else {
-                "tali-book-main has-toc"
-            };
-            let inner_cls = if toc_nav.is_empty() {
-                "tali-book-inner"
-            } else {
-                "tali-book-inner has-toc"
-            };
+            // reading content centred in `.tali-book-main`. One column, always — a book
+            // has no right rail (item 76), so `toc_nav` is unreachable here (`page_toc`
+            // returns false for a book) and is deliberately not interpolated: the preview
+            // must not paint a surface the build does not.
             (
                 "tali-book-body",
                 format!(
-                    "{sidebar}\n<div class=\"{main_cls}\">\n\
-                     <div class=\"{inner_cls}\">\n<main id=\"tali-root\">{body}</main>\n{toc_nav}\n</div>\n\
+                    "{sidebar}\n<div class=\"tali-book-main\">\n\
+                     <div class=\"tali-book-inner\">\n<main id=\"tali-root\">{body}</main>\n</div>\n\
                      {post_nav}</div>\n{footer}",
                     post_nav = chrome.post_nav_html,
                     footer = chrome.footer_html,
@@ -2179,13 +2171,15 @@ mod project_tests {
         )));
     }
 
-    /// The site-preview shell for one `corpus/tarn` page, assembled the way the live
+    /// The site-preview shell for one page of a corpus project, assembled the way the live
     /// server assembles it: a real `PageState` (so `toc` is the page's own answer, not a
     /// hand-set flag) behind a real `Project`.
-    fn tarn_preview_page(rel: &str) -> String {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/tarn");
+    fn corpus_preview_page(project: &str, rel: &str) -> String {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../corpus")
+            .join(project);
         let site = taliesin_core::site::Site::discover(&dir);
-        let page = site.page(rel).expect("corpus/tarn page").clone();
+        let page = site.page(rel).expect("corpus page").clone();
         let doc = render_markdown_only(&site, &page);
         let mut pages = HashMap::new();
         pages.insert(
@@ -2216,7 +2210,11 @@ mod project_tests {
         // The chrome is needled as the whole shared const: every page inlines the entire
         // CSS payload, so `tali-toc-handle` as a bare substring is present on pages that
         // emit no handle (it is a selector in there).
-        let with_toc = tarn_preview_page("install.tmd");
+        //
+        // Measured on a WEBSITE, not on the book this test first used: since item 76 a book
+        // has no rail and therefore no sheet, so a book page would assert the absence PP-2
+        // was about and the pin would invert into its own negative control.
+        let with_toc = corpus_preview_page("tech-blog", "posts/KL-divergence/index.tmd");
         assert!(
             with_toc.contains(taliesin_core::TOC_SHEET_MARKUP),
             "a TOC chapter's site preview must emit the shared sheet chrome"
@@ -2240,15 +2238,34 @@ mod project_tests {
 
     #[test]
     fn a_page_below_the_toc_threshold_gets_no_sheet_chrome() {
-        // The gate is the page's own `toc`, not the command: `performance.tmd` sits below
-        // `MIN_TOC_HEADINGS` (measured against a real build of `corpus/tarn` — counting
-        // `##` in the source under-reports it, since the gate counts every anchored
-        // heading), so it earns no TOC and must earn no sheet either. Without this the
-        // test above passes on a shell that emits the chrome unconditionally.
-        let without = tarn_preview_page("performance.tmd");
+        // The gate is the page's own `toc`, not the command: this project article has two
+        // headings, below `MIN_TOC_HEADINGS`, so it earns no TOC and must earn no sheet
+        // either. Without this the test above passes on a shell that emits the chrome
+        // unconditionally. Same website as above, so the two differ only in the page.
+        let without =
+            corpus_preview_page("tech-blog", "projects/iphone-premium-analysis/index.tmd");
         assert!(
             !without.contains(taliesin_core::TOC_SHEET_MARKUP),
             "a page with no TOC must not ship a handle that opens an empty sheet"
+        );
+        // And the book half of the same guarantee: a book chapter has no rail at all
+        // (item 76), so however long it is it must not ship sheet chrome for a sheet that
+        // would open empty.
+        let chapter = corpus_preview_page("tarn", "install.tmd");
+        assert!(
+            !chapter.contains(taliesin_core::TOC_SHEET_MARKUP),
+            "a book chapter has no TOC, so no sheet: {chapter}"
+        );
+        // The exact emitted mount, not `id="TOC"`: `client.js` is inlined verbatim and its
+        // own source comments name the element, so the short needle matches on a page that
+        // mounts nothing.
+        assert!(
+            !chapter.contains("<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>"),
+            "…and no rail nav in the preview either: {chapter}"
+        );
+        assert!(
+            !chapter.contains("window.TALIESIN_TOC = true;"),
+            "…and the client is not told to hydrate one: {chapter}"
         );
     }
 

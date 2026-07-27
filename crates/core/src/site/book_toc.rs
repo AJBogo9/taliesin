@@ -4,8 +4,15 @@
 //! pattern), so a reader can jump straight to any chapter. It reuses the ordered
 //! `Book.entries` the drawer (`chrome::sidebar_html`) and prev/next (`book_nav_html`)
 //! already iterate, and joins each chapter to its `Page.description` for an optional
-//! blurb. Additive: the per-page scrollspy TOC and the chapter drawer are untouched
-//! (the 2026-07-06 "keep both nav surfaces" decision).
+//! blurb.
+//!
+//! **This is a book's whole-book Contents, not its in-chapter outline** — do not confuse
+//! the two. The in-chapter outline is the off-canvas chapter drawer (`chrome::sidebar_html`),
+//! and it is the only one: the per-page right-rail scrollspy TOC was removed on 2026-07-27
+//! (item 76), reversing the 2026-07-06 "keep both nav surfaces" decision this comment used
+//! to cite. The drawer auto-expands the current chapter and lists it to h3, where the rail
+//! listed h2 only, so the rail was the *less* detailed of the two surfaces. The gate that
+//! enforces it is `Site::page_toc`.
 //!
 //! It is a generated content block (`tali-book-toc`, no sourcepos) appended in
 //! `finish_blocks`, exactly like `attach_backlinks`/`attach_cite_this` — NOT a chrome

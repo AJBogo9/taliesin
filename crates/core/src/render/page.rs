@@ -539,7 +539,12 @@ fn html_page_inner(
     // TOC landmark so a screen reader's landmark list distinguishes it from the other
     // `<nav>`s (navbar / post-nav). `toc_html` already gives it `role="doc-toc"`; the
     // accessible name is added here (its builder lives in mod.rs).
-    let toc = if doc.toc {
+    // **A book renders no rail** (item 76). Every assembler already routes through
+    // `Site::page_toc`, which returns false for a book, so this is belt-and-braces — but
+    // the book branch below now emits a one-column grid unconditionally, and a `SiteCtx`
+    // assembled some other way with `doc.toc` still set would drop the nav into a layout
+    // that has no track for it. Gating at the source keeps that unrepresentable.
+    let toc = if doc.toc && !site.is_some_and(|s| s.book_sidebar.is_some()) {
         // `tabindex="-1"`, like `<main>`, so the skip link below can move focus INTO the
         // landmark rather than merely near it (AP7-5). Not a tab stop.
         toc_html(&doc.blocks).replacen(
@@ -620,22 +625,13 @@ fn html_page_inner(
         // the chapter list is an off-canvas drawer, with prev/next-chapter under the column.
         Some(s) if s.book_sidebar.is_some() => {
             body_class = " class=\"tali-book-body\"".to_string();
-            let main_cls = if toc.is_empty() {
-                "tali-book-main"
-            } else {
-                "tali-book-main has-toc"
-            };
-            let inner_cls = if toc.is_empty() {
-                "tali-book-inner"
-            } else {
-                "tali-book-inner has-toc"
-            };
             // `chrome` = the sticky topbar + the off-canvas chapter drawer; the reading
-            // content centres in `.tali-book-main` (the same ~70ch measure as a blog post),
-            // widening to the content+TOC grid only when the chapter carries a TOC.
+            // content centres in `.tali-book-main` (the same ~70ch measure as a blog post).
+            // One column, always: a book has no right rail (item 76), so there is no
+            // content+TOC grid to widen into and no empty track to reserve against it.
             format!(
-                "{chrome}\n<div class=\"{main_cls}\">\n\
-                 <div class=\"{inner_cls}\">\n{content}</div>\n{post_nav}</div>\n{footer}\n",
+                "{chrome}\n<div class=\"tali-book-main\">\n\
+                 <div class=\"tali-book-inner\">\n{content}</div>\n{post_nav}</div>\n{footer}\n",
                 chrome = s.book_sidebar.as_deref().unwrap_or(""),
                 post_nav = s.post_nav_html,
                 footer = s.footer_html,

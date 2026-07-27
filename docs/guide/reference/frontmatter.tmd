@@ -82,7 +82,7 @@ Each of these injects trusted, verbatim markup. The value can be a path, a
 
 | Key | Type | Meaning |
 |---|---|---|
-| `toc` | bool | `true` adds a live table of contents (and enables the Cmd-K search palette) |
+| `toc` | bool | `true` adds a live table of contents (and enables the Cmd-K search palette). No effect in a book chapter: a book navigates by its Chapters drawer |
 | `bibliography` | string \| list | A `.bib` file (or list of them) enabling `[@key]` citations and an auto-generated References section |
 | `csl` | string | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so a `csl:` key is never mistaken for a typo'd `css:`; delete it |
 

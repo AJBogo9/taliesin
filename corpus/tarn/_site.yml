@@ -1,5 +1,4 @@
 title: "Tarn: the tabular query library"
-toc: true
 
 chapters:                 # presence makes this a book
   - index.tmd

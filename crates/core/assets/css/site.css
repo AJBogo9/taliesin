@@ -110,7 +110,7 @@
   /* At the sheet breakpoint `#TOC` turns `position: fixed` and leaves the grid flow, so the
      14rem track would stand empty and auto-placement would drop the next sibling (the
      back-to-listing nav) into that vacant top-right cell. Collapse to the single reading
-     column, matching `.tali-book-inner` further down (which already collapses at 60rem). */
+     column — which is what a book uses at every width (it has no rail at all, item 76). */
   @media (max-width: 60rem) {
     .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
     /* narrow back to the reading measure, unless `page-layout: full` widened the page */
@@ -260,16 +260,12 @@
 /* --- book format: ONE centred reading column; the chapter list is a summoned drawer ---
    A book reads like a long blog post: the same ~70ch measure (`--tali-maxw`), not a three-
    pane rail|content|rail that dwarfs short chapters. Navigation lives in a slim sticky
-   topbar + an off-canvas chapter drawer; the within-chapter "on this page" TOC stays as a
-   width-gated right rail (`has-toc`) the same way a website page widens for it. */
+   topbar + an off-canvas chapter drawer — and that drawer is a book's ONLY in-chapter
+   outline (item 76, 2026-07-27): it auto-expands the current chapter and lists it to h3,
+   where the right rail listed h2 only. So there is no `has-toc` grid in a book, no `#TOC`
+   rules below, and nothing here reserves an empty track. */
 body.tali-book-body { max-width: none; margin: 0; padding: 0; --tali-nav-h: 3rem;
   min-height: 100vh; display: flex; flex-direction: column; }
-/* the sticky topbar would cover the top of the sticky TOC / a jumped-to heading.
-   Desktop only, for the same reason as the website rule above: below the sheet
-   breakpoint `#TOC` is the fixed bottom sheet and must keep its `top: auto`. */
-@media (min-width: 60.001rem) {
-  body.tali-book-body #TOC { top: calc(var(--tali-nav-h) + 1rem); }
-}
 body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) + 1rem); }
 
 /* slim sticky topbar (a book's only chrome bar — NOT the website .tali-site-nav). The inner
@@ -292,21 +288,19 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-drawer-btn svg { display: block; flex: none; }
 .tali-book-topbar .tali-nav-spacer { flex: 1 1 auto; }
 
-/* The reading column reserves the content+TOC grid on EVERY chapter, TOC or not, so the text
-   column sits at the same place chapter-to-chapter. Otherwise a short TOC-less chapter centres
-   at 46rem while a TOC chapter's text sits left inside a 62.5rem box, and the column jumps ~132px
-   as you page between them. The right 14rem track simply goes empty when a chapter has no
-   "on this page" TOC. Below 60rem it collapses to one column (media query further down). */
+/* One centred reading column at the same measure as a website article, so every chapter
+   sits in the same place whatever its length. This USED to be a 62.5rem box holding a
+   `46rem + 2.5rem gap + 14rem` grid, with the rail track reserved on every chapter (TOC or
+   not) purely so the text did not jump ~132px between chapters that had a TOC and chapters
+   that did not. With the rail gone (item 76) the compromise goes with it — and the measure
+   is unchanged: border-box 62.5rem minus 2rem padding left the first track 44rem, which is
+   exactly `--tali-maxw` (46rem) minus the same padding. Only the empty track disappears. */
 .tali-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
-  max-width: 62.5rem; margin: 0 auto; padding: 2rem 1rem; }
-.tali-book-inner { display: grid; align-items: start; gap: 2.5rem;
-  grid-template-columns: minmax(0, 46rem) 14rem; }
+  max-width: var(--tali-maxw); margin: 0 auto; padding: 2rem 1rem; }
 .tali-book-inner > main { min-width: 0; }
-/* The post-nav is a sibling after the grid; constrain it to the 46rem text column (total minus
-   the 14rem rail + 2.5rem gap) so "next" doesn't spill past the TOC track and so it lines up
-   flush-left under the text, matching the column on both TOC and TOC-less chapters. */
+/* The post-nav is a sibling after the reading column, inside the same padded box, so it
+   lines up flush with the text on both edges. */
 .tali-book-postnav { display: flex; align-items: center; gap: 1rem;
-  width: calc(100% - 14rem - 2.5rem);
   margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--tali-border); }
 .tali-book-prev, .tali-book-next { color: var(--tali-muted); text-decoration: none; font-size: .95rem; }
 .tali-book-prev:hover, .tali-book-next:hover { color: var(--tali-link); }
@@ -412,12 +406,8 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-sd2 { padding-left: 1.5rem; }
 .tali-book-sd3 { padding-left: 2.4rem; }
 .tali-book-sd4 { padding-left: 3.3rem; }
-@media (max-width: 60rem) {
-  /* single column: the on-this-page TOC (if any) stacks below the text, pager spans full width */
-  .tali-book-main { max-width: var(--tali-maxw); }
-  .tali-book-inner { grid-template-columns: minmax(0, 1fr); }
-  .tali-book-postnav { width: auto; }
-}
+/* No narrow-width book override: the reading column is one `--tali-maxw` box at every
+   width, so there is no two-column grid to collapse and no reserved track to reclaim. */
 
 /* Book landing-page Contents (B2): the hardcover table of contents on a book's landing
    page. A prominent, readable list in the reading column — distinct from the compact

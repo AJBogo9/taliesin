@@ -228,7 +228,6 @@ mapping whose `text:` overrides the sidebar label:
 ```yaml
 title: "The Handbook"
 author: "Jane Doe"
-toc: true
 chapters:
   - index.tmd
   - intro.tmd
@@ -240,9 +239,11 @@ chapters:
   - reference.tmd
 ```
 
-`toc: true` gives each chapter a live, scrollspy table of contents, and the Cmd-K
-(Ctrl-K) search palette indexes every chapter. The book output directory defaults to
-`_book/` instead of `_site/`. The chapter pages themselves need no special front
+The Chapters drawer is a book's whole navigation: it lists every chapter and expands
+the one you are reading down to its sub-subsections, so a book has no right-hand "on
+this page" rail (`toc:` is a website key and warns here). The Cmd-K (Ctrl-K) search
+palette indexes every chapter. The book output directory defaults to `_book/` instead
+of `_site/`. The chapter pages themselves need no special front
 matter; a plain `title:` is enough:
 
 ```yaml
@@ -257,7 +258,7 @@ book built this way: look at the sidebar and press Cmd-K to try the search.
 
 ::: {.callout-note}
 There is no `_metadata.yml` cascade. The root `_site.yml` sets defaults (like
-`toc:`) and a chapter's own front matter overrides them, two levels, no directory
+`theorems:`) and a chapter's own front matter overrides them, two levels, no directory
 merge. See [Slides, books & sites](formats.tmd) for the difference between a book and
 a plain multi-page site.
 :::

@@ -248,16 +248,18 @@ fn the_rendered_number_the_toc_row_and_the_resolved_ref_agree() {
 }
 
 #[test]
-fn a_chapter_below_the_toc_gate_still_gets_the_search_index() {
-    // `performance.tmd` has two headings, under MIN_TOC_HEADINGS, so it earns no TOC. The
-    // Cmd-K index global used to ride inside the TOC-gated script block while the Cmd-K
+fn a_chapter_with_no_toc_still_gets_the_search_index() {
+    // The Cmd-K index global used to ride inside the TOC-gated script block while the Cmd-K
     // BUTTON rendered unconditionally: the affordance was advertised and the index absent.
+    // Since item 76 (2026-07-27) NO book chapter carries a TOC, which makes this the shape
+    // of every chapter rather than of a short one — so the coupling matters more, not less.
+    // The rail's own absence is pinned in `book_has_no_rail_toc.rs`, not here.
     let perf = tarn()
         .render_page("performance.tmd")
         .expect("performance renders");
     assert!(
         !perf.contains("id=\"TOC\""),
-        "performance.tmd is meant to sit below the TOC gate: {perf}"
+        "a book chapter carries no TOC: {perf}"
     );
     assert!(
         perf.contains("tali-search-btn"),

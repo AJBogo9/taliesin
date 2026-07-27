@@ -139,11 +139,16 @@ HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 `email`.
 
 **Table of contents.** A site-wide `toc: true` shows the right-hand "on this page"
-list only on pages (and book chapters) with **at least three headings**, so a short
-page doesn't get a near-empty rail. To override the auto-gate, set `toc:` in a page's
-own front matter: an explicit `toc: true` / `toc: false` always wins. On narrow
-screens the list becomes a pull-up sheet (a handle at the bottom of the screen: tap
-or drag it up) instead of a sidebar.
+list only on pages with **at least three headings**, so a short page doesn't get a
+near-empty rail. To override the auto-gate, set `toc:` in a page's own front matter:
+an explicit `toc: true` / `toc: false` always wins. On narrow screens the list becomes
+a pull-up sheet (a handle at the bottom of the screen: tap or drag it up) instead of a
+sidebar.
+
+`toc:` is a **website** key. A book has no right-hand rail: its in-chapter outline is
+the Chapters drawer, which expands the chapter you are reading down to its
+sub-subsections, so a second, shallower list beside the text earned nothing. Writing
+`toc:` in a book's `_site.yml` warns and does nothing; delete the key.
 
 **Validation.** Unrecognized keys are reported with a "did you mean …" hint, offered
 when a known key is within edit distance 2, so a typo like `favicn:` doesn't silently do

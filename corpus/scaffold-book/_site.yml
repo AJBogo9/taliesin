@@ -1,7 +1,6 @@
 # yaml-language-server: $schema=.taliesin/tali-site.schema.json
 title: My book
 author: Your Name
-toc: true
 chapters:
   - index.tmd
   - intro.tmd

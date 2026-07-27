@@ -9,7 +9,7 @@
 //! favicon: favicon.svg
 //! logo: logo.svg             # brand image in the navbar / book topbar
 //! output: _site              # build output dir
-//! toc: true
+//! toc: true                 # right-rail "on this page" TOC (website only; inert in a book)
 //! css: custom.css
 //! head:  head.html           # include-in-header
 //! body-end: body.html        # include-after-body  (also: body-start)
@@ -47,6 +47,9 @@ pub struct SiteConfig {
     /// project needs exactly this one line. The same key name a deck's front matter
     /// already uses (`render::deck::deck_overlay_html`).
     pub logo: Option<String>,
+    /// `toc:` — the right-rail "on this page" table of contents. **Website only:** a
+    /// book's in-chapter outline is the chapter drawer, so `Site::page_toc` ignores this
+    /// for a book and `validate_toc_scope` tells the author the key is inert (item 76).
     pub toc: Option<bool>,
     pub css: Option<serde_yaml::Value>,
     /// `head` → include-in-header; `body-start`/`body-end` → before/after body.
@@ -246,6 +249,31 @@ fn validate_url(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
     }
 }
 
+/// `toc:` configures the right-rail "on this page" table of contents, and a book no longer
+/// has one (item 76, owner ruling 2026-07-27): its in-chapter outline is the chapter
+/// drawer, which lists the current chapter to h3 where the rail listed h2 only. So the key
+/// is inert in a book — and every book in this repo shipped `toc: true`, which is exactly
+/// the "a shipped string says we do something we don't" class item 75 was about. Warn
+/// rather than fail: it is a stale line in a config that is otherwise correct, and deleting
+/// it is the whole fix. Conditioned on `chapters:` because that is what makes a book.
+fn validate_toc_scope(
+    value: &serde_yaml::Value,
+    warnings: &mut Vec<String>,
+    src: ConfigSource<'_>,
+) {
+    let is_book = value
+        .get("chapters")
+        .and_then(|v| v.as_sequence())
+        .is_some_and(|s| !s.is_empty());
+    if is_book && value.get("toc").is_some() {
+        warnings.push(format!(
+            "{} `toc:` has no effect in a book — a book's in-chapter outline is the \
+             chapter drawer, not a right-hand rail: delete the key",
+            src.at("toc")
+        ));
+    }
+}
+
 fn parse_native(
     value: &serde_yaml::Value,
     warnings: &mut Vec<String>,
@@ -253,6 +281,7 @@ fn parse_native(
 ) -> SiteConfig {
     validate_keys(value, warnings, src);
     validate_url(value, warnings);
+    validate_toc_scope(value, warnings, src);
     let str_of = |k: &str| value.get(k).and_then(|v| v.as_str()).map(str::to_string);
     let chapters = value
         .get("chapters")
@@ -697,6 +726,48 @@ mod config_tests {
                 "a scheme'd or blank url must not warn ({url:?}): {w:?}"
             );
         }
+    }
+
+    #[test]
+    fn toc_in_a_book_is_diagnosed_as_inert_and_left_alone_in_a_website() {
+        // Item 76 (2026-07-27) removed a book's right-rail TOC, which leaves `toc:` doing
+        // nothing in a book config. Every book in this repo shipped `toc: true`, so silence
+        // would leave a key that reads as configuring a surface that no longer exists —
+        // exactly the stale-string class item 75 was about. `chapters:` is what makes it a
+        // book, so that is the condition; a website is untouched.
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("toc: true\nchapters:\n  - a.tmd\n").unwrap();
+        let _ = parse_native(&v, &mut w, ConfigSource(None));
+        assert!(
+            w.iter().any(|m| m.contains("toc:") && m.contains("book")),
+            "an inert `toc:` in a book must be diagnosed: {w:?}"
+        );
+        // `toc: false` is equally inert and equally worth deleting, so it warns too.
+        let mut w_false = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("toc: false\nchapters:\n  - a.tmd\n").unwrap();
+        let _ = parse_native(&v, &mut w_false, ConfigSource(None));
+        assert!(
+            w_false.iter().any(|m| m.contains("toc:")),
+            "`toc: false` in a book is inert too: {w_false:?}"
+        );
+        // A website (no `chapters:`) still honours it: no warning.
+        let mut w_site = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str("title: X\ntoc: true\n").unwrap();
+        let _ = parse_native(&v, &mut w_site, ConfigSource(None));
+        assert!(
+            !w_site.iter().any(|m| m.contains("toc:")),
+            "a website's `toc:` is live and must not warn: {w_site:?}"
+        );
+        // …and a book that says nothing about `toc:` gets no advice it did not earn.
+        let mut w_quiet = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str("chapters:\n  - a.tmd\n").unwrap();
+        let _ = parse_native(&v, &mut w_quiet, ConfigSource(None));
+        assert!(
+            !w_quiet.iter().any(|m| m.contains("toc:")),
+            "a book with no `toc:` must stay silent: {w_quiet:?}"
+        );
     }
 
     #[test]

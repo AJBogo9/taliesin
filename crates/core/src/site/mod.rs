@@ -1143,7 +1143,19 @@ impl Site {
     /// page's rendered `blocks` are counted by `render::toc_entry_count`, and a page below
     /// [`MIN_TOC_HEADINGS`] (or a listing / hero page) reads as a single column
     /// instead of getting a near-empty TOC. Used by both the static build and live preview.
+    ///
+    /// **A book never shows one** (item 76, owner ruling 2026-07-27, reversing the
+    /// 2026-07-06 "keep both nav surfaces" decision). A book already has an in-chapter
+    /// outline that is *strictly more detailed* than the rail: the Chapters drawer
+    /// auto-expands the current chapter and lists it to h3, where the rail listed h2 only.
+    /// The gate is here, ahead of `doc_toc`, on purpose — a page-level `toc: true` must not
+    /// be a hidden way to reinstate a removed surface, and putting it here keeps every
+    /// assembler (both static builds, both previews) on one decision instead of four.
+    /// What is lost is scrollspy; the ruling accepts that.
     pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>, blocks: &[Block]) -> bool {
+        if self.is_book() {
+            return false;
+        }
         doc_toc.unwrap_or_else(|| {
             self.config.toc.unwrap_or(false)
                 && page.listings.is_empty()

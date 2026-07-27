@@ -73,12 +73,12 @@ Say who you are and what this site is about. Edit `about.tmd`, or delete it and 
 its link from `nav:` in `_site.yml`.
 "#;
 
-/// `_site.yml` for the `book` template: `chapters:` (which makes it a book) plus title,
-/// author, and a TOC. Byte-pinned by `corpus/scaffold-book/`.
+/// `_site.yml` for the `book` template: `chapters:` (which makes it a book) plus title and
+/// author. No `toc:` — it is inert in a book (item 76), and scaffolding a key the tool then
+/// warns about is the worst of both. Byte-pinned by `corpus/scaffold-book/`.
 const BOOK_SITE_YML: &str = r#"# yaml-language-server: $schema=.taliesin/tali-site.schema.json
 title: My book
 author: Your Name
-toc: true
 chapters:
   - index.tmd
   - intro.tmd
