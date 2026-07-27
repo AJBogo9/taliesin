@@ -9,6 +9,15 @@ License. It builds on the following third-party work.
 
 Bundled so the tool works fully offline.
 
+MIT and ISC both require the **permission notice** — not just the copyright line — to
+be included in every copy, and the minified bundles carry at most a one-line header.
+The verbatim texts therefore ship beside the files they cover:
+[`crates/core/assets/js/LICENSES.md`](crates/core/assets/js/LICENSES.md) (d3, Observable
+Plot, Mermaid + the dependencies Mermaid inlines) and
+[`crates/core/assets/katex/LICENSE`](crates/core/assets/katex/LICENSE) (KaTeX).
+Fonts and syntax definitions already carried theirs
+(`assets/fonts/OFL.txt`, `assets/syntaxes/PowerShell.LICENSE.txt`).
+
 - **KaTeX** (MIT, Copyright (c) 2013-2020 Khan Academy and other contributors).
   The stylesheet and WOFF2 fonts under `crates/core/assets/katex/` render math
   offline. License: <https://github.com/KaTeX/KaTeX/blob/main/LICENSE>.
