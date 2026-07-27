@@ -9,8 +9,48 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > outlive their item go to [LESSONS.md](LESSONS.md). The "do not re-add" list at the bottom is a
 > compact anti-rot guard, **one line per entry**, not a changelog.
 
-## State (2026-07-27)
+## State (2026-07-28)
 
+- **Audit Wave 1 landed and refilled the board: four rounds, 30 items (79-108).** Spec:
+  [2026-07-27-audit-slate-design.md](../docs/superpowers/specs/2026-07-27-audit-slate-design.md)
+  (14 rounds, 3 families). The slate's thesis is that every prior round asked *is this correct?*
+  while professional practice asks four other questions this project had never asked: is it
+  **detectable**, does it **hold under scenario stress**, would a stranger **adopt** it, can it be
+  **handed over**. That thesis paid: **three HIGH security findings, none of which is a correctness
+  bug**, which is exactly why ~30 correctness rounds could not see them. They are defects only once
+  a document arrives from someone else, and publication creates that condition.
+- **The three HIGH findings, each re-verified from source by the controller, not taken on report.**
+  `--no-exec` is documented as "preview untrusted docs safely" but `crates/core` contains **zero**
+  references to `TALIESIN_NO_EXEC`, so `{js}`, raw `<script>` and header injection all still run
+  (item 79). `mounts:` does `root.join(&m.path)` with no containment, and Rust's `Path::join`
+  *replaces* the base on an absolute argument (item 80). `taliesin check` — the kernel-free,
+  network-free pass an agent runs first on an unknown project — spawns the binary named by that
+  project's `_site.yml` `python:` field (item 81).
+- **The licence story is the other headline, and it is two separate problems.** Three tracked files
+  still claim MIT while `Cargo.toml` says `AGPL-3.0-only`, and **tag `v0.2.0` genuinely ships an MIT
+  `LICENSE`**, so cloning the tag gets MIT and the dual-licence moat leaks at a tag (items 82, 83).
+  Separately, **nothing anywhere states what a user's *output* is licensed as** (grep = 0 hits)
+  while every built page inlines bundled CSS/JS carrying no licence header. That second one is an
+  owner ruling, not code (item 101).
+- **One hypothesis was refuted by measurement, and the refutation is worth more than a finding.**
+  This file has warned for weeks that the four hand-run gates were the most likely to have rotted
+  because nothing runs them. **All four pass**, measured on a fresh clone: live Python 457 tests
+  exit 0 (non-vacuous — a named kernel test printed `ok`), live R 3/3 in 20.4 s on a real IRkernel
+  boot, both `tsc` checks exit 0 with `--listFiles` confirming 5 and 25 files, `node --test` 6/6.
+  `cargo audit` and `cargo deny check` also exit 0. **The gates are healthy; what is missing is
+  anything that makes an outsider's run non-vacuous** (item 84).
+- **A second finding died on verification, which is the contract working.** The pre-mortem filed a
+  live jsdelivr CDN URL in the binary. The string is real at `render/mod.rs:1532`, but
+  `mermaid_url_for()` routes Preview to a same-origin vendored copy and a static Build inlines the
+  library content-gated, so it is a never-reached fallback — and **OFF-2 already found and fixed
+  exactly this** on 2026-07-22. What survives is narrow and became item 86: the no-CDN invariant is
+  pinned on the `bare` surface and the reveal.js case only, never on a normal built page.
+- **A `.tmd` from a stranger is `informed consent`, not `safe-by-default`, and that is the right
+  call.** `SECURITY.md:38-41` already says so correctly. The deliverable is discoverability and
+  honest wording (items 87, 88), plus two *enforcement* exceptions that are not "the document's code
+  ran" but "the tool was steered outside the document by metadata": `mounts:` and `check`'s
+  interpreter probe. **Do NOT reverse the CSP ruling** (2026-07-03 catalog): no CSP, no sanitizer,
+  no cell sandbox.
 - **The author-reported round is fully closed: 72-76 plus item 77's four residuals all SHIPPED
   2026-07-27.** 76 removed the book's right-rail TOC (owner ruling, reversing the 2026-07-06 "keep
   both nav surfaces" decision): `Site::page_toc` returns false for a book *ahead of* the page's own
@@ -168,8 +208,34 @@ phone-preview flow, which is a first-class phone feature that got no coverage at
 - **Still blocked:** the prune half of the release audit (gated on the public-flip date), and true
   WebKit unless the phone is an iPhone.
 
-**Auditing is otherwise done for now.** Four fresh lenses on 2026-07-26 produced zero HIGH findings,
-while the one round that produced four came from the author using the tool on a phone.
+**Superseded 2026-07-28 by the audit slate.** "Auditing is done for now" was true of the *lens menu*
+above and false of auditing: the menu was exhausted because every lens on it asked the same question.
+The standing menu is now
+[2026-07-27-audit-slate-design.md](../docs/superpowers/specs/2026-07-27-audit-slate-design.md) —
+14 rounds in 3 families, built from consulting-practice instruments (ATAM, FMEA, pre-mortem, JTBD
+four forces, technical due diligence, VPAT/ACR, value-stream mapping) rather than more code-reading.
+**Wave 1 (R1, R3, R4, R5) ran 2026-07-27/28 and produced three HIGH security findings**, refilling
+this file from one non-coding item to 30. Remaining waves:
+
+- **Wave 2 — R14 (the deck), R6 (ATAM), R7 (FMEA).** **R14 is the top pick.** Measured while
+  scoping: `validate_document_shape` early-returns on `DocFormat::Reveal`
+  (`diagnostics/shape.rs:97`) so **no `TAL-SHAPE-*` warning can ever fire on a slide**, and
+  `validate_a11y` skips heading checks for decks (`diagnostics/a11y.rs:228`) — while `deck.js` is
+  **2,690 lines, the largest hand-written JS in the tree**. The largest hand-written client
+  subsystem has the fewest automated checks. R14 audits the *exemptions*, not deck behaviour (the
+  07-27 touch crossing did that), and its deliverable is an exemption register. Run it **before**
+  R7, which needs that register to score detection blindness.
+- **Wave 3 — R2 (first contact + Nielsen), R8 (author value stream), R9 (axe/Lighthouse + a
+  publishable VPAT), R11 (a real external document).** Needs real builds and a browser.
+- **Any time — R12 real-device mobile (Android).** Still the only lens with a HIGH track record.
+  Wave 1's pre-mortem independently re-priced it as launch-blocking.
+
+**A note on why the deck was under-audited, because the mechanism is reusable.** Nothing in this
+repo forbade it. What existed was three compounding layers: code-level diagnostic exemptions (each
+individually well-reasoned), **eight** "declined / retracted / do-not-re-scope" deck entries in this
+file, and sessions reading that thicket as coverage. The first draft of the audit slate did exactly
+that and wrote "no deck audit" without measuring anything. **A dense do-not-touch cluster is not
+evidence of coverage; it is a reason to measure.**
 
 ## Open items
 
@@ -183,9 +249,106 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### A. Build now
 
-**One item, and it is not a coding task.** The author-reported round (72-76) and its four residuals
-(77) all shipped 2026-07-27. What is left here is an authoring judgment plus a feature proposal;
-nothing in this band is blocked, and nothing in it is a session's work.
+**Refilled 2026-07-28 by audit Wave 1.** Findings docs:
+[adoption friction](2026-07-27-adoption-friction-audit.md) ·
+[pre-mortem](2026-07-27-premortem-audit.md) ·
+[due diligence](2026-07-27-due-diligence-audit.md) ·
+[untrusted document](2026-07-27-untrusted-document-audit.md).
+**Items 79-81 are the launch blockers.** Each finding in these docs carries the measurement that
+produced it and the observation that would refute it; trust the symptom, re-derive the cause.
+
+**Security: the three HIGH findings (a stranger's document)**
+
+79. **`--no-exec` does not stop the document's browser-side code, and the guide promises it does.**
+    (HIGH.) `docs/guide/reference/cli.tmd:148` says "preview untrusted docs safely". `cli.rs:937`
+    makes the flag sugar for `TALIESIN_NO_EXEC=1`, which only `exec::Executor` reads;
+    **`crates/core` contains zero references to it** (measured). So `{js}` cells
+    (`render/mod.rs:861`, `:1034-1037`), raw `<script>` passthrough (`emit.rs:90-91`) and
+    `include-in-header`/`css:` injection (`doc_includes.rs:98-124`) all still run. Fix the wording
+    or fix the flag, but a shipped safety promise must not outrun the behaviour. *Refuted if core
+    gains a no-exec path that suppresses `{js}` emission.*
+80. **`mounts:` resolves an unbounded filesystem path.** (HIGH, preview-only.)
+    `serve_site/mod.rs:293` does `root.join(&m.path)` then `canonicalize().unwrap_or(mroot)`.
+    Rust's `Path::join` **replaces** the base when the argument is absolute, and `..` climbs;
+    `site/config/mod.rs:483` validates the *keys* (`at`, `path`), never containment. One `_site.yml`
+    line turns `preview <dir>` into an arbitrary-directory HTTP file server plus live execution of
+    `.tmd` outside the project. *Confirm with one throwaway `_site.yml` before the fix lands.*
+81. **`check` spawns a project-chosen interpreter.** (HIGH.) `check.rs:382` →
+    `interpreter.rs:150` runs `Command::new(bin).arg("--version")` where `bin` comes from
+    `Provenance::Field`, documented at `interpreter.rs:25` as "a `_site.yml` `python:`/`r:` field
+    (highest precedence)". No `TALIESIN_NO_EXEC` gate. The MCP `check` tool inherits it, described
+    only as "Validate". **Care required:** a user's own `.venv` is the common legitimate case, so a
+    refusal must not degrade normal `check` output.
+
+**Licence correctness (publication blockers)**
+
+82. **Remove every "Taliesin is MIT" claim.** (HIGH.) `THIRD_PARTY.md:3` and `:44`, plus
+    `docs/internals/repository.tmd:133` ("`LICENSE` (MIT)"), against `Cargo.toml`'s
+    `AGPL-3.0-only`. The concurrent session's `6f68386` (unmerged, `critique-pass-2026-07-27`)
+    fixes THIRD_PARTY only and **misses the third occurrence**. Verify all three after that merges.
+83. **Tag a release whose tree and licence match `main`.** (HIGH.) `git show v0.2.0:LICENSE`
+    begins `MIT License` while HEAD ships AGPL-3.0. Anyone cloning the sole version tag gets MIT,
+    which leaks the dual-licence moat that README and `deny.toml` call the commercial strategy.
+
+**Making an outsider's run mean something**
+
+84. **One committed script that runs every gate and fails loudly on a skipped gate.** (HIGH.)
+    The gates are *healthy* (all four measured passing, see State) but they **skip silently** when
+    an interpreter is absent, so an outsider's green run is meaningless. Trap recorded by the
+    round: `cargo test --lib` on `taliesin-server` errors because it is a **bin** crate, and
+    `cmd > log; echo $?` reported exit 0 while the gate had not run. The script must capture
+    cargo's own exit code and assert a named live-kernel test printed `... ok`.
+90. **Restore `.github/workflows/ci.yml` verbatim from history.** (MEDIUM.) Recoverable from
+    `40ddff9^` with all 7 jobs and a `pull_request:` trigger already covering every gate. The
+    stated reason for deletion (billed Actions minutes on a **private** repo) is removed by
+    publication. *Premise refutable if public-repo Actions pricing has changed — re-check first.*
+89. **A ~30-line root `CONTRIBUTING.md`, including inbound-contribution licence terms.** (MEDIUM.)
+    `core.hooksPath` is **unset in a fresh clone** (measured) and no tracked file carries the wiring
+    command, so a contributor's PR runs no gate at all. The 2026-07-17 round refuted "no
+    CONTRIBUTING.md" as a *vulnerability*, correctly, and never assessed its **licensing-continuity**
+    function under a README that reserves relicensing rights.
+
+**Honesty of shipped words**
+
+88. **Three shipped strings that contradict shipped behaviour.** (MEDIUM.)
+    `docs/internals/repository.tmd:182` claims `--host` auto-enables `--no-exec`;
+    `SECURITY.md`'s symlink allowance assumes *you* placed the symlink (false for an untrusted
+    archive); and `include-in-header`/`include-before-body`/`include-after-body`/`css:` inject
+    verbatim with nothing saying so. Same family as item 75: **no gate compares prose against
+    behaviour.**
+87. **A discoverable "documents you did not write" section, plus a one-line first-run notice.**
+    (MEDIUM.) `SECURITY.md:38-41` already takes the right position; the defect is that nobody about
+    to open a stranger's `.tmd` will find it.
+
+**Smaller, verified**
+
+85. **`theme:`'s `_extensions` arm bypasses `safe_join_in`.** (MEDIUM.) `theme.rs:44-48`.
+86. **Assert the offline guarantee over every built artifact, not one.** (MEDIUM.) `corpus.rs:923`
+    asserts no-CDN on the `bare` surface only and `render/tests.rs:1880` on the reveal.js case only;
+    no test pins it on a normal built page. **Not a live CDN fetch** — `render/mod.rs:1532` is a
+    never-reached fallback (OFF-2, fixed 2026-07-22). This is the *coverage* residual only.
+91. **Make `chromiumoxide` an optional Cargo feature.** (MEDIUM.) `crates/server/Cargo.toml:47`
+    declares it unconditionally and the crate has **no `[features]` section** (measured), so every
+    build pays for a browser driver. The runtime `TALIESIN_REQUIRE_CHROME` gate is not a build gate.
+92. **Set the install expectation, ship binaries, state the platform matrix.** (MEDIUM.) Every
+    verifiable claim currently sits behind a 343-crate release build on a Unix-only tree with no
+    binaries, no hosted docs and no demo; launch attention is one-shot.
+93. **A "Coming from Quarto" page, generated from the vocabulary consts that already exist.**
+    (MEDIUM.) `check` already emits located diagnostics naming every Quarto-ism plus "found
+    `_quarto.yml` … rename it", so the migration assistant ships and nothing says so. Zero
+    migration pages exist in either book.
+94. **A "Your source stays yours" paragraph, with the measured number.** (MEDIUM.) Measured across
+    all 115 corpus docs (10,118 lines): at most **8.59%** of lines carry any non-CommonMark
+    construct, and all six families are Pandoc/Quarto vocabulary, not invented. Three exits already
+    exist (Markdown source, `read --format json`, runtime-free static HTML) and none is *named* as
+    one. **The "no exit path" anxiety is refuted; the fix is to say so.**
+95. **A continuity paragraph: one maintainer, pre-1.0, and what leaving costs.** (MEDIUM.)
+96. **Quantify the dogfooding claim.** (LOW.)
+97. **`{{< embed >}}` and `{{< video >}}` sources are not scheme-filtered.** (LOW.)
+98. **Glob the two `jsconfig.json` include lists.** (LOW.) Both are hand-enumerated, so a new file
+    is silently unchecked by the `tsc` gates.
+99. **Spot-check that `TALIESIN_REQUIRE_CHROME=1 --test read_run_js` really launches a browser.**
+    (LOW.) The one gate whose non-vacuity was not established this round.
 
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
@@ -209,6 +372,33 @@ as unreadable-on-a-light-page and measured perfectly readable, while the figure 
 the broken one). Refile here only after re-deriving the cause from source.
 
 ### C. Blocked on an owner ruling (not a task until then)
+
+100. **THE PUBLISH-SURFACE RULING, and it gates half of Wave 1's register.** (HIGH, ruling.)
+     `notes/STARTUP-PLAN.md:126` records a plan to publish as a **fresh repo with no history**
+     ("Keep this repo private forever; the public one is a separate repo"), *not* to flip this
+     repo's visibility. Those two routes resolve different findings, so the prune work cannot be
+     scoped until this is ruled. Two hard facts either way:
+     - **`notes/FUNDING-RESEARCH.md` and `notes/STARTUP-PLAN.md` are git-TRACKED while their own
+       text says they must not be** (`FUNDING-RESEARCH.md:4` "keep this file out of";
+       `STARTUP-PLAN.md:119` "remove anything private: `STARTUP-PLAN.md`"). They carry the ***REMOVED***
+       analysis, a table of named funders being skipped and why, a funder's contact address, and
+       "***REMOVED***". The 2026-07-17 round already filed this and
+       recorded the prune as **not done**.
+     - **A fresh `git init` fixes none of the tree-level findings** and discards the 1,573-commit
+       process record, which is the strongest evidence an individual grant applicant has. The
+       due-diligence doc's §6 proposes a third route (targeted `filter-repo`) with its honest cost.
+     Supersedes the "flip-day artefact checklist" framing; **extends item 25, does not replace it.**
+101. **State the licence position on what Taliesin *emits*.** (HIGH, ruling.) Measured: **zero**
+     statements across README, LICENSE, THIRD_PARTY, SECURITY and both books' source about what a
+     user's output is licensed as. It is a genuinely non-obvious question here because every built
+     page inlines AGPL-licensed CSS/JS (`base.css`, `deck.js`, `tali-js.js` spot-checked, **none
+     carries a licence header**), so a user's blog contains AGPL material. **No licence change is
+     proposed** — the finding is that the position is unstated, and stating it discounts the
+     licence, bus-factor and portability anxieties at once.
+102. **Decide what to do about constructs that render elsewhere and silently do not here.**
+     (Ruling.) Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
+103. **Clear the name in software classes before the flip.** (Ruling, legal not code.) Trademark
+     search in the relevant classes; the name is the retained optionality per the product stance.
 
 71. **Two deck-on-touch behaviours that are working-as-written, and may be working-as-wrong**
     (DT-3 + DT-4, detail: [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)).
@@ -240,6 +430,20 @@ the broken one). Refile here only after re-deriving the cause from source.
 ### D. Blocked on a device, a real user, or working-as-intended
 
 Kept visible so they are not re-scoped. Revive on a real signal, not on capacity.
+
+104. **Three Wave 1 items whose own round could not verify them, filed with the measurement each
+     needs.** (Do not build until measured — each says so in its findings doc.)
+     - **The `.gitattributes` line that makes `.tmd` behave like `.md`** on GitHub. Needs GitHub
+       linguist-override behaviour confirmed; the round could not.
+     - **The Jupyter on-ramp that already exists outside the project.** Needs `nbconvert` output
+       confirmed to survive the rename.
+     - **The scale ceiling**, measured with a **runtime-generated fixture that never enters the
+       corpus walker** — deliberately shaped to respect the standing ban on growing `corpus/tarn`
+       and on minting `corpus/longbook`, whose stated reason is that the walker renders every
+       corpus doc on every `cargo test`.
+105. **The headless `--no-sandbox` rationale rests on an assumption this round retired.** (LOW.)
+     The justification assumed only author-written documents reach the headless path; item 79's
+     family says otherwise. Re-derive the rationale before changing the flag.
 
 78. **The figure recolour has no notion of "text sitting on a data fill", so it can *cause* the
     contrast failure it exists to prevent** (P3, filed 2026-07-27 while fixing item 77's fourth

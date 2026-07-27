@@ -171,6 +171,20 @@ through its wrappers. What was actually missing was a fixture *shape*.
   browser: point `CHROME_PATH` at a program that launches and then sleeps. 20.00 s before, 7 s after
   — the assertion is on the clock.
 
+- **A gate that skips silently makes someone else's green run meaningless.** Wave 1 measured all
+  four hand-run gates PASSING, refuting weeks of "they have probably rotted". The real defect was
+  the adjacent one: they skip when an interpreter is absent, so *your* green run proves the gates
+  and an *outsider's* proves nothing. Non-vacuity must be asserted, not assumed — confirm a named
+  live-kernel test printed `... ok`, and confirm `tsc` with `--listFiles` that files were checked.
+- **`cargo test --lib` on `taliesin-server` errors — it is a `bin` crate — and `cmd > log; echo $?`
+  reports the exit code of `echo`, not of cargo.** Together those two made a harness report exit 0
+  for a gate that never ran. Capture the command's own exit code, and never infer a pass from a log
+  file that could be empty for the wrong reason. (Third recorded instance of the bin-crate trap.)
+- **A repo-wide grep hits gitignored build output.** `docs/guide/_book/` and `_site/` contain a
+  rendered copy of everything, so a `grep -r` for any phrase returns the *artifact* as well as the
+  source, and a stale artifact answers a question about the source wrongly. This is AP9's "12
+  `<h1>`" trap in a new costume. Exclude `_book/` and `_site/`, or restrict to tracked source.
+
 ## What the test net structurally cannot see
 
 The dogfood books (`docs/guide`, `docs/internals`) are **not** in the regression net, so any shape
@@ -187,6 +201,22 @@ Grepping the manual for a front-matter key also hits the manual's own *documenta
 any coverage figure over `docs/` must parse the leading front-matter block, not match a line.
 
 ## Reading an item or a finding before acting on it
+
+- **A dense "do not touch" cluster is not evidence of coverage; it is a reason to measure.**
+  The deck accumulated eight declined / retracted / do-not-re-scope entries in `backlog.md`, each
+  individually a sound ruling, plus two code-level diagnostic exemptions
+  (`diagnostics/shape.rs:97`, `diagnostics/a11y.rs:228`) each with a defensible rationale. The
+  aggregate made the **largest hand-written client subsystem in the tree** (`deck.js`, 2,690 lines)
+  the one with the fewest automated checks — and made sessions approaching it back off. The first
+  draft of the 2026-07-27 audit slate read that thicket and wrote "no deck audit" **without
+  measuring anything**, which is the mechanism reproducing itself inside the document meant to fix
+  it. **An exemption is not a hole; an exemption whose replacement check was never written is.**
+- **Ask what question an audit is asking before adding another one.** By 2026-07-26 four fresh
+  lenses in a day produced zero HIGH findings, and the menu read as exhausted. It was not: every
+  lens on it asked *is this correct?*. Wave 1 asked four other questions (is it **detectable**, does
+  it **hold under scenario stress**, would a stranger **adopt** it, can it be **handed over**) and
+  found three HIGH security defects in one pass. **None of them is a correctness bug** — they are
+  defects only once a document arrives from someone else.
 
 - **Trust the symptom, never the stated cause, line number or cost** — all three have rotted, and a
   stale *cause* has sat under a real *symptom* (MOB-5: the dialog half was already fixed; the focus
