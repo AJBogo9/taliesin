@@ -101,14 +101,20 @@ across the campaign, all the same shape, with zero exceptions — treat the rule
 
 ## Ranked next moves
 
-1. **The cursor-walk table test, written once and applied to both `lsp_nav.rs` and
-   `lsp_complete.rs`.** ~85 survivors, and it is the item the partial run already prescribed.
-2. **One assertion on `server_capabilities`.** 11 survivors for a few lines, guarding the LSP
-   handshake that click-to-source depends on.
-3. **`runtime_dirs.rs`, 5 survivors, currently zero tests.** `pid_alive` and the stale-dir sweep are
-   the kind of thing that fails silently in production, which is exactly why the mutants survive.
-4. **`complete.rs`, 30 survivors** — shell completion output has no behavioural pin.
-5. **`doctor.rs`, 14** — but see below; a good chunk is cosmetic.
+**1-3 SHIPPED 2026-07-27** — see the post-pin section below for what they cost and what they taught.
+
+1. ~~The cursor-walk table test over `lsp_nav.rs` + `lsp_complete.rs`~~ — **done**, but it took two
+   passes; the reason is the axis note below.
+2. ~~One assertion on `server_capabilities`~~ — **done**, all 12.
+3. ~~`runtime_dirs.rs`~~ — **done**, 4 of 5. **Correction to the paragraph above: this file did *not*
+   have zero tests, and `pid_alive` was *not* unpinned.** It had two good tests covering the sweep
+   logic (dead owner, live owner, own pid, legacy dir). The real gaps were narrower — the producer and
+   consumer were tested apart, and the public entry point was never called — and the fifth survivor
+   is `cfg`-dead, not a gap.
+4. **`complete.rs`, 30 survivors** — shell completion output has no behavioural pin. (Item 63.)
+5. **`doctor.rs`, 14** — but see below; a good chunk is cosmetic. (Item 64.)
+
+Exact locations for everything still owed are in the appendix at the end of this file.
 
 ## Deliberate skips, with the reason recorded so they are not re-litigated
 
@@ -179,3 +185,130 @@ Nothing in scope: `lsp_nav.rs` is banked as a partial (338 of 444, findings comp
 and these ten files are complete. The **106 untested `lsp_nav.rs` mutants** are the only unmeasured
 remainder of the server half, and re-running that file is confirmation work, best done *after* the
 cursor-walk test lands.
+
+## Appendix: the exact survivor locations still owed
+
+Banked **inside the repo** so the remaining items do not depend on a `mutants.out` that lives
+outside it. Copy a block into a `-F` regex to re-measure just that file after pinning it.
+`interactive.rs`'s five are deliberately absent: knowing skip, reason above.
+
+### `lsp.rs` — item 60 (33 survivors)
+
+```
+lsp.rs:22:5: replace server_capabilities -> ServerCapabilities with Default::default()
+lsp.rs:26:9: delete field position_encoding from struct ServerCapabilities expression in server_capabilities
+lsp.rs:27:9: delete field text_document_sync from struct ServerCapabilities expression in server_capabilities
+lsp.rs:29:17: delete field open_close from struct TextDocumentSyncOptions expression in server_capabilities
+lsp.rs:30:17: delete field change from struct TextDocumentSyncOptions expression in server_capabilities
+lsp.rs:34:9: delete field definition_provider from struct ServerCapabilities expression in server_capabilities
+lsp.rs:35:9: delete field document_symbol_provider from struct ServerCapabilities expression in server_capabilities
+lsp.rs:36:9: delete field hover_provider from struct ServerCapabilities expression in server_capabilities
+lsp.rs:37:9: delete field completion_provider from struct ServerCapabilities expression in server_capabilities
+lsp.rs:40:13: delete field trigger_characters from struct CompletionOptions expression in server_capabilities
+lsp.rs:48:9: delete field code_action_provider from struct ServerCapabilities expression in server_capabilities
+lsp.rs:49:9: delete field rename_provider from struct ServerCapabilities expression in server_capabilities
+lsp.rs:62:5: replace cmd_lsp -> ExitCode with Default::default()
+lsp.rs:262:23: delete - in handle_request
+lsp.rs:303:16: delete ! in resolve_definition
+lsp.rs:313:44: replace + with - in resolve_definition
+lsp.rs:313:44: replace + with * in resolve_definition
+lsp.rs:447:13: delete field diagnostics from struct CodeAction expression in resolve_code_actions
+lsp.rs:574:9: delete field kind from struct CompletionItem expression in resolve_completion
+lsp.rs:608:47: replace || with && in resolve_completion
+lsp.rs:647:37: replace || with && in resolve_completion
+lsp.rs:672:39: replace + with - in resolve_completion
+lsp.rs:672:39: replace + with * in resolve_completion
+lsp.rs:705:25: delete field label from struct CompletionItem expression in resolve_completion
+lsp.rs:706:25: delete field kind from struct CompletionItem expression in resolve_completion
+lsp.rs:711:25: delete field detail from struct CompletionItem expression in resolve_completion
+lsp.rs:712:25: delete field filter_text from struct CompletionItem expression in resolve_completion
+lsp.rs:713:25: delete field text_edit from struct CompletionItem expression in resolve_completion
+lsp.rs:755:32: replace match guard !number.is_empty() with true in merged_xref_targets
+lsp.rs:798:5: replace frontmatter_key_doc -> Option<String> with Some(String::new())
+lsp.rs:798:5: replace frontmatter_key_doc -> Option<String> with Some("xyzzy".into())
+lsp.rs:805:38: replace == with != in frontmatter_key_doc
+lsp.rs:859:25: replace > with >= in to_document_symbol
+```
+
+### `headless_js.rs` — item 62 (7 survivors)
+
+```
+headless_js.rs:200:5: replace chrome_available -> bool with true
+headless_js.rs:215:5: replace settle_timeout -> Duration with Default::default()
+headless_js.rs:218:24: replace > with >= in settle_timeout
+headless_js.rs:311:47: replace + with - in observe_inner
+headless_js.rs:331:25: replace && with || in observe_inner
+headless_js.rs:332:8: delete ! in observe_inner
+headless_js.rs:373:16: replace + with - in observe_page
+```
+
+### `complete.rs` — item 63 (30 survivors)
+
+```
+complete.rs:15:5: replace cmd_completions -> ExitCode with Default::default()
+complete.rs:16:41: replace == with != in cmd_completions
+complete.rs:21:19: delete ! in cmd_completions
+complete.rs:68:70: delete ! in InstallEnv::from_env
+complete.rs:135:5: replace install_completions -> ExitCode with Default::default()
+complete.rs:329:5: replace command_desc -> &'static str with "xyzzy"
+complete.rs:418:9: delete match arm "schema" in flags_for
+complete.rs:419:9: delete match arm "symbols" in flags_for
+complete.rs:423:9: delete match arm "map" in flags_for
+complete.rs:427:9: delete match arm "skim" in flags_for
+complete.rs:495:16: delete ! in positionals_seen
+complete.rs:496:17: replace && with || in positionals_seen
+complete.rs:498:45: replace == with != in positionals_seen
+complete.rs:498:52: replace && with || in positionals_seen
+complete.rs:500:19: replace += with -= in positionals_seen
+complete.rs:500:19: replace += with *= in positionals_seen
+complete.rs:533:9: delete match arm "render" | "read" | "blocks" | "symbols" in positional_kind
+complete.rs:544:40: replace + with - in complete_paths
+complete.rs:544:40: replace + with * in complete_paths
+complete.rs:565:37: delete ! in complete_paths
+complete.rs:623:13: replace && with || in dir_contains_tmd
+complete.rs:623:22: replace > with >= in dir_contains_tmd
+complete.rs:624:13: replace && with || in dir_contains_tmd
+complete.rs:625:13: replace && with || in dir_contains_tmd
+complete.rs:630:60: replace - with + in dir_contains_tmd
+complete.rs:630:60: replace - with / in dir_contains_tmd
+complete.rs:683:41: replace && with || in complete_line
+complete.rs:688:26: replace == with != in complete_line
+complete.rs:688:42: replace && with || in complete_line
+complete.rs:688:60: replace == with != in complete_line
+```
+
+### `doctor.rs` — item 64 (14 survivors)
+
+```
+doctor.rs:26:9: replace Status::glyph -> char with Default::default()
+doctor.rs:33:9: replace Status::color -> &'static str with ""
+doctor.rs:33:9: replace Status::color -> &'static str with "xyzzy"
+doctor.rs:40:9: replace Status::json -> &'static str with ""
+doctor.rs:40:9: replace Status::json -> &'static str with "xyzzy"
+doctor.rs:142:25: delete ! in active_env_check
+doctor.rs:173:5: replace colored -> bool with true
+doctor.rs:173:5: replace colored -> bool with false
+doctor.rs:173:44: replace && with || in colored
+doctor.rs:176:5: replace paint -> String with String::new()
+doctor.rs:176:5: replace paint -> String with "xyzzy".into()
+doctor.rs:187:70: replace == with != in summary
+doctor.rs:188:13: delete match arm Some(Status::Ok) in summary
+doctor.rs:244:18: replace match guard s.starts_with("--") with false in cmd_doctor
+```
+
+### `lsp_outline.rs` — item 64 (4 survivors)
+
+```
+lsp_outline.rs:31:40: replace && with || in clean_title
+lsp_outline.rs:31:51: replace + with - in clean_title
+lsp_outline.rs:31:51: replace + with * in clean_title
+lsp_outline.rs:85:27: replace + with * in headings
+```
+
+### `zip.rs` — item 64 (2 survivors)
+
+```
+zip.rs:48:89: replace < with <= in build_zip
+zip.rs:104:36: replace - with + in build_zip
+```
+

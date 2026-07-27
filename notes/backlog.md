@@ -15,18 +15,24 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 test-writing it exposed, not more compute.** The `crates/server` half finished 2026-07-27
 (707 mutants in 1 h 32 min, **156 survivors** —
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
-only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work. What band A now holds is
-item **56**'s residual (a *feature proposal* and an authoring judgment rather than a task) plus the
-ranked pin-writing list in that findings doc, headed by **one table-driven cursor-walk test that
-serves `lsp_nav.rs` and `lsp_complete.rs` at once (~85 survivors)**. Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
+only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
+
+**Start here: band A is ranked 58-68 and the top three (58, 59, 61) shipped 2026-07-27, so the next
+item is 60.** Each remaining item names its file, its survivor list and its reason for ranking where
+it does, so it can be picked up cold. Before writing any pin, read the axis note in the band-A
+preamble — it is what made the first attempt at 58 only half a job. Band A also still holds item
+**56**'s residual, which is a *feature proposal* and an authoring judgment rather than a task.
+
+Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
 (50, 51, 57), migration UX (53, 54), the metadata half of 56, and **deck weight + headless-JS
 bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day. Band B is empty;
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-26 at the last landing:** full workspace suite with all three gates and
-`--test-threads=1` is **94 binaries, 0 failures**; `cargo fmt --check`, `clippy --workspace
---all-targets` and both JS `tsc` gates clean. The live-Chrome suite
+**Verified 2026-07-27 at the last landing** (branch `mutation-server-half-complete`): full workspace
+suite is **94 binaries, 1,582 tests, 0 failures**; `cargo fmt --check` and `clippy --workspace
+--all-targets -D warnings` clean. The two JS `tsc` gates were **not** re-run — this batch touched no
+JS — so treat them as last verified 2026-07-26. The live-Chrome suite
 (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) is a **fourth** gate nothing else runs, and 55 is
 the reason to remember it exists.
 
@@ -346,11 +352,26 @@ completed server files, **156 survivors**) and
 [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md)
 (`lsp_nav.rs`, 338 of 444, **36 survivors**).
 
-**Two rules that apply to every item below.** Verify each pin by *mutation*: restore the mutant by
-hand, watch the named test fail, then restore the fix — a pin that was never seen to fail is not a
-pin. And **never write a test for a timeout**: 39 of 39 across the campaign are `+=`→`*=` on a scan
-cursor, where a loop that stops advancing spins rather than returning a wrong answer, so the hang
-*is* the detection.
+**Four rules that apply to every pin item below** (58/59/61 paid for all four on 2026-07-27):
+
+1. **Verify each pin by *mutation*:** restore the mutant by hand, watch the *named* test fail, then
+   restore the fix. A pin never seen to fail is not a pin. **Revert by inverse edit, never
+   `git checkout`** — it restores from HEAD and silently deleted these very tests once, making two
+   verifications vacuously green. And assert your mutation anchor matches **exactly once**: one that
+   matched twice reported "skip" and tested nothing.
+2. **Cover two axes, not one.** A sweep over *well-formed* input pins **spans**; but most survivors
+   are guards that **reject**, and weakening one does not move a boundary — it makes the code
+   *accept nonsense* (an empty key, an empty id, a construct read one character past the line end).
+   **Malformed input is a separate axis**, and the first pass at 58 skipped it and killed only half.
+3. **Suspect a test that looks like coverage.** Two holes here were fully line-covered: a helper that
+   drove the real path and *discarded its result* (`let _ = recv()` on the LSP handshake), and a
+   fixture that *could not reach the assertion* (a `.hidden` dotfile in a filter that only emits
+   `.tmd`).
+4. **Never write a test for a timeout**, and expect some survivors to be **unkillable**: 41 of 41
+   campaign timeouts are `+=`→`*=` on a scan cursor, where a stalled loop spins instead of returning
+   a wrong answer, so the hang *is* the detection. Four mutants are proven equivalent or `cfg`-dead
+   (listed in the 07-27 findings doc); `cargo-mutants` does not evaluate `cfg`, so the `cfg`-dead one
+   **reappears on every run**. Prove, record, move on — do not chase a score.
 
 58. **SHIPPED 2026-07-27** (`a4f1600`, `ba0b3f7`, `31a30fe`, `9f7a4b5`, `8ecf607`) — the
     cursor-walk pins for `lsp_nav.rs` + `lsp_complete.rs`. **92 survivor locations, 89 killed, 3
@@ -372,8 +393,12 @@ cursor, where a loop that stops advancing spins rather than returning a wrong an
     reports, since every line ran.
 60. **The rest of `lsp.rs`'s request surface** (21): `resolve_completion` (10), `resolve_definition`
     (3), `to_document_symbol`, `resolve_code_actions`, `merged_xref_targets`, `handle_request`,
-    `frontmatter_key_doc` (3 incl. two whole-body replacements), `cmd_lsp`. Ranked here because you
-    are already in the file for 59, so the marginal cost is small.
+    `frontmatter_key_doc` (3 incl. two whole-body replacements), `cmd_lsp`. **Cheap to start:** 59
+    already landed in this file, and `lsp.rs`'s test module has an in-process client harness
+    (`Connection::memory()` + `run(server)` on a thread, with `handshake`/`shutdown`/`recv_response`
+    helpers), so these can be driven as real requests rather than unit-called. Exact survivor
+    locations: the appendix of
+    [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
 61. **SHIPPED 2026-07-27** (`02a35da`) — `runtime_dirs.rs`, 4 of its 5 killed. **This item was
     written wrong and the correction is the useful part.** It claimed the file had zero tests and
     that `pid_alive` was unpinned; both were false. The file has two good tests, the sweep logic is
