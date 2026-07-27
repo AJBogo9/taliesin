@@ -9,71 +9,52 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > outlive their item go to [LESSONS.md](LESSONS.md). The "do not re-add" list at the bottom is a
 > compact anti-rot guard, **one line per entry**, not a changelog.
 
-## State (2026-07-27)
+## State (2026-07-28)
 
-- **The author-reported round is fully closed: 72-76 plus item 77's four residuals all SHIPPED
-  2026-07-27.** 76 removed the book's right-rail TOC (owner ruling, reversing the 2026-07-06 "keep
-  both nav surfaces" decision): `Site::page_toc` returns false for a book *ahead of* the page's own
-  `toc:`, so one gate covers both builds and both previews, and the 14rem track the layout reserved on
-  *every* chapter went with it at an unchanged text measure. `toc:` is inert in a book now, so
-  `_site.yml` validation says so and the six book configs plus the `init` scaffold dropped the key.
-  77 shipped as three code fixes and one refutation (next bullet). Item **56** remains an authoring
-  judgment plus a feature proposal, not a task — and it is now the only thing in band A.
-- **One of item 77's four was false, and the false one is the lesson.** Filed as "the pca-geometry
-  scree plot bakes `tick_params(colors=\"white\")` into a PNG, so it is unreadable on a light page."
-  Rendered through a real kernel and read in a browser: **perfectly legible.**
-  `MPL_THEME_PREAMBLE`'s `_tali_recolour` overrides every `Text`, spine and tickline before each of
-  the two inline PNGs, so a hardcoded foreground never reaches the page. The item's *second* claim was
-  the real defect (the bars still carried the pre-72 light-on-dark palette while the neighbouring 3-D
-  arrows had been retuned, so two adjacent figures named one colour in two shades). Same shape as
-  DT-5: **a filed cause is a hypothesis, and this is the second in two days that did not survive being
-  measured.**
-- **That round's own defect is the one worth remembering.** Item 74 shipped two brand SVGs that were
-  served `200 image/svg+xml`, were copied into the build correctly, and painted a **broken image** on
-  the forward-facing blog: each carried a CSS comment naming a tag in angle brackets, and an SVG
-  `style` element is XML, not HTML, so it is not an implicit CDATA section. Every check passed because
-  "the file exists and is served" is not "the file renders" — it took a browser to see it.
-  `crates/core/tests/svg_assets_render.rs` now pins both properties an `img`-loaded SVG needs.
-- **The duplicate item 70 resolved itself, and not the way it first looked.** Two items were filed as
-  70 on the same day, and the obvious fix was to keep the deck-letterbox one (AUDITS.md pointed at it
-  as "items 70-71") and renumber the `_site.yml`-boundary one. **That would have renumbered the
-  survivor.** The letterbox item was DT-5, which was **retracted the same day as false** (`5e92816`,
-  on `origin/main`): the probe intersected each neighbour with the *viewport* instead of its
-  *clipping ancestor*, and `.tali-deck`'s `overflow: hidden` had been clipping them all along. So
-  band A's 70 no longer exists and the `_site.yml` item keeps **70** as the original claimant. (77 was
-  later issued for something unrelated, and has since shipped.) **The lesson is about this file, not
-  about decks:** a numbering collision can be
-  the symptom of a bad filing rather than a clerical slip, so check whether both items are *real*
-  before renumbering either.
-- **A lens is the best opener: band A holds no code work and band B is empty.** (Band D gained
-  **78** on the way out of 77 — a real tool defect, but a filed-not-scoped one with no obvious fix,
-  which is why it is in D and not A.) Standing recommendation:
-  **real-device mobile** — unblocked, and that round verifies rather than re-finds since batch 1
-  shipped. First thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the
-  root holds less completely on iOS Safari than on Chromium, and only Chromium was measured. The
-  drawer also just became a book's *only* navigation surface (item 76), which raises what a
-  real-device failure there would cost.
-- **The author-reported round is worth a method note** ([LESSONS.md](LESSONS.md) candidate): six
-  observations from *using* the product produced four real defects, one broader than reported (72) and
-  one already fixed but still advertised (75). Two of the four are stale strings that every automated
-  gate passes over, because no gate compares prose against behaviour.
-- **Nothing is owed by the author.** The last item needing a human (the in-editor click-to-source
-  round-trip) was verified 2026-07-25. **That coverage gap is permanent:** the relay harness passes
-  both directions but stops at the relay and cannot see whether the editor lands the cursor, so any
-  future change to the relay or the companion re-opens the same manual check.
-- **Do not trust this file's freshness.** The author pushes mid-session with no signal here, and a
-  scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are
-  recorded** — a count written *into* this file is invalidated by the commit that writes it. Ask git:
-  `git log --oneline origin/main..main`.
-- **Gates at the last code landing (2026-07-27, the 76 + 77 batch), re-run before trusting them:**
-  full workspace suite with all three gates and `--test-threads=1` = **99 binaries, 1,671 tests, 0
-  failures, 0 ignored** (zero ignored is the check that the gates were live, not skipping); `cargo fmt
-  --check` and `clippy --workspace --all-targets -D warnings` clean. The **fourth** gate
-  (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`, 3 pass) was run too. **Both JS `tsc` gates clean**,
-  as was `node --test crates/server/src/assets/_middleware.test.mjs` (6 pass). `check` clean on all
-  15 corpus/docs projects. Item 76 was browser-verified at 1440px and at narrow width; item 77's
-  figure was browser-verified on both themes after a `TALIESIN_NO_CACHE=1` rebuild through a live
-  Python kernel.
+- **A six-critic adversarial round landed 2026-07-28 and refilled band A, which the previous
+  state described as holding no code work.** Method and full findings:
+  [2026-07-28-launch-critique.md](2026-07-28-launch-critique.md) (1,088 lines). Six hostile
+  critics on disjoint surfaces, then a defender per critic whose job was to refute; only
+  findings the defender could not kill became items. **14 commits landed on branch
+  `critique-pass-2026-07-27`** (not merged, not pushed) — read that branch before starting, or
+  you will re-fix what is already fixed.
+- **The round's own lesson is the one to carry ([LESSONS.md](LESSONS.md) candidate — not filed
+  there yet, because a parallel session held that file open): a fix lands in one file and misses
+  its sibling.** It happened three times in one session, twice to fixes made *during* the round —
+  `THIRD_PARTY.md` was corrected to AGPL while `docs/internals/repository.tmd` still said MIT;
+  `deny.toml`'s header lost its CI claim while a comment twelve lines below kept one. Both were
+  caught only because a defender re-read the fixed files. **Fix the class, grep the repo for the
+  shape, and gate on the shape — never on the sentence you happened to fix.**
+- **The structural cause is already named in this file and is now item 87.** No gate compares
+  committed prose against behaviour, so `check`, `fmt`, `clippy` and 1,673 tests all pass over a
+  false sentence. `crates/core/tests/stale_docs.rs` is the only gate that tries, and this round
+  found it checked the wrong files with the wrong needles *and* carried a test asserting a live
+  23 KB module was deleted. Repaired twice, both mutation-verified — but it still covers only
+  deck vocabulary and CI claims.
+- **Three of the critics' proposed fixes were wrong in ways that would have shipped a NEW false
+  sentence**, and the defender caught each. Before applying any fix text from the findings doc,
+  read its correction note. The worst: a proposed defence-in-depth would have dropped `"tmd"`
+  from `SKIP_EXT`, which `mirror_assets` uses to *exclude* sources — it would have copied every
+  `.tmd` in the project into the deploy.
+- **A defender also refuted one of the orchestrator's own findings outright** (the stale
+  "mermaid is the sole CDN dep" sentence is in `notes/`, not in the shipped `THIRD_PARTY.md`,
+  which is accurate and drift-locked). Findings from this round are *adjudicated*, not assumed.
+- **Do not trust this file's freshness.** The author pushes mid-session with no signal here, and
+  a scoped prune leaves the rest looking freshly reviewed. **No commit counts and no SHAs are
+  recorded** — a count written *into* this file is invalidated by the commit that writes it.
+  Ask git: `git log --oneline origin/main..main`.
+- **Gates at the last code landing (2026-07-28, the critique branch), re-run before trusting
+  them:** full workspace suite with all three interpreter gates and `--test-threads=1` =
+  **99 binaries, 1,673 tests, 0 failures, 0 ignored** (zero ignored is the check that the gates
+  were live, not skipping); `cargo fmt --check` and `clippy --workspace --all-targets -D
+  warnings` clean. The **fourth** gate (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) was run.
+  Both JS `tsc` gates clean, as was `node --test crates/server/src/assets/_middleware.test.mjs`
+  (6 pass). `check` clean on all 7 corpus/docs projects exercised. Built guide + site carry
+  **0** leaked `.tmd` sources and **0** unrewritten `.tmd` hrefs (both were 1 before).
+- **Nothing is owed by the author except the band C rulings below.** The permanent
+  click-to-source coverage gap still stands: the relay harness passes both directions but stops
+  at the relay and cannot see whether the editor lands the cursor, so any change to the relay or
+  the companion re-opens a manual check.
 
 ## Standing constraints (read before working)
 
@@ -183,9 +164,134 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### A. Build now
 
-**One item, and it is not a coding task.** The author-reported round (72-76) and its four residuals
-(77) all shipped 2026-07-27. What is left here is an authoring judgment plus a feature proposal;
-nothing in this band is blocked, and nothing in it is a session's work.
+**Refilled by the 2026-07-28 critique round.** Every item below was conceded by a defender that
+tried to refute it, and every one carries a measured repro in
+[2026-07-28-launch-critique.md](2026-07-28-launch-critique.md). **Read the branch
+`critique-pass-2026-07-27` first** — 14 commits already fixed the deck source leak, the LSP
+languageId gate, the stale-prose gate (twice), the AGPL/MIT contradiction, the false CI claims,
+the landing page's imaginary pen tool, and ~10 other false doc claims. Ranked.
+
+79. **A block with more than one root element is only half-mounted, which silently inverts the
+    headline claim.** `web-client/client.js:1014` `fragment()` returns `firstElementChild`, so
+    `update`/`insert`/`remove` (`:1325`/`:1341`/`:1365`) operate on one of N roots. Measured on
+    the **shipped** `corpus/descent` explainer: editing a slider's `max` changes the block id —
+    so the op *looks* applied — while the DOM keeps the old value, and deleting the block
+    strands the extra roots in the page forever. Preview then disagrees with what `build`
+    publishes, which is the one thing the block model exists to prevent. Blast radius across 161
+    corpus+docs documents: **2 pages, 6 orphan roots** (`corpus/descent/index.tmd`,
+    `corpus/diagnostics/a11y.tmd`). **Fix server-side** — give every block exactly one root, the
+    invariant `crates/core/src/site/backlinks.rs:338` already asserts for its own emitter. A
+    client-side fix re-derives the same invariant in the wrong layer. *This is the one item in
+    this band that touches the block model; it deserves its own session and a mutation-verified
+    pin that a multi-root block round-trips through a swap.*
+
+80. **`textDocument/rename` corrupts source, and reaches outside the document.** Two defects in
+    the feature `CLAUDE.md` calls *the* sanctioned way to edit source.
+    - **No validation.** `lsp.rs:523-526` rejects only a blank name. Measured: `F2` → `my
+      section` emits a 3-edit `WorkspaceEdit` producing `{#my section}` (not an anchor — see
+      `is_id_char`, `lsp_complete.rs:320`) and rewrites every reference to match; a newline in
+      the name splits the heading line in two. Fix: validate against the anchor grammar and
+      return a `ResponseError` so the editor surfaces it in the rename box. Leave
+      `resolve_prepare_rename` alone.
+    - **It rewrites external URL fragments.** `lsp_nav.rs:310` `is_anchor_site` treats any `#`
+      before the id as a definition sigil, so renaming a section retargets
+      `[x](https://example.com/other.html#sec-a)` to a fragment on someone else's page. Gate the
+      `'#'` arm on the sigil actually opening a `{#…}` attribute. **Note the mutation campaign
+      measured 29 mutants / 0 survivors here** — that proved the implemented rule is faithfully
+      pinned, not that the rule is right. The missing shape is a fixture with an outbound link.
+
+81. **The web manifest is a phone surface no audit had read, and all three defects ship.**
+    (`crates/core/src/site/manifest.rs`.)
+    - **An installed site shows *Taliesin's* logo on the author's home screen.** `resolve_icons`
+      (`:58-72`) looks only for literal `icon-192.png`/`icon-512.png`; with `favicon: acme.svg`
+      set, the emitted `icon-192.png` is byte-identical to the bundled one. `check` says "no
+      problems found" and the convention is documented nowhere. A trademark artifact on a
+      stranger's phone.
+    - **`start_url: "./"` is emitted for a site with no `index.html`** (`:121-128`), so an app
+      installed from a subpage cold-launches into a 404 — and `display: standalone` removes the
+      address bar, so the reader cannot navigate out.
+    - **`theme_color`/`background_color` are hard-wired `#ffffff`** (`:17`, `:124`) while the
+      page default resolves dark on a dark phone: white splash, then `#16181d`. The existing pin
+      `manifest_color_matches_the_tali_bg_token` (`:279`) asserts the light value is faithfully
+      duplicated, which is the wrong invariant to be asserting.
+
+82. **Two TOC escaping defects, one of which ships a dead link in the published build.**
+    - **`toc_html` double-escapes an explicit heading id** (`render/mod.rs:2502` `escape_attr`
+      over an id `toc_items` already read out of escaped HTML). `## R&D notes {#r&d-notes}` →
+      anchor `r&amp;d-notes`, href `#r&amp;amp;d-notes`. Dead in the **build**. The comment three
+      lines above at `:2498` already documents this exact hazard for `text` and was never
+      applied to `id`. Auto-slugs are unaffected, which is why it stayed invisible.
+    - **`buildToc()` interpolates a decoded `h.id` into an `href` then assigns `innerHTML`**
+      (`web-client/client.js:868`, `:873`); confirmed code execution in preview. Calibrate
+      honestly: a `.tmd` body already passes raw HTML through, so for your own document this is
+      not privilege escalation — but any `{#id}` with `"`/`<`/`&` corrupts the nav markup, and it
+      is the one place the client re-serializes DOM text into HTML (`search.js:694` deliberately
+      does not). Fix with `createElement` + `setAttribute`, as
+      `code-enhance/19-book-outline.js:150` already does.
+
+83. **The Cmd-K palette claims `aria-modal="true"` and never locks the background scroller.**
+    Measured with a real PageDown: the page scrolled 787 px underneath an open palette, on a
+    published site. Two sibling overlays already do it right
+    (`code-enhance/11-lightbox.js:77`, the book drawer). Restore a *saved* overflow value, not
+    `''`, or it unlocks a drawer that was already open.
+
+84. **The docs-vs-behaviour sweep: ~20 false claims across the guide, the Internals book and
+    ROADMAP.** All measured, all with paste-ready replacements in the findings doc.
+    **Read each item's correction note first — three of the critic's proposed fixes were wrong.**
+    Highest value first: Mermaid is documented as a CDN dependency in 4 places though it is
+    vendored and offline on every path (**and `TALIESIN_MERMAID_URL` is preview-only and inert
+    in `build`, which none of them say**); `_site.yml` problems are documented as located
+    warnings but are unlocated **errors** (3 places in `configuration.tmd`, 2 in the Internals
+    book) — **but `build --strict` does NOT fail on them, only `check` does**; `format:`
+    sub-keys are documented as deliberately unlinted in a third live copy at
+    `validation.tmd:44-45` and in `frontmatter.rs:17-18`, though the validator lints them and the
+    code says no extension mechanism exists; the Internals book misdescribes the diff mask,
+    prints a `SiteApp` struct and a `PageIncludes.resources` field that do not exist, undercounts
+    the protocol's twelve message types as nine, and describes the loopback-Origin allowance as
+    always-on when `--host` drops it (**edit `protocol.tmd:318`; `:321` is TRUE**); ~20 stale
+    module paths remain in the Internals book; "book has a sidebar" survives in **11 live
+    instances across 5 files** (do NOT re-scope as "restore the rail", item 76); ROADMAP's
+    *normative* guardrails section still says `.qmd`/`qmdEnhancers` (**the named corpus pin docs
+    DO exist as `.tmd`** — do not "fix" this by authoring new corpus documents); and `init` is
+    documented as writing two files in **four** places while it writes five plus `.taliesin/`.
+
+85. **Diagnostic and CLI residuals a first-hour user hits.** Each small, each measured.
+    A timeout-killed cell is reported to the console as "raised an uncaught exception" because
+    the timeout has no `NOT_RUN_` kind (`kernel.rs:866` bypasses the marker) — **and the guard
+    test at `build.rs:3027` passes vacuously for the live path, so fix the test in the same
+    commit**; single-doc `build` prefixes diagnostics with a bare `file_stem()` that no editor
+    can open (thread a display label — `fallback` is load-bearing for the freeze path *and* the
+    page title, so do not just swap it); the missing-kernel warning prints twice, the short form
+    adding nothing; a missing input file reports `(os error 2)` with no did-you-mean though
+    `closest` already exists; `skim` is missing from `taliesin --help` (add the `COMMANDS` ↔
+    `usage()` parity gate modelled on `env_help_lists_every_runtime_env_var`); `codeAction`
+    builds quick fixes from **any** provider's diagnostic and ignores the requested range; a
+    message after `shutdown` exits 1 (editors read that as a crash) while a bare `exit` exits 0;
+    CRLF `documentSymbol` ranges run one column long.
+
+86. **Every site build ships ~4.43 MB of assets no emitted page references** — mermaid
+    (3,572,004 B) + jslibs (487,117 B) + katex (369,346 B), i.e. **92%** of a prose-only
+    `_site/`. Verified by href, not by grep: the only `_assets/` references in a prose page are
+    `app.css` + `app.js`. **The "uniform bundle" defence fails in the author's own hand** —
+    `write_asset_bundle` already gates the deck pair conditionally with the comment "a site
+    without a deck should not pay for a file nothing links" (`build.rs:1247-1249`), four members
+    away. **But the critic's proposed fix cannot work in place**: the predicates
+    (`ship_katex`/`has_js_cells`/`has_mermaid`, `render/page.rs:276-290`) are evaluated against
+    the *rendered body*, and `write_asset_bundle` runs at `build.rs:1506`, before any page is
+    rendered. Either hash eagerly and flush lazily during the page loop (guard against the
+    `--jobs N` determinism pins), or pre-scan page *sources* for the three triggers — the latter
+    is over-inclusive, which is the safe direction, since under-inclusive means a live 404.
+
+87. **Widen the prose-vs-behaviour gate — the structural item this whole round argues for.**
+    `crates/core/tests/stale_docs.rs` is repaired and mutation-verified in both directions, but
+    still covers only deck vocabulary and CI claims. Every stale-string finding in this round is
+    a symptom of the same gap this file already named ("no gate compares prose against
+    behaviour"). Candidates that would have caught real defects here: a retired-front-matter-key
+    needle set built from `RETIRED_KEYS` (would have caught `about:` in the README and the
+    marketing site); a check that no doc names a module path that is not a file; a check that
+    documented CLI flags exist in `COMMANDS`/`usage()`. **Follow this file's own rule
+    (`:558-559`): mutation-check every new needle against exactly the shape it guards, or the
+    gate is worse than none.**
 
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
@@ -227,15 +333,121 @@ the broken one). Refile here only after re-deriving the cause from source.
       `navigator.share` was absent under emulation, **so the Web Share option was not measured and
       is not claimed**.
 
-25. **Pre-public release: one decision, parked on a date** (detail:
-    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md)). All five code items
-    shipped 2026-07-25. **oss-4 — ruled 2026-07-25: deferred, and the public flip with it** ("I'll do
-    it at the end of summer; before that I want to hone the tool to its final form"), so this gates no
-    other work. Re-ask when a flip date is set; the question then is whether to prune `notes/` +
-    `docs/superpowers/` (no secret is exposed — the `--host` token design doc discloses only a
-    per-session UUID mechanism — but it is a curated bug roadmap). **Verified NOT open, do not
-    re-scope:** `SECURITY.md` exists, the tracked `/home/bogo` paths are scrubbed, PT-1 / PT-2 / NET-1
-    / OUT-1 / DEP-01 / DEP-02 all shipped 2026-07-17, and `dos-yaml` + NET-3 were refuted.
+88. **What licence governs a page a user publishes?** Raised by a fix that landed
+    2026-07-28, so it is a *new* obligation, not a deferred one. `THIRD_PARTY.md` said "Taliesin
+    itself is MIT licensed" while `LICENSE` is AGPL-3.0-only; correcting it (`6f68386`) forced
+    the question the contradiction had been hiding. **Taliesin's own runtime JS is `include_str!`'d
+    into every page a user builds** (`render/mod.rs:1658-1660` and the `code-enhance/` fragments):
+    a measured probe page is 1.2 MB with 13 `taliEnhancers` hits and **zero** licence statements.
+    If that runtime is AGPL, arguably every page a user publishes is an AGPL work — an adoption
+    tax far larger than §13's, and one that lands on *document authors* rather than on a hosted
+    competitor. The standard remedy is an explicit output exception (the GCC runtime-library /
+    Bison-output pattern) or an MIT carve-out for the emitted runtime. **Decide before publishing
+    anything**, because the first published page fixes the answer in the wild.
+    - Second, separable question the same finding raised: **AGPL vs MPL-2.0.** §13 is *not*
+      inapplicable here (a `--host` LAN preview is network interaction, `LICENSE:542-548` +
+      `SECURITY.md:44-47`), so the critic's "nobody stands in that hole" framing is wrong — but
+      the tax lands on the adopters `:577` says the project currently needs. MPL keeps file-level
+      copyleft, passes most corporate bans, and ***REMOVED***
+      `deny.toml` protects. **Whichever is chosen, the reservation at `README.md:156-158` is
+      fiction the moment one outside PR merges without a CLA or DCO.**
+
+89. **Distribution: there is no way to get this except `cargo build --release`.** Measured:
+    `gh release list` empty, `git ls-remote --tags origin` **empty** (the local `v0.2.0` and four
+    `stable-*` tags were never pushed), and crates.io `taliesin` / `taliesin-core` /
+    `taliesin-server` all 404 — i.e. all three names are free. No Homebrew, Nix, or install
+    script. The audience for a documentation tool is not the population that will install a Rust
+    toolchain and wait out a measured **2m59s** cold build.
+    - **Prerequisite the critic missed and the defender found:** `cargo publish` will *reject*
+      this workspace as-is. `Cargo.toml:14` declares `taliesin-core = { path = "crates/core" }`
+      with **no `version`**; add `version = "0.2.0"` first.
+    - Also blank on crates.io without it: no `keywords`, `categories`, `readme`, `homepage` or
+      `documentation` in any manifest, so the crate pages would carry one description line and
+      nothing else. Watch `crates/core` = 7.3 MiB tracked against the 10 MiB `.crate` cap.
+
+90. **Launch presentation, all gated on the flip.** Grouped because none is actionable until the
+    repo is public, and each is small once it is.
+    - **The README does not lead with the speed moat**, contradicting this file's own ruling at
+      `:577-579`. "Quarto" appears **zero** times in the README and in `site/*.tmd`, and
+      `tools/live-edit-bench/RESULTS.md` (cold 123,994.9 µs vs warm 28,425.1 µs, diff 685.6 µs,
+      83× smaller payload) is cited from nowhere. Note the ruling says *lead with the moat*; it
+      does not say *name Quarto* — that inference is the critic's.
+    - **The GitHub repo is a dead first impression**: description defines Taliesin in terms of
+      Taliesin, `homepageUrl` empty, one topic ("rust"), zero releases, and the README's only
+      image is the licence badge — while four screencasts demonstrating the moat sit committed
+      in `site/assets/` and appear on no page a visitor sees. (They are MP4; a GIF conversion or
+      an uploaded asset URL is needed, not a one-line embed.)
+    - **No platform statement anywhere**, while `/proc` is read directly in five places with
+      `#[cfg(not(unix))]` fallbacks that `LESSONS.md:88` records as never executed by any test.
+      One honest README line converts every non-Linux issue into an expectation.
+    - **No CONTRIBUTING / CoC / issue templates / CLA or DCO**, while `README.md:156-158`
+      reserves a relicensing right that the first merged outside PR silently ends.
+    - **`taliesin.dev` resolves to nothing** (registered, NS + SPF + a google-site-verification
+      TXT, zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
+      `site/README.md:11-12` already flags it as a placeholder.
+    - **`taliesin build site` 404s its own primary CTA** — `docs/guide/` and five `gallery/*`
+      mounts are preview-only, and `site/README.md` documents an 8-command build that nothing
+      runs. Worse than filed: `--strict` exits **0** on it and `check` says "no problems found",
+      so both automated gates bless a deploy the tool has already warned about. A `site/build.sh`
+      is the cheap fix; counting mount warnings as `--strict` problems is the durable one.
+    - **The name** (surfaced, not a task): TALIESIN is a live registered mark of the Frank Lloyd
+      Wright Foundation (Reg. 4150375). Software is outside the recited goods so legal risk is
+      low; the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are
+      both taken. Renaming twice is worse than a bad search name — if keeping it, always publish
+      as "Taliesin — the `.tmd` dev server" so the disambiguator travels.
+
+25. **Pre-public release: the flip procedure, and a contradiction to resolve first** (detail:
+    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md) and
+    [2026-07-28-launch-critique.md](2026-07-28-launch-critique.md)). All five code items shipped
+    2026-07-25. **oss-4 was ruled 2026-07-25: deferred** ("I'll do it at the end of summer").
+
+    **Author leaning, 2026-07-28 (a leaning, NOT a ruling — re-confirm before acting):** do a
+    **visibility flip** with the sensitive documents removed, deliberately keeping the commit
+    history public so readers can see how the work was done.
+
+    **The one fact that decides whether that plan works.** A visibility flip exposes **every past
+    commit**, and `git rm` in a new commit does not remove a file from history. Two documents are
+    tracked and both instruct otherwise in their own headers —
+    `notes/STARTUP-PLAN.md:3-5` ("keeping it out of any public release") and
+    `notes/FUNDING-RESEARCH.md:4` ("keep this file out of git") — and they contain the ***REMOVED***
+    ***REMOVED***, and "MIT
+    would let a competitor or a cloud provider close it against you. ***REMOVED***."
+    So **"flip + delete the files" leaves them fully readable in history**, which is the opposite
+    of the intent. Only three options actually work:
+    - **(a) Flip, and rewrite history first** (`git filter-repo` over those paths). Keeps the
+      visible history the author wants, at the cost of rewriting every SHA — and any SHA recorded
+      in `notes/` or in a findings doc stops resolving.
+    - **(b) Fresh public repo** per `notes/STARTUP-PLAN.md:111-127`, which is a *dated ruling*
+      ("decided 2026-06-18") prescribing exactly this: `rsync -a --exclude='.git'`, remove the
+      private docs, "Keep this repo private forever; the public one is a separate repo." Clean,
+      but **discards the commit history**, which is the thing the author said they wanted to keep.
+    - **(c) Flip as-is and accept the exposure.** Cheapest, and the least consistent with having
+      written "keep this out of git" twice.
+
+    **Note the procedure collision, because two committed documents currently disagree:**
+    `***REMOVED*** (fresh repo), while this file and
+    `2026-07-17-security-release-audit.md:217-218` both sequence the `oss-*` items to "whenever
+    the repo actually flips public". Whichever option is chosen, **fix the losing document in the
+    same change** or the next session will follow the wrong one.
+
+    Still open under whichever route: whether to prune `notes/` + `docs/superpowers/`. The
+    deferral's stated reason — "no secret is exposed … but it is a curated bug roadmap" —
+    describes the audit notes and **does not describe the two files above**, which is why they
+    were never named in it. Scale, measured: `git ls-files notes/` = 63, `docs/superpowers` = 69,
+    and the largest is `2026-07-03-quarto-design-decisions-catalog.md` at **1,129,387 bytes** of
+    adversarial self-critique sitting under `docs/`, which a visitor reads as "the manual".
+
+    **Correction to this item's own former text.** It claimed "**Verified NOT open, do not
+    re-scope:** … the tracked `/home/bogo` paths are scrubbed." Measured 2026-07-28:
+    `git grep -Il "/home/bogo"` → **11 files**. The 2026-07-17 scrub was scoped to the four paths
+    under `docs/superpowers/*` and did do that; the summary generalised it to "the tracked paths",
+    and one new occurrence has since accreted (`2026-07-18-shell-completion-dynamic-design.md:189`,
+    dated the day after). Eight of the remaining ten are `notes/*` prose covered by the prune
+    above, and two are self-references *documenting the scrub*. Low impact — the username is
+    already public via git author metadata — but **a "verified NOT open" line in this file was
+    measurably false**, which is the failure mode `LESSONS.md` warns about. Still correctly
+    closed: `SECURITY.md` exists, PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped
+    2026-07-17, and `dos-yaml` + NET-3 were refuted.
 
 ### D. Blocked on a device, a real user, or working-as-intended
 
