@@ -14,25 +14,25 @@ number below is browser-measured on the running product; the one source-level hy
 as such and is **not** counted as a finding. The final defect was re-measured on the **built**
 `file://` artifact as well as the preview, so it is not a preview artefact.
 
-**Result: two real defects (both SHIPPED), one consistency gap against a standard the tree adopted
-12 hours earlier (SHIPPED), and two behaviours worth an owner ruling.** The deck's touch story is
-otherwise in good shape, and the "measured healthy" list at the bottom is longer than the findings
-list — that section is the point of the round as much as the defects are.
+**Result: one real defect and one consistency gap against a standard the tree adopted 12 hours
+earlier, both fixed and shipped; two behaviours filed for an owner ruling; and one finding filed and
+RETRACTED the same day.** The deck's touch story is in good shape: the "measured healthy" list at
+the bottom is longer than the findings list, and that section is the point of the round as much as
+the defects are.
 
 | | finding | status |
 |---|---|---|
 | **DT-1** | code-copy button invisible on every deck, on every touch device | **fixed** |
 | **DT-2** | deck never got MOB-7's 44px tap-target floor | **fixed** |
-| **DT-5** | adjacent slides bleed into the letterbox at any aspect ≠ 16:9 | **filed** (design ruling) |
+| ~~DT-5~~ | ~~adjacent slides bleed into the letterbox~~ | **RETRACTED — false, see below** |
 | DT-3 | a slow swipe is rejected for no reason in stepped mode | filed (ruling) |
 | DT-4 | the share panel is desktop-framed on a phone | filed (judgment) |
 
-**DT-5 was found by accident and is the round's most consequential finding.** It surfaced as an
-unexplained glyph in a screenshot corner that `elementFromPoint` reported as `BODY`; chasing it
-instead of dismissing it is what turned it into a measurement. The first probe missed it because it
-filtered elements by their **top** coordinate rather than testing **intersection** — a full-height
-neighbour has `y = 0` and was silently excluded. *A rect filter that tests one edge is not a
-visibility test.*
+**DT-5 was reported as the round's most consequential finding and was WRONG.** It was retracted the
+same day, under the backlog's own rule that a finding's *cause* is never to be trusted without
+re-deriving it from source. The retraction is written up in full below, because the way it was wrong
+is more useful than the finding would have been: **a rect-intersection test is not a visibility
+test, and `getBoundingClientRect` does not know that an ancestor clips.**
 
 ---
 
@@ -177,44 +177,61 @@ measured and is not claimed.**
 
 ---
 
-## DT-5 — the slides either side of the current one paint into the letterbox · **filed, needs a ruling**
+## ~~DT-5~~ — RETRACTED. The letterbox is empty, and the instrument was wrong
 
-The stage is a fixed 960×540 (16:9) cell scaled by the camera; slides live at their own coordinates
-in one world; `.tali-slides` is **`overflow: visible`** and a `section` declares **no background**.
-So whenever the viewport aspect is not exactly 16:9, the fit leaves slack on one axis, and whatever
-happens to sit next to the current cell in world space paints into that slack. At rest, not mid-pan.
+**The claim was:** at any viewport aspect other than 16:9, the slides either side of the current one
+paint into the fit slack — 17.9% of a landscape phone's viewport, 5% on a 16:10 laptop, at rest.
+It was filed as backlog item 70 with three candidate fixes. **It is false. Nothing bleeds.**
 
-**Measured on the built artifact:**
+**What the code actually does**, and it is the first thing that should have been read:
 
-| viewport | aspect | slack | what bleeds in |
-|---|---|---|---|
-| 844 × 390 (phone, landscape) | 2.164 | 151 px horizontal | **both** neighbours, 75.3 px left + 75.7 px right = **17.9% of the viewport** |
-| 1440 × 900 (16:10 laptop), top-row slide | 1.6 | 90 px vertical | nothing (no row above at that column) |
-| 1440 × 900, slide inside the stack row | 1.6 | 90 px vertical | the slide above, 45 px × full width = **5% of the viewport** |
-| exactly 16:9 | 1.778 | 0 | nothing — the only aspect that is clean |
+```css
+/* The deck is a fixed 16:9 "stage" centred in the viewport; deck.js's camera fits a
+   cell to it exactly so adjacent cells fall outside and are clipped (no peek), and
+   the area around the stage is the letterbox. */
+.tali-deck { width: min(100%, calc(100vh * 16 / 9)); height: min(100%, calc(100vw * 9 / 16));
+             overflow: hidden; /* clips every cell but the framed one */ }
+```
 
-Reading the left edge of a landscape-phone screenshot shows the ends of the previous slide's bullet
-lines, in the deck's own ink, next to the current slide's title.
+The behaviour I "found" is the behaviour this rule exists to prevent, and its comment says so in
+the words "no peek".
 
-**Why this is the round's most consequential finding.** It is not a touch defect at all — touch is
-just how it was found, because a phone in landscape is the widest-aspect device anyone owns and
-therefore shows it worst. It lands on the deck's *primary* use: **16:10 is the most common laptop
-aspect there is** (every MacBook), so a presenter on the stack row shows the audience a 45-px strip
-of the previous slide across the full width of the projection.
+**Re-measured at the same viewport (844 × 390), correctly:**
 
-**Why it needs a ruling rather than a patch.** The three candidate fixes are not equivalent:
+| | |
+|---|---|
+| `.tali-deck` box | x = 75.3, **width 693.3** — the 16:9 stage, letterboxed as designed |
+| its `overflow` | `hidden` |
+| left neighbour ∩ **viewport** | 75.3 px ← *what the bad probe measured* |
+| left neighbour ∩ **clipping box** | **0 px** |
+| right neighbour ∩ clipping box | 0.3 px (sub-pixel rounding, ~1 device pixel at dpr 3) |
+| `elementFromPoint` in the left letterbox | `BODY` |
+| ancestor-clipping walk on the neighbour | `clippedByAncestor: true` |
+| anything painting in the corner, chrome awake | nothing but `html`'s background |
 
-1. **Letterbox mask** — paint opaque bars over the slack in present mode only. Smallest change,
-   keeps the camera pan exactly as the 07-24 motion round tuned it.
-2. **Hide non-current slides in present mode** — also fixes it, but it *changes the pan*, which
-   sweeps through intermediate slides deliberately; the motion round measured that sweep ("a strobe
-   of 14 half-frame slides") and reshaped it rather than removing it. This would silently undo part
-   of that work.
-3. **Clip the stage** — cannot be unconditional: the overview *needs* `overflow: visible` to show
-   the whole map.
+The 1440 × 900 figure falls to the same correction: the deck is 810 px tall there and centred, so
+the row above is clipped by the identical rule.
 
-Option 1 is the recommendation, but it is the author's call because option 2 is the one that also
-changes how the deck *feels*, and that was deliberately tuned nine days ago.
+**The error, stated precisely.** I computed each neighbour's intersection with the **viewport**
+(`innerWidth`/`innerHeight`) and called the result "visible". `getBoundingClientRect()` reports an
+element's **geometry**, and geometry knows nothing about `overflow: hidden` on an ancestor. A box
+can extend across the whole screen and paint zero pixels. **To ask whether something is visible,
+intersect it with its clipping ancestor — or ask the renderer** (`elementFromPoint`), which was
+telling me `BODY` the entire time and which I explained away instead of believing.
+
+**And the thing that started the chase was never identified as page content.** A glyph in a
+screenshot corner led to the probe; every candidate for it was then measured and eliminated —
+`#tali-lightbox` is `display: none`, `#tali-link-preview` is `opacity: 0; visibility: hidden`, and a
+corner sweep with the chrome awake finds nothing painting there but the page background. Two of my
+screenshots also differed only because the deck had gone `tali-idle` and faded its chrome, which
+confounded the one comparison I thought was decisive.
+
+**Why this got as far as a backlog item.** The measurement was consistent, reproducible, quantified
+to one decimal place, and reproduced on the built artifact as well as the preview — it had every
+property of a solid finding except being true. Reproducibility is a property of the *instrument*,
+not of the claim. What would have caught it in one step is the project's own standing rule, applied
+to my own finding rather than to someone else's: **read the code that owns the behaviour before
+writing the finding down.** The rule was right there in a comment.
 
 ---
 
@@ -262,7 +279,19 @@ real-device lens to check first**, because it can only be answered on hardware.
 
 - **Real iOS Safari / Android Chrome.** This is Chromium emulation: no WebKit, no momentum scroll,
   no dynamic viewport toolbar, no safe-area insets.
-- **An embedded `{{< embed >}}` deck on touch** — needs a host page; not built this round.
+- ~~An embedded `{{< embed >}}` deck on touch~~ — **measured after the retraction, and healthy.**
+  Built `corpus/embed` and served it over HTTP (a `file://` iframe is cross-origin, so
+  `contentDocument` is `null` and the parent cannot introspect it — serve it to measure it). At
+  390 × 844 with touch: `taliDeckEmbedded` is `true`, the embed correctly **never enters the feed**
+  even on a portrait phone (the documented contract), the iframe is 358 × 201 at **exactly 16:9**
+  so there is no letterbox at all, the page does not scroll horizontally, the capability queries
+  resolve *inside* the iframe (`pointer: coarse` + `hover: none` both true), and the host-side
+  Fullscreen / Open buttons render below it. Zero console errors.
+  **It also confirms DT-2 reaches this path:** the embedded deck's controls measure 44 × 44, 0
+  under the floor. The one consequence worth the author's eye: in a *small* embed those controls
+  are a bigger share of the frame — the control band goes from ~24% to **~28.9%** of a 201 px-tall
+  embed's height. They are idle-hidden by default and float over the slide rather than displacing
+  it, so this is a note, not a regression.
 - **Overview pan while zoomed past fit.** At fit scale `clampOv` has nothing to pan, so the probe
   proved only that pan does not navigate or exit, not that panning itself works on touch.
 - **A phone screen reader**, and the `--host` QR phone-preview flow.

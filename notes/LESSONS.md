@@ -98,14 +98,24 @@ through its wrappers. What was actually missing was a fixture *shape*.
   reported **0/5 mutants killed** on tests that in fact kill 5/5 — i.e. it accused the tests of being
   vacuous when the *harness* was. Pass `render::tests::<name>`, and make the harness **assert that
   exactly one test ran** rather than inferring from the absence of a failure.
-- **A rect filter that tests one edge is not a visibility test.** Hunting an unexplained glyph in a
-  screenshot corner, a filter of `b.x < 130 && b.y > 320 && b.y < 390` excluded the culprit, because
-  a full-height neighbouring element has `y = 0`. Test **intersection**
-  (`b.left < box.right && b.right > box.left && …`). The glyph was a real defect (DT-5, adjacent
-  slides bleeding into the deck's letterbox) that a one-edge filter had reported as "nothing there".
-- **`elementFromPoint` returning `BODY` does not mean nothing is painted there.** It reports the
-  topmost *hit-testable* element; transparent, `inert` or `pointer-events`-free content still paints.
-  When the eye and the DOM probe disagree, believe the screenshot and change the probe.
+- **`getBoundingClientRect` reports GEOMETRY, not visibility — a box can span the screen and paint
+  nothing.** This produced the only *false finding* in the audit record (DT-5, filed and retracted
+  the same day): each of a deck's neighbouring slides was intersected with the **viewport**, giving
+  "17.9% of the screen is bleeding through", when the real answer was **0 px** because
+  `.tali-deck` clips them with `overflow: hidden`. **To ask whether something is visible, intersect
+  it with its CLIPPING ANCESTOR, or ask the renderer** — `elementFromPoint` said `BODY` throughout
+  and was explained away. A cheap ancestor walk settles it: climb parents, and if any has
+  `overflow: hidden` and the child's rect escapes that parent's rect, the escaping part paints
+  nothing.
+- **Reproducibility is a property of the instrument, not of the claim.** That measurement was
+  consistent, quantified to a decimal, and reproduced on the built artifact as well as in preview —
+  every property of a solid finding except being true. **Before writing a finding down, read the
+  code that owns the behaviour**; the rule that refuted this one was a CSS comment saying
+  "adjacent cells fall outside and are clipped (no peek)". The backlog's standing "trust the
+  symptom, never the cause" applies to your OWN findings, not just to inherited ones.
+- **Chrome that fades on idle will confound a screenshot comparison.** Two deck screenshots differed
+  only because `html.tali-idle` had hidden the controls between them, which briefly looked like
+  evidence about the change under test. Force the state you are comparing.
 - **The inlined-asset needle trap** (bit three times in one batch): every page inlines the whole
   CSS + enhancer-JS payload into its `<head>`, so **any new class name, `data-` attribute or
   user-facing string is present in the HTML of every page whether or not that page renders the

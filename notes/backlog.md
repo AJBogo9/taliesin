@@ -16,9 +16,16 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
   independent, so they parallelize cleanly across sessions. Item **76 was ruled 2026-07-27 (remove the
   right-rail TOC) and is now in band A**, unblocked but not yet built. Item **56** remains an authoring
   judgment plus a feature proposal, not a task.
-- **The duplicate item 70 is resolved.** Two items were filed as 70 on the same day. Band A's 70 (the
-  deck letterbox) keeps the number — [AUDITS.md](AUDITS.md):51 points at it as "items 70-71". The
-  `_site.yml`-boundary one from the path-parity round is now **77**; nothing referenced it.
+- **The duplicate item 70 resolved itself, and not the way it first looked.** Two items were filed as
+  70 on the same day, and the obvious fix was to keep the deck-letterbox one (AUDITS.md pointed at it
+  as "items 70-71") and renumber the `_site.yml`-boundary one. **That would have renumbered the
+  survivor.** The letterbox item was DT-5, which was **retracted the same day as false** (`5e92816`,
+  on `origin/main`): the probe intersected each neighbour with the *viewport* instead of its
+  *clipping ancestor*, and `.tali-deck`'s `overflow: hidden` had been clipping them all along. So
+  band A's 70 no longer exists, the `_site.yml` item keeps **70** as the original claimant, and no 77
+  was ever issued. **The lesson is about this file, not about decks:** a numbering collision can be
+  the symptom of a bad filing rather than a clerical slip, so check whether both items are *real*
+  before renumbering either.
 - **A lens is still the better opener once 72-75 are gone.** Standing recommendation: **real-device
   mobile** — now unblocked, and that round verifies rather than re-finds since batch 1 shipped. First
   thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the root holds less
@@ -220,24 +227,6 @@ also measured in a browser. Nothing here is blocked.
     resolution `favicon:` already has. Check it against the "minimal config" rule before widening it
     with size/position knobs — a good default is one image slot, not four.
 
-70. **The slides either side of the current one paint into the deck's letterbox** (DT-5, detail:
-    [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)). The stage is a fixed 16:9
-    cell scaled by the camera, `.tali-slides` is `overflow: visible`, and a `section` declares no
-    background — so at **any viewport aspect that is not exactly 16:9**, whatever sits next to the
-    current cell in world space paints into the fit slack. **At rest, not mid-pan.** Measured on the
-    built artifact: at 844×390 (phone, landscape) **both** neighbours are visible, 75 px each side =
-    **17.9% of the viewport**; at 1440×900 (**16:10 — the most common laptop aspect there is**) a
-    slide in the stack row shows the slide above as a 45 px strip across the full width, **5%**.
-    16:9 exactly is the only clean aspect. **This is not a touch defect** — touch is only how it was
-    found, since a landscape phone is the widest-aspect device anyone owns. It lands on the deck's
-    *primary* use: presenting.
-    **Needs a ruling, because the three fixes are not equivalent:** (1) an opaque letterbox mask in
-    present mode — smallest, keeps the camera pan exactly as the 07-24 motion round tuned it, and
-    the **recommendation**; (2) hide non-current slides in present mode — also works, but *changes
-    the pan*, which sweeps intermediate slides deliberately, so it would silently undo tuned work;
-    (3) clip the stage — cannot be unconditional, the overview needs `overflow: visible` to show the
-    map at all.
-
 76. **Remove the book's right-rail `#TOC`. RULED 2026-07-27: remove.** The author asked *"Should I
     remove side navigation? Is it useful? You can just view the chapters menu for in-chapter
     navigation."* and, shown the measurement below, ruled **remove**. This **reverses the documented
@@ -364,7 +353,7 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
     Minor and separable: an R figure is emitted `<img alt="output">` where the Python pair is `alt=""`;
     both sit inside a captioned `<figure>`, so `alt=""` is right and `"output"` is noise read aloud.
 
-77. **A project with no `_site.yml` declares no boundary** (P3, filed 2026-07-27 from the path-parity
+70. **A project with no `_site.yml` declares no boundary** (P3, filed 2026-07-27 from the path-parity
     batch's "surfaced, not fixed"). `build <dir>` accepts a bare directory, so a single-document render
     of one of its pages roots at that page, and the site path's own inference can still widen to
     `.git`. Nothing can infer an undeclared boundary; the fix is for the author to declare one. Live
@@ -528,6 +517,14 @@ docs; look there rather than re-expanding this list.
 
 ### Decided against
 
+- **"Adjacent slides bleed into the deck's letterbox" (DT-5, filed and RETRACTED 2026-07-27, same
+  day):** **false — the letterbox is empty.** `.tali-deck` is sized to the 16:9 stage
+  (`min(100%, 100vh*16/9)`) with `overflow: hidden`, and its comment already says "adjacent cells
+  fall outside and are clipped (no peek)". The probe intersected each neighbour with the
+  **viewport** instead of with its **clipping ancestor**, and `getBoundingClientRect` knows nothing
+  about `overflow: hidden` — re-measured, the neighbour contributes **0 px** inside the clip box and
+  `elementFromPoint` returns `BODY` there. **Do not re-file it from a rect measurement**; if it ever
+  looks true again, the only valid evidence is a rendered pixel, not a rectangle.
 - **Deck presenter tools** (one-command publish, laser/spotlight, auto-advance): declined 2026-07-22 and
   **re-declined 2026-07-26** on the same grounds — no real speaker ask has appeared. Revive only when the
   author actually presents from Taliesin. (`footer:`/`logo:` from that item did ship.)
