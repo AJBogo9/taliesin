@@ -29,6 +29,18 @@
   .tali-nav-brand { color: var(--tali-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
     letter-spacing: -0.01em; white-space: nowrap; }
   .tali-nav-brand:hover { color: var(--tali-link); }
+  /* `logo:` in `_site.yml` — the brand image that replaces the wordmark, in the website
+     navbar and in BOTH book brand slots (topbar + drawer head). Sizing lives here, not in
+     config: the height is capped against the bar it sits in, so no file can grow sticky
+     chrome, and `width: auto` + `object-fit: contain` keep the author's aspect ratio.
+     `max-height` only, never `height` — a small mark is shown at its own size rather than
+     upscaled into blur. The three-way `min()` is the width budget: `45vw` keeps a wide
+     wordmark from crowding out the nav links on a phone, and the `100%` term matters in
+     the BOOK topbar, whose `.tali-book-brand` carries `min-width: 0; overflow: hidden`
+     for the text case — without it a squeezed row would clip the image instead of
+     scaling it down. */
+  .tali-brand-logo { display: block; max-height: 1.75rem; width: auto;
+    max-width: min(14rem, 45vw, 100%); object-fit: contain; }
   .tali-nav-links { display: flex; align-items: center; gap: .35rem; flex: 1; }
   .tali-nav-spacer { flex: 1 1 auto; }
   .tali-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;

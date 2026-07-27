@@ -7,6 +7,7 @@
 //! description: "…"
 //! url: "https://…"            # site URL
 //! favicon: favicon.svg
+//! logo: logo.svg             # brand image in the navbar / book topbar
 //! output: _site              # build output dir
 //! toc: true
 //! css: custom.css
@@ -39,6 +40,13 @@ pub struct SiteConfig {
     pub description: Option<String>,
     pub url: Option<String>,
     pub favicon: Option<String>,
+    /// `logo:` — the brand image for the website navbar and the book topbar/drawer,
+    /// resolved like `favicon:` (a project-relative path, depth-prefixed per page).
+    /// Deliberately ONE image slot with no size/position sub-keys: the stylesheet caps
+    /// it against the bar it sits in, and the `title:` supplies its `alt`, so a branded
+    /// project needs exactly this one line. The same key name a deck's front matter
+    /// already uses (`render::deck::deck_overlay_html`).
+    pub logo: Option<String>,
     pub toc: Option<bool>,
     pub css: Option<serde_yaml::Value>,
     /// `head` → include-in-header; `body-start`/`body-end` → before/after body.
@@ -124,6 +132,7 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "description",
     "url",
     "favicon",
+    "logo",
     // No site-level `image:`. It used to seed `og:image`/`twitter:image` for pages that
     // set none of their own; the auto-generated per-page social card took that over
     // entirely (`card::card_url`), leaving the key parsed, honored-looking, and inert.
@@ -272,6 +281,7 @@ fn parse_native(
         description: str_of("description"),
         url: str_of("url"),
         favicon: str_of("favicon"),
+        logo: str_of("logo"),
         toc: value.get("toc").and_then(|v| v.as_bool()),
         css: value.get("css").cloned(),
         head: value.get("head").cloned(),

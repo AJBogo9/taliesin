@@ -68,7 +68,55 @@ fn settings_button() -> String {
     )
 }
 
+/// Resolve a `_site.yml` asset path (today `logo:`) for a page whose depth prefix is
+/// `up`. A project-relative path gets the same `../` prefix `favicon:` gets
+/// (`Site::page_chrome`); a site-absolute (`/brand.svg`) or external (`https://…`,
+/// `//cdn/…`) source is left exactly as written, since prefixing those produces a
+/// path that resolves nowhere. Never `.tmd`→`.html` rewritten: this is an image, not
+/// a page link, so `resolve_href` is the wrong helper.
+fn site_asset_href(src: &str, up: &str) -> String {
+    if src.starts_with('/') || src.starts_with("//") || src.contains("://") {
+        src.to_string()
+    } else {
+        format!("{up}{src}")
+    }
+}
+
 impl Site {
+    /// The content of a brand link (`.tali-nav-brand` on a website, `.tali-book-brand` in
+    /// both book slots): the configured `logo:` as an `<img>`, else the escaped brand text.
+    ///
+    /// **One image slot, no knobs.** The logo *replaces* the wordmark rather than sitting
+    /// beside it — a logo file almost always already carries the name, and "both" would
+    /// immediately need a second key to turn the text off. Size and position are the
+    /// stylesheet's job (`.tali-brand-logo` caps the height against the bar), so a branded
+    /// project is one `logo:` line and nothing else.
+    ///
+    /// `text` names the link either way: it is the visible label without a logo, and the
+    /// image's `alt` with one, so the link keeps an accessible name. A blank/absent project
+    /// title falls back to `Home` (what the website brand already prints) rather than
+    /// shipping `alt=""` on an image that *is* the link.
+    fn brand_content(&self, text: &str, up: &str) -> String {
+        let Some(src) = self
+            .config
+            .logo
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        else {
+            return esc(text);
+        };
+        let label = match text.trim() {
+            "" => "Home",
+            t => t,
+        };
+        format!(
+            "<img class=\"tali-brand-logo\" src=\"{}\" alt=\"{}\" />",
+            esc(&site_asset_href(src, up)),
+            esc(label)
+        )
+    }
+
     /// The site navbar: a brand (site title → home) plus the configured left/right
     /// item groups. `depth` is the current page's path depth so links resolve
     /// relative to it (a post two levels deep prefixes `../../`).
@@ -84,7 +132,7 @@ impl Site {
         );
         s.push_str(&format!(
             "<a class=\"tali-nav-brand\" href=\"{up}index.html\">{}</a>",
-            esc(&brand_text)
+            self.brand_content(&brand_text, &up)
         ));
         // A real, focusable button toggles the mobile menu, so keyboard and
         // screen-reader users can open it (the old display:none checkbox + an
@@ -254,7 +302,7 @@ impl Site {
         if let Some(t) = &book.title {
             s.push_str(&format!(
                 "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
-                esc(t)
+                self.brand_content(t, &up)
             ));
         }
         s.push_str("<span class=\"tali-nav-spacer\"></span>");
@@ -300,7 +348,7 @@ impl Site {
         if let Some(t) = &book.title {
             s.push_str(&format!(
                 "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
-                esc(t)
+                self.brand_content(t, &up)
             ));
         }
         s.push_str(
@@ -507,6 +555,140 @@ mod tests {
             "no feed generated → link dropped: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // --- `logo:` — the brand image, on all three brand slots (item 74) -----------------
+    //
+    // Decks have carried a front-matter `logo:` since the deck-chrome overlay
+    // (`render::deck::deck_overlay_html`); the website navbar and the book topbar/drawer
+    // were text-only, so a branded book or site was impossible. The same key name now
+    // reaches all three, and the brand link is the only place it lands: one image slot,
+    // no size/position sub-keys (`.tali-brand-logo` in site.css owns the sizing).
+    //
+    // Needle the WHOLE `<a …><img …></a>` construct in these, never a bare `logo`
+    // substring: every page inlines the entire CSS + JS payload, so a loose `contains`
+    // is satisfied by the stylesheet rule alone and passes on a page that renders no
+    // logo at all.
+
+    fn site_with(name: &str, config: &str) -> String {
+        let root = write_site(
+            name,
+            &[
+                ("_site.yml", config),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        html
+    }
+
+    #[test]
+    fn website_brand_renders_the_configured_logo_inside_the_brand_link() {
+        let html = site_with("brandlogo", "title: Acme Research\nlogo: brand.svg\n");
+        assert!(
+            html.contains(
+                "<a class=\"tali-nav-brand\" href=\"index.html\">\
+                 <img class=\"tali-brand-logo\" src=\"brand.svg\" alt=\"Acme Research\" /></a>"
+            ),
+            "the navbar brand must wrap the configured logo, with the site title as its \
+             alt (the link's accessible name):\n{html}"
+        );
+        // The wordmark is REPLACED, not doubled: a logo file already carries the name, and
+        // emitting both would immediately need a second key to turn the text off.
+        assert!(
+            !html.contains(">Acme Research</a>"),
+            "the brand text must not also render beside the logo:\n{html}"
+        );
+    }
+
+    #[test]
+    fn website_brand_falls_back_to_the_title_text_without_a_logo() {
+        let html = site_with("brandnologo", "title: Acme Research\n");
+        assert!(
+            html.contains("<a class=\"tali-nav-brand\" href=\"index.html\">Acme Research</a>"),
+            "with no `logo:` the brand stays exactly the escaped title text:\n{html}"
+        );
+        assert!(
+            !html.contains("<img class=\"tali-brand-logo\""),
+            "an unconfigured project must emit no brand image at all:\n{html}"
+        );
+    }
+
+    #[test]
+    fn book_brand_renders_the_logo_in_both_the_topbar_and_the_drawer_head() {
+        // `.tali-book-brand` is emitted TWICE (the sticky topbar and the drawer's head).
+        // Fixing one and leaving the other is the shape of the bug this pins against.
+        let root = write_site(
+            "bookbrandlogo",
+            &[
+                (
+                    "_site.yml",
+                    "title: Field Manual\nlogo: brand.svg\nchapters:\n  - index.tmd\n  - two.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: One\n---\n\nx\n"),
+                ("two.tmd", "---\ntitle: Two\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        let brand = "<a class=\"tali-book-brand\" href=\"index.html\">\
+                     <img class=\"tali-brand-logo\" src=\"brand.svg\" alt=\"Field Manual\" /></a>";
+        assert_eq!(
+            html.matches(brand).count(),
+            2,
+            "both book brand slots (topbar + drawer head) must carry the logo:\n{html}"
+        );
+    }
+
+    #[test]
+    fn a_logo_resolves_relative_to_the_page_depth_but_leaves_an_absolute_src_alone() {
+        // Same depth rule `favicon:` uses: a project-relative path is written from the
+        // site root, so a nested page has to climb back out or the image 404s in `_site/`.
+        let root = write_site(
+            "brandlogodepth",
+            &[
+                ("_site.yml", "title: Acme\nlogo: brand.svg\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+                ("posts/deep.tmd", "---\ntitle: Deep\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let deep = site.render_page("posts/deep.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            deep.contains("<img class=\"tali-brand-logo\" src=\"../brand.svg\" alt=\"Acme\" />"),
+            "a page one level down must climb back to the logo:\n{deep}"
+        );
+        // A site-absolute or external source is written as the author meant it: prefixing
+        // `../` there produces a path that resolves nowhere.
+        assert_eq!(site_asset_href("/brand.svg", "../"), "/brand.svg");
+        assert_eq!(
+            site_asset_href("https://cdn.example/brand.svg", "../"),
+            "https://cdn.example/brand.svg"
+        );
+        assert_eq!(
+            site_asset_href("//cdn.example/b.svg", "../"),
+            "//cdn.example/b.svg"
+        );
+    }
+
+    #[test]
+    fn a_blank_title_still_leaves_the_logo_link_an_accessible_name() {
+        // The logo IS the link's content, so `alt=""` would leave a link with no
+        // accessible name at all — the failure a decorative empty alt is correct for
+        // everywhere else (the deck overlay's standalone logo included).
+        let html = site_with("brandlogonotitle", "title: \"  \"\nlogo: brand.svg\n");
+        assert!(
+            html.contains("<img class=\"tali-brand-logo\" src=\"brand.svg\" alt=\"Home\" />"),
+            "a blank project title must fall back to a real name, never `alt=\"\"`:\n{html}"
+        );
+        assert!(
+            !html.contains("class=\"tali-brand-logo\" src=\"brand.svg\" alt=\"\""),
+            "a meaningful brand image must never ship an empty alt:\n{html}"
+        );
     }
 
     #[test]

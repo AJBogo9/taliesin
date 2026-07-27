@@ -1,5 +1,6 @@
 title: "A Short Demo Book"
 author: "Andreas Bogossian"
+logo: logo.svg       # brand image in the book topbar AND the chapter drawer head
 toc: true
 
 chapters:            # presence makes this a book — no project: type: needed

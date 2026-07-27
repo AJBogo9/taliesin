@@ -1157,6 +1157,26 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     );
 }
 
+/// A book's `logo:` reaches BOTH `.tali-book-brand` slots — the sticky topbar and the
+/// chapter drawer's head — with the book title as the image's alt, so each link keeps an
+/// accessible name. The two slots are separate emissions in `site/chrome.rs`, so a fix
+/// applied to one of them leaves the other a bare wordmark; counting the construct is
+/// what catches that. Needles the whole `<a …><img …></a>`, never a bare `logo`
+/// substring: every page inlines the full CSS + JS payload.
+#[test]
+fn demo_book_logo_brands_both_the_topbar_and_the_chapter_drawer() {
+    use taliesin_core::Site;
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    let intro = site.render_page("intro.tmd").expect("intro renders");
+    let brand = "<a class=\"tali-book-brand\" href=\"index.html\">\
+                 <img class=\"tali-brand-logo\" src=\"logo.svg\" alt=\"A Short Demo Book\" /></a>";
+    assert_eq!(
+        intro.matches(brand).count(),
+        2,
+        "both book brand slots must carry the logo: {intro}"
+    );
+}
+
 #[test]
 fn demo_book_hover_index_indexes_definitions_but_not_sections() {
     use taliesin_core::Site;
