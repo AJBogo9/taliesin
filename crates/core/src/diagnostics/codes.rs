@@ -88,6 +88,16 @@ const TABLE: &[(&str, &str, &str)] = &[
         WARNING,
     ),
     // Body constructs.
+    // Every shortcode diagnostic — an unknown name, an unknown flag or `key=`, a built-in
+    // with no source path. Keyed on the `{{<` opener rather than on the word "shortcode",
+    // because each message quotes the author's own invocation and none of them share a
+    // phrase. One family, not three: the surface is the same and so is the edit (fix the
+    // spelling inside the braces). It is a WARNING for the reason the `.input` and div
+    // families are — the page still renders, so a one-letter typo must not gate
+    // `build --strict` / `publish`, which is what the old `(GENERIC, ERROR)` fall-through did.
+    // Above the generic needles below because the quoted invocation is author-controlled
+    // text (`{{< video math-intro.mp4 >}}` would otherwise classify as TAL-MATH).
+    ("{{<", "TAL-SHORTCODE", WARNING),
     ("unknown callout kind", "TAL-CALLOUT-KIND", WARNING),
     // The `.callout-…` row's sibling: a near-miss of any other feature/theorem div class.
     // Separate family because the fix is a different edit (the class, not the callout kind),
@@ -454,6 +464,22 @@ const EXPLANATIONS: &[Explanation] = &[
                 menu.",
         fix: "Add the attribute the message names: `name=\"k\"` so cells can read the \
               control, or `options=\"a,b,c\"` on a select.",
+    },
+    Explanation {
+        code: "TAL-SHORTCODE",
+        title: "a shortcode taliesin could not read as written",
+        cause: "A `{{< … >}}` invocation names something the tool does not know: an unknown \
+                shortcode name, an unknown bare flag or `key=` argument, or a built-in with \
+                no source path. Nothing is lost — an unknown name stays on the page as \
+                literal text, and a known shortcode still renders with the options it did \
+                understand — which is exactly why this used to be silent: the page looked \
+                fine and the option you asked for simply never happened.",
+        fix: "Fix the spelling inside the braces; the message names the nearest known \
+              spelling when there is one. The built-ins are `{{< include file.tmd >}}`, \
+              `{{< embed deck.tmd [title=…] >}}`, `{{< video clip.mp4 [controls] [audio] \
+              [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A \
+              shortcode written as an *example* belongs in a code fence or backticks, \
+              which are never expanded and never linted.",
     },
     Explanation {
         code: "TAL-XREF-UNDEF",
@@ -888,6 +914,30 @@ mod tests {
         ] {
             assert_eq!(classify(m).1, WARNING, "{m}");
         }
+    }
+
+    #[test]
+    fn shortcode_authoring_slips_are_one_warning_family_not_the_generic_error() {
+        // Item 77 residual. Shortcode diagnostics had no family at all, so every one fell
+        // through to `(GENERIC, ERROR)` — and ERROR is the wrong severity twice over: the
+        // page still renders (the shortcode keeps the options it understood, or stays
+        // literal text), and `build --strict` / `publish` gate on errors, so a one-letter
+        // typo blocked a release. Same class as the `.input` / div families above.
+        for m in [
+            "unknown `{{< video >}}` option `control` (did you mean `controls`?) at line 5",
+            "unknown `{{< video >}}` argument `postr=` (did you mean `poster=`?) at line 5",
+            "`{{< video >}}` at line 5 has no source path (write `{{< video file >}}`)",
+            "unknown shortcode `{{< vidoe >}}` at line 7 (left as literal text)",
+        ] {
+            assert_eq!(classify(m), ("TAL-SHORTCODE", WARNING), "{m}");
+        }
+        // The needle must not be so broad it swallows unrelated prose that merely says the
+        // word: the message body a validator emits about a fenced div is not a shortcode.
+        assert_ne!(
+            classify("`.input` is the shortcode, not a fenced div").0,
+            "TAL-SHORTCODE",
+            "the family keys on the `{{< … >}}` form, not on the word"
+        );
     }
 
     #[test]

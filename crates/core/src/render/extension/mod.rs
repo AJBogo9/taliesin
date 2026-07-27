@@ -90,7 +90,17 @@ fn expand_in_line(
                 continue;
             }
             match render_shortcode(inner) {
-                Some(html) => out.push_str(&html),
+                Some(html) => {
+                    // Lint the ARGUMENTS of a shortcode that rendered. Until this landed,
+                    // `render_shortcode` had no warning sink at all, so a typo'd flag
+                    // (`control` for `controls`) or key (`postr=` for `poster=`) silently
+                    // did nothing — the only typo surface in the tool that said nothing.
+                    let toks = tokenize_args(inner);
+                    if let Some((name, args)) = toks.split_first() {
+                        validate_shortcode_args(name, args, line_no, warnings);
+                    }
+                    out.push_str(&html);
+                }
                 None => {
                     // Not a built-in shortcode. Keep it verbatim (nothing is lost), but
                     // warn: a typo'd shortcode name should be visible in the build log /
@@ -98,7 +108,18 @@ fn expand_in_line(
                     // `include` is handled in an earlier pass (`includes::resolve`); a
                     // leftover one means that pass already reported it, so don't double-warn.
                     let name = inner.split_whitespace().next().unwrap_or(inner);
-                    if name != "include" {
+                    // A KNOWN built-in that returned `None` is not an unknown shortcode: it
+                    // is a built-in missing its positional path. Reporting it as unknown
+                    // sent the author hunting a spelling that was already right.
+                    if SHORTCODE_SPECS.iter().any(|(n, _, _)| *n == name) {
+                        warnings.push(
+                            Warning::new(format!(
+                                "`{{{{< {name} >}}}}` at line {line_no} has no source path \
+                                 (write `{{{{< {name} file >}}}}`)"
+                            ))
+                            .at(None, line_no as u32),
+                        );
+                    } else if name != "include" {
                         warnings.push(
                             Warning::new(format!(
                                 "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
@@ -246,12 +267,103 @@ fn is_named_arg(tok: &str) -> bool {
 /// clip.
 const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
 
+/// The `key=value` arguments each built-in shortcode honors, as `(name, keys, flags)`.
+/// **The vocabulary is closed**, which is what lets [`validate_shortcode_args`] tell a typo
+/// from an argument it simply has not heard of — the same closed-vocabulary contract front
+/// matter, cell options and `_site.yml` are linted against.
+const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 2] = [
+    ("embed", &["title"], &[]),
+    (
+        "video",
+        &["dark", "poster", "caption", "captions"],
+        &VIDEO_FLAGS,
+    ),
+];
+
+/// Whether a bare token is more plausibly a **misspelled flag** than a source path. A path
+/// carries an extension or a directory separator; a flag is a bare word. Without this the
+/// positional-source rule ("the first token that is neither `key=value` nor a known flag")
+/// hands the `src` to the typo: `{{< video control tour.mp4 >}}` rendered
+/// `<video src="control">`, which is a broken player rather than a missing option.
+fn looks_like_flag_typo(tok: &str, flags: &[&'static str]) -> bool {
+    !tok.contains('.')
+        && !tok.contains('/')
+        && flags
+            .iter()
+            .any(|f| crate::frontmatter::closest(tok, &[f]).is_some())
+}
+
 /// The positional source path of a `{{< video >}}`: the first argument that is neither a
-/// `key=value` named argument nor one of the bare [`VIDEO_FLAGS`], so flag order is free.
+/// `key=value` named argument, nor one of the bare [`VIDEO_FLAGS`], nor a near-miss
+/// spelling of one — so flag order is free and a typo'd flag does not become the clip.
 fn video_path(args: &[String]) -> Option<String> {
     args.iter()
-        .find(|a| !is_named_arg(a) && !VIDEO_FLAGS.contains(&a.as_str()))
+        .find(|a| {
+            !is_named_arg(a)
+                && !VIDEO_FLAGS.contains(&a.as_str())
+                && !looks_like_flag_typo(a, &VIDEO_FLAGS)
+        })
         .cloned()
+}
+
+/// Lint one built-in shortcode's arguments against its closed vocabulary, in the same
+/// "unknown X `y` (did you mean `z`?)" voice the front-matter and `_site.yml` linters use.
+///
+/// **Why this exists at all:** `render_shortcode` had no warning sink, so
+/// `{{< video x.mp4 control >}}` produced no controls and said nothing — the only typo
+/// surface in the tool that was silent. It is a *warning*, never a failure: the shortcode
+/// still renders with the options it did understand, exactly as before.
+///
+/// Everything is reported per token, so one line can name more than one mistake. The
+/// positional path is not validated here (a missing or misspelled file is the asset
+/// checker's job, and a path is not a vocabulary).
+fn validate_shortcode_args(
+    name: &str,
+    args: &[String],
+    line_no: usize,
+    warnings: &mut Vec<Warning>,
+) {
+    let Some((_, keys, flags)) = SHORTCODE_SPECS.iter().find(|(n, _, _)| *n == name) else {
+        return; // not a built-in with a declared vocabulary (`input` lints its own)
+    };
+    let mut saw_path = false;
+    for tok in args {
+        if is_named_arg(tok) {
+            let key = tok.split('=').next().unwrap_or(tok);
+            if !keys.contains(&key) {
+                warnings.push(
+                    Warning::new(format!(
+                        "unknown `{{{{< {name} >}}}}` argument `{key}=`{} at line {line_no}",
+                        suggestion(key, keys, flags)
+                    ))
+                    .at(None, line_no as u32),
+                );
+            }
+        } else if flags.contains(&tok.as_str()) {
+            // a valid bare flag
+        } else if !saw_path && !looks_like_flag_typo(tok, flags) {
+            saw_path = true; // the positional source path
+        } else {
+            warnings.push(
+                Warning::new(format!(
+                    "unknown `{{{{< {name} >}}}}` option `{tok}`{} at line {line_no}",
+                    suggestion(tok, keys, flags)
+                ))
+                .at(None, line_no as u32),
+            );
+        }
+    }
+}
+
+/// " (did you mean `x`?)" for the nearest name in either vocabulary, or "". Named keys are
+/// offered with their `=` so the suggestion is the literal text to type.
+fn suggestion(tok: &str, keys: &[&'static str], flags: &[&'static str]) -> String {
+    let all: Vec<&'static str> = keys.iter().chain(flags.iter()).copied().collect();
+    match crate::frontmatter::closest(tok, &all) {
+        Some(hit) if keys.contains(&hit) => format!(" (did you mean `{hit}=`?)"),
+        Some(hit) => format!(" (did you mean `{hit}`?)"),
+        None => String::new(),
+    }
 }
 
 /// Whether a bare (valueless) flag token is present, matched whole.
@@ -549,6 +661,122 @@ pub fn embed_targets(src: &str) -> Vec<String> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod arg_validation_tests {
+    use super::*;
+
+    /// Every warning `expand_shortcodes` produces for one line of source.
+    fn warn_msgs(src: &str) -> Vec<String> {
+        expand_shortcodes(src)
+            .1
+            .into_iter()
+            .map(|w| w.message)
+            .collect()
+    }
+
+    #[test]
+    fn a_typod_bare_flag_warns_with_a_did_you_mean() {
+        // Item 77 residual: `{{< video x.mp4 control >}}` (for `controls`) got no controls
+        // and no warning, because `render_shortcode` had no warning sink — while every
+        // other typo surface in the tool (front matter, cell options, `_site.yml`) warns.
+        let w = warn_msgs("{{< video tour.mp4 control >}}\n");
+        assert_eq!(w.len(), 1, "exactly one warning: {w:?}");
+        assert!(
+            w[0].contains("control") && w[0].contains("controls"),
+            "the typo must be named and its fix suggested: {w:?}"
+        );
+    }
+
+    #[test]
+    fn a_typod_named_argument_warns_too() {
+        // Equally silent today, and the same one-character mistake: `postr=` for `poster=`.
+        let w = warn_msgs("{{< video tour.mp4 postr=cover.png >}}\n");
+        assert_eq!(w.len(), 1, "exactly one warning: {w:?}");
+        assert!(
+            w[0].contains("postr") && w[0].contains("poster"),
+            "the typo'd key must be named and its fix suggested: {w:?}"
+        );
+    }
+
+    #[test]
+    fn a_typod_flag_before_the_path_does_not_steal_the_source() {
+        // Worse than ignored: the positional source is "the first token that is neither
+        // `key=value` nor a known flag", so a typo'd flag WRITTEN FIRST became the `src`
+        // and the real clip became a stray argument. A bare token with no `.` and no `/`
+        // that is within edit distance 2 of a known flag is read as the typo it is.
+        let (html, warnings) = expand_shortcodes("{{< video control tour.mp4 >}}\n");
+        assert!(
+            html.contains("src=\"tour.mp4\""),
+            "the real clip must still be the source: {html}"
+        );
+        let msgs: Vec<_> = warnings.into_iter().map(|w| w.message).collect();
+        assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
+        assert!(msgs[0].contains("control"), "…naming the typo: {msgs:?}");
+    }
+
+    #[test]
+    fn every_valid_spelling_stays_silent() {
+        // The half that keeps this honest: a warning on correct authoring is worse than
+        // no warning at all. Each of these is a documented, working invocation.
+        for src in [
+            "{{< video tour.mp4 >}}\n",
+            "{{< video tour.mp4 controls >}}\n",
+            "{{< video tour.mp4 audio captions=tour.vtt >}}\n",
+            "{{< video tour.mp4 dark=tour-dark.mp4 poster=cover.png caption=\"A tour\" >}}\n",
+            // A path carrying a query string: the `=` belongs to the value, not a key.
+            "{{< video clip.mp4?token=abc >}}\n",
+            "{{< embed deck.tmd >}}\n",
+            "{{< embed deck.tmd title=\"The deck\" >}}\n",
+        ] {
+            assert!(
+                warn_msgs(src).is_empty(),
+                "valid authoring must not warn ({src:?}): {:?}",
+                warn_msgs(src)
+            );
+        }
+    }
+
+    #[test]
+    fn a_builtin_with_no_source_path_says_so_instead_of_unknown_shortcode() {
+        // `render_shortcode` returns `None` when a known built-in has no positional path,
+        // which fell through to the unknown-name branch — so a real `video` was reported
+        // as an unknown shortcode, sending the author to hunt a spelling that was right.
+        let w = warn_msgs("{{< video >}}\n");
+        assert_eq!(w.len(), 1, "exactly one warning: {w:?}");
+        assert!(
+            !w[0].contains("unknown shortcode"),
+            "a known built-in must not be reported as unknown: {w:?}"
+        );
+        assert!(
+            w[0].contains("video") && w[0].contains("path"),
+            "it must say what is missing: {w:?}"
+        );
+        // A genuinely unknown name keeps its own message.
+        let u = warn_msgs("{{< vidoe tour.mp4 >}}\n");
+        assert!(
+            u.iter().any(|m| m.contains("unknown shortcode")),
+            "an unknown name still reports as unknown: {u:?}"
+        );
+    }
+
+    #[test]
+    fn an_argument_warning_is_located_on_its_own_line() {
+        // Located like every other render warning, so the preview can link to it.
+        let (_, warnings) = expand_shortcodes("intro\n\n{{< video tour.mp4 control >}}\n");
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].line, Some(3), "warning: {:?}", warnings[0]);
+    }
+
+    #[test]
+    fn a_shortcode_inside_a_code_fence_is_not_validated() {
+        // The documentation case: the guide shows `{{< video … >}}` spellings in fenced
+        // blocks and inline code. Those are examples, not invocations — expansion already
+        // skips them, and validation must not reach around that.
+        assert!(warn_msgs("```\n{{< video x.mp4 control >}}\n```\n").is_empty());
+        assert!(warn_msgs("see `{{< video x.mp4 control >}}` here\n").is_empty());
+    }
 }
 
 #[cfg(test)]

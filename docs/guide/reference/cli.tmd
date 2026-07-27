@@ -99,7 +99,7 @@ At a glance, here is everything `check` looks at, grouped by what it protects:
 
 | Category | Catches |
 |---|---|
-| **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcodes, YAML parse errors |
+| **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names **and their flags/arguments** (`{{< video x.mp4 control >}}` suggests `controls`), YAML parse errors |
 | **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:` |
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
 | **Local media** | Missing local images (`src`/`href`) and `{{< video >}}`/`<video>` files |

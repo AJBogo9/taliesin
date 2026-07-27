@@ -314,6 +314,14 @@ This heading has neither text nor subsections beneath it, so the section is empt
 
 To fix: Write the section, or delete the heading. If it was meant to group other sections, give it real subsections (deeper headings) rather than siblings.
 
+## TAL-SHORTCODE
+
+**a shortcode taliesin could not read as written**
+
+A `{{< … >}}` invocation names something the tool does not know: an unknown shortcode name, an unknown bare flag or `key=` argument, or a built-in with no source path. Nothing is lost — an unknown name stays on the page as literal text, and a known shortcode still renders with the options it did understand — which is exactly why this used to be silent: the page looked fine and the option you asked for simply never happened.
+
+To fix: Fix the spelling inside the braces; the message names the nearest known spelling when there is one. The built-ins are `{{< include file.tmd >}}`, `{{< embed deck.tmd [title=…] >}}`, `{{< video clip.mp4 [controls] [audio] [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A shortcode written as an *example* belongs in a code fence or backticks, which are never expanded and never linted.
+
 ## TAL-STEP-LINES
 
 **a `.step lines=` uses a step separator**
