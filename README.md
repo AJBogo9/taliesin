@@ -67,7 +67,7 @@ language runs against its own warm kernel:
 | `TALIESIN_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the limit. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
 
-(See `Taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,
+(See `taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,
 `TALIESIN_NO_EXEC`, `TALIESIN_NO_CLEAR`.)
 
 **Quick start.** Scaffold a starter site and preview it:

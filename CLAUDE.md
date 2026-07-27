@@ -130,7 +130,7 @@ cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the 
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
 ```
 
-A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
+A `taliesin` launcher on `PATH` (`~/.local/bin/taliesin`) rebuilds the release
 binary when the tool's sources change, then runs it, so `taliesin preview <file>`
 works from anywhere.
 
