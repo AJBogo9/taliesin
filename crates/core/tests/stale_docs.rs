@@ -42,27 +42,27 @@ fn docs_do_not_promise_a_ci_that_enforces_gates() {
             .exists(),
         ".github/ is back: re-enabling CI means these docs need updating, not this test"
     );
+    // THIRD_PARTY.md and deny.toml were the two that actually carried a false claim past
+    // this gate: both asserted "CI enforces" the licence policy while `cargo deny` runs
+    // nowhere but by hand. A gate whose file list omits the files that drift is not a gate.
     for rel in [
         "CLAUDE.md",
         "README.md",
+        "THIRD_PARTY.md",
+        "deny.toml",
+        ".claude/hooks/cargo-fmt.sh",
+        ".claude/agents/corpus-verifier.md",
         "docs/internals/extending.tmd",
         "docs/internals/repository.tmd",
     ] {
         let text = read(rel);
         assert!(
-            !text.contains("CI enforces") && !text.contains("CI-gated"),
+            !text.contains("CI enforces")
+                && !text.contains("CI-gated")
+                && !text.contains("wired into CI"),
             "{rel} still promises a CI gate, but the workflow is gone and the check is manual"
         );
     }
-}
-
-#[test]
-fn claude_md_does_not_list_feed_rs() {
-    let claude = read("CLAUDE.md");
-    assert!(
-        !claude.contains("feed.rs"),
-        "CLAUDE.md still lists the deleted feed.rs"
-    );
 }
 
 /// The 2026-07-12 deck audit (A1/A2) deleted reader/scroll mode, drawing mode and
@@ -84,15 +84,42 @@ fn shipped_prose_does_not_advertise_deleted_deck_modes() {
         );
     }
 
-    // These three sell the deck engine and have no other reason to name a deleted mode,
-    // so a bare mention is the defect. (`docs/guide/using/formats.tmd` deliberately says
-    // there is *no* PDF export, which is why it is not on this list.)
-    for rel in ["site/index.tmd", "site/formats.tmd", "samples/README.md"] {
+    // These sell the deck engine and have no other reason to name a deleted mode, so a
+    // bare mention is the defect. (`docs/guide/using/formats.tmd` deliberately says there
+    // is *no* PDF export, which is why it is not on this list.)
+    //
+    // `demo.tmd` is on the list because the first version of this gate omitted it and the
+    // omission cost exactly what the gate exists to prevent: `site/demo.tmd` is embedded
+    // INTO `site/index.tmd` and `site/formats.tmd` via `{{< embed >}}`, so checking only
+    // the two embedding pages proves nothing about what the landing page renders. It went
+    // on advertising a one-slide-per-page PDF, a "scrollable reader", and a <kbd>D</kbd>
+    // pen tool that never existed in any version of the engine.
+    //
+    // The needles are the *shapes that actually shipped*, not the vocabulary the deleted
+    // features were named after: the stale prose said "one-slide-per-page PDF" and
+    // "scrollable **reader**", neither of which contains "PDF export" or "reader mode".
+    for rel in [
+        "site/index.tmd",
+        "site/formats.tmd",
+        "site/demo.tmd",
+        "docs/guide/demo.tmd",
+        "samples/README.md",
+    ] {
         let text = read(rel);
-        for claim in ["PDF export", "PDF-export", "reader mode", "Reader mode"] {
+        for claim in [
+            "PDF export",
+            "PDF-export",
+            "per-page PDF",
+            "reader mode",
+            "Reader mode",
+            "scrollable **reader**",
+            "a **pen**",
+            "to annotate",
+        ] {
             assert!(
                 !text.contains(claim),
-                "{rel} advertises {claim:?}, deleted from the deck engine on 2026-07-12"
+                "{rel} advertises {claim:?}, which the deck engine does not do \
+                 (reader/PDF modes were deleted 2026-07-12; the pen never existed)"
             );
         }
     }
