@@ -494,6 +494,33 @@ fn site_favicon_link_is_emitted_depth_relative() {
     );
 }
 
+/// The site `logo:` is the navbar brand's image, with the site `title:` as its alt, and
+/// its href resolves depth-relative exactly like `favicon:` (a post two levels down has
+/// to climb back out, or the mirrored file 404s in `_site/`). Needles the whole
+/// `<a …><img …></a>` construct: every page inlines the full CSS + JS payload, so a bare
+/// `contains("logo")` is satisfied by the stylesheet and would pass with nothing rendered.
+#[test]
+fn site_logo_is_the_navbar_brand_image_depth_relative() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let home = site.render_page("index.tmd").expect("home renders");
+    assert!(
+        home.contains(
+            "<a class=\"tali-nav-brand\" href=\"index.html\">\
+             <img class=\"tali-brand-logo\" src=\"logo.svg\" alt=\"Andreas Bogossian\" /></a>"
+        ),
+        "root page navbar brand is not the configured logo"
+    );
+    let post = site
+        .render_page("posts/em-algorithm/index.tmd")
+        .expect("post renders");
+    assert!(
+        post.contains(
+            "<img class=\"tali-brand-logo\" src=\"../../logo.svg\" alt=\"Andreas Bogossian\" />"
+        ),
+        "post logo not resolved relative to its depth"
+    );
+}
+
 /// The site emits a self-contained `404.html`: a complete page, on-theme, whose
 /// links are root-absolute (it is served at arbitrary depth, so depth-relative
 /// `../` links would resolve against the wrong directory).

@@ -148,6 +148,30 @@ fn unknown_native_key_is_warned_with_a_suggestion() {
 }
 
 #[test]
+fn logo_is_a_known_key_but_a_typo_of_it_still_warns() {
+    // Registering `logo:` has to move BOTH ways: the real key must stop drawing the
+    // unknown-key diagnostic, and a near-miss must still draw it (a key added to the
+    // parser but not to NATIVE_KEYS warns on correct config; one added to neither is
+    // silently inert).
+    let d = site("title: \"S\"\nlogo: brand.svg\n");
+    let s = Site::discover(&d.0);
+    assert!(
+        !s.warnings.iter().any(|w| w.contains("logo")),
+        "a correctly spelled `logo:` must not be diagnosed: {:?}",
+        s.warnings
+    );
+    let d = site("title: \"S\"\nlogos: brand.svg\n");
+    let s = Site::discover(&d.0);
+    assert!(
+        s.warnings
+            .iter()
+            .any(|w| w.contains("logos") && w.contains("logo")),
+        "expected a did-you-mean warning for `logos`, got: {:?}",
+        s.warnings
+    );
+}
+
+#[test]
 fn legacy_shaped_config_is_no_longer_parsed_and_warns() {
     // The compat shim is gone: the native flat schema is the only path. A
     // legacy nested config no longer translates; its nested values are not

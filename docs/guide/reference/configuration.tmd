@@ -67,6 +67,7 @@ title: "My Site"
 description: "Notes on things"
 url: "https://example.com"
 favicon: favicon.svg
+logo: logo.svg           # brand image in the navbar (book: the topbar + chapter drawer)
 output: _site            # build output dir (default _site, or _book for a book)
 toc: true                # default table of contents for article pages
 css: custom.css
@@ -105,6 +106,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 |---|---|
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
+| `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. The same key a deck's front matter takes, so one name brands all three surfaces. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
 | `image` | Deprecated; the social-card image is now auto-generated per page |
 | `output` | Build output directory |
 | `toc` | Default table of contents for article pages |
