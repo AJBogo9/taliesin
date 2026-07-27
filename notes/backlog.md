@@ -13,8 +13,12 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 - **Four code items are queued (72-75), from an author-reported round filed 2026-07-27.** The author
   brought six observations; five validated, one was already shipped. They are small and mutually
-  independent, so they parallelize cleanly across sessions. Item **76** needs an author ruling before
-  anyone builds it. Item **56** remains an authoring judgment plus a feature proposal, not a task.
+  independent, so they parallelize cleanly across sessions. Item **76 was ruled 2026-07-27 (remove the
+  right-rail TOC) and is now in band A**, unblocked but not yet built. Item **56** remains an authoring
+  judgment plus a feature proposal, not a task.
+- **The duplicate item 70 is resolved.** Two items were filed as 70 on the same day. Band A's 70 (the
+  deck letterbox) keeps the number — [AUDITS.md](AUDITS.md):51 points at it as "items 70-71". The
+  `_site.yml`-boundary one from the path-parity round is now **77**; nothing referenced it.
 - **A lens is still the better opener once 72-75 are gone.** Standing recommendation: **real-device
   mobile** — now unblocked, and that round verifies rather than re-finds since batch 1 shipped. First
   thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the root holds less
@@ -234,6 +238,30 @@ also measured in a browser. Nothing here is blocked.
     (3) clip the stage — cannot be unconditional, the overview needs `overflow: visible` to show the
     map at all.
 
+76. **Remove the book's right-rail `#TOC`. RULED 2026-07-27: remove.** The author asked *"Should I
+    remove side navigation? Is it useful? You can just view the chapters menu for in-chapter
+    navigation."* and, shown the measurement below, ruled **remove**. This **reverses the documented
+    2026-07-06 "keep both nav surfaces" decision** recorded at `site/book_toc.rs:7` — update that
+    comment as part of the change rather than leaving a doc-comment that contradicts the tree.
+    **The premise checks out, and by a wider margin than the author claimed.** Measured in a browser
+    on `docs/guide/using/formats.html` (1440 px): the Chapters drawer **auto-expands the current
+    chapter** and lists it to h3 — `8.1 Slide decks`, then `8.1.1` … `8.1.9`, `8.2`, `8.3.1`, `8.3.2`
+    — 18 outline toggles and 181 section links across 19 chapters. The right rail showed **four**
+    entries for the same chapter (h2 only: `8.1`-`8.4`). So the drawer is not a substitute for the
+    rail; it is **strictly more detailed**.
+    **What removal costs is scrollspy** — "you are here" while reading, zero clicks, no overlay
+    covering the text. That is the rail's only unique property, and the ruling accepts losing it.
+    **What it buys:** `site.css:283-288` reserves the 14rem track on *every* chapter, TOC or not,
+    purely so the text column does not jump between chapters that have a TOC and chapters that do not.
+    Delete the rail and that compromise goes with it, along with `toc-spy.js` and the mobile TOC sheet.
+    **Scope trap: the mobile TOC sheet is shared.** `TOC_SHEET_MARKUP` was made the single copy all
+    four assemblers emit in the 2026-07-26 path-parity batch (items 50/51/57) — removing it is a
+    four-surface change, not a book-only one, and re-forking it would revert that work. Check what
+    the single-doc preview and the non-book site pages still need from the sheet before deleting it.
+    **Not measured:** whether scrollspy is what makes the rail feel useful in *long* chapters
+    specifically — the probe read one chapter at one width, and `tocSpyActive` was false at scroll
+    top, which is expected but was not re-checked mid-scroll. The ruling was made without it.
+
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
     assumed, and splits two ways:
@@ -254,28 +282,6 @@ of the last three closed on **evidence rather than code**, which is the outcome 
 likely to produce.
 
 ### C. Blocked on an owner ruling (not a task until then)
-
-76. **Remove the book's right-rail `#TOC`?** Author question, 2026-07-27: *"Should I remove side
-    navigation? Is it useful? You can just view the chapters menu for in-chapter navigation."*
-    **The premise checks out, and by a wider margin than the author claimed.** Measured in a browser
-    on `docs/guide/using/formats.html` (1440 px): the Chapters drawer **auto-expands the current
-    chapter** and lists it to h3 — `8.1 Slide decks`, then `8.1.1` … `8.1.9`, `8.2`, `8.3.1`, `8.3.2`
-    — 18 outline toggles and 181 section links across 19 chapters. The right rail showed **four**
-    entries for the same chapter (h2 only: `8.1`-`8.4`). So the drawer is not a substitute for the
-    rail; it is **strictly more detailed**.
-    **What removal actually costs is scrollspy** — "you are here" while reading, zero clicks, no
-    overlay covering the text. That is the rail's only unique property.
-    **What it buys:** `site.css:283-288` reserves the 14rem track on *every* chapter, TOC or not,
-    purely so the text column does not jump between chapters that have a TOC and chapters that do not.
-    Delete the rail and that compromise goes with it, along with `toc-spy.js` and the mobile TOC sheet.
-    **Why this is a ruling and not a task:** it reverses the documented **2026-07-06 "keep both nav
-    surfaces" decision** (recorded at `site/book_toc.rs:7`) and removes a reader-facing surface, so it
-    needs the author's word, not a session's judgment. **Recommendation: remove.** The drawer dominates
-    on content and scrollspy is a nice-to-have paying rent as a permanent column. A one-word ruling
-    unblocks it into band A.
-    **Not measured:** whether scrollspy is what makes the rail feel useful in *long* chapters
-    specifically — the probe read one chapter at one width, and `tocSpyActive` was false at scroll
-    top, which is expected but was not re-checked mid-scroll.
 
 71. **Two deck-on-touch behaviours that are working-as-written, and may be working-as-wrong**
     (DT-3 + DT-4, detail: [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)).
