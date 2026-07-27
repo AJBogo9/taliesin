@@ -9,6 +9,46 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > outlive their item go to [LESSONS.md](LESSONS.md). The "do not re-add" list at the bottom is a
 > compact anti-rot guard, **one line per entry**, not a changelog.
 
+## RESUME HERE (cold start, 2026-07-28)
+
+**If you are a fresh session with no context, read this block, then "State", then band A. That is
+enough to continue; nothing else is required.**
+
+- **Where the work is.** Audit Wave 1 is committed as **`3a679cb`** on branch
+  **`book-drawer-section-highlight`** (the branch also carries `d0fd071`, the book-drawer section
+  highlight feature). **It is NOT pushed.** `git log --oneline origin/main..HEAD` to confirm what is
+  unpushed; do not trust this line, it rots.
+- **A second session was working the same tree in parallel on 2026-07-27/28**, on branch
+  **`critique-pass-2026-07-27`**, saving its own audit findings. **Check that branch before acting
+  on anything here.** One known overlap: its `6f68386` fixes `THIRD_PARTY.md` MIT→AGPL, which is
+  **all of item 82** (both `THIRD_PARTY.md` claims and `docs/internals/repository.tmd:133` are
+  fixed there; **do not re-fix, just merge and re-grep**). It also adds
+  `crates/core/assets/js/LICENSES.md`, which narrows but does not close item 101. **Its branch does
+  NOT touch `notes/backlog.md`, so this file will not conflict.** It does touch
+  `crates/server/src/serve_site/mod.rs` (a different bug: deck `.tmd`→`.html` link rewrite, not
+  item 80's mounts join) and `docs/guide/reference/cli.tmd` (**not** item 79's wording, which is
+  still open). Its own findings live in `notes/2026-07-28-launch-critique.md`. **Assume more overlap
+  than is listed here and re-derive before building.** Merge order is the author's call.
+- **What Wave 1 was.** Four audit rounds (R1 adoption friction, R3 pre-mortem, R4 technical due
+  diligence, R5 untrusted document) run against a new premise: every prior round asked *is this
+  correct?*, so the menu was exhausted in one dimension only. Full reasoning and the remaining ten
+  rounds: [audit slate spec](../docs/superpowers/specs/2026-07-27-audit-slate-design.md).
+  Execution method: [wave 1 plan](../docs/superpowers/plans/2026-07-27-audit-wave-1.md).
+- **The four findings docs** (each finding carries its measurement and its refutation test):
+  [adoption friction](2026-07-27-adoption-friction-audit.md) ·
+  [pre-mortem](2026-07-27-premortem-audit.md) ·
+  [due diligence](2026-07-27-due-diligence-audit.md) ·
+  [untrusted document](2026-07-27-untrusted-document-audit.md).
+- **Start with items 79, 80, 81** (band A). Three HIGH security findings, each re-verified from
+  source by the controller, not taken on an agent's report. They are the launch blockers.
+- **Item 100 blocks the most work and needs the author, not a session.** Publish as a fresh repo
+  with no history, or flip this repo's visibility? Half the register resolves differently per
+  answer, and two self-flagged private strategy notes are git-tracked right now.
+- **Next audit round is R14 (the deck)**, ahead of R6 and R7 — see the lens section below for why,
+  and run it before R7 because R7 consumes its output.
+- **Nothing in Wave 1 changed a line of product code.** The tree is exactly as it was; all 27 items
+  are open work. No gates were re-run after the commit because nothing compiled.
+
 ## State (2026-07-28)
 
 - **Audit Wave 1 landed and refilled the board: four rounds, 30 items (79-108).** Spec:
@@ -282,10 +322,13 @@ produced it and the observation that would refute it; trust the symptom, re-deri
 
 **Licence correctness (publication blockers)**
 
-82. **Remove every "Taliesin is MIT" claim.** (HIGH.) `THIRD_PARTY.md:3` and `:44`, plus
-    `docs/internals/repository.tmd:133` ("`LICENSE` (MIT)"), against `Cargo.toml`'s
-    `AGPL-3.0-only`. The concurrent session's `6f68386` (unmerged, `critique-pass-2026-07-27`)
-    fixes THIRD_PARTY only and **misses the third occurrence**. Verify all three after that merges.
+82. **Remove every "Taliesin is MIT" claim — ALREADY FIXED on the other branch; this item is a
+    MERGE obligation, not code.** (Corrected 2026-07-28, and the correction is the lesson: the
+    first version of this item said the other session "misses the third occurrence". **It does
+    not.** Measured on `critique-pass-2026-07-27` @ `1f72853`: `THIRD_PARTY.md` has **zero**
+    remaining self-MIT claims, and `docs/internals/repository.tmd:133` is fixed to
+    `AGPL-3.0-only`.) **Action: merge that branch, then re-grep to confirm; do not re-fix.**
+    An audit's claim about *another branch* rots faster than one about your own.
 83. **Tag a release whose tree and licence match `main`.** (HIGH.) `git show v0.2.0:LICENSE`
     begins `MIT License` while HEAD ships AGPL-3.0. Anyone cloning the sole version tag gets MIT,
     which leaks the dual-licence moat that README and `deny.toml` call the commercial strategy.
@@ -395,6 +438,11 @@ the broken one). Refile here only after re-deriving the cause from source.
      carries a licence header**), so a user's blog contains AGPL material. **No licence change is
      proposed** — the finding is that the position is unstated, and stating it discounts the
      licence, bus-factor and portability anxieties at once.
+     **Narrowed 2026-07-28:** the other branch added `crates/core/assets/js/LICENSES.md`, which
+     carries the full permission notices for the **vendored third-party** bundles. That is adjacent
+     and good, but its own text says "This covers the redistributed third-party bundles only", so
+     **it does not answer this item**: what a *user's built page* is licensed as, given it inlines
+     Taliesin's *own* AGPL scripts, is still unstated. Re-check after that branch merges.
 102. **Decide what to do about constructs that render elsewhere and silently do not here.**
      (Ruling.) Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
 103. **Clear the name in software classes before the flip.** (Ruling, legal not code.) Trademark
