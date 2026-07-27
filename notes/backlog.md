@@ -17,12 +17,12 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and the top four (58, 59, 60, 61) shipped 2026-07-27, so the
-next item is 62.** Each remaining item names its file, its survivor list and its reason for ranking
-where it does, so it can be picked up cold. Before writing any pin, read the axis note in the band-A
-preamble — it is what made the first attempt at 58 only half a job, and it caught three more holes
-in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and an
-authoring judgment rather than a task.
+**Start here: band A is ranked 58-68 and the top five (58, 59, 60, 61, 62) shipped 2026-07-27, so
+the next item is 63.** Each remaining item names its file, its survivor list and its reason for
+ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
+the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
+more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
+an authoring judgment rather than a task.
 
 Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
 (50, 51, 57), migration UX (53, 54), the metadata half of 56, and **deck weight + headless-JS
@@ -30,8 +30,8 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `lsp-request-surface-pins`): full workspace
-suite with all three gates and `--test-threads=1` is **95 binaries, 1,592 tests, 0 failures**;
+**Verified 2026-07-27 at the last landing** (branch `headless-js-pins`): full workspace
+suite with all three gates and `--test-threads=1` is **95 binaries, 1,596 tests, 0 failures**;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
@@ -417,11 +417,19 @@ completed server files, **156 survivors**) and
     base). The 5th is a **false survivor**: `pid_alive -> false` at line 103 is the
     `#[cfg(not(unix))]` arm, dead code here, and cargo-mutants parses without evaluating `cfg`, so
     **it will reappear on every future run of this file.**
-62. **`headless_js.rs`** (7): `observe_inner` (3), `observe_page`, `settle_timeout` (2),
-    `chrome_available`. Above 63 because this is the newest code in the crate, it spawns browser
-    processes, and the security audit entry already singles it out for post-dating that round. Note
-    `chrome_available` can return `true` — the opposite of the failure the 2026-07-26 bounding work
-    (item 55) was about.
+62. **SHIPPED 2026-07-27** (`4db6a68`) — `headless_js.rs`, **7 of 7 killed**, each verified by
+    mutation. **The lesson generalises past this file: the existing tests checked that each browser
+    phase *has* a bound, and nothing checked what a bound does when it fires.**
+    `every_browser_await_is_bounded` enumerates awaits and wraps — and the teardown *decision*
+    around those wrappers (`closed && waited` → kill) was invisible to it, so both its operators
+    could flip, leaking a Chrome process per run, with the scan green. Likewise the wedged-launch
+    test asserted `why.contains("launch")`, which **both** launch failures satisfy: the outer bound
+    sits above the configured `launch_timeout` so the *library's* error (it carries the browser's
+    stderr) is what the author reads, and inverting that ordering stayed green while costing the
+    diagnostic. Two survivors are pinned **structurally on purpose** (a browser that speaks CDP and
+    then lies is not reproducible); `eval_timeout` was extracted so the one relationship worth
+    asserting became assertable. Detail:
+    [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
 63. **`complete.rs`** (30 — the largest single count, deliberately mid-table): `dir_contains_tmd` (6),
     `positionals_seen` (6), `complete_line` (4), `flags_for` (4), `complete_paths` (3),
     `cmd_completions` (3 incl. its whole body), `install_completions`, `command_desc`,

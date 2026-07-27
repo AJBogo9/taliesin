@@ -249,7 +249,34 @@ lsp.rs:805:38: replace == with != in frontmatter_key_doc
 lsp.rs:859:25: replace > with >= in to_document_symbol
 ```
 
-### `headless_js.rs` — item 62 (7 survivors)
+### `headless_js.rs` — item 62 (7 survivors) — **CLOSED 2026-07-27: 7 of 7 killed**
+
+Every one verified by restoring the mutant and watching a named test fail. The shape here is
+different from `lsp.rs`'s and worth carrying forward: **the existing tests checked that each browser
+phase *has* a bound, and none checked what the bound does when it fires.**
+
+- **`every_browser_await_is_bounded` is a real guard and it still left the whole teardown open.**
+  It enumerates awaits and checks each is wrapped; the *decision* around the wrappers
+  (`closed && waited` → kill) is invisible to it, and both operators in it could be flipped —
+  leaking a Chrome process and its profile per run — with the scan green.
+- **The wedged-launch test asserted `why.contains("launch")`, which BOTH launch failures satisfy.**
+  The outer bound sits deliberately above the configured `launch_timeout` so the *library's* error,
+  which carries the browser's stderr, is what the author reads. Inverting that ordering keeps the
+  test green and silently costs the diagnostic. Measured: today's reason is
+  `"chrome launch failed: Timeout while resolving websocket URL…"`; the mutant's is
+  `"chrome launch timed out"`.
+- **`eval_timeout` was extracted** (4 lines) so the relationship it exists for is assertable: the
+  in-page script counts its own budget down, so a wrapper at or below that budget fires first and
+  reports `timed out` for a page that was about to answer. The only behavioural route to it needs a
+  real Chrome *and* a cell that settles between the two bounds — a 6 s test in the live-Chrome gate
+  nothing runs.
+- **Two survivors are pinned structurally, on purpose.** `331:25` (`&&` → `||`) and `332:8`
+  (`delete !`) are teardown decisions reachable only by a browser that speaks CDP and then lies; no
+  fake binary gets past the launch handshake, and a real Chrome exits cleanly, so neither mutant is
+  observable end to end. `a_browser_that_does_not_exit_is_killed` is a source-level guard in the
+  same style as its neighbour, mutation-checked against exactly those two operators. **It pins the
+  spelling, not the behaviour** — an equivalent rewrite of the teardown would fail it, which is the
+  cost of the trade.
 
 ```
 headless_js.rs:200:5: replace chrome_available -> bool with true
