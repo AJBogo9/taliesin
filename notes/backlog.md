@@ -17,8 +17,8 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and the top five (58, 59, 60, 61, 62) shipped 2026-07-27, so
-the next item is 63.** Each remaining item names its file, its survivor list and its reason for
+**Start here: band A is ranked 58-68 and the top six (58, 59, 60, 61, 62, 63) shipped 2026-07-27,
+so the next item is 64.** Each remaining item names its file, its survivor list and its reason for
 ranking where it does, so it can be picked up cold. Before writing any pin, read the axis note in
 the band-A preamble — it is what made the first attempt at 58 only half a job, and it caught three
 more holes in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and
@@ -30,8 +30,8 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `headless-js-pins`): full workspace
-suite with all three gates and `--test-threads=1` is **95 binaries, 1,596 tests, 0 failures**;
+**Verified 2026-07-27 at the last landing** (branch `complete-rs-pins`): full workspace
+suite with all three gates and `--test-threads=1` is **95 binaries, 1,607 tests, 0 failures**;
 `cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
 were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
 live-Chrome suite
@@ -430,11 +430,19 @@ completed server files, **156 survivors**) and
     then lies is not reproducible); `eval_timeout` was extracted so the one relationship worth
     asserting became assertable. Detail:
     [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
-63. **`complete.rs`** (30 — the largest single count, deliberately mid-table): `dir_contains_tmd` (6),
-    `positionals_seen` (6), `complete_line` (4), `flags_for` (4), `complete_paths` (3),
-    `cmd_completions` (3 incl. its whole body), `install_completions`, `command_desc`,
-    `positional_kind`. A wrong shell completion is visible to the author the moment it happens and
-    breaks nothing, so raw count overstates its priority.
+63. **SHIPPED 2026-07-27** (`5e1303b`) — `complete.rs`, **30 of 30 killed**, each verified by
+    mutation. **This item's own ranking note was half wrong, which is the part worth keeping:** "a
+    wrong shell completion is visible immediately and breaks nothing" is true of the completion
+    brain and false of the five survivors in `completions --install`, **the only path in this tool
+    that creates a file outside the project**. `install_plan` was unit-tested against a hand-built
+    environment, so the step that reads the *real* one and performs the write had never run — and
+    one survivor (`== "--install"` → `!=`) makes `completions zsh` **install** when the author asked
+    to print. Also closed: the `.tmd` walk's depth budget (it must reach *and* stop) and its
+    symlink rule, which was a source comment and is the only thing making the walk cycle-proof.
+    **Two shapes recurred from item 58** — every existing path test completes at the *top level*,
+    so the directory-prefix split was unreachable, and the dotfile rule again needed a dotfile that
+    *is* a `.tmd`. Detail:
+    [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
 64. **The tail** (16): `doctor.rs` (14, **minus the 4 cosmetic** `colored`/`paint` mutants — terminal
     colour, not behaviour), `lsp_outline.rs` (4: `clean_title` 3, `headings`), `zip.rs` (2:
     `build_zip`).

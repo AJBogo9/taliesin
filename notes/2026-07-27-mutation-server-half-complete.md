@@ -288,7 +288,31 @@ headless_js.rs:332:8: delete ! in observe_inner
 headless_js.rs:373:16: replace + with - in observe_page
 ```
 
-### `complete.rs` — item 63 (30 survivors)
+### `complete.rs` — item 63 (30 survivors) — **CLOSED 2026-07-27: 30 of 30 killed**
+
+The largest single count in the campaign, and the item's own ranking note ("a wrong shell
+completion is visible to the author the moment it happens and breaks nothing") **turned out to be
+true of only about half of them.** Three groups:
+
+- **The decisions behind path completion** (17), none of which had a fixture. `positionals_seen`
+  decides whether the first path argument has been given yet and every way a token can fail to be
+  one was unpinned; the `.tmd`-anywhere-below walk **both reaches its depth and stops there** (with
+  no decrement it descends forever, so a big tree is scanned in full before offering anything); and
+  the walk **does not follow symlinks**, which is the only thing making it cycle-proof — `file_type()`
+  deliberately does not follow, while `read_dir` follows happily. That was a source comment; three
+  separate `&&` survivors all turn it off, and one symlink fixture (plus a cycle) kills all three.
+- **Two shapes this campaign has now hit repeatedly.** *Completing inside a directory* was untested
+  because every existing path test completes at the **top level**, where the directory prefix is
+  empty and the leaf is the whole word — the same "the fixture never reaches the code" shape as
+  item 58's dotfile. And the *dotfile rule* needed a dotfile that **is** a `.tmd`, which is
+  literally item 58's lesson repeating in a second file.
+- **`completions --install`** (5), which is **the only path in this tool that creates a file
+  outside the project** — and it breaks the item's "breaks nothing" framing. `install_plan` was
+  unit-tested against a hand-built environment, so the step that reads the *real* environment and
+  performs the write had never run: `cmd_completions`, `install_completions` and
+  `InstallEnv::from_env` could all be replaced by constants. One of the survivors
+  (`== "--install"` → `!=`) makes `completions zsh` **install** when the author asked to print,
+  writing into their home directory. Driven now through the binary against a throwaway `$HOME`.
 
 ```
 complete.rs:15:5: replace cmd_completions -> ExitCode with Default::default()
