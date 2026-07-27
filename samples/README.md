@@ -40,8 +40,8 @@ and a `.fragment`, code line-stepping (`code-line-numbers`), magic-move, **live
 `{python}` cells that compute the business charts on the slide**, an **interactive `{js}`
 slider** the audience can drag, math, a two-column layout (`layout-ncol`), callouts, a
 table, a mermaid diagram, per-slide backgrounds (colour, gradient, and a local offline
-image in `assets/`), vertical sub-slide stacks, speaker notes (`S`), PDF export
-(`Ctrl/Cmd-P`), reader mode, drawing (`D`), and the menu (`M`).
+image in `assets/`), vertical sub-slide stacks, speaker notes (`S`), and the menu
+(`M`).
 
 **5. Research paper (`samples/paper.tmd`)** — a single page with title/subtitle/author/
 date, a right-rail TOC, an abstract, numbered display equations (`@eq-`) + aligned

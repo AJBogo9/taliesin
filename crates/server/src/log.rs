@@ -114,7 +114,7 @@ pub fn network(url: &str) {
 /// `r`/`o`/`u`/`c`/`q`/`h` at the terminal gets silence, because every control lives in the
 /// browser's `◇` dev menu instead. Pure so its wording is unit-testable.
 fn keys_hint_body() -> &'static str {
-    "controls live in the browser — open the ◇ dev menu (top-right)"
+    "controls live in the browser — open the ◇ dev menu (bottom-left)"
 }
 
 /// Print the controls hint once at startup. TTY-gated: a human at a terminal is the only one
@@ -268,6 +268,43 @@ mod tests {
             "hint must name the browser: {body:?}"
         );
         assert!(body.contains('◇'), "hint must name the ◇ menu: {body:?}");
+    }
+
+    /// The hint named the wrong corner for as long as it shipped: it said `(top-right)`
+    /// while `STATUS_CSS` has always pinned the menu `bottom: .6rem; left: .6rem`. It
+    /// rotted silently because the assertions above only ask for "browser" and the glyph,
+    /// and because the hint is TTY-gated it never appears in a captured log either. So do
+    /// not assert a second hard-coded corner — derive it from the stylesheet that actually
+    /// places the menu, and moving the menu reddens this instead of rotting the prose.
+    #[test]
+    fn keys_hint_names_the_corner_the_stylesheet_puts_the_menu_in() {
+        let rule = crate::serve::STATUS_CSS
+            .split_once("#tali-controls.tali-dev {")
+            .expect("STATUS_CSS must still carry the dev-menu rule")
+            .1
+            .split_once('}')
+            .expect("the dev-menu rule must be closed")
+            .0;
+
+        let edge = |candidates: [&str; 2]| -> String {
+            let mut found = candidates
+                .iter()
+                .filter(|e| rule.contains(&format!("{e}:")))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                found.len(),
+                1,
+                "the dev-menu rule must anchor to exactly one of {candidates:?}: {rule:?}"
+            );
+            found.pop().unwrap().to_string()
+        };
+        let corner = format!("{}-{}", edge(["top", "bottom"]), edge(["left", "right"]));
+
+        let body = keys_hint_body();
+        assert!(
+            body.contains(&corner),
+            "hint must name the {corner} corner STATUS_CSS places the menu in: {body:?}"
+        );
     }
 
     #[test]

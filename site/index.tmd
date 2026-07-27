@@ -92,8 +92,8 @@ cells and live interactive graphics.
 
 ::: {.feature}
 ### Slide decks
-A native slide engine: fragments, presenter view, PDF export, code stepping, and
-code that actually runs on the slide.
+A native slide engine: fragments, presenter view, an overview map, code stepping,
+and code that actually runs on the slide.
 
 [Open the live deck →](formats.tmd#slide-decks)
 :::

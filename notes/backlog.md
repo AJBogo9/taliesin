@@ -216,22 +216,6 @@ also measured in a browser. Nothing here is blocked.
     resolution `favicon:` already has. Check it against the "minimal config" rule before widening it
     with size/position knobs — a good default is one image slot, not four.
 
-75. **Two shipped strings that contradict shipped behaviour.** Independent one-liners, but they share a
-    root: no gate compares prose against behaviour, so both drifted silently and neither is caught by
-    fmt, clippy, the suite or `check`. Ship together.
-    - **The preview hint names the wrong corner.** `log.rs:117` says the `◇` dev menu is `(top-right)`;
-      it is **bottom-left** — `serve/mod.rs:790` sets `position: fixed; bottom: .6rem; left: .6rem`,
-      and `:842` says so in prose ("the dev menu owns the bottom-left corner"). Confirmed in a
-      browser screenshot. The hint's own test (`log.rs:262`) asserts only `"browser"` and `'◇'`, which
-      is exactly why it rotted — **the fix must add the corner to that assertion**, or it rots again.
-      The hint is TTY-gated, so it never appears in captured logs; that is why it survived this long.
-    - **The site advertises a deck feature that was deleted.** `site/index.tmd:95` ("fragments,
-      presenter view, **PDF export**, code stepping") and `site/formats.tmd:35` ("one-slide-per-page
-      **PDF export**"). Deck PDF export was removed in the 2026-07-12 deck audit (A2) and is pinned
-      gone by `render/tests.rs:1950`. Note `2026-07-12-deck-audit.md:420` claims the stale "PDF
-      export" claims "were all stale and are now corrected" — **that sweep missed these two**, so do
-      not trust a findings doc's own completion claim here either.
-
 70. **The slides either side of the current one paint into the deck's letterbox** (DT-5, detail:
     [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)). The stage is a fixed 16:9
     cell scaled by the camera, `.tali-slides` is `overflow: visible`, and a `section` declares no
