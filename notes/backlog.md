@@ -45,7 +45,9 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
   about decks:** a numbering collision can be
   the symptom of a bad filing rather than a clerical slip, so check whether both items are *real*
   before renumbering either.
-- **A lens is now the only opener: bands A and B hold no code work at all.** Standing recommendation:
+- **A lens is the best opener: band A holds no code work and band B is empty.** (Band D gained
+  **78** on the way out of 77 — a real tool defect, but a filed-not-scoped one with no obvious fix,
+  which is why it is in D and not A.) Standing recommendation:
   **real-device mobile** — unblocked, and that round verifies rather than re-finds since batch 1
   shipped. First thing to check on real hardware is the drawer scroll lock: `overflow: hidden` on the
   root holds less completely on iOS Safari than on Chromium, and only Chromium was measured. The
@@ -203,8 +205,8 @@ nothing in this band is blocked, and nothing in it is a session's work.
 **Empty.** Item 77's four residuals were the last occupants and shipped 2026-07-27. The band's own
 lesson held again: an item here is cheap to build and therefore easy to build *without asking whether
 it should be*, and **one of the four closed on evidence rather than code** (77's scree plot was filed
-as unreadable-on-a-light-page and measured perfectly readable). Refile here only after re-deriving
-the cause from source.
+as unreadable-on-a-light-page and measured perfectly readable, while the figure it never named was
+the broken one). Refile here only after re-deriving the cause from source.
 
 ### C. Blocked on an owner ruling (not a task until then)
 
@@ -238,6 +240,24 @@ the cause from source.
 ### D. Blocked on a device, a real user, or working-as-intended
 
 Kept visible so they are not re-scoped. Revive on a real signal, not on capacity.
+
+78. **The figure recolour has no notion of "text sitting on a data fill", so it can *cause* the
+    contrast failure it exists to prevent** (P3, filed 2026-07-27 while fixing item 77's fourth
+    residual; item 41's family). `MPL_THEME_PREAMBLE`'s `_tali_recolour` sets **every** `Text` in a
+    figure to the reader's foreground. That is right for titles, axis labels and ticks, which sit on
+    the transparent page background — and wrong for an annotation drawn *inside* a data-coloured
+    mark, whose background does not change with the theme. **Measured** on
+    `corpus/tech-blog/posts/pca-geometry/`'s covariance heatmap: the `1.00` cells are near-black
+    `#67000d`, so in the **light** render the annotation is recoloured to near-black `#1a1a1a` on
+    near-black and is effectively illegible; the dark render is fine. The author cannot fix it in the
+    document — an explicit `color=` on the annotation is exactly what the recolour overrides, which
+    is what makes this a tool item and not a corpus one.
+    **Not obvious how to fix, which is why it is filed rather than done.** Matplotlib does not mark
+    which `Text` is "on" a mark, so candidates are all heuristics: skip a `Text` whose axes-fraction
+    position lands inside a filled artist; skip `Text` parented to a `QuadMesh`/`AxesImage`; or pick
+    per-annotation black/white from the *underlying* fill's luminance instead of the page
+    foreground (what matplotlib's own `annotate` helpers do). **Do NOT "fix" it by dropping the
+    recolour** — that reinstates the baked-foreground bug the preamble exists for.
 
 4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the
    phone-feed deck mode); drop `fitSlide` from the resize path (needs a lazy fit-on-show refactor
