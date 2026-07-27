@@ -42,7 +42,20 @@ const SKIP_DIR_NAMES: &[&str] = &[
 /// Directories never scanned, matched as a path prefix from the repo root: the dated
 /// plan/spec archive, the pre-rename record, and the gitignored local `.superpowers/`
 /// task-report archive (all three describe the rename as it happened).
-const SKIP_PATHS: &[&str] = &["docs/superpowers", "notes", ".superpowers"];
+///
+/// `.claude/worktrees` is the same category — gitignored local scratch — but it earns its
+/// own line, because it is the one entry that exists to defend the *root-anchored* matching
+/// above. A parallel session's worktree is a full second checkout, so it carries its own
+/// `notes/`; `notes` is listed here and still would not cover
+/// `.claude/worktrees/<branch>/notes/`. Without this, any session that opens a worktree turns
+/// the guard red in **every other** session's tree, over files that are neither tracked nor
+/// theirs to edit.
+const SKIP_PATHS: &[&str] = &[
+    "docs/superpowers",
+    "notes",
+    ".superpowers",
+    ".claude/worktrees",
+];
 
 /// Is this one occurrence of the retired token a legitimately-retired NAME rather than
 /// a reintroduction?
