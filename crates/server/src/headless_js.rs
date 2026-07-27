@@ -234,6 +234,15 @@ fn phase_timeout() -> Duration {
     settle_timeout() + Duration::from_secs(5)
 }
 
+/// The wall-clock bound on the in-page evaluation, which is the one phase whose subject
+/// already has a deadline of its own: the observe script counts `budget` down itself and then
+/// answers. So this bound exists only for a page that never answers at all (a crashed
+/// renderer), and it **must outlast the budget it wraps** — at or below it, it fires first and
+/// reports `timed out` for a page that was about to return its results.
+fn eval_timeout(budget: Duration) -> Duration {
+    budget + Duration::from_secs(5)
+}
+
 /// Observe every `{js}` cell in a built page, returning `block_id → outcome` for exactly the
 /// requested `cell_ids`. Never errors to the caller: any launch/navigation/eval failure
 /// degrades the whole set to `Skipped(reason)`, and a cell the browser didn't surface (e.g.
@@ -369,11 +378,7 @@ async fn observe_page(
     let script = build_observe_script(budget.as_millis() as u64);
     // An outer wall-clock timeout in case the in-page wait/eval never returns (a crashed
     // page): the settle budget plus slack, so `read --run` can never hang.
-    let eval = tokio::time::timeout(
-        budget + Duration::from_secs(5),
-        page.evaluate_function(script),
-    )
-    .await;
+    let eval = tokio::time::timeout(eval_timeout(budget), page.evaluate_function(script)).await;
     let nodes: Vec<JsNode> = match eval {
         Ok(Ok(res)) => res.into_value().map_err(|e| format!("decode: {e}"))?,
         Ok(Err(e)) => return Err(format!("evaluate: {e}")),
@@ -707,6 +712,99 @@ mod tests {
         }
     }
 
+    /// The whole `{js}` feature is gated on this one boolean (`query.rs` skips every cell up
+    /// front when it is false), and nothing asserted it tracks anything. Both axes: a Chrome
+    /// that resolves is available, one that does not is not. An always-`true` answer costs a
+    /// Chrome-less run a page render and a doomed launch, and reports the launch failure
+    /// instead of the honest "chrome unavailable".
+    #[test]
+    fn chrome_available_tracks_the_resolved_path() {
+        // SAFETY: `CHROME_ENV` serialises every test that touches `CHROME_PATH`; restored below.
+        let _env = CHROME_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("CHROME_PATH");
+
+        unsafe { std::env::set_var("CHROME_PATH", "/nonexistent/definitely-not-chrome") };
+        assert!(
+            !chrome_available(),
+            "no resolvable Chrome must read as unavailable"
+        );
+        // Any existing file resolves: `chrome_path` checks existence, not executability, and
+        // this test binary is the one file guaranteed to be there.
+        let real = std::env::current_exe().expect("this test binary's own path");
+        unsafe { std::env::set_var("CHROME_PATH", &real) };
+        assert!(
+            chrome_available(),
+            "a Chrome that resolves must read as available"
+        );
+
+        match prev {
+            Some(v) => unsafe { std::env::set_var("CHROME_PATH", v) },
+            None => unsafe { std::env::remove_var("CHROME_PATH") },
+        }
+    }
+
+    /// The settle budget's fallbacks, which are what the author actually meets: the knob is
+    /// unset for almost everyone, and the two ways to write it wrong (`0`, or something that
+    /// is not a number) must both land on the default rather than on a **zero** budget, which
+    /// would make every `{js}` cell time out instantly with no way to tell why.
+    #[test]
+    fn settle_timeout_falls_back_to_the_default_for_absent_zero_or_unparseable() {
+        // SAFETY: `TALIESIN_JS_TIMEOUT` is process-global and the wedged-launch test sets it
+        // too, so this takes the same lock. Restored below.
+        let _env = CHROME_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var_os("TALIESIN_JS_TIMEOUT");
+        let with = |v: Option<&str>| {
+            unsafe {
+                match v {
+                    Some(v) => std::env::set_var("TALIESIN_JS_TIMEOUT", v),
+                    None => std::env::remove_var("TALIESIN_JS_TIMEOUT"),
+                }
+            }
+            settle_timeout()
+        };
+
+        assert_eq!(with(None), Duration::from_secs(10), "unset → the default");
+        assert_eq!(with(Some("2")), Duration::from_secs(2), "a set budget wins");
+        assert_eq!(
+            with(Some("0")),
+            Duration::from_secs(10),
+            "`0` is not a zero budget — it means the default, like the other timeout knobs"
+        );
+        assert_eq!(
+            with(Some("not-a-number")),
+            Duration::from_secs(10),
+            "an unparseable budget falls back rather than disabling the wait"
+        );
+        // The bound on each browser phase is derived from it, so it moves with the knob.
+        assert_eq!(with(Some("3")), Duration::from_secs(3));
+        assert!(
+            phase_timeout() > Duration::from_secs(3),
+            "a phase must outlast the settle budget inside it"
+        );
+
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("TALIESIN_JS_TIMEOUT", v),
+                None => std::env::remove_var("TALIESIN_JS_TIMEOUT"),
+            }
+        }
+    }
+
+    /// The in-page evaluation is the one phase whose subject already counts its own deadline
+    /// down, so its wrapper is only there for a page that never answers. An outer bound at or
+    /// below the budget fires first and turns "your cells settled at 9 s" into "timed out".
+    #[test]
+    fn the_eval_bound_outlasts_the_budget_it_wraps() {
+        for secs in [1, 2, 10, 60] {
+            let budget = Duration::from_secs(secs);
+            assert!(
+                eval_timeout(budget) > budget,
+                "a {secs}s budget got an outer bound of {:?}, which fires first",
+                eval_timeout(budget)
+            );
+        }
+    }
+
     /// L3-1: a **wedged** Chrome must degrade to `Skipped` on the module's own budget, not
     /// hang `read --run-js`. The module's contract covered a launch/navigation/eval *failure*
     /// and this is neither: the browser starts and then never speaks.
@@ -774,10 +872,18 @@ mod tests {
         for id in &ids {
             // The reason must be the *launch* giving up, not "chrome unavailable" — that is
             // the shape this test takes when it is not testing anything (see `CHROME_ENV`).
+            //
+            // And it must be the LIBRARY's failure, not our outer wrapper's "chrome launch
+            // timed out": the outer bound sits deliberately above the configured
+            // `launch_timeout` so the library's error, which carries the browser's stderr,
+            // is what the author reads. Ordering them the other way loses that diagnostic on
+            // every wedged launch, and both messages contain "launch", so only naming which
+            // one can tell.
             match out.get(id) {
                 Some(JsOutcome::Skipped(why)) => assert!(
-                    why.contains("launch"),
-                    "expected a launch failure, got {why:?}: the fake browser was never started"
+                    why.starts_with("chrome launch failed"),
+                    "expected the library's launch error (it carries the browser's stderr), \
+                     got {why:?}"
                 ),
                 other => panic!("a wedged browser must skip, not classify: {other:?}"),
             }
@@ -863,6 +969,44 @@ mod tests {
         assert!(
             code.matches("tokio::time::timeout(").count() >= 6,
             "far fewer wrappers than there are phases to bound"
+        );
+    }
+
+    /// The teardown decision itself, which the bounding scan above says nothing about: it
+    /// checks that each phase *has* a bound, not what is done when one fires. What must hold
+    /// is that a browser which did not exit on its own is killed — the two ways to break it
+    /// are counting a timed-out `close()` as an exit (`&&` → `||`) and inverting the guard so
+    /// the kill fires for the browser that already left instead of the one that stayed.
+    /// Either leaks a Chrome process and its profile per run.
+    ///
+    /// This is a **source-level** guard, like `every_browser_await_is_bounded` above and for
+    /// the same reason, stated there: reaching this code needs a browser that speaks CDP and
+    /// then lies, and no fake binary can get past the launch handshake. It is mutation-checked
+    /// against exactly the two operators it guards.
+    #[test]
+    fn a_browser_that_does_not_exit_is_killed() {
+        const FULL: &str = include_str!("headless_js.rs");
+        let src = &FULL[..FULL.find("\n#[cfg(test)]").unwrap_or(FULL.len())];
+        let teardown = src
+            .split_once("let closed = ")
+            .map(|(_, rest)| rest)
+            .and_then(|rest| rest.split_once("handler_task.abort()"))
+            .map(|(block, _)| block)
+            .expect("the teardown block, between the close attempt and the handler abort");
+
+        assert!(
+            teardown.contains("let exited = closed && "),
+            "a `close()` that timed out must not count as an exit; got:\n{teardown}"
+        );
+        assert!(
+            teardown.contains("if !exited {"),
+            "the kill must fire for the browser that did NOT exit; got:\n{teardown}"
+        );
+        // The control: both assertions above are satisfied by a block that never kills
+        // anything, so the scan means nothing unless the kill is in there.
+        assert!(
+            teardown.contains("browser.kill()"),
+            "the teardown must end in a kill; got:\n{teardown}"
         );
     }
 
