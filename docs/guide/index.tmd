@@ -1,6 +1,6 @@
 ---
 title: "Taliesin"
-description: "The user guide: how to write, preview, execute and publish a .tmd document, from a 30-second install to a deployed site."
+description: "The user guide: how to write, preview, execute and publish a .tmd document, from your first preview to a deployed site."
 ---
 
 # Why Taliesin {.unnumbered}
@@ -48,10 +48,12 @@ particular trade: **do one thing, author HTML, and make the edit loop instant.**
 
 It is intentionally small: one author's HTML workflow, kept fast.
 
-## Get running in 30 seconds
+## Get running
 
-taliesin builds from source with a Rust toolchain (`cargo build --release`); a
-`taliesin` launcher on your `PATH` then keeps the binary fresh and runs it from
+taliesin builds from source with a Rust toolchain (`cargo build --release`) — a
+first build takes a few minutes; after that the binary is warm. Put
+`target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script that
+rebuilds on source changes before running it) so you can call it from
 anywhere. To execute code cells you also point it at a Jupyter kernel: see
 [Executable content](using/code.tmd#code-cells).
 
