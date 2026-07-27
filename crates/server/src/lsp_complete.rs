@@ -552,6 +552,20 @@ mod tests {
             ("", "{{< embed a>", CompletionContext::None),
             ("", "{{< inclu x", CompletionContext::None),
             ("", "{{ include x", CompletionContext::None),
+            // All three characters of the `{{<` opener are load-bearing and must be checked at
+            // their own offsets: a lone `{`, or `{{` with the wrong third character, is not one.
+            ("", "{x< include a", CompletionContext::None),
+            ("", "{{x include a", CompletionContext::None),
+            // A `{` *inside* the path must not be mistaken for the start of a new opener, which
+            // is what makes "the last `{{<`" a scan for the whole three-character sequence.
+            (
+                "",
+                "{{< include a{b",
+                CompletionContext::ShortcodePath {
+                    shortcode: Shortcode::Include,
+                    typed: "a{b".to_string(),
+                },
+            ),
             // Only the *last* `{{<` can still be an open path token.
             (
                 "",
@@ -580,6 +594,15 @@ mod tests {
             ("", ":::  {.", CompletionContext::DivClass),
             ("", "::{.", CompletionContext::None),
             ("", ":::{", CompletionContext::None),
+            // `{` followed by something that is neither `.` nor an id char: the `.` test and the
+            // `{` test are separate rejections, not one.
+            ("", ":::{:", CompletionContext::None),
+            // Only whitespace before the `{.`: the look-back for the colons must stop at the
+            // start of the line rather than walking off it.
+            ("", " {.", CompletionContext::None),
+            // An indented div opener (a div inside a list item). The three colons are located
+            // relative to the `{`, so each of their offsets has to be counted, not divided.
+            ("", "     :::{.", CompletionContext::DivClass),
             // --- cell option: only inside an open fence, and only in key position
             (CELL, "#|", CompletionContext::CellOption),
             (CELL, "//| ec", CompletionContext::CellOption),
@@ -606,6 +629,26 @@ mod tests {
                 "  echo",
                 CompletionContext::FrontmatterKey {
                     parent: Some("execute".to_string()),
+                },
+            ),
+            // A *sibling* key at the same indent sits between the cursor and the parent. The
+            // look-back has to step over it and keep going: stopping at an equal indent, or
+            // mis-measuring either indent, would report `echo` as the parent instead of `execute`.
+            (
+                "---\nexecute:\n  echo: true\n",
+                "  ca",
+                CompletionContext::FrontmatterKey {
+                    parent: Some("execute".to_string()),
+                },
+            ),
+            // An indented key in *value* position: the leading whitespace must be skipped before
+            // the key is read, or an indented `key:` looks like no key at all.
+            (
+                "---\nexecute:\n",
+                "  echo: tru",
+                CompletionContext::FrontmatterValue {
+                    key: "echo".to_string(),
+                    typed: "tru".to_string(),
                 },
             ),
             // A blank line between the parent and the child must not break the look-back.
@@ -683,6 +726,8 @@ mod tests {
         assert!(harvest_anchor_ids("x{#a").is_empty());
         assert!(harvest_anchor_ids("{# a}").is_empty());
         assert!(harvest_anchor_ids("{#a b}").is_empty());
+        // A trailing `{` as the final character: the scan must not look at the character after it.
+        assert_eq!(harvest_anchor_ids("{#a}{"), vec!["a".to_string()]);
         // Deduplicated.
         assert_eq!(harvest_anchor_ids("{#a}\n{#a}"), vec!["a".to_string()]);
     }
