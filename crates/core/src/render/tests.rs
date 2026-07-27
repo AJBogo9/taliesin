@@ -5611,6 +5611,45 @@ fn the_chapter_drawer_outlines_each_chapter_from_the_shared_search_index() {
     );
 }
 
+/// The drawer's expanded chapter marks the section the reader is actually stopped in. Item 76
+/// took the right-rail TOC off a book, so this is the only section-level "you are here" a book
+/// has left, and the drawer is where a reader goes when they have lost the thread.
+///
+/// Pinned as a JS-to-CSS drift gate rather than a page assertion: every page inlines the whole
+/// bundle, so a `contains(".tali-book-section-active")` on rendered HTML passes on pages that
+/// render no drawer at all. The two halves must name the same class, and the CSS half is
+/// asserted on its rule BODY — a renamed or emptied rule is the silent way this dies.
+#[test]
+fn the_chapter_drawer_marks_which_section_of_the_open_chapter_the_reader_is_in() {
+    const MARK: &str = "tali-book-section-active";
+    assert!(
+        CODE_ENHANCE_JS.contains(&format!("'{MARK}', on")),
+        "the outline must toggle the section marker per row"
+    );
+    // `location`, not `page`: the chapter link in the same list is already `aria-current="page"`
+    // (`site/chrome.rs`), so reusing it would announce two current pages in one list.
+    assert!(
+        CODE_ENHANCE_JS.contains("'aria-current', 'location'"),
+        "the marked section must be exposed to assistive tech as the current location"
+    );
+    // The activation line is the heading's own `scroll-margin-top`, the same derivation
+    // `toc-spy.js` uses. Measuring chrome height instead is the bug gap 10 filed: a book emits
+    // `.tali-book-topbar`, not `.tali-site-nav`, so a navbar query returns 0 on every page here.
+    assert!(
+        CODE_ENHANCE_JS.contains("scrollMarginTop"),
+        "the activation line must come from scroll-margin-top, not from a measured navbar"
+    );
+    let rule = SITE_CSS
+        .split_once(&format!(".{MARK} "))
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(body, _)| body)
+        .unwrap_or_else(|| panic!("site.css must style .{MARK}; the JS toggles it"));
+    assert!(
+        rule.contains("color:"),
+        "the .{MARK} rule must actually change the row's appearance, got: {rule}"
+    );
+}
+
 /// PA-B14: the palette is the longest list in the app and had no jump-to-the-ends, which the
 /// cite tabs and the deck menu both have. Gated on an EMPTY input on purpose: focus never
 /// leaves the input (aria-activedescendant), so with a query typed Home/End are the caret's

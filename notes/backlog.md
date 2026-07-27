@@ -425,6 +425,12 @@ docs; look there rather than re-expanding this list.
   **or as "delete the rail everywhere"**: websites and single documents keep the rail, `toc-spy.js`
   and the shared `TOC_SHEET_MARKUP` (still the one copy — a book simply never reaches it). `toc:` is a
   website key now, and `validate_toc_scope` tells a book author the key is inert.
+- **2026-07-27 the drawer marks which section of the open chapter you are in** (author-asked, the
+  natural completion of 76: the expanded chapter row was the only section-level surface a book had
+  left). `.tali-book-section-active` + `aria-current="location"` on the current chapter's panel only,
+  off the same `scroll-margin-top` activation line as `toc-spy.js`. **Do not re-scope as "give the
+  drawer a scrollspy"** — it is computed on each open, deliberately: the drawer locks the root
+  scroller, so nothing can move while it is on screen and a scroll listener would watch a dead event.
 - **2026-07-27 item 77 (the four 72-75 residuals):** shortcode arguments are linted against a closed
   vocabulary with did-you-mean, and shortcode diagnostics became the **`TAL-SHORTCODE` WARNING**
   family instead of falling through to `(TAL-CHECK, ERROR)`, where a one-letter typo blocked

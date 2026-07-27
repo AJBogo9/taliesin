@@ -163,6 +163,9 @@ function taliBookOutline(list) {
       panel.hidden = false;
     }
   });
+  // Outside the per-chapter signature check above, on purpose: an unchanged book skips its
+  // rebuild, and the reader's position is exactly what changed while the drawer was shut.
+  taliBookMarkSection(list);
   // Restore focus if a re-parent above dropped it. Guarded three ways: only when focus
   // actually landed on `<body>`/null (never steal it from wherever the reader has since
   // moved it), only for an element still in the document, and `preventScroll` because the
@@ -172,4 +175,75 @@ function taliBookOutline(list) {
       hadFocus.isConnected) {
     try { hadFocus.focus({ preventScroll: true }); } catch (e) { /* older engines */ }
   }
+}
+
+// --- "you are here", one level below the chapter -----------------------------------------
+// The drawer already answers "which chapter am I in": the current row carries `aria-current`
+// and opens expanded. This answers the question one level down, WHICH SECTION of it, by
+// marking the row for the section the reader is actually stopped in. Item 76 removed a book's
+// right-rail TOC, so the drawer's expanded chapter is the only surface left that can carry a
+// section-level position cue at all.
+//
+// Deliberately one-shot at open time rather than a scroll listener: the drawer is a modal
+// overlay that locks the root scroller (`chrome.rs`'s BOOK_DRAWER_SCRIPT sets
+// `documentElement.style.overflow`), so while it is open the reader's position cannot change
+// and a spy would be watching for an event that cannot fire. The caller re-runs on every open.
+//
+// Only the current chapter's panel is marked. The other panels' rows come from the shared
+// search index and name headings in OTHER documents, which have no position in this one.
+/** @param {HTMLElement} list */
+function taliBookMarkSection(list) {
+  var cur = list.querySelector('a.tali-book-chapter[aria-current]');
+  var li = cur && cur.closest('li');
+  var panel = li && li.querySelector(':scope > .tali-book-sections');
+  if (!(panel instanceof HTMLElement)) return;
+  /** @type {Array<{a: Element, h: HTMLElement}>} */
+  var rows = [];
+  panel.querySelectorAll('a.tali-book-section').forEach(function (a) {
+    var frag = (a.getAttribute('href') || '').split('#')[1] || '';
+    var h = frag ? document.getElementById(decodeURIComponent(frag)) : null;
+    if (h) rows.push({ a: a, h: h });
+  });
+  if (!rows.length) return;
+  // The same activation line the right rail's spy uses (`toc-spy.js`): the heading's own
+  // `scroll-margin-top`, which is exactly where a clicked link lands and which the browser
+  // resolves to px under either chrome. Sampled once — `getComputedStyle` flushes style.
+  var ln = parseFloat(getComputedStyle(rows[0].h).scrollMarginTop);
+  if (isNaN(ln)) ln = 16;
+  // Within one viewport of the bottom the last heading can never reach the line, so pin the
+  // final row — otherwise a chapter's last section never lights up.
+  var atBottom =
+    window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+  /** @type {{a: Element, h: HTMLElement} | null} */
+  var active = null;
+  if (atBottom) {
+    active = rows[rows.length - 1];
+  } else {
+    for (var i = 0; i < rows.length; i++) {
+      // 1px tolerance, for the device-pixel quantization `toc-spy.js` documents: a heading
+      // the reader just landed on can measure a hair BELOW the line and leave the previous
+      // row marked.
+      if (rows[i].h.getBoundingClientRect().top - ln > 1) break;
+      active = rows[i];
+    }
+  }
+  rows.forEach(function (r) {
+    var on = r === active;
+    r.a.classList.toggle('tali-book-section-active', on);
+    // `location`, not `page`: the chapter link in the same list is already
+    // `aria-current="page"`, and these are two different kinds of current. Nothing is marked
+    // while the reader is still above the first heading, rather than lighting section 1 early.
+    if (on) r.a.setAttribute('aria-current', 'location');
+    else r.a.removeAttribute('aria-current');
+  });
+  if (!active) return;
+  // Bring the mark into view by scrolling the PANEL, by hand. `scrollIntoView` walks every
+  // scrollable ancestor, and the ancestor here is the article whose scroll offset IS the
+  // reader's place in the chapter — the one thing a read-only overlay must not move.
+  var sc = panel.closest('.tali-book-drawer-panel');
+  if (!(sc instanceof HTMLElement)) return;
+  var r = active.a.getBoundingClientRect();
+  var box = sc.getBoundingClientRect();
+  if (r.top < box.top) sc.scrollTop -= box.top - r.top;
+  else if (r.bottom > box.bottom) sc.scrollTop += r.bottom - box.bottom;
 }

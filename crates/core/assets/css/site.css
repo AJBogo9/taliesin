@@ -403,6 +403,14 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-section { display: block; padding: .18rem 0 .18rem .6rem; color: var(--tali-muted);
   text-decoration: none; font-size: .85rem; line-height: 1.35; }
 .tali-book-section:hover { color: var(--tali-link); }
+/* The section the reader is stopped in, marked when the drawer opens. Same treatment the
+   current CHAPTER row already uses one level up (link colour + weight), which reads as a
+   hierarchy rather than a competing signal because the two sit in differently indented
+   lists. The marker rides the sections list's own left rule so it is findable while
+   scanning a long chapter, and it is a border, never `opacity` (the theme contrast pins
+   measure the token, and an opacity multiplier silently defeats them). */
+.tali-book-section-active { color: var(--tali-link); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--tali-link); }
 .tali-book-sd2 { padding-left: 1.5rem; }
 .tali-book-sd3 { padding-left: 2.4rem; }
 .tali-book-sd4 { padding-left: 3.3rem; }
