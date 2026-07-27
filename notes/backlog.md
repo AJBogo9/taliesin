@@ -17,11 +17,12 @@ test-writing it exposed, not more compute.** The `crates/server` half finished 2
 [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md)), leaving
 only `lsp_nav.rs`'s untested 106-mutant tail, which is confirmation work.
 
-**Start here: band A is ranked 58-68 and the top three (58, 59, 61) shipped 2026-07-27, so the next
-item is 60.** Each remaining item names its file, its survivor list and its reason for ranking where
-it does, so it can be picked up cold. Before writing any pin, read the axis note in the band-A
-preamble — it is what made the first attempt at 58 only half a job. Band A also still holds item
-**56**'s residual, which is a *feature proposal* and an authoring judgment rather than a task.
+**Start here: band A is ranked 58-68 and the top four (58, 59, 60, 61) shipped 2026-07-27, so the
+next item is 62.** Each remaining item names its file, its survivor list and its reason for ranking
+where it does, so it can be picked up cold. Before writing any pin, read the axis note in the band-A
+preamble — it is what made the first attempt at 58 only half a job, and it caught three more holes
+in 60. Band A also still holds item **56**'s residual, which is a *feature proposal* and an
+authoring judgment rather than a task.
 
 Five batches shipped on 2026-07-26: mobile (42-49, every HIGH on the board), path parity
 (50, 51, 57), migration UX (53, 54), the metadata half of 56, and **deck weight + headless-JS
@@ -29,10 +30,11 @@ bounding (52, 55)**. The mutation re-run ran its `crates/core` half the same day
 band C holds only item **25**, parked on a public-release *date* rather than on a decision; the rest
 is blocked on a device or a real user (band D) or gated (band E).
 
-**Verified 2026-07-27 at the last landing** (branch `mutation-server-half-complete`): full workspace
-suite is **94 binaries, 1,582 tests, 0 failures**; `cargo fmt --check` and `clippy --workspace
---all-targets -D warnings` clean. The two JS `tsc` gates were **not** re-run — this batch touched no
-JS — so treat them as last verified 2026-07-26. The live-Chrome suite
+**Verified 2026-07-27 at the last landing** (branch `lsp-request-surface-pins`): full workspace
+suite with all three gates and `--test-threads=1` is **95 binaries, 1,592 tests, 0 failures**;
+`cargo fmt --check` and `clippy --workspace --all-targets -D warnings` clean. The two JS `tsc` gates
+were **not** re-run — this batch touched no JS — so treat them as last verified 2026-07-26. The
+live-Chrome suite
 (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) is a **fourth** gate nothing else runs, and 55 is
 the reason to remember it exists.
 
@@ -391,14 +393,19 @@ completed server files, **156 survivors**) and
     server advertising **nothing** passed the entire suite. Look for that shape elsewhere — a helper
     that drives the real path and discards what it returns is a coverage hole no line-coverage tool
     reports, since every line ran.
-60. **The rest of `lsp.rs`'s request surface** (21): `resolve_completion` (10), `resolve_definition`
-    (3), `to_document_symbol`, `resolve_code_actions`, `merged_xref_targets`, `handle_request`,
-    `frontmatter_key_doc` (3 incl. two whole-body replacements), `cmd_lsp`. **Cheap to start:** 59
-    already landed in this file, and `lsp.rs`'s test module has an in-process client harness
-    (`Connection::memory()` + `run(server)` on a thread, with `handshake`/`shutdown`/`recv_response`
-    helpers), so these can be driven as real requests rather than unit-called. Exact survivor
-    locations: the appendix of
-    [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
+60. **SHIPPED 2026-07-27** (`3e62b91`) — the rest of `lsp.rs`'s request surface. **21 survivors, 20
+    killed, 1 proven equivalent**, each verified by restoring the mutant and watching a named test
+    fail. `lsp.rs` is now fully closed (33 of 33 triaged). **Three lessons, in the order they cost
+    time:** (a) the axis rule from 58 held again — *three* holes were the reject side of a rule
+    whose accept side was covered (an include path that does *not* exist, a completion filter with a
+    *non-empty* typed prefix, a section with *zero* words); (b) `frontmatter_key_doc` was a second
+    instance of 59's shape, a test that looked like coverage — `md.contains("title")` was satisfied
+    by the `` `title:` `` header the hover prints *above* the description, so the lookup could return
+    any other key's prose and pass; (c) `cmd_lsp` needed a **new test binary**
+    (`crates/server/tests/lsp_stdio.rs`) because the in-process tests drive `run()` over
+    `Connection::memory()` and never touch the command wrapping it. **The equivalent one is
+    recorded** in the findings doc's now-five-row table: `672:39 + → *` changes `"sub/"` to `"sub"`,
+    and `Path::join` gives the same directory for both.
 61. **SHIPPED 2026-07-27** (`02a35da`) — `runtime_dirs.rs`, 4 of its 5 killed. **This item was
     written wrong and the correction is the useful part.** It claimed the file had zero tests and
     that `pid_alive` was unpinned; both were false. The file has two good tests, the sweep logic is

@@ -153,7 +153,7 @@ remaining 3 are provably equivalent.
   `.tmd`, so it never reaches the output whether the dotfile filter ran or not. A dotfile that *is*
   a `.tmd` is what makes the rule observable.
 
-**Four unkillable mutants, recorded so no future session burns time on them.** A mutation *score*
+**Five unkillable mutants, recorded so no future session burns time on them.** A mutation *score*
 cannot tell these from real gaps, which is the whole argument for reading the survivor list:
 
 | mutant | why no test can kill it |
@@ -162,6 +162,7 @@ cannot tell these from real gaps, which is the whole argument for reading the su
 | `harvest_anchor_ids` `i = j + 1` → `i = j` | `chars[j]` is always the closing `}`, which cannot begin a `{#` |
 | `harvest_anchor_ids` `i = j + 1` → `i = j - 1` | `chars[j - 1]` is the last id character; rescanning it finds nothing new, and results land in a `BTreeSet` |
 | `runtime_dirs.rs:103` `pid_alive -> false` | the `#[cfg(not(unix))]` arm, dead code here. cargo-mutants parses **without evaluating `cfg`**, so **this reappears on every future run of that file** |
+| `lsp.rs:672` `&typed[..s + 1]` → `&typed[..s * 1]` (item 60) | `dir_part` is consumed only by `doc_dir.join(dir_part)`, and `join("sub/")` and `join("sub")` name the same directory — so for **every relative path** the two list identical entries. They diverge only at `s == 0`, i.e. a `typed` beginning with `/`: `join("/")` is the filesystem root, `join("")` is the document's own directory. But `includes::try_join_in` **refuses** any absolute path (`Refused::OutsideRoot`), so pinning that case would fix as a contract the offering of paths the shortcode cannot accept. Its `+` → `-` sibling **is** killed |
 
 **The timeout rule held a fourth time:** both timeouts in the re-measure (`harvest_bib_keys` 315:23,
 320:27) are `+=` → `*=` on a scan cursor. That is 41 of 41 across the campaign.
@@ -192,7 +193,25 @@ Banked **inside the repo** so the remaining items do not depend on a `mutants.ou
 outside it. Copy a block into a `-F` regex to re-measure just that file after pinning it.
 `interactive.rs`'s five are deliberately absent: knowing skip, reason above.
 
-### `lsp.rs` — item 60 (33 survivors)
+### `lsp.rs` — item 60 (33 survivors) — **CLOSED 2026-07-27: 32 killed, 1 equivalent**
+
+The 12 `server_capabilities` ones fell to item 59; the remaining 21 (the *request* surface) fell to
+item 60, each verified by restoring the mutant and watching a named test fail. The one survivor is
+`672:39 + → *`, proven equivalent above. **What the round is worth remembering for** is where the
+holes were, not the count:
+
+- **Three of them were the reject axis of a rule whose accept axis was already covered**, exactly as
+  item 58 predicted for this kind of code: `!abs.exists()` (only real include paths were ever
+  asked about), the typed-prefix filters (every completion test completes from an *empty* token,
+  where `||` short-circuits), and `words > 0` (every outline fixture is well past zero).
+- **`frontmatter_key_doc` was the second "test that looks like coverage" in this file.** The hover
+  test asserted `md.contains("title")` — satisfied by the `` `title:` `` header the hover prints
+  *above* the description — so the lookup could return any other key's prose, an empty string, or a
+  constant. Pinned now by quoting the vocab entry itself, plus an undocumented key that must hover
+  with nothing.
+- **`cmd_lsp` needed a new test binary** (`tests/lsp_stdio.rs`): the in-process tests drive `run()`
+  over `Connection::memory()` and never touch the command that wraps it, so its whole body could
+  become "exit 0" — an editor would be told the server shut down cleanly rather than crashed.
 
 ```
 lsp.rs:22:5: replace server_capabilities -> ServerCapabilities with Default::default()
