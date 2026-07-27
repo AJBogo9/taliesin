@@ -206,11 +206,37 @@ also measured in a browser. Nothing here is blocked.
       in either book. Real cross-chapter references would light it up, but they have to be references
       someone means — a writing judgment, not a sweep.
 
-### B. Buildable, but low yield on its own — **empty**
+### B. Buildable, but low yield on its own
 
 An item here is cheap to build and therefore easy to build *without asking whether it should be*. Two
 of the last three closed on **evidence rather than code**, which is the outcome this band is most
 likely to produce.
+
+77. **Four residuals surfaced by the 72-75 batch, none of them fixed there.** Filed together because
+    each is a one-sitting change and none justifies a session; they are unrelated apart from being
+    found the same day. **Verify each against source before starting** — they are recorded from the
+    implementing sessions, not re-derived.
+    - **A typo'd bare shortcode flag is silently ignored.** `{{< video x.mp4 control >}}` (for
+      `controls`) gets no controls and no warning, because `render_shortcode` has no warning sink.
+      **Systemic, not new:** a typo'd *named* argument (`postr=`) is equally silent today, and
+      front-matter typo linting does not reach shortcodes. Fixing it means threading a sink into the
+      pre-parse expander, which is why the video work left it. The value is that every other typo
+      surface in the tool warns.
+    - **`favicon:` prefixes its path unconditionally** (`site/mod.rs:681`), so a site-absolute
+      `favicon: /brand.svg` on a nested page emits `../brand.svg` and 404s. Item 74's `logo:` guards
+      against exactly this (site-absolute and external hrefs pass through as written); `favicon:`
+      predates the guard. Changing it is a behaviour change to a shipped key, so it is its own item.
+    - **A book with `logo:` but no `title:` emits no brand link at all.** The `if let Some(t) =
+      &book.title` gate predates `logo:` and was deliberately left alone. A website is unaffected —
+      its brand always renders, falling back to "Home". Decide whether a titleless book should brand
+      on the logo alone.
+    - **The pca-geometry scree plot is still dark-tuned.** Item 72 retuned the three WebGL scenes to
+      read on both backgrounds, but the neighbouring **matplotlib** figure bakes `tick_params(colors=
+      "white")` and white value labels into a PNG, so it is unreadable on a light page. This is item
+      41's class (a baked raster cannot follow the theme), not item 72's, and recolouring only its
+      bars would not help while its axis text stays white. Visible consequence today: the 3-D PC
+      arrows are a darker orange/green/blue than the scree bars, so the caption's "PC1 (orange), PC2
+      (green), PC3 (blue)" still reads true but the two figures no longer match exactly.
 
 ### C. Blocked on an owner ruling (not a task until then)
 
