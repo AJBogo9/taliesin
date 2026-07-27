@@ -850,6 +850,21 @@ mod brain_tests {
                 "`{c}` needs a description in command_desc"
             );
         }
+        // "Non-empty" is satisfied by one constant string for every command, which is what
+        // the list would look like if the lookup stopped looking anything up. So assert the
+        // lines actually distinguish: each command's is its own, bar preview's two aliases,
+        // which share one on purpose.
+        let mut by_desc: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for c in crate::COMMANDS {
+            by_desc.entry(command_desc(c)).or_default().push(c);
+        }
+        for (desc, cmds) in &by_desc {
+            assert!(
+                cmds.len() == 1 || cmds.iter().all(|c| matches!(*c, "dev" | "serve")),
+                "`{desc}` is shared by {cmds:?}; only preview's aliases may share a line"
+            );
+        }
     }
 
     #[test]
@@ -862,6 +877,60 @@ mod brain_tests {
         for f in ["--out", "--strict", "--bare", "--jobs", "--format"] {
             assert!(got.contains(&f.to_string()), "build offers {f}: {got:?}");
         }
+    }
+
+    /// The rest of the flag table, one row per subcommand that has its own. A subcommand
+    /// whose row goes missing falls through to the empty default and simply offers nothing —
+    /// a silent loss, not an error — so the small tables need naming as much as the big ones.
+    #[test]
+    fn each_subcommand_offers_its_own_flags() {
+        for (sub, expected) in [
+            ("schema", &["--out"][..]),
+            ("symbols", &["--format", "--json"][..]),
+            ("map", &["--format", "--json"][..]),
+            ("skim", &["--format", "--json"][..]),
+            ("completions", &["--install"][..]),
+            ("init", &["--template", "--yes"][..]),
+        ] {
+            let got = values(&[sub, "--"]);
+            for f in expected {
+                assert!(
+                    got.contains(&f.to_string()),
+                    "`{sub}` should offer {f}, got {got:?}"
+                );
+            }
+        }
+    }
+
+    /// Every way a token can fail to be a positional. This is what decides whether the FIRST
+    /// path argument has been given yet, so getting it wrong either withholds path completion
+    /// where it belongs or offers a second path where the shell should take over.
+    #[test]
+    fn positionals_seen_counts_only_real_positionals() {
+        let args = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
+        // A value-taking flag swallows the token after it.
+        assert_eq!(positionals_seen("build", &args(&["--out", "dist"])), 0);
+        assert_eq!(
+            positionals_seen("build", &args(&["--out", "dist", "doc.tmd"])),
+            1
+        );
+        // …but NOT when the value was written `--out=dist`: the next token is a positional.
+        assert_eq!(
+            positionals_seen("build", &args(&["--out=dist", "doc.tmd"])),
+            1,
+            "`--out=dist` carries its own value; the next token is the document"
+        );
+        // A flag that takes no value swallows nothing.
+        assert_eq!(
+            positionals_seen("build", &args(&["--strict", "doc.tmd"])),
+            1,
+            "`--strict` takes no value, so the document after it is still the first positional"
+        );
+        // An unknown flag is treated as valueless rather than eating the next token.
+        assert_eq!(positionals_seen("build", &args(&["--nope", "doc.tmd"])), 1);
+        // Plain tokens count, and nothing counts twice.
+        assert_eq!(positionals_seen("build", &args(&[])), 0);
+        assert_eq!(positionals_seen("build", &args(&["a", "b"])), 2);
     }
 
     #[test]
@@ -942,6 +1011,10 @@ mod brain_tests {
         fs::write(dir.join("site/page.tmd"), "# p\n").unwrap();
         fs::write(dir.join("nested/deep/buried.tmd"), "# b\n").unwrap();
         fs::write(dir.join("target/decoy.tmd"), "# decoy\n").unwrap();
+        // A dotfile that IS a `.tmd`: the dotfile rule is only observable on a file that
+        // would otherwise be offered, and a `.hidden` that fails the `.tmd` test cannot tell
+        // whether the rule ran (the lesson item 58's `lsp_complete` fixture paid for).
+        fs::write(dir.join(".secret.tmd"), "# s\n").unwrap();
         dir
     }
 
@@ -1000,6 +1073,62 @@ mod brain_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Both axes of the dotfile rule. A hidden file is not offered to someone typing a plain
+    /// prefix, and IS offered to someone who typed the dot — a rule that only ever gets asked
+    /// the first question reads the same inverted.
+    #[test]
+    fn dotfiles_appear_only_when_the_dot_is_typed() {
+        let dir = fixture("dotfiles");
+        let plain = path_values(&dir, &["preview", ""]);
+        assert!(
+            !plain.contains(&".secret.tmd".to_string()),
+            "a dotfile is hidden from a plain prefix: {plain:?}"
+        );
+        assert!(
+            plain.contains(&"index.tmd".to_string()),
+            "the control: ordinary files are still offered: {plain:?}"
+        );
+        let dotted = path_values(&dir, &["preview", "."]);
+        assert!(
+            dotted.contains(&".secret.tmd".to_string()),
+            "typing the dot asks for it: {dotted:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Completing INSIDE a directory: everything above completes at the top level, where the
+    /// directory prefix is empty and the leaf is the whole word. With a prefix the two are
+    /// split, and a split off by one either lists the wrong directory or matches nothing.
+    #[test]
+    fn a_directory_prefix_completes_within_that_directory() {
+        let dir = fixture("prefix");
+        let got = path_values(&dir, &["preview", "nested/"]);
+        assert_eq!(
+            got,
+            vec!["nested/deep/".to_string()],
+            "expected the subdirectory, path-prefixed"
+        );
+        // The leaf still filters inside the directory.
+        assert_eq!(path_values(&dir, &["preview", "nested/de"]), got);
+        assert!(path_values(&dir, &["preview", "nested/zz"]).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The file-only subcommands: their positional table row is one arm of a match, and
+    /// losing it silently drops path completion for four commands at once.
+    #[test]
+    fn file_positional_subcommands_offer_documents() {
+        let dir = fixture("filekind");
+        for sub in ["render", "read", "blocks", "symbols"] {
+            let got = path_values(&dir, &[sub, ""]);
+            assert!(
+                got.contains(&"index.tmd".to_string()),
+                "`{sub}` should complete a document path, got {got:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn path_directive_sets_nospace_when_dirs_present() {
         let dir = fixture("directive");
@@ -1008,6 +1137,92 @@ mod brain_tests {
             d,
             NO_SPACE | NO_FILE_COMP,
             "dirs present => NoSpace|NoFileComp"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The `.tmd`-anywhere-below walk, which decides whether a directory is offered at all.
+    /// Its depth budget is the reason `taliesin preview <TAB>` is not a full-tree scan, and
+    /// the budget only means something if it both reaches and stops.
+    #[test]
+    fn the_tmd_walk_reaches_its_depth_and_stops_there() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("tali-tmdwalk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::write(root.join("a/b/buried.tmd"), "# b\n").unwrap();
+
+        // The document sits two directory levels down, so two levels of budget find it…
+        assert!(dir_contains_tmd(&root, 2), "depth 2 should reach a/b");
+        assert!(dir_contains_tmd(&root, 9), "more budget still finds it");
+        // …and one does not. Without a decrement the walk would descend forever and every
+        // directory in a large tree would be offered after an unbounded scan.
+        assert!(!dir_contains_tmd(&root, 1), "depth 1 stops above a/b");
+        // Exhausted budget: still an answer, not a panic on the way back down.
+        assert!(!dir_contains_tmd(&root, 0), "depth 0 cannot descend at all");
+        // A directory holding the document itself is found regardless of budget.
+        assert!(dir_contains_tmd(&root.join("a/b"), 0));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A symlinked directory is NOT descended into. `file_type()` deliberately does not
+    /// follow symlinks, which is what makes the walk cycle-proof — but `read_dir` follows
+    /// them happily, so the only thing standing between this walk and an unbounded loop is
+    /// that a symlink never reaches the recursion. That is a property, not an accident.
+    #[cfg(unix)]
+    #[test]
+    fn the_tmd_walk_does_not_follow_symlinks() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("tali-tmdlink-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("real")).unwrap();
+        fs::create_dir_all(root.join("shell")).unwrap();
+        fs::write(root.join("real/doc.tmd"), "# d\n").unwrap();
+        std::os::unix::fs::symlink(root.join("real"), root.join("shell/link")).unwrap();
+
+        assert!(
+            !dir_contains_tmd(&root.join("shell"), TMD_WALK_DEPTH),
+            "a directory whose only `.tmd` is behind a symlink is not offered"
+        );
+        // The control: the same document IS found through the real directory, so the
+        // assertion above is about the symlink and not about the fixture.
+        assert!(dir_contains_tmd(&root.join("real"), TMD_WALK_DEPTH));
+
+        // And a symlink cycle terminates rather than exhausting the stack.
+        std::os::unix::fs::symlink(root.join("shell"), root.join("shell/self")).unwrap();
+        assert!(!dir_contains_tmd(&root.join("shell"), TMD_WALK_DEPTH));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The two flag-value completions that are scoped to one subcommand each. Both conditions
+    /// are a pair — this flag AND this command — and either half alone fires the wrong list:
+    /// the diagnostic codes where a path belongs, or the templates where the shell should be
+    /// completing a directory.
+    #[test]
+    fn scoped_flag_values_need_both_the_flag_and_the_command() {
+        // `init --template <TAB>` offers the starters…
+        assert_eq!(
+            values(&["init", "--template", ""]),
+            ["basic", "site", "book"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+        // …but `init <TAB>` is a project directory, not a starter name.
+        let dir = fixture("scoped");
+        let got = path_values(&dir, &["init", ""]);
+        assert!(
+            got.contains(&"site/".to_string()) && !got.contains(&"basic".to_string()),
+            "`init <TAB>` completes a directory, got {got:?}"
+        );
+        // `check <doc> <TAB>` is past its only path positional, so the shell takes over —
+        // the diagnostic-code list belongs to `--explain` alone.
+        let after = values(&["check", "doc.tmd", ""]);
+        assert!(
+            after.is_empty(),
+            "the code vocabulary is scoped to `--explain`, got {after:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
