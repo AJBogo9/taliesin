@@ -82,3 +82,58 @@ fn a_protocol_failure_exits_nonzero_and_never_writes_to_stdout() {
         "the failure should be logged to stderr, got {stderr:?}"
     );
 }
+
+/// A `.tmd` buffer is served whatever `languageId` the editor sends.
+///
+/// Only the VS Code companion declares the `taliesin` language. Every other editor the
+/// CLI reference wires up (`cmd = { "taliesin", "lsp" }` for Neovim, Helix, Zed) sends
+/// its own filetype, and nothing in this repo registers one for `.tmd` — so the id
+/// arrives as `""` or `"markdown"`. Gating admission on the id alone made the server
+/// advertise hover, completion, symbols, rename and diagnostics and then answer null to
+/// all of them, with nothing on stderr to say why.
+///
+/// This has to live here rather than beside the in-process tests in `lsp.rs`: those all
+/// open documents through a helper that hard-codes `language_id: "taliesin"`, so they
+/// are structurally unable to observe the gate.
+#[test]
+fn a_tmd_buffer_is_linted_whatever_language_id_the_editor_sends() {
+    let dir = std::env::temp_dir().join(format!("tali-lsp-lang-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let doc = dir.join("b.tmd");
+    // `tittle:` is an unknown front-matter key, so a served buffer must publish at
+    // least one diagnostic. A buffer that is dropped publishes none.
+    let text = "---\ntittle: oops\n---\n\n# H\n";
+    std::fs::write(&doc, text).expect("fixture");
+    let uri = format!("file://{}", doc.display());
+
+    for language_id in ["taliesin", "markdown", "", "tmd"] {
+        let input = format!(
+            "{}{}{}{}{}",
+            frame(serde_json::json!({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": { "capabilities": {} }
+            })),
+            frame(serde_json::json!({
+                "jsonrpc": "2.0", "method": "initialized", "params": {}
+            })),
+            frame(serde_json::json!({
+                "jsonrpc": "2.0", "method": "textDocument/didOpen",
+                "params": { "textDocument": {
+                    "uri": uri, "languageId": language_id, "version": 1, "text": text
+                }}
+            })),
+            frame(serde_json::json!({
+                "jsonrpc": "2.0", "id": 2, "method": "shutdown", "params": null
+            })),
+            frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+        );
+        let (code, stdout, stderr) = lsp_session(&input);
+        assert_eq!(code, Some(0), "languageId {language_id:?}: stderr:\n{stderr}");
+        assert!(
+            stdout.contains("textDocument/publishDiagnostics"),
+            "languageId {language_id:?}: a .tmd buffer must be linted whatever the \
+             editor calls it, but no diagnostics were published.\nstdout:\n{stdout}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
