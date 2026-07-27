@@ -414,6 +414,59 @@ mod tests {
                 .detail
                 .contains("no active")
         );
+        // An EMPTY variable is not an active environment. Shells export `CONDA_PREFIX=` and
+        // `VIRTUAL_ENV=` on deactivate rather than unsetting them, so "set" and "set to
+        // something" are different questions and only the second one means anything here —
+        // otherwise a deactivated shell is told it is inside an env with no name.
+        assert!(
+            active_env_check(Some(""), Some(""), Some(""))
+                .detail
+                .contains("no active"),
+            "empty env vars are not an active environment"
+        );
+        assert!(
+            active_env_check(Some("/home/u/.venv"), Some(""), None)
+                .detail
+                .contains("virtualenv: /home/u/.venv"),
+            "an empty conda prefix must not shadow a real virtualenv"
+        );
+    }
+
+    /// The readiness summary reads each language's verdict off **that language's** check. It
+    /// is the one line most readers act on, and with two checks in the list a lookup that
+    /// picks the wrong one still produces a plausible sentence — so the two must disagree
+    /// for the assertion to mean anything.
+    #[test]
+    fn the_summary_reads_each_language_off_its_own_check() {
+        let check = |name, status| Check {
+            name,
+            status,
+            detail: String::new(),
+            fix: None,
+        };
+        assert_eq!(
+            summary(&[
+                check("python", Status::Ok),
+                check("r", Status::Error),
+                check("env", Status::Ok),
+            ]),
+            "python cells will execute; R cells will render as source."
+        );
+        // Swapped, so a summary reading the wrong check cannot pass both halves.
+        assert_eq!(
+            summary(&[
+                check("python", Status::Error),
+                check("r", Status::Ok),
+                check("env", Status::Ok),
+            ]),
+            "python cells will render as source; R cells will execute."
+        );
+        // A warning is not readiness: a present interpreter missing its kernel package
+        // renders as source, and saying otherwise promises execution that will not happen.
+        assert_eq!(
+            summary(&[check("python", Status::Warn), check("r", Status::Warn)]),
+            "python cells will render as source; R cells will render as source."
+        );
     }
 
     #[test]

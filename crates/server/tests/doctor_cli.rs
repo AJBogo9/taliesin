@@ -71,7 +71,71 @@ fn doctor_json_lists_the_checks() {
             "json has a `{name}` check: {v}"
         );
     }
+    // `status` is the field an agent branches on, so it has to be the agreed vocabulary and
+    // not merely present. The env line is always ready, which makes it the one check whose
+    // exact value is knowable here.
+    for c in checks {
+        let status = c["status"].as_str().unwrap_or("");
+        assert!(
+            matches!(status, "ok" | "warn" | "error"),
+            "unknown status {status:?} in {c}"
+        );
+    }
+    let env = checks
+        .iter()
+        .find(|c| c["name"] == "env")
+        .expect("the env check");
+    assert_eq!(env["status"], "ok", "the active-env line is informational");
+    // `ok` is the exit code in JSON form: it must agree with the process's own verdict.
+    assert_eq!(
+        v["ok"].as_bool(),
+        Some(out.status.success()),
+        "the json verdict and the exit code must agree: {v}"
+    );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The status column is a glyph, and a piped run carries no colour. Both halves are easy to
+/// lose silently: the glyph is the only thing that makes the human output scannable, and
+/// escape codes in a piped stream are noise in whatever reads it (the NO_COLOR convention is
+/// "and stdout is a terminal", not "or").
+#[test]
+fn the_human_report_is_glyph_marked_and_uncoloured_when_piped() {
+    let dir = tmp("glyphs");
+    let out = taliesin()
+        .arg("doctor")
+        .arg(&dir)
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("run doctor");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // The active-env line is always Ok, so a ✓ is always present.
+    assert!(
+        stdout.contains('✓'),
+        "every line carries its status glyph:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "a piped run must not emit ANSI escapes:\n{stdout:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// An unrecognized flag is an error, not a directory. Silently treating `--jsonn` as the
+/// project path audits the wrong place and exits 0, which reads as "your environment is fine".
+#[test]
+fn an_unknown_flag_is_rejected() {
+    let out = taliesin()
+        .arg("doctor")
+        .arg("--jsonn")
+        .output()
+        .expect("run doctor");
+    assert!(!out.status.success(), "an unknown flag must exit non-zero");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--jsonn"),
+        "the error should name the flag: {stderr}"
+    );
 }
 
 /// A configured-but-broken interpreter (a bad `TALIESIN_PYTHON`) is a hard failure: exit

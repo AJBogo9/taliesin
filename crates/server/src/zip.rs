@@ -154,6 +154,95 @@ mod tests {
         );
     }
 
+    /// Read the archive back the way an extractor does: find the end-of-central-directory,
+    /// walk the central directory it points at, and for each record follow its offset to the
+    /// local header and recover the bytes. Nothing here asserted the container was navigable
+    /// at all — the tests above read fixed byte offsets, which stay right even when the
+    /// directory that makes the file extractable does not.
+    #[test]
+    fn the_archive_reads_back_through_its_own_central_directory() {
+        let entries = vec![
+            ZipEntry {
+                name: "index.html".into(),
+                data: b"<!doctype html><p>hello</p>".to_vec(),
+            },
+            ZipEntry {
+                name: "assets/app.css".into(),
+                data: vec![b'x'; 4096], // compressible: takes the deflate branch
+            },
+            ZipEntry {
+                name: "img/tiny.bin".into(),
+                data: vec![0, 1, 2, 3], // incompressible: takes the store branch
+            },
+        ];
+        let z = build_zip(&entries);
+
+        let u16at = |i: usize| u16::from_le_bytes([z[i], z[i + 1]]);
+        let u32at = |i: usize| u32::from_le_bytes([z[i], z[i + 1], z[i + 2], z[i + 3]]);
+
+        // The EOCD is the last 22 bytes (no archive comment is written).
+        let eocd = z.len() - 22;
+        assert_eq!(u32at(eocd), EOCD_SIG);
+        let count = u16at(eocd + 10) as usize;
+        let cd_size = u32at(eocd + 12) as usize;
+        let cd_start = u32at(eocd + 16) as usize;
+        assert_eq!(count, entries.len());
+        // The two fields must actually delimit the central directory: an extractor seeks to
+        // `cd_start` and reads `cd_size` bytes, so a wrong size runs off the end of the
+        // directory (or stops inside it) even though every record was written correctly.
+        assert_eq!(
+            cd_start + cd_size,
+            eocd,
+            "the central directory must end exactly where the EOCD begins"
+        );
+
+        let mut at = cd_start;
+        for entry in &entries {
+            assert_eq!(u32at(at), CENTRAL_SIG, "central record at {at}");
+            let method = u16at(at + 10);
+            let crc = u32at(at + 16);
+            let comp_size = u32at(at + 20) as usize;
+            let size = u32at(at + 24) as usize;
+            let name_len = u16at(at + 28) as usize;
+            let offset = u32at(at + 42) as usize;
+            let name = std::str::from_utf8(&z[at + 46..at + 46 + name_len]).expect("utf-8 name");
+            assert_eq!(name, entry.name);
+            assert_eq!(size, entry.data.len());
+            // The stated contract: an entry never grows, and it is only marked deflated when
+            // that actually bought something.
+            assert!(comp_size <= size, "{name} grew: {comp_size} > {size}");
+            assert!(
+                method == 0 || comp_size < size,
+                "{name} deflated for nothing"
+            );
+
+            // Follow the offset to the local header and recover the payload.
+            assert_eq!(u32at(offset), LOCAL_SIG, "local header for {name}");
+            assert_eq!(u16at(offset + 8), method, "method must agree with central");
+            let local_name_len = u16at(offset + 26) as usize;
+            let extra_len = u16at(offset + 28) as usize;
+            let body = offset + 30 + local_name_len + extra_len;
+            let payload = &z[body..body + comp_size];
+            let recovered = if method == 0 {
+                payload.to_vec()
+            } else {
+                use std::io::Read;
+                let mut out = Vec::new();
+                flate2::read::DeflateDecoder::new(payload)
+                    .read_to_end(&mut out)
+                    .expect("payload inflates");
+                out
+            };
+            assert_eq!(recovered, entry.data, "{name} round-trips");
+            let mut h = Hasher::new();
+            h.update(&recovered);
+            assert_eq!(h.finalize(), crc, "{name} crc");
+
+            at += 46 + name_len;
+        }
+        assert_eq!(at, eocd, "the walk consumed exactly the central directory");
+    }
+
     #[test]
     fn eocd_entry_count_matches() {
         let z = build_zip(&[

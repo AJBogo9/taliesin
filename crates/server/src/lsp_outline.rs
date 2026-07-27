@@ -219,6 +219,16 @@ mod tests {
         assert_eq!(clean_title("Plain"), "Plain");
         // A `{...}` not at the end is kept.
         assert_eq!(clean_title("a {b} c"), "a {b} c");
+        // An UNCLOSED brace is not an attribute block. The outline runs on the buffer while
+        // it is being typed, so `# Intro {#sec-` is a heading mid-keystroke, and stripping
+        // there makes the label jump about as the author types the id.
+        assert_eq!(clean_title("Intro {#sec-x"), "Intro {#sec-x");
+        assert_eq!(clean_title("Intro {"), "Intro {");
+        // A `}` before the block belongs to the title, and the block after it still goes.
+        assert_eq!(clean_title("Intro } {#sec-x}"), "Intro }");
+        // Two blocks are not one block: the candidate span contains a `}`, so nothing is
+        // stripped rather than the wrong amount.
+        assert_eq!(clean_title("Intro {.a} {#b} c}"), "Intro {.a} {#b} c}");
     }
 
     #[test]
