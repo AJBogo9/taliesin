@@ -159,6 +159,14 @@ publishable.**
 
 ### Known limitations
 
+> **All four are resolved since this release** and are kept only as the record of
+> what 0.2.0 shipped with. Current state: the `_extensions/` showcase no longer
+> exists in the tree; there is no CI at all (the workflow was deleted 2026-07-26,
+> leaving `.githooks/pre-push` as the only automatic gate, which does not run
+> `cargo-deny`); Mermaid is vendored and inlined, so nothing fetches it; warm
+> pages are evicted by a `MAX_WARM_PAGES` LRU, and a book has no sidebar to stack
+> — navigation is a sticky topbar plus an off-canvas drawer.
+
 - The bundled `_extensions/` showcase (liquid-glass) is currently non-functional
   against the native deck engine; an extension-ecosystem audit is the next
   dedicated pass.

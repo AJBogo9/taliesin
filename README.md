@@ -135,7 +135,7 @@ with `data-block-id` + `data-sourcepos` on every block.
   print stylesheet).
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
   a redesigned navbar/footer + book chapter prev/next, `.tmd`→`.html` link rewriting,
-  `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
+  `listing:` post-card indexes, and `hero:` landing banners. Live preview navigates
   between pages and hot-reloads the edited one.
 - **Live diagnostics** in the preview's dev panel: broken includes, missing kernels,
   config typos (with did-you-mean), and an advisory client-side accessibility audit
