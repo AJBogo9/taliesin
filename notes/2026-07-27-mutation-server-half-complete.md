@@ -118,6 +118,61 @@ across the campaign, all the same shape, with zero exceptions — treat the rule
   Poor cost/benefit; skip knowingly.
 - **`doctor.rs::colored` / `::paint`** (4 of its 14). Terminal colour selection. Cosmetic.
 
+## Post-pin re-measure (same day): items 58, 59 and 61 landed
+
+The pins were written and then **re-measured against the recorded survivor list**, 183 mutants over
+`lsp_nav.rs` + `lsp_complete.rs` in 29 min. That re-measure is the reason this section can state
+numbers instead of intentions, and it changed the work twice.
+
+**The first cursor-walk pass killed only half.** It caught 18 of `lsp_nav`'s 36 and 38 of
+`lsp_complete`'s 56, leaving **42 alive**. The split is the lesson:
+
+> **A cursor walk over well-formed fixtures pins SPANS. Every survivor was a guard that REJECTS.**
+> Weakening one does not move a boundary — it makes the classifier accept nonsense: `j > key_start`
+> → `>=` invents a citation with an empty key, `j > id_start` invents an xref with an empty id,
+> `kw == "include"` → `!=` matches every shortcode *except* include, and any scan bound → `<=` reads
+> one character past the end of the line. **Malformed input is a separate axis from cursor
+> position**, and no amount of walking a well-formed fixture reaches it.
+
+Closing it took ~30 more fixtures, each malformed in one specific way. Final state: **39 of the 42
+killed, each verified by hand** (restore the mutant, watch the named test fail, restore), and the
+remaining 3 are provably equivalent.
+
+**Two "the test looked like coverage" holes, which is the shape worth hunting elsewhere:**
+
+- `lsp.rs`: every LSP test performs the handshake and **discards the `InitializeResult`**
+  (`handshake()` does `let _ = recv()`). A server advertising nothing passed the whole suite. No
+  line-coverage tool reports this, because every line ran.
+- `lsp_complete.rs`: the candidates test already had a `.hidden` fixture, but `.hidden` is not a
+  `.tmd`, so it never reaches the output whether the dotfile filter ran or not. A dotfile that *is*
+  a `.tmd` is what makes the rule observable.
+
+**Four unkillable mutants, recorded so no future session burns time on them.** A mutation *score*
+cannot tell these from real gaps, which is the whole argument for reading the survivor list:
+
+| mutant | why no test can kill it |
+|---|---|
+| `is_div_class_context` `j < 2` → `j <= 2` | at `j == 2` the real code falls through to `k = j - 2 = 0` and fails `k >= 3`, returning `false` exactly as the mutant does — and `j == 2` can never be a real div context, since `:::` needs three characters before the `{.` |
+| `harvest_anchor_ids` `i = j + 1` → `i = j` | `chars[j]` is always the closing `}`, which cannot begin a `{#` |
+| `harvest_anchor_ids` `i = j + 1` → `i = j - 1` | `chars[j - 1]` is the last id character; rescanning it finds nothing new, and results land in a `BTreeSet` |
+| `runtime_dirs.rs:103` `pid_alive -> false` | the `#[cfg(not(unix))]` arm, dead code here. cargo-mutants parses **without evaluating `cfg`**, so **this reappears on every future run of that file** |
+
+**The timeout rule held a fourth time:** both timeouts in the re-measure (`harvest_bib_keys` 315:23,
+320:27) are `+=` → `*=` on a scan cursor. That is 41 of 41 across the campaign.
+
+**Three process failures worth more than the pins**, all the same vacuous-green shape this round
+exists to remove:
+
+- **`git checkout HEAD -- <file>` to undo a mutation deleted the uncommitted tests**, so two
+  verifications ran with only the pre-existing tests and were vacuously green. Revert a mutation by
+  **inverse edit**, never through git. (Recorded before, in `notes/backlog.md`'s standing
+  constraints, and it still bit.)
+- **A `pkill -f '<pattern>'` matched the invoking shell's own command line and killed it** (exit
+  144). Kill by PID.
+- **A mutation anchor string that matched twice SKIPPED its check** rather than running it — the
+  12-space `while j < n` line is a substring of the 16-space one. A harness that reports "skip" as
+  anything other than a failure is a green light for work that never happened.
+
 ## Still owed after this
 
 Nothing in scope: `lsp_nav.rs` is banked as a partial (338 of 444, findings complete enough to act on)

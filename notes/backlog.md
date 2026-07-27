@@ -352,16 +352,18 @@ pin. And **never write a test for a timeout**: 39 of 39 across the campaign are 
 cursor, where a loop that stops advancing spins rather than returning a wrong answer, so the hang
 *is* the detection.
 
-58. **One table-driven cursor-walk test, serving `lsp_nav.rs` and `lsp_complete.rs` at once.**
-    **~85 of the 192 server survivors**, which is why it is first. Both files' scanners are the same
-    construct: a cursor walks a line and classifies what it is on. Every survivor is an *edge* —
-    `lsp_nav.rs`'s `classify_target`/`classify_include`/`classify_frontmatter_key`/`nested_parent_of`/
-    `definition_site`/`is_anchor_site`/`anchor_occurrences`/`is_cite_key_char`, and
-    `lsp_complete.rs`'s `harvest_bib_keys` (20), `harvest_anchor_ids` (10), `is_div_class_context` (8),
-    `detect_shortcode_path` (6), `nested_parent` (4), `frontmatter_value` (3). Shape: one fixture line
-    per construct, walk the cursor across **every byte**, assert the classification at each offset.
-    That is a test that means something on its own, as opposed to 85 tests chasing a number green.
-    This is load-bearing: deciding what the cursor is on *is* click-to-source.
+58. **SHIPPED 2026-07-27** (`a4f1600`, `ba0b3f7`, `31a30fe`, `9f7a4b5`, `8ecf607`) — the
+    cursor-walk pins for `lsp_nav.rs` + `lsp_complete.rs`. **92 survivor locations, 89 killed, 3
+    provably equivalent**, each verified by restoring the mutant and watching a named test fail.
+    Post-pin measurement and the four unkillable mutants:
+    [2026-07-27-mutation-server-half-complete.md](2026-07-27-mutation-server-half-complete.md).
+    **The lesson cost a second pass, so read it before writing the next pin batch: a cursor walk
+    over well-formed fixtures pins SPANS, but every survivor was a guard that REJECTS.** Weakening
+    one does not move a boundary, it makes the classifier accept nonsense — an empty citation key, an
+    empty xref id, a construct read one character past the end of the line. **Malformed input is a
+    separate axis from cursor position**, and the first pass, which walked only well-formed
+    fixtures, killed just half. Items 60 and 62-64 are the same kind of code, so budget the
+    malformed-input axis into them from the start.
 59. **SHIPPED 2026-07-27** (`6015c13`) — the `server_capabilities` assertion, all 12 killed. **The
     lesson is the cause, not the fix:** the tests all *performed* the handshake and threw the result
     away, because `handshake()` does `let _ = client.receiver.recv()` on the `InitializeResult`. A
