@@ -164,11 +164,19 @@ also measured in a browser. Nothing here is blocked.
     - the `corpus/graphics3d/` gallery mounts: `molecules.tmd` (`0x0e1420`), `lorenz.tmd`, `cad.tmd`
       (`0x11151f`).
     **Verified NOT affected** (they already pass `alpha: true`, corner pixel `[0,0,0,0]`): the index
-    hero and the showcase surface scene. **The fix touches four files, not one:** `three-scene.tmd` is
-    duplicated at `site/_includes/`, `corpus/_includes/`, `corpus/tech-blog/_includes/` and
-    `corpus/graphics3d/_includes/`, in **two different variants** (site+graphics3d share one hash, the
-    other two share an older one lacking `controls`/`autoRotate`/`rebuild`/`loadGLTF`). A memory note
-    claiming "2 copies, byte-identical" is stale — re-check before trusting any count.
+    hero and the showcase surface scene.
+    **The fix touches four copies of the helper, in two variants, and two of them are test-pinned
+    twins — read this before editing anything.** `three-scene.tmd` exists at `site/_includes/`,
+    `corpus/graphics3d/_includes/` (these two share one hash: the *extended* variant with
+    `controls`/`autoRotate`/`rebuild`/`loadGLTF`) and at `corpus/_includes/`,
+    `corpus/tech-blog/_includes/` (the *older* variant, sharing a different hash).
+    `crates/core/tests/corpus.rs:1317` (`twinned_corpus_sources_stay_byte_identical`) pins
+    `corpus/_includes/` ↔ `corpus/tech-blog/_includes/` **and** `corpus/posts/` ↔
+    `corpus/tech-blog/posts/` byte-identical, so **a fix landing in one twin and not the other turns
+    that test red** — and since item 72's other half is the pca-geometry scenes, which are themselves
+    twinned posts, this will bite. Land each fix in both halves of a pair in the same commit. Do not
+    "sync" the older variant up to the extended one as a drive-by: that is a separate change, and a
+    prior sync attempt silently dropped `autoRotate` and regressed the showcase.
     Two further theme-blind spots in the same helper, cheap to fix in the same pass: the Fullscreen
     button is hard-coded `rgba(30,30,30,.75)` / `#ddd` (`:166`), and `spriteLabel` takes a
     caller-supplied CSS colour that will not flip either.
