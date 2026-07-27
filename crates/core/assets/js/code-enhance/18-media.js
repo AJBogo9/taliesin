@@ -95,7 +95,12 @@
   /** @param {ParentNode | null} [root] */
   function enhance(root) {
     (root || document).querySelectorAll('.tali-video').forEach(function (el) {
-      if (el instanceof HTMLElement) wire(el);
+      // A `{{< video … controls >}}` / `… audio >}}` clip is handed to the BROWSER's own
+      // player (play/pause, scrubber, volume, fullscreen), so it gets none of this wiring:
+      // a hover that starts a narrated explainer, or a pointer-leave that pauses one
+      // mid-sentence, fights the reader instead of helping. The ▶ badge is suppressed for
+      // the same clip in base.css, and the lightbox stands down in 11-lightbox.js.
+      if (el instanceof HTMLElement && !el.querySelector('video[controls]')) wire(el);
     });
   }
   window.taliEnhancers.register(enhance);

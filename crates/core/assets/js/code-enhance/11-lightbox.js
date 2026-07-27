@@ -10,7 +10,9 @@ function taliInitLightbox() {
 
   var style = document.createElement('style');
   style.textContent =
-    'figure img,img.lightbox,pre.mermaid,.tali-video video{cursor:zoom-in}' +
+    // A `{{< video … controls >}}` clip is NOT zoomable (its own control bar owns the
+    // clicks, and it ships a native fullscreen button), so it must not advertise zoom-in.
+    'figure img,img.lightbox,pre.mermaid,.tali-video video:not([controls]){cursor:zoom-in}' +
     '#tali-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
     'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
@@ -49,7 +51,11 @@ function taliInitLightbox() {
   box.innerHTML = '<button class="tali-lb-close" aria-label="Close">×</button>' +
     '<button class="tali-lb-nav tali-lb-prev" aria-label="Previous image">‹</button>' +
     '<button class="tali-lb-nav tali-lb-next" aria-label="Next image">›</button>' +
-    '<img alt=""><video class="tali-lb-video" muted loop playsinline></video>' +
+    // The enlarged copy carries `controls`: the lightbox is the "watch it properly"
+    // affordance, and a reader who opened it must be able to pause and scrub. (Only the
+    // hover-preview screencast reaches here — a `controls` clip is never lightboxed — so
+    // `muted loop` still matches what is being shown.)
+    '<img alt=""><video class="tali-lb-video" controls muted loop playsinline></video>' +
     // aria-live so stepping the gallery (←/→) announces the new caption + "(n / N)" counter
     // to a screen reader (PA-A2); every sibling enhancer already has one.
     '<div class="tali-lb-svg"></div><div class="tali-lb-cap" aria-live="polite"></div>';
@@ -167,7 +173,10 @@ function taliInitLightbox() {
     if (img && unmodified(e)) {
       e.preventDefault(); e.stopPropagation(); openImg(img); return;
     }
-    var vid = /** @type {HTMLVideoElement | null} */ (t.closest('.tali-video video'));
+    // `:not([controls])` — a clip with the browser's own control bar must keep its clicks:
+    // intercepting them here would turn every press of native play/pause/scrub into "open
+    // the lightbox". Such a clip needs no lightbox anyway (native fullscreen enlarges it).
+    var vid = /** @type {HTMLVideoElement | null} */ (t.closest('.tali-video video:not([controls])'));
     if (vid && unmodified(e)) {
       e.preventDefault(); e.stopPropagation(); openVideo(vid); return;
     }
@@ -176,10 +185,13 @@ function taliInitLightbox() {
       e.preventDefault(); e.stopPropagation(); openMermaid(pre);
     }
   }, true);
-  // Keep a double-click on a figure/diagram/video from reaching click-to-source.
+  // Keep a double-click on a figure/diagram/video from reaching click-to-source. A
+  // `controls` clip is excluded for the same reason as the click delegation above:
+  // double-click is the browser's native fullscreen gesture on a media player, and
+  // swallowing it here would take that away.
   document.addEventListener('dblclick', function (e) {
     var t = /** @type {Element | null} */ (e.target);
-    if (t && t.closest && !inDeckOverview(t) && t.closest('figure img, img.lightbox, pre.mermaid, .tali-video video')) {
+    if (t && t.closest && !inDeckOverview(t) && t.closest('figure img, img.lightbox, pre.mermaid, .tali-video video:not([controls])')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);
