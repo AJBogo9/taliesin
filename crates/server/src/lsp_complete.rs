@@ -787,5 +787,30 @@ mod tests {
             "partial",
         );
         assert_eq!(got2[0].value, "sub/a.tmd");
+
+        // The dotfile policy, in both directions. The `.hidden` entry above cannot show it: a
+        // non-`.tmd` file never reaches the output whether the dot filter ran or not, so deleting
+        // the filter's negation changed nothing observable and the mutant survived. A dotfile that
+        // *is* a `.tmd` is what makes the rule testable.
+        let dotted = vec![
+            DirEntry {
+                name: ".draft.tmd".to_string(),
+                is_dir: false,
+            },
+            DirEntry {
+                name: "intro.tmd".to_string(),
+                is_dir: false,
+            },
+        ];
+        let values = |typed: &str| -> Vec<String> {
+            shortcode_path_candidates(&dotted, typed, "partial")
+                .into_iter()
+                .map(|c| c.value)
+                .collect()
+        };
+        // Not typing a dot: the dotfile is hidden.
+        assert_eq!(values(""), vec!["intro.tmd".to_string()]);
+        // Explicitly typing a dot: the dotfile is offered.
+        assert_eq!(values(".d"), vec![".draft.tmd".to_string()]);
     }
 }
