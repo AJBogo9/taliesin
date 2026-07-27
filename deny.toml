@@ -9,7 +9,8 @@ version = 2
 # rationale. `unmaintained` is already checked by the version-2 default.
 unsound = "all"
 # A few transitive deps are flagged *unmaintained* (not a security vulnerability, and no
-# safe upgrade exists). cargo-audit (the other CI job) already tolerates these as warnings;
+# safe upgrade exists). `cargo audit`, run by hand alongside this file, already tolerates
+# these as warnings;
 # ignoring them here keeps cargo-deny's stricter gate meaningful, a NEW advisory (or any
 # *vulnerability*) still fails the build.
 ignore = [

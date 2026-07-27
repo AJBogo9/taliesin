@@ -130,7 +130,7 @@ old repo-root dump from before cells ran in the document's directory.
 ## Process and planning: `notes/`
 
 A few Markdown files stay at the **root** because tooling and convention expect
-them there: `README.md` (the public overview), `LICENSE` (MIT), `THIRD_PARTY.md`
+them there: `README.md` (the public overview), `LICENSE` (AGPL-3.0-only), `THIRD_PARTY.md`
 (the vendored components and their licenses), and `CLAUDE.md` (instructions for the
 AI coding assistant). Everything else is internal notes-to-self and roadmap, kept
 in `notes/` so the root stays uncluttered:

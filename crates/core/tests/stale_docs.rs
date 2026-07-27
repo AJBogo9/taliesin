@@ -56,12 +56,18 @@ fn docs_do_not_promise_a_ci_that_enforces_gates() {
         "docs/internals/repository.tmd",
     ] {
         let text = read(rel);
-        assert!(
-            !text.contains("CI enforces")
-                && !text.contains("CI-gated")
-                && !text.contains("wired into CI"),
-            "{rel} still promises a CI gate, but the workflow is gone and the check is manual"
-        );
+        // Match the shapes that actually shipped, not one canonical phrasing. `deny.toml`
+        // carried TWO independent claims and the first pass at this gate caught only one:
+        // the header said "wired into CI" and a comment twelve lines below still called
+        // cargo-audit "the other CI job". A gate that knows one spelling of a false claim
+        // leaves its siblings in the same file.
+        for needle in ["CI enforces", "CI-gated", "wired into CI", "CI job"] {
+            assert!(
+                !text.contains(needle),
+                "{rel} still promises a CI gate ({needle:?}), but the workflow is gone \
+                 and the check is manual"
+            );
+        }
     }
 }
 
