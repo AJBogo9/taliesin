@@ -397,6 +397,17 @@ impl Executor {
         self.force_next = true;
     }
 
+    /// Whether this executor currently owns a booted kernel, i.e. whether dropping it
+    /// would actually kill a child process.
+    ///
+    /// A kernel is created lazily on the first executed cell, so a `LangState` can exist
+    /// with `kernel: None` (a language whose start *failed*, which is why this asks about
+    /// the kernel rather than about `langs` being non-empty). Callers use it to avoid
+    /// announcing a kernel death that did not happen — see `serve_site::exec_pool`.
+    pub fn has_live_kernel(&self) -> bool {
+        self.langs.values().any(|s| s.kernel.is_some())
+    }
+
     /// Execute the document's code cells (changed cells + downstream, per language)
     /// and return the block list with output blocks spliced in after each cell.
     /// Each executable language runs against its own kernel; unknown languages are
@@ -1861,6 +1872,16 @@ mod tests {
             // No working python kernel here — can't exercise execution progress.
             return;
         }
+
+        // Item 114's TRUE direction, taken here because this is the one place in the
+        // module that has already paid for a live kernel: having run cells, the executor
+        // must now report owning one. The false direction is pinned kernel-free in
+        // `serve_site::exec_pool`; without this line a `has_live_kernel` stuck at `false`
+        // would silence the eviction log entirely and nothing would notice.
+        assert!(
+            ex.has_live_kernel(),
+            "an executor that just ran three python cells owns a kernel"
+        );
 
         let msgs = captured.lock().unwrap();
         // Every `build-state` is well-formed for this page. (The same sink now also

@@ -95,6 +95,248 @@ fn every_corpus_doc_emits_no_unknown_key_warnings() {
     );
 }
 
+/// Attributes that make the browser FETCH something, per element. Everything absent from
+/// this table may legitimately carry an absolute URL and must not be scanned:
+/// `<a href>` is an author's outbound link, `<link rel=canonical href>` is metadata rather
+/// than a request, `<meta content>` holds `og:url`, JSON-LD's *body* is full of URLs, and
+/// an inline `<svg xmlns="http://www.w3.org/2000/svg">` is an XML namespace that is not a
+/// network address at all. Scanning "every http in the page" flags all five and is why
+/// this has to be per-element rather than a substring sweep.
+const FETCHING: &[(&str, &[&str])] = &[
+    ("script", &["src"]),
+    ("img", &["src", "srcset"]),
+    ("image", &["href", "xlink:href"]), // SVG <image>
+    ("iframe", &["src"]),
+    ("frame", &["src"]),
+    ("embed", &["src"]),
+    ("object", &["data"]),
+    ("video", &["src", "poster"]),
+    ("audio", &["src"]),
+    ("source", &["src", "srcset"]),
+    ("track", &["src"]),
+    ("input", &["src"]),
+];
+
+/// The `rel` values on a `<link>` that cause a fetch. `canonical`, `alternate` and
+/// `author` deliberately do not: they name a resource without requesting it.
+const FETCHING_LINK_RELS: &[&str] = &[
+    "stylesheet",
+    "preload",
+    "modulepreload",
+    "prefetch",
+    "preconnect",
+    "dns-prefetch",
+    "icon",
+    "shortcut icon",
+    "apple-touch-icon",
+    "mask-icon",
+    "manifest",
+];
+
+/// Is `url` a reference the browser would resolve OFF this origin?
+fn is_offsite(url: &str) -> bool {
+    let u = url.trim();
+    // Protocol-relative is the sneaky one: it looks like a path and is a network fetch.
+    u.starts_with("//")
+        || u.starts_with("http://")
+        || u.starts_with("https://")
+        // A scheme-ful reference to anything that is not the page itself. `data:` and
+        // `blob:` are inline payloads (offline by construction) and are allowed.
+        || matches!(u.split_once(':'), Some((s, _))
+            if s.len() > 1
+                && s.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+                && !matches!(s, "data" | "blob"))
+}
+
+/// Read the value of `attr` out of an already-isolated tag's text.
+fn tag_attr(tag: &str, attr: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(rel) = tag[from..].find(attr) {
+        let at = from + rel;
+        // A real attribute boundary: preceded by whitespace, followed by `=`.
+        let before_ok = at > 0 && tag.as_bytes()[at - 1].is_ascii_whitespace();
+        let rest = tag[at + attr.len()..].trim_start();
+        if before_ok && let Some(v) = rest.strip_prefix('=') {
+            let v = v.trim_start();
+            let quote = v.chars().next()?;
+            if quote == '"' || quote == '\'' {
+                let body = &v[1..];
+                return body.find(quote).map(|e| body[..e].to_string());
+            }
+        }
+        from = at + attr.len();
+    }
+    None
+}
+
+/// Every off-origin subresource reference in a built page, as `(element, url)`.
+fn offsite_refs(page: &str) -> Vec<(String, String)> {
+    let mut hits = Vec::new();
+    let mut i = 0;
+    while let Some(rel) = page[i..].find('<') {
+        let open = i + rel;
+        let Some(close_rel) = page[open..].find('>') else {
+            break;
+        };
+        let tag = &page[open..open + close_rel + 1];
+        i = open + close_rel + 1;
+        let name: String = tag[1..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        let attrs: Vec<&str> = if name == "link" {
+            let rel_val = tag_attr(tag, "rel")
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if FETCHING_LINK_RELS.contains(&rel_val.trim()) {
+                vec!["href", "imagesrcset"]
+            } else {
+                vec![]
+            }
+        } else {
+            match FETCHING.iter().find(|(n, _)| *n == name) {
+                Some((_, a)) => a.to_vec(),
+                None => vec![],
+            }
+        };
+        for a in attrs {
+            if let Some(v) = tag_attr(tag, a) {
+                // `srcset` is a comma-separated candidate list, each `url [descriptor]`.
+                for cand in v.split(',') {
+                    let url = cand.split_whitespace().next().unwrap_or("");
+                    if !url.is_empty() && is_offsite(url) {
+                        hits.push((name.clone(), url.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    // CSS fetches too, and an inlined stylesheet is where a font or a background would
+    // hide. `@import` and `url(…)` are the two shapes that reach the network.
+    for (marker, skip) in [("url(", 4), ("@import", 7)] {
+        let mut from = 0;
+        while let Some(rel) = page[from..].find(marker) {
+            let at = from + rel + skip;
+            from = at;
+            let rest = page[at..].trim_start();
+            // `@import url("x")` and `@import "x"` are both legal. The first is already
+            // counted by the `url(` pass above, so skip it here rather than double-count
+            // it; only the bare-string form is this pass's to find.
+            if marker == "@import" && rest.starts_with("url(") {
+                continue;
+            }
+            let url: String = rest
+                .trim_start_matches(['"', '\''])
+                .chars()
+                .take_while(|c| !matches!(c, '"' | '\'' | ')' | ';' | ' '))
+                .collect();
+            if is_offsite(&url) {
+                hits.push(("css".to_string(), url));
+            }
+        }
+    }
+    hits
+}
+
+#[test]
+fn no_built_page_fetches_anything_off_origin() {
+    // Item 86. The offline guarantee — "the binary is self-contained; a built page needs
+    // no network" — was asserted on exactly two surfaces: `--bare` (which ships zero
+    // <script> at all, so it cannot witness the claim for a normal page) and the reveal.js
+    // case in `render/tests.rs`. Nothing pinned it on the page shape a reader actually
+    // gets, which is every page this tool builds.
+    //
+    // This is NOT about a live CDN fetch: `render/mod.rs`'s jsdelivr string is a
+    // never-reached fallback (OFF-2, fixed 2026-07-22). It is the coverage residual — the
+    // property was true and untested, which is how it would have regressed silently.
+    //
+    // WHAT THIS DOES NOT COVER, stated because an overclaimed gate is worse than none.
+    // It reads STATIC subresource references only: markup attributes and CSS `url(` /
+    // `@import`. A URL that inlined JavaScript fetches at RUNTIME is invisible to it —
+    // and that is exactly where `MERMAID_DEFAULT` lives, substituted into `MERMAID_JS`
+    // and reached by a dynamic import. Scanning script bodies would therefore fail on a
+    // string the project deliberately keeps as an unreachable fallback, so the boundary
+    // is drawn here on purpose rather than by oversight. Verified by mutation in both
+    // directions: reinstating the OFF-2 fallback does NOT fail this test (the blind spot
+    // is real), while pointing one emitted `<link rel=icon>` at a CDN does.
+    let mut files = Vec::new();
+    collect_tmd(&corpus_dir(), &mut files);
+    files.sort();
+    assert!(files.len() >= 5, "expected the corpus docs");
+
+    let mut checked = 0usize;
+    let mut with_subresources = 0usize;
+    for f in &files {
+        let label = f
+            .strip_prefix(corpus_dir())
+            .unwrap_or(f)
+            .display()
+            .to_string();
+        let src = fs::read_to_string(f).unwrap();
+        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let stem = f.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
+        // BOTH shipping modes. `Build` is what gets published; `Preview` ships every
+        // enhancer unconditionally (it cannot content-gate against a live edit), so it is
+        // the larger surface and the one where a new bundled asset would first appear.
+        for mode in [
+            taliesin_core::OutputMode::Build,
+            taliesin_core::OutputMode::Preview,
+        ] {
+            let page = taliesin_core::render_doc_to_page(&doc, stem, mode);
+            let hits = offsite_refs(&page);
+            assert!(
+                hits.is_empty(),
+                "{label} ({mode:?}): a built page must fetch nothing off-origin, found {hits:?}"
+            );
+            // The scanner has to be looking at something. A page with zero fetching
+            // elements would pass with the assertion disabled, so count the pages that do
+            // carry subresources and require below that the corpus produced some.
+            if page.contains("<script") || page.contains("<img") {
+                with_subresources += 1;
+            }
+        }
+        checked += 1;
+    }
+    assert!(checked >= 5, "walked {checked} docs");
+    assert!(
+        with_subresources >= 5,
+        "only {with_subresources} of {checked} built pages carried any subresource at all — \
+         the scanner would be passing vacuously"
+    );
+
+    // The positive control, and the reason this test can be trusted: the scanner must
+    // actually FIRE on the shapes it claims to catch, and must stay silent on the four
+    // absolute-URL shapes a correct page legitimately contains.
+    let caught = offsite_refs(
+        "<script src=\"https://cdn.jsdelivr.net/x.js\"></script>\
+         <link rel=\"stylesheet\" href=\"//fonts.example/f.css\">\
+         <img srcset=\"local.png 1x, https://cdn.example/2x.png 2x\">\
+         <style>@import url(\"https://evil.example/a.css\");</style>\
+         <style>@import \"https://evil.example/b.css\";</style>\
+         <style>body{background:url('https://cdn.example/bg.png')}</style>",
+    );
+    assert_eq!(
+        caught.len(),
+        6,
+        "the scanner must catch every off-origin shape, and each exactly once: {caught:?}"
+    );
+    let allowed = offsite_refs(
+        "<a href=\"https://example.com/post\">an outbound link</a>\
+         <link rel=\"canonical\" href=\"https://taliesin.dev/p.html\">\
+         <meta property=\"og:url\" content=\"https://taliesin.dev/p.html\">\
+         <script type=\"application/ld+json\">{\"url\":\"https://taliesin.dev\"}</script>\
+         <svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"inline.png\"/></svg>\
+         <img src=\"data:image/png;base64,iVBOR\">",
+    );
+    assert!(
+        allowed.is_empty(),
+        "an outbound link, a canonical URL, og:url, JSON-LD and an SVG namespace are not \
+         fetches: {allowed:?}"
+    );
+}
+
 #[test]
 fn every_corpus_doc_renders_with_invariants() {
     let mut files = Vec::new();

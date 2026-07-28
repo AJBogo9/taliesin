@@ -10,5 +10,6 @@
     "types": [],
     "skipLibCheck": true
   },
-  "include": ["client.js", "search.js", "toc-spy.js", "toc-sheet.js", "globals.d.ts"]
+  "//": "Globbed, not enumerated: a hand-written list silently leaves a NEW file unchecked, which is the one failure this gate exists to prevent. Every .js in this directory is a preview-client script.",
+  "include": ["*.js", "*.d.ts"]
 }

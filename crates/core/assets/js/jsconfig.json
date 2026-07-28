@@ -12,32 +12,12 @@
     "types": [],
     "skipLibCheck": true
   },
+  "//include": "Globbed, not enumerated. The old hand-written list left a NEW file silently unchecked — the one failure this gate exists to prevent — and had already rotted the other way too: it still named code-enhance/03-focus-mode.js months after that file was deleted, and tsc says nothing about an include entry that matches nothing. The vendored minified bundles are excluded by shape (*.min.js) rather than by name, so a future vendored drop is excluded on arrival instead of on remembering.",
   "include": [
-    "globals.d.ts",
-    "../../../../web-client/globals.d.ts",
-    "code-enhance/01-registry.js",
-    "code-enhance/02-anchor-links.js",
-    "code-enhance/03-focus-mode.js",
-    "code-enhance/04-focus-trap.js",
-    "code-enhance/06-skip-link.js",
-    "code-enhance/07-keyboard.js",
-    "code-enhance/08-copy-buttons.js",
-    "code-enhance/09-register.js",
-    "code-enhance/10-category-filter.js",
-    "code-enhance/11-lightbox.js",
-    "code-enhance/12-link-preview.js",
-    "code-enhance/13-reader-menu.js",
-    "code-enhance/14-reader-prefs.js",
-    "code-enhance/15-reading-progress.js",
-    "code-enhance/16-scroll-a11y.js",
-    "code-enhance/17-cite-box.js",
-    "code-enhance/18-media.js",
-    "code-enhance/19-book-outline.js",
-    "deck.js",
-    "tali-js.js",
-    "mermaid.js",
-    "scrolly.js",
-    "tabset.js",
-    "walkthrough.js"
-  ]
+    "*.js",
+    "*.d.ts",
+    "code-enhance/*.js",
+    "../../../../web-client/globals.d.ts"
+  ],
+  "exclude": ["*.min.js"]
 }

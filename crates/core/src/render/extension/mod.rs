@@ -112,12 +112,26 @@ fn expand_in_line(
                     // is a built-in missing its positional path. Reporting it as unknown
                     // sent the author hunting a spelling that was already right.
                     if SHORTCODE_SPECS.iter().any(|(n, _, _)| *n == name) {
+                        // Two different mistakes reach this branch, and reporting the
+                        // second as the first is the failure this comment's neighbour
+                        // already warns about: a source that IS written but is a URL must
+                        // not be reported as a missing one, or the author goes hunting for
+                        // a path they can plainly see.
+                        let toks = tokenize_args(inner);
+                        let src = toks
+                            .split_first()
+                            .and_then(|(_, args)| source_path(name, args));
                         warnings.push(
-                            Warning::new(format!(
-                                "`{{{{< {name} >}}}}` at line {line_no} has no source path \
-                                 (write `{{{{< {name} file >}}}}`)"
-                            ))
-                            .at(None, line_no as u32),
+                            match src.as_deref().and_then(|s| url_scheme(s).map(|k| (s, k))) {
+                                Some((s, scheme)) => {
+                                    refused_url(name, "source", s, scheme, line_no)
+                                }
+                                None => Warning::new(format!(
+                                    "`{{{{< {name} >}}}}` at line {line_no} has no source path \
+                                     (write `{{{{< {name} file >}}}}`)"
+                                ))
+                                .at(None, line_no as u32),
+                            },
                         );
                     } else if name != "include" {
                         warnings.push(
@@ -151,7 +165,9 @@ fn render_shortcode(inner: &str) -> Option<String> {
     // isolating iframe with a fullscreen affordance (the deck is built/served as a
     // dependency, see `embed_targets`).
     if name == "embed" {
-        return embed_path(args).map(|p| embed_html(&p, embed_title(args).as_deref()));
+        return source_path("embed", args)
+            .filter(|p| url_scheme(p).is_none())
+            .map(|p| embed_html(&p, embed_title(args).as_deref()));
     }
     // `{{< video clip.mp4 [controls] [audio] [captions=clip.vtt] [dark=clip-dark.mp4]
     // [poster=…] [caption="…"] >}}` — a framed screencast (never autoplaying: playback is
@@ -159,16 +175,24 @@ fn render_shortcode(inner: &str) -> Option<String> {
     // `<video>` HTML. With `dark=`, the light clip plays on a light page and the dark clip
     // on a dark page (toggled by `html[data-theme]`), so the screencast matches the theme.
     if name == "video" {
-        return video_path(args).map(|src| {
-            video_html(
-                &src,
-                shortcode_named(args, "dark").as_deref(),
-                shortcode_named(args, "poster").as_deref(),
-                shortcode_named(args, "caption").as_deref(),
-                shortcode_named(args, "captions").as_deref(),
-                playback_mode(args),
-            )
-        });
+        // A path-valued named argument carrying a URL is DROPPED rather than failing the
+        // whole shortcode: the clip still plays, it just plays without the poster (or the
+        // dark variant, or the captions). That is the same graceful degradation
+        // `validate_shortcode_args` already gives a typo'd option — "renders with what it
+        // understood" — and `validate_shortcode_args` is what says so out loud.
+        let path_arg = |key: &str| shortcode_named(args, key).filter(|v| url_scheme(v).is_none());
+        return source_path("video", args)
+            .filter(|src| url_scheme(src).is_none())
+            .map(|src| {
+                video_html(
+                    &src,
+                    path_arg("dark").as_deref(),
+                    path_arg("poster").as_deref(),
+                    shortcode_named(args, "caption").as_deref(), // prose, not a path
+                    path_arg("captions").as_deref(),
+                    playback_mode(args),
+                )
+            });
     }
     None
 }
@@ -261,6 +285,80 @@ fn is_named_arg(tok: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
+/// The URL scheme a shortcode's path argument carries, if any.
+///
+/// Both built-ins document their positional argument as a path **relative to the
+/// embedding page** (`{{< video tour.mp4 >}}` — "the video file, relative to the page";
+/// `{{< embed talk.tmd >}}` — "built beside the embedding page"), and an embed target is
+/// additionally *built* as a local file, so a URL there names nothing the builder can
+/// reach. A scheme-bearing token is therefore not a path at all, and passing it through
+/// put an author-controlled URL directly into an `<iframe src>` / `<video src>` with
+/// nothing but attribute escaping in the way. It also slipped past `check`'s
+/// missing-local-media diagnostic, which only looks at local files.
+///
+/// Two boundaries worth stating, because both are shapes that *look* like a scheme:
+///
+/// - A **single-letter** scheme is not reported: that is a Windows drive (`C:/clips/x.mp4`).
+/// - A **query string** is not reported: `clip.mp4?token=a:b` splits at the first `:` into
+///   a would-be scheme containing `?` and `=`, which the grammar below rejects. That case
+///   is load-bearing — `is_named_arg` already goes out of its way to keep such a path
+///   positional, and re-breaking it here would undo that.
+///
+/// Protocol-relative `//host/x.mp4` is reported as `//`: it is a network fetch wearing a
+/// path's clothes, and it is the one shape that looks relative and is not.
+fn url_scheme(tok: &str) -> Option<&str> {
+    if tok.starts_with("//") {
+        return Some("//");
+    }
+    let (scheme, _) = tok.split_once(':')?;
+    let mut chars = scheme.chars();
+    let head_ok = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic());
+    let tail_ok = chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    (head_ok && tail_ok && scheme.len() > 1).then_some(scheme)
+}
+
+/// The positional source path of a built-in, by name — the one place the "which token is
+/// the path?" rule lives, so the renderer and the diagnostic that explains a refusal read
+/// the same token instead of re-deriving it from two copies of the rule.
+fn source_path(name: &str, args: &[String]) -> Option<String> {
+    match name {
+        "embed" => embed_path(args),
+        "video" => video_path(args),
+        _ => None,
+    }
+}
+
+/// The `key=value` arguments whose value is a PATH (resolved relative to the page), as
+/// opposed to prose like `caption=` / `title=`. Kept beside [`SHORTCODE_SPECS`] because it
+/// is the same closed vocabulary viewed by type: these are the keys [`url_scheme`] guards,
+/// and a path-valued key added there but not here is silently unguarded.
+const PATH_KEYS: [(&str, &[&str]); 2] =
+    [("embed", &[]), ("video", &["dark", "poster", "captions"])];
+
+/// The path-valued keys declared for `name`.
+fn path_keys(name: &str) -> &'static [&'static str] {
+    PATH_KEYS
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, keys)| *keys)
+        .unwrap_or(&[])
+}
+
+/// How a refused URL argument reads to the author: what they wrote, why it is not a path,
+/// and what the argument actually takes.
+fn refused_url(name: &str, what: &str, value: &str, scheme: &str, line_no: usize) -> Warning {
+    let scheme = if scheme == "//" {
+        "protocol-relative".to_string()
+    } else {
+        format!("`{scheme}:`")
+    };
+    Warning::new(format!(
+        "`{{{{< {name} >}}}}` at line {line_no}: {what} `{value}` is a {scheme} URL, not a \
+         path — this shortcode takes a file relative to the page"
+    ))
+    .at(None, line_no as u32)
+}
+
 /// The bare (valueless) flags `{{< video >}}` accepts. They are not paths, so
 /// [`video_path`] must skip them: the positional source is otherwise "the first token that
 /// is not `key=value`", and `{{< video controls clip.mp4 >}}` would take `controls` as the
@@ -338,6 +436,21 @@ fn validate_shortcode_args(
                     ))
                     .at(None, line_no as u32),
                 );
+            } else if path_keys(name).contains(&key) {
+                // A KNOWN key whose value is a path: the renderer drops it when it carries
+                // a URL, so this is what tells the author it was dropped. `caption=` is
+                // prose and is deliberately not in `path_keys`, so a colon in a sentence
+                // never reaches here.
+                let value = tok.split_once('=').map(|(_, v)| v).unwrap_or("");
+                if let Some(scheme) = url_scheme(value) {
+                    warnings.push(refused_url(
+                        name,
+                        &format!("`{key}=`"),
+                        value,
+                        scheme,
+                        line_no,
+                    ));
+                }
             }
         } else if flags.contains(&tok.as_str()) {
             // a valid bare flag
@@ -653,7 +766,11 @@ pub fn embed_targets(src: &str) -> Vec<String> {
             let toks = tokenize_args(inner);
             if let Some((name, args)) = toks.split_first()
                 && name == "embed"
-                && let Some(p) = embed_path(args)
+                && let Some(p) = source_path("embed", args)
+                // A URL is not a deck the builder can build, and the renderer already
+                // declines to embed it — collecting it here would hand `build` a target
+                // it can only fail on.
+                && url_scheme(&p).is_none()
                 && !out.contains(&p)
             {
                 out.push(p);
@@ -674,6 +791,105 @@ mod arg_validation_tests {
             .into_iter()
             .map(|w| w.message)
             .collect()
+    }
+
+    #[test]
+    fn a_url_source_is_refused_because_both_built_ins_take_a_page_relative_path() {
+        // Item 97. Both built-ins document the positional argument as a file relative to
+        // the page, and an embed target is additionally BUILT as a local file — so a
+        // scheme-bearing token is not a path, yet it went straight into `<iframe src>` /
+        // `<video src>` with only attribute escaping in the way, and slipped past `check`'s
+        // missing-local-media diagnostic (which only looks at local files).
+        for src in [
+            "{{< embed javascript:alert(1) >}}\n",
+            "{{< video javascript:alert(1) >}}\n",
+            "{{< embed //evil.example/x.tmd >}}\n",
+            "{{< video https://evil.example/x.mp4 >}}\n",
+            "{{< video data:text/html,x >}}\n",
+        ] {
+            let (html, warnings) = expand_shortcodes(src);
+            // The shortcode does not expand at all. What is left is the source text
+            // verbatim — the existing "nothing is lost" path an unrecognised shortcode
+            // already takes — so the URL survives as inert page text and never becomes an
+            // `<iframe src>` / `<video src>`. Assert the ATTRIBUTE, not the substring:
+            // the literal `{{< … >}}` still contains the URL, which is the point.
+            assert!(
+                !html.contains("<iframe") && !html.contains("<video"),
+                "no media element may be built from a URL source: {html}"
+            );
+            assert!(
+                !html.contains("src=\""),
+                "and nothing may carry it in a src attribute: {html}"
+            );
+            let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
+            assert_eq!(msgs.len(), 1, "exactly one warning for {src:?}: {msgs:?}");
+            assert!(
+                msgs[0].contains("not a path"),
+                "and it must say WHY, not report a missing source the author can see: \
+                 {msgs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_url_in_a_path_valued_argument_is_dropped_but_the_clip_still_plays() {
+        // The named path arguments are the obvious bypass of the check above: `dark=` is
+        // literally a second video source. Dropping the argument (rather than failing the
+        // whole shortcode) matches how a typo'd option already degrades — "renders with
+        // what it understood".
+        let (html, warnings) = expand_shortcodes(
+            "{{< video tour.mp4 dark=javascript:alert(1) poster=//e.x/p.png >}}\n",
+        );
+        assert!(
+            html.contains("src=\"tour.mp4\"") || html.contains("data-src=\"tour.mp4\""),
+            "the clip itself still plays: {html}"
+        );
+        assert!(
+            !html.contains("javascript:alert(1)") && !html.contains("//e.x/p.png"),
+            "neither URL reaches the page: {html}"
+        );
+        let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
+        assert_eq!(msgs.len(), 2, "one per refused argument: {msgs:?}");
+        assert!(
+            msgs.iter().any(|m| m.contains("`dark=`"))
+                && msgs.iter().any(|m| m.contains("`poster=`")),
+            "each names the argument it dropped: {msgs:?}"
+        );
+    }
+
+    #[test]
+    fn the_scheme_check_leaves_real_paths_alone() {
+        // The controls that stop the check above from passing by refusing everything.
+        // Each of these is a shape that LOOKS scheme-ish and is a legitimate path.
+        for src in [
+            "{{< video clip.mp4 >}}\n",
+            // A query string: `is_named_arg` already goes out of its way to keep this
+            // positional, and splitting at the first `:` must not undo that.
+            "{{< video clip.mp4?token=a:b >}}\n",
+            // A Windows drive is a single-letter "scheme" and is not one.
+            "{{< video C:/clips/tour.mp4 >}}\n",
+            "{{< embed talk.tmd >}}\n",
+            "{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption=\"A: a tour\" >}}\n",
+        ] {
+            let (_, warnings) = expand_shortcodes(src);
+            let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
+            assert!(msgs.is_empty(), "{src:?} must not warn: {msgs:?}");
+        }
+        // And a caption is prose: a colon in a sentence is not a scheme.
+        let (html, _) = expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n");
+        assert!(html.contains("Fig 1: the tour"), "caption survives: {html}");
+    }
+
+    #[test]
+    fn a_url_embed_is_not_collected_as_a_build_target() {
+        // `embed_targets` is what the site build walks to build each referenced deck.
+        // A URL is not a deck it can build, so collecting one hands `build` a target it
+        // can only fail on.
+        assert_eq!(
+            embed_targets("{{< embed talk.tmd >}}\n{{< embed https://e.x/d.tmd >}}\n"),
+            vec!["talk.tmd".to_string()],
+            "only the real local deck is a build target"
+        );
     }
 
     #[test]

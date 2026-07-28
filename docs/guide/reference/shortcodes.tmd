@@ -148,6 +148,15 @@ knob — the ones worth having, the browser already ships.
 | `poster=…` | no | (none) | A poster image shown before the video paints. |
 | `caption="…"` | no | (none) | A `<figcaption>` under the clip (quote it if it has spaces). It also becomes the clip's accessible name; without it the clip is announced as "Screencast", or "Video" under `audio`. |
 
+Every path argument above is exactly that: **a file relative to the page**, never a
+URL. A `src`, `dark=`, `poster=` or `captions=` carrying a scheme (`https:`,
+`data:`, `javascript:`) or a protocol-relative `//host/…` is refused with a warning
+naming it — a URL source would be a network fetch on a page that promises to work
+offline, and `check`'s missing-media diagnostic below cannot see one. A refused
+`src` leaves the shortcode unexpanded; a refused named argument is dropped and the
+clip still plays without it. A `C:/…` drive path and a `clip.mp4?v=2` query string
+are paths, not URLs, and are unaffected.
+
 A `{{< video >}}` (and any raw `<video src>`) whose local file is missing is flagged
 by `taliesin check` as a broken local asset, so a renamed clip does not slip
 through.

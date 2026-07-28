@@ -2704,6 +2704,92 @@ fn missing_bibliography_and_theme_files_warn() {
 }
 
 #[test]
+fn a_theme_extension_bundle_cannot_escape_the_project_root() {
+    // Item 85: the `_extensions/<name>/theme.css` arm read `base.join(ext)` with no
+    // containment at all, while the sibling `.css` arm went through `safe_join_in`. Two
+    // shapes escaped: a `../` climb, and an ABSOLUTE name — `Path::join` *replaces* the
+    // base on an absolute argument, so `theme: /etc` read `/etc/theme.css` outright. That
+    // is item 80's `mounts:` footgun in a second place.
+    //
+    //   <tmp>/proj/_extensions/ok/theme.css        the legitimate in-project bundle
+    //   <tmp>/outside/_extensions/evil/theme.css   a real file OUTSIDE the root
+    let uniq = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let tmp = std::env::temp_dir().join(format!("tali-theme-85-{uniq}"));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let base = tmp.join("proj");
+    let outside = tmp.join("outside/_extensions/evil");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::create_dir_all(base.join("_extensions/ok")).unwrap();
+    std::fs::write(outside.join("theme.css"), b".escaped{color:red}").unwrap();
+    std::fs::write(base.join("_extensions/ok/theme.css"), b".ok{color:green}").unwrap();
+
+    // The positive control, which is what stops this test from passing by refusing
+    // everything: a legitimate in-project bundle still loads, and still says nothing.
+    let mut w = Vec::new();
+    let css = resolve_theme(Some("ok"), Some(&base), Some(&base), &mut w);
+    assert!(
+        css.contains(".ok"),
+        "an in-project extension theme must still load: {css:?}"
+    );
+    assert!(w.is_empty(), "and must not warn: {w:?}");
+
+    // The climb. `_extensions/` consumes one `..`, so `../../` is what actually leaves
+    // `base` — worth spelling out, because `../` alone resolves back inside and would
+    // make this assertion pass for the wrong reason.
+    let mut w = Vec::new();
+    let css = resolve_theme(
+        Some("../../outside/_extensions/evil"),
+        Some(&base),
+        Some(&base),
+        &mut w,
+    );
+    assert!(
+        css.is_empty(),
+        "a climbing theme bundle must not be read: {css:?}"
+    );
+    assert!(
+        w.iter()
+            .any(|x| x.message.contains("outside the project root")),
+        "and the refusal is reported, not swallowed: {w:?}"
+    );
+
+    // The absolute form. Named as a bare directory (no `.css` suffix) so it lands on the
+    // extension arm rather than the file arm.
+    let mut w = Vec::new();
+    let css = resolve_theme(
+        Some(&outside.to_string_lossy()),
+        Some(&base),
+        Some(&base),
+        &mut w,
+    );
+    assert!(
+        css.is_empty(),
+        "an absolute theme bundle must not be read: {css:?}"
+    );
+    assert!(
+        w.iter()
+            .any(|x| x.message.contains("outside the project root")),
+        "and the refusal is reported: {w:?}"
+    );
+
+    // A bare unknown name is still silent: it may be a legacy built-in theme taliesin
+    // does not ship (`darkly`), which harmlessly falls back to the default. The refusal
+    // above must not have turned every miss into a warning.
+    let mut w = Vec::new();
+    let css = resolve_theme(Some("darkly"), Some(&base), Some(&base), &mut w);
+    assert!(css.is_empty() && w.is_empty(), "bare name: {css:?} {w:?}");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn detect_toc_is_tristate_so_explicit_false_can_override_a_site_default() {
     // Unset, on, and off must be distinguishable: a plain bool can't tell an
     // explicit `toc: false` (which should beat the site default) from "unset".
@@ -3543,15 +3629,62 @@ fn code_enhance_bundle_matches_fragments_in_order() {
     );
 }
 
+/// Does a tsc `include`/`exclude` pattern cover `path` (project-relative)? Supports the
+/// one wildcard form these configs use: `*` matching within a single path segment.
+///
+/// Deliberately minimal. It exists so the gate below can assert coverage **per file**
+/// against a *globbed* config, rather than degrading to "the config mentions a `*`
+/// somewhere" — which would be a drift test that cannot fail, the thing this file's own
+/// rule forbids.
+fn tsc_pattern_covers(pattern: &str, path: &str) -> bool {
+    let (pat_segs, path_segs): (Vec<&str>, Vec<&str>) =
+        (pattern.split('/').collect(), path.split('/').collect());
+    if pat_segs.len() != path_segs.len() {
+        return false;
+    }
+    pat_segs
+        .iter()
+        .zip(&path_segs)
+        .all(|(pat, seg)| match pat.split_once('*') {
+            Some((head, tail)) => {
+                seg.starts_with(head) && seg.ends_with(tail) && seg.len() >= head.len() + tail.len()
+            }
+            None => pat == seg,
+        })
+}
+
 #[test]
 fn every_code_enhance_fragment_is_in_the_type_check_gate() {
-    // The `tsc` gate checks an EXPLICIT include list, so a fragment added to the concat! but
-    // not to `jsconfig.json` ships unchecked while the gate still reports success. Found by
-    // adding one: `18-media.js` had been outside the gate since it landed. Read the list
-    // mechanically rather than trusting one assertion per file — the same lesson the CLI
-    // help gate learned (nine undocumented flags where the audit had filed two).
+    // A fragment added to the concat! but not reached by `jsconfig.json` ships unchecked
+    // while the `tsc` gate still reports success. Found by adding one: `18-media.js` had
+    // been outside the gate since it landed. Read the config mechanically rather than
+    // trusting one assertion per file — the same lesson the CLI help gate learned (nine
+    // undocumented flags where the audit had filed two).
+    //
+    // The config is GLOBBED now (item 98), which is what makes a new fragment covered on
+    // arrival instead of on remembering — but this test still checks every fragment
+    // individually, against the include patterns *and* the excludes. Asserting merely that
+    // a `*` appears would pass for a glob pointing at the wrong directory.
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/js");
-    let cfg = std::fs::read_to_string(dir.join("jsconfig.json")).expect("jsconfig.json exists");
+    let cfg: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("jsconfig.json")).unwrap())
+            .expect("jsconfig.json is valid JSON");
+    let patterns = |key: &str| -> Vec<String> {
+        cfg[key]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let (includes, excludes) = (patterns("include"), patterns("exclude"));
+    assert!(
+        !includes.is_empty(),
+        "jsconfig.json declares an include list"
+    );
+
     let mut names: Vec<String> = std::fs::read_dir(dir.join("code-enhance"))
         .expect("assets/js/code-enhance should exist")
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -3560,11 +3693,27 @@ fn every_code_enhance_fragment_is_in_the_type_check_gate() {
     names.sort();
     assert!(!names.is_empty(), "the fragment directory cannot be empty");
     for name in &names {
+        let rel = format!("code-enhance/{name}");
         assert!(
-            cfg.contains(&format!("\"code-enhance/{name}\"")),
-            "assets/js/jsconfig.json must list code-enhance/{name}, or it ships type-unchecked"
+            includes.iter().any(|p| tsc_pattern_covers(p, &rel)),
+            "assets/js/jsconfig.json must cover {rel}, or it ships type-unchecked"
+        );
+        assert!(
+            !excludes.iter().any(|p| tsc_pattern_covers(p, &rel)),
+            "{rel} is covered by an include but cancelled by an exclude, which is worse \
+             than not listing it: it looks checked and is not"
         );
     }
+
+    // The matcher must be able to say NO, or every assertion above is free.
+    assert!(tsc_pattern_covers(
+        "code-enhance/*.js",
+        "code-enhance/18-media.js"
+    ));
+    assert!(!tsc_pattern_covers("code-enhance/*.js", "deck.js"));
+    assert!(!tsc_pattern_covers("*.js", "code-enhance/18-media.js"));
+    assert!(tsc_pattern_covers("*.min.js", "d3.min.js"));
+    assert!(!tsc_pattern_covers("*.min.js", "deck.js"));
 }
 
 #[test]

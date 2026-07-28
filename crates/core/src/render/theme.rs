@@ -25,27 +25,74 @@ pub(super) fn resolve_theme(
         // runtime via `data-theme` (toggle / OS), so no per-page override CSS.
         "light" | "default" | "dark" => String::new(),
         // A named `.css`/`.scss` that can't be read is a typo worth flagging.
-        // `safe_join` refuses an absolute path or one escaping the project root.
+        // `try_join_in` refuses an absolute path or one escaping the project root, and
+        // keeps the reason: a refused theme whose file plainly exists must not be
+        // reported as "not found" or the author goes hunting for a typo that isn't there
+        // (the same distinction the bibliography reader draws, `render/mod.rs`).
         path if path.ends_with(".css") || path.ends_with(".scss") => {
-            match base_dir
-                .and_then(|b| crate::includes::safe_join_in(b, path, root))
-                .and_then(|p| std::fs::read_to_string(&p).ok())
-            {
-                Some(css) => css,
-                None => {
-                    warnings.push(Warning::new(format!("theme file not found: {path}")));
+            let Some(base) = base_dir else {
+                warnings.push(Warning::new(format!("theme file not found: {path}")));
+                return String::new();
+            };
+            match crate::includes::try_join_in(base, path, root) {
+                Ok(p) => match std::fs::read_to_string(&p) {
+                    Ok(css) => css,
+                    Err(_) => {
+                        warnings.push(Warning::new(format!("theme file not found: {path}")));
+                        String::new()
+                    }
+                },
+                Err(reason) => {
+                    warnings.push(Warning::new(refused_theme(path, reason)));
                     String::new()
                 }
             }
         }
-        // An installed extension bundle: `_extensions/<name>/theme.css`. A bare
-        // name isn't warned (it may be a legacy built-in theme taliesin doesn't
-        // ship, e.g. `darkly`, which harmlessly falls back to the default).
-        ext => base_dir
-            .and_then(|b| {
-                std::fs::read_to_string(b.join("_extensions").join(ext).join("theme.css")).ok()
-            })
-            .unwrap_or_default(),
+        // An installed extension bundle: `_extensions/<name>/theme.css`, resolved through
+        // the SAME containment check as every other author-named path. A bare name isn't
+        // warned (it may be a legacy built-in theme taliesin doesn't ship, e.g. `darkly`,
+        // which harmlessly falls back to the default) — but a name that climbs out of the
+        // project is not a legacy theme, so a refusal is reported rather than swallowed.
+        ext => {
+            let Some(base) = base_dir else {
+                return String::new();
+            };
+            // `Path::join` REPLACES the base on an absolute argument, so `theme: /etc`
+            // used to read `/etc/theme.css` outright — item 80's `mounts:` footgun in a
+            // second place. Refuse it here rather than letting it be spliced into the
+            // relative bundle path below, where `_extensions//etc/theme.css` would
+            // normalize to something contained but silently wrong.
+            if Path::new(ext).is_absolute() || Path::new(ext).has_root() {
+                warnings.push(Warning::new(refused_theme(
+                    ext,
+                    crate::includes::Refused::OutsideRoot,
+                )));
+                return String::new();
+            }
+            match crate::includes::try_join_in(base, &format!("_extensions/{ext}/theme.css"), root)
+            {
+                Ok(p) => std::fs::read_to_string(&p).unwrap_or_default(),
+                Err(reason) => {
+                    warnings.push(Warning::new(refused_theme(ext, reason)));
+                    String::new()
+                }
+            }
+        }
+    }
+}
+
+/// How a refused `theme:` reads to the author. Names the boundary that rejected it, so
+/// the message distinguishes "your file is missing" from "your file is there and was
+/// deliberately not read" — the two have different fixes.
+fn refused_theme(named: &str, reason: crate::includes::Refused) -> String {
+    match reason {
+        crate::includes::Refused::OutsideRoot => {
+            format!("theme `{named}` is outside the project root and was not read")
+        }
+        crate::includes::Refused::SymlinkOutsideRepo => format!(
+            "theme `{named}` is a symlink whose target is outside the project repository \
+             and was not read"
+        ),
     }
 }
 /// The default theme mode for the resolver script: an explicit `dark`/`light`

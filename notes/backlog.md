@@ -40,8 +40,12 @@ enough to continue; nothing else is required.**
   adopted, and can be handed over. Spec:
   [audit slate](../docs/superpowers/specs/2026-07-27-audit-slate-design.md). Wave 1 method:
   [wave 1 plan](../docs/superpowers/plans/2026-07-27-audit-wave-1.md).
-- **Band A held items 79-137 when the audits closed; fourteen have since shipped** across two
-  batches (79-83, 109, 117, 118, 120, 121, 127, 128, then 84, 89, 90, 92, 93). Item **150** was
+- **Band A held items 79-137 when the audits closed; a good many have since shipped** across
+  four batches (79-83, 109, 117, 118, 120, 121, 127, 128; then 84, 89, 90, 92, 93; then the
+  reader-cost trio 150, 137, 124; then the verified sweep 85, 86, 97, 98, 99, 114, 123, 130).
+  **Two of those closed with no product change** — 130 was already fixed and this file had not
+  noticed, and 99 was a measurement that came back clean — which is the rot tax, not progress.
+  Item **150** was
   added 2026-07-28 from the author's own size question, and **137, 148 and 149 were amended in
   place** rather than deleted, so what remains of each is visible. The earlier "nothing in any of
   these rounds changed a line of product code" is long dead, which is the usual way this file rots:
@@ -456,11 +460,8 @@ workflow (guarded on repository visibility so it stays inert until publication).
 
 **Smaller, verified**
 
-85. **`theme:`'s `_extensions` arm bypasses `safe_join_in`.** (MEDIUM.) `theme.rs:44-48`.
-86. **Assert the offline guarantee over every built artifact, not one.** (MEDIUM.) `corpus.rs:923`
-    asserts no-CDN on the `bare` surface only and `render/tests.rs:1880` on the reveal.js case only;
-    no test pins it on a normal built page. **Not a live CDN fetch** — `render/mod.rs:1532` is a
-    never-reached fallback (OFF-2, fixed 2026-07-22). This is the *coverage* residual only.
+**Items 85 and 86 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add / re-scope".**
+
 91. **Make `chromiumoxide` an optional Cargo feature.** (MEDIUM.) `crates/server/Cargo.toml:47`
     declares it unconditionally and the crate has **no `[features]` section** (measured), so every
     build pays for a browser driver. The runtime `TALIESIN_REQUIRE_CHROME` gate is not a build gate.
@@ -480,11 +481,9 @@ docs and a hosted demo**, which are a deploy decision belonging with item 100's 
     one. **The "no exit path" anxiety is refuted; the fix is to say so.**
 95. **A continuity paragraph: one maintainer, pre-1.0, and what leaving costs.** (MEDIUM.)
 96. **Quantify the dogfooding claim.** (LOW.)
-97. **`{{< embed >}}` and `{{< video >}}` sources are not scheme-filtered.** (LOW.)
-98. **Glob the two `jsconfig.json` include lists.** (LOW.) Both are hand-enumerated, so a new file
-    is silently unchecked by the `tsc` gates.
-99. **Spot-check that `TALIESIN_REQUIRE_CHROME=1 --test read_run_js` really launches a browser.**
-    (LOW.) The one gate whose non-vacuity was not established this round.
+
+**Items 97, 98 and 99 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add / re-scope".**
+99 needed no code: it was a measurement, and it came back clean in both directions.
 
 ---
 
@@ -613,17 +612,10 @@ which is this file's standing rule.
 
 **Low**
 
-114. **The eviction log reports a kernel that was never booted.** (LOW.) `exec_pool.rs:88` logs
-     "evicted warm kernel for …" unconditionally, but an `Executor` boots no kernel until a cell runs
-     (`exec.rs:906`) and an unbuilt page routes to the exec lane by default
-     (`serve_site/mod.rs:104`, `unwrap_or(false)`). Previewing `corpus/tarn` (14 chapters, **zero**
-     code cells) is enough to produce the false line. Derived from source, not observed in a running
-     preview.
-123. **`init` writes a 5 KB `AGENTS.md` unasked and unexplained.** (LOW.) Neither `init`'s output
-     nor the scaffolded Next steps mention it. Not a defect in the file — one line naming it.
-130. **`CLAUDE.md:67` names a retired class prefix.** (LOW.) It says `qhl-`; the emitter is
-     `highlight.rs:23`, `prefix: "tali-hl-"`. A probe grepping `qhl-` returned 0 on a fully
-     highlighted page and read as "highlighting is broken". Costs every future session, not just one.
+**Items 114, 123 and 130 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add /
+re-scope".** 130 needed no product change at all: it had already been fixed and this file had
+not noticed, which is the rot warning in the RESUME block earning its place a second time.
+
 115. **Nothing makes the next author of a generated block think about click-to-source.** (LOW,
      structural.) Nine sites write `sourcepos: String::new()`, all correctly (generated chrome has no
      source line). `corpus.rs` guards existing content, not new producers, and QA1 has the least
@@ -1211,6 +1203,67 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 the verified sweep (items 85, 86, 97, 98, 99, 114, 123, 130),** each pinned by a
+  test and verified by mutation. **Do not re-scope any of the following as open:**
+  - **A `theme:` extension bundle is contained** (85). The `_extensions/<name>/theme.css` arm read
+    `base.join(ext)` with no containment while the sibling `.css` arm went through `safe_join_in`;
+    both now go through `try_join_in`, which **keeps the refusal reason**, so a theme that was
+    refused is no longer reported as "not found" and the author is not sent hunting a typo that
+    is not there. Two shapes escaped and both are pinned: a `../` climb, and an **absolute** name
+    — `Path::join` *replaces* the base on an absolute argument, so `theme: /etc` read
+    `/etc/theme.css` outright. **That is item 80's `mounts:` footgun in a second place**, which is
+    the reusable part. A bare unknown name (`darkly`) is still silent, deliberately: it may be a
+    legacy built-in, and turning every miss into a warning was the way to get this wrong.
+  - **No built page fetches anything off-origin** (86). `no_built_page_fetches_anything_off_origin`
+    walks every corpus doc in **both** shipping modes (`Build` *and* `Preview`, the larger surface)
+    and scans per element, not by substring — an `<a href>`, a `rel=canonical`, `og:url`, JSON-LD's
+    body and an SVG `xmlns="http://www.w3.org/2000/svg"` are all legitimately absolute, and a
+    whole-page `http` grep flags all five. **Its boundary is written into the test and must stay
+    honest: it reads STATIC references only** (markup attributes, CSS `url(`/`@import`), so a URL
+    that inlined JS fetches at runtime is invisible — which is exactly where `MERMAID_DEFAULT`
+    lives as a deliberate never-reached fallback. Measured both ways: reinstating the OFF-2
+    fallback does **not** fail it, pointing one emitted `<link rel=icon>` at a CDN does.
+  - **A shortcode source is a path, not a URL** (97). `{{< embed >}}` and `{{< video >}}` both
+    document their positional argument as a file *relative to the page*, and an embed target is
+    additionally **built** as a local file — yet a scheme-bearing token went straight into
+    `<iframe src>` / `<video src>`, and `check`'s missing-local-media diagnostic cannot see one.
+    A refused `src` leaves the shortcode unexpanded (the existing "keep verbatim" path, so the URL
+    survives as inert text and never becomes an element); a refused `dark=`/`poster=`/`captions=`
+    is **dropped and the clip still plays**, matching how a typo'd option already degrades. Also
+    filtered in `embed_targets`, or `build` would be handed a target it can only fail on. **Do not
+    widen it into a sanitizer** — raw HTML still passes through (2026-07-03 CSP ruling), and
+    `caption=` is prose, so a colon in a sentence is not a scheme. A `C:/…` drive path and a
+    `clip.mp4?v=2` query string are paths and are pinned as such.
+  - **Both `jsconfig.json` include lists are globbed** (98). The hand-written lists rotted in
+    **both** directions and tsc reports neither: a new file was silently unchecked, and
+    `code-enhance/03-focus-mode.js` was still listed months after that file was deleted. Measured
+    identical before and after (**5** and **25** project files, minified bundles still excluded by
+    shape via `exclude: ["*.min.js"]` rather than by name), then verified by dropping a
+    deliberately ill-typed file into each directory and watching both gates fail — which the old
+    lists would not have done.
+  - **The eviction log reports only kernels that existed** (114). `Executor::has_live_kernel()`
+    gates the line; a page that never ran a cell is silent. **The eviction ORDER and the cap were
+    not touched** — that is the standing freeze — only what is said about an eviction. The
+    decision is a pure function (`eviction_line`) so it is testable without capturing stderr,
+    which `crate::log::kernel` writes to directly.
+  - **`init` says what it wrote that you did not ask for** (123). The item's own text was already
+    half-stale: `AGENTS.md` *is* listed, as a bare path among five. What was missing is that it is
+    5,049 bytes of unexplained file, so a one-line note now names it and `.taliesin/` and says both
+    can be deleted. `the_onramp_note_names_every_file_init_writes_unasked` derives the list from
+    `onramp_files()`, so a fourth onramp file fails the suite until the note mentions it. **Not a
+    flag** — an `--onramp` knob would be a configuration answer to a documentation problem.
+  - **The `qhl-` prefix (130) was ALREADY FIXED when this was picked up**, and nothing said so.
+    `CLAUDE.md` says `tali-hl-`, the emitter's prefix is pinned by
+    `crates/core/tests/highlight_langs.rs`, and the vacuous `contains("qhl-") ||
+    contains("language-python")` disjunct in `render/tests.rs` had already been repaired. Only a
+    stale present-tense sentence in `LESSONS.md` was left, and it is corrected. **Same shape as
+    item 124 four days earlier: grep the named symbol before building the named fix.**
+  - **The Chrome gate is not vacuous** (99), measured rather than argued, and it needed no code.
+    Armed with a browser present: **3 passed, no skip line**, and `read --run` reports
+    `svg 320×200` plus the page's real thrown `Error: intentional read --run test failure` —
+    neither is producible without a browser having executed the page. Armed with
+    `CHROME_PATH=/nonexistent`: **2 hard failures** naming the gate, not a silent skip. Both
+    directions hold, so `CANARY_CHROME` printing `... ok` means the browser really ran.
 - **2026-07-28 the reader-cost batch (items 150, 137, 124),** each pinned by a test and verified
   by mutation, and browser-verified because every claim in it is about what a browser fetches.
   **Do not re-scope any of the following as open:**

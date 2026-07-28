@@ -281,6 +281,11 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                     log::built(&f.display().to_string());
                 }
                 println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
+                // The onramp files are the two nobody asked for. They were listed above
+                // as bare paths like the rest, which is how a 5 KB `AGENTS.md` arrives in
+                // a new project with nothing anywhere saying what it is or that it can go.
+                // Naming them is the whole fix — they are good files, just unexplained.
+                println!("\n{ONRAMP_NOTE}");
             }
             ExitCode::SUCCESS
         }
@@ -295,6 +300,18 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
 /// golden-locked `AGENTS.md` and the bundled config schemas wired via the `_site.yml`
 /// modeline. Kept out of [`init_files`] (and the corpus pins) because they're generated
 /// constants already locked in core, not authored template bytes.
+/// The one line that names the files `init` writes which the user did not ask for.
+///
+/// Item 123: they were listed as bare paths beside `_site.yml` and `index.tmd`, so a
+/// scaffolded project acquired a 5 KB `AGENTS.md` and a dot-directory with nothing
+/// stating what either is for, or that deleting them costs nothing. Both are genuinely
+/// useful, which is exactly why the fix is a sentence rather than a flag: an `--onramp`
+/// knob would be a configuration answer to a documentation problem.
+const ONRAMP_NOTE: &str = "\
+AGENTS.md tells a coding agent how to edit this project; .taliesin/ holds the config
+schemas your editor reads for `_site.yml` and front-matter completion. Neither is
+required — delete them and everything still builds.";
+
 fn onramp_files() -> [(&'static str, &'static str); 3] {
     [
         // The agent onramp (edit `.tmd`/`check --format json`/dialect). Generated from the
@@ -1064,6 +1081,32 @@ mod tests {
         let d = std::env::temp_dir().join(format!("tali-init-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn the_onramp_note_names_every_file_init_writes_unasked() {
+        // Item 123. `AGENTS.md` and `.taliesin/` are written by every template regardless
+        // of what the user asked for, so the note is the only place that says what they
+        // are. Derived from `onramp_files()` rather than hand-listed: add a fourth onramp
+        // file and this fails until the note mentions it, which is the drift that made
+        // the item worth filing in the first place.
+        for (name, _) in onramp_files() {
+            // `.taliesin/x.schema.json` is named by its directory, which is what a reader
+            // sees in the file list and what the note can meaningfully talk about.
+            let named = name.split('/').next().unwrap_or(name);
+            assert!(
+                ONRAMP_NOTE.contains(named),
+                "the onramp note must name `{named}`, or it arrives unexplained: \
+                 {ONRAMP_NOTE}"
+            );
+        }
+        // And it must say the files are optional — "what is this?" and "can I delete it?"
+        // are the two questions an unasked-for file raises, and the second is the one a
+        // bare filename can never answer.
+        assert!(
+            ONRAMP_NOTE.contains("delete"),
+            "the note must say they can be removed: {ONRAMP_NOTE}"
+        );
     }
 
     #[test]

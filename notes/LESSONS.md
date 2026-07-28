@@ -104,11 +104,27 @@ through its wrappers. What was actually missing was a fixture *shape*.
   measured against code this branch does not contain. It held on re-measurement after
   `cargo build --release`, but that was luck. **A shared `target/` makes every CLI number suspect;
   check the reported SHA against your own HEAD, and rebuild before trusting one.**
+- **An existing gate can be enforcing the very rot you were sent to fix — update its mechanism,
+  never delete it.** (2026-07-28, item 98.) The two `jsconfig.json` include lists were
+  hand-enumerated, so a new file shipped type-unchecked; globbing them fixed that and immediately
+  turned `every_code_enhance_fragment_is_in_the_type_check_gate` red, because that test asserted
+  the config *lists each fragment by name*. The test's INTENT (every fragment is inside the `tsc`
+  gate) was right and its MECHANISM assumed the defective shape. Deleting it, or weakening it to
+  "the config contains a `*`", would both have been a net loss — the second is a drift test that
+  cannot fail. It was rewritten to match each fragment against the include patterns *and* the
+  excludes, with a five-line matcher whose own negative cases are asserted. **Ask which half of a
+  blocking test is the intent and which is the assumption; only the assumption may move.** Related
+  trap in the same batch: the hand-written list had also rotted the *other* way (it still named
+  `code-enhance/03-focus-mode.js` months after deletion) and **tsc says nothing about an include
+  entry matching zero files** — so a stale list is invisible from both directions.
 - **Grep the emitted result, not the class name you remember.** (2026-07-28.) A highlight-coverage
-  probe grepped `qhl-` (the prefix `CLAUDE.md:67` still names) and returned **0 on a fully
+  probe grepped `qhl-` (the prefix `CLAUDE.md` named at the time) and returned **0 on a fully
   highlighted page**, reading as "highlighting is broken". The emitter is `tali-hl-`
   (`highlight.rs:23`). Same family as the inlined-asset needle trap: **a needle taken from prose is
-  a hypothesis; take it from the emitter.**
+  a hypothesis; take it from the emitter.** *(The prose was corrected: `CLAUDE.md` now says
+  `tali-hl-`, `crates/core/tests/highlight_langs.rs` pins the emitter's prefix, and the one
+  surviving `qhl-` in live source is the comment in `render/tests.rs` recording that a disjunct
+  spelled that way had been dead. The lesson outlives its instance.)*
 - **`cargo test -- <short_name> --exact` matches NOTHING and passes.** `--exact` compares against the
   *full* test path, so a bare `deck_copy_button_is_reachable_on_touch` runs **zero** tests, prints
   `test result: ok. 0 passed`, and a mutation harness looking for "FAILED" scores it SURVIVED. This
