@@ -225,7 +225,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
-            log::error(&format!("cannot read {path}: {e}"));
+            log::error(&crate::check::cannot_read(Path::new(path), &e));
             return ExitCode::FAILURE;
         }
     };
@@ -236,7 +236,9 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // a renderer assertion) must become a located error + non-zero exit, not a raw abort.
     // `block_on` propagates a panic from the directly-awaited future, so the catch here
     // sees it. Outer `Result` = panic; inner = runtime-start I/O failure.
-    let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, mode));
+    // `path` as the user typed it is the diagnostic prefix: it round-trips back into their
+    // shell and into an editor's "open at line". `stem` stays the freeze key + page title.
+    let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode));
     let (html, problems, diagnostics) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
@@ -406,15 +408,18 @@ pub(crate) fn build_json(path: &Path) -> String {
     }
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
-        Err(e) => return crate::check::json_error(&format!("cannot read {}: {e}", path.display())),
+        Err(e) => return crate::check::json_error(&crate::check::cannot_read(path, &e)),
     };
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("document");
+    // The JSON channel's `file` field is consumed by an agent or CI, which needs a path it
+    // can open even more than a human does.
+    let label = path.display().to_string();
     match crate::serve::guarded(|| {
-        build_page_executing(&src, base, stem, taliesin_core::OutputMode::Build)
+        build_page_executing(&src, base, stem, &label, taliesin_core::OutputMode::Build)
     }) {
         Ok(Ok(BuildResult::Page {
             html, diagnostics, ..
@@ -515,6 +520,11 @@ fn not_run_reason(html: &str) -> Option<&'static str> {
         Some("code cell did not run: the kernel exited first; it re-runs on the next save")
     } else if is(exec::NOT_RUN_REQUEST) {
         Some("code cell did not complete: the execution request failed")
+    } else if is(exec::NOT_RUN_TIMEOUT) {
+        Some(
+            "code cell did not complete: it ran past the cell timeout and was interrupted \
+             (raise TALIESIN_CELL_TIMEOUT, or 0 to disable)",
+        )
     } else {
         None
     }
@@ -584,10 +594,19 @@ fn warn_bare_exclusions(doc: &taliesin_core::RenderedDoc) {
     }
 }
 
+/// Build one document, executing its cells.
+///
+/// Two names, deliberately: `stem` is the document's *identity* (the `_freeze/` cache key
+/// and the page-title fallback), while `label` is what a diagnostic is prefixed with and so
+/// must be a path an editor can open. They used to be one `fallback` argument carrying
+/// `file_stem()`, which made every single-doc diagnostic read `pca-geometry:12:` — a name no
+/// tool resolves. Swapping `stem` for the path instead would have renamed the freeze entry
+/// and the page title, which is why this is a second parameter and not a substitution.
 fn build_page_executing(
     src: &str,
     base: &Path,
-    fallback: &str,
+    stem: &str,
+    label: &str,
     mode: taliesin_core::OutputMode,
 ) -> std::io::Result<BuildResult> {
     let rt = tokio::runtime::Runtime::new()?;
@@ -602,9 +621,9 @@ fn build_page_executing(
         // single-doc `build` used to skip it, so a typo'd `---` block built clean and
         // even passed `--strict`. Surface it (located) and count it toward --strict.
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
-            log::warn(&format!("{fallback}:{line}: {message}"));
+            log::warn(&format!("{label}:{line}: {message}"));
             diagnostics.push(crate::check::Diagnostic::new(
-                fallback.to_string(),
+                label.to_string(),
                 Some(line),
                 message,
             ));
@@ -630,8 +649,8 @@ fn build_page_executing(
         // are logged here so a `build` never ships a silently dropped include.
         for w in &doc.warnings {
             // Located, as `check` reports them: a `--strict` failure should name the line.
-            log::warn(&locate(w, fallback));
-            diagnostics.push(crate::check::diag_from(w, fallback));
+            log::warn(&locate(w, label));
+            diagnostics.push(crate::check::diag_from(w, label));
         }
         // Advice (severity `suggestion`) is reported but never blocks: a rule that suggests
         // a reword must not fail a build, or the only way to keep CI green is to leave the
@@ -649,19 +668,15 @@ fn build_page_executing(
                  inline the content instead."
             );
             log::warn(&msg);
-            diagnostics.push(crate::check::Diagnostic::new(
-                fallback.to_string(),
-                None,
-                msg,
-            ));
+            diagnostics.push(crate::check::Diagnostic::new(label.to_string(), None, msg));
         }
         problems += embeds.len();
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
         for w in &xrefs {
-            log::warn(&locate(w, fallback));
-            diagnostics.push(crate::check::diag_from(w, fallback));
+            log::warn(&locate(w, label));
+            diagnostics.push(crate::check::diag_from(w, label));
         }
         problems += xrefs.len();
         // The rest of the check-superset. These ran only in `check`, so a `--strict` build
@@ -677,14 +692,13 @@ fn build_page_executing(
             crate::check::Scope::Standalone,
         );
         for w in &statics {
-            log::warn(&locate(w, fallback));
-            diagnostics.push(crate::check::diag_from(w, fallback));
+            log::warn(&locate(w, label));
+            diagnostics.push(crate::check::diag_from(w, label));
         }
         problems += crate::check::blocking(&statics);
         // Persistent execution cache keyed off the doc's stem, beside the source.
-        let mut ex =
-            exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
-                .in_dir(base);
+        let mut ex = exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), stem))
+            .in_dir(base);
         // Single-file build: no _site.yml, so resolve from the doc's own dir
         // (.venv / env / default), the same set_interpreters path the site build uses.
         ex.set_interpreters(
@@ -692,21 +706,19 @@ fn build_page_executing(
             crate::interpreter::resolve_r(None, base),
         );
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
-        // The executor's own diagnostic already names the failing language and the
-        // right env var (`TALIESIN_R` for R, `TALIESIN_PYTHON` otherwise) — use it
-        // verbatim instead of a hardcoded python-only hint.
-        if let Some(d) = ex.diagnostic() {
-            log::warn(&d);
-        }
+        // No re-log of `ex.diagnostic()` here: the executor already announced this exact
+        // message at the point of failure, so repeating it printed the same fact twice.
+        // The dev-menu channel (`serve`/`serve_site`) still reads `diagnostic()`, which is
+        // a different surface, not a duplicate.
         // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
         // before this); log it located and count it toward `--strict`.
-        problems += report_cell_errors(&doc.blocks, fallback);
-        diagnostics.extend(cell_error_diagnostics(&doc.blocks, fallback));
+        problems += report_cell_errors(&doc.blocks, label);
+        diagnostics.extend(cell_error_diagnostics(&doc.blocks, label));
         if mode == taliesin_core::OutputMode::Bare {
             warn_bare_exclusions(&doc);
         }
         BuildResult::Page {
-            html: taliesin_core::render_doc_to_page(&doc, fallback, mode),
+            html: taliesin_core::render_doc_to_page(&doc, stem, mode),
             problems,
             diagnostics,
         }
@@ -3230,11 +3242,21 @@ mod build_diag_tests {
         // that ran. Asserted against the real emitters rather than copies of their strings,
         // so a fourth one added without the marker fails here rather than silently
         // regressing into "raised an uncaught exception".
+        //
+        // The last two are the LIVE path and are why this list grew: a timeout-killed or
+        // mid-cell-death output is not built by any `*_html` helper here — it is an
+        // `Output::Error` rendered by `kernel::render_outputs`, which carried no marker at
+        // all, so this test passed while the thing it names shipped broken. Constructed via
+        // the real constructors the kernel loop calls, not copies of their strings.
         for html in [
             crate::exec::kernel_unavailable_html("python", Some("No such file or directory")),
             crate::exec::kernel_unavailable_html("r", None),
             crate::exec::KERNEL_DIED_HTML.to_string(),
             crate::exec::execution_error_html("timed out"),
+            crate::kernel::render_outputs(&[crate::kernel::Output::timeout(
+                "cell exceeded 120s; sent interrupt".into(),
+            )]),
+            crate::kernel::render_outputs(&[crate::kernel::Output::kernel_died()]),
         ] {
             assert!(
                 html.contains("class=\"tali-error\""),
@@ -3289,6 +3311,7 @@ mod build_diag_tests {
             src,
             std::path::Path::new("."),
             "deck",
+            "deck.tmd",
             taliesin_core::OutputMode::Bare,
         )
         .unwrap();
@@ -3313,6 +3336,7 @@ mod build_diag_tests {
             "---\ntitle: Draft\n---\n\nProse.\n",
             &base,
             "draft",
+            "draft.tmd",
             taliesin_core::OutputMode::Bare,
         )
         .unwrap();

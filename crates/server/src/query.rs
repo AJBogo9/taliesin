@@ -77,7 +77,7 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
             }
         }
         Err(e) => {
-            log::error(&format!("cannot read {path}: {e}"));
+            log::error(&crate::check::cannot_read(Path::new(path), &e));
             ExitCode::FAILURE
         }
     }
@@ -131,7 +131,7 @@ pub(crate) fn cmd_read(args: &[String]) -> ExitCode {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
-            log::error(&format!("cannot read {path}: {e}"));
+            log::error(&crate::check::cannot_read(Path::new(path), &e));
             return ExitCode::FAILURE;
         }
     };
@@ -466,9 +466,8 @@ fn run_cells(
             crate::interpreter::resolve_r(None, base),
         );
         let out = ex.run(blocks).await;
-        if let Some(d) = ex.diagnostic() {
-            log::warn(&d);
-        }
+        // The executor announces a kernel failure itself, once, at the point of failure;
+        // re-logging `diagnostic()` here printed the identical fact a second time.
         out
     })
 }
@@ -689,7 +688,7 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            log::error(&format!("cannot read {path}: {e}"));
+            log::error(&crate::check::cannot_read(Path::new(path), &e));
             ExitCode::FAILURE
         }
     }
@@ -765,7 +764,8 @@ pub(crate) fn symbols_json(path: &str) -> Result<String, String> {
             "symbols expects a single .tmd file, not a directory: {path}"
         ));
     }
-    let src = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let src = std::fs::read_to_string(path)
+        .map_err(|e| crate::check::cannot_read(Path::new(path), &e))?;
     let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
     let doc = crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base))
         .map_err(|p| format!("render panicked on {path}: {p}"))?;
@@ -796,7 +796,8 @@ pub(crate) fn read_text(path: &str) -> Result<String, String> {
             "read projects a single .tmd file, not a directory: {path}"
         ));
     }
-    let src = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let src = std::fs::read_to_string(path)
+        .map_err(|e| crate::check::cannot_read(Path::new(path), &e))?;
     let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
     crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base).body_text())
         .map_err(|p| format!("read panicked on {path}: {p}"))
@@ -1360,7 +1361,7 @@ pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
     let src = match std::fs::read_to_string(path) {
         Ok(src) => src,
         Err(e) => {
-            log::error(&format!("cannot read {path}: {e}"));
+            log::error(&crate::check::cannot_read(Path::new(path), &e));
             return ExitCode::FAILURE;
         }
     };

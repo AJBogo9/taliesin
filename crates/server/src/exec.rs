@@ -64,10 +64,45 @@ pub(crate) const NOT_RUN_DIED: &str = "kernel-died";
 /// The execute request itself failed (a ZMQ/protocol error, an interrupt), so the
 /// interpreter returned no result.
 pub(crate) const NOT_RUN_REQUEST: &str = "request-failed";
+/// The cell ran past `TALIESIN_CELL_TIMEOUT` and was interrupted, so it produced no result.
+/// Distinct from [`NOT_RUN_REQUEST`] because the fix is different and knowable: raise the
+/// cap or shorten the cell, not repair the transport.
+pub(crate) const NOT_RUN_TIMEOUT: &str = "timeout";
 
 /// The `data-tali-not-run="<kind>"` attribute text, leading space included.
 pub(crate) fn not_run_mark(kind: &str) -> String {
     format!(" {NOT_RUN_ATTR}=\"{kind}\"")
+}
+
+/// Console warnings already emitted this process, so a fact that cannot change between
+/// pages is stated once. Keyed on the whole message, which already carries the language,
+/// the interpreter path and the interpreter's own error — so a *different* failure is
+/// still announced, and only a verbatim repeat is dropped.
+static ANNOUNCED: std::sync::Mutex<Option<std::collections::HashSet<String>>> =
+    std::sync::Mutex::new(None);
+
+/// `log::warn` the message unless this process already has. See [`ANNOUNCED`].
+fn announce_once(message: &str) {
+    let mut guard = match ANNOUNCED.lock() {
+        Ok(g) => g,
+        // A poisoned lock must not silence a warning: say it and move on.
+        Err(p) => p.into_inner(),
+    };
+    if guard
+        .get_or_insert_with(Default::default)
+        .insert(message.to_string())
+    {
+        crate::log::warn(message);
+    }
+}
+
+/// Forget what has been announced, so the same failure is stated again after a deliberate
+/// retry. Called by "Restart kernel": an author who fixed `TALIESIN_PYTHON` and asked for a
+/// restart is owed the answer, even when it is the same answer as before.
+pub(crate) fn reset_announcements() {
+    if let Ok(mut g) = ANNOUNCED.lock() {
+        *g = None;
+    }
 }
 
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
@@ -393,6 +428,7 @@ impl Executor {
     /// (ignoring disk-cache hits), so "Restart kernel" actually re-runs against the
     /// fresh kernel instead of replaying cached outputs.
     pub fn restart_kernel(&mut self) {
+        reset_announcements();
         self.langs.clear();
         self.force_next = true;
     }
@@ -924,8 +960,22 @@ impl Executor {
                 state.last_error = None;
             }
             Err(e) => {
-                crate::log::warn(&format!(
-                    "{lang} kernel unavailable ({e}); cells render as source only"
+                // The one console emission for this failure, on the one path every
+                // command reaches. It used to be a terse line here PLUS the full
+                // `diagnostic()` line at the caller, so `build`/`read` printed the same
+                // fact twice and the short form said strictly less; a site build printed
+                // only the short form, once per page, and never the actionable half.
+                // `announce_once` is what makes the per-page repeat one line: the answer
+                // to "which interpreter, and why" cannot differ between pages of one run.
+                announce_once(&Self::kernel_unavailable_message(
+                    lang,
+                    &program.display().to_string(),
+                    if lang == "r" {
+                        "TALIESIN_R"
+                    } else {
+                        "TALIESIN_PYTHON"
+                    },
+                    Some(&e.to_string()),
                 ));
                 state.failed_at = Some(Instant::now());
                 state.last_error = Some(e.to_string());

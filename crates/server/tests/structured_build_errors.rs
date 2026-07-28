@@ -124,3 +124,65 @@ fn build_rejects_a_bad_format_value() {
         .unwrap();
     assert!(!out.status.success(), "an unknown --format value must fail");
 }
+
+/// A single-doc build locates its diagnostics to a path a tool can OPEN, in both channels.
+///
+/// It used to prefix them with `file_stem()`: `doc:5: duplicate heading id`. That is not a
+/// path — no editor's "open at line", no `vim +5`, no CI annotation resolves it, and the
+/// information needed to build one (the argument the user typed) was right there at the call
+/// site. The site build never had this defect, so nothing compared the two.
+///
+/// Asserted from a DIFFERENT working directory than the document's, so a bare filename
+/// cannot pass by accident: the label has to carry the directory the user actually named.
+#[test]
+fn single_doc_diagnostics_are_located_to_an_openable_path() {
+    let dir = tmp_dir("label");
+    let sub = dir.join("chapters");
+    fs::create_dir_all(&sub).unwrap();
+    let doc = sub.join("intro.tmd");
+    fs::write(&doc, "---\ntitle: T\n---\n\n## A {#dup}\n\n## B {#dup}\n").unwrap();
+    // The path exactly as a user would type it from `dir`, directory component included.
+    let typed = "chapters/intro.tmd";
+
+    let out = taliesin()
+        .current_dir(&dir)
+        .arg("build")
+        .arg(typed)
+        .args(["--format", "json"])
+        .output()
+        .expect("run taliesin");
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let files: HashSet<String> = json["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .map(|d| d["file"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert!(
+        !files.is_empty(),
+        "the dup heading must be reported: {json}"
+    );
+    for f in &files {
+        assert_eq!(
+            f, typed,
+            "every diagnostic names the path the user gave, not its stem: {json}"
+        );
+        assert!(
+            dir.join(f).exists(),
+            "the located file resolves from the invocation directory: {f}"
+        );
+    }
+
+    // The human channel is the same label, so the two cannot drift apart again.
+    let human = taliesin()
+        .current_dir(&dir)
+        .arg("build")
+        .arg(typed)
+        .output()
+        .expect("run taliesin");
+    let stderr = String::from_utf8_lossy(&human.stderr).to_string();
+    assert!(
+        stderr.contains(&format!("{typed}:")),
+        "the console prefixes the openable path too:\n{stderr}"
+    );
+}

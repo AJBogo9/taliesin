@@ -446,7 +446,41 @@ pub enum Output {
         ename: String,
         evalue: String,
         traceback: Vec<String>,
+        /// Set when the **executor** wrote this error about a cell that did not complete,
+        /// rather than the interpreter raising about code that ran: one of the
+        /// [`crate::exec`] `NOT_RUN_*` kinds. `None` is a genuine traceback, the only case
+        /// the console may call an exception.
+        ///
+        /// A required field rather than an inferred one on purpose. Keying on `ename`
+        /// would misread a Python `raise Timeout()` as executor-authored, and inferring
+        /// from an empty `traceback` is the same guess with extra steps; making it explicit
+        /// means a fourth executor-authored site has to state `None` to lie, instead of
+        /// omitting a marker and quietly becoming "raised an uncaught exception".
+        not_run: Option<&'static str>,
     },
+}
+
+impl Output {
+    /// The cell hit its wall-clock cap and was interrupted: it did not finish, and the fix
+    /// is `TALIESIN_CELL_TIMEOUT` or the cell, never a traceback the author can read.
+    pub(crate) fn timeout(evalue: String) -> Self {
+        Output::Error {
+            ename: "Timeout".into(),
+            evalue,
+            traceback: vec![],
+            not_run: Some(crate::exec::NOT_RUN_TIMEOUT),
+        }
+    }
+
+    /// The kernel process exited while this cell was in flight.
+    pub(crate) fn kernel_died() -> Self {
+        Output::Error {
+            ename: "KernelDied".into(),
+            evalue: "kernel process exited mid-cell".into(),
+            traceback: vec![],
+            not_run: Some(crate::exec::NOT_RUN_DIED),
+        }
+    }
 }
 
 /// A live kernel process plus its shell/iopub client connections.
@@ -840,11 +874,7 @@ impl Kernel {
                 Err(_) => {
                     // No output this interval. Did the kernel process die?
                     if !self.is_alive() {
-                        outputs.push(Output::Error {
-                            ename: "KernelDied".into(),
-                            evalue: "kernel process exited mid-cell".into(),
-                            traceback: vec![],
-                        });
+                        outputs.push(Output::kernel_died());
                         break;
                     }
                     // Still alive: only act once the REAL budget (not just a poll) is spent.
@@ -861,21 +891,18 @@ impl Kernel {
                         // Hit the hard cap: interrupt and switch to the grace window.
                         Some(d) => {
                             self.interrupt();
-                            outputs.push(Output::Error {
-                                ename: "Timeout".into(),
-                                evalue: format!("cell exceeded {}s; sent interrupt", d.as_secs()),
-                                traceback: vec![],
-                            });
+                            outputs.push(Output::timeout(format!(
+                                "cell exceeded {}s; sent interrupt",
+                                d.as_secs()
+                            )));
                             grace_until = Some(Instant::now() + Duration::from_secs(5));
                             continue;
                         }
                         // No cap (opt-out): a silent hang still times out per-output.
                         None => {
-                            outputs.push(Output::Error {
-                                ename: "Timeout".into(),
-                                evalue: "cell produced no output for 60s".into(),
-                                traceback: vec![],
-                            });
+                            outputs.push(Output::timeout(
+                                "cell produced no output for 60s".to_string(),
+                            ));
                             break;
                         }
                     }
@@ -944,10 +971,13 @@ impl Kernel {
                     &mut capped,
                     render_media(&d.data),
                 ),
+                // The interpreter raising about code that ran: a real traceback, so no
+                // not-run marker. This is the ONE site that may leave it `None`.
                 JupyterMessageContent::ErrorOutput(e) => outputs.push(Output::Error {
                     ename: e.ename,
                     evalue: e.evalue,
                     traceback: e.traceback,
+                    not_run: None,
                 }),
                 JupyterMessageContent::Status(st) => {
                     if matches!(st.execution_state, jupyter_protocol::ExecutionState::Idle) {
@@ -1120,6 +1150,7 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 ename,
                 evalue,
                 traceback,
+                not_run,
             } => {
                 let tb: String = traceback
                     .iter()
@@ -1131,7 +1162,15 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     tb
                 };
-                s.push_str(&format!("<pre class=\"tali-error\">{}</pre>", esc(&body)));
+                // An executor-authored error is the same HTML shape as a traceback on
+                // purpose (styled as an error, never cached), so the marker is what tells
+                // the console apart — without it a timeout-killed cell was reported as
+                // "raised an uncaught exception", which is false twice over.
+                let mark = not_run.map(crate::exec::not_run_mark).unwrap_or_default();
+                s.push_str(&format!(
+                    "<pre class=\"tali-error\"{mark}>{}</pre>",
+                    esc(&body)
+                ));
             }
         }
     }
@@ -1330,6 +1369,7 @@ mod tests {
             ename: "ValueError".into(),
             evalue: "bad".into(),
             traceback: vec![],
+            not_run: None,
         }]);
         assert_eq!(bare, "<pre class=\"tali-error\">ValueError: bad</pre>");
 
@@ -1338,6 +1378,7 @@ mod tests {
             ename: "E".into(),
             evalue: "v".into(),
             traceback: vec!["\u{1b}[31mline 1\u{1b}[0m".into(), "a < b".into()],
+            not_run: None,
         }]);
         assert!(tb.contains("class=\"tali-error\""), "got: {tb}");
         assert!(tb.contains("line 1"), "ansi not stripped: {tb}");

@@ -474,7 +474,17 @@ fn strict_single_doc_build_fails_on_a_missing_image() {
     );
     let err = String::from_utf8_lossy(&strict.stderr);
     assert!(err.contains("missing.png"), "names the asset: {err}");
-    assert!(err.contains("doc:5:"), "located to its line: {err}");
+    // Located to its line AND to a path a tool can open. This asserted `doc:5:` — the bare
+    // `file_stem()` — which is what a single-doc build used to print and what no editor,
+    // `vim +N`, or CI annotation resolves. The path the user passed is the label now.
+    assert!(
+        err.contains(&format!("{}:5:", doc.display())),
+        "located to an openable path + line: {err}"
+    );
+    assert!(
+        !err.contains("doc:5:"),
+        "the bare-stem label must not come back: {err}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
