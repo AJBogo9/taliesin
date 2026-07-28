@@ -79,7 +79,7 @@ The same save as an interaction over time, module by module, is @fig-save-seq:
 sequenceDiagram
   autonumber
   participant FS as .tmd file
-  participant SV as serve.rs (watcher)
+  participant SV as serve/mod.rs (watcher)
   participant RN as render/ (core)
   participant EX as exec + kernel
   participant DF as diff.rs
@@ -117,7 +117,7 @@ or a directory.
 
 | | Single document | Multi-page site / book |
 |---|---|---|
-| Module | `serve.rs` | `serve_site.rs` |
+| Module | `serve/mod.rs` | `serve_site/mod.rs` |
 | You ran | `preview post.tmd` | `preview ./blog` |
 | Live state | one `DocState` (the live block list) | one `PageState` **per page** (its own block list + broadcast channel), built lazily on first visit |
 | Execution | one `Executor` for the doc | an `ExecPool` of per-page executors drained by a builder worker over a job channel |
@@ -140,8 +140,8 @@ orchestrates and owns the runtime; the core does all the rendering and never
 touches the network; the browser client only mounts blocks and applies ops. Most
 arrows are *uses / calls* (a solid arrow), but watch the dashed one: `exec.rs`
 does not *call* `diff.rs`. The relationship is **data flow**, not a function
-call. `exec.rs` produces the post-execution block list and `serve.rs` /
-`serve_site.rs` then hand it to `diff.rs`. The arrow says "the blocks `exec`
+call. `exec.rs` produces the post-execution block list and `serve/mod.rs` /
+`serve_site/mod.rs` then hand it to `diff.rs`. The arrow says "the blocks `exec`
 produces are what `diff` consumes," which is exactly the re-render → execute →
 diff ordering above.
 
@@ -156,8 +156,8 @@ flowchart TB
   subgraph server["crates/server · Taliesin (binary)"]
     direction TB
     MAIN["main.rs · CLI"]
-    SRV["serve.rs<br/>single doc"]
-    SITE["serve_site.rs<br/>site / book"]
+    SRV["serve/mod.rs<br/>single doc"]
+    SITE["serve_site/mod.rs<br/>site / book"]
     PR["protocol.rs<br/>shared ws contract"]
     EX["exec.rs · executor"]
     KR["kernel.rs<br/>warm ZMQ kernel"]
@@ -261,7 +261,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
 | `math.rs` / `highlight.rs` | Server-side KaTeX / syntect, both offline. |
-| `cite.rs` | Citations + cross-references + the IEEE-style bibliography. |
+| `cite/` | Citations + cross-references + the IEEE-style bibliography. |
 | `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
 | `frontmatter.rs` | Front-matter parsing + unknown-key linting (the `closest()` did-you-mean). |
 | `render/validate.rs` | Closed-vocabulary linting of cell `#|` options + callout kinds, each a located (click-to-source) `Warning`. |
@@ -273,8 +273,8 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 |---|---|
 | `main.rs` | CLI: the `preview` / `build` / `render` / `blocks` / `check` / `schema` / `init` subcommands. |
 | `protocol.rs` | The shared websocket message contract (both servers + the client), defined once so they can't drift. |
-| `serve.rs` | Single-document websocket server + file watcher (incl. the `--host` LAN token guard). One `DocState` + one `Executor`. Its `rebuild` runs the re-render → execute → diff path. |
-| `serve_site.rs` | Multi-page site/book server (per-page `PageState`, a per-page `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |
+| `serve/mod.rs` | Single-document websocket server + file watcher (incl. the `--host` LAN token guard). One `DocState` + one `Executor`. Its `rebuild` runs the re-render → execute → diff path. |
+| `serve_site/mod.rs` | Multi-page site/book server (per-page `PageState`, a per-page `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |
 | `exec.rs` | Sits *between* render and diff: runs a doc's code cells and splices each cell's output back into the block list as a derived output block (incremental: the first changed cell + everything downstream). |
 | `kernel.rs` | The warm Jupyter kernel (ZMQ), reused across edits, with interrupt + timeout. |
 | `freeze.rs` | The persistent `_freeze/` execution cache, keyed by a cumulative content hash. |
@@ -283,7 +283,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 `web-client/`, the browser preview (vanilla JS, no build step): `client.js`
 (mounts blocks, applies ops, the dev menu, click-to-source), `search.js` (the
 Cmd-K palette), `toc-spy.js` (the scrollspy). The core also ships JS *assets*
-(`code-enhance.js` with the `window.taliEnhancers` registry, `mermaid.js`) that
+(`code-enhance/` with the `window.taliEnhancers` registry, `mermaid.js`) that
 both the live client and the static build inject.
 
 The next two chapters go deeper: [the rendering pipeline](rendering.tmd) (how a

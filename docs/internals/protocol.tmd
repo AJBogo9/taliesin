@@ -10,8 +10,8 @@ consumer (it applies them to the DOM). A small client-to-server back-channel
 carries click-to-source reports and the "restart kernel" action, and nothing else.
 
 The message shapes are defined **once**, in `crates/server/src/protocol.rs`, and
-shared by both dev servers: the single-document [`serve.rs`](server.tmd) and the
-multi-page `serve_site.rs` push the *same* messages, and `web-client/client.js` is
+shared by both dev servers: the single-document [`serve/mod.rs`](server.tmd) and the
+multi-page `serve_site/mod.rs` push the *same* messages, and `web-client/client.js` is
 the other end of the contract. A contract test (`protocol_contract`) and the
 client's `// @ts-check` typedefs lock the two ends to one shape, so the server and
 the browser can't drift apart. This chapter is the catalog of that contract.
@@ -276,7 +276,7 @@ that window by taking the same lock the rebuild loop uses.
 %%| fig-cap: "The connect handshake. The snapshot and the subscription are taken under one lock, so the client's first full_render and the op stream that follows cannot interleave with a concurrent rebuild."
 sequenceDiagram
   participant C as client.js
-  participant S as serve.rs (ws upgrade)
+  participant S as serve/mod.rs (ws upgrade)
   participant L as doc lock + broadcast
   C->>S: WebSocket upgrade (Origin checked first)
   S->>L: lock doc
@@ -303,7 +303,7 @@ re-syncs it with a fresh `full_render` rather than trying to replay missed ops.
 ## Guarding the channel
 
 Because the control channel lives on the websocket, two orthogonal guards protect
-it. Both are in `serve.rs` and apply to both servers.
+it. Both are in `serve/mod.rs` and apply to both servers.
 
 ### Cross-origin guard (always on)
 

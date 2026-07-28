@@ -59,7 +59,7 @@ flowchart TB
    callout / layout-grid / generic container blocks using the spans from stage 3.
    Inner blocks keep their own ids and sourcepos, so click-to-source works inside a
    callout.
-7. **Captions + citations** (`apply_table_captions`, then `cite.rs`). A Pandoc table
+7. **Captions + citations** (`apply_table_captions`, then `cite/`). A Pandoc table
    caption (`: caption {#tbl-x}` on the paragraph directly after a table) is **not** a
    sibling block in the output: `apply_table_captions` numbers it, folds it into the
    table as a `<caption>` first child, registers `tbl-x` for `@tbl-` references, and
@@ -104,7 +104,7 @@ References block, the footnotes section) skips the hash and uses a fixed id and 
 
 ## Citations & cross-references
 
-Citations and cross-references (`cite.rs`) are the last pipeline stage, and they
+Citations and cross-references (`cite/`) are the last pipeline stage, and they
 run as a **post-process over the already-rendered block HTML**: they transform only
 plain-text runs, never the inside of a tag, code, or math span, so block sourcepos
 is left untouched. `[@key]` citations become numbered links to a References block

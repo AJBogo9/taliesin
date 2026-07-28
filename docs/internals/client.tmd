@@ -20,11 +20,11 @@ The client is four files, each shipped as one `<script>` with no bundling:
 | `web-client/client.js` | Mounts the render, applies ops, reverse sync, click-to-source, the dev menu. Type-checked (`// @ts-check`). |
 | `web-client/search.js` | The Cmd-K command palette. |
 | `web-client/toc-spy.js` | The table-of-contents scrollspy. |
-| `crates/core/assets/js/code-enhance.js` | The enhancer registry plus the built-in enhancers (copy buttons, reader menu, lightbox, …). |
+| `crates/core/assets/js/code-enhance/` | The enhancer registry plus the built-in enhancers (copy buttons, reader menu, lightbox, …). |
 
 `client.js` is the only one that talks to the websocket. The other three are
 self-contained features that ride along beside it, and the static `build` ships
-the same `search.js` / `toc-spy.js` / `code-enhance.js` so a built page behaves
+the same `search.js` / `toc-spy.js` / `code-enhance/` so a built page behaves
 like the preview.
 
 ## Mounting and applying ops
@@ -206,7 +206,7 @@ so the highlight and the jump can never drift apart.
 
 ## The enhancer registry
 
-`code-enhance.js` opens with the one public client-side extension point:
+`code-enhance/` opens with the one public client-side extension point:
 `window.taliEnhancers`. An **enhancer** is a function `fn(root)` that decorates
 freshly-mounted DOM, and an extension's JS opts in with one call:
 
