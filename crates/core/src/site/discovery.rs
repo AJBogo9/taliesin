@@ -27,6 +27,18 @@ pub(super) fn website_pages(
             // build can report it — or kept and tagged for the preview view (Include).
             // (Listings + prev/next nav derive from `self.pages`, so an Include draft
             // naturally appears in them, badged.)
+            //
+            // **This also decides that `check` and `build --strict` do not lint drafts,
+            // and that is deliberate** (ruled 2026-07-28, backlog item 110). Both walk the
+            // published set, so a dropped page reaches no validator: measured, `check .`
+            // was clean on a project whose `wip.tmd` `check wip.tmd` reported 3 problems
+            // in. Keeping it that way is the right call twice over — linting a page that
+            // does not ship reports defects the author has not finished creating, and the
+            // live preview uses `DraftMode::Include`, so the diagnostics still appear in
+            // the one place the author is actually writing. What was wrong was that the
+            // omission was *silent*; `check` now names the held-back drafts (`scope_note`
+            // in `check.rs`), the way `build` always has. Do not "fix" this by linting
+            // drafts here — that reverses the ruling and re-opens the noise it avoids.
             if fm.draft && mode == DraftMode::Exclude {
                 excluded.push(rel);
                 return None;

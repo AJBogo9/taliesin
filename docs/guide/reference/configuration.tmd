@@ -3,7 +3,7 @@ title: "Configuration reference"
 description: "Which knob lives where, what each one defaults to, and the names a project may not use for itself."
 ---
 
-*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd)*
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The
@@ -34,7 +34,7 @@ table below repeats the front-matter keys most often paired with project config.
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
 | `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so it is never mistaken for a typo'd `css:`; delete it |
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; set `image-alt` whenever you set `image:` (an `image:` with no `image-alt:` warns; use `image-alt: ""` to declare it decorative) |
-| `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings); `preview` still shows it, badged |
+| `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings) **and out of `check`**, which names what it held back; `preview` still shows it, badged, and lints it |
 | `prose-lint` | Opt-in prose linter: `true` enables the built-in rules (doubled words, weasel words), or `{ banned: [term, …] }` adds custom banned terms. Emits located, click-to-source warnings (code/math/links skipped); off by default |
 
 ### Code-cell options
@@ -93,12 +93,12 @@ chapters:
   - index.tmd
   - part: "Part One"     # group chapters under a part header
     chapters: [a.tmd, b.tmd]
-  - file: c.tmd          # { file:, text: } overrides the sidebar label
+  - file: c.tmd          # { file:, text: } overrides the chapter label
     text: "Conclusions"
 ```
 
 A chapter entry is a bare path (`- a.tmd`), a `{ part:, chapters: }` group header, or
-a `{ file:, text: }` mapping whose `text:` overrides the sidebar label (the override
+a `{ file:, text: }` mapping whose `text:` overrides the chapter label (the override
 also works inside a part's list). Without `text:`, the label is the chapter's first
 `# H1`, then its front-matter `title:`, then the file stem.
 
@@ -154,9 +154,9 @@ sub-subsections, so a second, shallower list beside the text earned nothing. Wri
 when a known key is within edit distance 2, so a typo like `favicn:` doesn't silently do
 nothing. Validation only **warns**: the document still renders, and every warning is
 **located**, so in the live preview you can click it straight to the source line. The same
-closed-vocabulary check covers unknown cell `#|` options and unknown immediate children of
-`execute:` / `listing:` / `hero:`; `format:` sub-keys are intentionally left
-unlinted, since a format extension may add its own. (The Internals book covers the design,
+closed-vocabulary check covers unknown cell `#|` options, unknown immediate children of
+`execute:` / `listing:` / `hero:`, and `format:` sub-keys (nothing reads those, so a
+green check must not certify them). (The Internals book covers the design,
 and the drift-locked Draft 2020-12 schemas behind the `taliesin schema` command, in its
 *Validation & schemas* chapter.)
 

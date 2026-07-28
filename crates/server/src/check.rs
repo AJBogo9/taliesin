@@ -164,9 +164,9 @@ pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
 /// Render `path` (a file or a site directory) in memory and return every located
 /// diagnostic. No code execution, no output written. `Err` for an unreadable file or
 /// an empty site.
-fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
+fn collect_diagnostics(path: &Path, scope: &mut CheckScope) -> Result<Vec<Diagnostic>, String> {
     if path.is_dir() {
-        collect_site_diagnostics(path)
+        collect_site_diagnostics(path, scope)
     } else {
         collect_file_diagnostics(path)
     }
@@ -278,8 +278,52 @@ pub(crate) fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
     }
 }
 
-fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
+/// What a check deliberately did not look at. Filled in by whichever `collect_*` ran, so
+/// the facts come from the discovery that already happened — a second `Site::discover`
+/// just to learn them was measured at **+50 to +83 ms** (~20% of a whole check) on the
+/// three largest projects in the tree, which is far too much for a line most projects
+/// never print.
+#[derive(Default)]
+pub(crate) struct CheckScope {
+    /// `draft: true` pages held out of the published set, and so out of this check.
+    pub excluded_drafts: Vec<String>,
+}
+
+/// The one-line "here is what I did **not** look at" note for a site check, or `None` when
+/// nothing was held back.
+///
+/// A `check` that reports nothing is read as "this project is clean", so every deliberate
+/// omission has to be visible or the verdict is wider than the work. Item 109 was the
+/// expensive version of this lesson: a site check silently skipped decks, and a deck with
+/// six real defects reported "no problems found", exit 0.
+///
+/// **Drafts are deliberately excluded, and that is the ruling, not an oversight.** A
+/// `draft: true` page is not in the published set, so linting it would report defects in
+/// something that does not ship, and the live preview (`DraftMode::Include`) already lints
+/// it where the author is writing it. What was wrong was doing that *silently* — `build`
+/// has always said `N drafts not published`, and `check` said nothing at all.
+///
+/// Pure, so the wording is unit-testable without a filesystem.
+fn scope_note(excluded_drafts: &[String]) -> Option<String> {
+    if excluded_drafts.is_empty() {
+        return None;
+    }
+    let n = excluded_drafts.len();
+    Some(format!(
+        "not checked: {n} draft{} ({}) — `draft: true` pages are not published, so they are \
+         not linted here; the live preview lints them as you write",
+        if n == 1 { "" } else { "s" },
+        excluded_drafts.join(", ")
+    ))
+}
+
+fn collect_site_diagnostics(
+    root: &Path,
+    scope: &mut CheckScope,
+) -> Result<Vec<Diagnostic>, String> {
     let site = taliesin_core::Site::discover(root);
+    // Free: this discovery already ran, and it is the only thing that knows what it dropped.
+    scope.excluded_drafts = site.excluded_drafts.clone();
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {}", root.display()));
     }
@@ -562,7 +606,8 @@ pub(crate) fn json_error(message: &str) -> String {
 /// `{diagnostics, environment}` object (or a `{"error": …}` envelope on failure), so the MCP
 /// `check` tool and the CLI can't drift. Mirrors `cmd_check`'s json branch.
 pub(crate) fn check_json(target: &Path) -> String {
-    let collected = crate::serve::guarded(|| collect_diagnostics(target))
+    let mut scope = CheckScope::default();
+    let collected = crate::serve::guarded(|| collect_diagnostics(target, &mut scope))
         .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
         .and_then(|r| r);
     match collected {
@@ -848,6 +893,9 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         return crate::usage_error("check");
     };
     let target = Path::new(path);
+    // Filled in by the site path; stays empty for a single file and for `--stdin`, neither
+    // of which has a published-set notion to hold anything back from.
+    let mut scope = CheckScope::default();
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
@@ -855,7 +903,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         // The buffer path is already guarded inside collect_stdin_diagnostics.
         collect_stdin_diagnostics(target)
     } else {
-        crate::serve::guarded(|| collect_diagnostics(target))
+        crate::serve::guarded(|| collect_diagnostics(target, &mut scope))
             .map_err(|panic| format!("render panicked on {path}: {panic}"))
             .and_then(|r| r)
     };
@@ -903,6 +951,10 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         eprint!("{}", format_human(&diags, color));
         eprint!("{}", human_summary(&diags));
+        // What this run deliberately did not cover.
+        if let Some(note) = scope_note(&scope.excluded_drafts) {
+            eprintln!("{note}");
+        }
         // Under `--require-kernel` (the only human path that probed), surface just the DEGRADED
         // languages — an all-green probe is `doctor`'s business, not a linter's — then point at
         // `doctor` for the full audit.
@@ -1010,6 +1062,12 @@ fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The tests care about diagnostics, not scope, so they keep the old one-argument
+    /// spelling and discard the scope. Shadows the parent fn by name on purpose.
+    fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
+        super::collect_diagnostics(path, &mut CheckScope::default())
+    }
     use std::fs;
     use std::path::PathBuf;
 
@@ -1985,6 +2043,29 @@ mod tests {
         );
         // Only the severity word is wrapped — the file:line prefix and code stay bare.
         assert!(colored.contains("a.tmd:3: \x1b[31merror\x1b[0m[TAL-CHECK]: m1"));
+    }
+
+    /// The scope note exists so "no problems found" cannot be read as "nothing was
+    /// skipped". Nothing held back means no line at all — a check that covered everything
+    /// should not spend a line saying so.
+    #[test]
+    fn the_scope_note_names_held_back_drafts_and_is_silent_when_there_are_none() {
+        assert_eq!(scope_note(&[]), None, "nothing skipped ⇒ no line");
+
+        let one = scope_note(&["wip.tmd".to_string()]).expect("a draft was held back");
+        assert!(one.starts_with("not checked: 1 draft ("), "singular: {one}");
+        assert!(one.contains("wip.tmd"), "names the file: {one}");
+        // The *reason* is the load-bearing half: without it the line reads as a defect
+        // report rather than a deliberate exclusion the author chose with `draft: true`.
+        assert!(one.contains("not published"), "states why: {one}");
+
+        let two = scope_note(&["a.tmd".to_string(), "posts/b/index.tmd".to_string()])
+            .expect("two drafts were held back");
+        assert!(two.starts_with("not checked: 2 drafts ("), "plural: {two}");
+        assert!(
+            two.contains("a.tmd") && two.contains("posts/b/index.tmd"),
+            "names every file, not just a count: {two}"
+        );
     }
 
     #[test]
