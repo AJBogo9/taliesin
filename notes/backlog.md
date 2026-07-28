@@ -9,6 +9,27 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > outlive their item go to [LESSONS.md](LESSONS.md). The "do not re-add" list at the bottom is a
 > compact anti-rot guard, **one line per entry**, not a changelog.
 
+## RESUME HERE (cold start, 2026-07-29)
+
+**Read this bullet first, then "State", then band A.**
+
+- **A batch shipped 2026-07-29 on `backlog-batch-2026-07-29`: items 144, 151, 87, 88, 94,
+  95, 96, 135, 136.** Every one is deleted from band A below; the record, including the
+  three filed causes that turned out to be **wrong**, is in "Do not re-add / re-scope".
+  **Gates: `./tools/gates.sh`, all nine, `PASSED` (exit 0)** — the workspace suite with all
+  four interpreter gates at **110 binaries, 1,859 passed, 0 ignored** (zero ignored is what
+  proves the gates ran rather than skipped), both `tsc` gates, `node --test`, the VS Code
+  grammar test, `cargo audit` and `cargo deny check`. `check` exit 0 on **all 16** projects.
+  The **ui-audit probe suite is 7/7** for the first time. Do **not** reconcile that 1,859
+  against the 1,700 recorded below: that baseline predates commits merged into `main`
+  since, and this batch added 2 test binaries, not 5.
+- **The three wrong causes are the reusable part of this batch.** Item 151 said
+  `id="TOC"` "appears in no emitter" — it is emitted; the probe was pointed at a *book*,
+  which by ruling has no right-rail TOC. Item 94's 8.59% was stale (7.3% today, on a bigger
+  corpus). Item 144c was filed as a double print and was also a *per-page* repeat on the
+  site path that nobody had noticed. **Trust the symptom, re-derive the cause** held three
+  for three.
+
 ## RESUME HERE (cold start, 2026-07-28)
 
 **If you are a fresh session with no context, read this block, then "State", then band A. That is
@@ -483,21 +504,7 @@ was lost but the labels; the SHAs are recorded there in case a snapshot is ever 
 "Do not re-add / re-scope".** `tools/gates.sh`, a root `CONTRIBUTING.md`, and the restored
 workflow (guarded on repository visibility so it stays inert until publication).
 
-**Honesty of shipped words**
-
-88. **One shipped string left of the three.** (MEDIUM.) Two fixed 2026-07-28 with item 79:
-    `docs/internals/repository.tmd`'s false "`--host` auto-enables `--no-exec`" claim (verified
-    false in `cli.rs` — `expose` never sets `no_exec`), and the verbatim injection of
-    `include-in-header`/`include-before-body`/`include-after-body`/`css:`, now stated in the CLI
-    reference's new "Documents you did not write" section. **Still open:** `SECURITY.md`'s
-    symlink allowance assumes *you* placed the symlink, which is false for an untrusted archive.
-    Same family as item 75: **no gate compares prose against behaviour.**
-87. **Two of the three surfaces remain.** (MEDIUM.) The section itself shipped 2026-07-28 with
-    item 79: `docs/guide/reference/cli.tmd` now carries **"Documents you did not write"** (what
-    executes, what passes through verbatim, what `--no-exec` does and does not do, and the two
-    things that are *enforced* rather than documented), and both `--help` surfaces point at it.
-    **Still open:** a link from `README.md`, and the one-line first-run notice.
-    `SECURITY.md:38-41` already takes the right position.
+**Honesty of shipped words: DONE 2026-07-29 (items 87, 88) — see "Do not re-add / re-scope".**
 
 **Smaller, verified**
 
@@ -508,14 +515,9 @@ workflow (guarded on repository visibility so it stays inert until publication).
 docs and a hosted demo**, which are a deploy decision belonging with item 100's Phase 2.
 
 **"Coming from Quarto": SHIPPED 2026-07-28 (item 93) — see "Do not re-add / re-scope".**
-94. **A "Your source stays yours" paragraph, with the measured number.** (MEDIUM.) Measured across
-    all 115 corpus docs (10,118 lines): at most **8.59%** of lines carry any non-CommonMark
-    construct, and all six families are Pandoc/Quarto vocabulary, not invented. Three exits already
-    exist (Markdown source, `read --format json`, runtime-free static HTML) and none is *named* as
-    one. **The "no exit path" anxiety is refuted; the fix is to say so.**
-95. **A continuity paragraph: one maintainer, pre-1.0, and what leaving costs.** (MEDIUM.)
-96. **Quantify the dogfooding claim.** (LOW.)
-
+**The positioning + continuity words: SHIPPED 2026-07-29 (items 94, 95, 96, 135, 136)** as one
+chapter, `docs/guide/using/choosing.tmd`, plus a README section — see
+"Do not re-add / re-scope".
 **Items 97, 98 and 99 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add / re-scope".**
 99 needed no code: it was a measurement, and it came back clean in both directions.
 
@@ -591,26 +593,6 @@ doc on every `cargo test`.
      `lang,attr` fence is now a fixture in `corpus/highlight.tmd` with its own test, and the
      link-extension shape has `crates/core/tests/migrated_link_extensions.rs`. The rest are
      recorded so a later round does not re-derive them.
-135. **Five verified positioning claims the project has never made.** (MEDIUM, words not code.)
-     Each backed by a real user asking for what Taliesin already does: marimo
-     [#3114](https://github.com/marimo-team/marimo/issues/3114) (edit in your own editor, outputs
-     alongside) = the single-editing-surface architecture; marimo
-     [#1379](https://github.com/marimo-team/marimo/discussions/1379) (the format is hard for humans)
-     = `.tmd` is Markdown; marimo
-     [#2675](https://github.com/marimo-team/marimo/issues/2675) (reload on disk change) = 90 ms,
-     measured; Quarto [#4201](https://github.com/quarto-dev/quarto-cli/discussions/4201) (avoid
-     kernel restarts) = the warm kernel; Quarto
-     [#3674](https://github.com/orgs/quarto-dev/discussions/3674) +
-     [#10429](https://github.com/orgs/quarto-dev/discussions/10429) (render only changed files /
-     freeze a single cell) = the per-cell cumulative hash. **The sixth is the strongest:** Quarto's
-     tracker carries *stale-output* complaints against `freeze`, and Taliesin's cumulative key makes
-     a stale hit **structurally impossible**. That reproducibility guarantee is unclaimed by anyone
-     and is stated nowhere in this repo.
-136. **State the speed story with the measured absolutes, and no multiplier.** (MEDIUM.) Public
-     Quarto threads report 1-2 s/document and ~400 s for a 376-document blog; Taliesin measures
-     3.8 ms/page (112-page real book), 4 ms first paint, 90 ms warm edit. **These measure different
-     work** (Pandoc + possible execution vs a cache replay) — publish the architecture and the
-     absolute numbers, never a ratio.
 **Low**
 
 **Items 114, 123 and 130 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add /
@@ -657,20 +639,6 @@ note in the findings doc before applying any fix text from it.
 **Item 138 SHIPPED 2026-07-28** on `block-single-root-2026-07-28`, with **146** and the
 module-path half of **143** — see "Do not re-add / re-scope".
 
-144. **Diagnostic and CLI residuals a first-hour user hits.** Each small, each measured.
-    A timeout-killed cell is reported to the console as "raised an uncaught exception" because
-    the timeout has no `NOT_RUN_` kind (`kernel.rs:866` bypasses the marker) — **and the guard
-    test at `build.rs:3027` passes vacuously for the live path, so fix the test in the same
-    commit**; single-doc `build` prefixes diagnostics with a bare `file_stem()` that no editor
-    can open (thread a display label — `fallback` is load-bearing for the freeze path *and* the
-    page title, so do not just swap it); the missing-kernel warning prints twice, the short form
-    adding nothing; a missing input file reports `(os error 2)` with no did-you-mean though
-    `closest` already exists; `skim` is missing from `taliesin --help` (add the `COMMANDS` ↔
-    `usage()` parity gate modelled on `env_help_lists_every_runtime_env_var`); `codeAction`
-    builds quick fixes from **any** provider's diagnostic and ignores the requested range; a
-    message after `shutdown` exits 1 (editors read that as a crash) while a bare `exit` exits 0;
-    CRLF `documentSymbol` ranges run one column long.
-
 145. **Retired into item 137, which SHIPPED 2026-07-28** — see "Do not re-add / re-scope". The
      critique round filed this as its item 86, the unreferenced `_assets/` payload, independently
      of R13's item 137. Its mechanism analysis is what made the fix buildable: it was right that
@@ -715,15 +683,6 @@ scroll-on-`Ctrl+Alt+J`, and one panel + one server per document. These three are
      directory, opening the wrong file. `relativeKey` has the mirror problem. Resolution must key
      off the project root; `serve_site` already emits `root` in `TALIESIN_DOC`
      (`serve_site/mod.rs:788`), so the data is there. Write the spec before the code.
-
-151. **Two ui-audit probes assert against selectors that no longer exist.** (LOW, but they are
-     lying gates.) `toc-scrollspy` waits on `#TOC a` and `id="TOC"` appears in **no** emitter, so it
-     can only ever fail; `hover-preview` waits on `#tali-link-preview.open` (that id does still
-     exist in `code-enhance/12-link-preview.js`, so this one needs diagnosing, not just
-     re-selecting). Both predate the preview-workflow branch. A third of the same class **was**
-     fixed there: `click-to-source` clicked the first `[data-block-id]`, which is the title block —
-     it has an id but no `data-sourcepos`, and `locatable()` deliberately refuses to resolve it, so
-     the probe clicked the one element guaranteed to emit nothing.
 
 152. **RESOLVED 2026-07-28: the companion e2e suite runs again.** It had been failing with
      `EMFILE: too many open files` inside VS Code startup because `fs.inotify.max_user_instances`
@@ -1194,6 +1153,69 @@ docs; look there rather than re-expanding this list.
     since been fixed. Only **three** remain at D≥8, and the top one is `MAX_WARM_PAGES` /
     `exec_pool.rs` at **D=10 with zero test references** (re-measured) — the standing freeze
     forbids *tuning* it, not *pinning* it.
+
+- **2026-07-29 the first-hour + positioning batch (items 144, 151, 87, 88, 94, 95, 96,
+  135, 136),** on branch `backlog-batch-2026-07-29`. Every code fix verified by
+  **mutation** (restore the bug, watch the named test fail); the two probes and the new
+  guide chapter additionally verified in a real browser. **Do not re-scope any of the
+  following as open:**
+  - **Item 144 shipped whole, all eight sub-items.** A timeout-killed cell now carries a
+    not-run marker (a new `NOT_RUN_TIMEOUT` kind) so the console stops calling it "raised
+    an uncaught exception"; single-doc `build` diagnostics carry the path the user typed
+    instead of `file_stem()`; the missing-kernel warning is announced once per run in its
+    actionable form; a missing input file gets a did-you-mean; `skim` is in `--help` behind
+    a `COMMANDS` ↔ `--help` parity gate; `codeAction` is scoped to our `source` and the
+    requested range; a straggler message after `shutdown` exits 0; and CRLF buffers no
+    longer emit end-of-line columns one too long.
+  - **144a's guard test was vacuous in exactly the way the item said, and worse.**
+    `every_executor_authored_error_block_carries_the_not_run_marker` asserted over the four
+    `*_html` helpers, none of which is the live path: a timeout or a mid-cell kernel death
+    is an `Output::Error` rendered by `kernel::render_outputs`, which the test never
+    reached. The fix makes `not_run` a **required field** on `Output::Error` rather than an
+    inferred one — keying on `ename` would misread a Python `raise Timeout()`, and guessing
+    from an empty traceback is the same guess with extra steps.
+  - **144c is fixed in three places at once, and one of them was not filed.** The terse
+    line and the full `diagnostic()` line both printed on `build <file>` and `read --run`
+    (the filed defect); a *site* build printed only the terse form, **once per page**, and
+    never the actionable half at all. One `announce_once` at the point of failure collapses
+    a 3-page site build's four lines to one, and "Restart kernel" clears the record so a
+    deliberate retry is still answered.
+  - **144b broke an existing test that pinned the defect.**
+    `strict_single_doc_build_fails_on_a_missing_image` asserted `doc:5:` — the bare stem.
+    It now asserts the openable path *and* that the stem form does not come back.
+  - **Item 151's filed cause was wrong in both halves, which is the reusable part.**
+    Filed as "`id="TOC"` appears in **no** emitter". It does: `render/mod.rs`'s `toc_html`
+    emits `<nav id="TOC">`. The real cause is that the probe pointed at
+    `docs/internals/architecture.html`, and **a book never gets a right-rail TOC** —
+    `Site::page_toc` returns false for a book ahead of the page's own `toc:`, by item 76's
+    2026-07-27 ruling. Retargeted to `corpus/analyst`, a non-book site with `toc: true`.
+  - **`hover-preview` was the click-to-source bug again, one page over.** The probe took
+    the *first* `a.tali-xref` on `corpus/demo-book/results.html`, which is
+    `methods.html#sec-methods` — a SECTION reference, and section anchors are deliberately
+    absent from the hover index (the link text is already the heading's title). It hovered
+    the one link guaranteed to open nothing. The rewrite picks a link the feature actually
+    previews and covers **both** paths (same-page clone and cross-page index), with a floor
+    so "no eligible link" fails instead of passing quietly. **The ui-audit probe suite is
+    7/7 green for the first time.**
+  - **The corpus portability number was re-measured, not copied.** Item 94 recorded 8.59%
+    over 115 docs / 10,118 lines; the corpus has grown, and the measurement today is
+    **7.3% of 11,427 lines across 125 documents**, same six families. The chapter states
+    the date and the method, and notes that a line using two constructs is counted once in
+    the total and once per family.
+  - **The speed numbers are this machine's, and no ratio is published** (item 136's own
+    rule). The backlog's "3.8 ms/page" came from a 112-page book that is not on this
+    machine and was deliberately **not** reprinted; what shipped is what was measured here
+    (16.7-29.5 ms/page over 15-23-page projects, 1-5 ms single-doc time-to-ready, ~200 ms
+    for a 23-page book) plus `live-edit-bench`'s committed warm-edit rows, labelled
+    indicative exactly as that file labels them.
+  - **The first-run notice is once per MACHINE, not once per run** (item 87). A marker
+    under `XDG_CACHE_HOME/taliesin/`, TTY-gated like `keys_hint`, cleared by nothing — the
+    author sees it on day one and never again, and an agent or CI run never sees it.
+  - **Two rendering defects in the new chapter were caught only in a browser**, which is
+    the standing lesson holding again: a `|` inside an inline code span still splits a
+    Markdown table cell (the `#| label:` row rendered as two broken cells), and a `# `
+    heading on top of a front-matter `title:` prints the chapter name twice. `check` was
+    green on both.
 
 - **2026-07-28 the block-model + docs-gate batch (items 138, 146, and the module-path half
   of 143),** on branch `block-single-root-2026-07-28`. Both fixes mutation-verified, the

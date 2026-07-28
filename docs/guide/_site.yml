@@ -6,6 +6,7 @@ chapters:
   - part: "Using Taliesin"
     chapters:
       - using/getting-started.tmd
+      - using/choosing.tmd
       - using/from-quarto.tmd
       - using/preview.tmd
       - using/code.tmd

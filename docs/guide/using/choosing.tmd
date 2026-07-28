@@ -1,0 +1,136 @@
+---
+title: "Choosing Taliesin"
+description: "What adopting Taliesin costs and what it is actually good at: how much of your source is portable, what the speed numbers are in absolute terms, and what happens if you leave."
+---
+
+Every other chapter tells you how to use the tool. This one is for the decision *before*
+that: what you are committing to, what you get, and what leaving costs. It is deliberately
+specific, because the honest version of "should I adopt this" is a set of numbers, not a
+set of adjectives.
+
+## Your source stays yours {#sec-portability}
+
+The first worry about a single-author tool is lock-in: that a year of writing ends up in a
+dialect only this program understands. Here is the measurement.
+
+Across the **125 `.tmd` documents** in Taliesin's own corpus — **11,427 lines** of real
+writing, the largest sample that exists — **839 lines, 7.3%, carry any construct beyond
+plain CommonMark.** The other 92.7% is Markdown, and any Markdown tool reads it.
+
+| Construct | Lines | Share |
+|---|---:|---:|
+| Fenced div (`::: {.callout-note}`) | 252 | 2.2% |
+| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 245 | 2.1% |
+| Executable fence (` ```{python} `) | 164 | 1.4% |
+| Cell option (`#\| label: fig-x`) | 139 | 1.2% |
+| Citation / cross-reference (`[@key]`, `@fig-x`) | 123 | 1.1% |
+| Shortcode (`{{< include … >}}`) | 41 | 0.4% |
+
+*(Measured 2026-07-29 over `corpus/**/*.tmd`; a line using two constructs is counted once
+in the total and once per family, so the family rows sum to more than the total.)*
+
+**None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
+predates Taliesin, which means the 7.3% is not stranded either — it is the same syntax
+another Pandoc-family tool already parses. `.tmd` is a file extension, not a format: see
+[Coming from Quarto](from-quarto.tmd), which is the same migration run backwards.
+
+Three exits exist today, and this is the first place any of them is called one:
+
+- **The Markdown itself.** Plain text, in your repository, under your version control. No
+  database, no proprietary container, no export step.
+- **`taliesin read <file> --format json`** — the whole document projected to structured
+  text (headings, resolved figure numbers, prose, cell code and output) for any consumer
+  that wants the content without the HTML. See [Agents and automation](agents.tmd).
+- **The built HTML.** `taliesin build` writes a self-contained page with no runtime
+  dependency on Taliesin — no CDN, no server, no build step to reproduce. It keeps working
+  whether or not this project does.
+
+## The speed story, in absolutes {#sec-speed}
+
+Speed is the reason this tool exists, so it is worth stating without a marketing
+multiplier. **These are absolute numbers on one machine, and they measure Taliesin's work
+only.** A batch document compiler doing a cold Pandoc pass with execution is doing
+different work; comparing the two as a ratio would be dishonest arithmetic, so no ratio
+appears here.
+
+| Measurement | Value | What it covers |
+|---|---:|---|
+| Whole-project build, `docs/internals` (15 pages) | **0.25 s** | 16.7 ms/page: parse, render, highlight, math, search index, assets |
+| Whole-project build, this guide (23 pages) | **0.44 s** | 19.1 ms/page, including executed cells replayed from `_freeze/` |
+| Whole-project build, `corpus/tech-blog` (19 pages) | **0.56 s** | 29.5 ms/page, the heaviest project in the tree |
+| `preview` time-to-ready, single document | **1–5 ms** | Process start to a serving socket |
+| `preview` time-to-ready, 23-page book | **≈200 ms** | Discovery, nav, cross-reference registry, first render |
+| Warm edit: diff only | **0.7 ms** | The block diff for one keystroke-sized edit |
+| Warm edit: re-render + diff | **28 ms** | Against a 124 ms cold render of the same document |
+| Warm-edit payload | **3.2 KB** | Versus a 270 KB full page a reload would refetch |
+
+*(Build and ready figures measured 2026-07-29, best of three, release build, warm
+`_freeze/` cache. The warm-edit rows come from `tools/live-edit-bench`, whose committed
+`RESULTS.md` labels them indicative — the numbers vary by machine; the **structural** rows
+it also records, the op counts and payload ratio, are gated by a regression test.)*
+
+The number that matters is not any single row: it is that the warm edit is a **diff**, so
+its cost tracks what you changed rather than how large the document is. A 3.2 KB patch to a
+270 KB page is not a faster full reload; it is a different operation.
+
+## What Taliesin claims, and who asked for it {#sec-claims}
+
+Each of these is a thing users of comparable tools have asked for in public. They are
+listed with their sources so you can check that the need is real rather than
+retrofitted.
+
+- **Edit in your own editor, see output alongside.**
+  ([marimo #3114](https://github.com/marimo-team/marimo/issues/3114)) The `.tmd` file is
+  the only editing surface; the browser is a read-only view, and click-to-source is the
+  one bridge back. It never writes to your source.
+- **A format a human can read and `git diff`.**
+  ([marimo #1379](https://github.com/marimo-team/marimo/discussions/1379)) `.tmd` is
+  Markdown. See the table above for exactly how much of it is not.
+- **Reload on disk change, without losing state.**
+  ([marimo #2675](https://github.com/marimo-team/marimo/issues/2675)) A save re-renders
+  and patches in place; scroll position and live canvases survive.
+- **Stop restarting the kernel.**
+  ([Quarto #4201](https://github.com/quarto-dev/quarto-cli/discussions/4201)) The kernel is
+  warm for the life of the server, so an edit costs one cell, not one boot.
+- **Re-render only what changed; freeze a single cell.**
+  ([Quarto #3674](https://github.com/orgs/quarto-dev/discussions/3674),
+  [#10429](https://github.com/orgs/quarto-dev/discussions/10429)) Both are the same
+  mechanism here: a per-cell cumulative content hash.
+
+**The strongest claim is the one nobody else makes.** Cached-output systems in this space
+carry a standing complaint that the cache can serve a *stale* result — an output produced
+by code that has since changed. Taliesin's cache key is the cumulative hash of a cell's own
+code plus every upstream cell in its language plus the interpreter's identity, so editing
+anything upstream invalidates that cell and everything downstream. **A stale hit is not
+unlikely here; it is structurally unrepresentable.** There is nothing to clear by hand,
+because there is no state a stale entry could hide in. See
+[Executable content](code.tmd) and the cache notes in
+[Troubleshooting](../reference/troubleshooting.tmd).
+
+## Continuity: what you are relying on {#sec-continuity}
+
+Read this part before you commit a book to it.
+
+**Taliesin has one maintainer and is pre-1.0.** That is the plain fact, and no roadmap
+changes it. What it means concretely: there is no support contract, no release cadence you
+can plan around, and no second person who knows the codebase. If the maintainer stops, the
+project stops.
+
+What *does not* stop:
+
+- **Your source is Markdown**, 92.7% of it plain CommonMark, all of it in your repository.
+- **Pages you already built keep working** — they are static HTML with no runtime
+  dependency on the tool that made them.
+- **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.
+
+So the realistic downside is not "your writing is lost", it is "you migrate to another
+Pandoc-family tool and re-do a small fraction of the syntax." That is a cost worth naming,
+and it is bounded by the table in [Your source stays yours](#sec-portability).
+
+The mitigation the project actually offers is dogfooding rather than a promise:
+**everything the author writes goes through this tool.** Both books of this manual, the
+public website and the regression corpus are `.tmd` rendered by Taliesin — **179 tracked
+`.tmd` files, 22,252 lines**, of which the 125-document corpus is re-rendered by every
+`cargo test` run. The manual you are reading is not a description of the tool; it is
+output from it. A defect that breaks a page breaks the documentation for that page in the
+same commit.
