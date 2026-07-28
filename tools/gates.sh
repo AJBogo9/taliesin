@@ -62,6 +62,11 @@ CANARY_KERNEL="kernel_executes_state_errors_and_interrupts_runaway_cell"
 CANARY_R="r_cells_execute_and_persist_state_across_cells"
 CANARY_NODE="only_a_textual_sink_becomes_a_live_region"
 CANARY_CHROME="read_run_js_reports_svg_produced_and_error_kinds"
+# A second browser-backed capability, and it fails independently of the first: the math
+# hover rasterizes a KaTeX page, so it can break on the screenshot/clip path while `{js}`
+# observation still works. Every other test in that module asserts a string and would stay
+# green with rasterizing entirely broken.
+CANARY_MATH_HOVER="a_real_browser_rasterizes_real_katex_into_a_data_uri"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -210,6 +215,17 @@ run_gate "cargo clippy -D warnings" clippy.log \
 # --test-threads=1 because several tests own process-global state (CHROME_PATH,
 # the cell-timeout OnceLock, the kernel pool), and a raced run is how this suite
 # produces both flakes and vacuous passes.
+#
+# `--features taliesin-server/headless-js` because the browser driver is OFF by
+# default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
+# `read_run_js` / `deck_browser` declare it in `required-features` — so without this
+# flag cargo would quietly skip building them and the chrome canary below would go
+# missing. That pairing is deliberate: forgetting the feature turns this gate RED
+# rather than shrinking the suite silently.
+#
+# Between the two gates both configurations are covered: clippy (gate 2) runs with
+# DEFAULT features, i.e. the no-driver build, and this one compiles every target
+# with the driver on.
 # ---------------------------------------------------------------------------
 TEST_NAME="cargo test --workspace (all four gates)"
 if [ "$MISSING_INTERPRETERS" -gt 0 ] && [ "$ALLOW_MISSING" -eq 1 ]; then
@@ -224,7 +240,8 @@ else
         TALIESIN_REQUIRE_R=1 \
         TALIESIN_REQUIRE_NODE=1 \
         TALIESIN_REQUIRE_CHROME=1 \
-        run_gate "$TEST_NAME" test.log cargo test --workspace -- --test-threads=1
+        run_gate "$TEST_NAME" test.log \
+        cargo test --workspace --features taliesin-server/headless-js -- --test-threads=1
     test_rc=$?
 
     # Only assert on the output when cargo itself succeeded: a build failure produces a
@@ -250,7 +267,8 @@ else
             "python kernel:$CANARY_KERNEL" \
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
-            "chrome:$CANARY_CHROME"; do
+            "chrome:$CANARY_CHROME" \
+            "chrome (math hover):$CANARY_MATH_HOVER"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

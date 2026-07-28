@@ -58,12 +58,27 @@ cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
 **What that costs, measured, so it is not a surprise:** a cold release build compiles
-**268 crates in about 2 minutes** on four cores, peaking around **2.6 GB of RAM**, and
-produces a single ~40 MB self-contained binary (it embeds KaTeX with its fonts, the
-syntax-highlighting definitions, and every bundled stylesheet and script, which is why
-rendered pages need no network). Nothing is fetched at runtime and there is no
-`node_modules`. Put `target/release/taliesin` on your `PATH` to call `taliesin` from
-anywhere.
+**252 crates in about 1m 40s** at `-j3`, and produces a single ~40 MB self-contained
+binary (it embeds KaTeX with its fonts, the syntax-highlighting definitions, and every
+bundled stylesheet and script, which is why rendered pages need no network). Nothing is
+fetched at runtime and there is no `node_modules`. Put `target/release/taliesin` on your
+`PATH` to call `taliesin` from anywhere.
+
+**One optional feature, off by default, because it is a third of the build.**
+`read --run-js` can drive a local headless Chrome to check whether a `{js}` cell actually
+painted a chart. Its browser driver is the single most expensive thing in the dependency
+graph: turning it on takes the same cold build from 1m 40s to **2m 30s** and 252 crates
+to 268 (measured on one machine at `-j3`, so treat the ratio as the durable part). Since
+it *also* needs a system Chrome at runtime and most people never invoke it, you only pay
+for it if you ask:
+
+```sh
+cargo build --release --features taliesin-server/headless-js
+```
+
+The [release binaries](#install--prerequisites) are built with it, so a download is the complete tool.
+Without it every other command is unchanged and `read --run-js` still answers — each
+`{js}` cell just reports `skipped`, exactly as it does when no Chrome is installed.
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
 highlighting, decks, and sites render with no kernel at all; a kernel is needed only
@@ -92,7 +107,7 @@ language runs against its own warm kernel:
 **Quick start.** Scaffold a starter site and preview it:
 
 ```sh
-taliesin init my-site        # writes my-site/_site.yml + my-site/index.tmd
+taliesin init my-site        # _site.yml, index.tmd, AGENTS.md + .taliesin/ schemas
 taliesin preview my-site     # live preview at http://localhost:4321
 ```
 
@@ -164,6 +179,15 @@ The native deck engine, mermaid, and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
 See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
 books, authored in `.tmd` and built with Taliesin itself.
+
+## Accessibility
+
+The HTML Taliesin generates has a published **WCAG 2.1 AA conformance report**
+([docs/guide/reference/accessibility.tmd](docs/guide/reference/accessibility.tmd)) — the
+ACR half of a VPAT, in the form an institutional evaluator expects. It states what
+conforms, what only partially conforms, and (at equal length) what has **not** been
+evaluated: there has been no screen-reader pass and no full keyboard walkthrough, and the
+report says so rather than claiming the automated results cover them.
 
 ## Contributing
 

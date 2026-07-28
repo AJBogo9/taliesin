@@ -11,7 +11,11 @@
 //! [`crate::log`] for the no-execution warning. No code execution, no kernel — `symbols`
 //! in particular is called from an editor's completion request and must never start one.
 
-use crate::headless_js::{self, JsOutcome};
+use crate::headless_js::JsOutcome;
+// Only the real `observe_js` reaches the module itself; the no-feature stub needs the
+// outcome type and nothing else.
+#[cfg(feature = "headless-js")]
+use crate::headless_js;
 use crate::log;
 use std::collections::HashMap;
 use std::path::Path;
@@ -330,10 +334,28 @@ fn js_cell_ids(blocks: &[taliesin_core::Block]) -> Vec<String> {
         .collect()
 }
 
+/// The same contract as the real [`observe_js`] for a binary built without the browser
+/// driver: every cell reports `Skipped`, with a reason naming the rebuild rather than
+/// pretending Chrome was missing. `headless-js` is off by default because the driver is
+/// **24% of a clean release build** (measured; see `crates/server/Cargo.toml`) and this is
+/// its only caller, so most binaries should not carry it.
+#[cfg(not(feature = "headless-js"))]
+fn observe_js(
+    _doc: &taliesin_core::RenderedDoc,
+    js_ids: &[String],
+    _doc_path: &Path,
+) -> HashMap<String, JsOutcome> {
+    skip_all_js(
+        js_ids,
+        "built without headless-js support (rebuild with `--features headless-js`)",
+    )
+}
+
 /// Observe the document's `{js}` cells headlessly: render the self-contained page they run
 /// in to a temp file, then drive a local headless Chrome over it (see [`headless_js`]).
 /// Never fails to the caller — no Chrome or any render/IO/launch failure degrades every
 /// cell to a `Skipped` outcome. Observation-only: it never writes source or `_freeze`.
+#[cfg(feature = "headless-js")]
 fn observe_js(
     doc: &taliesin_core::RenderedDoc,
     js_ids: &[String],

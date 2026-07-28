@@ -11,6 +11,29 @@ repository.workspace = true
 name = "taliesin"
 path = "src/main.rs"
 
+# `read --run`'s `{js}` observation is the ONLY thing that needs a browser driver, and it
+# needs a system Chrome at runtime on top of that. Measured on a clean release build
+# (2026-07-28, `-j3`): `chromiumoxide` + `chromiumoxide_cdp` are the two most expensive
+# units in the entire 344-unit graph, and the crates reachable only through them cost
+# **81 of 336 CPU-seconds — 24% of the build** — for a feature most users never invoke.
+# So it is off by default and the released binaries turn it on (`release.yml`). Without it
+# `read --run-js` still answers; every `{js}` cell reports `skipped` with a reason naming
+# the rebuild, which is the same degradation path a missing Chrome already takes.
+[features]
+default = []
+headless-js = ["dep:chromiumoxide"]
+
+# Both need the driver to compile at all, so Cargo skips them unless the feature is on.
+# `tools/gates.sh` passes `--features headless-js` and then asserts these two tests
+# printed `... ok` BY NAME, so silently dropping the feature turns the gate red.
+[[test]]
+name = "read_run_js"
+required-features = ["headless-js"]
+
+[[test]]
+name = "deck_browser"
+required-features = ["headless-js"]
+
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
 dialoguer = { workspace = true }
@@ -42,7 +65,8 @@ lsp-types = "0.95"
 # `bytes` screenshot API we don't use and, crucially, the `fetcher`/`native-tls`/
 # `rustls` browser-download stack — this tool stays offline and never fetches a
 # browser (reqwest is pulled with no TLS backend, for the loopback CDP handshake
-# only). Optional + gated: no system Chrome → the feature reports "skipped", never a
-# hard failure. Uses tokio (the workspace runtime); `futures` drives its CDP Handler.
-chromiumoxide = { version = "0.9", default-features = false }
+# only). Gated twice over: `optional` keeps it out of a default build entirely (see
+# `[features]`), and at runtime no system Chrome → "skipped", never a hard failure.
+# Uses tokio (the workspace runtime); `futures` drives its CDP Handler.
+chromiumoxide = { version = "0.9", default-features = false, optional = true }
 futures = "0.3"

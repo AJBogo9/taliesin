@@ -14,6 +14,15 @@
 //! cell to a `Skipped` outcome, never a hard error). The classifier ([`classify_js_node`]) is
 //! pure over the DOM facts the in-page snippet returns, so the mapping is unit-tested with no
 //! Chrome; a `TALIESIN_REQUIRE_CHROME`-gated integration test proves the live loop.
+//!
+//! **Compiled always, driven only under `--features headless-js`.** The CDP driver is what
+//! the feature gates (the `chromiumoxide` half of it is 24% of a clean release build), but
+//! the classifier, the Chrome-discovery walk and the timeout policy are pure logic worth
+//! testing in every configuration — so the module stays compiled and only the fns that
+//! *name* `chromiumoxide` are `#[cfg]`-ed out. Without the feature the binary calls none of
+//! this, hence the blanket `dead_code` allow: it means "the driver is off", never "this is
+//! unused code" — every item below is still exercised by the unit tests at the bottom.
+#![cfg_attr(not(feature = "headless-js"), allow(dead_code, unused_imports))]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -247,6 +256,7 @@ fn eval_timeout(budget: Duration) -> Duration {
 /// requested `cell_ids`. Never errors to the caller: any launch/navigation/eval failure
 /// degrades the whole set to `Skipped(reason)`, and a cell the browser didn't surface (e.g.
 /// `include: false`) reports `Skipped("not observed")`. Observation-only.
+#[cfg(feature = "headless-js")]
 pub(crate) async fn observe_js_cells(
     page_path: &Path,
     cell_ids: &[String],
@@ -275,6 +285,7 @@ pub(crate) async fn observe_js_cells(
 /// **Every phase is bounded** ([`phase_timeout`]) and every exit removes the profile, so a
 /// browser that starts and then stops answering degrades to `Skipped(reason)` like any other
 /// failure instead of hanging `read --run-js` with no diagnostic (L3-1).
+#[cfg(feature = "headless-js")]
 async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, String> {
     use chromiumoxide::{Browser, BrowserConfig};
     use futures::StreamExt;
@@ -347,6 +358,7 @@ async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, S
 }
 
 /// Open the built page over `file://`, wait for every `{js}` cell to settle, and classify.
+#[cfg(feature = "headless-js")]
 async fn observe_page(
     browser: &chromiumoxide::Browser,
     page_path: &Path,
@@ -392,6 +404,7 @@ async fn observe_page(
 
 /// A unique temp user-data dir, `tali-headless-<pid>_<uuid>`. Distinct prefix from the
 /// kernel/warm-pool dirs so the startup sweep leaves it alone; `observe_inner` removes it.
+#[cfg(feature = "headless-js")]
 fn unique_profile_dir() -> PathBuf {
     std::env::temp_dir().join(format!(
         "tali-headless-{}_{}",
@@ -822,6 +835,10 @@ mod tests {
     /// Driven through `Runtime::block_on` rather than `#[tokio::test]` so it enters the module
     /// exactly the way `read --run-js` does (`query.rs`), and so the `CHROME_ENV` guard is not
     /// held across an await.
+    // The one unit test that drives the CDP loop rather than the pure logic around it, so
+    // it is the one that follows the driver behind the feature. It needs no real Chrome
+    // (it points `CHROME_PATH` at a shell script that sleeps), only the code that launches.
+    #[cfg(feature = "headless-js")]
     #[test]
     fn a_chrome_that_launches_and_then_hangs_is_bounded_by_our_own_budget() {
         let dir = std::env::temp_dir().join(format!("tali-hangchrome-{}", std::process::id()));
