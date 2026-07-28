@@ -328,15 +328,30 @@ async fn press_arrow_right(page: &Page) -> Result<(), String> {
 
 /// Read the deck's state once it has stopped moving: two consecutive identical readings.
 ///
-/// The settle condition is deliberately **independent of every assertion** — it watches
-/// position + hash for stability, never "wait until the property holds", which would turn a
-/// real disagreement into a slow pass.
+/// The settle condition is "nothing moved between two readings", which is deliberately
+/// **not** "wait until the assertions pass" — a stable *wrong* state is returned and fails,
+/// where a wait-until-green loop would turn a real disagreement into a slow pass.
+///
+/// It covers geometry as well as position because the `auto-animate` pair morphs elements
+/// between two slides: position and hash go stable the moment the move commits, while the
+/// morph is still in flight, so a geometry assertion read at that instant would be sampling
+/// a transform mid-animation.
 async fn settled_state(page: &Page) -> Result<DeckState, String> {
+    let fingerprint = |s: &DeckState| {
+        (
+            s.index,
+            s.f,
+            s.hash.clone(),
+            s.exposed.clone(),
+            s.overflow.clone(),
+            s.focus_outline.clone(),
+        )
+    };
     let mut prev = read_state(page).await?;
     for _ in 0..40 {
         tokio::time::sleep(Duration::from_millis(25)).await;
         let now = read_state(page).await?;
-        if (now.index, now.f, now.hash.clone()) == (prev.index, prev.f, prev.hash.clone()) {
+        if fingerprint(&now) == fingerprint(&prev) {
             return Ok(now);
         }
         prev = now;
