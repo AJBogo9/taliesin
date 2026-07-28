@@ -91,7 +91,9 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     context.subscriptions
   );
 
-  // reverse: editor cursor -> preview (debounced tali-cursor)
+  // Forward search, passive half: the editor cursor MARKS its block in the preview
+  // (debounced), and never moves the page. `reveal: false` is the whole difference —
+  // the active half is `taliesin.revealInPreview`, which sends `reveal: true`.
   let timer: NodeJS.Timeout | undefined;
   const sel = vscode.window.onDidChangeTextEditorSelection((e) => {
     const f = e.textEditor.document.fileName;
@@ -100,7 +102,7 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     const line = e.selections[0].active.line + 1;
     if (timer) clearTimeout(timer);
     timer = setTimeout(
-      () => panel.webview.postMessage({ type: "tali-cursor", file: key, line }),
+      () => panel.webview.postMessage({ type: "tali-cursor", file: key, line, reveal: false }),
       80
     );
   });

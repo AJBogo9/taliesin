@@ -1595,7 +1595,15 @@
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor
   // cursor. The matching block is the smallest one whose sourcepos range covers
   // `line` in the same source file, else the nearest block starting before it.
-  const highlightAtLine = (/** @type {string|null} */ file, /** @type {number} */ line) => {
+  // `reveal` separates "where am I" from "take me there". Marking is continuous and free,
+  // so it always happens; scrolling steals the author's scroll position, so it only happens
+  // when they ask (the forward-search command). Without this split, scrolling the preview to
+  // compare two figures and then typing one character yanked the page back.
+  const highlightAtLine = (
+    /** @type {string|null} */ file,
+    /** @type {number} */ line,
+    /** @type {boolean} */ reveal
+  ) => {
     const want = file || null;
     /** @type {HTMLElement|null} */ let contained = null;
     let containedSpan = Infinity;
@@ -1618,6 +1626,9 @@
     if (!target) return;
     document.querySelectorAll(".tali-hl").forEach((n) => n.classList.remove("tali-hl"));
     target.classList.add("tali-hl");
+    if (!reveal) return;
+    // Changing slide is the deck's equivalent of scrolling and is just as disruptive,
+    // so it is gated identically.
     if (isDeck && window.TaliesinDeck) {
       const sections = [...root.querySelectorAll(".tali-slides > section")];
       const sec = target.closest(".tali-slides > section");
@@ -1633,7 +1644,7 @@
 
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m && m.type === "tali-cursor") highlightAtLine(m.file, m.line);
+    if (m && m.type === "tali-cursor") highlightAtLine(m.file, m.line, !!m.reveal);
   });
 
   // `--host` puts the session token in the first URL (`?t=…`); the server has
