@@ -10,6 +10,11 @@ import {
 } from "./paths";
 import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
+import { PreviewRegistry } from "./previews";
+
+/** Module-level, not per-activation: `openPreview` is a free function and both it and the
+ *  reveal command must see the same set of live previews. */
+const previews = new PreviewRegistry();
 
 // The companion is two halves that do not overlap:
 //
@@ -43,6 +48,14 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     vscode.window.showWarningMessage("Taliesin: open a .tmd file first.");
     return;
   }
+  // Reuse before spawn. A second invocation reveals the panel it already has.
+  const existing = previews.get(docPath);
+  if (existing) {
+    existing.panel.reveal(vscode.ViewColumn.Beside);
+    return;
+  }
+  if (!previews.beginStart(docPath)) return; // a start is already in flight
+
   const binary = vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 
   let server: PreviewServer;
@@ -53,6 +66,7 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     );
   } catch (e) {
     vscode.window.showErrorMessage(String((e as Error).message || e));
+    previews.endStart(docPath); // a failed start must not wedge the document forever
     return;
   }
 
@@ -74,6 +88,9 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     vscode.Uri.parse(`http://127.0.0.1:${server.port}/`)
   );
   panel.webview.html = relayHtml(local.toString(), panel.webview.cspSource);
+
+  previews.set({ panel, server, docPath });
+  previews.endStart(docPath);
 
   // forward: preview -> editor (reveal source on tali-goto)
   panel.webview.onDidReceiveMessage(
@@ -109,6 +126,7 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
 
   panel.onDidDispose(
     () => {
+      previews.delete(docPath);
       sel.dispose();
       if (timer) clearTimeout(timer);
       server.dispose();
