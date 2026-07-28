@@ -81,7 +81,7 @@ enough to continue; nothing else is required.**
 - **THE LAUNCH-BLOCKING SET IS EMPTY.** Item 83 (five MIT tags) was the last one and is resolved:
   the tags are deleted, see "Do not re-add / re-scope".
 - **The publication-readiness batch shipped next (2026-07-28), on branch
-  `publication-readiness-2026-07-28`: items 84, 89, 90, 92, 93.** `tools/gates.sh` (the one script
+  `publication-readiness-2026-07-28`, committed but NOT PUSHED: items 84, 89, 90, 92, 93.** `tools/gates.sh` (the one script
   that runs every gate and **refuses to be green when one skipped**), `CONTRIBUTING.md` with the
   inbound relicensing grant, the restored `ci.yml` **plus** a new `release.yml` — both guarded on
   `github.event.repository.private != true`, so they are **inert until publication** and need no
@@ -534,6 +534,17 @@ rule.
      printed. **Cost to check first:** `collect_environment` re-renders every page of a site to find
      used languages, so putting it on the default path doubles a site `check`'s render work
      (`check <site>` was measured at 538 ms). Measure that before wiring it in.
+     **MEASURED 2026-07-28 (release `b8c93bb`), and the cost objection is weaker than filed.**
+     Default vs `--require-kernel` (which is the only surface that collects the environment today),
+     best of three each: `docs/guide` (20 pages) **0.36 s → 0.54 s**; `corpus/tech-blog` (17)
+     **0.54 s → 0.79 s**; `docs/internals` (15) **0.21 s → 0.31 s**; `site` (5) **0.11 s → 0.15 s**.
+     So it is **about +50%, not a doubling**, and **+100-250 ms absolute** on the largest projects
+     in the tree — and the "538 ms" in the line above did not reproduce as a *baseline*: 540 ms is
+     the whole `--require-kernel` run on the slowest project. **That delta is an upper bound for the
+     recommended shape**, because it includes actually spawning the interpreters, which the
+     "name it, do not probe it" line would not do. The remaining open question is not cost but
+     whether used-language detection can be had without the render walk; if not, the walk is what
+     the +50% buys.
 110. **A `draft:` page is unlinted by `check` and `--strict`, same mechanism as 109.** (MEDIUM.)
      `discovery.rs:30` drops drafts in `DraftMode::Exclude`. Measured: `check .` clean, `check
      wip.tmd` → 3 problems. **Lower severity for a stated reason:** the preview uses
@@ -865,8 +876,12 @@ the broken one). Refile here only after re-deriving the cause from source.
        `SECURITY.md:44-47`) — so the "nobody stands in that hole" framing is wrong. But the tax
        lands on exactly the adopters the project needs. MPL keeps file-level copyleft, passes most
        corporate bans, and ***REMOVED*** `deny.toml` protects.
-     - **Either way, the reservation at `README.md:156-158` is fiction the moment one outside PR
-       merges without a CLA or DCO.**
+     - ~~**Either way, the reservation at `README.md:156-158` is fiction the moment one outside PR
+       merges without a CLA or DCO.**~~ **DISCHARGED 2026-07-28 by item 89:** `CONTRIBUTING.md`
+       clause 3 is the inbound grant (perpetual, worldwide, irrevocable, sublicensable, explicitly
+       including **relicensing**), and `gate_script.rs` fails the suite if that grant disappears.
+       **This does not touch the rest of item 101**, which is about what a *user's built page* is
+       licensed as, not what a contribution is.
 102. **Decide what to do about constructs that render elsewhere and silently do not here.**
      (Ruling.) Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
 103. **Clear the name in software classes before the flip.** (Ruling, legal not code.) Trademark
