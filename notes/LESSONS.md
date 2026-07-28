@@ -92,6 +92,23 @@ through its wrappers. What was actually missing was a fixture *shape*.
 
 ## Probes and instruments (each one produced a false result first)
 
+- **A table-shaped probe whose every cell is negative is a BROKEN probe until proven otherwise.**
+  (2026-07-28, R11/R14.) A 27-row construct inventory across nine decks returned `NONE` for every
+  row. The cause was not the corpus: **zsh does not word-split `$VAR` in a `for` loop**, so the
+  probe iterated one long string and matched nothing. It was caught only because one row
+  (`auto-animate`) had been measured by hand minutes earlier and was *known* to be non-empty.
+  **Carry a known-positive row in every table probe and print it first**, so a broken instrument
+  announces itself instead of reading as a clean result. Use `${=VAR}` or a real array.
+- **`taliesin --version` before any CLI measurement: `target/` is shared with the parallel session.**
+  (2026-07-28.) The release binary reported a SHA from the *other* branch, so a round's headline was
+  measured against code this branch does not contain. It held on re-measurement after
+  `cargo build --release`, but that was luck. **A shared `target/` makes every CLI number suspect;
+  check the reported SHA against your own HEAD, and rebuild before trusting one.**
+- **Grep the emitted result, not the class name you remember.** (2026-07-28.) A highlight-coverage
+  probe grepped `qhl-` (the prefix `CLAUDE.md:67` still names) and returned **0 on a fully
+  highlighted page**, reading as "highlighting is broken". The emitter is `tali-hl-`
+  (`highlight.rs:23`). Same family as the inlined-asset needle trap: **a needle taken from prose is
+  a hypothesis; take it from the emitter.**
 - **`cargo test -- <short_name> --exact` matches NOTHING and passes.** `--exact` compares against the
   *full* test path, so a bare `deck_copy_button_is_reachable_on_touch` runs **zero** tests, prints
   `test result: ok. 0 passed`, and a mutation harness looking for "FAILED" scores it SURVIVED. This
@@ -199,6 +216,34 @@ look. (2) and (3) are now minted in temp dirs by `site/skim.rs` and `tests/book_
 
 Grepping the manual for a front-matter key also hits the manual's own *documentation* of that key:
 any coverage figure over `docs/` must parse the leading front-matter block, not match a line.
+
+**A set removed for one purpose is removed for all of them.** (2026-07-28, R14.) The single largest
+coverage hole found in three audit waves was one line: `site/mod.rs:359` drops `{{< embed >}}`-ed
+decks from `site.pages` so they stay out of *nav*, and `check`'s site walk iterates that same set —
+so a deck reaches **zero of thirteen** validators while `check` and `--strict` both exit 0. The same
+mechanism hides `draft:` pages. **When you filter a collection, ask who else reads it**, and prefer
+a derived view over mutating the shared one.
+
+**Scope a coverage round from what the code REACHES, not from the exemptions that are written down.**
+(2026-07-28, R14.) That round was scoped on two documented `DocFormat::Reveal` early-returns. Both
+turned out to be **correct** (a duplicate-heading rule is 100% false positives on the `auto-animate`
+idiom — 3 hits, all deliberate magic-move pairs). The real defect was that a deck never reaches the
+function those early-returns live in. **A written-down exemption list is a map of what someone
+already thought about; the hole is in what nobody did.**
+
+**An exemption with no replacement check is a hole, and only a register makes holes countable.**
+Most exemptions in this tree are individually well-reasoned and should stay. The finding is almost
+never "remove the exemption" — it is "the exemption is correct and the deck-appropriate replacement
+was never written." Score the *replacement*, not the rationale.
+
+**Score detection, not existence, and score it to the mutation question.** (2026-07-28, R7.) 14 of
+17 enumerated failure modes score D ≥ 8 ("would not be caught"), and the suite is *not* weak: 1,658
+tests. It is dense on pure functions over the block model and thin-to-absent on anything that only
+exists **at runtime, in a browser, in a published artefact, or in prose**. Wave 1's three HIGH
+security findings sat in exactly that band, which is why ~30 correctness rounds could not see them:
+**correctness rounds read code, and that class only fails when something runs.** When judging
+coverage, count test *bodies*, never filenames — `mounts` shows 0 files by name and 3 by body, of
+which 2 are false positives.
 
 ## Reading an item or a finding before acting on it
 

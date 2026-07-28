@@ -29,18 +29,50 @@ enough to continue; nothing else is required.**
   item 80's mounts join) and `docs/guide/reference/cli.tmd` (**not** item 79's wording, which is
   still open). Its own findings live in `notes/2026-07-28-launch-critique.md`. **Assume more overlap
   than is listed here and re-derive before building.** Merge order is the author's call.
-- **What Wave 1 was.** Four audit rounds (R1 adoption friction, R3 pre-mortem, R4 technical due
-  diligence, R5 untrusted document) run against a new premise: every prior round asked *is this
-  correct?*, so the menu was exhausted in one dimension only. Full reasoning and the remaining ten
-  rounds: [audit slate spec](../docs/superpowers/specs/2026-07-27-audit-slate-design.md).
-  Execution method: [wave 1 plan](../docs/superpowers/plans/2026-07-27-audit-wave-1.md).
-- **The four findings docs** (each finding carries its measurement and its refutation test):
+- **The audit slate is COMPLETE except R12.** Wave 1 (R1 adoption friction, R3 pre-mortem, R4 due
+  diligence, R5 untrusted document) ran 2026-07-27. **Waves 2 and 3 plus the tail ran 2026-07-28**
+  in one session: R14 deck exemptions, R6 ATAM, R7 FMEA, R2 first contact, R9 conformance/ACR,
+  R11 external document, R8 value stream, R10 demand, R13 green software. **Only R12 (real-device
+  mobile, Android) is left, and it needs the author's phone.** The premise held: every prior round
+  asked *is this correct?*, and these asked whether it is detectable, holds under stress, would be
+  adopted, and can be handed over. Spec:
+  [audit slate](../docs/superpowers/specs/2026-07-27-audit-slate-design.md). Wave 1 method:
+  [wave 1 plan](../docs/superpowers/plans/2026-07-27-audit-wave-1.md).
+- **Band A now holds items 79-137.** Nothing in any of these rounds changed a line of product code,
+  so **every item is open work** and the tree is exactly as the last code commit left it. No gates
+  were re-run after the notes commits because nothing compiled. The one exception: a `format:
+  revealjs` fixture in `crates/core/src/site/mod.rs` was mutated to `format: html`, the named test
+  run, and **reverted by inverse edit** (`git diff` verified clean).
+- **The findings docs** (each finding carries its measurement and its refutation test). Wave 1:
   [adoption friction](2026-07-27-adoption-friction-audit.md) ·
   [pre-mortem](2026-07-27-premortem-audit.md) ·
   [due diligence](2026-07-27-due-diligence-audit.md) ·
-  [untrusted document](2026-07-27-untrusted-document-audit.md).
-- **Start with items 79, 80, 81** (band A). Three HIGH security findings, each re-verified from
-  source by the controller, not taken on an agent's report. They are the launch blockers.
+  [untrusted document](2026-07-27-untrusted-document-audit.md). Waves 2-3:
+  [R14 deck exemptions](2026-07-28-deck-exemption-audit.md) ·
+  [R6 ATAM](2026-07-28-atam-architecture-audit.md) ·
+  [R7 FMEA](2026-07-28-fmea-detection-audit.md) ·
+  [R2 first contact](2026-07-28-first-contact-audit.md) ·
+  [R9 conformance/ACR](2026-07-28-conformance-acr-audit.md) ·
+  [R11 external document](2026-07-28-external-document-audit.md) ·
+  [R8 value stream](2026-07-28-author-value-stream-audit.md) ·
+  [R10 demand](2026-07-28-demand-positioning-audit.md) ·
+  [R13 green software](2026-07-28-green-software-audit.md).
+- **Two measurement hazards this session hit, both worth knowing before you measure anything.**
+  (1) `target/release/taliesin` is **shared with the parallel session** and was built from *their*
+  branch: check `taliesin --version` against your own HEAD before trusting any CLI result (the R14
+  headline was re-verified after rebuilding, and held). (2) A table-shaped probe whose every cell is
+  negative is a **broken probe** until proven otherwise — zsh does not word-split `$VAR` in a `for`
+  loop, and an all-`NONE` inventory was caught only because one row had been measured by hand
+  minutes earlier. Carry a known-positive row in every such probe.
+- **Start with the launch blockers, in R7's order, not Wave 1's.** The FMEA re-ranked them by
+  severity-with-detection: **80** (`mounts:` escape, S9 D9 — zero containment tests) and **83**
+  (tag `v0.2.0` ships MIT, S9 D10 — nothing inspects a tag) rank **above 79**, then **81**, then
+  **109** (a deck reaches zero of thirteen validators, S7 D10). **Pair each fix with its pin**: 117
+  with 80, 118 with 79. A fix with no named test cannot be verified by mutation.
+- **The three highest-yield non-security items are all adoption, all measured on real documents:**
+  **127** (comma fences: 329 of 457 problems on a real book, code shipping unstyled), **128** (every
+  internal link broken after the rename a stranger must do), **120** (the tool's own two scaffold
+  commands contradict each other and the first deck renders flat).
 - **Item 100 blocks the most work and needs the author, not a session.** Publish as a fresh repo
   with no history, or flip this repo's visibility? Half the register resolves differently per
   answer, and two self-flagged private strategy notes are git-tracked right now.
@@ -257,18 +289,24 @@ four forces, technical due diligence, VPAT/ACR, value-stream mapping) rather tha
 **Wave 1 (R1, R3, R4, R5) ran 2026-07-27/28 and produced three HIGH security findings**, refilling
 this file from one non-coding item to 30. Remaining waves:
 
-- **Wave 2 — R14 (the deck), R6 (ATAM), R7 (FMEA).** **R14 is the top pick.** Measured while
-  scoping: `validate_document_shape` early-returns on `DocFormat::Reveal`
-  (`diagnostics/shape.rs:97`) so **no `TAL-SHAPE-*` warning can ever fire on a slide**, and
-  `validate_a11y` skips heading checks for decks (`diagnostics/a11y.rs:228`) — while `deck.js` is
-  **2,690 lines, the largest hand-written JS in the tree**. The largest hand-written client
-  subsystem has the fewest automated checks. R14 audits the *exemptions*, not deck behaviour (the
-  07-27 touch crossing did that), and its deliverable is an exemption register. Run it **before**
-  R7, which needs that register to score detection blindness.
-- **Wave 3 — R2 (first contact + Nielsen), R8 (author value stream), R9 (axe/Lighthouse + a
-  publishable VPAT), R11 (a real external document).** Needs real builds and a browser.
-- **Any time — R12 real-device mobile (Android).** Still the only lens with a HIGH track record.
-  Wave 1's pre-mortem independently re-priced it as launch-blocking.
+- **Waves 2 and 3 and the tail all RAN on 2026-07-28** (R14, R6, R7, R2, R9, R11, R8, R10, R13) and
+  produced items 109-137. Their durable artefacts, so a later round does not rebuild them: the
+  **deck exemption register** (R14), the **sensitivity/tradeoff register** (R6), the **D≥8 detection
+  cluster** (R7), the **draft ACR** (R9) and the **external-document shape inventory** (R11).
+- **R14's premise was too generous by an order of magnitude**, which is the reusable lesson: the
+  two documented `DocFormat::Reveal` exemptions turned out to be *correct* (a duplicate-heading rule
+  would be 100% false positives on the `auto-animate` idiom, measured), while the real hole was that
+  a deck in a site **never reaches the code those exemptions live in**. Scoping a round from the
+  exemptions that are *written down* finds the wrong thing.
+- **ONLY R12 REMAINS — real-device mobile (Android), and it needs the author's phone.** Still the
+  only lens with a HIGH track record here; Wave 1's pre-mortem independently re-priced it as
+  launch-blocking. Priority order is in the slate spec: the book drawer scroll lock first (item 76
+  made the drawer a book's *only* nav surface), then the `--host` QR flow, momentum scrolling and
+  the dynamic viewport toolbar, tablet widths, TalkBack. **Record explicitly that an Android round
+  does not cover WebKit/iOS**, or it will later read as full mobile coverage.
+- **The slate is otherwise exhausted. Do not open a new round before the 59 open items ship.**
+  AUDITS.md's own stop-auditing ruling applies with more force now than when it was written: an
+  audit's value decays to zero if its findings never ship, and there are now three waves of them.
 
 **A note on why the deck was under-audited, because the mechanism is reusable.** Nothing in this
 repo forbade it. What existed was three compounding layers: code-level diagnostic exemptions (each
@@ -392,6 +430,213 @@ produced it and the observation that would refute it; trust the symptom, re-deri
     is silently unchecked by the `tsc` gates.
 99. **Spot-check that `TALIESIN_REQUIRE_CHROME=1 --test read_run_js` really launches a browser.**
     (LOW.) The one gate whose non-vacuity was not established this round.
+
+---
+
+**Audit Waves 2 and 3 (2026-07-28) — items 109-137.** The slate is **complete except R12**. Eight
+rounds ran in one session: [R14 deck exemptions](2026-07-28-deck-exemption-audit.md) ·
+[R6 ATAM](2026-07-28-atam-architecture-audit.md) ·
+[R7 FMEA](2026-07-28-fmea-detection-audit.md) ·
+[R2 first contact](2026-07-28-first-contact-audit.md) ·
+[R9 conformance/ACR](2026-07-28-conformance-acr-audit.md) ·
+[R11 external document](2026-07-28-external-document-audit.md) ·
+[R8 value stream](2026-07-28-author-value-stream-audit.md) ·
+[R10 demand](2026-07-28-demand-positioning-audit.md) ·
+[R13 green software](2026-07-28-green-software-audit.md).
+
+**R7 re-ranked the launch-blocking set by severity-with-detection**, which changed Wave 1's order:
+**80** (S9 D9) and **83** (S9 D10) now rank above **79**, because 83 ships a wrong licence at a tag
+today and nothing anywhere would catch it. **109** joins them.
+
+**Do the pins with their fixes.** 117 pairs with 80, 118 with 79, and R9's static-rule proposal
+pairs with 124. A fix without its pin cannot be verified by mutation, which is this file's standing
+rule.
+
+**Launch blockers**
+
+109. **An embedded deck is invisible to every static validator, on every site surface.** (HIGH.)
+     Not the two documented exemptions — **all thirteen** families. `site/mod.rs:359`
+     (`pages.retain(|p| !decks.iter()…)`) removes a deck from `site.pages` so it stays out of nav,
+     and `check.rs:295` walks that same set. Measured: a site whose embedded deck carries two
+     missing assets, a broken link, an alt-less `<img>`, an unnamed link and malformed `$$` gives
+     `check .` → "no problems found" exit 0, `build . --strict` → exit 0 shipping the defects, while
+     `check talk.tmd` reports all six. Live in the tree: `check docs/guide` never mentions
+     `demo.tmd` or `tour.tmd`. **Fix:** `collect_site_diagnostics` walks `site.decks` (a public
+     field) after `site.pages`, at `Scope::Standalone`. **No test anywhere runs a validator against
+     a deck in a site** — `check_superset.rs` and `check_cli.rs` contain zero `deck`/`Reveal`.
+127. **Comma-separated code-fence attributes are unsupported, so real code ships as plain text.**
+     (HIGH, adoption.) ` ```rust,ignore ` is the shared convention of mdBook, rustdoc, Pandoc,
+     Docusaurus and GitHub. Measured on `rust-lang/book`: **329 of 457 problems** are this one shape
+     (11 distinct forms, 734 fence occurrences), and on one real chapter **11 of 18 code blocks
+     render unstyled** with `class="language-rust,ignore"` (a comma is not a valid class token).
+     The message is also wrong: it calls the ecosystem's standard form a spelling error. **Fix:**
+     split the info string on `,`/whitespace, highlight on the first token. **Pin** with a corpus
+     fixture carrying a `lang,attr` fence — a shape the corpus has nowhere, which is why nothing
+     caught it.
+128. **Every internal link in a migrated document is a hard error, and the registry already knows
+     the answer.** (HIGH, adoption.) After the rename a stranger must do, links keep their old
+     extension: **118 of 123 errors** in `rust-lang/book` (`.md`), **10 of 11** in a real Quarto
+     book (`.qmd`). `creators.qmd` is reported broken while `creators.tmd` is a page in the same
+     site. **Fix:** a did-you-mean, not silent rewriting (a `.md` link may point at a real shipped
+     `.md`) — the pattern exists in `xref_didyoumean.rs` and the front-matter typo rule. This is the
+     concrete, measured version of item **93**.
+120. **Following `init`'s instruction after `new deck` produces a warning and a flat article.**
+     (HIGH for first contact, LOW to fix.) `init` prints "Preview it: `taliesin preview .`"; the
+     scaffold's own Next steps suggest `taliesin new deck`; `new deck` writes the deck into the site
+     root and prints a *different* command. Following the first one warns the deck will flatten, and
+     it does: browser-verified, the scaffolded slide reading "Each `##` heading starts a new slide"
+     renders as one stacked article. `preview ./my-talk.tmd` on the same file gives a real deck.
+     **Fix (words, not a write):** `new deck` detects a `_site.yml` and says to embed it or preview
+     it directly.
+117. **`mounts:` containment has zero tests — item 80's fix must not ship without one.** (HIGH.)
+     Grepping test *bodies* (the filename count is a trap and was wrong here): three files match,
+     two are unrelated ("the diff mounts"), and `map_cli.rs:75-109` asserts only that a mount appears
+     in `taliesin map`'s JSON. Two cases, one test: an absolute `path:` (`Path::join` replaces the
+     base) and a `../`-climbing one.
+
+**Then**
+
+124. **WCAG 2.1 AA 2.5.3 "Label in Name" fails on the search button.** (MEDIUM.) Visible text
+     `"Ctrl K"`, accessible name `"Search"` — no shared words. **50 of 54** built pages, from one
+     emitter (`site/chrome.rs:50`). Desktop only: `site.css:210/239` hide the hint on narrow
+     viewports, so the mobile run passes. Lighthouse weights this audit **0**, so the category still
+     reads 100. **Fix:** `aria-hidden="true"` on the `kbd` span (preferred — `aria-keyshortcuts`
+     already carries it semantically) rather than lengthening the label. **Ship the static rule with
+     it:** R9 established this is the one axe rule that ports cleanly into the kernel-free channel.
+137. **85% of a site build's asset bytes can never be served.** (MEDIUM.) Measured on a 113-page
+     build: `_assets/` is 4,751,169 B of which **4,059,121 B (85%)** is referenced by zero pages —
+     `mermaid.js` (3.57 MB) and `jslibs.js` (487 KB) ship into a book containing neither a diagram
+     nor a `{js}` cell. A deploy/storage cost, **not** a transfer cost (a reader never downloads
+     them), so the per-page-view story stays strong. **Fix:** apply the content-gating that already
+     decides single-doc inlining to the `_assets/` copy step. **One item, not two** — the concurrent
+     `critique-pass-2026-07-27` branch found the same defect independently on a different project.
+122. **`check` says "no problems found" on a document whose code cell cannot run.** (MEDIUM.)
+     Measured cold: plain `check` prints exactly that and exits 0, while `build` on the same file
+     warns twice and `doctor` names the missing package. The Environment section is shown **only**
+     to a user who already passed `--require-kernel`. **Do not** make that flag the default (it
+     would break the kernel-free property). **Fix:** print the Environment line unconditionally when
+     the document contains a code cell, exit code unchanged.
+121. **The first-run warning names `revealjs`, a value the parser rejects.** (MEDIUM.)
+     `site/mod.rs:391` says "declares a revealjs deck", but `is_reveal_format` (`fm_extract.rs:116`)
+     accepts only `deck`/`*-deck`, `revealjs` appears **zero** times in `docs/`, and **26**
+     references remain in `crates/*/src`. Reword to what the user wrote, and consider adding
+     `reveal` to `retired_names.rs`. (The `format: revealjs` fixture at `site/mod.rs:2125` is inert:
+     mutating it to `format: html` still passes — the test rides the `{{< embed >}}` path.)
+118. **The `--no-exec` test covers a different command from the one the docs promise.** (MEDIUM.)
+     `TALIESIN_NO_EXEC` appears in exactly one test, `read_run.rs:42`, covering `read --run`.
+     Item 79's promise is about *preview* and *browser-side* channels. Whichever way 79 resolves
+     (fix the wording or fix the flag), the pin must name the preview path.
+110. **A `draft:` page is unlinted by `check` and `--strict`, same mechanism as 109.** (MEDIUM.)
+     `discovery.rs:30` drops drafts in `DraftMode::Exclude`. Measured: `check .` clean, `check
+     wip.tmd` → 3 problems. **Lower severity for a stated reason:** the preview uses
+     `DraftMode::Include` so the author still sees diagnostics where they write, and nothing ships.
+     **This may be correct behaviour** — if so the deliverable is one comment at `discovery.rs:30`
+     and a line in the docs, not code.
+125. **A conformance tool cannot audit a deck: 12 of 14 slides are `inert`.** (MEDIUM.) The deck's
+     Lighthouse 100 covers ~14% of its content. `inert` is the *correct* implementation; the point
+     is the project cannot currently make a conformance claim about deck content. **Third mechanism
+     to stop at the deck boundary** (with 109 and 112). **Do this with 112, not separately** — one
+     step-the-deck harness, two assertions.
+112. **The repo's browser automation has never been pointed at `deck.js`.** (MEDIUM.)
+     `chromiumoxide` exists only in `Cargo.toml` + `headless_js.rs`; `read_run_js.rs` contains zero
+     `deck`/`reveal`. Existing deck tests assert `deck.rs` **emission** or read `deck.js` as text.
+     **Smallest first step:** load a built `corpus/deck.tmd`, press `ArrowRight` N times, assert the
+     slide index and the `#/slug` hash agree — that covers navigation, fragments and the hash writer
+     at once. (The QR encoder is the exception and already has a genuine golden net.)
+113. **`corpus/deck.tmd` has no math and no kernel cell, plus eleven other absent shapes.**
+     (MEDIUM.) Math and `{python}` exist only in dogfood/marketing decks, which `corpus.rs` does not
+     walk. Absent from **every** deck in the tree: table, footnote, citation, `{r}`, theorem envs,
+     tabset, `@fig-` + captioned figure, `{{< include >}}`, `{{< video >}}`, `logo:`, `theme:`,
+     `lang:`, `css:`. **Add only math + one `{python}` cell** (both already render correctly in the
+     dogfood decks, so this pins working behaviour); leave the rest listed and unbuilt.
+129. **Shape inventory from two real external documents — the durable half of R11.** (MEDIUM, mostly
+     a record.) What real documents contain that `corpus/` has nowhere: `lang,attr` fences (734
+     occurrences → item 127), ` ```console ` (209), links with a non-`.tmd` extension (128 → item
+     128), a `SUMMARY.md`-driven chapter spine, **112 pages in one flat directory** (the largest
+     corpus project is 14), and chapter files with **no front matter at all**. **Do NOT grow
+     `corpus/` toward these** — the walker renders every corpus doc on every `cargo test`. **Pin
+     only the two that earned it** (127 and 128); the rest are recorded so a later round does not
+     re-derive them.
+135. **Five verified positioning claims the project has never made.** (MEDIUM, words not code.)
+     Each backed by a real user asking for what Taliesin already does: marimo
+     [#3114](https://github.com/marimo-team/marimo/issues/3114) (edit in your own editor, outputs
+     alongside) = the single-editing-surface architecture; marimo
+     [#1379](https://github.com/marimo-team/marimo/discussions/1379) (the format is hard for humans)
+     = `.tmd` is Markdown; marimo
+     [#2675](https://github.com/marimo-team/marimo/issues/2675) (reload on disk change) = 90 ms,
+     measured; Quarto [#4201](https://github.com/quarto-dev/quarto-cli/discussions/4201) (avoid
+     kernel restarts) = the warm kernel; Quarto
+     [#3674](https://github.com/orgs/quarto-dev/discussions/3674) +
+     [#10429](https://github.com/orgs/quarto-dev/discussions/10429) (render only changed files /
+     freeze a single cell) = the per-cell cumulative hash. **The sixth is the strongest:** Quarto's
+     tracker carries *stale-output* complaints against `freeze`, and Taliesin's cumulative key makes
+     a stale hit **structurally impossible**. That reproducibility guarantee is unclaimed by anyone
+     and is stated nowhere in this repo.
+126. **Publish the draft ACR.** (MEDIUM, one artefact.) Drafted in full in the R9 doc, evidence
+     fresh. Contrast now **measured clean in both themes** with zero violations, which discharges the
+     deferral `a11y.rs` carries in its own docstring. Honest "partially supports" on four criteria
+     and an explicit not-evaluated list. Answers an institutional evaluator without needing users,
+     which Wave 1's adoption round found the project cannot otherwise do.
+136. **State the speed story with the measured absolutes, and no multiplier.** (MEDIUM.) Public
+     Quarto threads report 1-2 s/document and ~400 s for a 376-document blog; Taliesin measures
+     3.8 ms/page (112-page real book), 4 ms first paint, 90 ms warm edit. **These measure different
+     work** (Pandoc + possible execution vs a cache replay) — publish the architecture and the
+     absolute numbers, never a ratio.
+119. **Detection debt has no home, so every round rebuilds it.** (MEDIUM, structural.) R7's D≥8
+     cluster is the third time this list has been assembled. **One live file** (not a dated findings
+     doc, not a tool, not CI) with one row per class and a column for "what would change this score".
+     Proof the column is real: the broken-SVG mode went D=10 → D=3 the day `svg_assets_render.rs`
+     landed, and that is recorded nowhere a future round would find it.
+111. **The deck exemption makes an existing a11y test vacuous on the two decks it walks.** (LOW.)
+     `a11y_outline.rs:162-198` walks `docs/guide`, filters for "heading level skips", and asserts
+     empty across `pages >= 40`. `demo.tmd` and `tour.tmd` are decks, and `a11y.rs:228` makes that
+     filter empty **by construction** — so they count toward the floor that proves the walk was live
+     while being unable to fail. Fix the test's intent, not the product.
+
+**Low**
+
+114. **The eviction log reports a kernel that was never booted.** (LOW.) `exec_pool.rs:88` logs
+     "evicted warm kernel for …" unconditionally, but an `Executor` boots no kernel until a cell runs
+     (`exec.rs:906`) and an unbuilt page routes to the exec lane by default
+     (`serve_site/mod.rs:104`, `unwrap_or(false)`). Previewing `corpus/tarn` (14 chapters, **zero**
+     code cells) is enough to produce the false line. Derived from source, not observed in a running
+     preview.
+123. **`init` writes a 5 KB `AGENTS.md` unasked and unexplained.** (LOW.) Neither `init`'s output
+     nor the scaffolded Next steps mention it. Not a defect in the file — one line naming it.
+130. **`CLAUDE.md:67` names a retired class prefix.** (LOW.) It says `qhl-`; the emitter is
+     `highlight.rs:23`, `prefix: "tali-hl-"`. A probe grepping `qhl-` returned 0 on a fully
+     highlighted page and read as "highlighting is broken". Costs every future session, not just one.
+115. **Nothing makes the next author of a generated block think about click-to-source.** (LOW,
+     structural.) Nine sites write `sourcepos: String::new()`, all correctly (generated chrome has no
+     source line). `corpus.rs` guards existing content, not new producers, and QA1 has the least
+     automated coverage in the project. **Proposal is a doc comment on `Block`**, not a lint.
+134. **`check <site>` and `check <file>` answer different questions and nothing says so.** (LOW.)
+     538 ms vs 87 ms, and they differ in *coverage* (109, 110) and in link scope
+     (`check.rs:196`). Fold into 109's deliverable: once a site check covers decks, one line of
+     output can state the remaining difference.
+131. **The cold-build cliff: 3,981 ms vs 789 ms warm.** (LOW, and probably correct as-is.) Filed so
+     it is not rediscovered as a defect. Kernel *variable* state is never cached — the property that
+     makes the cache trustworthy — so a cold start genuinely cannot skip work unless the whole
+     document is unchanged. **The waste is inherent to a correctness guarantee worth keeping.**
+
+**Resolved by ruling, not work**
+
+116. **The positional cascade vs a Python DAG — CLOSED, do not build.** R6 measured the cascade is
+     unfelt at corpus scale (max 11 cells anywhere) and that a DAG is not a small change because
+     kernel variable state is never cached. R10 then found the demand evidence points the other way:
+     reactivity is marimo's claim and well made, while **reproducibility is unclaimed by anyone** and
+     Taliesin has the stronger implementation. **Tell the cascade story properly (item 135); do not
+     build the DAG.**
+132. **Not a separate item — R8's value-stream pricing of 109.** A deck's defects are found by an
+     *audience*, the latest and most expensive point in the stream, while every other defect class
+     in this tool is caught in the 90 ms loop or by `check`. That asymmetry is the argument for
+     109's priority, and it is one no correctness framing produces. Number retained (never reused).
+133. **Not a separate item — R8's value-stream pricing of 127/128.** **447 of the 457** diagnostics a
+     real external book produces are the tool's vocabulary gap, not the author's mistakes, so a
+     migrated document costs a triage pass before any real work starts. Anxiety with a stopwatch on
+     it. Number retained (never reused).
+
+---
 
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
