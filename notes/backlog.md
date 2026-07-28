@@ -198,17 +198,19 @@ enough to continue; nothing else is required.**
   the project into the deploy. A defender also refuted one of that round's own findings outright (the
   stale "mermaid is the sole CDN dep" sentence is in `notes/`, not in the shipped `THIRD_PARTY.md`,
   which is accurate and drift-locked). **Its findings are adjudicated, not assumed.**
-- **Gates at the last code landing (2026-07-28, the critique branch — now the authoritative figure,
-  superseding the 76+77 batch's 1,671):** full workspace suite with all three interpreter gates and
-  `--test-threads=1` = **99 binaries, 1,673 tests, 0 failures, 0 ignored** (zero ignored is the check
-  that the gates were live, not skipping); `cargo fmt --check` and `clippy --workspace --all-targets
-  -D warnings` clean. The **fourth** gate (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) was run.
-  Both JS `tsc` gates clean, as was `node --test crates/server/src/assets/_middleware.test.mjs`
-  (6 pass). `check` clean on the 7 corpus/docs projects exercised. Built guide + site carry **0**
-  leaked `.tmd` sources and **0** unrewritten `.tmd` hrefs (both were 1 before). Earlier, at the
-  76 + 77 batch (2026-07-27): the same suite at 1,671 tests, `check` clean on all 15 corpus/docs
-  projects, item 76 browser-verified at 1440px and narrow, item 77's figure browser-verified on both
-  themes through a live Python kernel.
+- **Gates re-run on the MERGED tree (2026-07-28, `integration-2026-07-28`), which is the figure to
+  trust — it is the first time both branches' code was built together:** full workspace suite with
+  all three interpreter gates and `--test-threads=1` = **99 binaries, 1,673 tests, 0 failures, 0
+  ignored** (zero ignored is the check that the gates were live, not skipping); `cargo fmt --check`
+  and `clippy --workspace --all-targets -D warnings` clean; the **fourth** gate
+  (`TALIESIN_REQUIRE_CHROME=1 --test read_run_js`) **3 passed**; **both** JS `tsc` gates exit 0;
+  `node --test crates/server/src/assets/_middleware.test.mjs` **6 pass**. The totals match the
+  critique branch's own pre-merge figure exactly, so **the merge introduced no regression**.
+  Not re-run after the merge: `check` over the corpus/docs projects, and `cargo audit` /
+  `cargo deny` (no dependency changed). Earlier context: the 76 + 77 batch (2026-07-27) measured the
+  same suite at 1,671 tests with `check` clean on all 15 corpus/docs projects; the critique branch
+  additionally verified the built guide + site carry **0** leaked `.tmd` sources and **0**
+  unrewritten `.tmd` hrefs (both were 1 before).
 
 ## Standing constraints (read before working)
 
