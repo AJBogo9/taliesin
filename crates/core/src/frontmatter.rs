@@ -690,9 +690,16 @@ pub(crate) fn front_matter_block(src: &str) -> Option<&str> {
 /// Shared by the front-matter linter, the project-config validator, and the CLI's
 /// unknown-command suggestion (re-exported as `crate::closest`).
 pub fn closest(key: &str, candidates: &[&'static str]) -> Option<&'static str> {
+    closest_of(key, candidates.iter().copied())
+}
+
+/// [`closest`] over borrowed candidates whose lifetime is not `'static` — a directory
+/// listing, say, where the names are owned `String`s read at runtime. Same distance rule,
+/// deliberately: a "did you mean" that is stricter in one place than another teaches the
+/// reader a threshold that is not real. `closest` is the `&'static` convenience over this.
+pub fn closest_of<'a>(key: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
     candidates
-        .iter()
-        .copied()
+        .into_iter()
         .map(|k| (levenshtein(key, k), k))
         .filter(|&(d, _)| d > 0 && d <= 2)
         .min_by_key(|&(d, _)| d)

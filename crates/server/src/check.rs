@@ -48,6 +48,12 @@ pub(crate) struct Suggestion {
     replacement: String,
 }
 
+/// The `source` every diagnostic this server publishes is stamped with. A const because
+/// `resolve_code_actions` reads it back to tell our diagnostics from the other providers an
+/// editor attaches to the same buffer, and a quick fix built from someone else's diagnostic
+/// rewrites the buffer using someone else's range.
+pub(crate) const LSP_SOURCE: &str = "taliesin";
+
 impl Diagnostic {
     /// Build a diagnostic, classifying its `code`/`severity` and lifting any inline
     /// "did you mean" hint into a structured `suggestion` from the message. Shared with the
@@ -92,7 +98,9 @@ impl Diagnostic {
                 Position::new(line0, to_u16(e.saturating_sub(1))),
             ),
             _ => {
-                let len = line_text.chars().map(char::len_utf16).sum::<usize>() as u32;
+                // CRLF-aware: a `\r` terminator is not a column the editor can put a cursor
+                // on, so a whole-line squiggle that included it ran one column past the text.
+                let len = crate::lsp_pos::line_end_utf16(line_text) as u32;
                 Range::new(Position::new(line0, 0), Position::new(line0, len))
             }
         };
@@ -119,7 +127,7 @@ impl Diagnostic {
             code_description: Url::parse(&self.docs_url)
                 .ok()
                 .map(|href| CodeDescription { href }),
-            source: Some("taliesin".to_string()),
+            source: Some(LSP_SOURCE.to_string()),
             message: self.message.clone(),
             data,
             ..Default::default()
@@ -227,9 +235,48 @@ pub(crate) fn page_static_diagnostics(
     out
 }
 
+/// The one "cannot read <path>" message every front door prints, with a "did you mean" when
+/// the path does not exist but a near-miss sibling does.
+///
+/// `cannot read notes.tdm: No such file or directory (os error 2)` is technically complete
+/// and practically useless: the user typed a transposition, the answer is one `read_dir`
+/// away, and `closest` was already in the tree suggesting subcommands and front-matter keys.
+/// Only the *missing* case is suggested for — a permission error or a directory-as-file is a
+/// different problem, and offering a neighbour there would be a wrong guess dressed as help.
+pub(crate) fn cannot_read(path: &Path, e: &std::io::Error) -> String {
+    let base = format!("cannot read {}: {e}", path.display());
+    if e.kind() != std::io::ErrorKind::NotFound {
+        return base;
+    }
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return base;
+    };
+    // The directory the user typed, which may legitimately be "" (a bare filename). Kept as
+    // typed so the suggestion echoes their spelling: `./kern.tmd` for someone who wrote
+    // `kern.tdm` is a correct path and a worse answer.
+    let dir = path.parent().unwrap_or_else(|| Path::new(""));
+    let Ok(entries) = std::fs::read_dir(if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    }) else {
+        return base;
+    };
+    // Candidates are the sibling *names*; the suggestion is re-joined onto the directory the
+    // user actually typed, so `chapters/intro.tdm` suggests `chapters/intro.tmd` and not a
+    // bare filename they would then have to relocate themselves.
+    let names: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    match taliesin_core::closest_of(name, names.iter().map(String::as_str)) {
+        Some(near) => format!("{base} (did you mean `{}`?)", dir.join(near).display()),
+        None => base,
+    }
+}
+
 fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
-    let src = std::fs::read_to_string(path)
-        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
     collect_file_diagnostics_from_src(path, &src)
 }
 
@@ -1062,6 +1109,49 @@ fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A missing input file suggests a near-miss sibling — and only when it can honestly
+    /// help. `(os error 2)` alone made the user re-read their own typo; the answer was one
+    /// `read_dir` away and `closest` was already in the tree.
+    #[test]
+    fn cannot_read_suggests_a_near_miss_sibling_and_only_then() {
+        let dir = std::env::temp_dir().join(format!("tali-cr-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("intro.tmd"), "x").unwrap();
+        let missing = |name: &str| {
+            std::fs::read_to_string(dir.join(name)).expect_err("the fixture must be absent")
+        };
+
+        // Transposed extension: within edit distance 2 of a real sibling, so suggest it —
+        // re-joined onto the directory the caller typed, not as a bare filename.
+        let msg = cannot_read(&dir.join("intro.tdm"), &missing("intro.tdm"));
+        assert!(
+            msg.contains(&format!(
+                "did you mean `{}`",
+                dir.join("intro.tmd").display()
+            )),
+            "near miss must be suggested with its directory: {msg}"
+        );
+
+        // Nothing close: no guess. A wrong suggestion is worse than none.
+        let msg = cannot_read(&dir.join("zzzzzzzzzz.tmd"), &missing("zzzzzzzzzz.tmd"));
+        assert!(
+            !msg.contains("did you mean"),
+            "no sibling is within distance 2, so nothing is offered: {msg}"
+        );
+
+        // A *different* io error is a different problem: a neighbouring filename is not the
+        // fix for it, so the suggestion stays out of the way.
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let msg = cannot_read(&dir.join("intro.tdm"), &denied);
+        assert!(
+            !msg.contains("did you mean"),
+            "only a NotFound earns a spelling suggestion: {msg}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     /// The tests care about diagnostics, not scope, so they keep the old one-argument
     /// spelling and discard the scope. Shadows the parent fn by name on purpose.

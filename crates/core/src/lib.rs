@@ -45,7 +45,7 @@ pub mod site;
 pub mod vocab;
 
 pub use diff::{BlockOp, diff_blocks};
-pub use frontmatter::closest;
+pub use frontmatter::{closest, closest_of};
 pub use includes::single_doc_root;
 pub use render::{
     AssetMode, Block, DeckParts, DocFormat, ExecOutput, ExternalAssets, FONT_FILES, OutputMode,

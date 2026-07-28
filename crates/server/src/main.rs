@@ -159,6 +159,78 @@ ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_MERMAID_URL (override the url the live preview lazy-loads mermaid from)
 ";
 
+/// The `USAGE:` + `COMMANDS:` block of [`usage`]. A const for the same reason [`ENV_HELP`]
+/// is one: `commands_help_lists_every_subcommand` diffs it against `COMMANDS`, and nothing
+/// else could. `skim` shipped with a focused `--help` page and a dispatch arm but was
+/// absent from this list for its whole life, so the only way to find it was to already
+/// know it existed.
+const COMMANDS_HELP: &str = "\
+USAGE:
+  taliesin <command> <file.tmd | dir> [args]
+  (a directory argument is a multi-page SITE project: an _site.yml + .tmd pages)
+
+COMMANDS:
+
+Author
+  init   [dir]               scaffold a starter site you can preview right away
+                             (writes _site.yml + index.tmd; default: current dir)
+  new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--tour] [--json]
+                             scaffold one document, correct on its first save
+
+Preview & build
+  preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]
+                             live preview server (aliases: dev, serve;
+                             a dir previews the whole SITE with nav + hot reload;
+                             default port 4321 (or [port] / --port <N>), replacing
+                             this project's own running preview and stepping past
+                             anyone else's;
+                             --host exposes it on your LAN with a QR code
+                             to open on a phone; --open launches a browser;
+                             --no-exec renders code cells as source,
+                             kernel and {js} alike, but does not strip raw
+                             HTML: see `Documents you did not write`)
+  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]
+                             render a self-contained HTML file (a dir builds the
+                             whole SITE to _site/); default <name>.html beside
+                             the source; --out <dir> writes a portable folder;
+                             --strict exits non-zero on a cell error or located
+                             warning; --bare emits zero-JS, CSS-only single-doc
+                             HTML; --jobs <N> caps parallel page renders (site build)
+  publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--format json]
+                             build a site/book + deploy it to Cloudflare Pages
+                             behind a shared passcode (strict by default);
+                             --public deploys un-gated; --dry-run skips the deploy
+
+Inspect
+  check <file|dir> [--format human|json] [--errors-only|--strict] [--require-kernel] [--explain <CODE>]
+                             list located diagnostics; exits non-zero if any
+                             (--explain <CODE> prints a diagnostic code's cause + fix)
+  doctor [dir] [--format human|json]  audit the environment for running code cells
+                             (interpreters, ipykernel/IRkernel, active conda/venv)
+  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph
+  read   <file.tmd | dir> [--run] [--format human|json]  project the document to plain
+                             text (agent-readable; --run executes cells + reports
+                             produced figures/output; --format json emits
+                             {path, executed, cells, text}; a dir reads the book)
+  skim   <dir> [--format human|json]  the book's skimmable layers as one linear
+                             stream (numbered headings, opening sentences, captions)
+  render <file.tmd>          render a full HTML page to stdout
+                             (static; does NOT execute code cells)
+  blocks <file.tmd>          list block ids + sourcepos (debug)
+  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets
+
+Editor & agent
+  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)
+  vocab                      emit editor autocomplete vocabulary as JSON (companion)
+  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)
+  lsp                        stdio LSP server: live .tmd diagnostics in any editor
+  completions <shell> [--install]  print (or --install) a shell completion script
+                             (subcommand + flag + .tmd-aware path completion; --install writes it for you)
+
+  help, --version            show this help / the version
+
+";
+
 fn usage() {
     println!(
         "taliesin {} ({})",
@@ -168,90 +240,9 @@ fn usage() {
     println!("A fast .tmd -> HTML renderer and live preview server.");
     println!("Docs: https://github.com/AJBogo9/taliesin");
     println!();
-    println!("USAGE:");
-    println!("  taliesin <command> <file.tmd | dir> [args]");
-    println!("  (a directory argument is a multi-page SITE project: an _site.yml + .tmd pages)");
-    println!();
     // Grouped by purpose (git/cargo/gh style; clig.dev): the everyday three sit apart from the
     // ten an author rarely types. Flush-left section headers keep each command line unindented.
-    println!("COMMANDS:");
-    println!();
-    println!("Author");
-    println!("  init   [dir]               scaffold a starter site you can preview right away");
-    println!("                             (writes _site.yml + index.tmd; default: current dir)");
-    println!("  new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--tour] [--json]");
-    println!("                             scaffold one document, correct on its first save");
-    println!();
-    println!("Preview & build");
-    println!("  preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]");
-    println!("                             live preview server (aliases: dev, serve;");
-    println!("                             a dir previews the whole SITE with nav + hot reload;");
-    println!("                             default port 4321 (or [port] / --port <N>), replacing");
-    println!("                             this project's own running preview and stepping past");
-    println!("                             anyone else's;");
-    println!("                             --host exposes it on your LAN with a QR code");
-    println!("                             to open on a phone; --open launches a browser;");
-    println!("                             --no-exec renders code cells as source,");
-    println!("                             kernel and {{js}} alike, but does not strip raw");
-    println!("                             HTML: see `Documents you did not write`)");
-    println!(
-        "  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]"
-    );
-    println!("                             render a self-contained HTML file (a dir builds the");
-    println!("                             whole SITE to _site/); default <name>.html beside");
-    println!("                             the source; --out <dir> writes a portable folder;");
-    println!("                             --strict exits non-zero on a cell error or located");
-    println!("                             warning; --bare emits zero-JS, CSS-only single-doc");
-    println!(
-        "                             HTML; --jobs <N> caps parallel page renders (site build)"
-    );
-    println!(
-        "  publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--format json]"
-    );
-    println!("                             build a site/book + deploy it to Cloudflare Pages");
-    println!("                             behind a shared passcode (strict by default);");
-    println!("                             --public deploys un-gated; --dry-run skips the deploy");
-    println!();
-    println!("Inspect");
-    println!(
-        "  check <file|dir> [--format human|json] [--errors-only|--strict] [--require-kernel] [--explain <CODE>]"
-    );
-    println!("                             list located diagnostics; exits non-zero if any");
-    println!(
-        "                             (--explain <CODE> prints a diagnostic code's cause + fix)"
-    );
-    println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
-    println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
-    println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
-    println!(
-        "  read   <file.tmd | dir> [--run] [--format human|json]  project the document to plain"
-    );
-    println!("                             text (agent-readable; --run executes cells + reports");
-    println!("                             produced figures/output; --format json emits");
-    println!("                             {{path, executed, cells, text}}; a dir reads the book)");
-    println!("  render <file.tmd>          render a full HTML page to stdout");
-    println!("                             (static; does NOT execute code cells)");
-    println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
-    println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
-    println!();
-    println!("Editor & agent");
-    println!(
-        "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
-    );
-    println!(
-        "  vocab                      emit editor autocomplete vocabulary as JSON (companion)"
-    );
-    println!(
-        "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
-    );
-    println!("  lsp                        stdio LSP server: live .tmd diagnostics in any editor");
-    println!("  completions <shell> [--install]  print (or --install) a shell completion script");
-    println!(
-        "                             (subcommand + flag + .tmd-aware path completion; --install writes it for you)"
-    );
-    println!();
-    println!("  help, --version            show this help / the version");
-    println!();
+    print!("{COMMANDS_HELP}");
     print!("{ENV_HELP}");
 }
 
@@ -980,6 +971,73 @@ mod cli_microcopy_tests {
     /// `subcommand_help_covers_documented_commands` skips them: `dev`/`serve` resolve to
     /// `preview`'s help, and `help` is the help system rather than an entry in it.
     const ALIASES_AND_META: &[&str] = &["dev", "serve", "help"];
+
+    /// Every subcommand is listed in `taliesin --help`, and everything listed there is a
+    /// real subcommand. The command half of the same link `env_help_lists_every_runtime_env_var`
+    /// makes for environment variables — and the one that was missing.
+    ///
+    /// `skim` shipped with a dispatch arm, an entry in `COMMANDS`, a focused `--help` page
+    /// and an integration test, and was absent from the one list a user reads to find out
+    /// what the tool can do. Every other gate passed: `subcommand_help_covers_documented_commands`
+    /// only asks whether a *focused* page exists, which it did.
+    #[test]
+    fn commands_help_lists_every_subcommand() {
+        // Aliases are named inside `preview`'s entry as prose ("aliases: dev, serve") rather
+        // than getting a line of their own, and `help` is documented on the trailing
+        // `help, --version` line — both are listed, just not as `  <name> ` entries.
+        const LISTED_IN_PROSE: &[&str] = &["dev", "serve", "help"];
+        // A command's entry opens its line: two spaces, the name, then a space. Matching the
+        // bare name anywhere would pass on a mention inside another command's description
+        // (`preview`'s text names `--no-exec`, `read`'s names `--run`), which is exactly the
+        // false pass that lets the next `skim` through.
+        let listed = |name: &str| COMMANDS_HELP.contains(&format!("\n  {name} "));
+
+        for cmd in COMMANDS.iter().filter(|c| !LISTED_IN_PROSE.contains(c)) {
+            assert!(
+                listed(cmd),
+                "`{cmd}` dispatches but is not listed in `taliesin --help`"
+            );
+        }
+        for name in LISTED_IN_PROSE {
+            assert!(
+                COMMANDS_HELP.contains(name),
+                "`{name}` must at least be mentioned in --help"
+            );
+        }
+
+        // And the other direction: every entry in the list is a command that exists. An
+        // entry lines up under the flush-left group headers, so it is a line starting with
+        // exactly two spaces whose first token is not a flag or a continuation.
+        let mut found = 0usize;
+        // Only the COMMANDS: section — the USAGE: synopsis above it is indented the same way
+        // and its first token is the binary's own name.
+        let (_, list) = COMMANDS_HELP
+            .split_once("COMMANDS:")
+            .expect("--help has a COMMANDS: section");
+        for line in list.lines() {
+            let Some(rest) = line.strip_prefix("  ") else {
+                continue;
+            };
+            let Some(name) = rest.split_whitespace().next() else {
+                continue;
+            };
+            if rest.starts_with(' ') || name.starts_with('-') || name.starts_with('(') {
+                continue; // a wrapped description line, a flag, or a parenthetical
+            }
+            // `help, --version` is the one entry naming two things on one line.
+            let name = name.trim_end_matches(',');
+            assert!(
+                COMMANDS.contains(&name),
+                "--help lists `{name}`, which is not a subcommand"
+            );
+            found += 1;
+        }
+        // A floor: an extractor that stops matching is a gate that passes forever.
+        assert!(
+            found >= COMMANDS.len() - LISTED_IN_PROSE.len(),
+            "only {found} entries were extracted from --help; the parser has drifted"
+        );
+    }
 
     /// Each covered subcommand has a focused help that names itself and shows an
     /// example; an unknown command has none.
