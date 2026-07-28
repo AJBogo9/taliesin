@@ -354,22 +354,15 @@
     el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
   };
 
-  // First-run discoverability nudge (preview-only, one-time): a small callout tethered above
-  // the ◇</> button naming the flagship Alt-click-to-source gesture (and, where live, the `?`
-  // shortcuts menu). Gated by localStorage so it shows once per browser. Storage failures FAIL
-  // CLOSED (treat as seen → never show): an un-dismissable nag is worse than a missed hint —
-  // the opposite trade-off from taliShortcutsOn's fail-open.
-  const HINT_KEY = "tali-hint-seen";
-  const hintSeen = () => {
-    try { return localStorage.getItem(HINT_KEY) !== null; } catch (e) { return true; }
-  };
-  const markHintSeen = () => {
-    try { localStorage.setItem(HINT_KEY, "1"); } catch (e) {}
-  };
-  // Set when a nudge is actually built (only when !hintSeen()); the dismissal hooks
-  // (dev-menu open, first Alt-click, Esc) call it. Null when no nudge exists.
-  /** @type {(() => void) | null} */
-  let dismissHint = null;
+  // There is deliberately NO first-run popup pointing at the ◇ dev menu. One shipped
+  // (a localStorage-gated "Alt-click a block / press ? " callout) and was removed: it
+  // could not keep its once-per-browser promise, because the preview runs in origins
+  // whose storage does not persist (a VS Code webview partitions the cross-origin
+  // iframe's localStorage per panel; a port fallback from 4321 to 4322 is a new origin
+  // outright), so it re-nagged on every server start. It was also a second copy of the
+  // `controls live in the browser` line the server already prints at startup
+  // (`log::keys_hint`). Discovery path: that line, then the menu's own `Source` row.
+  // Do not re-add a popup here; make the panel row louder instead.
 
   // --- preview control bar: theme toggle + click-to-source hint ------------
   const inWebview = window.parent !== window;
@@ -416,7 +409,6 @@
       e.stopPropagation();
       panel.hidden = !panel.hidden;
       toggle.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-      if (!panel.hidden && dismissHint) dismissHint(); // opening the menu = the tools were found
     });
     document.addEventListener("click", (e) => {
       if (!panel.hidden && e.target instanceof Node && !host.contains(e.target)) {
@@ -535,67 +527,6 @@
     // Diagnostics, per-cell errors, and a11y findings all live inside the panel.
     panel.append(diagEl, cellErrEl, a11yEl);
     host.append(toggle, panel);
-
-    // First-run nudge: only when never dismissed on this browser.
-    if (!hintSeen()) {
-      const nudge = document.createElement("div");
-      nudge.className = "tali-hint-nudge";
-      nudge.setAttribute("role", "status");
-      nudge.setAttribute("aria-live", "polite");
-      nudge.hidden = true;
-
-      const line1 = document.createElement("div");
-      line1.className = "tali-hint-line";
-      line1.title = "Hold Alt (Option on Mac) and click any block";
-      const kbdAlt = document.createElement("kbd");
-      kbdAlt.textContent = "Alt";
-      const alt1 = document.createElement("span");
-      alt1.textContent = "-click any block to open its source";
-      line1.append(kbdAlt, alt1);
-      nudge.appendChild(line1);
-
-      // `?` opens the reader Settings menu (shortcuts list). It is dead on a deck (the reader
-      // menu is `.tali-deck`-skipped) and when a reader has turned shortcuts off. Omit the line
-      // there, matching the "don't advertise dead keys" discipline in 07-keyboard.js.
-      const shortcutsOn = window.taliShortcutsOn; // local so `strict` narrows the typeof cleanly
-      const askLive =
-        !document.querySelector(".tali-deck") &&
-        (typeof shortcutsOn !== "function" || shortcutsOn());
-      if (askLive) {
-        const line2 = document.createElement("div");
-        line2.className = "tali-hint-line";
-        const pre = document.createElement("span");
-        pre.textContent = "Press";
-        const kbdQ = document.createElement("kbd");
-        kbdQ.textContent = "?";
-        const post = document.createElement("span");
-        post.textContent = "for keyboard shortcuts";
-        line2.append(pre, kbdQ, post);
-        nudge.appendChild(line2);
-      }
-
-      const gotIt = document.createElement("button");
-      gotIt.type = "button";
-      gotIt.className = "tali-hint-dismiss";
-      gotIt.textContent = "Got it";
-      nudge.appendChild(gotIt);
-
-      host.appendChild(nudge);
-
-      let dismissed = false;
-      const dismiss = () => {
-        if (dismissed) return;
-        dismissed = true;
-        nudge.remove();
-        markHintSeen();
-      };
-      dismissHint = dismiss; // expose to the external dismissal hooks (menu-open / Alt-click / Esc)
-      gotIt.addEventListener("click", (e) => { e.stopPropagation(); dismiss(); });
-
-      // Reveal after first paint (the body is already server-rendered, so there is nothing to
-      // wait for); the CSS eases it in unless the reader prefers reduced motion.
-      setTimeout(() => { if (!dismissed) nudge.hidden = false; }, 400);
-    }
 
     setStatus("connecting…");
   })();
@@ -1594,12 +1525,6 @@
       ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
     }
     openSource(el);
-    if (dismissHint) dismissHint(); // they discovered click-to-source; retire the hint
-  });
-
-  // Esc also retires the first-run hint (consistent with the error overlay's Esc-to-dismiss).
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && dismissHint) dismissHint();
   });
 
   // Click-to-source affordance: while Alt is held, make the otherwise-invisible

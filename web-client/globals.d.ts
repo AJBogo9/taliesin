@@ -100,7 +100,7 @@ interface Window {
   /** Programmatic Cmd-K opener (search.js), for the keyboard reader's `/` shortcut. */
   taliOpenSearch?: () => void;
   /** Reader preference: are single-key shortcuts (`f`, `?`, `/`) live?
-   *  (code-enhance/01-registry.js). The first-run nudge omits the `?` line when this
-   *  is present and returns false, matching the "don't advertise dead keys" rule. */
+   *  (code-enhance/01-registry.js). Consult it before advertising one of those keys in
+   *  UI text, matching the "don't advertise dead keys" rule in 07-keyboard.js. */
   taliShortcutsOn?: () => boolean;
 }

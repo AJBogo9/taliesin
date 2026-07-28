@@ -883,28 +883,6 @@ pub(crate) const STATUS_CSS: &str = "\
     @media (prefers-reduced-motion: no-preference) { \
       [data-tali-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
       @keyframes tali-pulse { 50% { opacity: .35; } } \
-    } \
-    .tali-hint-nudge { position: absolute; bottom: calc(100% + .45rem); left: 0; width: 14rem; \
-      display: flex; flex-direction: column; gap: .4rem; padding: .6rem .7rem; \
-      font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; \
-      background: var(--tali-bg, #fff); color: var(--tali-fg, #111); \
-      border: 1px solid var(--tali-border, #e0e0e0); border-radius: 9px; \
-      box-shadow: 0 8px 28px rgba(0,0,0,.2); } \
-    .tali-hint-nudge[hidden] { display: none; } \
-    .tali-hint-nudge::after { content: \"\"; position: absolute; top: 100%; left: 1.1rem; \
-      border: 6px solid transparent; border-top-color: var(--tali-bg, #fff); \
-      filter: drop-shadow(0 1px 0 var(--tali-border, #e0e0e0)); } \
-    .tali-hint-line { display: flex; align-items: baseline; gap: .35rem; color: var(--tali-fg, #111); } \
-    .tali-hint-nudge kbd { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; \
-      padding: .1rem .3rem; border: 1px solid var(--tali-border, #d0d0d0); border-radius: 4px; \
-      background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); } \
-    .tali-hint-dismiss { align-self: flex-end; margin-top: .1rem; cursor: pointer; background: none; \
-      border: none; padding: .15rem .2rem; color: var(--tali-accent, #4c8dff); \
-      font: 600 12px ui-sans-serif, system-ui, sans-serif; } \
-    .tali-hint-dismiss:hover { text-decoration: underline; } \
-    @media (prefers-reduced-motion: no-preference) { \
-      .tali-hint-nudge { animation: tali-hint-in .18s ease-out; } \
-      @keyframes tali-hint-in { from { opacity: 0; transform: translateY(4px); } } \
     }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
@@ -2222,10 +2200,13 @@ mod protocol_contract {
     }
 
     #[test]
-    fn preview_page_ships_first_run_hint_css_and_mount() {
-        // DX2: the first-run nudge is built by client.js into #tali-controls and styled by
-        // STATUS_CSS. Pin both on the assembled single-doc preview page so a future edit can't
-        // silently drop the style (the nudge would then render unstyled) or the mount host.
+    fn preview_page_ships_the_dev_menu_mount() {
+        // client.js builds the ◇ dev menu into #tali-controls, and that panel is the only
+        // surface for diagnostics, per-cell errors, and a11y findings. Drop the host and they
+        // render nowhere, silently, so pin it on the assembled single-doc preview page.
+        //
+        // This test also used to pin `.tali-hint-nudge` CSS for the first-run popup that hung
+        // above the menu. The popup is gone (see the note in client.js); do not re-add either.
         let includes = taliesin_core::render::PageIncludes::default();
         let ctx = PageCtx {
             format: DocFormat::Html,
@@ -2243,12 +2224,8 @@ mod protocol_contract {
         };
         let html = blog_index_html(&ctx);
         assert!(
-            html.contains(".tali-hint-nudge"),
-            "preview page head must ship the first-run nudge CSS (STATUS_CSS)"
-        );
-        assert!(
             html.contains("id=\"tali-controls\""),
-            "preview page must ship the #tali-controls host the nudge mounts into"
+            "preview page must ship the #tali-controls host the dev menu mounts into"
         );
     }
 
