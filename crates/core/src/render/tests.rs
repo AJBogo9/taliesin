@@ -2442,14 +2442,45 @@ fn assembled_page_ships_anchor_links() {
     );
 }
 
+/// Focus/reading mode **and page-level fullscreen are removed** (owner ruling 2026-07-28), and
+/// this pins that they stay removed. Focus mode hid `.tali-site-nav` / `.tali-site-footer` /
+/// `#TOC` and re-centred the column, but measured against a built book chapter it changed
+/// *nothing*: item 76 took the rail, a book's chrome is `.tali-book-topbar` (never
+/// `.tali-site-nav`), and its `.tali-book-sidebar` lives inside the `hidden` drawer. The ruling
+/// extends that to every page kind, and to fullscreen with it: static chrome is not a
+/// distraction, so neither toggle earned its place on a page that is read rather than presented.
+///
+/// **A DECK keeps its own fullscreen** — see the sibling test below. The removed page-level
+/// implementation always early-returned on `.tali-deck`, so the two never shared code; a change
+/// that rips fullscreen out of `deck.js` too passes this test and fails that one.
 #[test]
-fn assembled_page_ships_focus_mode() {
-    let page = render_html_page("# Title\n\nProse to read in focus.\n", "doc");
-    // Focus/reading mode hides site chrome and centers the prose; taliInitFocusMode is its
-    // discriminator, and body.tali-focus is the CSS hook.
+fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
+    let page = render_html_page("# Title\n\nProse to read.\n", "doc");
+    // `body.tali-focus`, not a bare `tali-focus`: `--tali-focus` is the live focus-RING token
+    // in tokens.css, so the bare needle would match on a page that has no focus mode at all.
+    // Likewise `requestFullscreen` is the API call, not the word "fullscreen" — the latter
+    // appears in prose and in the deck bundle.
+    for needle in [
+        "taliInitFocusMode",
+        "body.tali-focus",
+        "__taliFocus",
+        "requestFullscreen",
+    ] {
+        assert!(
+            !page.contains(needle),
+            "focus mode / page fullscreen were removed but `{needle}` is still shipped"
+        );
+    }
+}
+
+/// The other half of the removal's scope: a deck presents, so it keeps the fullscreen it always
+/// owned in `deck.js` (its own `toggleFullscreen`, `F` key, toolbar button and wake-lock).
+#[test]
+fn a_deck_keeps_its_own_fullscreen() {
+    let page = render_html_page("---\nformat: deck\n---\n\n## Slide\n", "deck");
     assert!(
-        page.contains("taliInitFocusMode") && page.contains("tali-focus"),
-        "focus/reading mode not shipped in the assembled page"
+        page.contains("requestFullscreen"),
+        "a deck must keep the fullscreen it owns in deck.js"
     );
 }
 

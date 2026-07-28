@@ -1,6 +1,6 @@
 ---
 title: "The reader experience"
-description: "What a built page gives its reader: theme, reading progress and resume, hover cross-reference cards, anchor links, focus mode and keyboard access."
+description: "What a built page gives its reader: theme, reading progress and resume, hover cross-reference cards, anchor links and keyboard access."
 ---
 
 A Taliesin page is not just rendered HTML, it is a reading surface. Every built
@@ -23,8 +23,8 @@ Two principles hold for everything on this page:
 
 The **Settings** gear opens a light-dismiss popover (not a modal: it never covers or
 inerts the page). On a website it lives in the navbar; on a book, in the topbar; on a
-standalone page it floats in the top-right corner. It hosts three sections, Theme, Focus
-mode, and Keyboard shortcuts. Close it with Esc, a click outside, or the gear again.
+standalone page it floats in the top-right corner. It hosts two sections, Theme and
+Keyboard shortcuts. Close it with Esc, a click outside, or the gear again.
 
 ## Theme
 
@@ -77,17 +77,21 @@ Hovering a heading or a numbered float (figure, table, listing) reveals a small
 check on success and announces "Link copied" for screen readers. It works in
 insecure contexts (a `--host` LAN preview, `file://`) through a clipboard fallback.
 
-## Focus mode
+## No focus mode, and no fullscreen
 
-Press **f** (or use the menu toggle) to enter focus mode: the navbar, footer, TOC,
-and sidebar disappear, and the prose centres into one calm column. The progress bar
-and the Settings gear stay, so you keep your exit paths and your theme control. Press
-**f** again or **Esc** to leave. Focus mode is momentary: it is not remembered across
-reloads, and the `f` key is ignored while you are typing in a field or a dialog is open.
+A reading page has neither a focus/reading mode nor a fullscreen toggle, and that is a
+decision rather than a gap. Both were shipped and then removed: the chrome a page carries
+is a slim topbar or navbar and a footer, all of it static, and static chrome does not
+compete for attention the way a moving sidebar or an ad would. Hiding it bought a reader
+nothing they could feel, while costing them their navigation and two controls to learn.
 
-Focus mode and fullscreen are separate: focus centres the column without filling the
-screen, and **F** (or the Fullscreen menu toggle) fills the screen without hiding the
-chrome. Combine them, or use either alone.
+A book made the point plainly. Once a chapter's right-rail TOC was removed, focus mode
+had literally nothing left to hide there: the sticky topbar was never in its hide list,
+so the toggle was a no-op that still occupied a row in the Settings menu.
+
+Fullscreen stays where it earns its place: a **slide deck**, which is presented rather
+than read, keeps its own `F` shortcut and toolbar button. For a page, the browser's own
+fullscreen (F11) is one key away and belongs to the reader, not to the document.
 
 ## Keyboard and accessibility
 
@@ -99,11 +103,10 @@ is open):
 
 - `?` opens (and closes) the Settings menu, whose Keyboard shortcuts section lists these.
 - `/` opens the search palette.
-- `f` toggles focus mode; `F` toggles fullscreen.
 - `←` / `→` move to the previous / next chapter (in a book).
 - `Esc` closes the open menu, dialog, or palette.
 
-The three single-character shortcuts (`?`, `/`, `f`) can be switched off: the **Shortcuts**
+The two single-character shortcuts (`?`, `/`) can be switched off: the **Shortcuts**
 control sits directly above that list in the Settings menu. A bare letter key is easy to fire
 by accident, especially with speech input, so WCAG 2.1.4 requires a way to turn character-key
 shortcuts off, and this is it. Switching them off hides the list (the keys are dead, so

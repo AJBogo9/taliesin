@@ -21,14 +21,12 @@ function taliInitKeyboard() {
     dl.innerHTML =
       '<div><dt><kbd>?</kbd></dt><dd>Open settings</dd></div>' +
       (hasSearch ? '<div><dt><kbd>/</kbd></dt><dd>Search</dd></div>' : '') +
-      '<div><dt><kbd>f</kbd></dt><dd>Focus mode</dd></div>' +
       (hasChapters ? '<div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Previous / next chapter</dd></div>' : '') +
       '<div><dt><kbd>Esc</kbd></dt><dd>Close</dd></div>';
 
-    // WCAG 2.1.4's turn-off mechanism, sitting directly above the list it governs. Same shape as
-    // the Focus mode row (03-focus-mode.js): a one-button `.tali-reader-seg` reading On/Off with
-    // aria-pressed. It is a sibling of the list, never inside it, so switching shortcuts OFF can
-    // never hide the control that switches them back ON.
+    // WCAG 2.1.4's turn-off mechanism, sitting directly above the list it governs: a one-button
+    // `.tali-reader-seg` reading On/Off with aria-pressed. It is a sibling of the list, never
+    // inside it, so switching shortcuts OFF can never hide the control that switches them back ON.
     var row = document.createElement('div');
     row.className = 'tali-reader-row';
     var label = document.createElement('span');
@@ -37,7 +35,7 @@ function taliInitKeyboard() {
     seg.className = 'tali-reader-seg';
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.title = 'Single-key shortcuts (f, ?, /)';
+    btn.title = 'Single-key shortcuts (?, /)';
     var syncKeys = function () {
       var on = taliShortcutsOn();
       btn.textContent = on ? 'On' : 'Off';

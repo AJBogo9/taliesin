@@ -9,7 +9,6 @@ if (reg) {
   reg.register(function () { taliInitReaderPrefs(); });
   reg.register(function () { taliInitReadingProgress(); });
   reg.register(taliInitAnchorLinks);
-  reg.register(function () { taliInitFocusMode(); });
   reg.register(function () { taliInitSkipLink(); });
   reg.register(function () { taliInitKeyboard(); });
   reg.register(taliInitCategoryFilter);

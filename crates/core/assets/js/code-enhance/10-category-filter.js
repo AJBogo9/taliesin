@@ -15,7 +15,7 @@ function taliInitCategoryFilter(root) {
     if (!wrap || !listing) return;
     // A polite live region announces the result of a filter change; without it the
     // chips silently reorder the page for a screen-reader user. `tali-sr-only` is the
-    // same visually-hidden class 03-focus-mode.js uses for its announcements.
+    // shared visually-hidden class (base.css) every announcement in the bundle uses.
     var live = document.createElement('span');
     live.className = 'tali-sr-only';
     live.setAttribute('aria-live', 'polite');

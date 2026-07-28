@@ -52,20 +52,6 @@
   .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
   @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
-  /* Focus / reading mode (taliInitFocusMode): hide site chrome and centre the prose into one
-     calm column. Reader-side + ephemeral. The reader-menu launcher and the progress bar stay
-     (the exit path + reading support); decks never get the class. */
-  body.tali-focus .tali-site-nav, body.tali-focus .tali-site-footer,
-  body.tali-focus #TOC, body.tali-focus #tali-toc-handle, body.tali-focus #tali-toc-backdrop,
-  body.tali-focus .tali-book-sidebar, body.tali-focus #tali-controls { display: none !important; }
-  /* Collapse each layout's content|TOC grid (single-doc body, site-main) to a single block
-     and centre the reading column at the comfortable measure. A BOOK is not listed: it has
-     no rail and therefore no grid to collapse (item 76) — its column is already one centred
-     `--tali-maxw` box, in focus mode and out of it, and so is its pager. */
-  body.tali-focus.has-toc, body.tali-focus .tali-site-main { display: block; }
-  body.tali-focus main, body.tali-focus .tali-site-main {
-    max-width: var(--tali-maxw); margin-inline: auto; }
-
   /* Reading progress (top bar + "min left") + block-id-anchored resume (taliInitReadingProgress). */
   .tali-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
     z-index: 2147481400; pointer-events: none; }

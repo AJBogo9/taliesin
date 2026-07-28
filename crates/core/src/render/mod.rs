@@ -1720,7 +1720,6 @@ pub fn has_js_cells(body: &str) -> bool {
 const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/01-registry.js"),
     include_str!("../../assets/js/code-enhance/02-anchor-links.js"),
-    include_str!("../../assets/js/code-enhance/03-focus-mode.js"),
     include_str!("../../assets/js/code-enhance/04-focus-trap.js"),
     include_str!("../../assets/js/code-enhance/06-skip-link.js"),
     include_str!("../../assets/js/code-enhance/07-keyboard.js"),

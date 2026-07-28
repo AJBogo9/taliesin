@@ -64,7 +64,6 @@ interface Window {
   __taliLightbox?: boolean;
   __taliLinkPreview?: boolean;
   __taliKeyboard?: boolean;
-  __taliFocus?: boolean;
   __taliSkipLink?: boolean;
   __taliReaderPrefs?: boolean;
   __taliProgress?: boolean;
