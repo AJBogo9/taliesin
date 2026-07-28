@@ -696,6 +696,44 @@ sits in `main.rs`, which a parallel session is rewriting, so it was deliberately
       in either book. Real cross-chapter references would light it up, but they have to be references
       someone means — a writing judgment, not a sweep.
 
+**Preview workflow follow-ups (from the 2026-07-28 preview-workflow branch)**
+
+Phase B + A1 shipped on `preview-workflow-2026-07-28`
+([spec](../docs/superpowers/specs/2026-07-28-preview-workflow-design.md) ·
+[plan](../docs/superpowers/plans/2026-07-28-preview-workflow-phase-b-a1.md)): the callout
+disclosure caret, inverse search on Ctrl/Cmd-click (Alt retired, guarded by
+`the_alt_click_gesture_stays_retired`), forward search split into mark-always /
+scroll-on-`Ctrl+Alt+J`, and one panel + one server per document. These three are what it left.
+
+150. **Phase A2: site-aware in-editor preview.** (MEDIUM, own spec.) Opening a book chapter in the
+     companion previews the single file, so the author gets an orphan page: no nav, dead cross-page
+     links. Resolution rule is the nearest `_site.yml` walking up (the include-root rule, **never**
+     `.git`); the file-to-URL map already exists in Rust as `taliesin map <dir> --format json`
+     (`{rel, url}` per page), so TS reads JSON and reimplements nothing. **The risk is not the
+     wiring:** once the webview navigates between pages, `docPath` goes stale and
+     `resolveSourceFile` (`paths.ts:39`) resolves a `tali-goto` from page B against page A's
+     directory, opening the wrong file. `relativeKey` has the mirror problem. Resolution must key
+     off the project root; `serve_site` already emits `root` in `TALIESIN_DOC`
+     (`serve_site/mod.rs:788`), so the data is there. Write the spec before the code.
+
+151. **Two ui-audit probes assert against selectors that no longer exist.** (LOW, but they are
+     lying gates.) `toc-scrollspy` waits on `#TOC a` and `id="TOC"` appears in **no** emitter, so it
+     can only ever fail; `hover-preview` waits on `#tali-link-preview.open` (that id does still
+     exist in `code-enhance/12-link-preview.js`, so this one needs diagnosing, not just
+     re-selecting). Both predate the preview-workflow branch. A third of the same class **was**
+     fixed there: `click-to-source` clicked the first `[data-block-id]`, which is the title block —
+     it has an id but no `data-sourcepos`, and `locatable()` deliberately refuses to resolve it, so
+     the probe clicked the one element guaranteed to emit nothing.
+
+152. **The companion e2e suite cannot run on this machine.** (LOW, environmental.)
+     `npm run test:e2e` dies with `EMFILE: too many open files, watch '/snap/code'` inside
+     `StorageMainService` during VS Code **startup**, before any extension loads, because
+     `fs.inotify.max_user_instances` is 128 and the running snap VS Code has consumed them. Not a
+     code defect and not fixable from the repo. Either raise the limit
+     (`sudo sysctl fs.inotify.max_user_instances=512`, persisted in `/etc/sysctl.d/`) or run the
+     suite with the editor closed. **Until then the companion e2e certifies nothing**, so do not
+     count it as a passing gate.
+
 ### B. Buildable, but low yield on its own
 
 **Empty.** Item 77's four residuals were the last occupants and shipped 2026-07-27. The band's own

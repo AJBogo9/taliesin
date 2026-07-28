@@ -22,6 +22,7 @@ import {
   probeHover,
   probeToc,
   probeClickToSource,
+  probeCursorSync,
 } from './lib/probe.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,7 @@ const GROUPS = [
     tasks: [
       { feature: 'lightbox', nav: '/', run: probeLightbox },
       { feature: 'click-to-source', nav: '/', run: probeClickToSource, cdp: true },
+      { feature: 'cursor-sync', nav: '/', run: probeCursorSync },
     ],
   },
   {

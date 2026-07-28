@@ -202,3 +202,126 @@ export async function probeClickToSource(page, cdpFrames) {
     });
   });
 }
+
+// 7. Forward search: `tali-cursor` MARKS always and SCROLLS only on `reveal: true`.
+//
+// This is the behaviour change with the least natural coverage and the highest chance
+// of silently regressing: if `reveal` gating is lost, the preview goes back to yanking
+// the page on every keystroke, and nothing else in the suite would notice. The probe
+// drives the same `postMessage` the VS Code host sends, so it exercises the real path.
+//
+// Also asserts the macOS guard: while the inverse-search overlay is armed, `contextmenu`
+// is suppressed, so a Mac author reaching for Ctrl does not get a menu on top of the jump.
+export async function probeCursorSync(page) {
+  const F = 'cursor-sync';
+  return safe(F, 'tali-cursor marks always, scrolls only when reveal is set', async () => {
+    await page.waitForFunction(() => !!window.TALIESIN_DOC, { timeout: 8000 });
+    // The block must start OFF-SCREEN, or the assertion is vacuous: `highlightAtLine`
+    // scrolls only when the target is out of view, so on a short page "did not scroll"
+    // and "reveal is broken" look identical. Pick the last block and require that it is
+    // genuinely below the fold before asserting anything about scrolling.
+    // Smooth scrolling makes every scroll assertion a race: a measurement taken mid-animation
+    // reads a position the page is only passing through. Force instant scrolling for the
+    // duration of the probe, then settle across two frames before measuring.
+    await page.evaluate(() => {
+      const st = document.createElement('style');
+      st.id = 'tali-probe-instant-scroll';
+      st.textContent = 'html, body, * { scroll-behavior: auto !important; }';
+      document.head.appendChild(st);
+      window.scrollTo(0, 0);
+    });
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+    const target = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('[data-block-id][data-sourcepos]')];
+      const last = els[els.length - 1];
+      if (!last) return null;
+      const m = /^(\d+):/.exec(last.getAttribute('data-sourcepos') || '');
+      if (!m) return null;
+      return {
+        line: +m[1],
+        offscreen: last.getBoundingClientRect().top > window.innerHeight,
+        scrollY: Math.round(window.scrollY),
+      };
+    });
+    if (!target) {
+      return fail(F, 'tali-cursor marks always, scrolls only when reveal is set', {
+        error: 'no block with a sourcepos',
+      });
+    }
+
+    // reveal:false — must mark, must NOT move the page.
+    await page.evaluate((line) => {
+      window.postMessage({ type: 'tali-cursor', file: null, line, reveal: false }, '*');
+    }, target.line);
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+    const afterPassive = await page.evaluate(() => ({
+      scrollY: Math.round(window.scrollY),
+      marked: !!document.querySelector('.tali-hl'),
+    }));
+
+    // reveal:true — same message, now it must bring the block into view.
+    await page.evaluate((line) => {
+      window.postMessage({ type: 'tali-cursor', file: null, line, reveal: true }, '*');
+    }, target.line);
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+    const afterReveal = await page.evaluate(() => {
+      const el = document.querySelector('.tali-hl');
+      if (!el) return { scrollY: Math.round(window.scrollY), inView: false };
+      const r = el.getBoundingClientRect();
+      // Not `r.bottom <= innerHeight`: a block taller than the viewport can never satisfy
+      // that, so the strict form would fail on exactly the long blocks worth revealing.
+      return {
+        scrollY: Math.round(window.scrollY),
+        inView: r.top >= 0 && r.top < window.innerHeight,
+      };
+    });
+
+    // contextmenu is suppressed only while the overlay is armed.
+    await page.keyboard.down('Control');
+    await new Promise((r) => setTimeout(r, 100));
+    const armedSuppressed = await page.evaluate(() => {
+      const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      document.body.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+    await page.keyboard.up('Control');
+    await new Promise((r) => setTimeout(r, 100));
+    const idleSuppressed = await page.evaluate(() => {
+      const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      document.body.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+
+    const detail = {
+      markedWithoutReveal: afterPassive.marked,
+      scrollYAfterPassive: afterPassive.scrollY,
+      scrollYAfterReveal: afterReveal.scrollY,
+      inViewAfterReveal: afterReveal.inView,
+      contextmenuSuppressedWhileArmed: armedSuppressed,
+      contextmenuAllowedWhenIdle: !idleSuppressed,
+      revealScrollAsserted: target.offscreen,
+    };
+    if (!afterPassive.marked) return fail(F, 'reveal:false must still mark the block', detail);
+    if (afterPassive.scrollY !== target.scrollY) {
+      return fail(F, 'reveal:false must NOT scroll the page', detail);
+    }
+    // The reveal:true half is asserted only when the target actually started off-screen.
+    // `highlightAtLine` scrolls only for an out-of-view block, so on a short page
+    // "did not scroll" and "reveal is broken" are indistinguishable, and asserting anyway
+    // would be a coin-flip rather than a test. The passive half above is the regression-prone
+    // one and is asserted unconditionally; the reveal keystroke is covered by the manual
+    // checklist in editor/vscode/README.md.
+    if (target.offscreen && !afterReveal.inView) {
+      return fail(F, 'reveal:true must bring the block into view', detail);
+    }
+    if (!armedSuppressed) return fail(F, 'contextmenu must be suppressed while armed', detail);
+    if (idleSuppressed) return fail(F, 'contextmenu must work when not armed', detail);
+    return ok(F, 'tali-cursor marks always, scrolls only when reveal is set', detail);
+  });
+}
