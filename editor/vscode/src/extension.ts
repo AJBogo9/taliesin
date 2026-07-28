@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
 import { PreviewServer } from "./server";
 import { relayHtml } from "./webview";
-import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "./paths";
+import {
+  parseSourcepos,
+  resolveSourceFile,
+  relativeKey,
+  isSourceFile,
+  previewTarget,
+} from "./paths";
 import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
 
@@ -17,19 +23,26 @@ import { registerCommands } from "./commands";
 //      read-only — the preview navigates the editor, it never writes the source.
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("taliesin.openPreview", () => openPreview(context))
+    // The title-bar button passes the resource it belongs to; the keybinding and the palette
+    // pass nothing. `previewTarget` is what reconciles them — see the note there.
+    vscode.commands.registerCommand("taliesin.openPreview", (resource?: vscode.Uri) =>
+      openPreview(context, resource)
+    )
   );
   registerLanguageClient(context);
   registerCommands(context);
 }
 
-async function openPreview(context: vscode.ExtensionContext) {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor || !isSourceFile(editor.document.fileName)) {
+async function openPreview(context: vscode.ExtensionContext, resource?: vscode.Uri) {
+  const active = vscode.window.activeTextEditor?.document;
+  const docPath = previewTarget(
+    resource?.scheme === "file" ? resource.fsPath : null,
+    active?.uri.scheme === "file" ? active.fileName : null
+  );
+  if (!docPath) {
     vscode.window.showWarningMessage("Taliesin: open a .tmd file first.");
     return;
   }
-  const docPath = editor.document.fileName;
   const binary = vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 
   let server: PreviewServer;

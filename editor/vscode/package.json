@@ -84,7 +84,8 @@
       {
         "command": "taliesin.openPreview",
         "title": "Open Preview",
-        "category": "Taliesin"
+        "category": "Taliesin",
+        "icon": "$(open-preview)"
       },
       {
         "command": "taliesin.check",

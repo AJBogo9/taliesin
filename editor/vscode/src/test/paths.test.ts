@@ -7,6 +7,7 @@ import {
   resolveSourceFile,
   relativeKey,
   isSourceFile,
+  previewTarget,
   ACCEPTED_SOURCE_EXTS,
 } from "../paths";
 
@@ -55,4 +56,31 @@ test("relativeKey: the main doc maps to null", () => {
 
 test("relativeKey: an included file maps to its relative path", () => {
   assert.equal(relativeKey("/p/post/index.tmd", "/p/_includes/x.tmd"), "../_includes/x.tmd");
+});
+
+// The reported bug: the title-bar button "sometimes gives errors", the keybinding never
+// does. They disagree about what is active — the button names its resource and does not
+// have to focus it, so `activeTextEditor` may be a webview (a preview already open, hence
+// "sometimes") or another file entirely. The keybinding is gated on a focused .tmd editor,
+// which is exactly why it always worked.
+test("previewTarget: the clicked resource wins over whatever is focused", () => {
+  assert.equal(previewTarget("/p/post/index.tmd", "/p/other.tmd"), "/p/post/index.tmd");
+});
+
+test("previewTarget: no resource falls back to the active editor", () => {
+  // The keybinding and the command palette pass no argument at all.
+  assert.equal(previewTarget(null, "/p/post/index.tmd"), "/p/post/index.tmd");
+});
+
+test("previewTarget: a focused webview leaves only the clicked resource", () => {
+  // `activeTextEditor` is undefined whenever a webview holds focus, which is the state the
+  // button put the user in after the first preview was opened.
+  assert.equal(previewTarget("/p/post/index.tmd", null), "/p/post/index.tmd");
+});
+
+test("previewTarget: nothing previewable is null, not a guess", () => {
+  assert.equal(previewTarget(null, null), null);
+  assert.equal(previewTarget("/p/notes.md", null), null);
+  // A non-.tmd resource must not shadow a perfectly good active .tmd.
+  assert.equal(previewTarget("/p/notes.md", "/p/post/index.tmd"), "/p/post/index.tmd");
 });
