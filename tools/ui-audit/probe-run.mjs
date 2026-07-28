@@ -51,8 +51,16 @@ const GROUPS = [
     kind: 'site',
     tasks: [
       { feature: 'search', nav: '/architecture.html', run: (p) => probeSearch(p) },
-      { feature: 'toc-scrollspy', nav: '/architecture.html', run: probeToc },
     ],
+  },
+  // The right-rail TOC is a NON-BOOK surface: `Site::page_toc` returns false for a book
+  // ahead of the page's own `toc:`, so no chapter of `docs/internals` has ever emitted a
+  // `#TOC` and the probe that pointed there could only fail. `corpus/analyst` is a plain
+  // site with `toc: true` and enough headings on both pages.
+  {
+    target: 'corpus/analyst',
+    kind: 'site',
+    tasks: [{ feature: 'toc-scrollspy', nav: '/methods.html', run: probeToc }],
   },
   {
     target: 'corpus/demo-book',

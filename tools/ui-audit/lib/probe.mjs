@@ -115,28 +115,90 @@ export async function probeHover(page) {
   const F = 'hover-preview';
   return safe(F, 'hovering an xref opens a populated preview card', async () => {
     await page.waitForSelector('a.tali-xref', { timeout: 8000 });
-    const box = await page.evaluate(() => {
-      const a = document.querySelector('a.tali-xref');
-      const r = a.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+
+    // The first `a.tali-xref` on the page is NOT a valid probe target, and picking it is
+    // why this probe failed for months while the feature worked. On `results.html` it is
+    // `methods.html#sec-methods`, a SECTION reference — and a section anchor is
+    // deliberately absent from the hover index (a heading's title is already the link
+    // text, so a card would add noise). The probe hovered the one link guaranteed to open
+    // nothing. Same shape as the click-to-source probe clicking the title block.
+    //
+    // So: pick a link whose target the feature actually previews, and cover BOTH paths —
+    // a same-page `#anchor` (cloned from this DOM) and a cross-page `page.html#anchor`
+    // (parsed from the served hover index).
+    const hoverAndOpen = async (selectorFn, label) => {
+      const box = await page.evaluate(selectorFn);
+      if (!box) return { [label]: 'no eligible link on the page' };
+      // Scroll it under the pointer first: `mouse.move` to a rect outside the viewport
+      // hovers nothing, and a link below the fold has exactly that rect.
+      await page.evaluate((sel) => {
+        document.querySelector(sel)?.scrollIntoView({ block: 'center' });
+      }, box.sel);
+      const at = await page.evaluate((sel) => {
+        const r = document.querySelector(sel).getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }, box.sel);
+      await page.mouse.move(at.x, at.y);
+      await page.waitForSelector('#tali-link-preview.open', { timeout: 4000 });
+      const detail = await page.evaluate(() => {
+        const card = document.querySelector('#tali-link-preview');
+        return {
+          populated: (card?.childElementCount || 0) > 0,
+          strippedSourceAttrs: !card?.querySelector(
+            '[data-block-id], [data-sourcepos], [data-source-file]',
+          ),
+        };
+      });
+      // Dismiss before the next hover, so the second assertion cannot pass on the first
+      // card still being open.
+      await page.mouse.move(1, 1);
+      await page.waitForFunction(
+        () => !document.querySelector('#tali-link-preview.open'),
+        { timeout: 4000 },
+      );
+      return { [label]: detail };
+    };
+
+    // Same-page: an `#anchor` xref whose target is not a heading.
+    const same = await hoverAndOpen(() => {
+      const links = [...document.querySelectorAll('a.tali-xref')];
+      const hit = links.find((a) => {
+        const href = a.getAttribute('href') || '';
+        if (href.charAt(0) !== '#' || href.length < 2) return false;
+        const t = document.getElementById(decodeURIComponent(href.slice(1)));
+        return !!t && !/^H[1-6]$/.test(t.tagName);
+      });
+      return hit ? { sel: `a.tali-xref[href="${hit.getAttribute('href')}"]` } : null;
+    }, 'samePage');
+
+    // Cross-page: the hover index is lazy-loaded on the first cross-page hover, so warm it
+    // by hovering any cross-page xref, then pick one whose anchor the index actually has.
+    await page.evaluate(() => {
+      const a = [...document.querySelectorAll('a.tali-xref')].find((x) => {
+        const h = x.getAttribute('href') || '';
+        return h.charAt(0) !== '#' && h.includes('#');
+      });
+      a?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
-    await page.mouse.move(box.x, box.y);
-    await page.waitForSelector('#tali-link-preview.open', { timeout: 4000 });
-    const populated = await page.evaluate(
-      () =>
-        (document.querySelector('#tali-link-preview')?.childElementCount || 0) >
-        0,
-    );
-    const cardHasSourceAttrs = await page.evaluate(
-      () =>
-        !!document.querySelector(
-          '#tali-link-preview [data-block-id], #tali-link-preview [data-sourcepos]',
-        ),
-    );
-    return ok(F, 'hovering an xref opens a populated preview card', {
-      populated,
-      cardStrippedSourceAttrs: !cardHasSourceAttrs,
-    });
+    await page.waitForFunction(() => !!window.TALIESIN_HOVER_INDEX, { timeout: 4000 });
+    const cross = await hoverAndOpen(() => {
+      const index = window.TALIESIN_HOVER_INDEX || {};
+      const hit = [...document.querySelectorAll('a.tali-xref')].find((a) => {
+        const href = a.getAttribute('href') || '';
+        if (href.charAt(0) === '#' || !href.includes('#')) return false;
+        return !!index[decodeURIComponent(href.slice(href.indexOf('#') + 1))];
+      });
+      return hit ? { sel: `a.tali-xref[href="${hit.getAttribute('href')}"]` } : null;
+    }, 'crossPage');
+
+    // A floor: "no eligible link" must read as a failure, not as a quiet pass. Without it
+    // a page that lost its xrefs would report green.
+    const detail = { ...same, ...cross };
+    const opened = (v) => v && typeof v === 'object' && v.populated;
+    if (!opened(detail.samePage) || !opened(detail.crossPage)) {
+      return fail(F, 'hovering an xref opens a populated preview card', detail);
+    }
+    return ok(F, 'hovering an xref opens a populated preview card', detail);
   });
 }
 
@@ -144,7 +206,26 @@ export async function probeHover(page) {
 export async function probeToc(page) {
   const F = 'toc-scrollspy';
   return safe(F, 'scrolling marks an active TOC entry', async () => {
-    await page.waitForSelector('#TOC a', { timeout: 8000 });
+    // `#TOC` IS emitted (`render/mod.rs`'s `toc_html`) — the earlier reading that no
+    // emitter produced it was wrong. What is true is that a BOOK never gets one:
+    // `Site::page_toc` returns `false` for a book ahead of the page's own `toc:`, by the
+    // 2026-07-27 ruling that made the chapter drawer a book's only nav surface. This probe
+    // pointed at `docs/internals`, a book, so it could only ever fail. It now runs against
+    // a non-book site page (`probe-run.mjs` owns the target).
+    await page.waitForSelector('#TOC a[href^="#"]', { timeout: 8000 });
+    // The scrollspy binds heading ids, so a TOC whose links resolve to nothing would sit
+    // permanently inactive and look like a regression in the spy rather than the page.
+    const bound = await page.evaluate(
+      () =>
+        [...document.querySelectorAll('#TOC a[href^="#"]')].filter((a) =>
+          document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1))),
+        ).length,
+    );
+    if (bound < 2) {
+      return fail(F, 'scrolling marks an active TOC entry', {
+        error: `only ${bound} TOC link(s) resolve to a heading on this page`,
+      });
+    }
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
     await page.waitForFunction(
       () => !!document.querySelector('#TOC a.tali-toc-active'),
@@ -155,7 +236,7 @@ export async function probeToc(page) {
         document.querySelector('#TOC a.tali-toc-active')?.textContent?.trim() ||
         '',
     );
-    return ok(F, 'scrolling marks an active TOC entry', { active });
+    return ok(F, 'scrolling marks an active TOC entry', { active, bound });
   });
 }
 
