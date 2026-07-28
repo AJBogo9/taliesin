@@ -32,7 +32,35 @@ export function activate(context: vscode.ExtensionContext) {
     // pass nothing. `previewTarget` is what reconciles them — see the note there.
     vscode.commands.registerCommand("taliesin.openPreview", (resource?: vscode.Uri) =>
       openPreview(context, resource)
-    )
+    ),
+    // Forward search, active half: put the preview where the cursor is, on request.
+    // The passive half (marking, never scrolling) rides the selection listener in
+    // `openPreview` and sends `reveal: false`.
+    vscode.commands.registerCommand("taliesin.revealInPreview", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || !isSourceFile(editor.document.fileName)) {
+        vscode.window.showWarningMessage("Taliesin: open a .tmd file first.");
+        return;
+      }
+      const target = previews.previewFor(editor.document.fileName);
+      if (!target) {
+        vscode.window.showWarningMessage(
+          previews.size > 1
+            ? "Taliesin: several previews are open. Open this document's preview to reveal in it."
+            : "Taliesin: open a preview first (Ctrl+Shift+K)."
+        );
+        return;
+      }
+      // preserveFocus: revealing must not steal the cursor from the editor the author is
+      // typing in — the whole point is to look at the preview without leaving the text.
+      target.panel.reveal(vscode.ViewColumn.Beside, true);
+      target.panel.webview.postMessage({
+        type: "tali-cursor",
+        file: relativeKey(target.docPath, editor.document.fileName),
+        line: editor.selection.active.line + 1,
+        reveal: true,
+      });
+    })
   );
   registerLanguageClient(context);
   registerCommands(context);

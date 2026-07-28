@@ -132,6 +132,11 @@
         "icon": "$(open-preview)"
       },
       {
+        "command": "taliesin.revealInPreview",
+        "title": "Reveal Cursor in Preview",
+        "category": "Taliesin"
+      },
+      {
         "command": "taliesin.check",
         "title": "Check This Document",
         "category": "Taliesin"
@@ -173,6 +178,10 @@
         {
           "command": "taliesin.insertMathSymbol",
           "when": "editorLangId == taliesin"
+        },
+        {
+          "command": "taliesin.revealInPreview",
+          "when": "resourceExtname == .tmd"
         }
       ]
     },
@@ -187,6 +196,12 @@
         "command": "taliesin.insertMathSymbol",
         "key": "ctrl+alt+m",
         "mac": "cmd+alt+m",
+        "when": "editorLangId == taliesin && editorTextFocus"
+      },
+      {
+        "command": "taliesin.revealInPreview",
+        "key": "ctrl+alt+j",
+        "mac": "cmd+alt+j",
         "when": "editorLangId == taliesin && editorTextFocus"
       }
     ],
