@@ -36,13 +36,20 @@ function previewPids(): Set<string> {
 const TEST_VSCODE_DIR = path.resolve(__dirname, "../../.vscode-test");
 
 /**
- * PIDs of helper processes belonging to the harness's OWN VS Code install.
+ * PIDs of orphaned crash handlers belonging to the harness's OWN VS Code install.
  *
- * Scoped to `.vscode-test/` on purpose: the author's real editor is a different install
- * entirely, and must never be a candidate for reaping.
+ * **Two narrowings, and both matter.** Scoped to `.vscode-test/`, because the author's real
+ * editor is a different install and must never be a candidate. And scoped to
+ * `chrome_crashpad_handler` rather than everything under that directory, because the wider
+ * predicate would also match a *live* `code` main process and extension host — so two runs
+ * overlapping (or anyone running this suite while another copy is mid-flight) would have one
+ * SIGTERM the other's editor out from under it. A crash handler is a leaf process whose
+ * editor has already exited; killing one can only ever reclaim a leak.
  */
 function harnessHelperPids(): Set<string> {
-  return pidsWhere((args) => args.startsWith(TEST_VSCODE_DIR));
+  return pidsWhere(
+    (args) => args.startsWith(TEST_VSCODE_DIR) && args.includes("chrome_crashpad_handler")
+  );
 }
 
 /**

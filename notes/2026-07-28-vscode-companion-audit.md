@@ -780,10 +780,35 @@ ambient machine state, not anything this repo leaked, and the fix is
 `sudo sysctl -w fs.inotify.max_user_instances=512` — the author's call, not a change to make
 on their behalf.
 
-So: the suite's **16 passing** was measured on four consecutive runs *before* saturation, and
-the `runTest.ts` reaper itself is **compile-verified only** (`tsc` clean, and its predicate is
-the same one that correctly matched exactly the 20 orphans by hand while leaving `/snap/code`
-and the author's two preview servers untouched). It has not been exercised end to end.
+**The reaper is verified.** A later window opened and the suite ran green with
+`reaped 1 orphaned VS Code helper process(es) from .vscode-test` on stdout — so it fires on
+the real path, finds exactly the leak, and leaves everything else alone. (An earlier revision
+of this note said "compile-verified only"; that is now out of date.)
+
+**Do not run this suite in parallel to get more coverage.** Three reasons, and the third was a
+live bug:
+
+1. It cannot help. Concurrency does not widen coverage — the same 16 tests exercise the same
+   paths — and the only thing repetition buys is flake detection, which *sequential* repeats
+   measure without adding contention.
+2. It cannot work here. Every instance needs its own inotify budget from a pool already 22
+   over its ceiling, so N at once fails N times instead of once.
+3. It shares mutable state. The suite writes `taliesin.path` at `ConfigurationTarget.Global`
+   into one `.vscode-test/user-data`, so two runs race on the same settings file. And
+   `assertNoLeakedPreviews` snapshots preview PIDs before and after: a concurrent run's
+   preview looks exactly like a leak, so run A fails on run B's process.
+
+The third reason had teeth in `reapHarnessHelpers` too. Its first predicate was "anything
+under `.vscode-test/`", which matches a **live** `code` main process and extension host, not
+just leaks — two overlapping runs would have SIGTERMed each other's editor mid-test. It is now
+narrowed to `chrome_crashpad_handler`, a leaf process whose editor has already exited, so the
+worst case is reclaiming a leak. Both narrowings matter: the directory scope keeps the
+author's real editor out of range, and the process-name scope keeps live instances out.
+
+**Still environment-blocked.** Across every run today the outcome was binary — **16/16, or VS
+Code failing to start before a single test ran.** There was never a test failure. Raising
+`fs.inotify.max_user_instances` (128, with ~150 in use by ordinary desktop processes) is the
+only thing that makes the suite runnable on demand here, and it needs the author's `sudo`.
 
 ### Left open
 
