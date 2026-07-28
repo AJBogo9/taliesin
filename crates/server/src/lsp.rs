@@ -33,12 +33,23 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         )),
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        // `{{< include >}}` / `{{< embed >}}` paths. Go-to-definition already resolved
+        // these, but a definition is invisible: nothing on screen says the path is
+        // navigable, so it is only found by an author who already guessed. A document link
+        // is the affordance editors paint for exactly this.
+        document_link_provider: Some(lsp_types::DocumentLinkOptions {
+            // Every link is resolved in one pass (the target is a plain file path), so
+            // there is nothing for a second `documentLink/resolve` round trip to add.
+            resolve_provider: Some(false),
+            work_done_progress_options: Default::default(),
+        }),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         completion_provider: Some(CompletionOptions {
             // The chars that open a completable context: `@` (xref/cite), `.` (div class),
-            // `|` (cell option), `-` (xref prefix), `/` (path), `:` (front-matter value).
+            // `|` (cell option), `-` (xref prefix), `/` (path), `:` (front-matter value),
+            // `\` (a math command, inside `$…$` only).
             trigger_characters: Some(
-                ["@", ".", "|", "-", "/", ":"]
+                ["@", ".", "|", "-", "/", ":", "\\"]
                     .iter()
                     .map(|s| s.to_string())
                     .collect(),
@@ -236,8 +247,8 @@ fn handle_request(
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, Completion, DocumentSymbolRequest, GotoDefinition, HoverRequest,
-        PrepareRenameRequest, Rename, Request as _,
+        CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest, GotoDefinition,
+        HoverRequest, PrepareRenameRequest, Rename, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -267,6 +278,16 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(resolve_hover(docs, &params))?),
+            error: None,
+        }
+    } else if req.method == DocumentLinkRequest::METHOD {
+        let params: lsp_types::DocumentLinkParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(document_links(
+                docs,
+                &params.text_document.uri,
+            ))?),
             error: None,
         }
     } else if req.method == DocumentSymbolRequest::METHOD {
@@ -464,7 +485,31 @@ fn resolve_hover(
             }
             None
         }
-        Target::Include { .. } | Target::None => None,
+        // `{{< include x.tmd >}}` → where the path resolves, and whether it is there. This
+        // used to answer nothing even though the target was classified and go-to-definition
+        // resolved it, so the one cue that a spliced-in file is navigable was missing from
+        // the place an author looks first.
+        Target::Include { path, start, end } => {
+            let dir = uri.to_file_path().ok()?.parent()?.to_path_buf();
+            let target = dir.join(&path);
+            if target.exists() {
+                let href = lsp_types::Url::from_file_path(&target).ok()?;
+                markup(
+                    format!(
+                        "[`{path}`]({href}) — spliced in here.\n\nCtrl-click (Cmd-click on macOS) to open it."
+                    ),
+                    start,
+                    end,
+                )
+            } else {
+                markup(
+                    format!("`{path}` — **not found** relative to this document."),
+                    start,
+                    end,
+                )
+            }
+        }
+        Target::None => None,
     }
 }
 
@@ -600,8 +645,8 @@ fn resolve_rename(
 
 /// Resolve completion at the cursor: route to the vocabulary that applies (front-matter key /
 /// value, cell option, div class, xref, cite, shortcode path) and emit its items. `None` when
-/// the cursor is in no completable context. A port of the companion's `completions.ts`,
-/// drawing on the same Rust-authoritative `vocab` + live document scans.
+/// the cursor is in no completable context. Draws on the Rust-authoritative `vocab` plus
+/// live document scans; this is the only implementation (the companion is an LSP client).
 fn resolve_completion(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     params: &lsp_types::CompletionParams,
@@ -715,6 +760,200 @@ fn resolve_completion(
                 }
             }
             out
+        }
+        // `\alpha`, `\frac{}{}`, `\begin{cases}` … inside `$…$`. Each item REPLACES the
+        // typed control sequence (rather than appending to it), so accepting `\frac` after
+        // typing `\fr` cannot leave `\fr\frac`. Commands that take arguments insert an LSP
+        // snippet, so the cursor lands in the first placeholder.
+        Ctx::MathCommand { typed } => {
+            let start_char = cursor_char.saturating_sub(typed.chars().count());
+            let replace = Range::new(
+                Position::new(
+                    pos.line,
+                    crate::lsp_pos::char_to_utf16(line, start_char) as u32,
+                ),
+                Position::new(pos.line, pos.character),
+            );
+            vocab["mathCommands"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|e| {
+                            let name = e["name"].as_str()?;
+                            // The typed text always starts with `\`, so a one-char `\` matches
+                            // everything, which is the point of triggering on the backslash.
+                            if !name.starts_with(typed.as_str()) {
+                                return None;
+                            }
+                            let snippet = e["snippet"].as_str().unwrap_or("");
+                            let insert = if snippet.is_empty() { name } else { snippet };
+                            let category = e["category"].as_str().unwrap_or("");
+                            Some(CompletionItem {
+                                label: name.to_string(),
+                                kind: Some(CompletionItemKind::FUNCTION),
+                                detail: Some(format!(
+                                    "{}  ·  {category}",
+                                    e["description"].as_str().unwrap_or("")
+                                )),
+                                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                                text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                                    range: replace,
+                                    new_text: insert.to_string(),
+                                })),
+                                // Sort by name so the list reads alphabetically rather than
+                                // in the vocabulary's category order, which looks arbitrary
+                                // once it is filtered down to a few matches.
+                                sort_text: Some(name.to_string()),
+                                ..Default::default()
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+        // `{{< ` then a name. Each item inserts the full `name ` so the path/argument
+        // completion that follows opens straight away.
+        Ctx::ShortcodeName { typed } => crate::lsp_complete::shortcode_names()
+            .iter()
+            .filter(|(name, _)| name.starts_with(typed.as_str()))
+            .map(|(name, description)| CompletionItem {
+                label: name.to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some(description.to_string()),
+                insert_text: Some(format!("{name} ")),
+                ..Default::default()
+            })
+            .collect(),
+        // ` ```{py ` -> the cell languages, with the executed ones marked (a `{bash}` cell
+        // labelled `fig-…` never produces a figure, so the split has to be visible here).
+        Ctx::CellLanguage { typed } => vocab["cellLanguages"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| {
+                        let name = e["name"].as_str()?;
+                        if !name.starts_with(typed.as_str()) {
+                            return None;
+                        }
+                        Some(item(
+                            name.to_string(),
+                            e["description"].as_str().unwrap_or("").to_string(),
+                            if e["executes"].as_bool().unwrap_or(false) {
+                                CompletionItemKind::EVENT
+                            } else {
+                                CompletionItemKind::VALUE
+                            },
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        // `{#` -> the cross-reference prefixes. Defining an anchor is where the prefix has
+        // to be right; `@` already offered them for referencing one.
+        Ctx::AnchorId { typed } => vocab["xrefPrefixes"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| {
+                        let prefix = format!("{}-", e["prefix"].as_str()?);
+                        if !prefix.starts_with(typed.as_str()) {
+                            return None;
+                        }
+                        Some(item(
+                            prefix,
+                            format!("{} anchor", e["label"].as_str().unwrap_or("")),
+                            CompletionItemKind::REFERENCE,
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        // `{{< input type=` -> the control kinds. `inputTypes` has been in the vocabulary
+        // since it was written and nothing ever read it.
+        Ctx::InputType { typed } => vocab["inputTypes"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| {
+                        let name = e.as_str()?;
+                        name.starts_with(typed.as_str()).then(|| {
+                            item(
+                                name.to_string(),
+                                "reader-facing control".to_string(),
+                                CompletionItemKind::VALUE,
+                            )
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        // A `#| echo: ` style option whose value has a closed set.
+        Ctx::CellOptionValue { key, typed } => crate::lsp_complete::cell_option_values(&key)
+            .iter()
+            .filter(|(value, _)| value.starts_with(typed.as_str()))
+            .map(|(value, description)| {
+                item(
+                    value.to_string(),
+                    description.to_string(),
+                    CompletionItemKind::VALUE,
+                )
+            })
+            .collect(),
+        // Any other path position: a path-valued front-matter key, a markdown link or image
+        // target. `bibliography:`/`css:`/`image:` were detected as value positions all
+        // along and then answered nothing, because the only value vocabulary was the two
+        // word lists (`format`, `theme`).
+        Ctx::Path { typed, kind } => {
+            let doc_dir = uri.to_file_path().ok()?;
+            let doc_dir = doc_dir.parent()?.to_path_buf();
+            let dir_part = match typed.rfind('/') {
+                Some(s) => &typed[..s + 1],
+                None => "",
+            };
+            let entries: Vec<crate::lsp_complete::DirEntry> =
+                std::fs::read_dir(doc_dir.join(dir_part))
+                    .ok()?
+                    .filter_map(|e| e.ok())
+                    .map(|e| crate::lsp_complete::DirEntry {
+                        name: e.file_name().to_string_lossy().into_owned(),
+                        is_dir: e.file_type().map(|t| t.is_dir()).unwrap_or(false),
+                    })
+                    .collect();
+            let start_char = cursor_char.saturating_sub(typed.chars().count());
+            let replace = Range::new(
+                Position::new(
+                    pos.line,
+                    crate::lsp_pos::char_to_utf16(line, start_char) as u32,
+                ),
+                Position::new(pos.line, pos.character),
+            );
+            crate::lsp_complete::path_candidates(&entries, &typed, kind.extensions(), kind.detail())
+                .into_iter()
+                .map(|c| {
+                    let is_dir = c.value.ends_with('/');
+                    CompletionItem {
+                        label: c.value.clone(),
+                        kind: Some(if is_dir {
+                            CompletionItemKind::FOLDER
+                        } else {
+                            CompletionItemKind::FILE
+                        }),
+                        detail: Some(c.detail),
+                        filter_text: Some(c.value.clone()),
+                        text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                            range: replace,
+                            new_text: c.value,
+                        })),
+                        // A directory keeps the menu open so you can descend without re-typing.
+                        command: is_dir.then(|| lsp_types::Command {
+                            title: String::new(),
+                            command: "editor.action.triggerSuggest".to_string(),
+                            arguments: None,
+                        }),
+                        ..Default::default()
+                    }
+                })
+                .collect()
         }
         Ctx::Cite => {
             let dir = uri.to_file_path().ok()?;
@@ -873,6 +1112,53 @@ fn frontmatter_key_doc(parent: Option<&str>, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// `textDocument/documentLink`: the `{{< include >}}` / `{{< embed >}}` paths in `uri`, each
+/// pointing at the file it resolves to.
+///
+/// Only a target that EXISTS on disk becomes a link. A missing path is `check`'s finding to
+/// report (`TAL-INCLUDE-*`), and painting it as a link would promise a jump that lands on
+/// nothing, which reads as a broken editor rather than a broken path.
+fn document_links(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    uri: &lsp_types::Url,
+) -> Option<Vec<lsp_types::DocumentLink>> {
+    use lsp_types::{DocumentLink, Position, Range};
+    let text = docs.get(uri)?;
+    // Paths resolve against the including file's own directory, the same base
+    // `includes::resolve` recurses with. An untitled buffer has no directory, so nothing
+    // can be resolved against it.
+    let dir = uri.to_file_path().ok()?.parent()?.to_path_buf();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let links = crate::lsp_links::path_links(text)
+        .into_iter()
+        .filter_map(|l| {
+            let target = dir.join(&l.path);
+            if !target.exists() {
+                return None;
+            }
+            // Scalar columns in, UTF-16 on the wire (`lsp_pos`), converted against the
+            // link's own line so an astral char earlier in it cannot shift the span.
+            let line_text = lines.get(l.line as usize).copied().unwrap_or("");
+            Some(DocumentLink {
+                range: Range::new(
+                    Position::new(
+                        l.line,
+                        crate::lsp_pos::char_to_utf16(line_text, l.start) as u32,
+                    ),
+                    Position::new(
+                        l.line,
+                        crate::lsp_pos::char_to_utf16(line_text, l.end) as u32,
+                    ),
+                ),
+                target: lsp_types::Url::from_file_path(&target).ok(),
+                tooltip: Some(format!("Open {}", l.path)),
+                data: None,
+            })
+        })
+        .collect();
+    Some(links)
+}
+
 /// The heading outline for `uri` as nested LSP document symbols, or `None` when the buffer
 /// is unknown.
 fn document_symbols(
@@ -890,7 +1176,7 @@ fn document_symbols(
 
 /// Convert one outline node (and its children) to an LSP `DocumentSymbol`. `range` spans the
 /// whole section; `selection_range` is the heading line (contained in `range`). Mirrors the
-/// companion's `outline-provider.ts` mapping.
+/// heading level, so breadcrumbs and sticky scroll read as a document outline.
 fn to_document_symbol(
     node: &crate::lsp_outline::OutlineNode,
     lines: &[&str],
@@ -2610,6 +2896,10 @@ mod tests {
         );
         assert_eq!(caps["definitionProvider"], true);
         assert_eq!(caps["documentSymbolProvider"], true);
+        assert_eq!(
+            caps["documentLinkProvider"]["resolveProvider"], false,
+            "include/embed paths are the only visible cue that they are navigable"
+        );
         assert_eq!(caps["hoverProvider"], true);
         assert_eq!(caps["codeActionProvider"], true);
         assert_eq!(
@@ -2620,7 +2910,7 @@ mod tests {
         // `:` front-matter value. A dropped trigger character is a completion that never opens.
         assert_eq!(
             caps["completionProvider"]["triggerCharacters"],
-            serde_json::json!(["@", ".", "|", "-", "/", ":"])
+            serde_json::json!(["@", ".", "|", "-", "/", ":", "\\"])
         );
 
         client

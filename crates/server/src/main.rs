@@ -20,6 +20,7 @@ mod kernel;
 mod log;
 mod lsp;
 mod lsp_complete;
+mod lsp_links;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
