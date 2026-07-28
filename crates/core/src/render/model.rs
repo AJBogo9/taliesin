@@ -110,7 +110,7 @@ pub struct Block {
     /// through", and the reader gets a better answer from the first.
     ///
     /// The web client honours that distinction: `usableSourcepos` in
-    /// `web-client/client.js` accepts only `L:C…` with a 1-based line, and Alt-click
+    /// `web-client/client.js` accepts only `L:C…` with a 1-based line, and Ctrl-click
     /// walks *past* an unusable block to the nearest ancestor that has one. So an empty
     /// sourcepos costs nothing — click-to-source simply resolves to the enclosing thing
     /// that does know where it came from, and a nested unit that knows its own line (a

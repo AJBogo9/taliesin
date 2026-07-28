@@ -213,7 +213,7 @@ fn is_safe_data_image(url: &str) -> bool {
 /// collects notes from many scattered lines, so only the individual definition has a
 /// real source range. It therefore carries its own `data-sourcepos` (+ `data-source-file`
 /// when the definition came from an `{{< include >}}`d file) AND a `data-block-id` —
-/// client.js `locatable()` resolves an Alt-click with
+/// client.js `locatable()` resolves a Ctrl-click with
 /// `closest("[data-tali-src], [data-block-id]")`, so a `data-sourcepos` alone would be
 /// walked straight past. The id is namespaced `fn-…`, which cannot collide with a
 /// content-hashed block id (`make_id` emits `b-…`).

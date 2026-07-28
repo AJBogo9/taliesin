@@ -56,7 +56,7 @@ they are just consumers of the core's stable protocol:
   in place with `// @ts-check` + `tsc` against `globals.d.ts`; there is no bundler.
 - **`editor/vscode/`** is the VS Code companion, with its own npm/TypeScript build.
   It hosts the live preview in a webview and is the missing *producer* for the
-  source-sync protocol the browser client already consumes: Alt-click in the
+  source-sync protocol the browser client already consumes: Ctrl-click in the
   preview jumps the editor, and moving the editor cursor highlights the matching
   block. It is the first non-browser client of the protocol, which is the whole
   point of keeping that protocol open.

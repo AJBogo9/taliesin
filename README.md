@@ -9,7 +9,7 @@ A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
 files: blog posts, slide decks, books, and **multi-page websites**. Built for
 one author's workflow around three goals:
 
-1. **Click-to-source.** Alt-click (Option-click on Mac) a rendered element, jump to its `.tmd` source.
+1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) a rendered element, jump to its `.tmd` source.
 2. **Block-level incremental updates.** Saving a change swaps only the affected
    block(s) in place, preserving scroll position and the runtime state of live
    components (Three.js, `{js}` cells).
@@ -23,7 +23,7 @@ and block model).
 ## Architecture (at a glance)
 
 An editor-agnostic Rust dev server owns all logic behind a versioned websocket
-protocol. A plain browser preview is the client; Alt-clicking a block opens
+protocol. A plain browser preview is the client; Ctrl-clicking a block opens
 its source in your editor (a `vscode://` deep link by default). The protocol is
 open, so a third-party editor client (a VS Code extension, etc.) can speak it too.
 
@@ -121,7 +121,7 @@ against a warm Jupyter kernel** (re-running only the earliest changed cell and
 everything downstream), diffs against the previous block list, and pushes only the
 changed blocks over a websocket. Unchanged blocks are never touched, so scroll
 position and the runtime state of live blocks (Three.js, `{js}` cells) survive edits. Open
-the preview in a browser; Alt-clicking a block jumps to its `.tmd` source.
+the preview in a browser; Ctrl-clicking a block jumps to its `.tmd` source.
 
 Point it at a **single file** or a **directory** (a multi-page site project):
 

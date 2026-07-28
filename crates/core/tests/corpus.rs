@@ -875,7 +875,7 @@ fn footnote_lis_are_locatable() {
     // pin the nested units directly.
     //
     // `data-block-id` is load-bearing and not decorative here: client.js `locatable()`
-    // matches `closest("[data-tali-src], [data-block-id]")`, so without it an Alt-click
+    // matches `closest("[data-tali-src], [data-block-id]")`, so without it a Ctrl-click
     // walks past the note up to the section, which has no sourcepos, and `openSource`
     // falls back to line 1 of the document — silently the wrong line, not a no-op.
     let mut files = Vec::new();
@@ -900,7 +900,7 @@ fn footnote_lis_are_locatable() {
     }
     assert!(
         offenders.is_empty(),
-        "footnote <li> missing data-block-id/data-sourcepos (Alt-click would land on \
+        "footnote <li> missing data-block-id/data-sourcepos (Ctrl-click would land on \
          line 1):\n{}",
         offenders.join("\n")
     );
@@ -911,7 +911,7 @@ fn footnote_lis_are_locatable() {
 #[test]
 fn gathered_sections_stay_unlocatable() {
     // The other half of the contract `footnote_lis_are_locatable` pins, and the reason
-    // that test can trust its `<li>`s. client.js `locatable()` resolves an Alt-click to
+    // that test can trust its `<li>`s. client.js `locatable()` resolves a Ctrl-click to
     // `closest("[data-tali-src], [data-block-id]")` but SKIPS a block whose sourcepos is
     // not usable (`^[1-9]\d*:\d+`), walking on to a usable ancestor or resolving to
     // nothing at all. That guard is the only thing standing between a gathered section
@@ -963,7 +963,7 @@ fn gathered_sections_stay_unlocatable() {
     }
     assert!(
         offenders.is_empty(),
-        "a gathered section became locatable again; Alt-clicking a reference or the \
+        "a gathered section became locatable again; Ctrl-clicking a reference or the \
          footnote section's <hr> would land on line 1:\n{}",
         offenders.join("\n")
     );

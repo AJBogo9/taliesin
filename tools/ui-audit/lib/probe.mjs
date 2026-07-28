@@ -109,7 +109,7 @@ export async function probeLightbox(page) {
   });
 }
 
-// 4. Cross-page hover-preview + the load-bearing safety property: an Alt-click
+// 4. Cross-page hover-preview + the load-bearing safety property: a Ctrl-click
 // INSIDE the preview card must NOT fire click-to-source (source attrs stripped).
 export async function probeHover(page) {
   const F = 'hover-preview';
@@ -159,7 +159,7 @@ export async function probeToc(page) {
   });
 }
 
-// 6. Click-to-source. Alt-hover should light the affordance; Alt-click should
+// 6. Click-to-source. Ctrl-hover should light the affordance; Ctrl-click should
 // emit a `click_block` websocket frame. `cdpFrames` is an array the caller fills
 // from a CDP Network.webSocketFrameSent listener.
 export async function probeClickToSource(page, cdpFrames) {

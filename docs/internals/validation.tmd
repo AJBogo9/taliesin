@@ -19,7 +19,7 @@ costs you a note, not a broken page.
 A `Warning` is a small struct (`message`, `file`, `line`), and the `file` + `line` are
 the point: they ride the same source map the block model uses, so a warning about an
 included partial names the partial and the original line. The dev panel renders each
-warning as a click-to-source link, the same Alt-click bridge the preview uses (see [the
+warning as a click-to-source link, the same Ctrl-click bridge the preview uses (see [the
 block model](block-model.tmd)). A diagnostic you can't locate is noise; a located one is
 a fix.
 

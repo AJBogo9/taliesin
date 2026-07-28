@@ -229,16 +229,16 @@ DOM mutation, and the diff above is what keeps that set small.
   normally a no-op; it only matters if a reorder (a `remove` + `insert` of the same id)
   ever arrived out of order.
 
-Reverse sync runs the same model backwards: `highlightAtLine(file, line)` picks the
-**smallest** block whose `data-sourcepos` covers the line (else the nearest block
-starting before it), outlines it with `.tali-hl`, and scrolls it into view, or, in a
-deck, jumps `TaliesinDeck` to the containing slide.
+Forward search runs the same model backwards: `highlightAtLine(file, line, reveal)` picks
+the **smallest** block whose `data-sourcepos` covers the line (else the nearest block
+starting before it) and outlines it with `.tali-hl`. Only when `reveal` is set does it
+scroll the block into view or, in a deck, jump `TaliesinDeck` to the containing slide.
 
-## Click-to-source & editor sync
+## Inverse search & forward search
 
 Click-to-source (goal #1) rides entirely on the two source attributes:
 
-- **Forward (preview → editor).** Alt-clicking (Option-clicking on Mac) a block
+- **Inverse search (preview → editor).** Ctrl-clicking (Cmd-clicking on Mac) a block
   reads its `data-sourcepos` (+ `data-source-file`) and opens the exact source
   line: a `vscode://file/<path>:<line>:<col>` deep link by default. The source positions
   start as comrak's per-node ranges; on the way to becoming blocks they are
@@ -246,13 +246,13 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
   `LineOrigin` for every expanded line → its origin file + line), so a block that
   came from an `{{< include >}}`d partial carries that file in `data-source-file`
   and the *original* line: click-to-source works across files.
-- **Reverse (editor → preview).** The client also speaks a `postMessage` protocol
+- **Forward search (editor → preview).** The client also speaks a `postMessage` protocol
   as the integration surface for an embedded editor host. The in-repo [VS Code
   companion](extending.tmd) is that host: the client posts `tali-goto` up to it (which
-  reveals the source), and accepts `tali-cursor {file, line}` to highlight/scroll to the
-  block whose `data-sourcepos` covers that line (in a deck, jumping to the containing
-  slide). So an editor can host the preview and add cursor sync without forking the
-  client.
+  reveals the source), and accepts `tali-cursor {file, line, reveal}` to mark the block
+  whose `data-sourcepos` covers that line, scrolling to it (in a deck, jumping to the
+  containing slide) only when `reveal` is set. So an editor can host the preview and add
+  cursor sync without forking the client.
 
 ## Trust model
 

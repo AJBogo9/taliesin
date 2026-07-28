@@ -70,7 +70,7 @@ function taliInitLinkPreview() {
   // it (same-page target) or parsed from the served snippet (cross-page target) still
   // carries the DEFINING block's source-tracking attrs. Left in place they (a) duplicate a
   // `data-block-id`, breaking the block model's in-DOM uniqueness invariant, and (b) make
-  // the card a live Alt-click click-to-source target — a read-only preview must never be
+  // the card a live Ctrl-click click-to-source target — a read-only preview must never be
   // one. Strip all three attrs from everything under `scope` so both paths share one rule.
   /** @param {ParentNode} scope */
   function stripSourceAttrs(scope) {
@@ -156,7 +156,7 @@ function taliInitLinkPreview() {
       tpl.innerHTML = snippet;
       resolveUrls(tpl.content);
       tpl.content.querySelectorAll('.tali-anchor, .tali-copy').forEach(function (n) { n.remove(); });
-      // The snippet carries the DEFINING page's block ids/sourcepos. Left intact, an Alt-click
+      // The snippet carries the DEFINING page's block ids/sourcepos. Left intact, a Ctrl-click
       // inside this floating card would resolve click-to-source to the CURRENT page at the
       // foreign block's line — a wrong jump. `stripSourceAttrs` neutralizes it (same rule the
       // same-page path applies).

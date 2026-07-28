@@ -14,7 +14,7 @@ Set `format: deck` and the document becomes a slide deck driven by Taliesin's
 slide and `#` starts a section that nests the following slides as a vertical stack;
 a title slide is generated from the metadata. The block diff still applies *within
 the current slide*, so a live edit re-renders one block without resetting your
-position, and Alt-clicking (Option-clicking on Mac) a block jumps to its source,
+position, and Ctrl-clicking (Cmd-clicking on Mac) a block jumps to its source,
 exactly like a page.
 
 ```sh

@@ -11,7 +11,7 @@ The same `.tmd` renders as a page, a book, a website, or **this deck**.
 
 ::: {.incremental}
 - Block-level live updates while you edit
-- Alt-click (Option-click on Mac) any block to jump to its source
+- Ctrl-click (Cmd-click on Mac) any block to jump to its source
 - No CDN: fonts, math, and highlighting are bundled offline
 :::
 

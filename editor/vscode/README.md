@@ -4,11 +4,14 @@ Hosts the Taliesin live preview in a VS Code webview with **bidirectional source
 It is the missing *producer* for the source-sync protocol the preview client
 (`web-client/client.js`) already consumes:
 
-- **Forward (preview → editor):** Alt-click a block in the preview → the editor jumps to
-  that block's source line (`tali-goto`).
-- **Reverse (editor → preview):** move the cursor in the `.tmd` → the matching block
-  highlights and scrolls into view in the preview, and the deck jumps to the right slide
-  (`tali-cursor` → `highlightAtLine`).
+- **Inverse search (preview → editor):** Ctrl-click a block in the preview → the editor
+  jumps to that block's source line (`tali-goto`).
+- **Forward search (editor → preview):** moving the cursor in the `.tmd` *marks* the
+  matching block with `.tali-hl` and never moves the page; **`Ctrl+Alt+J`**
+  (**Taliesin: Reveal Cursor in Preview**) scrolls it into view, or jumps a deck to the
+  right slide (`tali-cursor {reveal}` → `highlightAtLine`). Marking is continuous because
+  it costs the author nothing; scrolling is on request because it takes their scroll
+  position away.
 
 The preview stays **read-only**: the extension only navigates and highlights; it never
 writes back to the source.
@@ -103,20 +106,24 @@ see: the visual round trip *through the live preview iframe*.
 
 1. Open `corpus/posts/em-algorithm/index.tmd`. Run **Taliesin: Open Preview**
    (`Ctrl+Shift+K`, the command palette, or the editor-title button).
-2. **Reverse sync:** move the cursor onto a heading / paragraph — the matching block in the
-   preview gains the `.tali-hl` outline and scrolls into view.
-3. **Forward sync:** Alt-click a block in the preview — the editor cursor jumps to that
+2. **Forward search, passive:** move the cursor onto a heading / paragraph — the matching
+   block in the preview gains the `.tali-hl` outline. The preview must **not** scroll.
+3. **Forward search, active:** press `Ctrl+Alt+J` — the preview scrolls that block into
+   view and the editor keeps focus.
+4. **Inverse search:** Ctrl-click a block in the preview — the editor cursor jumps to that
    block's source line.
-4. **Deck:** open `corpus/deck.tmd`, Open Preview, move the cursor into a later slide's
-   content — the deck jumps to that slide.
-5. Close the preview panel — the spawned `taliesin preview` process exits (no orphan).
+5. **Deck:** open `corpus/deck.tmd`, Open Preview, move the cursor into a later slide's
+   content, then press `Ctrl+Alt+J` — the deck jumps to that slide.
+6. **Reuse:** press `Ctrl+Shift+K` a second time — the existing panel is revealed, and no
+   second `taliesin preview` process appears.
+7. Close the preview panel — the spawned `taliesin preview` process exits (no orphan).
 
 ## Known risk
 
 `vscode.env.asExternalUri` localhost-iframing inside a webview CSP can behave differently
 across VS Code versions / remote setups. If the iframe is blocked, fall back to a webview
 `portMapping`, or open the preview in an external browser tab (`vscode.env.openExternal`) —
-forward sync still works there via the `vscode://file…` deep links the client already emits.
+inverse search still works there via the `vscode://file…` deep links the client already emits.
 
 ## Scope
 
@@ -163,5 +170,5 @@ surface".
 
 What those three **don't** cover — and what the F5 checklist above is for — is the final
 visual round-trip *through the live preview iframe*: cursor-move → the block actually
-highlights/scrolls, and Alt-click → the editor cursor lands. Layers 2+3 verify each side of
+highlights, `Ctrl+Alt+J` → the preview scrolls, and Ctrl-click → the editor cursor lands. Layers 2+3 verify each side of
 that bridge independently; F5 confirms them end-to-end in a real editor.

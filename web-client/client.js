@@ -355,7 +355,7 @@
   };
 
   // There is deliberately NO first-run popup pointing at the ◇ dev menu. One shipped
-  // (a localStorage-gated "Alt-click a block / press ? " callout) and was removed: it
+  // (a localStorage-gated "Ctrl-click a block / press ? " callout) and was removed: it
   // could not keep its once-per-browser promise, because the preview runs in origins
   // whose storage does not persist (a VS Code webview partitions the cross-origin
   // iframe's localStorage per panel; a port fallback from 4321 to 4322 is a new origin
@@ -366,7 +366,7 @@
 
   // --- preview control bar: theme toggle + click-to-source hint ------------
   const inWebview = window.parent !== window;
-  // Click-to-source is a modifier gesture (Alt/Option-click), not a mode: a plain
+  // Click-to-source is a modifier gesture (Ctrl/Cmd-click), not a mode: a plain
   // click always browses normally, so there's no state to toggle or remember and no
   // way to accidentally jump to the editor. The dev menu carries a hint.
 
@@ -1088,7 +1088,7 @@
 
     // Copy click-to-source position attrs from an incoming section onto the reused live
     // one, matched by block id (same semantics as the `set_meta` op, per block within the
-    // section), so Alt-click / reverse cursor-sync stay exact after a line shift.
+    // section), so Ctrl-click / reverse cursor-sync stay exact after a line shift.
     /** @param {Element} live @param {Element} next */
     const patchSourcepos = (live, next) => {
       /** @type {Map<string, Element>} */
@@ -1433,7 +1433,7 @@
   //
   // Requiring the sourcepos is load-bearing, not defensive. `openSource()` defaults an
   // unparseable one to line 1, so a gathered block did not fail visibly, it jumped the
-  // editor to the top of the file and looked deliberate: Alt-clicking any entry in the
+  // editor to the top of the file and looked deliberate: Ctrl-clicking any entry in the
   // References list, or the footnotes section's own <hr>/padding, landed on line 1.
   // Landing NOWHERE is the honest answer, because nothing truthful exists to point at.
   // A reference's real position is its `.bib` entry, not anywhere in the `.tmd`; and
@@ -1518,11 +1518,11 @@
   // (browser -> vscode://, webview -> host). A plain click browses normally, so there's
   // no mode and no way to land in the editor by accident.
   //
-  // Ctrl/Cmd rather than Alt because it is the convention every comparable tool already
-  // taught the author: LaTeX Workshop's inverse search is Ctrl-click, and Alt-click
-  // additionally collides with VS Code's own insert-cursor and, under GNOME, with
-  // window dragging. Both modifiers are accepted on every platform so neither habit
-  // fails; the docs name the platform-native one.
+  // Ctrl/Cmd rather than the modifier this used to use, because it is the convention
+  // every comparable tool already taught the author: LaTeX Workshop's inverse search is
+  // Ctrl-click. The old modifier additionally collided with VS Code's own insert-cursor
+  // and, under GNOME, with window dragging. Both Ctrl and Meta are accepted on every
+  // platform so neither habit fails; the docs name the platform-native one.
   document.addEventListener("click", (e) => {
     if (!(e.ctrlKey || e.metaKey)) return;
     const t = e.target instanceof Element ? e.target : null;

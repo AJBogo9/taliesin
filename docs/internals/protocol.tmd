@@ -232,14 +232,14 @@ direction.
 
 | `type` | When | Server does |
 |---|---|---|
-| `click_block` | the author Alt/Option-clicks a block | logs the source location to the console |
+| `click_block` | the author Ctrl/Cmd-clicks a block | logs the source location to the console |
 | `restart_kernel` | the dev-menu "Restart kernel" action | flags a restart + wakes the rebuild loop |
 
 ### `click_block`
 
-Reports the block the author Alt-clicked, so the location shows in the dev console.
+Reports the block the author Ctrl-clicked, so the location shows in the dev console.
 (The actual jump-to-editor happens browser-side, or via the editor companion's
-relay; see [click-to-source](#click-to-source-and-reverse-sync) below.)
+relay; see [inverse search](#inverse-search-and-forward-search) below.)
 
 ```json
 { "type": "click_block", "block_id": "b-3f2a1c0d9e8b", "source_file": null, "sourcepos": "42:1-44:18" }
@@ -354,27 +354,31 @@ workflow and the editor companion never see the token. Without `--host` there is
 token and the guard is never installed at all. Full rationale lives in [the dev
 server](server.tmd#lan-exposure-the-host-token).
 
-## Click-to-source and reverse sync
+## Inverse search and forward search
 
 Click-to-source and editor sync ride on the two source-position attributes every
 block carries (`data-sourcepos`, and `data-source-file` for included blocks). This
 is a separate channel from the websocket: it is the `postMessage` protocol between
 `client.js` and an embedding editor host.
 
-- **Forward (preview → editor).** Alt-clicking (Option-clicking on Mac) a block
+- **Inverse search (preview → editor).** Ctrl-clicking (Cmd-clicking on Mac) a block
   reads its `data-sourcepos` and `data-source-file` and opens that source line. In a
   plain browser it navigates to a `vscode://file/<path>:<line>:<col>` deep link; in
   an editor webview it posts a `tali-goto` message up to the host. (It also sends a
-  `click_block` over the websocket so the location logs to the console.) The forward
-  message is `tali-goto { type, source_file, sourcepos }`, where `source_file` is the
+  `click_block` over the websocket so the location logs to the console.) The message
+  is `tali-goto { type, source_file, sourcepos }`, where `source_file` is the
   source path (`null` = the previewed doc) and `sourcepos` is the `line:col` to jump
   to. The `data-block-id` click path additionally spreads `block_id` into the message;
   the located-diagnostic path omits it.
-- **Reverse (editor → preview).** The client listens for a `tali-cursor {file, line}`
-  `postMessage` and calls `highlightAtLine`, which picks the **smallest** block whose
-  `data-sourcepos` range covers the line in the same file (else the nearest block
-  starting before it), outlines it with `.tali-hl`, and scrolls it into view, or, in a
-  deck, jumps `TaliesinDeck` to the containing slide.
+- **Forward search (editor → preview).** The client listens for a
+  `tali-cursor {file, line, reveal}` `postMessage` and calls `highlightAtLine`, which
+  picks the **smallest** block whose `data-sourcepos` range covers the line in the same
+  file (else the nearest block starting before it) and outlines it with `.tali-hl`.
+  **`reveal` decides whether the page moves.** A cursor move sends `reveal: false`, so the
+  block is only marked; the host's *Reveal Cursor in Preview* command (`Ctrl+Alt+J`) sends
+  `reveal: true`, which scrolls the block into view or, in a deck, jumps `TaliesinDeck` to
+  the containing slide. Marking is continuous because it costs the reader nothing; moving
+  the page is on request because it takes their scroll position away.
 
 The in-repo VS Code companion is the host that drives this; it is documented in
 [extending Taliesin](extending.tmd). Because the surface is just two `postMessage`

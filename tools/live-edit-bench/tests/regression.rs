@@ -9,7 +9,7 @@ use std::path::Path;
 ///   - the single-`sourcepos` `<details>` is patched in place (`SetMeta`), keeping its
 ///     open/closed DOM state alive — this is the moat;
 ///   - the multi-`sourcepos` callout is re-rendered (`Update`) so its inner
-///     `data-sourcepos` refresh (Alt-click / reverse cursor-sync inside the div must
+///     `data-sourcepos` refresh (Ctrl-click / reverse cursor-sync inside the div must
 ///     not go stale). That is the deliberate 2026-06-30 diff-hardening tradeoff — see
 ///     `diff::nested_div_sourcepos_shift_is_a_full_update_not_setmeta`.
 const SYNTHETIC: &str = "\

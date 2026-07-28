@@ -84,7 +84,7 @@ fn anchor_op(old: &Block, new: &Block) -> BlockOp {
     // SetMeta patches only the OUTER block element's `data-sourcepos`. A block whose
     // html carries more than one `data-sourcepos` (a fenced `:::` div with inner
     // blocks) would keep its inner sourcepos stale after a line-shifting edit above —
-    // silently sending Alt-click and reverse cursor-sync *inside* the div to the wrong
+    // silently sending Ctrl-click and reverse cursor-sync *inside* the div to the wrong
     // line. For those, fall through to a full `Update`, which replaces the whole block
     // html and refreshes every inner `data-sourcepos`. (The client already applies
     // Update without losing block identity, keyed off the unchanged `data-block-id`.)
@@ -432,7 +432,7 @@ mod tests {
     fn nested_div_sourcepos_shift_is_a_full_update_not_setmeta() {
         // A fenced `:::` div carries its OWN data-sourcepos plus an inner block's. A
         // line-shifting edit above moves BOTH. SetMeta would patch only the outer one,
-        // leaving the inner block's sourcepos stale (Alt-click + reverse cursor-sync
+        // leaving the inner block's sourcepos stale (Ctrl-click + reverse cursor-sync
         // inside the div would jump to the wrong line). So the op must be a full
         // Update, which refreshes every inner data-sourcepos.
         let old = Block {

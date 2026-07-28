@@ -112,7 +112,7 @@ editor/vscode/   the VS Code companion. It implements NO language features of it
                  Add an editor feature in Rust, not here (a second copy in TS is what this
                  replaced; see `notes/2026-07-28-vscode-companion-audit.md`)
 web-client/      browser preview client (vanilla JS, the only client): client.js mounts
-                 blocks + applies ops (Alt-click opens source in the editor),
+                 blocks + applies ops (Ctrl-click opens source in the editor),
                  search.js (Cmd-K), toc-spy.js (scrollspy)
 docs/            project's own manual: TWO sibling book projects, authored in .tmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/ + demo/tour

@@ -1,6 +1,6 @@
 ---
 title: "The live preview loop"
-description: "What survives a save (scroll position, kernel state, a running canvas) and how Alt-click jumps from the page back to the line that made it."
+description: "What survives a save (scroll position, kernel state, a running canvas) and how Ctrl-click jumps from the page back to the line that made it."
 ---
 
 The reason Taliesin exists is the edit loop: change the source, and the preview
@@ -22,22 +22,30 @@ your phone) lands on the change.
 
 ## Click-to-source and editor sync
 
-In the browser preview, a plain click browses normally; **Alt-click (Option-click
+In the browser preview, a plain click browses normally; **Ctrl-click (Cmd-click
 on Mac) any block to open its exact source line in your editor** (including across
 `{{< include >}}`d files) via a `vscode://` deep link. The client also speaks a
 `tali-goto` / `tali-cursor` `postMessage` protocol, so an editor can host the preview and
-add reverse cursor sync (highlighting the block under your cursor) without forking
-anything. The in-repo **VS Code companion** (`editor/vscode/`) is exactly that host.
+add cursor sync without forking anything. The in-repo **VS Code companion**
+(`editor/vscode/`) is exactly that host.
+
+The two directions have names, and they behave differently on purpose. **Inverse search**
+(preview → editor) is the Ctrl-click above. **Forward search** (editor → preview) is split:
+moving your cursor *marks* the matching block in the preview and deliberately does **not**
+move the page, so scrolling somewhere to compare two figures survives your next keystroke.
+When you do want the preview to come to you, press **`Ctrl+Alt+J`**
+(**Taliesin: Reveal Cursor in Preview**), which scrolls it there and leaves the keyboard
+focus in your editor.
 
 ::: {.callout-tip}
 ## Reuse the editor tab instead of opening a new one
 
 The `vscode://` deep link routes through VS Code's normal "open in the active editor
-group" logic, so by default a second Alt-click can land the same file in a *new* tab
+group" logic, so by default a second Ctrl-click can land the same file in a *new* tab
 rather than moving the cursor in the tab you already have open. VS Code offers no URL
 flag to change this, but one editor setting fixes it: add
 `"workbench.editor.revealIfOpen": true` to your `settings.json` and repeated
-Alt-clicks reveal the existing tab and jump the cursor instead of duplicating it. (The
+Ctrl-clicks reveal the existing tab and jump the cursor instead of duplicating it. (The
 VS Code companion opens through the editor API and reuses the tab without this
 setting.)
 :::
@@ -83,7 +91,7 @@ Click it to expand a panel with the preview-only tools:
 - **Restart kernel**: drops the warm Jupyter kernel and re-runs every cell against
   a fresh one. Reach for it when the kernel wedges, or after you fix
   `TALIESIN_PYTHON` or install a missing package and want a clean replay.
-- A reminder that **Alt-click (Option-click on Mac)** opens any block's source in
+- A reminder that **Ctrl-click (Cmd-click on Mac)** opens any block's source in
   your editor.
 - On a single-document preview, a **theme toggle** (light/dark). A site puts that
   toggle in its navbar instead, so the dev menu only adds one when the page chrome

@@ -256,3 +256,54 @@ fn the_guard_detects_a_reintroduction() {
         "the frozen plan archive must stay out of the scan"
     );
 }
+
+/// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is
+/// retired. This asserts the old spelling stays gone.
+///
+/// Same rationale as the brand guard above: every other assertion for this gesture is a
+/// string literal sitting beside its emitter, so a half-finished rename fails nothing. The
+/// stale spelling is worse than cosmetic here, because it teaches a gesture that no longer
+/// works.
+///
+/// `altKey` is NOT hunted. It is a legitimate DOM property, and several "no modifier is
+/// held" guards (`deck.js`, `code-enhance/07-keyboard.js`, `code-enhance/11-lightbox.js`)
+/// must keep testing it. Only the *names* of the retired gesture are hunted, which is also
+/// why this comment cannot spell it.
+#[test]
+fn the_alt_click_gesture_stays_retired() {
+    // Assembled at runtime for the same reason `retired()` is: a guard holding its own
+    // needle as a literal reports itself and can never be satisfied.
+    let alt = format!("{}{}", "a", "lt");
+    let needles = [
+        format!("tali-{alt}"),
+        format!("{alt}-click"),
+        format!("{alt}+click"),
+        format!("{}{}", "option", "-click"),
+    ];
+    let root = repo_root();
+    let mut files = Vec::new();
+    walk(&root, &root, &mut files);
+    let mut offenders = Vec::new();
+    for path in &files {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        for (n, line) in text.lines().enumerate() {
+            let lower = line.to_lowercase();
+            if needles.iter().any(|needle| lower.contains(needle.as_str())) {
+                offenders.push(format!(
+                    "{}:{}: {}",
+                    path.strip_prefix(&root).unwrap_or(path).display(),
+                    n + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "the retired gesture is still named in {} place(s):\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}

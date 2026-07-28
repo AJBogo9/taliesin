@@ -17,7 +17,7 @@ exactly as they were. No cold start, no full-page flash, no waiting.
 ## Three things it gets right
 
 - **Click-to-source.** Every rendered block remembers the line it came from.
-  Alt-click (Option-click on Mac) anything in the preview to jump straight to its
+  Ctrl-click (Cmd-click on Mac) anything in the preview to jump straight to its
   source, even across `{{< include >}}`d files.
 - **Block-level incremental updates.** A save re-renders only the blocks that
   changed. Live canvases (Three.js, `{js}` cells) keep their state; the

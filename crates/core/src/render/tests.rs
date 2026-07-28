@@ -3038,7 +3038,7 @@ fn footnote_li_is_the_locatable_unit_for_click_to_source() {
     // A gathered footnotes section collects notes from MANY, non-contiguous source
     // lines, so no single block-level sourcepos can point at "the" note. The locatable
     // unit is therefore each `<li>`: it carries its own definition's `data-sourcepos`
-    // plus a `data-block-id`, because client.js `locatable()` resolves an Alt-click via
+    // plus a `data-block-id`, because client.js `locatable()` resolves a Ctrl-click via
     // `closest("[data-tali-src], [data-block-id]")` — a `data-sourcepos` alone would be
     // walked past, landing on the section (and, with no sourcepos there, on line 1).
     // Definitions sit on lines 7 and 11, scattered between prose rather than bunched
@@ -6616,8 +6616,14 @@ fn collapsible_callouts_carry_a_disclosure_caret() {
         .find(&format!("{sel}::after"))
         .expect("the callout caret rule");
     let rule = &BASE_CSS[i..i + BASE_CSS[i..].find('}').expect("closing brace")];
-    assert!(rule.contains("margin-left: auto"), "the caret must trail: {rule}");
-    assert!(rule.contains("rotate(45deg)"), "closed state points right: {rule}");
+    assert!(
+        rule.contains("margin-left: auto"),
+        "the caret must trail: {rule}"
+    );
+    assert!(
+        rule.contains("rotate(45deg)"),
+        "closed state points right: {rule}"
+    );
     // Open rotates to point down, exactly like the proof caret.
     assert!(
         BASE_CSS.contains(

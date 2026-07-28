@@ -64,7 +64,7 @@
           {
             "id": "taliesin.preview",
             "title": "Open a live preview",
-            "description": "Block-level updates as you type, and Alt+click to jump from the preview back to the source line.\n[Open Preview](command:taliesin.openPreview)",
+            "description": "Block-level updates as you type, and Ctrl+click to jump from the preview back to the source line.\n[Open Preview](command:taliesin.openPreview)",
             "media": { "markdown": "walkthroughs/preview.md" },
             "completionEvents": ["onCommand:taliesin.openPreview"]
           },

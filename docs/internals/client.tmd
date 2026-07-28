@@ -76,7 +76,7 @@ The traffic is almost entirely server → client; the client sends only two mess
 back over the socket:
 
 ```js
-{ type: "click_block", block_id?, source_file, sourcepos }  // on an Alt-click
+{ type: "click_block", block_id?, source_file, sourcepos }  // on a Ctrl-click
 { type: "restart_kernel" }                                  // from the dev menu
 ```
 
@@ -88,7 +88,7 @@ go out only when the socket is `OPEN`.
 
 The preview's only chrome is one collapsed corner widget, `#tali-controls`: a `</>`
 toggle carrying the live-status dot, expanding to a panel of preview-only tools. The
-panel shows the connection status, the word/reading-time count, the Alt-click hint,
+panel shows the connection status, the word/reading-time count, the Ctrl-click hint,
 a Restart-kernel button, and (only in single-doc preview, where there is no site
 navbar) a theme toggle. It also aggregates three issue sources into one list, each
 row jumping to the offending source line: server `diagnostics` (broken include,
@@ -181,7 +181,7 @@ click and a `data-tali-src` click post just `{ source_file, sourcepos }`. The ho
 needs only the file and line, so the field is informational.
 
 The client decides which transport to use from whether it is framed
-(`window.parent !== window`). When it is framed, Alt-clicking a block (or clicking a
+(`window.parent !== window`). When it is framed, Ctrl-clicking a block (or clicking a
 located diagnostic) posts a `tali-goto` up to the parent rather than navigating;
 the host turns that into an editor `revealRange`. When it is *not* framed, the same
 gesture opens a `vscode://file/<path>:<line>:<col>` deep link directly. Inbound,
@@ -199,7 +199,7 @@ mutate the source. There is no `tali-edit` message, by design.
 
 Forward click-to-source is a modifier *gesture*, not a mode: a plain click always
 browses normally, and holding Alt (Option on Mac) turns the cursor into a pointer
-over every source-mapped block (`html.tali-alt`) and outlines the exact block a click
+over every source-mapped block (`html.tali-srcnav`) and outlines the exact block a click
 would resolve to. Both the affordance and the click resolve the target through the
 same `locatable()` helper (nearest `[data-tali-src]` or `[data-block-id]` ancestor),
 so the highlight and the jump can never drift apart.
