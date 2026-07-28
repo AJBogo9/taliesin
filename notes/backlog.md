@@ -64,9 +64,11 @@ enough to continue; nothing else is required.**
   on `critique-fixes-139-142` (LSP rename validation + the external-URL fragment, both TOC escaping
   defects, the Cmd-K scroll lock, and the manifest's icon/`start_url`/pin defects). Detail and the
   one deliberately-partial half in "Do not re-add / re-scope". **138 and 146 then shipped
-  2026-07-28** with 143's module-path half. **What is left of that round is 143** (the rest of the
-  docs-vs-behaviour sweep, now with a gate under it) and **144** (CLI/diagnostic residuals — note
-  its three LSP sub-items sit in files a later batch rewrote, so re-derive them).
+  2026-07-28** with 143's module-path half, and **143 is now fully CLOSED (2026-07-28)**: the rest
+  of the docs-vs-behaviour sweep shipped, and **three of its own filed claims were false** — read
+  "Do not re-add / re-scope" before re-deriving any of them. **All that is left of that round is
+  144** (CLI/diagnostic residuals — note its three LSP sub-items sit in files a later batch
+  rewrote, so re-derive them).
 - **The findings docs** (each finding carries its measurement and its refutation test). Wave 1:
   [adoption friction](2026-07-27-adoption-friction-audit.md) ·
   [pre-mortem](2026-07-27-premortem-audit.md) ·
@@ -93,7 +95,8 @@ enough to continue; nothing else is required.**
   vertical-stack slide), neither of them filed and neither visible to any emission test —
   which is the strongest evidence this file has that *rendered geometry* was an uncovered
   axis, not just an untested file. What is left in band A is mostly **words, not code**
-  (94, 95, 96, 126, 135, 136), plus **119** (a live detection-debt file). The structural pair's
+  (94, 95, 96, 135, 136). **126 and 119 shipped 2026-07-28** — the ACR is published in the
+  guide and the detection register is [DETECTION-DEBT.md](DETECTION-DEBT.md). The structural pair's
   other half (**146**) and the one item that touched the block model (**138**) both shipped
   2026-07-28.
   **Two items are rulings and must not be built without one: 101** (what licence a user's built
@@ -164,8 +167,19 @@ enough to continue; nothing else is required.**
   has to be judged as an exploit recipe. **DISCHARGED 2026-07-28** — all three shipped on
   `launch-blockers-2026-07-28` (unpushed), so they are now descriptions of *fixed* behaviour.
   Confirm that branch is merged rather than trusting this sentence.
+- **LIVE COORDINATION NOTE (2026-07-28), and it will expire — verify before acting.** A parallel
+  session is building **`crates/server/src/math_image.rs`** (untracked WIP at the time of writing:
+  headless math-to-PNG). It is a **second `chromiumoxide` consumer**, and the batch below made that
+  dependency an **opt-in `headless-js` feature that is OFF by default**. Measured: with the feature
+  on the tree is clippy-clean; with the default off, `math_image.rs` fails
+  `-D warnings` with three dead-code errors. **That file therefore needs to declare the feature**
+  (`#[cfg(feature = "headless-js")]` on the module, or `main.rs`'s `mod math_image;`), exactly as
+  `headless_js.rs` does. It was deliberately NOT edited from the other session's tree — it is
+  uncommitted work owned by that session. Once it lands, add it to
+  `crates/core/tests/headless_js_feature.rs`'s caller list.
 - **Auditing is DONE.** All 14 slate rounds have run except **R12** (real-device mobile, Android),
-  which needs the author's phone. **Do not open a new round** — 59 items are open and an audit's
+  which needs the author's phone. **Do not open a new round** — a great many items are open (do
+  not trust a count written here; count band A yourself) and an audit's
   value decays to zero if its findings never ship.
 
 ## State (2026-07-28)
@@ -423,7 +437,7 @@ this file from one non-coding item to 30. Remaining waves:
   made the drawer a book's *only* nav surface), then the `--host` QR flow, momentum scrolling and
   the dynamic viewport toolbar, tablet widths, TalkBack. **Record explicitly that an Android round
   does not cover WebKit/iOS**, or it will later read as full mobile coverage.
-- **The slate is otherwise exhausted. Do not open a new round before the 59 open items ship.**
+- **The slate is otherwise exhausted. Do not open a new round before the open items ship.**
   AUDITS.md's own stop-auditing ruling applies with more force now than when it was written: an
   audit's value decays to zero if its findings never ship, and there are now three waves of them.
 
@@ -488,13 +502,6 @@ workflow (guarded on repository visibility so it stays inert until publication).
 **Smaller, verified**
 
 **Items 85 and 86 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add / re-scope".**
-
-91. **Make `chromiumoxide` an optional Cargo feature.** (MEDIUM.) `crates/server/Cargo.toml:47`
-    declares it unconditionally and the crate has **no `[features]` section** (measured), so every
-    build pays for a browser driver. The runtime `TALIESIN_REQUIRE_CHROME` gate is not a build gate.
-    **Re-measure the premise before building it:** a cold release build was measured at **2m 11s /
-    268 crates / 2.6 GB peak** on four cores (2026-07-28), which is the number the README now
-    quotes, so "every build pays" is true but the bill is smaller than the item implies.
 
 **Install expectation, binaries and platform matrix: SHIPPED 2026-07-28 (item 92) — see
 "Do not re-add / re-scope".** *Not* done, and deliberately not re-filed as a code item: **hosted
@@ -568,12 +575,6 @@ which is this file's standing rule.
      "name it, do not probe it" line would not do. The remaining open question is not cost but
      whether used-language detection can be had without the render walk; if not, the walk is what
      the +50% buys.
-110. **A `draft:` page is unlinted by `check` and `--strict`, same mechanism as 109.** (MEDIUM.)
-     `discovery.rs:30` drops drafts in `DraftMode::Exclude`. Measured: `check .` clean, `check
-     wip.tmd` → 3 problems. **Lower severity for a stated reason:** the preview uses
-     `DraftMode::Include` so the author still sees diagnostics where they write, and nothing ships.
-     **This may be correct behaviour** — if so the deliverable is one comment at `discovery.rs:30`
-     and a line in the docs, not code.
 **Items 112, 125 and 113 SHIPPED 2026-07-28 in the deck-harness batch — see "Do not re-add /
 re-scope".** The eleven deck shapes 113 listed and deliberately did *not* build (table,
 footnote, citation, `{r}`, theorem envs, tabset, `@fig-` + captioned figure,
@@ -605,38 +606,17 @@ doc on every `cargo test`.
      tracker carries *stale-output* complaints against `freeze`, and Taliesin's cumulative key makes
      a stale hit **structurally impossible**. That reproducibility guarantee is unclaimed by anyone
      and is stated nowhere in this repo.
-126. **Publish the draft ACR.** (MEDIUM, one artefact.) Drafted in full in the R9 doc, evidence
-     fresh. Contrast now **measured clean in both themes** with zero violations, which discharges the
-     deferral `a11y.rs` carries in its own docstring. Honest "partially supports" on four criteria
-     and an explicit not-evaluated list. Answers an institutional evaluator without needing users,
-     which Wave 1's adoption round found the project cannot otherwise do.
 136. **State the speed story with the measured absolutes, and no multiplier.** (MEDIUM.) Public
      Quarto threads report 1-2 s/document and ~400 s for a 376-document blog; Taliesin measures
      3.8 ms/page (112-page real book), 4 ms first paint, 90 ms warm edit. **These measure different
      work** (Pandoc + possible execution vs a cache replay) — publish the architecture and the
      absolute numbers, never a ratio.
-119. **Detection debt has no home, so every round rebuilds it.** (MEDIUM, structural.) R7's D≥8
-     cluster is the third time this list has been assembled. **One live file** (not a dated findings
-     doc, not a tool, not CI) with one row per class and a column for "what would change this score".
-     Proof the column is real: the broken-SVG mode went D=10 → D=3 the day `svg_assets_render.rs`
-     landed, and that is recorded nowhere a future round would find it.
 **Low**
 
 **Items 114, 123 and 130 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add /
 re-scope".** 130 needed no product change at all: it had already been fixed and this file had
 not noticed, which is the rot warning in the RESUME block earning its place a second time.
 
-115. **Nothing makes the next author of a generated block think about click-to-source.** (LOW,
-     structural.) Nine sites write `sourcepos: String::new()`, all correctly (generated chrome has no
-     source line). `corpus.rs` guards existing content, not new producers, and QA1 has the least
-     automated coverage in the project. **Proposal is a doc comment on `Block`**, not a lint.
-134. **`check <site>` and `check <file>`: the coverage half is closed, the link-scope half is
-     not.** (LOW.) 538 ms vs 87 ms. The **deck** coverage difference is gone (item 109, shipped
-     2026-07-28: a site check walks `site.decks`, and the deck path of `build --strict` gained the
-     cross-ref validation it lacked, so the two front doors now report the *same count* on the same
-     file — measured 5 and 5 where it had been 5 and 0, then 5 and 4). **What remains:** the
-     `draft:` difference (item 110, which may be correct as-is) and the link scope at
-     `check.rs:196`. One line of output can state it.
 131. **The cold-build cliff: 3,981 ms vs 789 ms warm.** (LOW, and probably correct as-is.) Filed so
      it is not rediscovered as a defect. Kernel *variable* state is never cached — the property that
      makes the cache trustworthy — so a cold start genuinely cannot skip work unless the whole
@@ -676,33 +656,6 @@ note in the findings doc before applying any fix text from it.
 
 **Item 138 SHIPPED 2026-07-28** on `block-single-root-2026-07-28`, with **146** and the
 module-path half of **143** — see "Do not re-add / re-scope".
-
-143. **The docs-vs-behaviour sweep — the module-path half SHIPPED 2026-07-28, the rest is open.**
-    Nine stale source paths in the two books are fixed and now *gated* (item 146's path gate), so
-    do not re-scope that half; the gate would fail if it came back. **What is left is every claim
-    the gate cannot see**, because both spellings resolve or no path is involved:
-    ~20 false claims across the guide, the Internals book and
-    ROADMAP.** All measured, all with paste-ready replacements in the findings doc.
-    **Read each item's correction note first — three of the critic's proposed fixes were wrong.**
-    Highest value first: Mermaid is documented as a CDN dependency in 4 places though it is
-    vendored and offline on every path (**and `TALIESIN_MERMAID_URL` is preview-only and inert
-    in `build`, which none of them say**); `_site.yml` problems are documented as located
-    warnings but are unlocated **errors** (3 places in `configuration.tmd`, 2 in the Internals
-    book) — **but `build --strict` does NOT fail on them, only `check` does**; `format:`
-    sub-keys are documented as deliberately unlinted in a third live copy at
-    `validation.tmd:44-45` and in `frontmatter.rs:17-18`, though the validator lints them and the
-    code says no extension mechanism exists; the Internals book misdescribes the diff mask,
-    prints a `SiteApp` struct and a `PageIncludes.resources` field that do not exist, undercounts
-    the protocol's twelve message types as nine, and describes the loopback-Origin allowance as
-    always-on when `--host` drops it (**edit `protocol.tmd:318`; `:321` is TRUE**);
-    ~~~20 stale module paths remain in the Internals book~~ **DONE 2026-07-28: measured at
-    nine, not twenty** (`serve.rs`, `serve_site.rs`, `cite.rs`, `diagnostics.rs` had become
-    module directories, `code-enhance.js` had been split into fragments, `extensions.rs` is
-    `theme_css.rs`), all fixed and gated; "book has a sidebar" survives in **11 live
-    instances across 5 files** (do NOT re-scope as "restore the rail", item 76); ROADMAP's
-    *normative* guardrails section still says `.qmd`/`qmdEnhancers` (**the named corpus pin docs
-    DO exist as `.tmd`** — do not "fix" this by authoring new corpus documents); and `init` is
-    documented as writing two files in **four** places while it writes five plus `.taliesin/`.
 
 144. **Diagnostic and CLI residuals a first-hour user hits.** Each small, each measured.
     A timeout-killed cell is reported to the console as "raised an uncaught exception" because
