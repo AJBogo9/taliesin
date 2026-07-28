@@ -172,6 +172,54 @@ test("every taliesin subcommand the extension spawns is a real command", () => {
   }
 });
 
+test("the language server subcommand is a real command", () => {
+  // The subcommand the whole companion now rests on does NOT go through `spawn(`: the
+  // LanguageClient launches it from `ServerOptions`. So the gate above, which scans
+  // `spawn(` call sites, stopped covering the single most important one the moment the
+  // providers moved to LSP. Cover it explicitly, from the same COMMANDS list.
+  const m = /args:\s*\[\s*"([^"]+)"\s*\]/.exec(allSource);
+  assert.ok(m, "client.ts declares the server args as a literal array");
+  assert.ok(
+    cargoCommands().includes(m![1]),
+    `the language client launches \`taliesin ${m![1]}\`, which is not in main.rs's COMMANDS`
+  );
+});
+
+test("every command the manifest contributes is registered in the source", () => {
+  // A contributed command with no `registerCommand` shows up in the palette and then fails
+  // with "command not found" — the manifest is a promise the source has to keep.
+  const registered = new Set(
+    [...allSource.matchAll(/registerCommand\(\s*"([^"]+)"/g)].map((m) => m[1])
+  );
+  const contributed: string[] = (manifest.contributes?.commands ?? []).map(
+    (c: { command: string }) => c.command
+  );
+  assert.ok(contributed.length > 0, "the manifest contributes at least one command");
+  for (const cmd of contributed) {
+    assert.ok(
+      registered.has(cmd),
+      `\`${cmd}\` is contributed by package.json but never registered in src/ ` +
+        `(registered: ${[...registered].join(", ")})`
+    );
+  }
+});
+
+test("every keybinding and menu entry points at a contributed command", () => {
+  const contributed = new Set(
+    ((manifest.contributes?.commands ?? []) as { command: string }[]).map((c) => c.command)
+  );
+  const referenced: string[] = [
+    ...((manifest.contributes?.keybindings ?? []) as { command: string }[]),
+    ...Object.values(
+      (manifest.contributes?.menus ?? {}) as Record<string, { command: string }[]>
+    ).flat(),
+  ].map((e) => e.command);
+  assert.ok(referenced.length > 0, "the manifest binds at least one command");
+  for (const cmd of referenced) {
+    assert.ok(contributed.has(cmd), `\`${cmd}\` is bound but not contributed`);
+  }
+});
+
 // --- .tmd snippets stay in step with the Rust vocabulary ------------------------------
 //
 // Snippets insert source text the author then edits, so they never touch the preview and

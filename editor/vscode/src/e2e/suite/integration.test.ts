@@ -7,23 +7,54 @@ const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
 const SAMPLE_TMD = path.join(REPO_ROOT, "corpus/native-tmd.tmd");
 const DIAG_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/diag-typo.tmd");
 const COMPLETE_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/complete.tmd");
+const MATH_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/math.tmd");
+const PATHS_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/paths.tmd");
+const INCLUDE_DOC = path.join(REPO_ROOT, "corpus/bayesian-website/index.tmd");
 const TALIESIN_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
 
+// These tests exercise the companion in a real Extension Host, which is the only place the
+// claims are worth anything: the language features now come from `taliesin lsp` over stdio,
+// so a unit test can prove the server answers but never that VS Code asked it, wired the
+// response into a provider, and rendered it.
 suite("Taliesin companion (integration)", () => {
   suiteSetup(async () => {
-    // The extension activates lazily (on its command); activate it explicitly so the
-    // command-registration assertion doesn't race activation regardless of test order.
+    // Point at the locally-built binary BEFORE activation: the language client launches the
+    // server on activate, and PATH may not have `taliesin` in CI. Setting it afterwards
+    // would work (a config change restarts the server) but would race every first test.
+    await vscode.workspace
+      .getConfiguration("taliesin")
+      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
+
     const ext = vscode.extensions.getExtension("taliesin.taliesin-companion");
     assert.ok(ext, "extension should be discoverable by id");
     await ext!.activate();
+
+    // The server starts asynchronously. Wait until it has actually answered something
+    // before any test asserts on a provider, or a slow start reads as a missing feature.
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(DIAG_FIXTURE));
+    await vscode.window.showTextDocument(doc);
+    const ready = await waitFor(
+      () => vscode.languages.getDiagnostics(doc.uri).length > 0,
+      30000
+    );
+    assert.ok(
+      ready,
+      "the language server never published diagnostics; it probably failed to start"
+    );
   });
 
-  test("registers the openPreview command", async () => {
+  test("registers its contributed commands", async () => {
     const cmds = await vscode.commands.getCommands(true);
-    assert.ok(
-      cmds.includes("taliesin.openPreview"),
-      "taliesin.openPreview should be registered after activation"
-    );
+    for (const id of [
+      "taliesin.openPreview",
+      "taliesin.check",
+      "taliesin.restartServer",
+      "taliesin.showServerLog",
+      "taliesin.doctor",
+      "taliesin.insertMathSymbol",
+    ]) {
+      assert.ok(cmds.includes(id), `${id} should be registered after activation`);
+    }
   });
 
   test("contributes the `taliesin` language and assigns it to a .tmd file", async () => {
@@ -34,11 +65,6 @@ suite("Taliesin companion (integration)", () => {
   });
 
   test("Open Preview creates a webview panel for the active source document", async () => {
-    // Point the extension at the locally-built binary (PATH may not have it in CI).
-    await vscode.workspace
-      .getConfiguration("taliesin")
-      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
-
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_POST));
     await vscode.window.showTextDocument(doc);
 
@@ -55,56 +81,200 @@ suite("Taliesin companion (integration)", () => {
     assert.ok(hasWebviewTab, "Open Preview should open a webview panel");
   });
 
-  test("surfaces `check` findings as diagnostics on the active .tmd", async () => {
-    await vscode.workspace
-      .getConfiguration("taliesin")
-      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
-
+  test("surfaces `check` findings as diagnostics, from the language server", async () => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(DIAG_FIXTURE));
     await vscode.window.showTextDocument(doc);
 
-    // Diagnostics refresh asynchronously after open; poll until they land.
-    const ok = await waitFor(() => vscode.languages.getDiagnostics(doc.uri).length > 0, 12000);
+    const ok = await waitFor(() => vscode.languages.getDiagnostics(doc.uri).length > 0, 20000);
     assert.ok(ok, "check should produce at least one diagnostic for the typo fixture");
 
     const diags = vscode.languages.getDiagnostics(doc.uri);
     const typo = diags.find((d) => d.message.includes("titel"));
-    assert.ok(typo, `expected a diagnostic mentioning the typo'd key: ${JSON.stringify(diags.map((d) => d.message))}`);
+    assert.ok(
+      typo,
+      `expected a diagnostic mentioning the typo'd key: ${JSON.stringify(diags.map((d) => d.message))}`
+    );
     assert.equal(typo!.range.start.line, 2, "the `titel` typo is on line 3 (0-based line 2)");
     assert.equal(typo!.severity, vscode.DiagnosticSeverity.Warning);
+    // The server (not the old TS shim) is the source, and it carries the stable TAL code.
+    assert.equal(typo!.source, "taliesin");
+    assert.ok(typo!.code, "the diagnostic should carry its TAL-* code");
   });
 
   test("offers cell-option and div-class completions", async () => {
-    await vscode.workspace
-      .getConfiguration("taliesin")
-      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
-
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(COMPLETE_FIXTURE));
+    await vscode.window.showTextDocument(doc);
     const text = doc.getText().split("\n");
     const cellLine = text.findIndex((l) => l.startsWith("#|"));
     const divLine = text.findIndex((l) => l.startsWith("::: {."));
     assert.ok(cellLine >= 0 && divLine >= 0, "fixture must contain a #| line and a ::: {. line");
 
-    const cellPos = new vscode.Position(cellLine, 2); // right after `#|`
-    const cellList = (await vscode.commands.executeCommand(
-      "vscode.executeCompletionItemProvider",
-      doc.uri,
-      cellPos
-    )) as vscode.CompletionList;
-    const cellLabels = cellList.items.map((i) => labelText(i.label));
+    const cellLabels = await completionLabels(doc.uri, new vscode.Position(cellLine, 2));
     assert.ok(cellLabels.includes("echo"), `cell options should include echo: ${cellLabels}`);
 
-    const divPos = new vscode.Position(divLine, 6); // right after `::: {.`
-    const divList = (await vscode.commands.executeCommand(
-      "vscode.executeCompletionItemProvider",
-      doc.uri,
-      divPos
-    )) as vscode.CompletionList;
-    const divLabels = divList.items.map((i) => labelText(i.label));
-    assert.ok(divLabels.includes("callout-note"), `div classes should include callout-note: ${divLabels}`);
+    const divLabels = await completionLabels(doc.uri, new vscode.Position(divLine, 6));
+    assert.ok(
+      divLabels.includes("callout-note"),
+      `div classes should include callout-note: ${divLabels}`
+    );
     assert.ok(divLabels.includes("theorem"), `div classes should include theorem: ${divLabels}`);
   });
+
+  test("offers math commands inside `$…$` and nothing in prose", async () => {
+    // The gap this whole migration was measured against: `$…$` was the one place in a .tmd
+    // where the editor knew nothing, even though the grammar colorized it.
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(MATH_FIXTURE));
+    await vscode.window.showTextDocument(doc);
+    const lines = doc.getText().split("\n");
+    const mathLine = lines.findIndex((l) => l.includes("$\\al"));
+    const proseLine = lines.findIndex((l) => l.startsWith("Prose"));
+    assert.ok(mathLine >= 0 && proseLine >= 0, "fixture must contain a math line and a prose line");
+
+    const inMath = await completionLabels(
+      doc.uri,
+      new vscode.Position(mathLine, lines[mathLine].length)
+    );
+    assert.ok(inMath.includes("\\alpha"), `math should offer \\alpha: ${inMath.slice(0, 20)}`);
+
+    const inProse = await completionLabels(
+      doc.uri,
+      new vscode.Position(proseLine, lines[proseLine].length)
+    );
+    assert.ok(
+      !inProse.includes("\\alpha"),
+      `prose must not offer math commands: ${inProse.slice(0, 20)}`
+    );
+  });
+
+  test("completes paths, shortcode names and cell-option values", async () => {
+    // Three of the twelve cursor positions the audit measured as answering nothing. Each
+    // was a place the author already had to know the answer before the editor would help.
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(PATHS_FIXTURE));
+    await vscode.window.showTextDocument(doc);
+    const lines = doc.getText().split("\n");
+    const at = (needle: string) => {
+      const line = lines.findIndex((l) => l.includes(needle));
+      assert.ok(line >= 0, `fixture must contain ${needle}`);
+      return new vscode.Position(line, lines[line].length);
+    };
+
+    const bib = await completionLabels(doc.uri, at("bibliography: re"));
+    assert.ok(
+      bib.includes("refs.bib"),
+      `a path-valued front-matter key should offer the .bib beside it: ${bib}`
+    );
+
+    const shortcodes = await completionLabels(doc.uri, at("{{< inc"));
+    assert.ok(
+      shortcodes.includes("include"),
+      `\`{{< \` should offer the shortcode names: ${shortcodes}`
+    );
+
+    const values = await completionLabels(doc.uri, at("#| echo: tr"));
+    assert.ok(values.includes("true"), `\`echo:\` should offer true/false: ${values}`);
+  });
+
+  test("paints a document link on an `{{< include >}}` path", async () => {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(INCLUDE_DOC));
+    await vscode.window.showTextDocument(doc);
+    const line = doc
+      .getText()
+      .split("\n")
+      .findIndex((l) => l.trim().startsWith("{{< include"));
+    assert.ok(line >= 0, "fixture must contain an include directive");
+
+    // Links arrive from the server, so poll rather than assume the first call is answered.
+    const hit = await waitForValue(async () => {
+      const links = (await vscode.commands.executeCommand(
+        "vscode.executeLinkProvider",
+        doc.uri
+      )) as vscode.DocumentLink[];
+      return links?.find((l) => l.range.start.line === line);
+    }, 15000);
+
+    assert.ok(hit, `expected a document link on line ${line}`);
+    assert.ok(hit!.target, "the link must carry a target uri");
+    assert.ok(
+      hit!.target!.fsPath.endsWith("subsections/_introduction.tmd"),
+      `link should point at the included file, got ${hit!.target!.fsPath}`
+    );
+    // The link spans the path token only, not the whole `{{< … >}}` directive.
+    const text = doc.lineAt(line).text;
+    assert.equal(
+      text.slice(hit!.range.start.character, hit!.range.end.character),
+      "subsections/_introduction.tmd"
+    );
+  });
+
+  test("hovering an `{{< include >}}` path says where it goes", async () => {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(INCLUDE_DOC));
+    await vscode.window.showTextDocument(doc);
+    const line = doc
+      .getText()
+      .split("\n")
+      .findIndex((l) => l.trim().startsWith("{{< include"));
+    const col = doc.lineAt(line).text.indexOf("subsections/");
+
+    const text = await waitForValue(async () => {
+      const hovers = (await vscode.commands.executeCommand(
+        "vscode.executeHoverProvider",
+        doc.uri,
+        new vscode.Position(line, col + 2)
+      )) as vscode.Hover[];
+      const joined = (hovers ?? [])
+        .flatMap((h) => h.contents)
+        .map((c) => (typeof c === "string" ? c : (c as vscode.MarkdownString).value))
+        .join("\n");
+      return joined.includes("subsections/_introduction.tmd") ? joined : undefined;
+    }, 15000);
+
+    assert.ok(text, "hover should name the included file");
+  });
+
+  test("renames a cross-reference anchor and every reference to it", async () => {
+    // Rename existed in the server the whole time and the companion never exposed it; it is
+    // the clearest proof that the editor is now driven by the server rather than by a
+    // parallel TypeScript copy.
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content: "---\ntitle: T\n---\n\n# Intro {#sec-intro}\n\nSee @sec-intro and @sec-intro.\n",
+    });
+    await vscode.window.showTextDocument(doc);
+    const edit = await waitForValue(
+      async () =>
+        (await vscode.commands.executeCommand(
+          "vscode.executeDocumentRenameProvider",
+          doc.uri,
+          new vscode.Position(4, 10), // inside `sec-intro` in the heading anchor
+          "sec-overview"
+        )) as vscode.WorkspaceEdit | undefined,
+      15000
+    );
+    assert.ok(edit, "rename should return a workspace edit");
+    assert.equal(
+      edit!.get(doc.uri).length,
+      3,
+      "the definition and both references should be rewritten"
+    );
+  });
 });
+
+async function completionLabels(
+  uri: vscode.Uri,
+  position: vscode.Position
+): Promise<string[]> {
+  // The server may not have answered yet on the first call; retry until it does.
+  const labels = await waitForValue(async () => {
+    const list = (await vscode.commands.executeCommand(
+      "vscode.executeCompletionItemProvider",
+      uri,
+      position
+    )) as vscode.CompletionList;
+    const items = list?.items ?? [];
+    return items.length > 0 ? items.map((i) => labelText(i.label)) : undefined;
+  }, 15000);
+  return labels ?? [];
+}
 
 function waitFor(pred: () => boolean, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
@@ -116,6 +286,20 @@ function waitFor(pred: () => boolean, timeoutMs: number): Promise<boolean> {
     };
     tick();
   });
+}
+
+/** Poll an async producer until it yields a defined value, or the timeout expires. */
+async function waitForValue<T>(
+  produce: () => Promise<T | undefined>,
+  timeoutMs: number
+): Promise<T | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await produce();
+    if (value !== undefined) return value;
+    if (Date.now() > deadline) return undefined;
+    await new Promise((r) => setTimeout(r, 200));
+  }
 }
 
 function labelText(label: string | vscode.CompletionItemLabel): string {

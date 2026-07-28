@@ -1,0 +1,13 @@
+---
+title: Path Completion Fixture
+bibliography: re
+---
+
+A shortcode name being typed: {{< inc
+
+An option value: see below.
+
+```{python}
+#| echo: tr
+x = 1
+```

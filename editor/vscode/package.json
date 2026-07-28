@@ -12,14 +12,21 @@
     "directory": "editor/vscode"
   },
   "engines": {
-    "vscode": "^1.85.0",
+    "vscode": "^1.91.0",
     "node": ">=18"
   },
   "categories": [
-    "Other"
+    "Programming Languages",
+    "Linters",
+    "Snippets",
+    "Notebooks"
   ],
-  "activationEvents": [
-    "onLanguage:taliesin"
+  "keywords": [
+    "taliesin",
+    "tmd",
+    "markdown",
+    "literate programming",
+    "slides"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -76,7 +83,32 @@
     "commands": [
       {
         "command": "taliesin.openPreview",
-        "title": "Taliesin: Open Preview",
+        "title": "Open Preview",
+        "category": "Taliesin"
+      },
+      {
+        "command": "taliesin.check",
+        "title": "Check This Document",
+        "category": "Taliesin"
+      },
+      {
+        "command": "taliesin.restartServer",
+        "title": "Restart Language Server",
+        "category": "Taliesin"
+      },
+      {
+        "command": "taliesin.showServerLog",
+        "title": "Show Language Server Log",
+        "category": "Taliesin"
+      },
+      {
+        "command": "taliesin.doctor",
+        "title": "Diagnose Setup (doctor)",
+        "category": "Taliesin"
+      },
+      {
+        "command": "taliesin.insertMathSymbol",
+        "title": "Insert Math Symbol",
         "category": "Taliesin"
       }
     ],
@@ -87,11 +119,40 @@
           "when": "resourceExtname == .tmd",
           "group": "navigation"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "taliesin.check",
+          "when": "resourceExtname == .tmd"
+        },
+        {
+          "command": "taliesin.insertMathSymbol",
+          "when": "editorLangId == taliesin"
+        }
       ]
     },
+    "keybindings": [
+      {
+        "command": "taliesin.openPreview",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "editorLangId == taliesin"
+      },
+      {
+        "command": "taliesin.insertMathSymbol",
+        "key": "ctrl+alt+m",
+        "mac": "cmd+alt+m",
+        "when": "editorLangId == taliesin && editorTextFocus"
+      }
+    ],
     "configurationDefaults": {
       "[taliesin]": {
-        "editor.wordWrap": "on"
+        "editor.wordWrap": "on",
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        }
       }
     },
     "configuration": {
@@ -100,13 +161,37 @@
         "taliesin.path": {
           "type": "string",
           "default": "taliesin",
-          "description": "Path to the taliesin executable (default: the taliesin launcher on PATH)."
+          "scope": "machine",
+          "markdownDescription": "Path to the `taliesin` executable (default: the `taliesin` launcher on `PATH`).\n\nMachine-scoped on purpose: this names a program the extension executes, so a repository's own `.vscode/settings.json` must not be able to redirect it."
+        },
+        "taliesin.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Log the traffic between the editor and `taliesin lsp` to the Taliesin Language Server output channel."
         }
       }
     }
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Taliesin runs the `taliesin` binary to lint and preview documents. The binary path is machine-scoped so an untrusted folder cannot redirect it, but the preview executes the document's code cells.",
+      "restrictedConfigurations": [
+        "taliesin.path"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The language server and preview both read files from disk."
+    }
+  },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "vscode:prepublish": "npm run build -- --minify",
     "build": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
     "compile-tests": "tsc -p . --outDir out",
     "test": "npm run compile-tests && node --test out/test/*.test.js",
@@ -115,7 +200,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.0",
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.91.0",
     "@vscode/test-electron": "^2.4.0",
     "esbuild": "^0.21.0",
     "glob": "^10.3.0",
@@ -123,5 +208,8 @@
     "typescript": "^5.4.0",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.1.0"
   }
 }

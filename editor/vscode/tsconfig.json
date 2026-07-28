@@ -1,6 +1,11 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "node16",
+    // `vscode-languageclient` publishes `./node` as an `exports` subpath, which the classic
+    // `node` resolver cannot see; `node16` is the resolution mode its own package expects.
+    // The emitted module format stays CommonJS, which is what the VS Code extension host
+    // loads.
+    "moduleResolution": "node16",
     "target": "ES2021",
     "lib": ["ES2021"],
     "strict": true,

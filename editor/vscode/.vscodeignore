@@ -1,4 +1,22 @@
+# What NOT to ship in the .vsix.
+#
+# `src/extension.ts` is bundled by esbuild into out/extension.js, so every other emitted
+# module is already inside that bundle: shipping out/*.js as well shipped the runtime code
+# twice. The test suite, fixtures and dev scripts have no business on a user's disk at all,
+# and the previous four-line version excluded none of them.
 src/
 node_modules/
 tsconfig.json
 **/*.map
+
+# Everything under out/ except the bundle.
+out/**
+!out/extension.js
+
+# Development-only.
+test-fixtures/
+scripts/
+.vscode/
+.vscode-test/
+.gitignore
+package-lock.json

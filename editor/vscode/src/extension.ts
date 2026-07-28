@@ -2,21 +2,25 @@ import * as vscode from "vscode";
 import { PreviewServer } from "./server";
 import { relayHtml } from "./webview";
 import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "./paths";
-import { registerDiagnostics } from "./diagnostics";
-import { registerCompletions } from "./completions";
-import { registerHover } from "./hover-provider";
-import { registerDocumentSymbols } from "./outline-provider";
-import { registerDefinitions } from "./definition-provider";
+import { registerLanguageClient } from "./client";
+import { registerCommands } from "./commands";
 
+// The companion is two halves that do not overlap:
+//
+//   1. Language intelligence — completion, hover, go-to-definition, document links,
+//      symbols, diagnostics, quick fixes, rename. All of it lives in `taliesin lsp`
+//      (Rust), and `client.ts` is the whole client. Adding a feature means adding it in
+//      the engine, where the vocabulary already is, and every other editor gets it too.
+//
+//   2. The live preview + bidirectional source sync, below. This cannot be an LSP concept:
+//      it owns a webview, spawns `taliesin preview`, and bridges click-to-source. It stays
+//      read-only — the preview navigates the editor, it never writes the source.
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("taliesin.openPreview", () => openPreview(context))
   );
-  registerDiagnostics(context);
-  registerCompletions(context);
-  registerHover(context);
-  registerDocumentSymbols(context);
-  registerDefinitions(context);
+  registerLanguageClient(context);
+  registerCommands(context);
 }
 
 async function openPreview(context: vscode.ExtensionContext) {
