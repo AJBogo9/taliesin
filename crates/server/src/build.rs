@@ -2033,8 +2033,11 @@ async fn build_site_async(
         Err(e) => log::warn(&format!("cannot write manifest.webmanifest: {e}")),
     }
     // The author's own `icon-192.png` + `icon-512.png` are already mirrored into the output
-    // by `mirror_assets`, so the bundled mark ships only when they supplied no usable set.
-    if !site.manifest_icons().author_supplied {
+    // by `mirror_assets`, so the bundled mark ships only when they supplied no usable set —
+    // and a project that declared a `favicon:` has supplied one by the other route, which is
+    // why this asks `ships_bundled()` rather than `author_supplied`. Writing it anyway would
+    // put Taliesin's mark in the deploy with nothing referencing it.
+    if site.manifest_icons().ships_bundled() {
         for (name, bytes) in taliesin_core::site::BUNDLED_ICONS {
             match std::fs::write(out.join(name), bytes) {
                 Ok(()) => manifest_written.push(PathBuf::from(name)),

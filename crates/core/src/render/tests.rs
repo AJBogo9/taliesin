@@ -560,6 +560,29 @@ fn toc_does_not_double_escape_entities() {
 }
 
 #[test]
+fn toc_href_matches_an_explicit_heading_id_containing_an_entity() {
+    // The `id` reaches `toc_html` via `extract_attr` over ALREADY-escaped heading HTML,
+    // exactly like the entry text above — so escaping it a second time produced a TOC
+    // href of `#r&amp;amp;d-notes` against an anchor of `r&amp;d-notes`: a dead link in
+    // the *published build*, not just the preview. Auto-slugs strip `&`, which is why
+    // only an explicit `{#id}` ever exposed it.
+    let doc = render_document("## R&D notes {#r&d-notes}\n\nBody.\n");
+    let heading = &doc.blocks[0].html;
+    let toc = toc_html(&doc.blocks);
+    // The anchor the browser resolves against, read back out of the emitted heading.
+    let anchor = extract_attr(heading, "id").expect("heading carries an explicit id");
+    assert_eq!(anchor, "r&amp;d-notes", "heading anchor changed: {heading}");
+    assert!(
+        toc.contains(&format!("href=\"#{anchor}\"")),
+        "TOC href must equal the heading's own id, got: {toc}"
+    );
+    assert!(
+        !toc.contains("&amp;amp;"),
+        "TOC double-escaped the id: {toc}"
+    );
+}
+
+#[test]
 fn panel_tabset_without_headings_falls_back_and_warns() {
     let doc = render_document("::: {.panel-tabset}\n\nJust prose, no tabs.\n\n:::\n");
     let h = &doc.blocks[0].html;
@@ -2535,6 +2558,29 @@ fn search_js_ships_the_command_palette_actions() {
             "search.js missing command-palette wiring: {needle}"
         );
     }
+}
+
+#[test]
+fn search_js_locks_the_background_scroller_while_the_palette_is_modal() {
+    // The palette declares `aria-modal="true"` (taliFocusTrap sets it), which tells a
+    // reader nothing behind it is reachable — but a real PageDown scrolled the page 787px
+    // underneath it. Whatever else changes, the root `overflow` must be locked on open and
+    // put back on close, and it must be put back to the SAVED value: the book drawer locks
+    // the same property and Cmd-K opens over it, so restoring `''` would unlock the page
+    // under a drawer that is still up.
+    let js = super::SEARCH_JS;
+    assert!(
+        js.contains("document.documentElement.style.overflow = \"hidden\""),
+        "search.js opens a modal palette without locking the page scroller"
+    );
+    assert!(
+        js.contains("prevRootOverflow"),
+        "search.js must restore the SAVED root overflow, not a hardcoded ''"
+    );
+    assert!(
+        !js.contains("document.documentElement.style.overflow = \"\""),
+        "restoring '' unlocks a book drawer that was open before the palette"
+    );
 }
 
 #[test]

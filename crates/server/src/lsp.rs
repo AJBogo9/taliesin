@@ -288,10 +288,24 @@ fn handle_request(
         }
     } else if req.method == Rename::METHOD {
         let params: lsp_types::RenameParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(resolve_rename(docs, &params))?),
-            error: None,
+        match resolve_rename(docs, &params) {
+            Ok(edit) => lsp_server::Response {
+                id: req.id,
+                result: Some(serde_json::to_value(edit)?),
+                error: None,
+            },
+            // JSON-RPC RequestFailed: the request was well-formed, the server refused it.
+            // The editor surfaces `message` in the rename box, which is where the author is
+            // already looking — a null result would read as "nothing to rename here".
+            Err(message) => lsp_server::Response {
+                id: req.id,
+                result: None,
+                error: Some(lsp_server::ResponseError {
+                    code: -32803,
+                    message,
+                    data: None,
+                }),
+            },
         }
     } else {
         lsp_server::Response {
@@ -524,25 +538,37 @@ fn resolve_prepare_rename(
 
 /// `textDocument/rename`: rename the cross-reference anchor under the cursor — its definition
 /// (`{#id}` / `#| label: id`) and every `@id` reference in this document — to `new_name`, as one
-/// `WorkspaceEdit`. `None` when the cursor is on no anchor or `new_name` is empty. The edit flows
-/// through the editor (the legitimate editing surface), never the preview.
+/// `WorkspaceEdit`. `Ok(None)` when the cursor is on no anchor. The edit flows through the
+/// editor (the legitimate editing surface), never the preview.
+///
+/// `Err(reason)` when `new_name` is not a usable anchor — see
+/// [`crate::lsp_nav::anchor_name_error`] for why an unvalidated name is worse here than
+/// almost anywhere else. The caller turns it into a `ResponseError` so the editor shows the
+/// reason in its rename box; a silent `None` would read as "nothing to rename".
 fn resolve_rename(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     params: &lsp_types::RenameParams,
-) -> Option<lsp_types::WorkspaceEdit> {
+) -> Result<Option<lsp_types::WorkspaceEdit>, String> {
     use lsp_types::{Position, Range, TextEdit, WorkspaceEdit};
     let uri = &params.text_document_position.text_document.uri;
     let pos = params.text_document_position.position;
-    let new_name = params.new_name.trim();
-    if new_name.is_empty() {
-        return None;
-    }
-    let text = docs.get(uri)?;
+    let Some(text) = docs.get(uri) else {
+        return Ok(None);
+    };
     let cursor_char = crate::lsp_pos::utf16_to_char(
         crate::lsp_pos::nth_line(text, pos.line as usize),
         pos.character as usize,
     );
-    let (id, _, _) = crate::lsp_nav::anchor_at(text, pos.line as usize, cursor_char)?;
+    let Some((id, _, _)) = crate::lsp_nav::anchor_at(text, pos.line as usize, cursor_char) else {
+        return Ok(None);
+    };
+    // Validate BEFORE building any edit, and against the id being replaced: a name that
+    // leaves the anchor grammar does not fail loudly, it rewrites every site into something
+    // the scanners no longer find.
+    let new_name = params.new_name.trim();
+    if let Some(why) = crate::lsp_nav::anchor_name_error(&id, new_name) {
+        return Err(why);
+    }
     // Occurrences span many lines; each edit range converts its own line's scalar columns to
     // UTF-16 so the editor overwrites exactly the id, never a byte off, on any line.
     let edits: Vec<TextEdit> = crate::lsp_nav::anchor_occurrences(text, &id)
@@ -562,14 +588,14 @@ fn resolve_rename(
         })
         .collect();
     if edits.is_empty() {
-        return None;
+        return Ok(None);
     }
     let mut changes = std::collections::HashMap::new();
     changes.insert(uri.clone(), edits);
-    Some(WorkspaceEdit {
+    Ok(Some(WorkspaceEdit {
         changes: Some(changes),
         ..Default::default()
-    })
+    }))
 }
 
 /// Resolve completion at the cursor: route to the vocabulary that applies (front-matter key /
@@ -1249,6 +1275,36 @@ mod tests {
             .unwrap();
         let resp = recv_response(client, RequestId::from(id));
         serde_json::from_value(resp.result.expect("a rename result")).unwrap()
+    }
+
+    // Send a rename request and return the RAW response, so a test can assert the server
+    // answered with a ResponseError rather than an edit. `rename_at` unwraps `result` and
+    // would panic on exactly the case a rejection test exists to check.
+    fn rename_raw_at(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        character: u32,
+        new_name: &str,
+    ) -> lsp_server::Response {
+        let params = lsp_types::RenameParams {
+            text_document_position: lsp_types::TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: lsp_types::Position::new(line, character),
+            },
+            new_name: new_name.to_owned(),
+            work_done_progress_params: Default::default(),
+        };
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::Rename::METHOD.to_owned(),
+                params: serde_json::to_value(params).unwrap(),
+            }))
+            .unwrap();
+        recv_response(client, RequestId::from(id))
     }
 
     // Pull the Markdown string out of a hover's contents.
@@ -2348,6 +2404,117 @@ mod tests {
             ranges,
             vec![(0, 13, 22), (2, 5, 14), (2, 20, 29)],
             "the definition span then both reference spans"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn rename_refuses_a_new_name_that_is_not_an_anchor() {
+        // `rename` is the ONE sanctioned write path back into source (the preview never
+        // writes), so an unvalidated name corrupts the file the author is editing. Accepting
+        // any non-blank string meant `F2` -> `my section` emitted `{#my section}` — not an
+        // anchor at all, since `is_xref_id_char` stops at the space — and rewrote every
+        // reference to match; a newline split the heading line in two. Refuse with a
+        // ResponseError so the editor shows the reason in its rename box, and change nothing.
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-rename-invalid.tmd").unwrap();
+        did_open(
+            &client,
+            &uri,
+            "## Scree {#sec-scree}\n\nSee @sec-scree.\n".to_string(),
+        );
+        let _ = recv_publish(&client);
+
+        // Each of these is a distinct way to leave the anchor grammar.
+        for (n, bad) in ["my section", "sec scree", "sec\nscree", "sec#scree", "sé"]
+            .iter()
+            .enumerate()
+        {
+            let resp = rename_raw_at(&client, &uri, 60 + n as i32, 0, 12, bad);
+            assert!(
+                resp.result.is_none() || resp.result.as_ref() == Some(&serde_json::Value::Null),
+                "rename to {bad:?} must not produce an edit, got {:?}",
+                resp.result
+            );
+            let err = resp
+                .error
+                .unwrap_or_else(|| panic!("rename to {bad:?} must answer a ResponseError"));
+            assert_eq!(err.code, -32803, "expected LSP RequestFailed for {bad:?}");
+            assert!(
+                err.message.contains("letters, digits"),
+                "the message must state the grammar so the editor can show it: {}",
+                err.message
+            );
+        }
+
+        // A name that is grammatically fine but drops the kind prefix is refused too, and for
+        // a different reason: `@intro` is not a cross-reference, so every reference would
+        // silently degrade to prose rather than break visibly.
+        let dropped = rename_raw_at(&client, &uri, 68, 0, 12, "intro");
+        let err = dropped
+            .error
+            .expect("dropping the xref kind prefix must be refused");
+        assert_eq!(err.code, -32803);
+        assert!(
+            err.message.contains("`sec-` prefix"),
+            "the message should name the prefix read off the id being renamed: {}",
+            err.message
+        );
+
+        // The valid neighbours still work, so the guard rejects only what it should.
+        let ok = rename_at(&client, &uri, 70, 0, 12, "sec-scree-2").expect("a rename edit");
+        assert_eq!(
+            ok.changes.as_ref().and_then(|c| c.get(&uri)).unwrap().len(),
+            2,
+            "definition + reference"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn rename_leaves_the_fragment_of_an_external_url_alone() {
+        // `is_anchor_site` treated ANY `#` before the id as a definition sigil, so renaming a
+        // section silently retargeted outbound links: `[x](https://example.com/p.html#sec-a)`
+        // became `…#sec-b`, a fragment on someone else's page. The mutation campaign measured
+        // 29 mutants / 0 survivors here, which proved the implemented rule was faithfully
+        // pinned — not that the rule was right. This is the fixture it never had.
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-rename-external.tmd").unwrap();
+        let text = "## A {#sec-a}\n\
+                    \n\
+                    See @sec-a and [ours](#sec-a).\n\
+                    \n\
+                    [theirs](https://example.com/p.html#sec-a)\n"
+            .to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        let edit = rename_at(&client, &uri, 80, 0, 9, "sec-b").expect("a rename edit");
+        let edits = edit
+            .changes
+            .as_ref()
+            .and_then(|c| c.get(&uri))
+            .expect("edits for this document");
+        let lines: Vec<u32> = edits.iter().map(|e| e.range.start.line).collect();
+        assert!(
+            !lines.contains(&4),
+            "line 4 is an EXTERNAL url; its fragment is not ours to rewrite: {edits:?}"
+        );
+        // The definition, the `@` reference and the same-document `](#…)` link all move.
+        assert_eq!(
+            lines,
+            vec![0, 2, 2],
+            "definition + @ref + in-document link, and nothing else: {edits:?}"
         );
 
         shutdown(&client);

@@ -102,6 +102,17 @@
   /** @type {HTMLElement} */ var list;
   /** @type {(() => void) | null} active focus-trap release while the palette is open */
   var searchRelease = null;
+  /**
+   * The root `overflow` the palette displaced, restored verbatim on close. The palette
+   * declares `aria-modal="true"` (via `taliFocusTrap`) while leaving the page behind it
+   * scrollable, so a PageDown moved the reader somewhere they never chose.
+   *
+   * Saved rather than reset to `''` on purpose: the book drawer locks the SAME root
+   * property, and Cmd-K is reachable with the drawer open — clearing the value would
+   * unlock the page underneath a drawer that is still up. `null` means "not locked".
+   * @type {string | null}
+   */
+  var prevRootOverflow = null;
   /** @type {SearchItem[]} */
   var index = [];
   /** @type {Row[]} the listbox's options, parallel with the rendered `.tali-s-item` rows */
@@ -328,6 +339,10 @@
     // palette the always-available theme action normally keeps Cmd-K openable even on a
     // heading-less doc, so it can still run commands.
     if (!isSite && !buildIndex().length && !availableActions().length) return;
+    if (prevRootOverflow === null) {
+      prevRootOverflow = document.documentElement.style.overflow;
+    }
+    document.documentElement.style.overflow = "hidden";
     overlay.hidden = false;
     input.value = "";
     input.placeholder = "Search or run a command…";
@@ -350,6 +365,10 @@
 
   function close() {
     if (overlay) overlay.hidden = true;
+    if (prevRootOverflow !== null) {
+      document.documentElement.style.overflow = prevRootOverflow;
+      prevRootOverflow = null;
+    }
     if (searchRelease) { searchRelease(); searchRelease = null; }
   }
 
