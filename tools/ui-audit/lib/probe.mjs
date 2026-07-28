@@ -164,35 +164,40 @@ export async function probeToc(page) {
 // from a CDP Network.webSocketFrameSent listener.
 export async function probeClickToSource(page, cdpFrames) {
   const F = 'click-to-source';
-  return safe(F, 'Alt-click emits a click_block ws frame', async () => {
+  return safe(F, 'Ctrl-click emits a click_block ws frame', async () => {
     await page.waitForFunction(() => !!window.TALIESIN_DOC, { timeout: 8000 });
-    const handle = await page.waitForSelector('[data-block-id]', {
+    // Must carry a sourcepos, not merely a block id. The first `[data-block-id]` on a page
+    // is the title block, which has an id but NO sourcepos — and `locatable()` deliberately
+    // refuses to resolve it ("landing nowhere is the honest answer"), so this probe was
+    // clicking the one element guaranteed to emit nothing and reporting a failure that said
+    // more about the selector than about click-to-source.
+    const handle = await page.waitForSelector('[data-block-id][data-sourcepos]', {
       timeout: 8000,
     });
-    // Alt-hover affordance
-    await page.keyboard.down('Alt');
+    // Ctrl-hover affordance
+    await page.keyboard.down('Control');
     const box = await handle.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + Math.min(10, box.height / 2));
-    const altHover = await page.evaluate(
-      () => document.documentElement.classList.contains('tali-alt'),
+    const navHover = await page.evaluate(
+      () => document.documentElement.classList.contains('tali-srcnav'),
     );
-    // Alt-click
+    // Ctrl-click
     const before = cdpFrames.length;
     await handle.click();
-    await page.keyboard.up('Alt');
+    await page.keyboard.up('Control');
     // give the ws frame a beat to arrive over CDP
     await new Promise((r) => setTimeout(r, 500));
     const clickBlockFrame = cdpFrames
       .slice(before)
       .some((f) => f.includes('click_block'));
     if (!clickBlockFrame) {
-      return fail(F, 'Alt-click emits a click_block ws frame', {
-        altHover,
+      return fail(F, 'Ctrl-click emits a click_block ws frame', {
+        navHover,
         framesSeen: cdpFrames.length - before,
       });
     }
-    return ok(F, 'Alt-click emits a click_block ws frame', {
-      altHover,
+    return ok(F, 'Ctrl-click emits a click_block ws frame', {
+      navHover,
       clickBlockFrame,
     });
   });

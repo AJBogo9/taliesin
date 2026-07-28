@@ -744,13 +744,13 @@
   @keyframes tali-hl-fade { from { outline-color: var(--tali-accent); } to { outline-color: transparent; } }
   [data-block-id].tali-hl-flash { outline: 2px solid var(--tali-accent); outline-offset: 3px;
     border-radius: var(--tali-radius-sm); animation: tali-hl-fade .7s ease-out forwards; }
-  /* click-to-source affordance: while Alt is held (html.tali-alt) every source-mapped
+  /* Inverse-search affordance: while Ctrl/Cmd is held (html.tali-srcnav) every source-mapped
      block reads as clickable (pointer), and the block a click would resolve to gets a
      dashed accent outline that tracks the mouse (.tali-src-hover, toggled in client.js).
      Dashed distinguishes this "click to open source" hover from the solid .tali-hl that
      marks the editor-cursor sync. Outline (not border) so tracking never reflows the
      page; no animation, because continuous hover feedback must read as instantaneous. */
-  html.tali-alt [data-block-id], html.tali-alt [data-tali-src] { cursor: pointer; }
+  html.tali-srcnav [data-block-id], html.tali-srcnav [data-tali-src] { cursor: pointer; }
   .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
   figure.tali-figure { margin: 1.5rem 0; }
   figure.tali-figure img { max-width: 100%; height: auto; }

@@ -422,13 +422,17 @@
     wordCountEl = document.createElement("span");
     wordCountEl.id = "tali-wordcount";
 
-    // Click-to-source hint: Alt/Option-click any block to open its source. No toggle
-    // — a plain click browses normally; the modifier is the whole gesture.
+    // Inverse-search hint: Ctrl/Cmd-click any block to open its source. No toggle —
+    // a plain click browses normally; the modifier is the whole gesture. A modifier
+    // gesture with no signifier is undiscoverable, and this label is that signifier,
+    // so it names the platform-native key rather than both.
+    const mac = /Mac|iP(hone|ad|od)/.test(navigator.platform || "");
+    const navKey = mac ? "Cmd" : "Ctrl";
     const srcHint = document.createElement("span");
     srcHint.id = "tali-src-hint";
-    srcHint.textContent = "Alt-click a block";
+    srcHint.textContent = navKey + "-click a block";
     srcHint.title =
-      "Hold Alt (Option on Mac) and click any block to open its source" +
+      "Hold " + navKey + " and click any block to open its source" +
       (inWebview ? " in the editor" : " in your editor");
 
     // Restart the warm Jupyter kernel: drops the (possibly dead/wedged) kernel and
@@ -1510,16 +1514,22 @@
 
   const inDevMenu = (/** @type {Element} */ t) => !!t.closest("#tali-controls");
 
-  // Click-to-source: Alt/Option-click any block to jump to its source line (browser
-  // -> vscode://, webview -> host). A plain click browses normally, so there's no
-  // mode and no way to land in the editor by accident.
+  // Inverse search: Ctrl-click (Cmd-click on Mac) any block to jump to its source line
+  // (browser -> vscode://, webview -> host). A plain click browses normally, so there's
+  // no mode and no way to land in the editor by accident.
+  //
+  // Ctrl/Cmd rather than Alt because it is the convention every comparable tool already
+  // taught the author: LaTeX Workshop's inverse search is Ctrl-click, and Alt-click
+  // additionally collides with VS Code's own insert-cursor and, under GNOME, with
+  // window dragging. Both modifiers are accepted on every platform so neither habit
+  // fails; the docs name the platform-native one.
   document.addEventListener("click", (e) => {
-    if (!e.altKey) return;
+    if (!(e.ctrlKey || e.metaKey)) return;
     const t = e.target instanceof Element ? e.target : null;
     if (!t || inDevMenu(t)) return;
     const el = locatable(t);
     if (!el) return;
-    e.preventDefault(); // suppress text selection / link navigation on the Alt-click
+    e.preventDefault(); // suppress text selection / link navigation on the jump
     pulse(el, "tali-hl-flash");
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
@@ -1527,15 +1537,16 @@
     openSource(el);
   });
 
-  // Click-to-source affordance: while Alt is held, make the otherwise-invisible
-  // gesture visible. `html.tali-alt` flips every source-mapped block to a pointer
+  // Inverse-search affordance: while Ctrl/Cmd is held, make the otherwise-invisible
+  // gesture visible. `html.tali-srcnav` flips every source-mapped block to a pointer
   // cursor, and the single block a click would actually resolve to (via the same
   // `locatable()` used by the click handler, so highlight and jump can never drift)
   // wears a dashed outline that tracks the mouse. Pure feedback — no write path,
-  // nothing shown until Alt is down, and no animation: hover is continuous tracking
-  // and must read as instantaneous, while the jump itself already pulses on commit.
+  // nothing shown until the modifier is down, and no animation: hover is continuous
+  // tracking and must read as instantaneous, while the jump itself already pulses on
+  // commit.
   (() => {
-    let altOn = false;
+    let navOn = false;
     /** @type {HTMLElement|null} */ let hovered = null;
     let lastX = 0, lastY = 0;
 
@@ -1549,31 +1560,36 @@
       if (el) el.classList.add("tali-src-hover");
     };
 
-    const enterAlt = () => {
-      if (altOn) return;
-      altOn = true;
-      document.documentElement.classList.add("tali-alt");
+    const enterNav = () => {
+      if (navOn) return;
+      navOn = true;
+      document.documentElement.classList.add("tali-srcnav");
       markEl(document.elementFromPoint(lastX, lastY)); // highlight what's already under the cursor
     };
-    const exitAlt = () => {
-      if (!altOn) return;
-      altOn = false;
-      document.documentElement.classList.remove("tali-alt");
+    const exitNav = () => {
+      if (!navOn) return;
+      navOn = false;
+      document.documentElement.classList.remove("tali-srcnav");
       markEl(null);
     };
 
-    window.addEventListener("keydown", (e) => { if (e.key === "Alt") enterAlt(); });
-    window.addEventListener("keyup", (e) => { if (e.key === "Alt") exitAlt(); });
+    const isNavKey = (/** @type {KeyboardEvent} */ e) => e.key === "Control" || e.key === "Meta";
+    window.addEventListener("keydown", (e) => { if (isNavKey(e)) enterNav(); });
+    window.addEventListener("keyup", (e) => { if (isNavKey(e)) exitNav(); });
+    // macOS: Ctrl-click IS the secondary click. A Mac author who reaches for Ctrl instead of
+    // Cmd would otherwise get a context menu on top of the jump. Suppressed only while the
+    // overlay is armed, so an ordinary right-click is untouched.
+    document.addEventListener("contextmenu", (e) => { if (navOn) e.preventDefault(); });
     document.addEventListener("mousemove", (e) => {
       lastX = e.clientX;
       lastY = e.clientY;
-      if (altOn) markEl(e.target instanceof Element ? e.target : null);
+      if (navOn) markEl(e.target instanceof Element ? e.target : null);
     }, { passive: true });
     // Never leave the affordance stuck "armed" if focus leaves mid-press (alt-tab,
-    // an Alt-click that navigates to vscode://, switching tabs): the keyup may never
+    // a jump that navigates to vscode://, switching tabs): the keyup may never
     // arrive, so reset on blur / hide.
-    window.addEventListener("blur", exitAlt);
-    document.addEventListener("visibilitychange", () => { if (document.hidden) exitAlt(); });
+    window.addEventListener("blur", exitNav);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) exitNav(); });
   })();
 
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor

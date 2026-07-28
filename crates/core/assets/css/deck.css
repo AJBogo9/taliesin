@@ -1082,8 +1082,8 @@ html.tali-deck-dark .tali-deck .tali-copy { background: #21242b; color: var(--ta
 [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; }
 .tali-deck .tali-slides section:focus, .tali-deck .tali-slides section:focus-visible { outline: none; }
 
-/* Alt-held click-to-source affordance (deck accent; see base.css for the rationale). */
-html.tali-alt [data-block-id] { cursor: pointer; }
+/* Ctrl/Cmd-held inverse-search affordance (deck accent; see base.css for the rationale). */
+html.tali-srcnav [data-block-id] { cursor: pointer; }
 .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; }
 
 /* a11y live region (deck.js updateSlideLabels): announces "Slide N of M" on every
