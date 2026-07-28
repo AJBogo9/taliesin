@@ -56,6 +56,15 @@ The following are by design:
   `preview` server's asset endpoint is stricter still: it serves only what canonicalizes
   under the document's own directory, so a symlinked image that builds fine may 404 there.
 
+  **This allowance assumes *you* placed the symlink**, which is true of your own
+  checkout and false of an archive someone sent you. A `.tmd` project you unpack can
+  ship its own symlinks, and the checkout boundary is then drawn around *its* files,
+  not yours — a link it created to a file elsewhere under the same enclosing repository
+  resolves, and its content is included into the rendered page. That is the same trust
+  decision as the one above it (a document you preview is a document you run), not a
+  separate one, and the same answer applies: unpack a stranger's project somewhere that
+  contains nothing else, or use a container.
+
 Reports that fall inside this model (for example, "a cell can run arbitrary
 code") are working as intended. Reports that let an *untrusted* document or a
 *remote* page cross one of these boundaries (read files outside the project,

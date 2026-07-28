@@ -20,6 +20,25 @@ Output is **HTML only**. The project's own manual is two sibling books authored 
 [Internals](docs/internals/index.tmd) book (the architecture, websocket protocol,
 and block model).
 
+## Before you adopt it
+
+Three things a stranger should know, each measured rather than asserted. The long version,
+with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosing.tmd).
+
+- **Your source stays yours.** Across the 125 documents / 11,427 lines of the project's own
+  corpus, **7.3% of lines carry any construct beyond plain CommonMark** — and all six of
+  those families are existing Pandoc/Quarto vocabulary, not invented here. Your writing is
+  Markdown in your repository; built pages are static HTML that needs no runtime, and
+  `taliesin read --format json` projects a document to structured text.
+- **Speed, in absolutes and with no multiplier.** A 15-page book builds in **0.25 s**
+  (16.7 ms/page); `preview` is serving in **1–5 ms** for a single document and **≈200 ms**
+  for a 23-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **3.2 KB**
+  patch instead of a 270 KB page reload. These measure Taliesin's work only — a batch
+  compiler doing a cold Pandoc pass is doing different work, so no ratio is quoted.
+- **One maintainer, pre-1.0.** No support contract, no release cadence, no bus factor above
+  one. What that risk is bounded by: Markdown source you already hold, built HTML with no
+  dependency on this tool, and an AGPL-3.0 licence that makes a fork always available.
+
 ## Architecture (at a glance)
 
 An editor-agnostic Rust dev server owns all logic behind a versioned websocket
@@ -179,6 +198,18 @@ The native deck engine, mermaid, and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
 See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
 books, authored in `.tmd` and built with Taliesin itself.
+
+## Documents you did not write
+
+**Previewing a `.tmd` runs it.** `{python}` / `{r}` cells execute against a Jupyter
+kernel with your permissions, a `{js}` cell runs in your browser, and raw HTML (plus
+anything a document injects through `include-in-header` / `css:`) passes through
+verbatim — so opening a document someone sent you is the same kind of decision as
+running a script they sent you. `--no-exec` stops the code cells, both kinds, but it is
+**not** a sanitizer. Taliesin says this plainly rather than implying a sandbox it does
+not have: the full account is in
+[the CLI reference](docs/guide/reference/cli.tmd) and the trust model is in
+[`SECURITY.md`](SECURITY.md).
 
 ## Accessibility
 

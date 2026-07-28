@@ -278,6 +278,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     } else if expose {
         crate::log::warn("--host set, but no LAN address was found");
     }
+    crate::log::first_run_notice();
     crate::log::keys_hint();
     crate::log::watching(&app.path.display().to_string(), &desc);
     if let Some(n) = &narration {

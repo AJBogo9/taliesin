@@ -126,6 +126,51 @@ pub fn keys_hint() {
     line(Style::Info, keys_hint_body());
 }
 
+/// The first-run notice's wording. Pure so `first_run_notice_states_what_runs` can assert
+/// it without touching the filesystem or a terminal.
+fn first_run_notice_body() -> &'static str {
+    "first run: previewing a .tmd RUNS it (code cells, {js}, raw HTML) — \
+     `--no-exec` skips the cells; see SECURITY.md"
+}
+
+/// Where the "already told them" marker lives. A user-level path, not a project one: the
+/// fact is about the tool, so learning it once is enough no matter which project is open.
+/// Same base resolution as the math-hover cache (`XDG_CACHE_HOME`, else `~/.cache`, else
+/// the temp dir).
+fn first_run_marker() -> std::path::PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("taliesin")
+        .join("first-run-notice")
+}
+
+/// Say once, on this machine, that previewing a document executes it.
+///
+/// The trust model is stated correctly in `SECURITY.md` and in the CLI reference, and a
+/// first-time user reads neither before their first `taliesin preview` — which is the one
+/// moment the fact is load-bearing. So it is said in the terminal, exactly once ever.
+///
+/// TTY-gated like [`keys_hint`] (an agent or CI run keeps its captured log clean) and
+/// marker-gated so the author who lives in this tool sees it on day one and never again.
+/// A failure to write the marker prints the notice again next time rather than crashing:
+/// repeating a one-line notice is the cheap failure.
+pub fn first_run_notice() {
+    if !std::io::stderr().is_terminal() {
+        return;
+    }
+    let marker = first_run_marker();
+    if marker.exists() {
+        return;
+    }
+    line(Style::Info, first_run_notice_body());
+    if let Some(dir) = marker.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&marker, b"");
+}
+
 /// A one-shot `build` wrote a file.
 pub fn built(path: &str) {
     line(Style::Built, &paint(path, "\x1b[1m"));
@@ -256,6 +301,48 @@ mod tests {
         assert_eq!(cache_tally_body(5, 0), "restored 5 cached cells · 0 re-ran");
         assert_eq!(cache_tally_body(1, 2), "restored 1 cached cell · 2 re-ran");
         assert_eq!(cache_tally_body(3, 1), "restored 3 cached cells · 1 re-ran");
+    }
+
+    /// The first-run notice must say the one thing a first-time user does not know: that
+    /// opening a document runs it. It also has to name the escape hatch, or it is a warning
+    /// with no action attached.
+    #[test]
+    fn first_run_notice_states_what_runs_and_the_way_out() {
+        let body = first_run_notice_body();
+        for needle in ["RUNS", "--no-exec", "SECURITY.md"] {
+            assert!(
+                body.contains(needle),
+                "the first-run notice must carry {needle:?}: {body:?}"
+            );
+        }
+        // One line. A wall of text at startup is scrolled past, which is the same as not
+        // saying it — and the long forms already exist in SECURITY.md and the CLI reference.
+        assert!(!body.contains('\n'), "one line only: {body:?}");
+    }
+
+    /// The marker is a USER-level path, not a project one: the fact is about the tool, so a
+    /// second project must not re-announce it. Also pinned: it is under a `taliesin/`
+    /// directory, so the notice never drops a bare file into someone's cache root.
+    #[test]
+    fn the_first_run_marker_is_user_level_and_namespaced() {
+        let dir = std::env::temp_dir().join(format!("tali-frn-{}", std::process::id()));
+        // SAFETY: single-threaded scope in this test; the value is read immediately below.
+        let previous = std::env::var_os("XDG_CACHE_HOME");
+        unsafe { std::env::set_var("XDG_CACHE_HOME", &dir) };
+        let marker = first_run_marker();
+        match previous {
+            Some(v) => unsafe { std::env::set_var("XDG_CACHE_HOME", v) },
+            None => unsafe { std::env::remove_var("XDG_CACHE_HOME") },
+        }
+        assert!(
+            marker.starts_with(&dir),
+            "the marker honours XDG_CACHE_HOME: {marker:?}"
+        );
+        assert_eq!(
+            marker.parent().and_then(|p| p.file_name()),
+            Some(std::ffi::OsStr::new("taliesin")),
+            "namespaced under taliesin/: {marker:?}"
+        );
     }
 
     #[test]
