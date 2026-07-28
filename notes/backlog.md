@@ -76,9 +76,17 @@ enough to continue; nothing else is required.**
   **launch-blocking set is empty**, the **publication-readiness set is done**, and the
   **reader-cost batch (150, 137, 124) shipped 2026-07-28** — see "Do not re-add / re-scope" for
   what each did and what it measured. Nothing in band A gates anything else; pick on value, not
-  on order. The largest remaining *un-started* cluster is the deck/conformance pair
-  **112 + 125**, which the file says to do together as one step-the-deck browser harness, and
-  which would be the **first browser test of `deck.js`**.
+  on order. The deck/conformance pair **112 + 125 SHIPPED 2026-07-28** as one step-the-deck
+  browser harness — the first browser test of `deck.js` — together with **113** (the corpus
+  deck's missing math + kernel cell) and **111** (the vacuous deck rows in the a11y walk);
+  see "Do not re-add / re-scope". **It found two shipped layout defects on its first run**
+  (clipped code blocks on 5 of 21 slides; the browser's focus ring around every
+  vertical-stack slide), neither of them filed and neither visible to any emission test —
+  which is the strongest evidence this file has that *rendered geometry* was an uncovered
+  axis, not just an untested file. What is left in band A is mostly **words, not code**
+  (94, 95, 96, 126, 135, 136), plus the structural pair **119** (a live detection-debt file)
+  and **146** (widen the prose-vs-behaviour gate), and **138**, which still deserves its own
+  session.
   **Two items are rulings and must not be built without one: 101** (what licence a user's built
   page carries, given every page inlines AGPL JS — its CLA sub-bullet is discharged, the rest is
   open) and **122** (its filed fix reverses the PL14 ruling; the cost objection was measured
@@ -555,23 +563,12 @@ which is this file's standing rule.
      `DraftMode::Include` so the author still sees diagnostics where they write, and nothing ships.
      **This may be correct behaviour** — if so the deliverable is one comment at `discovery.rs:30`
      and a line in the docs, not code.
-125. **A conformance tool cannot audit a deck: 12 of 14 slides are `inert`.** (MEDIUM.) The deck's
-     Lighthouse 100 covers ~14% of its content. `inert` is the *correct* implementation; the point
-     is the project cannot currently make a conformance claim about deck content. **Third mechanism
-     to stop at the deck boundary** (with 109 and 112). **Do this with 112, not separately** — one
-     step-the-deck harness, two assertions.
-112. **The repo's browser automation has never been pointed at `deck.js`.** (MEDIUM.)
-     `chromiumoxide` exists only in `Cargo.toml` + `headless_js.rs`; `read_run_js.rs` contains zero
-     `deck`/`reveal`. Existing deck tests assert `deck.rs` **emission** or read `deck.js` as text.
-     **Smallest first step:** load a built `corpus/deck.tmd`, press `ArrowRight` N times, assert the
-     slide index and the `#/slug` hash agree — that covers navigation, fragments and the hash writer
-     at once. (The QR encoder is the exception and already has a genuine golden net.)
-113. **`corpus/deck.tmd` has no math and no kernel cell, plus eleven other absent shapes.**
-     (MEDIUM.) Math and `{python}` exist only in dogfood/marketing decks, which `corpus.rs` does not
-     walk. Absent from **every** deck in the tree: table, footnote, citation, `{r}`, theorem envs,
-     tabset, `@fig-` + captioned figure, `{{< include >}}`, `{{< video >}}`, `logo:`, `theme:`,
-     `lang:`, `css:`. **Add only math + one `{python}` cell** (both already render correctly in the
-     dogfood decks, so this pins working behaviour); leave the rest listed and unbuilt.
+**Items 112, 125 and 113 SHIPPED 2026-07-28 in the deck-harness batch — see "Do not re-add /
+re-scope".** The eleven deck shapes 113 listed and deliberately did *not* build (table,
+footnote, citation, `{r}`, theorem envs, tabset, `@fig-` + captioned figure,
+`{{< include >}}`, `{{< video >}}`, `logo:`, `theme:`, `lang:`, `css:`) are still absent from
+every deck in the tree, and are still deliberately unbuilt: the walker renders every corpus
+doc on every `cargo test`.
 129. **Shape inventory from two real external documents — the durable half of R11.** (MEDIUM, mostly
      a record.) What real documents contain that `corpus/` has nowhere: `lang,attr` fences (734
      occurrences → item 127), ` ```console ` (209), links with a non-`.tmd` extension (128 → item
@@ -612,12 +609,6 @@ which is this file's standing rule.
      doc, not a tool, not CI) with one row per class and a column for "what would change this score".
      Proof the column is real: the broken-SVG mode went D=10 → D=3 the day `svg_assets_render.rs`
      landed, and that is recorded nowhere a future round would find it.
-111. **The deck exemption makes an existing a11y test vacuous on the two decks it walks.** (LOW.)
-     `a11y_outline.rs:162-198` walks `docs/guide`, filters for "heading level skips", and asserts
-     empty across `pages >= 40`. `demo.tmd` and `tour.tmd` are decks, and `a11y.rs:228` makes that
-     filter empty **by construction** — so they count toward the floor that proves the walk was live
-     while being unable to fail. Fix the test's intent, not the product.
-
 **Low**
 
 **Items 114, 123 and 130 SHIPPED 2026-07-28 in the verified sweep — see "Do not re-add /
@@ -1161,6 +1152,73 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 the deck-harness batch (items 112, 125, 113, 111, plus two defects the
+  harness found),** on branch `deck-harness-2026-07-28`. Each pin verified by **mutation
+  against `deck.js` / `deck.css` itself** (restore the bug, watch the named test fail), not
+  by a green suite. **Do not re-scope any of the following as open:**
+  - **`deck.js` has a browser test now** (112). `crates/server/tests/deck_browser.rs` builds
+    `corpus/deck.tmd`, opens it in headless Chrome at **1280×900 — landscape is
+    load-bearing, a portrait window opens the phone feed instead of the stepped deck** — and
+    walks it with **real** `ArrowRight` events (CDP `Input.dispatchKeyEvent`, not a synthetic
+    `KeyboardEvent`; that is the Cmd-K lesson). Two properties: at every step the `#/slug`
+    resolves, *the way a reader's browser resolves it*, to the slide the reader is on; and
+    the address captured mid-walk **re-opens in a fresh page onto the same slide and the same
+    fragment step**. The round-trip is the half that carries the weight — mutating
+    `writeHash` to emit the index instead of the id fails both, but mutating `readHash` to
+    land on slide 0 fails **only** the round-trip, which is what proves it is not decoration.
+    Also asserted, because the walk is worthless if it did not move: it reaches the last
+    slide, `h` never goes backwards, and it steps *into* the vertical stack (`v > 0`).
+  - **Deck content is auditable, and the claim is now made** (125). The same walk asserts
+    both halves: at rest **1 of 21** slides is exposed (every off-camera slide is `inert`,
+    which is the *correct* implementation and is pinned in that direction — a mutation that
+    stops setting `inert` fails it), and the union over the stepped walk is **all 21**, each
+    scanned against the two `validate_a11y` rules a live DOM can check. **0 violations across
+    100% of slides**, where a page-load audit covered one slide. The scan carries its own
+    vacuity control (it asserts it *examined* elements), because a selector that matches
+    nothing reports clean forever.
+  - **Two shipped layout defects the harness found on its FIRST run**, neither of them a
+    filed item, both invisible to every emission test because both are about *rendered
+    geometry*. This is the item-112 argument paying off immediately:
+    - **Code blocks were clipped off the right edge of 5 of the 21 slides.**
+      `.tali-deck pre` set `width: 100%` with `padding: .8em 1em` + a `1px` border while
+      the global reset is `content-box`, so every code block computed ~32px wider than the
+      slide's content box, ran into `.tali-deck { overflow: hidden }` and took the copy
+      button with it. It also made `fitSlide` shrink every code slide to fit an overflow
+      that should not have existed, so slide code rendered **smaller than the design calls
+      for**. One line (`box-sizing: border-box`), pinned by
+      `no_slide_content_is_clipped_by_the_slide_edge`. `.tali-slide-bg` is exempt in the
+      probe and must stay exempt: a per-slide backdrop is full-bleed on purpose.
+    - **The browser's focus ring painted around every slide in a vertical stack.**
+      `deck.js` moves focus to the slide that becomes current (correct — the previous one
+      goes `inert`), and `deck.css` suppressed the ring with
+      `.tali-slides > section:focus-visible`. **A child combinator**, and a vertical
+      sub-slide is a grandchild inside `.tali-stack`, so Chrome's `outline: auto 1px`
+      painted a light rectangle on a projected deck from the first key press that entered
+      a stack. Fixed to a descendant selector, pinned by
+      `the_focused_slide_never_shows_the_browsers_focus_ring` — which is why the walk
+      asserts it steps *into* the stack: on top-level slides the property already held.
+    - **The probe was wrong before it was right, and the trap generalises.** The first
+      overflow probe mixed `getBoundingClientRect` (rendered px) with `getComputedStyle`
+      padding (unscaled CSS px). The stage is a **scaled camera**, so that invents or hides
+      `padding × (scale − 1)` — it reported a phantom 7px on `<h2>`/`<p>` across most
+      slides, which reconciles exactly against the harness's measured `@0.833` scale
+      (`40 × 0.167 = 6.7`). **Any geometry assertion inside a scaled stage must convert;**
+      the failure message carries the slide's `WxH @scale` so the next false positive is
+      diagnosable instead of mysterious.
+  - **The corpus deck gained math and a kernel cell** (113). Both existed only in the
+    dogfood decks, which `corpus.rs` does not walk. The `{python}` pin is on the **block
+    model**, not on emitted HTML: an unexecuted `{python}` cell and a plain ```python fence
+    render to the same `<pre><code class="language-python">`, so an HTML needle would pass on
+    a deck with no runnable cell at all. The other eleven shapes 113 listed stay unbuilt.
+  - **A vacuous row stopped propping up a floor** (111). `a11y_outline.rs`'s book walk
+    counted `demo.tmd` and `tour.tmd` toward `pages >= 40` while `a11y.rs` exempts a deck
+    from the heading-skip rule wholesale, so two of the rows proving "the walk was live" were
+    empty **by construction**. Decks are now counted separately and the floor applies only to
+    pages the rule can fire on. **Deliberately NOT asserted: that a deck emits no skip.**
+    Measured — re-running the rule over those same blocks as `DocFormat::Html` (i.e. with the
+    exemption gone) also reports **0** on both files, so such an assertion would pass for two
+    independent reasons and could never fail. Replacing one vacuous row with another was the
+    way to get this item wrong.
 - **2026-07-28 MERGED-TREE figure, which is the one to trust** — the verified sweep and the
   critique-round batch below were built and gated **together** on
   `worktree-verified-sweep-2026-07-28` after merging `main`: `./tools/gates.sh` **PASSED, all

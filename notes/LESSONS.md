@@ -140,6 +140,25 @@ through its wrappers. What was actually missing was a fixture *shape*.
   and was explained away. A cheap ancestor walk settles it: climb parents, and if any has
   `overflow: hidden` and the child's rect escapes that parent's rect, the escaping part paints
   nothing.
+- **Inside a scaled stage, `getBoundingClientRect` and `getComputedStyle` are in DIFFERENT
+  units — mixing them invents or hides `padding × (scale − 1)`.** (2026-07-28, the deck browser
+  harness.) A slide-overflow probe took the slide's right edge from the rect (rendered px) and
+  subtracted its padding from the computed style (unscaled CSS px). The deck's camera scales the
+  stage, so at the harness's measured `@0.833` the probe reported a **phantom 7px overflow on
+  `<h2>` and `<p>` across most slides** (`40 × 0.167 = 6.7`), and at a `1.333` desktop scale the
+  same formula would have *under*-reported by 13px and hidden a real one. Convert with
+  `rect.width / el.offsetWidth`, and **print the geometry (`WxH @scale`) in the failure message**
+  — the phantom was only diagnosable because the numbers reconciled exactly. Same family as the
+  clipping-ancestor lesson above: a geometric question needs the geometry's own frame of
+  reference.
+- **A CSS fix can be present, correct, and still miss half its subjects because of one
+  combinator.** (2026-07-28.) `deck.css` already suppressed the browser focus ring on a slide —
+  with `.tali-slides > section:focus-visible`. A **vertical sub-slide is a grandchild** (it lives
+  inside `.tali-stack`), so every stacked slide kept Chrome's `outline: auto 1px` on a projected
+  deck, from the first key press that entered a stack. The rule read as coverage for the whole
+  class while covering only the flat case. **When a rule is written for "a slide", check the
+  nested shape of that thing exists and matches** — and pin the nested case specifically, which
+  is why the harness asserts its walk reaches `v > 0`.
 - **Reproducibility is a property of the instrument, not of the claim.** That measurement was
   consistent, quantified to a decimal, and reproduced on the built artifact as well as in preview —
   every property of a solid finding except being true. **Before writing a finding down, read the

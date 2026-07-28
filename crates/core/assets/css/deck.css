@@ -966,6 +966,12 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-deck pre {
   position: relative;
   width: 100%;
+  /* Load-bearing with `width: 100%`: the global reset is content-box (see the same note
+     in site.css), so without this the padding + border below are added OUTSIDE the 100%
+     and every code block on every slide is ~32px wider than the slide's content box. It
+     overflowed to the RIGHT — clipped by `.tali-deck { overflow: hidden }`, taking the
+     copy button with it — on 5 of the corpus deck's 21 slides, at every viewport. */
+  box-sizing: border-box;
   box-shadow: none;
   /* Block code reads at ~0.7 of the body ink, not half: at .5em it fit more lines
      but sat far below inline code (.9em) and forced the audience to squint. A slide
@@ -1057,9 +1063,16 @@ html.tali-deck-dark .tali-deck .tali-copy { background: #21242b; color: var(--ta
 /* Speaker notes (`::: {.notes}`) are for the presenter window only. */
 .tali-deck .notes { display: none; }
 
-/* Click-to-source highlight; programmatic slide focus is not a visible affordance. */
+/* Click-to-source highlight; programmatic slide focus is not a visible affordance.
+   (base.css states the same convention: the shared ring is scoped to controls that take
+   focus, so it never paints on a programmatically-focused `tabindex="-1"` target.)
+
+   DESCENDANT, not `>`: a vertical sub-slide lives inside a `.tali-stack`, so a child
+   combinator matched only top-level slides and left the browser's own 1px ring painted
+   around every stack slide the moment a key press moved focus into it — visible to the
+   audience, on a projected deck. */
 [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; }
-.tali-deck .tali-slides > section:focus, .tali-deck .tali-slides > section:focus-visible { outline: none; }
+.tali-deck .tali-slides section:focus, .tali-deck .tali-slides section:focus-visible { outline: none; }
 
 /* Alt-held click-to-source affordance (deck accent; see base.css for the rationale). */
 html.tali-alt [data-block-id] { cursor: pointer; }

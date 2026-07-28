@@ -45,6 +45,18 @@ This one stays, and is marked when you get to it.
 - finally this
 :::
 
+## Math on a slide
+
+KaTeX renders server-side and ships inside the deck, so an equation needs no
+network and no client-side typesetting pass:
+
+$$
+\hat{\beta} = (X^\top X)^{-1} X^\top y
+$$
+
+Inline math sets in the run of the text too: $\hat{\beta}$ minimizes
+$\lVert y - X\beta \rVert^2$.
+
 ## Code on a slide
 
 ```python
@@ -71,6 +83,16 @@ First the idea.
 ```python
 def double(x):
     return x * 2
+```
+
+## A cell that runs on a slide
+
+A code cell executes against the warm kernel and its output is spliced onto the
+slide, exactly as it is on a page.
+
+```{python}
+#| echo: true
+sum(n * n for n in range(10))
 ```
 
 ## Refactor, live

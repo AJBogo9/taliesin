@@ -491,12 +491,12 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
     // One slide per `##` heading. The corpus deck is the deck-engine regression net
-    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries seventeen level-2
+    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries nineteen level-2
     // slides plus one level-1 vertical-stack lead. `data-level` is the count anchor.
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
-        content_slides, 17,
-        "expected 17 content slides, got {content_slides}"
+        content_slides, 19,
+        "expected 19 content slides, got {content_slides}"
     );
     // Slide ids are slugged from the heading text.
     assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
@@ -632,6 +632,33 @@ fn corpus_deck_pins_every_kept_rich_feature() {
     assert!(
         slides.contains("id=\"sec-second-point\""),
         "deck corpus must exercise an explicit slide anchor"
+    );
+    // Math on a slide (item 113). Both shapes, because they take different paths through
+    // `math.rs`: a `$$` block becomes a `.katex-display`, inline `$…$` a plain `.katex`
+    // span inside the paragraph. Both are rendered SERVER-side, so a deck ships no
+    // typesetting pass — and this is the only deck in the regression net that has any
+    // math at all (it lived only in the dogfood decks, which `corpus.rs` does not walk).
+    assert!(
+        slides.contains("class=\"katex-display\""),
+        "deck corpus must exercise a display equation, server-rendered"
+    );
+    assert!(
+        slides.contains("<p data-block-id=") && slides.contains("<span class=\"katex\">"),
+        "deck corpus must exercise inline math inside slide prose"
+    );
+    // A kernel cell on a slide (item 113). Pinned on the block MODEL, not on the emitted
+    // HTML: an unexecuted `{python}` cell and a plain ```python fence render to the same
+    // `<pre><code class="language-python">`, so an HTML needle here would pass on a deck
+    // that has no runnable cell at all.
+    let kernel_cells: Vec<&str> = doc
+        .blocks
+        .iter()
+        .filter_map(|b| b.cell.as_ref())
+        .map(|c| c.lang.as_str())
+        .collect();
+    assert!(
+        kernel_cells.contains(&"python"),
+        "deck corpus must exercise a {{python}} cell (langs found: {kernel_cells:?})"
     );
     // Front-matter `footer:` becomes a persistent overlay in the full deck page (a sibling
     // of `.tali-slides`, so it is not in `slides_html`; render the whole page to see it).
