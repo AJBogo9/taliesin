@@ -115,13 +115,14 @@ It holds open `.tmd` buffers warm and answers:
 | capability | what it gives the author |
 |---|---|
 | `publishDiagnostics` | every `check` finding, live on each keystroke, with its `TAL-*` code and a link to the catalog |
-| `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout and theorem kinds, cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
+| `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout and theorem kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
 | `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
 | `documentLink` | `{{< include >}}` / `{{< embed >}}` paths, so they *look* navigable |
 | `documentSymbol` | the heading outline (breadcrumbs, sticky scroll, the outline view) |
 | `codeAction` | the "did you mean `X`" quick fix, whenever the diagnostic carried a precise span |
 | `rename` (with `prepareRename`) | a cross-reference anchor and every reference to it, as one edit |
+| `formatting` | pipe tables, aligned to their widest cell, alignment markers kept — and **nothing else in the file** |
 
 Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
 in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either signal, the
@@ -165,6 +166,19 @@ What is left in the extension is what the protocol has no concept of:
   Symbol* (a picker over the same math vocabulary the completion uses, searchable by glyph),
   *Restart Language Server*, *Show Language Server Log*.
 - **The `.tmd` grammar, the snippets, and `language-configuration.json`** — pure manifest.
+  The last of those carries the `onEnterRules` that continue a list or blockquote on Enter,
+  keeping the marker the author chose. Ordered lists are deliberately *not* continued:
+  `appendText` is a literal and cannot count from `1.` to `2.`, and the alternative is
+  binding Enter itself to a command, which puts the most-used key in the editor behind our
+  own fall-through logic for the suggest widget, snippet placeholders and multi-cursor.
+- **`contributes.yamlValidation` for `_site.yml`**, pointing at a copy of the same schema
+  `taliesin schema` emits. It is a copy because the manifest needs a file inside the
+  extension, so a gate in `src/test/manifest.test.ts` fails when it drifts from
+  `crates/core/assets/schema/`. Only `_site.yml` is matched, because that is the only name
+  the site loader opens — validating `_site.yaml` would bless a file Taliesin never reads.
+- **`contributes.walkthroughs`**, the first-run experience. Every step's media path and every
+  command it links to are checked by the same manifest gate, since all of them are strings
+  that resolve at runtime and a typo would only ever be seen by a first-time user.
 - **Embedded-language completion inside a code cell** (`src/embedded.ts`). This is the one
   language feature that *cannot* live in the server, and the reason is the protocol: LSP has
   no way for a server to say "this range is Python, go ask Pylance". The routing has to

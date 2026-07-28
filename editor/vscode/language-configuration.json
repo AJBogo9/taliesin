@@ -33,6 +33,30 @@
       "comment": "Continue a `:::` fenced-div block sensibly (no auto-content, just keep indentation).",
       "beforeText": "^\\s*:::+.*$",
       "action": { "indent": "none" }
+    },
+    {
+      "comment": "Task list before the plain `-` rule below: `- [ ] x` is also a `-` item, and the first matching rule wins.",
+      "beforeText": "^\\s*-\\s+\\[[ xX]\\]\\s+\\S.*$",
+      "action": { "indent": "none", "appendText": "- [ ] " }
+    },
+    {
+      "comment": "Unordered items, one rule per marker so the continuation keeps the marker the author chose (appendText takes no capture groups).",
+      "beforeText": "^\\s*-\\s+\\S.*$",
+      "action": { "indent": "none", "appendText": "- " }
+    },
+    {
+      "beforeText": "^\\s*\\*\\s+\\S.*$",
+      "action": { "indent": "none", "appendText": "* " }
+    },
+    {
+      "beforeText": "^\\s*\\+\\s+\\S.*$",
+      "action": { "indent": "none", "appendText": "+ " }
+    },
+    {
+      "comment": "Blockquote continuation.",
+      "beforeText": "^\\s*>\\s+\\S.*$",
+      "action": { "indent": "none", "appendText": "> " }
     }
-  ]
+  ],
+  "onEnterRulesComment": "Every continuation rule requires the line to hold CONTENT (the trailing `\\S`), which is how you LEAVE a list: Enter on an empty `- ` matches no rule and gives a plain new line. Without that the marker would repeat forever. ORDERED lists are deliberately absent: `appendText` is a literal, so onEnterRules cannot increment `1.` to `2.`, and the alternative is binding Enter itself to a command (how Markdown All in One does it), which puts the most-used key in the editor behind our own fall-through logic for the suggest widget, snippet placeholders and multi-cursor. A declarative rule that cannot fire wrongly beats an imperative one that can break Enter."
 }

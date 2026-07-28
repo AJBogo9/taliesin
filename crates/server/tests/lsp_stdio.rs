@@ -365,3 +365,171 @@ fn completion_offers_math_commands_inside_math_and_nothing_outside_it() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Div attribute keys over the real wire, and — the half that matters — the NARROWING.
+///
+/// `render/divs.rs` dispatches on class, so an attribute is not a property of divs in
+/// general. A `collapse="true"` on a `.lemma` renders exactly like a bare `.lemma`, and
+/// offering it there would be the editor recommending a no-op. This was the last of the 21
+/// probe positions in the companion audit still answering nothing.
+#[test]
+fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
+    let dir = std::env::temp_dir().join(format!("tali-lsp-divattr-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let doc = dir.join("d.tmd");
+    // Line 4 is a callout's attribute slot; line 7 is a numbered theorem's.
+    let text = "---\ntitle: T\n---\n\n::: {.callout-note \n:::\n\n::: {.lemma \n:::\n";
+    std::fs::write(&doc, text).expect("fixture");
+    let uri = format!("file://{}", doc.display());
+
+    let completion = |id: u64, line: u32, character: u32| {
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": id, "method": "textDocument/completion",
+            "params": { "textDocument": { "uri": uri },
+                        "position": { "line": line, "character": character } }
+        }))
+    };
+    let input = format!(
+        "{}{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        completion(2, 4, 19), // end of `::: {.callout-note `
+        completion(3, 7, 12), // end of `::: {.lemma `
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+
+    let labels = |v: &serde_json::Value| -> Vec<String> {
+        v.as_array()
+            .unwrap_or_else(|| panic!("completion returns items: {v:?}"))
+            .iter()
+            .filter_map(|i| i["label"].as_str().map(str::to_string))
+            .collect()
+    };
+
+    let callout = response(&stdout, 2);
+    let got = labels(&callout);
+    for expected in ["title", "collapse", "icon", "appearance"] {
+        assert!(
+            got.iter().any(|l| l == expected),
+            "`{expected}=` should be offered on a callout: {got:?}"
+        );
+    }
+    for absent in ["state", "lines", "name", "ncol", "layout-ncol"] {
+        assert!(
+            !got.iter().any(|l| l == absent),
+            "`{absent}=` is inert on a callout (the callout arm never reads it) and must \
+             not be offered: {got:?}"
+        );
+    }
+    // The value half comes with the key, and as a snippet, so `appearance` lands on a
+    // value the renderer recognizes instead of an empty pair of quotes.
+    let items = callout.as_array().expect("items");
+    let appearance = items
+        .iter()
+        .find(|i| i["label"] == "appearance")
+        .expect("appearance is offered");
+    assert_eq!(appearance["insertTextFormat"], 2, "{appearance:?}");
+    assert_eq!(
+        appearance["insertText"], "appearance=\"${1|simple,minimal|}\"",
+        "the closed value set should be offered as a snippet choice: {appearance:?}"
+    );
+
+    let theorem = labels(&response(&stdout, 3));
+    assert!(
+        theorem.iter().any(|l| l == "title"),
+        "`title=` reaches every theorem kind: {theorem:?}"
+    );
+    assert!(
+        !theorem.iter().any(|l| l == "collapse"),
+        "`collapse=` has no branch in the NUMBERED theorem arm (only `proof`), so offering \
+         it on a `.lemma` would recommend a no-op: {theorem:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Table formatting over the real wire, including the promise the feature rests on: the edits
+/// name ONLY the table's lines, so nothing else in the document can move.
+#[test]
+fn formatting_rewrites_a_table_and_names_no_other_line() {
+    let dir = std::env::temp_dir().join(format!("tali-lsp-fmt-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let doc = dir.join("f.tmd");
+    // Prose above and below, and a paragraph containing a pipe that is NOT a table.
+    let text = "---\ntitle: T\n---\n\nA | pipe in prose.\n\n|a|long|\n|-|-:|\n|1|2|\n\nAfter.\n";
+    std::fs::write(&doc, text).expect("fixture");
+    let uri = format!("file://{}", doc.display());
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting",
+            "params": { "textDocument": { "uri": uri },
+                        "options": { "tabSize": 2, "insertSpaces": true } }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+
+    // The initialize response must advertise the capability, or no editor will ever ask.
+    assert_eq!(
+        response(&stdout, 1)["capabilities"]["documentFormattingProvider"],
+        serde_json::json!(true),
+        "formatting must be advertised"
+    );
+
+    let edits = response(&stdout, 2);
+    let edits = edits.as_array().expect("formatting returns edits");
+    assert_eq!(edits.len(), 1, "one table, one edit: {edits:?}");
+    let e = &edits[0];
+    assert_eq!(
+        e["range"]["start"]["line"], 6,
+        "the table starts on line 6: {e:?}"
+    );
+    assert_eq!(e["range"]["end"]["line"], 8, "and ends on line 8: {e:?}");
+    assert_eq!(
+        e["newText"], "| a   | long |\n| --- | ---: |\n| 1   |    2 |",
+        "columns padded, right-alignment kept: {e:?}"
+    );
+    // Line 4 is `A | pipe in prose.` — a paragraph with a pipe. If the range ever reaches it,
+    // ordinary prose is being rewritten as a table.
+    assert!(
+        edits
+            .iter()
+            .all(|e| e["range"]["start"]["line"].as_u64().unwrap() > 5),
+        "no edit may touch the prose above the table: {edits:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

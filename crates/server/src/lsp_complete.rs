@@ -96,6 +96,13 @@ pub(crate) enum CompletionContext {
     InputType {
         typed: String,
     },
+    /// A `key=` attribute slot in a fenced div's `::: {…}` list, with the classes already
+    /// typed on that fence. The classes decide which attributes are offered: `render/divs.rs`
+    /// dispatches on class, so `state=` on a callout is a no-op, not an option.
+    DivAttrKey {
+        classes: Vec<String>,
+        typed: String,
+    },
 }
 
 /// What a path position is for, which decides the extensions worth offering. A path
@@ -239,6 +246,26 @@ pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionC
     }
     if is_div_class_context(line_prefix) {
         return CompletionContext::DivClass;
+    }
+    // The other two things a fenced div's attribute slot can hold. `is_div_class_context`
+    // above already reaches any slot for a `.class`; an `#id` and a `key=` in a *later* slot
+    // had nothing, so `::: {.theorem #thm-` and `::: {.theorem ti` both answered silence.
+    if let Some(region) = div_attr_region(line_prefix) {
+        let (before, token) = trailing_slot(region);
+        if let Some(id) = token.strip_prefix('#') {
+            return CompletionContext::AnchorId {
+                typed: id.to_string(),
+            };
+        }
+        // A key only once a slot has been opened by whitespace: at `::: {ti` the author is
+        // typing a BARE CLASS (`parse_attrs` reads an undotted token as a class), and
+        // offering attribute keys there would answer the wrong question.
+        if !before.is_empty() && !token.contains('=') && !token.starts_with('.') {
+            return CompletionContext::DivAttrKey {
+                classes: div_classes_typed(before),
+                typed: token.to_string(),
+            };
+        }
     }
     // `{#` DEFINES an anchor. The `@` completion offers the prefixes for a reference; the
     // definition side had nothing, so the one place an id is invented was the one place the
@@ -403,6 +430,67 @@ fn detect_anchor_id(line_prefix: &str) -> Option<String> {
         return None;
     }
     Some(typed.to_string())
+}
+
+/// The text between a fenced div's opening `{` and the cursor, or `None` when the cursor is
+/// not in an attribute list at all. `::: {.callout-note ti` yields `.callout-note ti`.
+///
+/// Scanning FORWARD from the fence is what keeps this honest: the class detector walks
+/// backwards and has to recognize every token shape it steps over, whereas the region is
+/// simply "after the `{`, before the cursor". Two conditions close it:
+///
+/// - a `}` in the region means the brace closed before the cursor, so the cursor is in
+///   prose after the fence, not in the list;
+/// - an odd number of unescaped `"` means the cursor is INSIDE a value (`title="a b`),
+///   where a list of attribute keys is noise.
+fn div_attr_region(line_prefix: &str) -> Option<&str> {
+    let trimmed = line_prefix.trim_start();
+    // `:` is one byte, so the leading run's char count is also its byte offset.
+    let colons = trimmed.chars().take_while(|c| *c == ':').count();
+    if colons < 3 {
+        return None;
+    }
+    let region = trimmed[colons..]
+        .trim_start_matches([' ', '\t'])
+        .strip_prefix('{')?;
+    if region.contains('}') {
+        return None;
+    }
+    let mut quotes = 0usize;
+    let mut escaped = false;
+    for c in region.chars() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            '"' => quotes += 1,
+            _ => {}
+        }
+    }
+    quotes.is_multiple_of(2).then_some(region)
+}
+
+/// Split an attribute region into (everything before the slot being typed, that slot).
+/// The slot is the trailing run after the last whitespace, so it is `""` when the cursor
+/// sits just after a space — which is a legitimate "offer me everything" position.
+fn trailing_slot(region: &str) -> (&str, &str) {
+    let idx = region.rfind([' ', '\t']).map(|i| i + 1).unwrap_or(0);
+    (&region[..idx], &region[idx..])
+}
+
+/// The classes already named on this fence, read with the RENDERER's own tokenizer so a
+/// quoted value cannot be mistaken for one: splitting `title="a b"` on whitespace leaves a
+/// stray `b"` that looks exactly like a bare class name.
+///
+/// Both spellings count, because `parse_attrs` accepts both: a dotted `.callout-note` and a
+/// bare `columns`.
+fn div_classes_typed(before: &str) -> Vec<String> {
+    taliesin_core::render::tokenize_attrs(before)
+        .into_iter()
+        .filter_map(|tok| match tok.strip_prefix('.') {
+            Some(c) => (!c.is_empty()).then(|| c.to_string()),
+            None => (!tok.starts_with('#') && !tok.contains('=')).then_some(tok),
+        })
+        .collect()
 }
 
 /// The shortcodes offered by name, with their one-line descriptions.
@@ -1314,6 +1402,97 @@ mod tests {
             }
         );
         assert_eq!(ctx("mail me a@b", "mail me a@b"), CompletionContext::None);
+    }
+
+    fn div_attr(classes: &[&str], typed: &str) -> CompletionContext {
+        CompletionContext::DivAttrKey {
+            classes: classes.iter().map(|c| c.to_string()).collect(),
+            typed: typed.to_string(),
+        }
+    }
+
+    /// An attribute slot in a `::: {…}` list, with the classes carried along — they are what
+    /// narrows the offer, since `divs.rs` dispatches on class.
+    #[test]
+    fn detects_a_div_attribute_key() {
+        assert_eq!(
+            ctx("::: {.theorem ", "::: {.theorem "),
+            div_attr(&["theorem"], "")
+        );
+        assert_eq!(
+            ctx("::: {.callout-note ti", "::: {.callout-note ti"),
+            div_attr(&["callout-note"], "ti")
+        );
+        // A bare (undotted) class is a class to `parse_attrs`, so it must be one here too.
+        assert_eq!(
+            ctx("::: {columns nc", "::: {columns nc"),
+            div_attr(&["columns"], "nc")
+        );
+        // Indented, and a longer fence: both are the same fence to the renderer.
+        assert_eq!(
+            ctx("  :::: {.step li", "  :::: {.step li"),
+            div_attr(&["step"], "li")
+        );
+    }
+
+    /// The quoted-value cases, which are where a hand-rolled whitespace split goes wrong.
+    #[test]
+    fn a_quoted_div_value_neither_ends_the_list_nor_becomes_a_class() {
+        // Inside the value: an attribute-key list is noise there.
+        assert_eq!(
+            ctx(
+                "::: {.callout-note title=\"a b",
+                "::: {.callout-note title=\"a b"
+            ),
+            CompletionContext::None
+        );
+        // Closed again: back to a key slot, and `b"` must NOT have become a class.
+        assert_eq!(
+            ctx(
+                "::: {.callout-note title=\"a b\" ic",
+                "::: {.callout-note title=\"a b\" ic"
+            ),
+            div_attr(&["callout-note"], "ic")
+        );
+    }
+
+    /// The three positions that must NOT become an attribute key.
+    #[test]
+    fn a_div_attribute_key_does_not_swallow_its_neighbours() {
+        // Still typing the value, not a new key.
+        assert_eq!(
+            ctx("::: {.step lines=", "::: {.step lines="),
+            CompletionContext::None
+        );
+        // The brace closed: the cursor is in prose on the fence line.
+        assert_eq!(
+            ctx("::: {.callout-note} and ti", "::: {.callout-note} and ti"),
+            CompletionContext::None
+        );
+        // A bare first token is a CLASS being typed, not a key.
+        assert_eq!(ctx("::: {colu", "::: {colu"), CompletionContext::None);
+        // Prose that merely contains a brace is not a fence.
+        assert_eq!(ctx("see {a ti", "see {a ti"), CompletionContext::None);
+    }
+
+    /// An `#id` in a LATER attribute slot. `detect_anchor_id` matches a literal `{#`, so
+    /// `::: {.theorem #thm-` used to answer nothing — the same one-slot limit the class
+    /// detector was fixed for.
+    #[test]
+    fn detects_an_anchor_id_in_a_later_div_slot() {
+        assert_eq!(
+            ctx("::: {.theorem #thm-", "::: {.theorem #thm-"),
+            CompletionContext::AnchorId {
+                typed: "thm-".to_string()
+            }
+        );
+        // The first slot still works (it always did, via the `{#` path).
+        assert_eq!(
+            ctx("::: {#thm-", "::: {#thm-"),
+            CompletionContext::AnchorId {
+                typed: "thm-".to_string()
+            }
+        );
     }
 
     #[test]

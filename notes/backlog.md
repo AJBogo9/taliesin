@@ -1042,12 +1042,14 @@ audits.
   preview-only, so this waits for a reason to exist.
 - **Companion (Phase 2):** editor commands (insert block / reorder slide) — strictly `.tmd`-buffer text
   transforms in the editor, never preview gestures.
-- **LaTeX hover-preview in the VS Code editor** — a sub-case of the LSP item below: a `HoverProvider`
-  resolving `@fig-2` to "Figure 2", a front-matter key's doc, or a `[@key]` reference, over data
-  `vocab`/`symbols` already carry.
-- **`.tmd` format-on-save** (open question). A source pretty-printer would write the editor *buffer*
-  (the allowed surface) but must preserve `data-sourcepos` line stability for click-to-source.
-  Brainstorm whether the reflow is worth the click-to-source risk before any work.
+- **`.tmd` format-on-save for PROSE** (open question, and narrower than it was). The
+  table-only formatter shipped 2026-07-28 (`crates/server/src/lsp_format.rs`,
+  `textDocument/formatting`), and it sidesteps the recorded objection rather than answering
+  it: a table's rows map one-to-one onto its lines, so the replacement has exactly the line
+  count of the range it replaces and no `data-sourcepos` below it moves
+  (`formatting_never_changes_the_line_count` pins that). **A prose pretty-printer still has
+  the original problem** — reflowing paragraphs moves every line after them — so the
+  brainstorm is still owed before any reflow work.
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto to Taliesin migration +
   portability stress test (exercises `book.rs`, includes, the freeze cache, file-mode portability). If
   it renders clean, consider pinning a reduced version under `corpus/`.

@@ -182,7 +182,11 @@ pub(crate) fn parse_attrs(s: &str) -> DivAttrs {
 /// Split on whitespace, but keep quoted values (e.g. `title="a b"`) together.
 /// Inside a quote, a backslash escapes the next character, so `title="a \"b\""`
 /// stays one token instead of ending at the first inner quote.
-fn tokenize_attrs(s: &str) -> Vec<String> {
+///
+/// `pub` so the LSP's attribute-slot completion reads the div's own tokenizer instead of
+/// re-deriving it: splitting on whitespace naively makes `title="a b"` two tokens and the
+/// stray `b"` look like a class name.
+pub fn tokenize_attrs(s: &str) -> Vec<String> {
     let mut toks = Vec::new();
     let mut cur = String::new();
     let mut quote: Option<char> = None;

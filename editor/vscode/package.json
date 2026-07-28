@@ -28,6 +28,7 @@
     "literate programming",
     "slides"
   ],
+  "icon": "icons/icon.png",
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
@@ -45,6 +46,49 @@
           "light": "./icons/tmd.svg",
           "dark": "./icons/tmd.svg"
         }
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "taliesin.getStarted",
+        "title": "Get started with Taliesin",
+        "description": "Preview a .tmd document live, and let the editor carry the format.",
+        "steps": [
+          {
+            "id": "taliesin.setup",
+            "title": "Check your setup",
+            "description": "The companion answers nothing on its own: it is a client over `taliesin lsp`. Confirm the binary is there.\n[Diagnose Setup](command:taliesin.doctor)",
+            "media": { "markdown": "walkthroughs/setup.md" },
+            "completionEvents": ["onCommand:taliesin.doctor"]
+          },
+          {
+            "id": "taliesin.preview",
+            "title": "Open a live preview",
+            "description": "Block-level updates as you type, and Alt+click to jump from the preview back to the source line.\n[Open Preview](command:taliesin.openPreview)",
+            "media": { "markdown": "walkthroughs/preview.md" },
+            "completionEvents": ["onCommand:taliesin.openPreview"]
+          },
+          {
+            "id": "taliesin.write",
+            "title": "Let the editor help you write",
+            "description": "Completion for classes, attributes, paths, cell options and math — plus a symbol picker for what you cannot spell.\n[Insert Math Symbol](command:taliesin.insertMathSymbol)",
+            "media": { "markdown": "walkthroughs/write.md" },
+            "completionEvents": ["onCommand:taliesin.insertMathSymbol"]
+          },
+          {
+            "id": "taliesin.check",
+            "title": "Check before you publish",
+            "description": "Cross-references, citations, links and front-matter keys, validated the way the build validates them.\n[Check This Document](command:taliesin.check)",
+            "media": { "markdown": "walkthroughs/check.md" },
+            "completionEvents": ["onCommand:taliesin.check"]
+          }
+        ]
+      }
+    ],
+    "yamlValidation": [
+      {
+        "fileMatch": "_site.yml",
+        "url": "./schema/tali-site.schema.json"
       }
     ],
     "grammars": [

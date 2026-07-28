@@ -207,6 +207,164 @@ fn div_classes() -> Value {
     )
 }
 
+/// Which classes read a given fenced-div attribute.
+enum DivScope {
+    /// A div carrying no feature class. `layout-ncol` also wins over most feature classes in
+    /// the dispatch chain (it is tested second, right after the callout arm), but offering it
+    /// on a `.step` would recommend silently replacing the step with a grid — a footgun, not
+    /// a feature — so it is offered only where it is the intended gesture.
+    Generic,
+    /// Every `callout-<kind>`.
+    Callouts,
+    /// Every theorem kind, `proof` included.
+    Theorems,
+    /// One literal class name.
+    Class(&'static str),
+}
+
+/// One offered fenced-div ATTRIBUTE (`key=value` inside `::: {…}`), and which classes
+/// actually read it.
+///
+/// **The per-class narrowing is the whole point.** `render/divs.rs` dispatches on class in an
+/// if-else chain, so an attribute is not a property of divs in general: `state=` is read only
+/// inside the `.step` arm, and `collapse=` reaches a theorem only through the `proof` arm —
+/// a `::: {.lemma collapse="true"}` renders exactly like a `::: {.lemma}`. Offering the union
+/// would have the editor recommend a no-op, which is the same failure `UNSUPPORTED_KEYS`
+/// exists to prevent for front matter.
+///
+/// `width` is deliberately ABSENT. `validate::validate_column_width` warns that the
+/// equal-width grid ignores it, so completing it would recommend the exact thing `check`
+/// flags.
+struct DivAttribute {
+    name: &'static str,
+    description: &'static str,
+    /// The value half as an LSP snippet body: `$1` for free text, `${1|a,b|}` for a closed set.
+    value: &'static str,
+    scope: &'static [DivScope],
+    /// A value that must CHANGE the rendered HTML, for [`tests::every_div_attribute_is_live`].
+    /// `icon` needs `false` exactly: any other value takes the default branch and renders
+    /// identically, so a laxer probe would pass while proving nothing.
+    ///
+    /// Test-only, but it lives on the struct rather than in a side table so a new attribute
+    /// cannot be added WITHOUT one — a missing probe would silently skip the liveness gate
+    /// for exactly the entry nobody has checked yet.
+    #[cfg_attr(not(test), allow(dead_code))]
+    probe: &'static str,
+}
+
+/// The attribute vocabulary, derived from the `attrs.get(…)` dispatch in `render/divs.rs`.
+/// An attribute no branch reads is a no-op the editor must not recommend, which
+/// [`tests::every_div_attribute_is_live`] enforces by rendering every pair below.
+const DIV_ATTRIBUTES: &[DivAttribute] = &[
+    DivAttribute {
+        name: "title",
+        description: "Heading text for the box (else a leading heading, else the kind).",
+        value: "$1",
+        scope: &[DivScope::Callouts, DivScope::Theorems],
+        probe: "T",
+    },
+    DivAttribute {
+        name: "collapse",
+        description: "Fold into a `<details>`: `true` starts closed, `false` starts open.",
+        value: "${1|true,false|}",
+        // Callouts, and of the theorem kinds only `proof` — the numbered arm has no
+        // collapse branch at all.
+        scope: &[DivScope::Callouts, DivScope::Class("proof")],
+        probe: "true",
+    },
+    DivAttribute {
+        name: "icon",
+        description: "`false` hides the callout's kind icon.",
+        value: "${1|false|}",
+        scope: &[DivScope::Callouts],
+        probe: "false",
+    },
+    DivAttribute {
+        name: "appearance",
+        description: "Callout presentation variant (default boxed).",
+        value: "${1|simple,minimal|}",
+        scope: &[DivScope::Callouts],
+        probe: "simple",
+    },
+    DivAttribute {
+        name: "ncol",
+        description: "Column count for a `.columns` grid (default: the `.column` child count).",
+        value: "$1",
+        scope: &[DivScope::Class("columns")],
+        probe: "3",
+    },
+    DivAttribute {
+        name: "layout-ncol",
+        description: "Lay the div's content out as an N-column grid.",
+        value: "$1",
+        scope: &[DivScope::Generic],
+        probe: "3",
+    },
+    DivAttribute {
+        name: "lines",
+        description: "Lines this walkthrough step focuses, for example `1,4-6`.",
+        value: "$1",
+        scope: &[DivScope::Class("step")],
+        probe: "1",
+    },
+    DivAttribute {
+        name: "state",
+        description: "Stage state this scrolly step activates.",
+        value: "$1",
+        scope: &[DivScope::Class("step")],
+        probe: "a",
+    },
+    DivAttribute {
+        name: "name",
+        description: "Reactive name a `{js}` cell reads the active step's state from.",
+        value: "$1",
+        scope: &[DivScope::Class("scrolly")],
+        probe: "n",
+    },
+];
+
+impl DivAttribute {
+    /// The class names this attribute is offered on. **Empty means "a div with no feature
+    /// class"** ([`DivScope::Generic`]), which is how the editor reads it — no entry below
+    /// mixes `Generic` with a named class, so the two readings cannot collide.
+    fn classes(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for s in self.scope {
+            match s {
+                DivScope::Generic => {}
+                DivScope::Callouts => out.extend(
+                    crate::render::CALLOUT_KINDS
+                        .iter()
+                        .map(|k| format!("callout-{k}")),
+                ),
+                DivScope::Theorems => out.extend(
+                    crate::render::THEOREM_KINDS
+                        .iter()
+                        .map(|k| (*k).to_string()),
+                ),
+                DivScope::Class(c) => out.push((*c).to_string()),
+            }
+        }
+        out
+    }
+}
+
+fn div_attributes() -> Value {
+    Value::Array(
+        DIV_ATTRIBUTES
+            .iter()
+            .map(|a| {
+                json!({
+                    "name": a.name,
+                    "description": a.description,
+                    "snippet": format!("{}=\"{}\"", a.name, a.value),
+                    "classes": a.classes(),
+                })
+            })
+            .collect(),
+    )
+}
+
 /// The languages offered for a ` ```{lang} ` cell, as `(name, description)`.
 ///
 /// Two of these have behaviour and the rest are highlighting. The split is not cosmetic —
@@ -307,6 +465,7 @@ pub fn vocab() -> Value {
         "calloutKinds": named(CALLOUT_KINDS, callout_descriptions()),
         "theoremKinds": named(THEOREM_KINDS, theorem_descriptions()),
         "divClasses": div_classes(),
+        "divAttributes": div_attributes(),
         "inputTypes": Value::Array(INPUT_TYPES.iter().map(|t| json!(t)).collect()),
         "xrefPrefixes": xref_prefixes(),
         "frontmatterValues": frontmatter_value_vocab(),
@@ -389,6 +548,7 @@ mod tests {
         check_named(&v["calloutKinds"], "calloutKinds");
         check_named(&v["theoremKinds"], "theoremKinds");
         check_named(&v["divClasses"], "divClasses");
+        check_named(&v["divAttributes"], "divAttributes");
         for key in ["format", "theme"] {
             check_named(
                 &v["frontmatterValues"][key],
@@ -467,6 +627,114 @@ mod tests {
                 CELL_LANGUAGES.iter().any(|(n, _)| *n == lang),
                 "kernel language `{lang}` is not offered to the editor"
             );
+        }
+    }
+
+    /// Render one fenced div and return its HTML with `data-block-id` stripped.
+    ///
+    /// Stripping is load-bearing, not tidiness: `build_container` derives the block id from
+    /// `format!("div:{}", span.attrs)`, so **every** attribute change perturbs the id. Compare
+    /// the raw HTML and the liveness gate below passes for an attribute nothing reads —
+    /// a vacuous test that looks like a strong one.
+    fn div_html(class: &str, attrs: &str) -> String {
+        let src = format!("::: {{.{class}{attrs}}}\nBody.\n:::\n");
+        let html: String = crate::render::render_document(&src)
+            .blocks
+            .iter()
+            .map(|b| b.html.as_str())
+            .collect();
+        let needle = " data-block-id=\"";
+        let mut out = String::new();
+        let mut rest = html.as_str();
+        while let Some(i) = rest.find(needle) {
+            out.push_str(&rest[..i]);
+            let after = &rest[i + needle.len()..];
+            match after.find('"') {
+                Some(j) => rest = &after[j + 1..],
+                None => {
+                    rest = "";
+                    break;
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// **Every offered div attribute must actually do something on every class it is offered
+    /// on.** This is what makes `DIV_ATTRIBUTES` authoritative rather than a wish list, the
+    /// same role `math_vocab::every_command_renders` plays for math: an attribute the renderer
+    /// ignores is a no-op the editor would be recommending, and the author would sit there
+    /// wondering why `collapse="true"` did nothing to their lemma.
+    ///
+    /// It earned its place immediately — the first draft of this table gave `collapse` to all
+    /// eight theorem kinds, and this test showed only `proof` has a collapse branch.
+    #[test]
+    fn every_div_attribute_is_live() {
+        for a in DIV_ATTRIBUTES {
+            let classes = a.classes();
+            // An empty scope is `Generic`: a div with no feature class, where the dispatch
+            // chain falls through to the generic arm.
+            let targets = if classes.is_empty() {
+                vec!["tali-probe-generic".to_string()]
+            } else {
+                classes
+            };
+            for class in targets {
+                let plain = div_html(&class, "");
+                let with = div_html(&class, &format!(" {}=\"{}\"", a.name, a.probe));
+                assert_ne!(
+                    plain, with,
+                    "`{}=` is offered on `.{class}` but changes nothing there: \
+                     the editor would be recommending a no-op",
+                    a.name
+                );
+            }
+        }
+    }
+
+    /// The negative direction, for the three narrowings most easily got wrong. Without these
+    /// the table could widen back to "every attribute on every div" and `every_div_attribute_is_live`
+    /// would still pass — it only checks the pairs the table already claims.
+    #[test]
+    fn narrowed_div_attributes_are_no_ops_off_their_class() {
+        for (class, attr, probe) in [
+            // A numbered theorem has no collapse branch; only `proof` does.
+            ("lemma", "collapse", "true"),
+            // Step attributes on a callout: the callout arm wins and never looks at them.
+            ("callout-note", "state", "a"),
+            ("callout-note", "lines", "1"),
+        ] {
+            assert_eq!(
+                div_html(class, ""),
+                div_html(class, &format!(" {attr}=\"{probe}\"")),
+                "`{attr}=` is expected to be inert on `.{class}`; if this now works, \
+                 widen DIV_ATTRIBUTES instead of deleting this case"
+            );
+        }
+    }
+
+    /// Every attribute names a real class. A `DivScope::Class` pointing at a class the
+    /// renderer does not dispatch on would be offered where it can never fire, and
+    /// `every_div_attribute_is_live` would catch it only by the render diff — this says so
+    /// directly, and covers the aliases too.
+    #[test]
+    fn div_attribute_classes_are_real() {
+        use crate::render::{CALLOUT_KINDS, DIV_FEATURE_CLASSES, THEOREM_KINDS};
+        for a in DIV_ATTRIBUTES {
+            for class in a.classes() {
+                let known = DIV_FEATURE_CLASSES.contains(&class.as_str())
+                    || THEOREM_KINDS.contains(&class.as_str())
+                    || CALLOUT_KINDS
+                        .iter()
+                        .any(|k| class == format!("callout-{k}"))
+                    || class == "columns";
+                assert!(
+                    known,
+                    "`{}=` is offered on `.{class}`, which is not a class the renderer knows",
+                    a.name
+                );
+            }
         }
     }
 

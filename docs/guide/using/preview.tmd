@@ -42,6 +42,31 @@ VS Code companion opens through the editor API and reuses the tab without this
 setting.)
 :::
 
+## What the editor does while you write
+
+The companion is a thin client over `taliesin lsp`, so everything below is answered by the
+same binary that builds the document and enforced by the same vocabulary `check` uses. A
+completion cannot suggest something the validator would reject.
+
+- **Completion** for front-matter keys and values, cell options and their values, cell
+  languages, div classes, cross-references, citations, shortcode names, anchor ids, math
+  commands, and file paths anywhere a path is legal.
+- **Div attributes, narrowed to the class you wrote.** `::: {.callout-note ` offers
+  `title=`, `collapse=`, `icon=` and `appearance=`; a `.step` offers `lines=` and `state=`.
+  A `.lemma` is *not* offered `collapse=`, because only `proof` has a collapse branch and
+  suggesting it elsewhere would be recommending something that renders no differently.
+- **Format Document** tidies pipe tables: columns padded to their widest cell, alignment
+  markers preserved. It touches nothing else in the file — no prose re-wrapping, no
+  re-indenting, no emphasis normalizing. A table with a row longer than its header is left
+  exactly as written, because tidying it would mean deleting your text.
+- **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
+  `>`, and task items). Pressing Enter on an empty item is how you leave the list.
+- **Insert Math Symbol** (`Ctrl+Alt+M`) searches the math vocabulary by name, glyph or
+  category, for the symbols you cannot spell well enough to complete.
+- **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML
+  extension installed. Outside VS Code, `taliesin schema --out <dir>` writes the schema and
+  tells you the one comment line to add.
+
 ## The dev menu
 
 Every live preview carries a small **dev menu**: a `</>` button tucked in the

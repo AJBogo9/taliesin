@@ -79,6 +79,7 @@ pub use extension::embed_targets;
 mod divs;
 mod validate;
 pub(crate) use divs::parse_attrs;
+pub use divs::tokenize_attrs;
 use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary dump (crate::vocab), which sources completion

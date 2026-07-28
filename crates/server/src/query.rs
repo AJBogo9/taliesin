@@ -727,8 +727,15 @@ pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
                 }
                 println!("wrote {}", path.display());
             }
+            // The manual step is for editors this repo does not ship a client for. The VS
+            // Code companion contributes `yamlValidation` for `_site.yml`, so saying nothing
+            // here would leave its users pasting a comment they do not need.
             println!(
                 "add `# yaml-language-server: $schema={dir}/tali-site.schema.json` atop _site.yml"
+            );
+            println!(
+                "(not needed in VS Code: the Taliesin companion validates _site.yml already, \
+                 given the YAML extension)"
             );
         }
         None => {

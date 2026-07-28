@@ -354,6 +354,106 @@ suite("Taliesin companion (integration)", () => {
       "the definition and both references should be rewritten"
     );
   });
+
+  test("Format Document tidies a table and leaves the prose alone", async () => {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content: "---\ntitle: T\n---\n\nA | pipe in prose.\n\n|a|long|\n|-|-:|\n|1|2|\n",
+    });
+    await vscode.window.showTextDocument(doc);
+    const edits = await waitForValue(
+      async () =>
+        (await vscode.commands.executeCommand(
+          "vscode.executeFormatDocumentProvider",
+          doc.uri
+        )) as vscode.TextEdit[] | undefined,
+      15000
+    );
+    assert.ok(edits && edits.length > 0, "formatting should return edits");
+    // Assert on the APPLIED result, not on the edit list: VS Code minimizes a formatter's
+    // edits before handing them back, so the one edit the server sent over the wire (pinned
+    // in `crates/server/tests/lsp_stdio.rs`) can arrive here split into several.
+    const wsEdit = new vscode.WorkspaceEdit();
+    wsEdit.set(doc.uri, edits!);
+    assert.ok(await vscode.workspace.applyEdit(wsEdit), "edits should apply");
+    assert.equal(
+      doc.getText(),
+      "---\ntitle: T\n---\n\nA | pipe in prose.\n\n" +
+        "| a   | long |\n| --- | ---: |\n| 1   |    2 |\n"
+    );
+    // The paragraph on line 4 also contains a pipe. A formatter that reached it would be
+    // rewriting prose into a table, which is the one failure this feature must not have.
+    for (const e of edits!) {
+      assert.ok(
+        e.range.start.line > 5,
+        `no edit may reach the prose above the table: ${e.range.start.line}`
+      );
+    }
+  });
+
+  // Enter's default keybinding IS `type` with a `\n`, so this presses Enter the way a person
+  // does and lets the editor apply `language-configuration.json`. A unit test over those
+  // regexes would only prove the regexes match; it could not prove VS Code loaded the file,
+  // scoped the rules to `taliesin`, or preferred the right rule when two match.
+  async function pressEnterAfter(content: string): Promise<string> {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content,
+    });
+    const editor = await vscode.window.showTextDocument(doc);
+    // `showTextDocument` resolves before focus has landed, so wait for the document to be the
+    // active editor.
+    const active = await waitFor(
+      () => vscode.window.activeTextEditor?.document.uri.toString() === doc.uri.toString(),
+      5000
+    );
+    assert.ok(active, "the test document should be the active editor before typing");
+
+    // Being *active* is not the same as having keyboard focus, and `type` is delivered to the
+    // focused editor. The preview test opens a webview panel, which takes focus; when it has
+    // not been given back, `type` is a silent no-op and the document comes back unchanged —
+    // which reads exactly like a broken onEnterRule. This was an intermittent failure, so the
+    // keystroke is confirmed rather than assumed: focus the editor group, type, and only retry
+    // if the document version did not move (so a delivered keystroke is never sent twice).
+    const end = doc.lineAt(doc.lineCount - 1).range.end;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
+      const target = vscode.window.activeTextEditor ?? editor;
+      target.selection = new vscode.Selection(end, end);
+      const before = doc.version;
+      await vscode.commands.executeCommand("type", { text: "\n" });
+      if (doc.version !== before) return doc.getText();
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    assert.fail(
+      `the Enter keystroke was never delivered to the editor (content: ${JSON.stringify(
+        doc.getText()
+      )})`
+    );
+  }
+
+  test("continues a list and a blockquote on Enter, keeping the author's marker", async () => {
+    assert.equal(await pressEnterAfter("- one"), "- one\n- ");
+    // One rule per marker, because `appendText` takes no capture groups: a single generic
+    // rule would rewrite every list to `-`.
+    assert.equal(await pressEnterAfter("* one"), "* one\n* ");
+    assert.equal(await pressEnterAfter("+ one"), "+ one\n+ ");
+    assert.equal(await pressEnterAfter("> quoted"), "> quoted\n> ");
+    // The task rule must win over the plain `-` rule it also matches.
+    assert.equal(await pressEnterAfter("- [x] done"), "- [x] done\n- [ ] ");
+    // Nesting: `indent: "none"` keeps the current line's indentation, then appends.
+    assert.equal(await pressEnterAfter("  - deep"), "  - deep\n  - ");
+  });
+
+  test("an empty list item is how you leave the list", async () => {
+    // Every continuation rule demands a `\S`, so an empty marker matches none of them and
+    // Enter behaves normally. Without this there is no way out of a list but backspace.
+    assert.equal(await pressEnterAfter("- one\n- "), "- one\n- \n");
+    // Ordered lists are deliberately not continued: `appendText` is a literal and cannot
+    // count. If this ever starts appending, it was done by binding Enter to a command —
+    // read the note in language-configuration.json before accepting that trade.
+    assert.equal(await pressEnterAfter("1. one"), "1. one\n");
+  });
 });
 
 async function completionLabels(

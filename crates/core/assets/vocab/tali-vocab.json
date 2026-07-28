@@ -121,6 +121,103 @@
       "name": "input"
     }
   ],
+  "divAttributes": [
+    {
+      "classes": [
+        "callout-note",
+        "callout-tip",
+        "callout-warning",
+        "callout-important",
+        "callout-caution",
+        "theorem",
+        "lemma",
+        "corollary",
+        "proposition",
+        "definition",
+        "example",
+        "remark",
+        "proof"
+      ],
+      "description": "Heading text for the box (else a leading heading, else the kind).",
+      "name": "title",
+      "snippet": "title=\"$1\""
+    },
+    {
+      "classes": [
+        "callout-note",
+        "callout-tip",
+        "callout-warning",
+        "callout-important",
+        "callout-caution",
+        "proof"
+      ],
+      "description": "Fold into a `<details>`: `true` starts closed, `false` starts open.",
+      "name": "collapse",
+      "snippet": "collapse=\"${1|true,false|}\""
+    },
+    {
+      "classes": [
+        "callout-note",
+        "callout-tip",
+        "callout-warning",
+        "callout-important",
+        "callout-caution"
+      ],
+      "description": "`false` hides the callout's kind icon.",
+      "name": "icon",
+      "snippet": "icon=\"${1|false|}\""
+    },
+    {
+      "classes": [
+        "callout-note",
+        "callout-tip",
+        "callout-warning",
+        "callout-important",
+        "callout-caution"
+      ],
+      "description": "Callout presentation variant (default boxed).",
+      "name": "appearance",
+      "snippet": "appearance=\"${1|simple,minimal|}\""
+    },
+    {
+      "classes": [
+        "columns"
+      ],
+      "description": "Column count for a `.columns` grid (default: the `.column` child count).",
+      "name": "ncol",
+      "snippet": "ncol=\"$1\""
+    },
+    {
+      "classes": [],
+      "description": "Lay the div's content out as an N-column grid.",
+      "name": "layout-ncol",
+      "snippet": "layout-ncol=\"$1\""
+    },
+    {
+      "classes": [
+        "step"
+      ],
+      "description": "Lines this walkthrough step focuses, for example `1,4-6`.",
+      "name": "lines",
+      "snippet": "lines=\"$1\""
+    },
+    {
+      "classes": [
+        "step"
+      ],
+      "description": "Stage state this scrolly step activates.",
+      "name": "state",
+      "snippet": "state=\"$1\""
+    },
+    {
+      "classes": [
+        "scrolly"
+      ],
+      "description": "Reactive name a `{js}` cell reads the active step's state from.",
+      "name": "name",
+      "snippet": "name=\"$1\""
+    }
+  ],
   "divClasses": [
     {
       "description": "Tabbed panel; each `##` heading becomes a tab.",

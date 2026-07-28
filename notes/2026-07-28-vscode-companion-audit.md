@@ -396,21 +396,18 @@ Roughly in value order:
 2. ~~**KaTeX hover preview.**~~ **DONE — see Part 6.** The plan above was wrong on its
    central premise (there is no SVG to inline, because KaTeX cannot emit one); what shipped
    is a MathML-derived Unicode preview. Read Part 6 before touching it.
-3. **Stepless math completion** (Tinymist's trick: `$ar|$` → `$arrow.r$` with no separate
-   accept step), and fuzzy matching on the glyph rather than only the name — the vocabulary
-   already carries the glyph in `description`.
-4. **`contributes.yamlValidation` for `_site.yml`.** `query.rs:709` currently prints
-   instructions telling the author to paste a `# yaml-language-server: $schema=…` comment by
-   hand. Needs `crates/core/assets/schema/*.json` copied into the extension at build time
-   plus a drift gate asserting the copy matches, and it only takes effect when
-   `redhat.vscode-yaml` is installed.
-5. **List and blockquote continuation, and a table formatter.** Table stakes since Markdown
-   All in One. Continuation is `onEnterRules` in `language-configuration.json` (which handles
-   only `:::` today); the formatter is a `DocumentFormattingEditProvider` or a command.
-6. **Div attribute keys** (`::: {.theorem ` → `title=`, `#id`), the last of the 21 probe
-   positions still answering nothing.
-7. **A marketplace icon** (128×128 PNG; only the language-file SVG exists) and a
-   `contributes.walkthroughs` first-run experience, if this is ever published.
+3. ~~**Stepless math completion**~~ **DONE** (`97fcabd`), with glyph matching.
+4. ~~**`contributes.yamlValidation` for `_site.yml`.**~~ **DONE — see Part 9.**
+5. ~~**List and blockquote continuation, and a table formatter.**~~ **DONE — see Part 9.**
+   Read it before touching either: ordered lists are deliberately NOT continued, and the
+   formatter deliberately declines some tables.
+6. ~~**Div attribute keys.**~~ **DONE — see Part 9.** The interesting half turned out to be
+   the narrowing, not the completion.
+7. ~~**A marketplace icon and a `contributes.walkthroughs` first-run experience.**~~
+   **DONE — see Part 9.** `"private": true` is untouched: this is preparation for publishing,
+   not a decision to publish.
+
+**The list above is now empty.** What is left for the companion is in Part 9's "Left open".
 
 ## Part 6: the math hover (second pass, same day)
 
@@ -630,3 +627,172 @@ the panel, close the window, disable/reload the extension, a failed start — ar
   are not an approximation, they are a different expression (`a+1/b` for `\frac{a+1}{b}`). A
   preview that misinforms is worse than no preview, which is what the hover returns when it
   cannot answer.
+
+## Part 9: the rest of the list (fifth pass, same day)
+
+Items 4, 5, 6 and 7 above — everything that remained — shipped in one batch. The list at
+"What to pick up next" is now empty.
+
+### Div attribute keys, and why the narrowing is the feature
+
+`::: {.theorem ` was the 21st probe position and the only one still answering nothing.
+Completing `title=` there is easy. The part worth writing down is that **an attribute is not
+a property of divs in general**: `render/divs.rs` dispatches on class through an if-else
+chain, so each arm reads only its own attributes. Offering the union would have the editor
+recommend a no-op — the same failure `UNSUPPORTED_KEYS` exists to prevent for `csl:` in front
+matter.
+
+So `vocab::DIV_ATTRIBUTES` carries a per-class scope, and
+**`every_div_attribute_is_live` renders every (attribute, class) pair and fails if the HTML
+does not change.** It earned its place on the first run: the table as first drafted gave
+`collapse=` to all eight theorem kinds, and the gate showed the numbered arm has no collapse
+branch at all — only `proof` does. `.lemma collapse="true"` renders exactly like `.lemma`.
+
+**The trap in that gate, which is the reusable part.** `build_container` derives the block id
+from `format!("div:{}", span.attrs)`, so *every* attribute change perturbs `data-block-id`.
+Compare the raw HTML and the gate passes for an attribute nothing reads — a vacuous test that
+looks like a strong one. It strips `data-block-id` first, and that strip was verified by
+adding a `bogus-mutation-probe` attribute and watching the gate fail. `width=` is
+deliberately absent from the vocabulary: `validate_column_width` warns that the equal-width
+grid ignores it, so completing it would recommend the exact thing `check` flags.
+
+Two smaller things went with it. `detect_anchor_id` matched a literal `{#`, so
+`::: {.theorem #thm-` answered nothing — the same one-slot limit the class detector was fixed
+for earlier. And the class scan reads the RENDERER's `tokenize_attrs` (widened to `pub`),
+because splitting `title="a b"` on whitespace leaves a stray `b"` that looks exactly like a
+bare class name.
+
+### The table formatter, and the promise it rests on
+
+`crates/server/src/lsp_format.rs` + `textDocument/formatting`. **Pipe tables and nothing
+else**: every other line comes back byte-identical, and that is the shape of the answer
+rather than a stylistic promise — the edits returned cover only the line ranges of tables
+that changed, so a line outside one cannot be touched because no edit names it.
+
+Three decisions worth keeping:
+
+- **It declines.** A body row with MORE cells than its header is left exactly as written.
+  GFM ignores the extras, so formatting it would mean deleting the author's text or widening
+  the delimiter row — and widening the delimiter row past the header count stops it being a
+  table at all.
+- **It cannot move a line.** `notes/backlog.md` files `.tmd` format-on-save as an open
+  question precisely because a pretty-printer that reflows text moves every `data-sourcepos`
+  below it. A table's rows map one-to-one onto its lines, so the replacement always has the
+  line count of the range it replaces. That is now pinned
+  (`formatting_never_changes_the_line_count`) rather than assumed, and the backlog entry has
+  been narrowed to prose reflow, which still has the original problem.
+- **`code_line_mask` is shared with `lsp_cells`**, so "what is code" has one implementation.
+  A pipe table inside a fence is an *example* of a table; reformatting it would rewrite
+  documentation about tables into a table.
+
+### List continuation, and the one it does not do
+
+`onEnterRules` in `language-configuration.json`: `-`, `*`, `+`, `> `, and task items, one
+rule per marker because `appendText` takes no capture groups (a single generic rule would
+rewrite every list to `-`). Every rule demands a trailing `\S`, which is *how you leave a
+list*: Enter on an empty `- ` matches nothing and gives a plain new line.
+
+**Ordered lists are deliberately not continued.** `appendText` is a literal and cannot count
+from `1.` to `2.`. The alternative is binding Enter itself to a command — how Markdown All in
+One does it — which puts the most-used key in the editor behind our own fall-through logic
+for the suggest widget, snippet placeholders and multi-cursor. A declarative rule that cannot
+fire wrongly beats an imperative one that can break Enter.
+
+### `_site.yml` validation and the first-run experience
+
+`contributes.yamlValidation` points at a **copy** of the crate's schema, because the manifest
+needs a file inside the extension. A copy with nothing watching it is how a stale schema
+starts telling authors a rejected key is fine, so `manifest.test.ts` fails when it drifts
+from `crates/core/assets/schema/` — verified by mutating the copy.
+
+**Only `_site.yml` is matched.** The first draft also matched `_site.yaml`; the loader does
+`root.join("_site.yml")` with no fallback, so that entry would have blessed a file Taliesin
+never opens. Same failure shape as the div attributes, found the same way — by checking what
+the code reads rather than what the name suggests.
+
+The walkthrough and the 128×128 icon are the last of item 7. Every walkthrough step's media
+path, `command:` link and `onCommand:` completion event is checked by a manifest gate, since
+all of them resolve at runtime and a typo would only ever be seen by a first-time user.
+`"private": true` is untouched — this is preparation for publishing, not a decision to
+publish.
+
+### Verified
+
+- `TALIESIN_PYTHON=… ./tools/gates.sh`: **PASSED — every gate ran and passed** (all nine).
+  Workspace suite: **108 test binaries, 1,845 passed, 0 failed, 0 ignored.** Zero skips (the
+  one `grep`-visible "skipping" is a *test name*), which is what makes "0 ignored" mean the
+  interpreter gates ran rather than sat out. Count binaries with `grep -c "^test result:"`
+  alone — an earlier reading here said 111 because the pattern also matched lines containing
+  the word "ignored".
+- `npm test` (companion): **55 passing** (was 45).
+- `npm run test:e2e`: **16 passing** (was 13) in a real Extension Host, VS Code 1.130.0, on
+  **four consecutive runs**. The three new ones press Enter through the `type` command (which
+  *is* Enter's default keybinding) and run Format Document through
+  `vscode.executeFormatDocumentProvider`.
+- `taliesin check docs/guide` and `docs/internals`: no problems found. Both books were
+  updated in the same change.
+- The packaged `.vsix` really does contain the new files: **17 files**, including
+  `schema/tali-site.schema.json`, `walkthroughs/*.md` and `icons/icon.png`. Checked by
+  packaging, not by reading `.vscodeignore`.
+- Three mutation checks by inverse edit (never `git checkout` on uncommitted work): a bogus
+  div attribute fails the liveness gate, a drifted schema copy fails the manifest gate, and a
+  broken walkthrough media path fails the walkthrough gate.
+
+### Two things that broke while doing this, both worth knowing
+
+1. **An existing test used `textDocument/formatting` as its example of an UNIMPLEMENTED
+   method.** Implementing the formatter turned its MethodNotFound (-32601) into an
+   InvalidParams (-32602) and it failed. It now probes `textDocument/rangeFormatting`, which
+   is deliberately not implemented (a request scoped to an arbitrary range has no honest
+   answer when the formatter rewrites whole tables). Note the message assertion had to move
+   too: `"textDocument/rangeFormatting".contains("textDocument/formatting")` is false, and
+   the reverse pairing would have passed vacuously.
+2. **The Enter tests passed, then failed when a test was inserted before them.** `type` is
+   delivered to the FOCUSED editor, and being `activeTextEditor` is not the same as having
+   keyboard focus — the preview test opens a webview panel, which takes it. When focus had not
+   come back, `type` was a silent no-op and the document came back unchanged, a race that
+   reads exactly like a broken onEnterRule. Waiting for `activeTextEditor` was not enough on
+   its own; the helper now also calls `workbench.action.focusActiveEditorGroup` and
+   **confirms the keystroke landed by watching `doc.version`**, retrying only when it did not
+   move (so a delivered keystroke is never sent twice).
+
+## Part 10: the EMFILE has a second cause, and it is not the companion
+
+Part 8 traced `EMFILE: too many open files, watch '/snap/code'` — VS Code failing to start at
+all, before a single test runs — to leaked `taliesin preview` servers, and fixed that. It is
+**not the only accumulator.**
+
+Every VS Code launch orphans a `chrome_crashpad_handler` that outlives the editor it was
+watching. Twenty were found alive under `editor/vscode/.vscode-test/`, the oldest nearly three
+hours old and therefore predating the session that found them: they accumulate across runs
+*and across sessions*, and each holds inotify instances against a per-user limit of 128.
+
+`e2e/runTest.ts` now snapshots and reaps them on both the pass and fail paths, scoped strictly
+to the `.vscode-test/` install so the author's own editor can never be a candidate. Unlike the
+preview leak this does **not** fail the run: Electron orphans its own crash handler, the repo
+does not control that, and failing every run for it would be noise.
+
+**The honest limit on this one.** After reaping, `npm run test:e2e` still could not start VS
+Code on this machine: `find /proc/*/fd -lname anon_inode:inotify | wc -l` showed **156
+instances against a 128 limit**, spread across ~90 ordinary desktop processes (the author's
+own VS Code windows, Claude Desktop, the session's services) with no single hog. That is
+ambient machine state, not anything this repo leaked, and the fix is
+`sudo sysctl -w fs.inotify.max_user_instances=512` — the author's call, not a change to make
+on their behalf.
+
+So: the suite's **16 passing** was measured on four consecutive runs *before* saturation, and
+the `runTest.ts` reaper itself is **compile-verified only** (`tsc` clean, and its predicate is
+the same one that correctly matched exactly the 20 orphans by hand while leaving `/snap/code`
+and the author's two preview servers untouched). It has not been exercised end to end.
+
+### Left open
+
+- **Embedded completion is still verified for `{js}` only** (Part 7's honest limit). Python
+  and R go through the identical path; nobody has watched Pylance answer inside a cell.
+- **Hovering a single math command** (`\varepsilon` → "ε, Greek") rather than the enclosing
+  span, and **matrices/cases** in the Unicode preview fallback (Part 6's "left open").
+- **East-Asian width in the table formatter.** Columns are padded by `chars().count()`, so a
+  CJK table looks ragged in the editor. The rendered HTML is identical either way, and the
+  fix is a new dependency in a tool that vendors its assets to stay offline.
+- **Prose reflow / format-on-save proper** — still the open question it was, and still
+  blocked on the `data-sourcepos` line-stability argument.

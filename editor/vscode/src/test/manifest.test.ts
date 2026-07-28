@@ -329,3 +329,125 @@ test("the callout snippet offers exactly the vocabulary's kinds, in order", () =
     `a callout snippet must offer the vocabulary's kinds in order: ${expected}`
   );
 });
+
+// The `_site.yml` schema is shipped as a COPY, because `contributes.yamlValidation` needs a
+// file inside the extension and the authoritative one lives in the Rust crate
+// (`crates/core/assets/schema/`, itself golden-file-locked against `schema.rs`). A copy with
+// nothing watching it is how a stale schema starts telling authors that a key the validator
+// rejects is fine.
+test("the bundled _site.yml schema matches the one the binary emits", () => {
+  const entries = manifest.contributes?.yamlValidation ?? [];
+  assert.ok(entries.length > 0, "yamlValidation should be contributed");
+  for (const entry of entries) {
+    const copy = path.join(EXT_ROOT, entry.url);
+    assert.ok(
+      fs.existsSync(copy),
+      `yamlValidation points at ${entry.url}, which does not exist`
+    );
+    const source = path.join(
+      REPO_ROOT,
+      "crates/core/assets/schema",
+      path.basename(entry.url)
+    );
+    assert.ok(
+      fs.existsSync(source),
+      `${entry.url} has no counterpart in crates/core/assets/schema`
+    );
+    assert.equal(
+      fs.readFileSync(copy, "utf8"),
+      fs.readFileSync(source, "utf8"),
+      `${entry.url} has drifted from the crate's schema; re-copy it`
+    );
+  }
+});
+
+// Only `_site.yml` is read by the site loader (`config::load` does `root.join("_site.yml")`,
+// with no `.yaml` fallback), so validating any other name would tell an author their config
+// is valid when Taliesin never opens it.
+test("yamlValidation matches only the config filename the loader reads", () => {
+  const matches = (manifest.contributes?.yamlValidation ?? []).map(
+    (e: { fileMatch: string }) => e.fileMatch
+  );
+  assert.deepEqual(matches, ["_site.yml"]);
+  const loader = fs.readFileSync(
+    path.join(REPO_ROOT, "crates/core/src/site/config/mod.rs"),
+    "utf8"
+  );
+  assert.ok(
+    loader.includes('root.join("_site.yml")'),
+    "the site loader no longer joins `_site.yml`; update the yamlValidation fileMatch"
+  );
+});
+
+// The schema has to actually reach the packaged extension. `.vscodeignore` was rewritten to
+// ship 11 files, and a new directory is exactly the kind of thing that rewrite would exclude
+// by accident — leaving a `yamlValidation` entry pointing at a file that is not there.
+test("the schema directory is not excluded from the .vsix", () => {
+  const ignore = fs.readFileSync(path.join(EXT_ROOT, ".vscodeignore"), "utf8");
+  const excluded = ignore
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"));
+  for (const pattern of excluded) {
+    assert.ok(
+      !"schema/".startsWith(pattern.replace(/\*+$/, "")) || pattern.startsWith("!"),
+      `.vscodeignore pattern \`${pattern}\` would drop the schema/ directory`
+    );
+  }
+});
+
+// A walkthrough is the extension's first-run experience, and every part of it is a string
+// that resolves at RUNTIME: a media path VS Code loads, a `command:` link it invokes, a
+// completion event it waits for. A typo in any of them shows a broken card to the one user
+// who has never seen the tool before, and nothing else in the build would notice.
+test("every walkthrough step resolves: media file, commands, completion events", () => {
+  const declared = new Set<string>(
+    (manifest.contributes?.commands ?? []).map((c: { command: string }) => c.command)
+  );
+  const walkthroughs = manifest.contributes?.walkthroughs ?? [];
+  assert.ok(walkthroughs.length > 0, "a walkthrough should be contributed");
+  for (const w of walkthroughs) {
+    assert.ok(w.steps?.length > 0, `walkthrough ${w.id} has no steps`);
+    for (const step of w.steps) {
+      const media = step.media?.markdown ?? step.media?.image;
+      assert.ok(media, `step ${step.id} has no media`);
+      assert.ok(
+        fs.existsSync(path.join(EXT_ROOT, media)),
+        `step ${step.id} points at ${media}, which does not exist`
+      );
+      for (const event of step.completionEvents ?? []) {
+        const cmd = event.startsWith("onCommand:") ? event.slice("onCommand:".length) : null;
+        if (cmd) {
+          assert.ok(
+            declared.has(cmd),
+            `step ${step.id} completes on \`${cmd}\`, which is not a contributed command`
+          );
+        }
+      }
+      // `[label](command:x)` links in the description are buttons on the card.
+      for (const m of String(step.description ?? "").matchAll(/\(command:([^)\s]+)\)/g)) {
+        assert.ok(
+          declared.has(m[1]),
+          `step ${step.id} links to \`${m[1]}\`, which is not a contributed command`
+        );
+      }
+    }
+  }
+});
+
+// The manifest names an icon; the .vsix has to contain it. A marketplace listing with a
+// missing icon is the kind of thing only noticed after publishing.
+test("the declared icon exists and is a PNG", () => {
+  const icon = manifest.icon;
+  assert.ok(icon, "package.json should declare a marketplace icon");
+  const file = path.join(EXT_ROOT, icon);
+  assert.ok(fs.existsSync(file), `icon ${icon} does not exist`);
+  // PNG magic. An SVG here is the easy mistake: the marketplace rejects it, and the language
+  // icon beside it IS an SVG.
+  const head = fs.readFileSync(file).subarray(0, 8);
+  assert.deepEqual(
+    [...head],
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    `${icon} is not a PNG`
+  );
+});

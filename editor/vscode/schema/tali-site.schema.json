@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "author": {},
+    "body-end": {},
+    "body-start": {},
+    "chapters": {
+      "items": {
+        "oneOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "chapters": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "file": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "file"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "part": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "part"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "css": {},
+    "description": {},
+    "favicon": {},
+    "footer": {},
+    "head": {},
+    "logo": {},
+    "mounts": {},
+    "nav": {},
+    "output": {},
+    "publish": {
+      "additionalProperties": false,
+      "properties": {
+        "gate": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "cloudflare"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "python": {},
+    "r": {},
+    "theorems": {
+      "additionalProperties": false,
+      "properties": {
+        "numbered": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "enum": [
+                "unless-unique"
+              ],
+              "type": "string"
+            }
+          ]
+        },
+        "shared": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "title": {},
+    "toc": {
+      "type": "boolean"
+    },
+    "url": {}
+  },
+  "title": "Taliesin _site.yml",
+  "type": "object"
+}

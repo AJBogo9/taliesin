@@ -11,9 +11,8 @@ const REPO_ROOT = path.resolve(__dirname, "../../../../");
  * machine: a preview the author started by hand, or one belonging to a parallel session, was
  * already there and is not this run's fault.
  */
-function previewPids(): Set<string> {
+function pidsWhere(match: (args: string) => boolean): Set<string> {
   if (process.platform === "win32") return new Set();
-  const binary = path.join(REPO_ROOT, "target/debug/taliesin");
   const pids = new Set<string>();
   let listing: string;
   try {
@@ -23,9 +22,59 @@ function previewPids(): Set<string> {
   }
   for (const line of listing.split("\n")) {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line);
-    if (m && m[2].startsWith(`${binary} preview `)) pids.add(m[1]);
+    if (m && match(m[2])) pids.add(m[1]);
   }
   return pids;
+}
+
+function previewPids(): Set<string> {
+  const binary = path.join(REPO_ROOT, "target/debug/taliesin");
+  return pidsWhere((args) => args.startsWith(`${binary} preview `));
+}
+
+/** The throwaway VS Code this harness downloads, and anything it spawns. */
+const TEST_VSCODE_DIR = path.resolve(__dirname, "../../.vscode-test");
+
+/**
+ * PIDs of helper processes belonging to the harness's OWN VS Code install.
+ *
+ * Scoped to `.vscode-test/` on purpose: the author's real editor is a different install
+ * entirely, and must never be a candidate for reaping.
+ */
+function harnessHelperPids(): Set<string> {
+  return pidsWhere((args) => args.startsWith(TEST_VSCODE_DIR));
+}
+
+/**
+ * Reap helper processes this run left behind.
+ *
+ * **Every VS Code launch leaks a `chrome_crashpad_handler`** that outlives the editor it was
+ * watching. Each holds inotify instances, and they accumulate across runs *and across
+ * sessions* — 20 of them were found alive, the oldest nearly three hours old, at the point
+ * where `fs.inotify.max_user_instances` (128) was exhausted and VS Code could no longer
+ * start at all: `EMFILE: too many open files, watch '/snap/code'`, before a single test ran.
+ *
+ * That is the same symptom the leaked-preview-server bug produced, and it was originally
+ * diagnosed as *only* that. It has a second cause, and this is it.
+ *
+ * Unlike the preview leak this is **not the companion's bug** — Electron orphans its own
+ * crash handler — so it is reaped and reported rather than failed on. Failing would fail
+ * every run for something this repo does not control.
+ */
+function reapHarnessHelpers(before: Set<string>): void {
+  const leaked = [...harnessHelperPids()].filter((p) => !before.has(p));
+  let reaped = 0;
+  for (const pid of leaked) {
+    try {
+      process.kill(Number(pid), "SIGTERM");
+      reaped++;
+    } catch {
+      /* already gone */
+    }
+  }
+  if (reaped > 0) {
+    console.log(`reaped ${reaped} orphaned VS Code helper process(es) from .vscode-test`);
+  }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -74,6 +123,7 @@ async function main() {
   const extensionDevelopmentPath = path.resolve(__dirname, "../../");
   const extensionTestsPath = path.resolve(__dirname, "./suite/index");
   const previewsBefore = previewPids();
+  const helpersBefore = harnessHelperPids();
   try {
     await runTests({
       extensionDevelopmentPath,
@@ -83,8 +133,12 @@ async function main() {
     await assertNoLeakedPreviews(previewsBefore);
   } catch (err) {
     console.error("e2e run failed:", err);
+    reapHarnessHelpers(helpersBefore);
     process.exit(1);
   }
+  // After the assertion, so a genuine preview leak still fails the run — but on both paths,
+  // because a failing run leaks helpers exactly like a passing one does.
+  reapHarnessHelpers(helpersBefore);
 }
 
 main();

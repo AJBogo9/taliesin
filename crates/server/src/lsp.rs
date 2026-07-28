@@ -56,6 +56,10 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             ),
             ..Default::default()
         }),
+        // Pipe tables only — see `lsp_format`. Advertising this claims "Format Document" for
+        // `.tmd`, which is a promise worth being narrow about: a formatter that re-wrapped
+        // prose would fight every deliberate line break in the file.
+        document_formatting_provider: Some(OneOf::Left(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         rename_provider: Some(OneOf::Right(RenameOptions {
             // `prepareRename` gates renaming to a cross-reference anchor, so the editor shows
@@ -289,8 +293,8 @@ fn handle_request(
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest, GotoDefinition,
-        HoverRequest, PrepareRenameRequest, Rename, Request as _,
+        CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest, Formatting,
+        GotoDefinition, HoverRequest, PrepareRenameRequest, Rename, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -327,6 +331,16 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(document_links(
+                docs,
+                &params.text_document.uri,
+            ))?),
+            error: None,
+        }
+    } else if req.method == Formatting::METHOD {
+        let params: lsp_types::DocumentFormattingParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(format_document(
                 docs,
                 &params.text_document.uri,
             ))?),
@@ -853,6 +867,66 @@ fn resolve_completion(
             out.extend(from_named(&vocab["divClasses"], CompletionItemKind::CLASS));
             out
         }
+        Ctx::DivAttrKey { classes, typed } => {
+            // A class the renderer dispatches on. `layout-ncol` (the one attribute with an
+            // empty class list) is offered ONLY where none is present: the dispatch chain
+            // tests it second, so on a `.step` or `.panel-tabset` it does not decorate the
+            // feature, it silently REPLACES it with a grid. That is a footgun, not a
+            // completion.
+            let names_in = |list: &str, c: &str| {
+                vocab[list]
+                    .as_array()
+                    .is_some_and(|a| a.iter().any(|e| e["name"].as_str() == Some(c)))
+            };
+            let is_feature_class = |c: &str| {
+                names_in("divClasses", c)
+                    || names_in("theoremKinds", c)
+                    || c == "columns"
+                    || c == "column"
+                    || vocab["calloutKinds"].as_array().is_some_and(|a| {
+                        a.iter()
+                            .filter_map(|e| e["name"].as_str())
+                            .any(|k| format!("callout-{k}") == c)
+                    })
+            };
+            let generic = !classes.iter().any(|c| is_feature_class(c));
+            vocab["divAttributes"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|e| {
+                            let name = e["name"].as_str()?;
+                            if !typed.is_empty() && !name.starts_with(&typed) {
+                                return None;
+                            }
+                            let allowed = e["classes"].as_array()?;
+                            let offered = if allowed.is_empty() {
+                                generic
+                            } else {
+                                allowed
+                                    .iter()
+                                    .filter_map(|v| v.as_str())
+                                    .any(|c| classes.iter().any(|t| t == c))
+                            };
+                            if !offered {
+                                return None;
+                            }
+                            Some(CompletionItem {
+                                label: name.to_string(),
+                                kind: Some(CompletionItemKind::PROPERTY),
+                                detail: e["description"].as_str().map(str::to_string),
+                                // The snippet carries the `="…"` and, where the value set is
+                                // closed, a choice — so `appearance` completes to a value the
+                                // renderer recognizes rather than to an empty pair of quotes.
+                                insert_text: e["snippet"].as_str().map(str::to_string),
+                                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                                ..Default::default()
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
         Ctx::Xref { typed } => {
             let mut out = Vec::new();
             if let Some(a) = vocab["xrefPrefixes"].as_array() {
@@ -1289,6 +1363,45 @@ fn document_links(
 
 /// The heading outline for `uri` as nested LSP document symbols, or `None` when the buffer
 /// is unknown.
+/// `textDocument/formatting`: one edit per table whose formatting changes, and nothing else.
+///
+/// Each edit spans whole lines and ends at the start of the line AFTER the table, so the
+/// trailing newline is never part of the replacement — an off-by-one there would eat the
+/// blank line under every table it touched.
+fn format_document(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    uri: &lsp_types::Url,
+) -> Option<Vec<lsp_types::TextEdit>> {
+    use lsp_types::{Position, Range, TextEdit};
+    let text = docs.get(uri)?;
+    Some(
+        crate::lsp_format::format_tables(text)
+            .into_iter()
+            .map(|e| TextEdit {
+                range: Range {
+                    start: Position {
+                        line: e.start_line as u32,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: e.end_line as u32,
+                        character: line_len_utf16(text, e.end_line),
+                    },
+                },
+                new_text: e.new_text,
+            })
+            .collect(),
+    )
+}
+
+/// The length of a line in UTF-16 code units, which is what LSP positions count.
+fn line_len_utf16(text: &str, line: usize) -> u32 {
+    text.split('\n')
+        .nth(line)
+        .map(|l| l.encode_utf16().count() as u32)
+        .unwrap_or(0)
+}
+
 fn document_symbols(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     uri: &lsp_types::Url,
@@ -2095,6 +2208,12 @@ mod tests {
     // A method the server does not implement is answered with JSON-RPC MethodNotFound. The
     // code is the whole contract here: a client reads it to decide between "this server
     // can't do that" and a real failure, and no test looked at it.
+    //
+    // The probe is RANGE formatting, which is deliberately not implemented: the formatter
+    // rewrites whole tables and nothing else, so a request scoped to an arbitrary range has
+    // no honest answer. (It used to probe `textDocument/formatting`, which stopped being an
+    // unimplemented method the day the table formatter landed — a probe naming a real feature
+    // tests the wrong thing, so this one has to keep naming a method the server declines.)
     #[test]
     fn an_unhandled_request_is_answered_with_method_not_found() {
         let (server, client) = Connection::memory();
@@ -2105,7 +2224,7 @@ mod tests {
             .sender
             .send(Message::Request(Request {
                 id: RequestId::from(43),
-                method: lsp_types::request::Formatting::METHOD.to_owned(),
+                method: lsp_types::request::RangeFormatting::METHOD.to_owned(),
                 params: serde_json::Value::Null,
             }))
             .unwrap();
@@ -2119,7 +2238,8 @@ mod tests {
             .expect("an unhandled method must be answered, not met with silence");
         assert_eq!(err.code, -32601, "JSON-RPC MethodNotFound");
         assert!(
-            err.message.contains(lsp_types::request::Formatting::METHOD),
+            err.message
+                .contains(lsp_types::request::RangeFormatting::METHOD),
             "the message should name the method, got {:?}",
             err.message
         );
