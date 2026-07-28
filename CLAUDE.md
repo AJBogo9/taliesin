@@ -171,17 +171,28 @@ For UI work, `/preview <file.tmd>` builds, serves on port 4388, and verifies it 
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`
 hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-clean.
 
-**There is no CI. The pre-push hook is the only automatic gate.** The GitHub Actions
-workflow was deleted on 2026-07-26 (it was billing Actions minutes on this private
-repo). What survives is `.githooks/pre-push` (wired via `core.hooksPath`, so it is
-invisible in `.git/hooks`): a push that includes `main` runs `cargo fmt --all --
---check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test
---workspace` first, and a WIP-branch push skips it. `git push --no-verify` bypasses.
+**`.githooks/pre-push` is the only gate that runs automatically today.** It is wired
+via `core.hooksPath`, so it is invisible in `.git/hooks`: a push that includes `main`
+runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
+warnings`, and `cargo test --workspace` first, and a WIP-branch push skips it.
+`git push --no-verify` bypasses. Note `core.hooksPath` is **unset in a fresh clone**,
+so this hook does not exist for anyone but the author.
 
-The workflow's *other* jobs now run nowhere, so they are yours to run by hand and
-they are the ones most likely to rot unnoticed: the live-kernel suites (Python and R,
-via `TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`, which silently *skip* when the
-interpreter is absent, which is exactly how they reach zero coverage), the two `tsc`
+`.github/workflows/ci.yml` was restored on 2026-07-28 (it had been deleted on
+2026-07-26 for billing Actions minutes on this private repo) and covers all of the
+above plus everything below. **Every one of its jobs is guarded on
+`github.event.repository.private != true`,** so while this repo is private it is
+inert and certifies nothing; it arms itself the moment the repository is public,
+where standard runners are free. Do not credit it for a check until then.
+
+**`./tools/gates.sh` runs every gate in one process and refuses to be green unless
+every one of them actually ran.** That is the point of it: the gates below *skip
+silently* when their interpreter is absent, so a plain `cargo test` can be green and
+mean almost nothing. The script arms all four `TALIESIN_REQUIRE_*` variables, asserts
+by name that each interpreter's canary test printed `... ok`, and treats a single
+ignored test as a failure. Reach for it instead of running these by hand: the
+live-kernel suites (Python and R, via `TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`),
+the headless-Chrome `{js}` path (`TALIESIN_REQUIRE_CHROME`), the two `tsc`
 type-checks above, `node --test crates/server/src/assets/_middleware.test.mjs` (the
 publish passcode gate), the VS Code companion's offline TextMate grammar test, and
 `cargo audit` / `cargo deny check` (`deny.toml` is still the policy) on any

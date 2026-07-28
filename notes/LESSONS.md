@@ -297,3 +297,23 @@ which 2 are false positives.
   rules over all 14 site projects killed four of their own prescriptions, including the most valuable
   one (it fired on 11.8% of the corpus, essentially all false positives) and one whose stated
   justification did not exist in the tree.
+- **A guard that skips is a guard that lies, so make the *verdict* the artifact, not the exit code.**
+  Item 84's real content was not "run the gates in one script" — it was that a green run must be
+  impossible unless every gate ran. That needs three separate mechanisms, and dropping any one puts
+  the hole back: preflight *before* the first slow gate (so the answer is "you are missing R", not a
+  green six-minute build), `${PIPESTATUS[0]}` (a `cmd | tee log` reports *tee*), and an assertion on
+  the OUTPUT — every canary printed `... ok`, zero ignored — because a `TALIESIN_REQUIRE_*` variable
+  can only hard-fail a test that still exists under that name. Then pin the script itself against the
+  tree: `gate_script.rs` derives the REQUIRE list and the canary list from the sources, so the two
+  ways the script rots silently (a new gate nobody arms, a renamed canary) fail the suite.
+- **Distinguish "a gate failed" from "a gate did not run" in the exit code, not just the prose.** The
+  first version skipped the entire workspace suite whenever *any* prerequisite was missing, so an
+  absent `cargo-deny` cost the test gate too. Counting interpreter prerequisites separately from tool
+  prerequisites was the fix, and the INCOMPLETE run (8 pass / 1 skip / exit 2) is what showed it.
+- **A restored capability can arrive before the condition that justified it.** Item 90's premise
+  (public repos get free Actions) re-checked as true, but publication had not happened, so an
+  unconditional restore would have re-created the exact billing that deleted the file. The guard
+  (`if: github.event.repository.private != true`) makes the workflow inert until the repo is public
+  and arms it with no follow-up commit — and because it *is* inert, the "there is no CI" prose had to
+  be corrected rather than reversed. **A gate on the tree and the prose about it belong in one
+  assertion**, or half the change ships and the docs start lying in the other direction.

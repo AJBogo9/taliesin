@@ -62,8 +62,8 @@ enough to continue; nothing else is required.**
   negative is a **broken probe** until proven otherwise — zsh does not word-split `$VAR` in a `for`
   loop, and an all-`NONE` inventory was caught only because one row had been measured by hand
   minutes earlier. Carry a known-positive row in every such probe.
-- **THE LAUNCH BLOCKERS ARE SHIPPED (2026-07-28), on branch `launch-blockers-2026-07-28`, NOT
-  pushed and NOT merged.** Nine items in one batch, each verified by **mutation** (restore the bug,
+- **THE LAUNCH BLOCKERS ARE SHIPPED AND PUSHED (2026-07-28): `origin/main` was at `a52afc7` when
+  the next batch branched off it.** Nine items in one batch, each verified by **mutation** (restore the bug,
   watch the named test fail) and, where it was a browser claim, in a real browser:
   **80 + 117** (`mounts:` containment + its pin), **81** (`check` no longer spawns a
   project-supplied interpreter), **79 + 118** (`--no-exec` now covers `{js}`; words made honest),
@@ -78,9 +78,24 @@ enough to continue; nothing else is required.**
   gates ran rather than skipped); both `tsc` gates exit 0; `node --test` 6/6; `check` exit 0 on
   **all 16** corpus/docs/site projects. Not re-run: `cargo audit` / `cargo deny` (no dependency
   changed).
-- **What is left of the launch-blocking set is one item and it is not code: 83.** It is **wider
-  than filed** — **five** tags ship MIT, not one — and it needs an owner ruling. Read it before
-  Phase 2 of item 100, which pushes a rewritten history to a new public repo.
+- **THE LAUNCH-BLOCKING SET IS EMPTY.** Item 83 (five MIT tags) was the last one and is resolved:
+  the tags are deleted, see "Do not re-add / re-scope".
+- **The publication-readiness batch shipped next (2026-07-28), on branch
+  `publication-readiness-2026-07-28`: items 84, 89, 90, 92, 93.** `tools/gates.sh` (the one script
+  that runs every gate and **refuses to be green when one skipped**), `CONTRIBUTING.md` with the
+  inbound relicensing grant, the restored `ci.yml` **plus** a new `release.yml` — both guarded on
+  `github.event.repository.private != true`, so they are **inert until publication** and need no
+  follow-up commit — the measured install expectation and platform matrix, and the "Coming from
+  Quarto" chapter generated from the vocabulary consts. Full detail in "Do not re-add / re-scope";
+  **`git log --oneline origin/main..HEAD` rather than trusting this line.**
+  **Gates: `./tools/gates.sh` itself, all nine, `PASSED` (exit 0)** — the workspace suite with all
+  four interpreter gates and `--test-threads=1` at **105 binaries, 1,700 passed, 0 failed,
+  0 ignored** (the 102/1,690 baseline plus 3 new test binaries and 10 tests, reconciling exactly),
+  both `tsc` gates, `node --test`, the VS Code grammar test, `cargo audit` and `cargo deny check`.
+  Zero skip lines in the test log and all four canaries printed `... ok`, which is what makes
+  "0 ignored" mean the gates *ran*. `check` exit 0 on **all 16** projects. The **INCOMPLETE** path
+  was exercised too (a deliberately broken `TALIESIN_PYTHON` + `--allow-missing` → 8 pass, 1
+  skipped, **exit 2**), because a verdict nobody has seen fail is not a verdict.
 - **Two traps this batch hit, both worth knowing.** (1) A mutation **survived**: the `mounts:`
   lexical containment check was fully shadowed by the canonical symlink check for any target that
   *exists*, so the test passed with the guard disabled. It took a row whose target does **not**
@@ -100,9 +115,6 @@ enough to continue; nothing else is required.**
 - **Auditing is DONE.** All 14 slate rounds have run except **R12** (real-device mobile, Android),
   which needs the author's phone. **Do not open a new round** — 59 items are open and an audit's
   value decays to zero if its findings never ship.
-  and run it before R7 because R7 consumes its output.
-- **Nothing in Wave 1 changed a line of product code.** The tree is exactly as it was; all 27 items
-  are open work. No gates were re-run after the commit because nothing compiled.
 
 ## State (2026-07-28)
 
@@ -399,23 +411,9 @@ confirms zero surviving self-MIT claims, which was the whole action it asked for
 The five pre-relicence tags are deleted. Their commits remain in `main`'s history, so nothing
 was lost but the labels; the SHAs are recorded there in case a snapshot is ever wanted again.
 
-**Making an outsider's run mean something**
-
-84. **One committed script that runs every gate and fails loudly on a skipped gate.** (HIGH.)
-    The gates are *healthy* (all four measured passing, see State) but they **skip silently** when
-    an interpreter is absent, so an outsider's green run is meaningless. Trap recorded by the
-    round: `cargo test --lib` on `taliesin-server` errors because it is a **bin** crate, and
-    `cmd > log; echo $?` reported exit 0 while the gate had not run. The script must capture
-    cargo's own exit code and assert a named live-kernel test printed `... ok`.
-90. **Restore `.github/workflows/ci.yml` verbatim from history.** (MEDIUM.) Recoverable from
-    `40ddff9^` with all 7 jobs and a `pull_request:` trigger already covering every gate. The
-    stated reason for deletion (billed Actions minutes on a **private** repo) is removed by
-    publication. *Premise refutable if public-repo Actions pricing has changed — re-check first.*
-89. **A ~30-line root `CONTRIBUTING.md`, including inbound-contribution licence terms.** (MEDIUM.)
-    `core.hooksPath` is **unset in a fresh clone** (measured) and no tracked file carries the wiring
-    command, so a contributor's PR runs no gate at all. The 2026-07-17 round refuted "no
-    CONTRIBUTING.md" as a *vulnerability*, correctly, and never assessed its **licensing-continuity**
-    function under a README that reserves relicensing rights.
+**Making an outsider's run mean something: SHIPPED 2026-07-28 (items 84, 89, 90) — see
+"Do not re-add / re-scope".** `tools/gates.sh`, a root `CONTRIBUTING.md`, and the restored
+workflow (guarded on repository visibility so it stays inert until publication).
 
 **Honesty of shipped words**
 
@@ -443,13 +441,15 @@ was lost but the labels; the SHAs are recorded there in case a snapshot is ever 
 91. **Make `chromiumoxide` an optional Cargo feature.** (MEDIUM.) `crates/server/Cargo.toml:47`
     declares it unconditionally and the crate has **no `[features]` section** (measured), so every
     build pays for a browser driver. The runtime `TALIESIN_REQUIRE_CHROME` gate is not a build gate.
-92. **Set the install expectation, ship binaries, state the platform matrix.** (MEDIUM.) Every
-    verifiable claim currently sits behind a 343-crate release build on a Unix-only tree with no
-    binaries, no hosted docs and no demo; launch attention is one-shot.
-93. **A "Coming from Quarto" page, generated from the vocabulary consts that already exist.**
-    (MEDIUM.) `check` already emits located diagnostics naming every Quarto-ism plus "found
-    `_quarto.yml` … rename it", so the migration assistant ships and nothing says so. Zero
-    migration pages exist in either book.
+    **Re-measure the premise before building it:** a cold release build was measured at **2m 11s /
+    268 crates / 2.6 GB peak** on four cores (2026-07-28), which is the number the README now
+    quotes, so "every build pays" is true but the bill is smaller than the item implies.
+
+**Install expectation, binaries and platform matrix: SHIPPED 2026-07-28 (item 92) — see
+"Do not re-add / re-scope".** *Not* done, and deliberately not re-filed as a code item: **hosted
+docs and a hosted demo**, which are a deploy decision belonging with item 100's Phase 2.
+
+**"Coming from Quarto": SHIPPED 2026-07-28 (item 93) — see "Do not re-add / re-scope".**
 94. **A "Your source stays yours" paragraph, with the measured number.** (MEDIUM.) Measured across
     all 115 corpus docs (10,118 lines): at most **8.59%** of lines carry any non-CommonMark
     construct, and all six families are Pandoc/Quarto vocabulary, not invented. Three exits already
@@ -1182,6 +1182,45 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 the publication-readiness batch (items 84, 89, 90, 92, 93),** each pinned by a
+  test and verified by mutation. **Do not re-scope any of the following as open:**
+  - **`tools/gates.sh` is the one gate script** (84). It *preflights* every prerequisite before
+    the first slow gate and **refuses to run** when one is missing, because a partial run that
+    looks green is the whole defect; `--allow-missing` downgrades the verdict to **INCOMPLETE**
+    (exit 2) rather than letting a skip pass as success. It reads `${PIPESTATUS[0]}` (the filed
+    trap: `cmd | tee log` reports *tee*'s status), arms all four `TALIESIN_REQUIRE_*` variables,
+    asserts each interpreter's **named canary test** printed `... ok`, and fails on a single
+    ignored test. `crates/core/tests/gate_script.rs` derives both lists from the tree, so a new
+    REQUIRE gate that nobody arms, or a renamed canary, fails the suite instead of hollowing the
+    script out silently.
+  - **`CONTRIBUTING.md` exists and carries the inbound licence grant** (89). It is the only
+    tracked file with `git config core.hooksPath .githooks` (git does not do this for you, so a
+    fresh clone is gated by nothing), and clause 3 grants a **relicensing** right — without it the
+    README's reserved right dies on the first merged PR. Pinned by `gate_script.rs`.
+  - **`.github/workflows/ci.yml` is restored, plus a new `release.yml`** (90, 92). **The premise
+    was re-checked and holds**: standard runners are free and unlimited on *public* repos, and the
+    2026-01-01 pricing revision kept that explicitly. But publication has **not happened**, so
+    **every job in both files carries `if: github.event.repository.private != true`** — inert on
+    this private repo, armed the instant it is public, no follow-up commit to forget. The guard
+    degrades toward *running* (`null != true`) for events with no repository payload. `ci.yml` also
+    gained `TALIESIN_REQUIRE_CHROME`, which did not exist when it was deleted. **Because the guard
+    means CI genuinely checks nothing today, the "no CI" prose was corrected rather than reversed**
+    — `stale_docs.rs` now asserts the guard and the prose *together*, across every file in
+    `.github/workflows/`, so making CI live cannot silently leave the docs lying.
+  - **Install expectation, binaries, platform matrix** (92). Measured, not estimated: a cold
+    release build is **2m 11s / 268 crates / 2.6 GB peak** on four cores, producing one ~40 MB
+    self-contained binary. `release.yml` attaches a tarball + `.sha256` per platform on a `v*`
+    tag, packaging `LICENSE` + `THIRD_PARTY.md` beside the binary (AGPL: a bare executable is a
+    distribution stripped of its terms). **Windows is stated as unsupported**, not omitted.
+    `release_targets.rs` pins the README matrix against the workflow's matrix **in both
+    directions** — an undocumented target is invisible, a documented one nothing builds is a
+    broken promise.
+  - **"Coming from Quarto"** (93) is `docs/guide/using/from-quarto.tmd`, chapter 2 of the User
+    Guide. Its thesis is that **`taliesin check` is the migration assistant** and the page is only
+    the map. `quarto_migration_page.rs` parses `NON_HTML_FORMATS`, `RETIRED_KEYS`,
+    `UNSUPPORTED_KEYS` and `MIGRATED_DOC_EXTS` **out of the sources** (they are `pub(crate)`, and
+    widening them for a test would be the tail wagging the dog) and requires the page to name every
+    entry — so adding a format to the diagnostic and not to the page fails the suite.
 - **2026-07-28 item 83 — the five MIT tags are DELETED (owner-approved).** Every tag predating
   the relicence commit (`3d474cb`, 2026-07-19) carried an MIT `LICENSE` while HEAD ships
   AGPL-3.0, so cloning any of them leaked the dual-licence moat README and `deny.toml` call the

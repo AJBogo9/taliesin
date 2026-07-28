@@ -28,19 +28,68 @@ fn internals_do_not_describe_the_deleted_shim() {
     );
 }
 
-/// The GitHub Actions workflow was deleted on 2026-07-26 (it billed Actions minutes on
-/// this private repo). `.githooks/pre-push` still gates fmt + clippy + `test --workspace`,
-/// but the jobs only CI ran (live kernels, the JS type-checks, the VS Code grammar test,
-/// `cargo audit`, `cargo deny`) are manual now. A doc that still credits "CI" for those is
-/// worse than silence: it tells the next reader (or agent) a push is checked for them in
-/// ways it is not.
+/// The workflow was restored on 2026-07-28, but **every job is guarded on repository
+/// visibility** so it stays inert until this repo is public. That means the false claim
+/// this test was built to catch is still false: nothing in CI checks a push today. A doc
+/// that credits "CI" for a gate is worse than silence — it tells the next reader (or
+/// agent) a push is checked for them in ways it is not.
+///
+/// The two halves are asserted together on purpose. Making the workflow live is one
+/// deletion (the guard) and it must not be possible to do that half without noticing the
+/// prose it makes stale, in either direction.
 #[test]
 fn docs_do_not_promise_a_ci_that_enforces_gates() {
+    // Walk the directory rather than naming ci.yml, so a workflow added later cannot
+    // start billing a private repo just by not being on a hand-written list.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .expect(".github/workflows is missing: the workflow was restored on 2026-07-28")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "yml" || x == "yaml"))
+        .collect();
+    files.sort();
     assert!(
-        !Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.github")
-            .exists(),
-        ".github/ is back: re-enabling CI means these docs need updating, not this test"
+        !files.is_empty(),
+        "no workflows found under {}",
+        dir.display()
+    );
+
+    let mut total_jobs = 0;
+    for f in &files {
+        let workflow = std::fs::read_to_string(f).unwrap();
+        // Everything below `jobs:`, so the `on:` keys above it are not counted as jobs
+        // and the guard named in a header comment is not counted as a guard.
+        let (_, body) = workflow
+            .split_once("\njobs:\n")
+            .unwrap_or_else(|| panic!("{} has no jobs: block", f.display()));
+        let jobs = body
+            .lines()
+            .filter(|l| {
+                l.strip_prefix("  ").is_some_and(|k| {
+                    !k.starts_with(' ')
+                        && k.trim_end().ends_with(':')
+                        && k.starts_with(|c: char| c.is_ascii_lowercase())
+                })
+            })
+            .count();
+        let guards = body
+            .matches("if: github.event.repository.private != true")
+            .count();
+        assert!(
+            jobs > 0 && guards == jobs,
+            "{guards} of {jobs} jobs in {} carry the repository-visibility guard. If the \
+             repo is public now, dropping the guard is right — but then these docs have to \
+             start crediting CI, so update them (and this test) rather than only the YAML.",
+            f.display()
+        );
+        total_jobs += jobs;
+    }
+    assert!(
+        total_jobs >= 7,
+        "only {total_jobs} guarded jobs across {} workflow file(s): the restored gate set \
+         had seven, so something was deleted rather than un-guarded",
+        files.len()
     );
     // THIRD_PARTY.md and deny.toml were the two that actually carried a false claim past
     // this gate: both asserted "CI enforces" the licence policy while `cargo deny` runs

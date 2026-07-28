@@ -8,11 +8,20 @@ a kernel for code, write your first document, and put it online.
 
 ## Install
 
-taliesin builds from source with a Rust toolchain. From the repo:
+Every tagged release attaches a prebuilt `.tar.gz` (with a `.sha256` beside it) for
+Linux x86-64, macOS Apple silicon and macOS Intel. Unpack it, put the `taliesin`
+binary on your `PATH`, and skip the rest of this section. Windows is not supported.
+
+Otherwise it builds from source with a Rust toolchain. From the repo:
 
 ```sh
 cargo build --release
 ```
+
+That compiles 268 crates in roughly two minutes on four cores and peaks around
+2.6 GB of memory; the result is one ~40 MB binary with KaTeX, its fonts, the
+syntax definitions and every bundled script inside it, so nothing is fetched at
+runtime.
 
 The binary is `target/release/taliesin`. Put it on your `PATH` (a symlink, or a
 small wrapper script that rebuilds on source changes before running it) so you

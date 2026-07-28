@@ -1,0 +1,105 @@
+---
+title: "Coming from Quarto"
+description: "What carries over untouched, the handful of things that do not, and why `taliesin check` is the migration assistant rather than this page."
+---
+
+Taliesin renders the same Markdown you already write. If you are arriving from a
+Quarto (or R Markdown, or plain Pandoc) project, the sentences, the fenced code
+cells, the `#|` cell options, the `:::` fenced divs, the `$…$` math, the `[@key]`
+citations and the `@fig-`/`@sec-` cross-references all come across **unchanged**.
+What differs is a short, closed list of *vocabulary*, and you do not have to learn
+it from this page:
+
+```sh
+taliesin check .
+```
+
+`check` reads your project and reports every one of these by name, with a file and
+a line, so a migration is a loop of "run check, fix what it points at" rather than
+a reading exercise. This chapter is the map of what it will find.
+
+## Step 1: rename the files
+
+The one thing no tool can do for you.
+
+| Quarto | Taliesin |
+|---|---|
+| `document.qmd` | `document.tmd` |
+| `_quarto.yml` | `_site.yml` |
+
+`.tmd` is the only accepted source extension. A directory that still holds a
+`_quarto.yml` is **named, not silently ignored** — `check` says so and tells you
+what to rename it to.
+
+Then your internal links still point at the old extension, which is the single
+biggest source of noise in a fresh migration: on two real books, **118 of 123** and
+**10 of 11** link errors were exactly this one shape. Taliesin recognises a link
+whose target ends in `.md`, `.markdown`, `.qmd`, `.rmd`, `.Rmd` or `.ipynb` and
+suggests the `.tmd` spelling next door. It **suggests** rather than rewrites: a
+`.md` link may point at a real `.md` file you ship on purpose.
+
+## Step 2: the front matter
+
+Every unknown top-level key warns with a did-you-mean, so a typo and a
+Quarto-ism are told apart. These are the ones with a specific answer.
+
+### `format:` names an output, and the output is HTML
+
+Taliesin renders **HTML only**. There is no PDF, LaTeX, Typst, Word or ePub target
+and there is not going to be one; a print track, if it ever exists, would render
+*from* the built HTML rather than alongside it. So `format:` takes a name —
+`html` (the default) or `deck` — and these values are reported as unsupported
+rather than quietly producing an HTML page you did not ask for:
+
+`pdf` · `typst` · `docx` · `latex` · `beamer` · `epub` · `pptx` · `odt` · `rtf` ·
+`jats` · `docbook`
+
+Two more `format:` shapes to know:
+
+- **`format: revealjs`** (and any `*-revealjs`) → **`format: deck`**. Decks run on
+  Taliesin's own engine; reveal.js is not vendored, not fetched, and not a
+  fallback.
+- **`format:` sub-keys are read by nothing.** `format:\n  html:\n    toc: true`
+  looks like it works and does not. Move the key to the top level (`toc: true`);
+  `check` says which one you meant when the sub-key names a real top-level key.
+
+### Keys that were removed or are not honoured
+
+| You wrote | What happens |
+|---|---|
+| `csl: apa.csl` | Recognised but **not** honoured. References always render in the built-in IEEE style; the `.csl` file is never parsed. |
+| `about:` | Removed on 2026-07-17. The landing banner is `hero:`, which takes different sub-keys (`eyebrow` / `headline` / `lead` / `actions`) — a rewrite, not a rename. |
+| `theorems: { number-within: … }` | Removed. Theorem numbers scope to a numbered book chapter automatically, so nothing replaces it: delete the key. |
+| `page-layout: article` (or `custom`, …) | Ignored. Taliesin uses the reading-width column by default and only `page-layout: full` widens it. |
+
+None of these is phrased as a did-you-mean on purpose. A did-you-mean is a
+mechanical rename, and a tool (or an agent) will apply it mechanically — but
+`hero:` is not `about:` with a new name, so a blind rewrite would trade a warning
+for a document that is wrong in a new way.
+
+## Step 3: the body
+
+Almost everything is untouched. The one habit worth naming:
+
+- **`::: {.column width="70%"}`** — Taliesin's `.columns` grid lays its children
+  out equal-width, so a per-column `width=` is silently ignored. `check` warns
+  rather than letting you wonder why the layout never changed.
+
+Cell options (`#| echo: false`, `#| label: fig-…`, `#| fig-cap: "…"`) work as you
+expect, and the document-level `execute:` block honours `echo`, `include` and
+`cache`; anything else under it warns with the closest match.
+
+## What this buys you
+
+Everything above is a diagnostic with a file and a line, which is the actual
+difference: a migration finishes when `check` exits 0, and you can see the whole
+distance from the first run. Run it before you start reading anything:
+
+```sh
+taliesin check .          # a project
+taliesin check page.tmd   # one document
+taliesin build . --strict # ...and make a warning fail the build once you are clean
+```
+
+See [Command-line reference](../reference/cli.tmd) for the rest of `check`, and
+[Front matter](../reference/frontmatter.tmd) for the full key vocabulary.

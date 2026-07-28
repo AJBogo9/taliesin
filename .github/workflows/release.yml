@@ -1,0 +1,85 @@
+name: Release
+
+# Attach a prebuilt binary to every `v*` tag, because the alternative is what shipped
+# before: every verifiable claim about this tool sat behind a 343-crate release build, and
+# launch attention is one-shot.
+#
+# The platform matrix here is the ONE source of truth for it. `README.md` repeats it for
+# humans and `crates/core/tests/release_targets.rs` asserts the two agree, so adding a
+# target without documenting it (or promising one this never builds) fails the suite.
+#
+# Guarded on repository visibility for the same reason as ci.yml: this file has to be
+# committed before publication so the published history carries it, and until then it must
+# not bill Actions minutes on a private repo.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # Create the (draft-free) release once, so the matrix jobs below only upload. Doing it
+  # inside the matrix would race three jobs against one `gh release create`.
+  create:
+    if: github.event.repository.private != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the release if it does not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --title "$TAG" --generate-notes
+
+  build:
+    needs: create
+    if: github.event.repository.private != true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server
+      # The tarball carries the licence and the third-party notices next to the binary:
+      # Taliesin is AGPL-3.0 and vendors third-party assets, so a bare binary would be a
+      # distribution without the terms it is distributed under.
+      - name: Package
+        env:
+          TARGET: ${{ matrix.target }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          stage="taliesin-$TAG-$TARGET"
+          mkdir "$stage"
+          cp "target/$TARGET/release/taliesin" "$stage/"
+          cp LICENSE THIRD_PARTY.md README.md "$stage/"
+          tar czf "$stage.tar.gz" "$stage"
+          shasum -a 256 "$stage.tar.gz" > "$stage.tar.gz.sha256"
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          gh release upload "$TAG" \
+            "taliesin-$TAG-$TARGET.tar.gz" \
+            "taliesin-$TAG-$TARGET.tar.gz.sha256" \
+            --clobber

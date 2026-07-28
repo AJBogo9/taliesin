@@ -1,5 +1,6 @@
-# cargo-deny configuration. Run `cargo deny check` by hand (alongside cargo-audit) on
-# any dependency change — there is no CI, and the pre-push hook does not cover it.
+# cargo-deny configuration. Run `cargo deny check` on any dependency change — the
+# pre-push hook does not cover it, and the restored workflow stays inert while this
+# repo is private. `./tools/gates.sh` runs it alongside cargo-audit and every other gate.
 # Keeps the dependency tree to redistribution-friendly licenses and flags advisories,
 # mirroring the licenses we actually ship (MIT/Apache/ISC/BSD/…).
 [advisories]

@@ -35,8 +35,21 @@ web-client/     browser preview client (vanilla JS), the only client
 
 ## Install & prerequisites
 
-**Build from source.** Taliesin is a Rust workspace (edition 2024); a recent stable
-toolchain (via [rustup](https://rustup.rs)) is all you need to build it:
+**Download a binary.** Every tagged release attaches a `.tar.gz` (with a `.sha256`
+next to it) for each supported platform — one download, no toolchain:
+
+| Platform | Target | Status |
+| --- | --- | --- |
+| Linux x86-64 | `x86_64-unknown-linux-gnu` | built and released |
+| macOS Apple silicon | `aarch64-apple-darwin` | built and released |
+| macOS Intel | `x86_64-apple-darwin` | built and released |
+| Windows | — | **not supported**: never built, never tested, no gate covers it. The process and kernel layer is Unix-only. |
+
+The tarball holds the `taliesin` binary plus `LICENSE` and `THIRD_PARTY.md`. Put the
+binary anywhere on your `PATH`.
+
+**Or build from source.** Taliesin is a Rust workspace (edition 2024); a recent stable
+toolchain (via [rustup](https://rustup.rs)) is all you need:
 
 ```sh
 git clone https://github.com/AJBogo9/taliesin && cd taliesin
@@ -44,7 +57,13 @@ cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
-Put `target/release/taliesin` on your `PATH` to call `taliesin` from anywhere.
+**What that costs, measured, so it is not a surprise:** a cold release build compiles
+**268 crates in about 2 minutes** on four cores, peaking around **2.6 GB of RAM**, and
+produces a single ~40 MB self-contained binary (it embeds KaTeX with its fonts, the
+syntax-highlighting definitions, and every bundled stylesheet and script, which is why
+rendered pages need no network). Nothing is fetched at runtime and there is no
+`node_modules`. Put `target/release/taliesin` on your `PATH` to call `taliesin` from
+anywhere.
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
 highlighting, decks, and sites render with no kernel at all; a kernel is needed only
@@ -145,6 +164,12 @@ The native deck engine, mermaid, and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
 See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
 books, authored in `.tmd` and built with Taliesin itself.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) — it covers the one setup step git will not do
+for you (`git config core.hooksPath .githooks`), the single command that runs every gate
+(`./tools/gates.sh`), and the licence terms a contribution is submitted under.
 
 ## License
 

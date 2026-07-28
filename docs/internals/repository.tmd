@@ -153,15 +153,23 @@ in `notes/` so the root stays uncluttered:
   files); `crates/server/build.rs` stamps the short git SHA into the binary for the
   `--version` colophon, falling back to `"unknown"` outside a checkout.
 - **`deny.toml`**: the dependency *policy* gate (redistribution-friendly licenses
-  only, no unknown registries or git sources, plus an advisory pass). Nothing runs it
-  for you; `cargo deny check` is a manual step on any dependency change.
-- **`.githooks/pre-push`**: the only automatic gate in the repo, wired through
-  `core.hooksPath` (so it does not appear in `.git/hooks`). A push that includes
-  `main` runs `cargo fmt --check`, `cargo clippy -D warnings`, and
-  `cargo test --workspace` first; a WIP-branch push skips it, and `--no-verify`
-  bypasses. There is no CI to back it up: the GitHub Actions workflow was deleted on
-  2026-07-26, so the jobs it alone ran (live Python/R kernels, the JS type-checks,
-  the VS Code grammar test, `cargo audit`, `cargo deny`) are now manual.
+  only, no unknown registries or git sources, plus an advisory pass). `cargo deny
+  check` on any dependency change; `./tools/gates.sh` runs it for you.
+- **`.githooks/pre-push`**: the gate that runs automatically, wired through
+  `core.hooksPath` (so it does not appear in `.git/hooks`, and does **not** exist in
+  a fresh clone). A push that includes `main` runs `cargo fmt --check`,
+  `cargo clippy -D warnings`, and `cargo test --workspace` first; a WIP-branch push
+  skips it, and `--no-verify` bypasses.
+- **`tools/gates.sh`**: the one script that runs *every* gate — the hook's three plus
+  the live Python/R kernels, the headless-Chrome `{js}` path, both `tsc`
+  type-checks, the publish-passcode node test, the VS Code grammar test, `cargo
+  audit` and `cargo deny`. Each of those skips silently without its interpreter, so
+  the script arms all four `TALIESIN_REQUIRE_*` variables, checks each canary test
+  reported `... ok`, and exits non-zero if anything was skipped or ignored.
+- **`.github/workflows/ci.yml`**: the same set again, as seven parallel jobs, for the
+  fresh-clone build and for contributor pull requests. Every job is guarded on
+  `github.event.repository.private != true`, so it is inert while this repo is
+  private and arms itself when the repository becomes public.
 
 Several directories are **generated and gitignored**, so do not be surprised when
 they appear: `target/` (the Rust build), `_freeze/` (the persistent per-page
