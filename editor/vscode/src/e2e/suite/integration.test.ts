@@ -52,6 +52,7 @@ suite("Taliesin companion (integration)", () => {
       "taliesin.showServerLog",
       "taliesin.doctor",
       "taliesin.insertMathSymbol",
+      "taliesin.revealInPreview",
     ]) {
       assert.ok(cmds.includes(id), `${id} should be registered after activation`);
     }
@@ -79,6 +80,71 @@ suite("Taliesin companion (integration)", () => {
       12000
     );
     assert.ok(hasWebviewTab, "Open Preview should open a webview panel");
+  });
+
+  // The reuse half of the same command. Before the preview registry, `openPreview` allocated
+  // a port, spawned `taliesin preview` and created a webview on EVERY invocation, so a second
+  // press left two panels and two file watchers running against one document. Counting webview
+  // tabs is the observable form of that: the registry must reveal the panel it already has.
+  test("Open Preview a second time reuses the panel instead of opening another", async () => {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_POST));
+    await vscode.window.showTextDocument(doc);
+
+    const webviewTabs = () =>
+      vscode.window.tabGroups.all.reduce(
+        (n, g) => n + g.tabs.filter((t) => t.input instanceof vscode.TabInputWebview).length,
+        0
+      );
+
+    await vscode.commands.executeCommand("taliesin.openPreview");
+    assert.ok(await waitFor(() => webviewTabs() >= 1, 12000), "the first preview should open");
+    const after1 = webviewTabs();
+
+    await vscode.commands.executeCommand("taliesin.openPreview");
+    // Give a would-be second panel time to appear; the assertion is that it never does.
+    await new Promise((r) => setTimeout(r, 2500));
+    assert.strictEqual(
+      webviewTabs(),
+      after1,
+      "a second Open Preview on the same document must reveal the existing panel, not add one"
+    );
+  });
+
+  // Forward search's active half. This asserts the command is wired and survives being
+  // invoked with a live preview; whether the preview actually scrolls is a client-side
+  // property, pinned by the `cursor-sync` probe in tools/ui-audit.
+  test("Reveal Cursor in Preview runs against a live preview without throwing", async () => {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_POST));
+    const editor = await vscode.window.showTextDocument(doc);
+    await vscode.commands.executeCommand("taliesin.openPreview");
+    assert.ok(
+      await waitFor(
+        () =>
+          vscode.window.tabGroups.all.some((g) =>
+            g.tabs.some((t) => t.input instanceof vscode.TabInputWebview)
+          ),
+        12000
+      ),
+      "a preview must be open for the reveal command to have a target"
+    );
+
+    // Opening a preview leaves the WEBVIEW focused, so `activeTextEditor` is undefined here.
+    // Invoking the command in that state is the palette case, and it must not throw or bail:
+    // the command falls back to the visible .tmd editor.
+    await vscode.commands.executeCommand("taliesin.revealInPreview");
+
+    // Now the realistic keybinding case: the author is typing, so the editor holds focus.
+    const focused = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+    const line = Math.min(5, doc.lineCount - 1);
+    focused.selection = new vscode.Selection(line, 0, line, 0);
+    await vscode.commands.executeCommand("taliesin.revealInPreview");
+
+    // The editor must keep focus: revealing is meant to move the preview, not the author.
+    assert.strictEqual(
+      vscode.window.activeTextEditor?.document.uri.fsPath,
+      doc.uri.fsPath,
+      "revealing must not steal focus from the editor"
+    );
   });
 
   test("surfaces `check` findings as diagnostics, from the language server", async () => {

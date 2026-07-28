@@ -37,7 +37,14 @@ export function activate(context: vscode.ExtensionContext) {
     // The passive half (marking, never scrolling) rides the selection listener in
     // `openPreview` and sends `reveal: false`.
     vscode.commands.registerCommand("taliesin.revealInPreview", () => {
-      const editor = vscode.window.activeTextEditor;
+      // `activeTextEditor` is `undefined` whenever a webview holds focus, which is exactly
+      // the state opening a preview leaves you in — the same trap `previewTarget` documents
+      // for the title-bar button. Keybound invocations are gated on `editorTextFocus` and so
+      // always have an active editor, but a palette invocation right after opening a preview
+      // would silently do nothing. Fall back to the visible `.tmd` editor.
+      const editor =
+        vscode.window.activeTextEditor ??
+        vscode.window.visibleTextEditors.find((e) => isSourceFile(e.document.fileName));
       if (!editor || !isSourceFile(editor.document.fileName)) {
         vscode.window.showWarningMessage("Taliesin: open a .tmd file first.");
         return;

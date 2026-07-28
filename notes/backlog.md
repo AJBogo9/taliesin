@@ -725,14 +725,14 @@ scroll-on-`Ctrl+Alt+J`, and one panel + one server per document. These three are
      it has an id but no `data-sourcepos`, and `locatable()` deliberately refuses to resolve it, so
      the probe clicked the one element guaranteed to emit nothing.
 
-152. **The companion e2e suite cannot run on this machine.** (LOW, environmental.)
-     `npm run test:e2e` dies with `EMFILE: too many open files, watch '/snap/code'` inside
-     `StorageMainService` during VS Code **startup**, before any extension loads, because
-     `fs.inotify.max_user_instances` is 128 and the running snap VS Code has consumed them. Not a
-     code defect and not fixable from the repo. Either raise the limit
-     (`sudo sysctl fs.inotify.max_user_instances=512`, persisted in `/etc/sysctl.d/`) or run the
-     suite with the editor closed. **Until then the companion e2e certifies nothing**, so do not
-     count it as a passing gate.
+152. **RESOLVED 2026-07-28: the companion e2e suite runs again.** It had been failing with
+     `EMFILE: too many open files` inside VS Code startup because `fs.inotify.max_user_instances`
+     was still the kernel default of 128 while the desktop session already held ~154 (dconf ~40,
+     code ~32, plus Electron apps). Raised to 512 via `/etc/sysctl.d/99-inotify.conf`. Kept here
+     as the diagnosis, because the same limit throttles `taliesin preview`'s own file watchers:
+     if previews ever stop hot-reloading, or VS Code refuses to start, check
+     `find /proc/*/fd -lname 'anon_inode:inotify' | wc -l` against
+     `/proc/sys/fs/inotify/max_user_instances` before suspecting the code.
 
 ### B. Buildable, but low yield on its own
 
