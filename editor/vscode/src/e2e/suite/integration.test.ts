@@ -231,6 +231,63 @@ suite("Taliesin companion (integration)", () => {
     assert.ok(text, "hover should name the included file");
   });
 
+  test("completes inside a `{js}` cell from the real JS language service", async () => {
+    // `{js}` is the one cell language whose provider ships WITH VS Code, so this proves the
+    // whole embedded path in a bare Extension Host: no Python extension required. `charAt`
+    // is the load-bearing assertion — it can only come from the TS server actually typing
+    // `greeting` as a string. Word-based fallback completion would offer `greeting` and
+    // `const` and never `charAt`, which is exactly the failure this must not silently pass.
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content: "---\ntitle: T\n---\n\n```{js}\nconst greeting = 'hi';\ngreeting.\n```\n",
+    });
+    await vscode.window.showTextDocument(doc);
+
+    const labels = await waitForValue(async () => {
+      const list = (await vscode.commands.executeCommand(
+        "vscode.executeCompletionItemProvider",
+        doc.uri,
+        new vscode.Position(6, 9) // after `greeting.`
+      )) as vscode.CompletionList | undefined;
+      const got = (list?.items ?? []).map((i) =>
+        typeof i.label === "string" ? i.label : i.label.label
+      );
+      return got.includes("charAt") ? got : undefined;
+    }, 20000);
+
+    assert.ok(labels, "expected string members from the JS language service inside the cell");
+  });
+
+  test("a later cell sees an earlier cell's definitions", async () => {
+    // Two things at once, both of which fail silently rather than loudly if broken:
+    //   - every cell of the language is projected, not just the one under the cursor, so
+    //     `greeting` declared in the first cell is in scope in the second. That matches how
+    //     Taliesin runs them: one warm kernel, shared state.
+    //   - the leading `#|` is stripped. It is a Taliesin directive but a SYNTAX ERROR in
+    //     JavaScript, so leaving it in poisons the whole shadow buffer and `charAt` vanishes.
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content:
+        "---\ntitle: T\n---\n\n```{js}\n#| echo: false\nconst greeting = 'hi';\n```\n\n" +
+        "Prose between.\n\n```{js}\ngreeting.\n```\n",
+    });
+    await vscode.window.showTextDocument(doc);
+
+    const labels = await waitForValue(async () => {
+      const list = (await vscode.commands.executeCommand(
+        "vscode.executeCompletionItemProvider",
+        doc.uri,
+        new vscode.Position(12, 9) // after `greeting.` in the SECOND cell
+      )) as vscode.CompletionList | undefined;
+      const got = (list?.items ?? []).map((i) =>
+        typeof i.label === "string" ? i.label : i.label.label
+      );
+      return got.includes("charAt") ? got : undefined;
+    }, 20000);
+
+    assert.ok(labels, "the second cell should see `greeting` from the first");
+  });
+
   test("hovering math previews what it renders as", async () => {
     // The server can only answer if VS Code asks, and it only asks inside a math span it
     // routed to the Taliesin server. An untitled buffer also re-proves the documentSelector

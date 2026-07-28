@@ -101,12 +101,16 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    ALL editor intelligence lives here — completion, hover, definition,
                    documentLink, symbols, diagnostics, quick fixes, rename. stdout is the
                    JSON-RPC wire, so never print to it (use `crate::log`, stderr)
-editor/vscode/   the VS Code companion. It implements NO language features: `src/client.ts`
-                 is a `vscode-languageclient` over `taliesin lsp`. What is left in TS is
-                 what LSP has no concept of — the preview webview + bidirectional source
-                 sync, and editor commands. Add an editor feature in Rust, not here
-                 (a second copy in TS is what this replaced; see
-                 `notes/2026-07-28-vscode-companion-audit.md`)
+editor/vscode/   the VS Code companion. It implements NO language features of its own:
+                 `src/client.ts` is a `vscode-languageclient` over `taliesin lsp`. What is
+                 left in TS is what LSP has no concept of — the preview webview +
+                 bidirectional source sync, editor commands, and `src/embedded.ts`, which
+                 forwards completion inside a `{python}`/`{r}`/`{js}` cell to whoever owns
+                 that language (LSP cannot express "go ask Pylance"). Even that keeps the
+                 knowledge in Rust: cell locations come from the server's
+                 `taliesin/cellRegions` (`lsp_cells.rs`), never from a fence scan in TS.
+                 Add an editor feature in Rust, not here (a second copy in TS is what this
+                 replaced; see `notes/2026-07-28-vscode-companion-audit.md`)
 web-client/      browser preview client (vanilla JS, the only client): client.js mounts
                  blocks + applies ops (Alt-click opens source in the editor),
                  search.js (Cmd-K), toc-spy.js (scrollspy)

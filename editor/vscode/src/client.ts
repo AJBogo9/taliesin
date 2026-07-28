@@ -6,6 +6,7 @@ import {
   TransportKind,
   State,
 } from "vscode-languageclient/node";
+import { disposeShadowsFor, embeddedCompletions } from "./embedded";
 
 // The language-intelligence half of the companion: a thin client over `taliesin lsp`.
 //
@@ -51,6 +52,22 @@ async function start(output: vscode.LogOutputChannel): Promise<void> {
     // bibliography feed diagnostics too, so the server hears about those as well.
     synchronize: {
       fileEvents: vscode.workspace.createFileSystemWatcher("**/{*.tmd,_site.yml,*.bib}"),
+    },
+    // Completion inside a `{python}` / `{r}` / `{js}` cell is forwarded to whoever owns that
+    // language and merged with ours. Ours still answers in a cell (that is where `#|` cell
+    // options live), so this adds rather than replaces. See embedded.ts for why this one
+    // feature cannot live in the server.
+    middleware: {
+      provideCompletionItem: async (document, position, context, token, next) => {
+        const [ours, theirs] = await Promise.all([
+          next(document, position, context, token),
+          embeddedCompletions(client, document, position, context),
+        ]);
+        if (!theirs || theirs.length === 0) return ours;
+        const mine = Array.isArray(ours) ? ours : (ours?.items ?? []);
+        const incomplete = !Array.isArray(ours) && (ours?.isIncomplete ?? false);
+        return new vscode.CompletionList([...mine, ...theirs], incomplete);
+      },
     },
     // Surface a start failure where the author is, rather than only in a channel nobody
     // opened. `taliesin.path` is the fix for essentially all of them.
@@ -111,6 +128,9 @@ export function registerLanguageClient(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand("taliesin.showServerLog", () => output.show()),
+    // A closed document's shadow can never be asked for again; keeping it would pin the
+    // projection of a buffer that no longer exists.
+    vscode.workspace.onDidCloseTextDocument((doc) => disposeShadowsFor(doc.uri)),
     // Pointing at a different binary means a different server: restart rather than keep
     // answering from the old one, which would silently serve a stale vocabulary.
     vscode.workspace.onDidChangeConfiguration((e) => {

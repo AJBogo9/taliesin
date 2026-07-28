@@ -165,6 +165,26 @@ What is left in the extension is what the protocol has no concept of:
   Symbol* (a picker over the same math vocabulary the completion uses, searchable by glyph),
   *Restart Language Server*, *Show Language Server Log*.
 - **The `.tmd` grammar, the snippets, and `language-configuration.json`** — pure manifest.
+- **Embedded-language completion inside a code cell** (`src/embedded.ts`). This is the one
+  language feature that *cannot* live in the server, and the reason is the protocol: LSP has
+  no way for a server to say "this range is Python, go ask Pylance". The routing has to
+  happen in the editor, against the editor's own provider registry. So the split is kept
+  honest — the server still owns the **knowledge** (`taliesin/cellRegions`, a custom request
+  answering where the cells are and what language each one is, from `lsp_cells.rs`), and the
+  extension owns only the mechanical forwarding. No fence scanning happens in TypeScript.
+
+  The mechanism is a **shadow document**, and which kind was measured rather than assumed. A
+  custom URI scheme with a `TextDocumentContentProvider` does *not* work: the built-in TS
+  server will not analyze it, and `greeting.` came back with `const, greeting, hi` — word-based
+  fallback, not IntelliSense. An **untitled** document of the right language returns the real
+  52 members including `charAt`. The shadow is the whole `.tmd` with every non-cell line
+  blanked, so positions map 1:1 with no offset arithmetic, and every cell of that language is
+  kept (not just the one under the cursor) so a later cell sees an earlier one's imports —
+  which is how Taliesin actually runs them, one warm kernel with shared state. Leading `#|`
+  option lines are excluded by the server, because they are directives rather than code and a
+  `#|` is a syntax error in JavaScript. Auto-import `additionalTextEdits` are dropped from
+  forwarded items: they are computed against the shadow, where the surrounding lines are
+  blank, so applying one would write an import into the middle of the prose.
 
 It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
 editor/vscode && npm install && npm run build`, then **F5** to launch an Extension

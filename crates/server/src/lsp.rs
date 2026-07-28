@@ -300,6 +300,21 @@ fn handle_request(
             ))?),
             error: None,
         }
+    } else if req.method == CELL_REGIONS_METHOD {
+        // A Taliesin extension, not an LSP method: the protocol has no concept of "this
+        // range is another language, go ask whoever owns it". A client that wants embedded
+        // intelligence needs the regions, and deriving them from a fence scan of its own is
+        // how the TypeScript copy this branch deleted got started.
+        let params: lsp_types::DocumentSymbolParams = serde_json::from_value(req.params)?;
+        let regions = docs
+            .get(&params.text_document.uri)
+            .map(|text| crate::lsp_cells::cell_regions(text))
+            .unwrap_or_default();
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(regions)?),
+            error: None,
+        }
     } else if req.method == PrepareRenameRequest::METHOD {
         let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
@@ -412,6 +427,11 @@ fn resolve_definition(
     };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
+
+/// The custom request a client calls to learn where a document's code cells are, so it can
+/// route completion inside one to whoever owns that language. Namespaced, because it is not
+/// an LSP method and must never collide with one.
+pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
 
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
@@ -2244,6 +2264,44 @@ mod tests {
         assert!(
             md.contains("@fig-scree"),
             "expected the id echoed, got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // The client needs to know where cells are to forward completion into them, and that
+    // knowledge stays here rather than becoming a fence scanner in TypeScript.
+    #[test]
+    fn cell_regions_request_reports_each_cell_body() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-cells.tmd").unwrap();
+        let text = "intro\n\n```{python}\nimport os\nos.getcwd()\n```\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(31),
+                method: "taliesin/cellRegions".to_owned(),
+                params: serde_json::json!({ "textDocument": { "uri": uri } }),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(31));
+        let regions = resp.result.expect("a cellRegions result");
+
+        assert_eq!(
+            regions,
+            serde_json::json!([{
+                "language": "python",
+                "startLine": 3,
+                "endLine": 4,
+            }]),
+            "got {regions}"
         );
 
         shutdown(&client);

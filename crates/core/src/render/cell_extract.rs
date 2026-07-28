@@ -12,7 +12,7 @@ use super::JsOpts;
 /// spaced form is accepted, so the corpus may use it (e.g. `posts/pca-geometry`).
 /// Returns `None` for a plain comment or code line. This is the single primitive every
 /// option parser keys off (`cell_option`, `strip_cell_options`, `validate`).
-pub(crate) fn option_directive(line: &str) -> Option<&str> {
+pub fn option_directive(line: &str) -> Option<&str> {
     let t = line.trim_start();
     for marker in ["#", "//", "%%"] {
         if let Some(rest) = t.strip_prefix(marker) {

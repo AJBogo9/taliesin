@@ -56,7 +56,7 @@ use fm_extract::{
     theorem_config_with_fallback,
 };
 mod cell_extract;
-pub(crate) use cell_extract::option_directive;
+pub use cell_extract::option_directive;
 use cell_extract::{
     cell_flag_or, cell_option, code_fold, code_lang, detect_execute_defaults, hidden_cell,
     is_executable_fence, parse_js_opts, slice_lines, strip_cell_options,

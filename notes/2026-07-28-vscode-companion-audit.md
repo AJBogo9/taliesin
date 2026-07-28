@@ -389,12 +389,10 @@ response it claims to test is empty.
 
 Roughly in value order:
 
-1. **Embedded-language completion in code cells** (E above). Inside ` ```{python} `, Pylance
-   (or whatever owns Python) should answer. The grammar already maps the embedded scopes, so
-   the tokenization is right; what is missing is the request routing. Quarto does this and it
-   is the largest remaining "feels like a real IDE" jump. Expect this to be the hard one:
-   it likely needs a virtual-document / middleware layer in `client.ts`, which is the one
-   place TypeScript legitimately grows again.
+1. ~~**Embedded-language completion in code cells.**~~ **DONE — see Part 7.** The predicted
+   shape was right (middleware + virtual document in the client); the virtual-document
+   *scheme* was the part that had to be measured. Verified for `{js}` only — read Part 7
+   before assuming Python works.
 2. ~~**KaTeX hover preview.**~~ **DONE — see Part 6.** The plan above was wrong on its
    central premise (there is no SVG to inline, because KaTeX cannot emit one); what shipped
    is a MathML-derived Unicode preview. Read Part 6 before touching it.
@@ -494,11 +492,85 @@ target is line-relative.
   it is the weakest output; a `;`-per-row separator would be the cheap fix.
 - Items 1 and 3–7 of the list above are untouched.
 
+## Part 7: embedded-language completion in code cells (third pass, same day)
+
+### The one feature that cannot live in the server
+
+LSP has no way for a server to say "this range is Python, go ask Pylance". The routing must
+happen in the editor, against the editor's own provider registry. So this is the legitimate
+exception to the rule above — and the split is kept honest: the **server owns the
+knowledge**, the client owns only the plumbing.
+
+- **Rust:** `crates/server/src/lsp_cells.rs` + a custom request `taliesin/cellRegions`
+  (`lsp::CELL_REGIONS_METHOD`) answering where each cell is and what language it names. 11
+  tests. It reuses core's own `render::option_directive` (widened from `pub(crate)`) rather
+  than restating the rule, which is what keeps "what is an option line" in one place.
+- **TypeScript:** `editor/vscode/src/embedded.ts` + a `provideCompletionItem` middleware.
+  **No fence scanning in TypeScript** — that is the thing this branch exists to have deleted.
+
+### Which virtual document, measured not assumed
+
+The plan said "virtual document". There are two kinds and only one works:
+
+| approach | result |
+|---|---|
+| custom URI scheme + `TextDocumentContentProvider` | `greeting.` → `const, greeting, hi`. **Word-based fallback, not IntelliSense.** The built-in TS server does not analyze a foreign scheme. |
+| **untitled document** of the right language | `greeting.` → 52 items incl. `charAt`, `charCodeAt`. **Real.** |
+
+This is worth remembering, because the failure mode is *quiet*: word-based completion looks
+like a working feature until you notice every suggestion is a word already on screen. Any
+test for this must assert on a member that can only come from a type (`charAt`), never on
+"got some items".
+
+### The projection
+
+The shadow is the whole `.tmd` with every non-cell line replaced by an empty line.
+
+- **Blanking, not slicing**, so a completion at line 12 of the `.tmd` is line 12 of the
+  shadow. No offset arithmetic to get wrong.
+- **Every cell of that language is kept**, not just the one under the cursor, so a later cell
+  sees an earlier cell's imports — matching how Taliesin runs them (one warm kernel, shared
+  state). Pinned by `a later cell sees an earlier cell's definitions`.
+- **Leading `#|` option lines are dropped** by the server. They are directives, not code, and
+  `#|` is a *syntax error in JavaScript* — leaving one in poisons the whole shadow buffer.
+  The same pin covers this, which is why its fixture puts `#|` in a `{js}` cell.
+- **`additionalTextEdits` are stripped** from forwarded items. An auto-import is computed
+  against the shadow, where the surrounding lines are blank, so applying one would write an
+  import into the middle of the prose.
+
+### Verified, and the honest limit
+
+- `./tools/gates.sh`: **PASSED — all nine.** `npm test`: **45.** `npm run test:e2e`:
+  **13 passing** (was 11), in a real Extension Host.
+- **Only `{js}` is verified end to end.** That is deliberate and it is the strongest test
+  available here: JavaScript is the one cell language whose provider ships *with* VS Code, so
+  the assertion runs in a bare host with no extension to install. Python and R go through the
+  identical path and the identical projection, but **nobody has watched Pylance answer inside
+  a cell** — the test host has no Python extension. Treat Python as expected-to-work, not
+  proven. Installing `ms-python.python` into `.vscode-test` would close this.
+
+### Found while verifying: the companion leaks a preview server
+
+Not caused by this change, and not fixed here. `extension.ts` calls `server.dispose()` only
+from `panel.onDidDispose`; the `PreviewServer` is never added to `context.subscriptions` and
+`deactivate()` is empty. So closing the window (or killing the extension host) with a preview
+open leaves `taliesin preview` running, holding its port and file watcher.
+
+The e2e suite opens a preview every run, so this accumulates: **17 orphaned preview processes
+were live on this machine**, and together they exhausted `fs.inotify.max_user_instances`
+(128) — after which VS Code itself could not start and the e2e run failed at launch with
+`EMFILE: too many open files`. Killing them fixed it. Worth a one-line fix (register the
+server in `context.subscriptions`) plus reaping in the e2e teardown.
+
 ## Rules that are now load-bearing
 
 - **Editor features go in Rust, in `crates/server/src/lsp*.rs`.** A second copy in
   TypeScript is exactly what this change deleted. The only things that belong in
-  `editor/vscode/src/` are the preview webview, the source-sync bridge, and commands.
+  `editor/vscode/src/` are the preview webview, the source-sync bridge, commands, and the
+  one feature LSP has no concept of: routing a request into an embedded language
+  (`embedded.ts`). Even there the rule holds in substance — the *knowledge* stays in Rust
+  behind `taliesin/cellRegions`, and the TypeScript is pure plumbing. If you find yourself
+  scanning for ``` in TypeScript, you are re-growing the deleted copy.
 - **The math vocabulary must stay KaTeX-gated.** `every_command_renders` is what makes
   `math_vocab.rs` authoritative rather than a guess; adding a command without it reintroduces
   the possibility of completing something that renders as an error span for the reader.
