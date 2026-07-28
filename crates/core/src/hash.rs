@@ -10,9 +10,17 @@
 /// 64-bit FNV-1a hash of `s` — small, deterministic, and stable across runs and tool
 /// versions. The offset basis and prime are the canonical FNV-1a-64 constants.
 pub fn fnv1a(s: &str) -> u64 {
+    fnv1a_bytes(s.as_bytes())
+}
+
+/// The same digest over raw bytes, for content-hashing a binary asset (the body typeface's
+/// `.woff2` faces, which a site build ships as their own files). Identical to [`fnv1a`] on
+/// a string's UTF-8 bytes, by construction — `fnv1a` delegates here rather than repeating
+/// the loop, so the two cannot drift.
+pub fn fnv1a_bytes(data: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= b as u64;
+    for b in data {
+        h ^= *b as u64;
         h = h.wrapping_mul(0x0000_0100_0000_01b3);
     }
     h

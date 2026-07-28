@@ -99,7 +99,20 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
             } else {
                 String::new()
             };
-            let style = format!("<link rel=\"stylesheet\" href=\"{}\">", a.deck_css);
+            // Item 150, same shape as the page's: the body face is a file here, so preload
+            // it ahead of the sheet that would otherwise have to parse before it is found.
+            let font_preload = if a.font_preload.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<link rel=\"preload\" as=\"font\" type=\"font/woff2\" href=\"{}\" crossorigin>",
+                    a.font_preload
+                )
+            };
+            let style = format!(
+                "{font_preload}<link rel=\"stylesheet\" href=\"{}\">",
+                a.deck_css
+            );
             (style, katex, js_head_html)
         }
     };

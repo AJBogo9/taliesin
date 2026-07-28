@@ -271,7 +271,23 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             (style_block, katex_block, js_head_html, framework_scripts)
         }
         AssetMode::External(a) => {
-            let style_block = format!("<link rel=\"stylesheet\" href=\"{}\">", a.app_css);
+            // Item 150: the body face is its own file here, so start its fetch beside the
+            // stylesheet instead of after it parses. Emitted BEFORE the sheet — a preload
+            // that follows the request it is meant to beat buys nothing. `crossorigin` is
+            // required even same-origin: fonts are fetched in CORS mode, and a preload
+            // whose mode disagrees is fetched twice.
+            let font_preload = if a.font_preload.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<link rel=\"preload\" as=\"font\" type=\"font/woff2\" href=\"{}\" crossorigin>",
+                    a.font_preload
+                )
+            };
+            let style_block = format!(
+                "{font_preload}<link rel=\"stylesheet\" href=\"{}\">",
+                a.app_css
+            );
             let katex_block = if p.ship_katex {
                 format!("\n<link rel=\"stylesheet\" href=\"{}\">", a.katex_css)
             } else {
@@ -807,6 +823,7 @@ mod tests {
                 jslibs_js: "_assets/jslibs.eeee.js",
                 deck_css: "",
                 deck_js: "",
+                font_preload: "",
             };
             assemble_html_page(&PageParts {
                 mode: OutputMode::Build,
@@ -873,6 +890,7 @@ mod tests {
             jslibs_js: "_assets/jslibs.eeee.js",
             deck_css: "",
             deck_js: "",
+            font_preload: "",
         };
         let body = "<main id=\"tali-main\"><span class=\"katex\">x</span>\
                     <pre class=\"mermaid\">g</pre>\
@@ -919,6 +937,7 @@ mod tests {
             jslibs_js: "j.js",
             deck_css: "",
             deck_js: "",
+            font_preload: "",
         };
         let html = assemble_html_page(&PageParts {
             mode: OutputMode::Build,

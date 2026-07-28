@@ -564,7 +564,14 @@ fn site_404_page_links_the_shared_bundle_in_a_build() {
         jslibs_js: "",
         deck_css: "",
         deck_js: "",
+        font_preload: "/_assets/newsreader-latin-wght-normal.dddd.woff2",
     });
+    assert!(
+        page.contains(
+            r#"<link rel="preload" as="font" type="font/woff2" href="/_assets/newsreader-latin-wght-normal.dddd.woff2" crossorigin>"#
+        ),
+        "the body face is preloaded ahead of the sheet that would otherwise discover it"
+    );
     assert!(
         page.contains(r#"<link rel="stylesheet" href="/_assets/app.aaaa.css">"#),
         "the framework CSS is linked, not inlined"

@@ -161,6 +161,11 @@ const TABLE: &[(&str, &str, &str)] = &[
     // Accessibility.
     ("heading level skips", "TAL-A11Y-HEADING", WARNING),
     ("has no accessible name", "TAL-A11Y-NAME", WARNING),
+    // 2.5.3 Label in Name. Distinct code from TAL-A11Y-NAME because the fix is the
+    // opposite: that one says *add* a name, this one says the name you added contradicts
+    // what the control reads. The message quotes the author's own label, so it sits with
+    // the other quoting rows above the generic needles.
+    ("disagrees with its visible text", "TAL-A11Y-LABEL", WARNING),
     ("missing alt text", "TAL-A11Y-ALT", WARNING),
     ("looks like a placeholder", "TAL-A11Y-ALT", WARNING),
     // Execution (`build`/`publish` only — `check` never runs a cell). Both messages embed
@@ -570,6 +575,24 @@ const EXPLANATIONS: &[Explanation] = &[
                 element) has no text and no label, so assistive tech announces it as unnamed.",
         fix: "Give it visible text, or an `aria-label` / `title`. An icon-only control still \
               needs a name.",
+    },
+    Explanation {
+        code: "TAL-A11Y-LABEL",
+        title: "a control's accessible name disagrees with its visible text",
+        cause: "A link or button carries an `aria-label` that does not contain the words it \
+                visibly reads. Someone driving the page by voice says what they can see \
+                (\"click Save draft\"), and the browser matches against the accessible name — \
+                so a control reading `Save draft` but named `Submit` cannot be operated by \
+                voice at all, and a screen-reader user hears something different from what a \
+                sighted colleague reads. WCAG 2.1 AA, 2.5.3 Label in Name. Text inside an \
+                `aria-hidden=\"true\"` descendant does not count as the visible label, which \
+                is the sanctioned way to keep a shortcut hint (`<kbd aria-hidden>⌘K</kbd>`) \
+                out of the name.",
+        fix: "Make the name CONTAIN the visible text rather than replace it: a control \
+              reading `Search` may be named `Search the site`, not `Find`. If the extra \
+              markup is decoration rather than label — an icon, a keyboard hint — mark that \
+              element `aria-hidden=\"true\"` and leave the label alone. An icon-only control \
+              with no visible text is not covered by this rule at all.",
     },
     Explanation {
         code: "TAL-A11Y-ALT",

@@ -266,6 +266,14 @@ pub struct ExternalAssets<'a> {
     pub jslibs_js: &'a str,
     pub deck_css: &'a str,
     pub deck_js: &'a str,
+    /// The roman body face, for a `<link rel="preload" as="font">` ahead of the stylesheet
+    /// (item 150). Unlike the `url()` refs *inside* the sheet, this href is resolved against
+    /// the **page**, so it carries the depth climb.
+    ///
+    /// Only the roman face: preload is an eager fetch, and the italic is a minority of a
+    /// page's text, so preloading it would pull 64 KB on every page for text most pages do
+    /// not have. `""` disables the link (nothing to preload).
+    pub font_preload: &'a str,
 }
 
 /// Ready-to-inject markup from the `include-in-header` / `include-before-body` /

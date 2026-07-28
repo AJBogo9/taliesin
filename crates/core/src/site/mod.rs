@@ -2592,6 +2592,7 @@ pub(crate) mod tests {
             jslibs_js: "_assets/jslibs.e.js",
             deck_css: "",
             deck_js: "",
+            font_preload: "",
         };
         let (build_html, _) = site.render_page_doc_external(page, doc, ext);
         let _ = std::fs::remove_dir_all(&root);
@@ -2635,6 +2636,7 @@ pub(crate) mod tests {
             jslibs_js: "_assets/jslibs.e.js",
             deck_css: "",
             deck_js: "",
+            font_preload: "",
         };
         let (html, _w) = site.render_page_doc_external(page, doc, ext);
         // app.js is linked (carries the toc/search code now).

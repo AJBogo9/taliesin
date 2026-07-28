@@ -903,3 +903,142 @@ fn shape_is_silent_on_a_well_formed_document() {
     );
     assert!(m.is_empty(), "well-shaped document must be clean: {m:?}");
 }
+
+#[test]
+fn a11y_flags_a_label_that_disagrees_with_the_visible_text() {
+    // WCAG 2.5.3 Label in Name. A voice-control user says what they can READ, and the
+    // browser matches against the accessible NAME, so a control reading "Save draft"
+    // while named "Submit" cannot be reached by voice at all.
+    let doc = render_document(
+        "<button aria-label=\"Submit\">Save draft</button>\n\n\
+         <a href=\"/x\" aria-label=\"Search the site\">Search</a>\n\n\
+         <button aria-label=\"Close\">Close</button>\n",
+    );
+    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let m = msgs(&ws);
+    let flagged: Vec<&String> = m
+        .iter()
+        .filter(|s| s.contains("disagrees with its visible text"))
+        .collect();
+    assert_eq!(
+        flagged.len(),
+        1,
+        "only the Submit/Save-draft mismatch: {m:?}"
+    );
+    assert!(
+        flagged[0].contains("Submit"),
+        "names the label: {flagged:?}"
+    );
+    assert!(
+        flagged[0].contains("Save draft"),
+        "names the visible text: {flagged:?}"
+    );
+    assert!(ws.iter().any(|w| w.line.is_some()), "located: {ws:?}");
+}
+
+#[test]
+fn a11y_label_in_name_accepts_a_name_that_only_adds_context() {
+    // 2.5.3 is CONTAINMENT, not equality: an accessible name may add words around the
+    // visible label ("Search the site" for a control reading "Search"), and case and
+    // punctuation are noise — a voice user saying the visible words still matches.
+    let doc = render_document(
+        "<a href=\"/s\" aria-label=\"Search the site\">Search</a>\n\n\
+         <button aria-label=\"next page\">Next Page</button>\n\n\
+         <button aria-label=\"Read more about decks\">Read more…</button>\n",
+    );
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    assert!(
+        !m.iter()
+            .any(|s| s.contains("disagrees with its visible text")),
+        "a name that contains the visible label is correct, not a defect: {m:?}"
+    );
+}
+
+#[test]
+fn a11y_label_in_name_ignores_an_aria_hidden_subtree() {
+    // The shape item 124 shipped on the search button, and the reason this rule needs to
+    // understand `aria-hidden` at all: a shortcut hint is PAINTED but is deliberately not
+    // part of the accessible name, so counting it as the visible label would accuse the
+    // sanctioned fix of being the bug.
+    let doc = render_document(
+        "<button aria-label=\"Search\">\
+         <svg aria-hidden=\"true\"><path d=\"M0 0\"/></svg>\
+         <kbd aria-hidden=\"true\">\u{2318}K</kbd></button>\n",
+    );
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    assert!(
+        !m.iter()
+            .any(|s| s.contains("disagrees with its visible text")),
+        "an aria-hidden hint is not the visible label: {m:?}"
+    );
+    // Control: the SAME markup with the hint exposed IS the 2.5.3 failure — otherwise this
+    // test would pass just as well against a rule that never fires.
+    let bad = render_document(
+        "<button aria-label=\"Search\">\
+         <svg aria-hidden=\"true\"><path d=\"M0 0\"/></svg>\
+         <kbd>\u{2318}K</kbd></button>\n",
+    );
+    let bm = msgs(&validate_a11y(&bad.blocks, DocFormat::Html));
+    assert!(
+        bm.iter()
+            .any(|s| s.contains("disagrees with its visible text")),
+        "an EXPOSED shortcut hint pollutes the name and must be flagged: {bm:?}"
+    );
+}
+
+#[test]
+fn a11y_label_in_name_is_silent_on_an_icon_only_control() {
+    // No visible text at all is what `aria-label` is FOR. 2.5.3 has nothing to say about
+    // it, and rule 2 (no accessible name) already owns the label-less case — so this must
+    // not double-report the control the other rule is happy with.
+    let doc = render_document(
+        "<button aria-label=\"Close\"><svg aria-hidden=\"true\"><path d=\"M0 0\"/></svg></button>\n",
+    );
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    assert!(
+        m.is_empty(),
+        "an icon-only labelled control is clean: {m:?}"
+    );
+}
+
+#[test]
+fn a11y_label_in_name_survives_a_void_element_inside_the_hidden_subtree() {
+    // The hidden-subtree scan must end where the subtree ends. A void element (`<img>`,
+    // `<br>`) never closes, so counting it as a nesting level runs the "hidden" state off
+    // the end of the element and swallows the visible label — which silently converts this
+    // rule into one that reports nothing. That failure is INVISIBLE to the other tests here,
+    // because losing the visible text makes the rule skip rather than misfire.
+    let doc = render_document(
+        "<button aria-label=\"Submit\">\
+         <span aria-hidden=\"true\"><img src=\"i.png\" alt=\"\"><br></span>\
+         Save draft</button>\n",
+    );
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let hit = m
+        .iter()
+        .find(|s| s.contains("disagrees with its visible text"));
+    assert!(
+        hit.is_some(),
+        "the visible label must survive a void element in the hidden subtree: {m:?}"
+    );
+    assert!(
+        hit.unwrap().contains("Save draft"),
+        "and it must be quoted whole, not truncated at the void element: {hit:?}"
+    );
+}
+
+#[test]
+fn a11y_label_in_name_declines_to_judge_aria_labelledby() {
+    // `aria-labelledby` outranks `aria-label` and resolves against ids ELSEWHERE in the
+    // document, which this block-local scan cannot see. Guessing would be a false
+    // accusation, which costs more here than a missed one.
+    let doc = render_document(
+        "<button aria-labelledby=\"t\" aria-label=\"Submit\">Save draft</button>\n",
+    );
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    assert!(
+        !m.iter()
+            .any(|s| s.contains("disagrees with its visible text")),
+        "an aria-labelledby control is not judged from aria-label: {m:?}"
+    );
+}

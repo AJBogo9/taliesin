@@ -451,3 +451,213 @@ fn external_inlines_enhancer_registry_before_include_after_body() {
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&out);
 }
+
+/// Item 150: the body typeface was 160 KB of base64 sitting inside the render-blocking
+/// stylesheet that **every** page of a site links (23 of 23 on a built `docs/guide`) — the
+/// only weight a reader pays on all of them. A site build already emits separate hashed
+/// assets, so there the two faces become their own `.woff2` files with a `preload`.
+///
+/// **Per-target, not global.** `build <file.tmd>` promises ONE self-contained file, so it
+/// must keep inlining; the last assertion here is what stops a future change from "fixing"
+/// this by breaking that promise. Still self-hosted, still offline, still no CDN either way.
+#[test]
+fn a_site_build_links_the_body_font_instead_of_inlining_160kb_of_base64() {
+    let root = std::env::temp_dir().join(format!("tali-ab-font-src-{}", std::process::id()));
+    let out = std::env::temp_dir().join(format!("tali-ab-font-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: Fonts\n").unwrap();
+    std::fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    std::fs::write(root.join("sub/deep.tmd"), "---\ntitle: Deep\n---\n\nHi.\n").unwrap();
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .expect("build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    let assets = std::fs::read_dir(out.join("_assets"))
+        .expect("_assets dir")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+
+    // Both faces ship as real files, content-hashed like every other shared asset.
+    let faces = assets
+        .iter()
+        .filter(|n| n.ends_with(".woff2"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        faces.len(),
+        2,
+        "the roman + italic faces must each be their own file: {assets:?}"
+    );
+
+    let app_css_name = assets
+        .iter()
+        .find(|n| n.starts_with("app.") && n.ends_with(".css"))
+        .unwrap_or_else(|| panic!("no app.<hash>.css in {assets:?}"));
+    let app_css = std::fs::read_to_string(out.join("_assets").join(app_css_name)).unwrap();
+
+    // The point of the item: no base64 face inside the render-blocking sheet.
+    assert!(
+        !app_css.contains("data:font/woff2;base64,"),
+        "the body face must not be base64 inside app.css ({} bytes)",
+        app_css.len()
+    );
+    // ...and the @font-face rules still resolve, as SIBLING refs. A `url()` inside a
+    // stylesheet resolves against the STYLESHEET's url, not the page's, so a bare filename
+    // is correct from `_assets/` at every page depth — no `../` climb belongs here.
+    for face in &faces {
+        assert!(
+            app_css.contains(&format!("url({face})")),
+            "app.css must reference {face} as a sibling: no `_assets/` prefix, no `../`"
+        );
+    }
+    // Sanity floor on the saving. The sheet was measured at 224 KB raw with the faces in it.
+    assert!(
+        app_css.len() < 120_000,
+        "app.css is still font-sized: {} bytes",
+        app_css.len()
+    );
+
+    // The roman face is preloaded from the page, so its fetch starts beside the stylesheet
+    // instead of after it parses. Depth-adjusted, because THIS href is page-relative.
+    let index = std::fs::read_to_string(out.join("index.html")).unwrap();
+    let deep = std::fs::read_to_string(out.join("sub/deep.html")).unwrap();
+    let roman = faces
+        .iter()
+        .find(|n| n.contains("normal"))
+        .expect("a roman face");
+    assert!(
+        index.contains(&format!(
+            "<link rel=\"preload\" as=\"font\" type=\"font/woff2\" href=\"_assets/{roman}\" crossorigin>"
+        )),
+        "a root page must preload the roman face"
+    );
+    assert!(
+        deep.contains(&format!("href=\"../_assets/{roman}\" crossorigin>")),
+        "a nested page's preload must climb: {deep:.0}"
+    );
+    // Preload only pays if it starts before the sheet it beats.
+    let (p, s) = (
+        deep.find("rel=\"preload\" as=\"font\"").expect("preload"),
+        deep.find("rel=\"stylesheet\"").expect("stylesheet"),
+    );
+    assert!(p < s, "the font preload must precede the stylesheet link");
+
+    // The single-file promise is untouched: `build <file.tmd>` is ONE file, so it inlines.
+    let solo = std::env::temp_dir().join(format!("tali-ab-font-solo-{}.html", std::process::id()));
+    let _ = std::fs::remove_file(&solo);
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(root.join("index.tmd"))
+        .arg(&solo)
+        .output()
+        .expect("standalone build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    let one = std::fs::read_to_string(&solo).unwrap();
+    assert!(
+        one.contains("url(data:font/woff2;base64,"),
+        "a single-file build must still inline the face: it has no _assets/ to link"
+    );
+    assert!(
+        !one.contains(".woff2\" crossorigin"),
+        "a single-file build has nothing to preload"
+    );
+
+    let _ = std::fs::remove_file(&solo);
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+/// Item 137: `mermaid.js` (3.57 MB) + `jslibs.js` (487 KB) + `katex.css` (369 KB) were
+/// written into every site build, referenced by zero pages on a prose-only project — 85%
+/// of `_assets/` bytes on a 113-page build, 92% on another. The author's own hand already
+/// gates the deck pair this way four members away in `AssetBundle`, with the comment "a
+/// site without a deck should not pay for a file nothing links".
+///
+/// Both halves matter and the second is the one that could regress silently: a build that
+/// stopped writing an asset a page *does* link is a live 404, which is strictly worse than
+/// the weight. So this asserts absence on the prose site AND presence on the feature site.
+#[test]
+fn the_conditional_bundles_are_written_only_when_a_page_links_them() {
+    let names = |kind: &str, body: &str| -> Vec<String> {
+        let root =
+            std::env::temp_dir().join(format!("tali-ab-cond-src-{kind}-{}", std::process::id()));
+        let out =
+            std::env::temp_dir().join(format!("tali-ab-cond-out-{kind}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: Cond\n").unwrap();
+        std::fs::write(
+            root.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nPlain prose.\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("feature.tmd"), body).unwrap();
+        let ok = Command::new(bin())
+            .args(["build"])
+            .arg(&root)
+            .arg("--out")
+            .arg(&out)
+            .output()
+            .expect("build");
+        assert!(
+            ok.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ok.stderr)
+        );
+        let mut got = std::fs::read_dir(out.join("_assets"))
+            .expect("_assets dir")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        got.sort();
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&out);
+        got
+    };
+    let has = |assets: &[String], stem: &str| assets.iter().any(|n| n.starts_with(stem));
+
+    // A second prose page, so the project shape matches the feature build exactly and the
+    // only difference between the two runs is what the page CONTAINS.
+    let prose = names("prose", "---\ntitle: More\n---\n\nStill just prose.\n");
+    for stem in ["mermaid.", "jslibs.", "katex."] {
+        assert!(
+            !has(&prose, stem),
+            "no page links {stem}<hash>, so it must not be written: {prose:?}"
+        );
+    }
+    // Control: the two unconditional files are still there, or "wrote nothing" would pass
+    // this test just as well as "wrote only what is linked".
+    assert!(
+        has(&prose, "app.") && prose.iter().filter(|n| n.starts_with("app.")).count() == 2,
+        "app.css + app.js are unconditional: {prose:?}"
+    );
+
+    // The other direction, which is the one that would be a live 404 if it broke.
+    let feature = names(
+        "feature",
+        "---\ntitle: More\n---\n\nMath $x=1$.\n\n```{mermaid}\ngraph TD;\n  A-->B;\n```\n\n```{js}\n1 + 1;\n```\n",
+    );
+    for stem in ["mermaid.", "jslibs.", "katex."] {
+        assert!(
+            has(&feature, stem),
+            "a page links {stem}<hash>, so it must be written: {feature:?}"
+        );
+    }
+}

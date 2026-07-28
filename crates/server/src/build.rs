@@ -1073,6 +1073,9 @@ struct PageOutcome {
     problems: usize,
     kernel_unavailable: bool,
     written: bool,
+    /// The conditional `_assets/` blobs this page's HTML links, folded across the build so
+    /// only the linked ones are written (item 137).
+    used: AssetUse,
 }
 
 /// Build one page: render its markdown, execute its code cells on a *fresh, page-private*
@@ -1105,6 +1108,7 @@ async fn build_one_page(
             problems: 0,
             kernel_unavailable: false,
             written: false,
+            used: AssetUse::default(),
         };
     };
     let base = page.input.parent().unwrap_or(root);
@@ -1182,6 +1186,7 @@ async fn build_one_page(
     let app_js = asset_href(&page.url, &bundle.app_js);
     let mermaid_js = asset_href(&page.url, &bundle.mermaid_js);
     let jslibs_js = asset_href(&page.url, &bundle.jslibs_js);
+    let font_preload = asset_href(&page.url, &bundle.font_preload);
     let ext = taliesin_core::ExternalAssets {
         app_css: &app_css,
         katex_css: &katex_css,
@@ -1191,6 +1196,7 @@ async fn build_one_page(
         // A page never links the deck pair (its own `app_css`/`app_js` are the right ones).
         deck_css: "",
         deck_js: "",
+        font_preload: &font_preload,
     };
     let (html, render_warnings) = site.render_page_doc_external(page, doc, ext);
     for w in &render_warnings {
@@ -1206,6 +1212,9 @@ async fn build_one_page(
     for w in offline_ref_warnings(&html, &page.rel) {
         warnings.push(w);
     }
+    // Which conditional blobs this page linked, read off the finished HTML (item 137). Taken
+    // BEFORE the write, which moves `html`.
+    let used = bundle.used_by(&html);
     let dest = out.join(&page.url);
     if let Some(parent) = dest.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -1229,6 +1238,7 @@ async fn build_one_page(
         problems,
         kernel_unavailable,
         written,
+        used,
     }
 }
 
@@ -1252,46 +1262,157 @@ struct AssetBundle {
     /// file nothing links).
     deck_css: String,
     deck_js: String,
+    /// The roman body face, root-relative, for each page's `preload` (item 150).
+    font_preload: String,
+}
+
+/// The on-disk name inside `_assets/` for a root-relative asset href (`_assets/app.ab.css`
+/// -> `app.ab.css`). One definition, so the href a page links and the file the build writes
+/// can never be spelled apart.
+fn file_of(root_rel: &str) -> &str {
+    root_rel.rsplit('/').next().unwrap_or(root_rel)
+}
+
+/// Which of the three conditional blobs a built page or deck actually links.
+///
+/// Item 137: `katex.css`, `mermaid.js` and `jslibs.js` are ~85-92% of a site build's
+/// `_assets/` bytes, and on a prose-only project **no page references any of them**. They
+/// are named up front (a page needs the href to link) but written only once something has.
+#[derive(Clone, Copy, Default)]
+struct AssetUse {
+    katex: bool,
+    mermaid: bool,
+    jslibs: bool,
+}
+
+impl AssetUse {
+    /// Union, for folding per-page results together. Deliberately order-independent, so a
+    /// `--jobs N` build reaches the same set as the sequential one.
+    fn merge(&mut self, other: AssetUse) {
+        self.katex |= other.katex;
+        self.mermaid |= other.mermaid;
+        self.jslibs |= other.jslibs;
+    }
+}
+
+impl AssetBundle {
+    /// What this finished page HTML links, read off the **emitted href** rather than
+    /// re-deriving the render-time predicates. That is the whole reason this cannot go
+    /// stale: any future emitter that links a conditional asset is covered automatically,
+    /// and the thing being asserted is exactly the thing a browser will request.
+    ///
+    /// Matched on the hashed *filename* (not the root-relative path), because a nested
+    /// page's href carries a `../` climb.
+    fn used_by(&self, html: &str) -> AssetUse {
+        let links = |rel: &String| {
+            let name = file_of(rel);
+            !name.is_empty() && html.contains(name)
+        };
+        AssetUse {
+            katex: links(&self.katex_css),
+            mermaid: links(&self.mermaid_js),
+            jslibs: links(&self.jslibs_js),
+        }
+    }
+
+    /// Write the conditional blobs something linked, and only those.
+    ///
+    /// Erring here is asymmetric: writing one nothing links costs deploy bytes, while
+    /// *skipping* one a page links is a live 404 on a published site. That is why `used`
+    /// comes from the emitted HTML and why the pin asserts both directions.
+    fn write_conditional(&self, out: &Path, used: AssetUse) -> std::io::Result<()> {
+        let dir = out.join("_assets");
+        let put = |rel: &String, bytes: &str| -> std::io::Result<()> {
+            std::fs::write(dir.join(file_of(rel)), bytes)
+        };
+        if used.katex {
+            put(
+                &self.katex_css,
+                &crate::minify::minify_css(taliesin_core::katex_css()),
+            )?;
+        }
+        // Vendored libs are already minified: write as-is (do not re-minify).
+        if used.mermaid {
+            put(&self.mermaid_js, &taliesin_core::mermaid_bundle_js())?;
+        }
+        if used.jslibs {
+            put(&self.jslibs_js, &taliesin_core::js_cell_libs_js())?;
+        }
+        Ok(())
+    }
 }
 
 /// Minify + content-hash each shared blob, write it once under `<out>/_assets/`, and
 /// return the (root-relative) filenames. Clears any stale `_assets/` first so old hashes
 /// do not accumulate across rebuilds. `with_deck` adds the deck engine's own CSS/JS pair,
 /// which only a build that actually has a deck to link them needs.
+///
+/// Two departures from "hash it and write it", both about weight:
+///
+/// * The body typeface's faces (item 150) are written **first**, because `app_css` and
+///   `deck_css` now reference them by hashed name and so cannot be hashed until those
+///   names exist.
+/// * The three conditional blobs are hashed here but **not** written, so a page has an
+///   href to link; [`AssetBundle::write_conditional`] then writes whichever ones a page
+///   actually did link (item 137).
 fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundle> {
-    use taliesin_core::hash::fnv1a;
+    use taliesin_core::hash::{fnv1a, fnv1a_bytes};
     let dir = out.join("_assets");
     let _ = std::fs::remove_dir_all(&dir); // own the lifecycle; clear stale hashes
     std::fs::create_dir_all(&dir)?;
+    // The root-relative href a page links; `file_of` recovers the on-disk name from it, so
+    // the two spellings are derived from one place rather than formatted twice.
+    let hashed =
+        |stem: &str, ext: &str, bytes: &str| format!("_assets/{stem}.{:x}.{ext}", fnv1a(bytes));
     let named = |stem: &str, ext: &str, bytes: &str| -> std::io::Result<String> {
-        let name = format!("{stem}.{:x}.{ext}", fnv1a(bytes));
-        std::fs::write(dir.join(&name), bytes)?;
-        Ok(format!("_assets/{name}"))
+        let rel = hashed(stem, ext, bytes);
+        std::fs::write(dir.join(file_of(&rel)), bytes)?;
+        Ok(rel)
     };
+
+    // The body faces first: both stylesheets below reference them by hashed name, so their
+    // names have to exist before either sheet is hashed.
+    let mut font_hrefs: Vec<(&str, String)> = Vec::new();
+    let mut font_preload = String::new();
+    for (src_name, bytes) in taliesin_core::FONT_FILES {
+        let stem = src_name.strip_suffix(".woff2").unwrap_or(src_name);
+        let name = format!("{stem}.{:x}.woff2", fnv1a_bytes(bytes));
+        std::fs::write(dir.join(&name), bytes)?;
+        // The sheet references a SIBLING (both live in `_assets/`), so no path prefix: a
+        // `url()` resolves against the stylesheet, not the page. The preload href does the
+        // opposite and is depth-adjusted per page by `asset_href`.
+        if src_name.contains("normal") {
+            font_preload = format!("_assets/{name}");
+        }
+        font_hrefs.push((src_name, name));
+    }
+
     let app_css = named(
         "app",
         "css",
-        &crate::minify::minify_css(&taliesin_core::shared_site_css()),
-    )?;
-    let katex_css = named(
-        "katex",
-        "css",
-        &crate::minify::minify_css(taliesin_core::katex_css()),
+        &crate::minify::minify_css(&taliesin_core::shared_site_css_linked_fonts(&font_hrefs)),
     )?;
     let app_js = named(
         "app",
         "js",
         &crate::minify::minify_js(&taliesin_core::core_enhance_js()),
     )?;
-    // Vendored libs are already minified: hash + write as-is (do not re-minify).
-    let mermaid_js = named("mermaid", "js", &taliesin_core::mermaid_bundle_js())?;
-    let jslibs_js = named("jslibs", "js", &taliesin_core::js_cell_libs_js())?;
+    // Named, not written: see `write_conditional`.
+    let katex_css = hashed(
+        "katex",
+        "css",
+        &crate::minify::minify_css(taliesin_core::katex_css()),
+    );
+    let mermaid_js = hashed("mermaid", "js", &taliesin_core::mermaid_bundle_js());
+    let jslibs_js = hashed("jslibs", "js", &taliesin_core::js_cell_libs_js());
     let (deck_css, deck_js) = if with_deck {
         (
             named(
                 "deck",
                 "css",
-                &crate::minify::minify_css(&taliesin_core::deck_shared_css()),
+                &crate::minify::minify_css(&taliesin_core::deck_shared_css_linked_fonts(
+                    &font_hrefs,
+                )),
             )?,
             named(
                 "deck",
@@ -1310,6 +1431,7 @@ fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundl
         jslibs_js,
         deck_css,
         deck_js,
+        font_preload,
     })
 }
 
@@ -1656,6 +1778,9 @@ async fn build_site_async(
 
     // Replay every page's deferred logs + tally counters in page order, so the build's
     // output is identical whether it ran 1-wide or N-wide.
+    // Item 137: the union of what the pages linked. `merge` is order-independent, so this
+    // reaches the same set whichever order the concurrent builds completed in.
+    let mut used = AssetUse::default();
     for outcome in outcomes.into_iter().flatten() {
         for w in &outcome.warnings {
             log::warn(w);
@@ -1663,6 +1788,7 @@ async fn build_site_async(
         diagnostics.extend(outcome.diagnostics);
         problems += outcome.problems;
         kernel_unavailable |= outcome.kernel_unavailable;
+        used.merge(outcome.used);
         if outcome.written {
             pages += 1;
         }
@@ -1776,6 +1902,7 @@ async fn build_site_async(
         let katex_css = asset_href(&deck.url, &bundle.katex_css);
         let mermaid_js = asset_href(&deck.url, &bundle.mermaid_js);
         let jslibs_js = asset_href(&deck.url, &bundle.jslibs_js);
+        let font_preload = asset_href(&deck.url, &bundle.font_preload);
         // A deck is built off-`Page`, so it never passes through `Site::render_page_doc_*`
         // where the intra-site `.tmd`->`.html` rewrite lives. Applying it here is not
         // cosmetic: `.tmd` is in `SKIP_EXT`, so `deploy_referenced_sources` publishes any
@@ -1796,8 +1923,12 @@ async fn build_site_async(
                     jslibs_js: &jslibs_js,
                     deck_css: &deck_css,
                     deck_js: &deck_js,
+                    font_preload: &font_preload,
                 },
             ));
+        // A deck links the same conditional blobs a page does, so it votes the same way
+        // (item 137). Missing this is how a deck with a diagram would 404 on mermaid.
+        used.merge(bundle.used_by(&html));
         let dest = out.join(&deck.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1851,6 +1982,7 @@ async fn build_site_async(
         let (app_css, katex_css) = (abs(&bundle.app_css), abs(&bundle.katex_css));
         let (app_js, mermaid_js) = (abs(&bundle.app_js), abs(&bundle.mermaid_js));
         let jslibs_js = abs(&bundle.jslibs_js);
+        let font_preload = abs(&bundle.font_preload);
         let ext = taliesin_core::ExternalAssets {
             app_css: &app_css,
             katex_css: &katex_css,
@@ -1859,12 +1991,35 @@ async fn build_site_async(
             jslibs_js: &jslibs_js,
             deck_css: "",
             deck_js: "",
+            font_preload: &font_preload,
         };
-        match std::fs::write(out.join("404.html"), site.render_404_page_external(ext)) {
+        let html = site.render_404_page_external(ext);
+        // The generated 404 votes on the conditional blobs like any other emitted page
+        // (item 137) — it is chrome, so it links none of them today, but "today" is not a
+        // thing to hard-code when the cost of being wrong is a 404 inside the 404.
+        used.merge(bundle.used_by(&html));
+        match std::fs::write(out.join("404.html"), html) {
             Ok(()) => not_found = "  ·  404.html",
             Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
         }
     }
+
+    // Every HTML surface that could link a conditional blob has now been emitted (pages,
+    // decks, the generated 404), so write the ones something actually did — item 137. On a
+    // prose-only project that is none of them, which is 85-92% of what `_assets/` used to
+    // weigh. Deliberately placed *after* the 404: a vote that arrives after the flush is a
+    // published page pointing at a file that was never written.
+    if let Err(e) = bundle.write_conditional(&out, used) {
+        let msg = format!("cannot write {}/_assets: {e}", out.display());
+        log::error(&msg);
+        diagnostics.push(crate::check::Diagnostic::new(
+            root.display().to_string(),
+            None,
+            msg,
+        ));
+        problems += 1;
+    }
+
     // Installable-app packaging: `manifest.webmanifest` + the app icons at the output root,
     // so a reader can install this site/book from Chrome's omnibox, iOS "Add to Home Screen"
     // or Safari's "Add to Dock". Deliberately NOT gated on `url:` like the SEO sidecars
@@ -3323,6 +3478,19 @@ mod asset_bundle_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
         let bundle = write_asset_bundle(&dir, true).expect("write bundle");
+        // The vendored pair is conditional (item 137): named by `write_asset_bundle`, written
+        // only for a build whose pages link them. This test is about the BYTES, so ask for
+        // both and then read them.
+        bundle
+            .write_conditional(
+                &dir,
+                AssetUse {
+                    katex: true,
+                    mermaid: true,
+                    jslibs: true,
+                },
+            )
+            .expect("write conditional");
 
         let read = |rel: &str| std::fs::read_to_string(dir.join(rel)).expect("read asset");
         // `assert_eq!` on two megabyte bundles prints BOTH on failure (~3.5MB of minified

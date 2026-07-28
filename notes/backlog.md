@@ -61,19 +61,22 @@ enough to continue; nothing else is required.**
   [R10 demand](2026-07-28-demand-positioning-audit.md) ·
   [R13 green software](2026-07-28-green-software-audit.md).
 - **If your job is to pick the next batch, here is the state of the board.** The
-  **launch-blocking set is empty** and the **publication-readiness set is done**, so nothing in
-  band A is gating anything else; pick on value, not on order. The three largest *un-started*
-  clusters, none of which depends on the others:
-  **(a)** the reader-cost pair, **150** (160 KB of base64 fonts in render-blocking CSS on every
-  page) and **137** (the conditional bundles, whose "not a transfer cost" framing was corrected
-  2026-07-28) — 150 first, it is on 23 of 23 pages where 137 is on 2;
-  **(b)** the deck/conformance pair **112 + 125**, which the file says to do together as one
-  step-the-deck browser harness, and which would be the **first browser test of `deck.js`**;
-  **(c)** **124** (WCAG Label-in-Name on 50 of 54 pages, one emitter, plus its static rule).
+  **launch-blocking set is empty**, the **publication-readiness set is done**, and the
+  **reader-cost batch (150, 137, 124) shipped 2026-07-28** — see "Do not re-add / re-scope" for
+  what each did and what it measured. Nothing in band A gates anything else; pick on value, not
+  on order. The largest remaining *un-started* cluster is the deck/conformance pair
+  **112 + 125**, which the file says to do together as one step-the-deck browser harness, and
+  which would be the **first browser test of `deck.js`**.
   **Two items are rulings and must not be built without one: 101** (what licence a user's built
   page carries, given every page inlines AGPL JS — its CLA sub-bullet is discharged, the rest is
   open) and **122** (its filed fix reverses the PL14 ruling; the cost objection was measured
   2026-07-28 and is weaker than filed, so it turns on design, not milliseconds).
+- **A rot warning with a fresh example, because it cost time this week.** Item 124 was filed as a
+  code fix plus a static rule; by the time it was picked up the **code fix and its pin were
+  already in the tree** (`chrome.rs`'s kbd already carried `aria-hidden`), and only the rule was
+  left. Nothing in this file said so. **Grep the named symbol before you build the named fix** —
+  that is the standing rule at the bottom of "Standing constraints", and it earned its place
+  again.
 - **Two measurement hazards worth knowing before you measure anything.**
   (1) `target/release/taliesin` is shared across sessions and may have been built from a *different*
   branch: check `taliesin --version` against your own HEAD before trusting any CLI result (the R14
@@ -500,76 +503,14 @@ rounds ran in one session: [R14 deck exemptions](2026-07-28-deck-exemption-audit
 **80** (S9 D9) and **83** (S9 D10) now rank above **79**, because 83 ships a wrong licence at a tag
 today and nothing anywhere would catch it. **109** joins them.
 
-**Do the pins with their fixes.** 117 pairs with 80, 118 with 79, and R9's static-rule proposal
-pairs with 124. A fix without its pin cannot be verified by mutation, which is this file's standing
-rule.
+**Do the pins with their fixes.** 117 pairs with 80, 118 with 79. (R9's static-rule proposal
+paired with 124; both shipped 2026-07-28.) A fix without its pin cannot be verified by mutation,
+which is this file's standing rule.
 
 **Launch blockers**
 
 **Then**
 
-124. **WCAG 2.1 AA 2.5.3 "Label in Name" fails on the search button.** (MEDIUM.) Visible text
-     `"Ctrl K"`, accessible name `"Search"` — no shared words. **50 of 54** built pages, from one
-     emitter (`site/chrome.rs:50`). Desktop only: `site.css:210/239` hide the hint on narrow
-     viewports, so the mobile run passes. Lighthouse weights this audit **0**, so the category still
-     reads 100. **Fix:** `aria-hidden="true"` on the `kbd` span (preferred — `aria-keyshortcuts`
-     already carries it semantically) rather than lengthening the label. **Ship the static rule with
-     it:** R9 established this is the one axe rule that ports cleanly into the kernel-free channel.
-137. **85% of a site build's asset bytes can never be served.** (MEDIUM.) Measured on a 113-page
-     build: `_assets/` is 4,751,169 B of which **4,059,121 B (85%)** is referenced by zero pages —
-     `mermaid.js` (3.57 MB) and `jslibs.js` (487 KB) ship into a book containing neither a diagram
-     nor a `{js}` cell. A deploy/storage cost, **not** a transfer cost (a reader never downloads
-     them), so the per-page-view story stays strong.
-     **Merged in from the critique round's item 86 (2026-07-28), which found the same defect
-     independently on a different project and did the harder half — the mechanism:**
-     - Its measurement: mermaid (3,572,004 B) + jslibs (487,117 B) + katex (369,346 B) = **92%** of
-       a prose-only `_site/`. Verified **by href, not by grep**: the only `_assets/` references in a
-       prose page are `app.css` + `app.js`. (Two projects, 85% and 92%; the shape is the same.)
-     - **The "uniform bundle" defence fails in the author's own hand**: `write_asset_bundle` already
-       gates the deck pair conditionally, with the comment "a site without a deck should not pay for
-       a file nothing links" (`build.rs:1247-1249`), four members away.
-     - **The obvious fix cannot work in place.** The predicates (`ship_katex` / `has_js_cells` /
-       `has_mermaid`, `render/page.rs:276-290`) are evaluated against the *rendered body*, and
-       `write_asset_bundle` runs at `build.rs:1506`, **before any page is rendered.**
-     - **Two viable routes:** hash eagerly and flush lazily during the page loop (guard against the
-       `--jobs N` determinism pins), or pre-scan page *sources* for the three triggers. **The latter
-       is over-inclusive, which is the safe direction** — under-inclusive means a live 404.
-     **CORRECTION 2026-07-28: "not a transfer cost (a reader never downloads them)" is FALSE for the
-     pages that use the feature, and that is the half worth fixing.** Measured on a built
-     `docs/guide` (23 pages) by reading each page's actual `_assets/` hrefs: a page carrying a
-     mermaid diagram **does** fetch the whole 3,488 KB bundle (950 KB gzipped). Reach: mermaid on
-     **2 of 23** pages, `jslibs` on **1 of 23**, `katex.css` on **4 of 23**. So the finding splits in
-     two, and they have different value: for the ~90% of pages with no diagram it is exactly the
-     storage-only cost as filed, but for a page *with* one it is ~1 MB of real transfer plus **1.15 s
-     of main-thread work** at 6x CPU throttling. **Neither half is the biggest reader cost — see
-     item 150, which is on every page rather than two of them.**
-150. **160 KB of base64 fonts sit inside render-blocking CSS on every page: the only weight a
-     reader pays on all of them.** (MEDIUM.) Filed 2026-07-28 from the author's own question
-     ("should I optimize size?"), which is why it is worth reading before item 137: the answer was
-     that the binary and the zip are the *wrong* metrics, and this is the right one.
-     **Measured** on a built `docs/guide`, gzipped as a real host serves it (Python's `http.server`
-     does not compress, so uncompressed numbers overstate everything):
-     - A prose page's whole transfer is **183 KB gzipped** (html + `app.css` + `app.js`). That is
-       already *better* than the sub-1 MB PDF this was being compared against, and it is one page
-       rather than a whole document. **The per-page story is strong and should not be re-litigated.**
-     - `app.css` is **224 KB raw / 134 KB gzipped, of which 160 KB is two base64 `data:` URIs**: the
-       Newsreader variable font, weight `200 800`, 76 KB + 84 KB. It is a **render-blocking**
-       `<link>` on **23 of 23** pages. Base64 inflates ~33% and gzips poorly, so this is close to a
-       worst case for how to ship a font.
-     - A Chrome trace at **6x CPU throttling + Slow 4G + 390x844** attributes **~621 ms of FCP/LCP
-       savings** to render-blocking requests. Absolute numbers were still fine (prose page **LCP
-       840 ms, CLS 0.00**, no console errors, against Google's 2.5 s "good" bar), so this is
-       headroom, not a fire.
-     - **The tension that makes this a decision, not a chore:** `build <file.tmd>` promises ONE
-       self-contained file, so it *must* inline. A **site** build already emits separate hashed
-       assets, so there the fonts can be their own `.woff2` with `preload` + `font-display: swap`,
-       still self-hosted, still offline, still no CDN. **Per-target, not global** — do not "fix"
-       this by breaking the single-file promise.
-     - Untouched sibling: `katex.css` is 361 KB of which **339 KB is 20 inlined font `data:` URIs**,
-       same shape, but conditional (4 of 23 pages), so it ranks below this.
-     **Context that says do NOT chase the other two numbers:** the binary is **38 MB** (5.5 MB of it
-     bundled assets) against a **408 MB** Quarto dist on the same machine, and the 4.24 MB book zip
-     is an artifact nobody downloads. Both were measured and both are fine.
 122. **`check` says "no problems found" on a document whose code cell cannot run — BUT ITS
      PROPOSED FIX REVERSES A DATED RULING, so read this before building it.** (MEDIUM.)
      Measured cold: plain `check` prints exactly that and exits 0, while `build` on the same file
@@ -829,9 +770,12 @@ note in the findings doc before applying any fix text from it.
     message after `shutdown` exits 1 (editors read that as a crash) while a bare `exit` exits 0;
     CRLF `documentSymbol` ranges run one column long.
 
-145. **Retired into item 137** (2026-07-28 merge). The critique round filed this as its item 86,
-     the unreferenced `_assets/` payload, independently of R13's item 137 and with the mechanism
-     worked out. Its whole body now lives under **137**; the number is retained, never reused.
+145. **Retired into item 137, which SHIPPED 2026-07-28** — see "Do not re-add / re-scope". The
+     critique round filed this as its item 86, the unreferenced `_assets/` payload, independently
+     of R13's item 137. Its mechanism analysis is what made the fix buildable: it was right that
+     the predicates cannot be evaluated where `write_asset_bundle` runs, and the shipped fix took
+     neither of the two routes it proposed — it votes off the **emitted href** after the pages
+     exist, which is exact rather than over-inclusive. Number retained, never reused.
 
 146. **Widen the prose-vs-behaviour gate — the structural item this whole round argues for.**
     `crates/core/tests/stale_docs.rs` is repaired and mutation-verified in both directions, but
@@ -1267,6 +1211,45 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 the reader-cost batch (items 150, 137, 124),** each pinned by a test and verified
+  by mutation, and browser-verified because every claim in it is about what a browser fetches.
+  **Do not re-scope any of the following as open:**
+  - **A site build ships the body typeface as files, not as base64 in the render-blocking sheet**
+    (150). `app.css` **229,778 B raw / 137,412 B gzipped → 66,358 / 11,943** — a **125 KB gzipped
+    saving on the critical path of every page**, measured on a built `docs/guide`. `deck.css` had
+    a **second** copy of the same 160 KB and lost it too (199,654 → 36,234). The faces are
+    content-hashed `_assets/*.woff2`; `app.css`/`deck.css` reference them as **siblings** (a
+    `url()` resolves against the *stylesheet*, so a bare filename is right at every page depth and
+    a `../` climb there would be a bug visible only on nested pages), while the page's
+    `<link rel=preload as=font … crossorigin>` is page-relative and *does* climb.
+    **Per-target, deliberately:** `build <file.tmd>` promises ONE self-contained file and still
+    inlines — the pin asserts that direction too, so this cannot be "fixed" into breaking the
+    single-file promise. Only the **roman** face is preloaded (the italic is a minority of a
+    page's text; preloading it would fetch 64 KB on every page for text most pages lack).
+    Browser-verified: both faces `status: "loaded"`, the rendered width differs from the serif
+    fallback (580.5 vs 558.6, so it is the real face and not a silent fallback), the font is
+    fetched **once** and starts *before* the stylesheet, zero console messages.
+    **Untouched sibling, still open as filed:** `katex.css` is 361 KB of which 339 KB is 20
+    inlined font `data:` URIs — same shape, but conditional (4 of 23 pages), so it ranks below.
+  - **The three conditional blobs are written only when something links them** (137). Measured on
+    prose-only `corpus/tarn`: `_assets/` **4,751,169 → 281,886 B, a 94% cut**. They are hashed up
+    front (a page needs the href) and flushed after every HTML surface exists. The vote is read
+    off the **emitted href**, not by re-deriving the render-time predicates, so any future emitter
+    that links one is covered automatically. **The flush sits after the 404 page and before the
+    book `.zip` on purpose** — a vote arriving after the flush is a published page pointing at a
+    file that was never written, and the zip is the offline artifact that would carry the hole.
+    Verified in a browser in the direction that would 404: on a page using all three, mermaid
+    renders 3 SVGs with real geometry, KaTeX 4 nodes, every request 200.
+  - **The Label-in-Name static rule** (124's residual). `TAL-A11Y-LABEL`, WCAG 2.1 AA 2.5.3: an
+    `aria-label` that does not *contain* the control's visible text. **The emitter fix and its pin
+    were already shipped when this was picked up** — `chrome.rs`'s search button already carried
+    `aria-hidden='true'` on the kbd — so only R9's rule was left; this file said otherwise, which
+    is the usual rot. Containment, not equality (a name may add context, never replace it), and
+    `aria-hidden` subtrees are excluded, **which is the whole subtlety**: counting a hidden
+    shortcut hint as the visible label would accuse the sanctioned fix of being the defect. Skips
+    `aria-labelledby` (resolves against ids this block-local scan cannot see) and icon-only
+    controls (rule 2's business). **Zero hits across all 16 corpus/docs/site projects**, all still
+    `check` exit 0 — it fires on the defect, not on real content.
 - **2026-07-28 the publication-readiness batch (items 84, 89, 90, 92, 93),** each pinned by a
   test and verified by mutation. **Do not re-scope any of the following as open:**
   - **`tools/gates.sh` is the one gate script** (84). It *preflights* every prerequisite before

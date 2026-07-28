@@ -18,6 +18,14 @@ The outline jumps a level (for example h2 straight to h4) with nothing in betwee
 
 To fix: Add an intervening heading, or demote the skipping heading one level so the outline is contiguous.
 
+## TAL-A11Y-LABEL
+
+**a control's accessible name disagrees with its visible text**
+
+A link or button carries an `aria-label` that does not contain the words it visibly reads. Someone driving the page by voice says what they can see ("click Save draft"), and the browser matches against the accessible name — so a control reading `Save draft` but named `Submit` cannot be operated by voice at all, and a screen-reader user hears something different from what a sighted colleague reads. WCAG 2.1 AA, 2.5.3 Label in Name. Text inside an `aria-hidden="true"` descendant does not count as the visible label, which is the sanctioned way to keep a shortcut hint (`<kbd aria-hidden>⌘K</kbd>`) out of the name.
+
+To fix: Make the name CONTAIN the visible text rather than replace it: a control reading `Search` may be named `Search the site`, not `Find`. If the extra markup is decoration rather than label — an icon, a keyboard hint — mark that element `aria-hidden="true"` and leave the label alone. An icon-only control with no visible text is not covered by this rule at all.
+
 ## TAL-A11Y-NAME
 
 **an interactive element has no accessible name**

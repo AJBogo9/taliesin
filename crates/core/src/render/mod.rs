@@ -1511,6 +1511,49 @@ const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.cs
 /// ahead of the base stylesheet so `--tali-font-body` resolves to the loaded face.
 pub(crate) const FONTS_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/fonts-inlined.css"));
 
+/// The same `@font-face` rules with the faces left as `url(fonts/<name>.woff2)` refs
+/// instead of inlined base64 — the pre-`build.rs` source, for a target that can ship the
+/// faces as their own files. See [`FONT_FILES`] and [`shared_site_css_linked_fonts`].
+const FONTS_CSS_LINKED: &str = include_str!("../../assets/css/fonts.css");
+
+/// The body typeface's two variable faces as `(source filename, bytes)`, so a multi-page
+/// build can content-hash and write them beside the rest of `_assets/`.
+///
+/// Why they leave the stylesheet at all (item 150): base64 inflates ~33% and gzips poorly,
+/// and these two were **160 KB inside a render-blocking `<link>` on every page of a site** —
+/// the only weight a reader pays on all of them. As files they are fetched once, cached
+/// across every page, and no longer block first paint.
+///
+/// This is a **per-target** choice, not a global one. `build <file.tmd>` promises ONE
+/// self-contained file, so it keeps [`FONTS_CSS`]; only a target that already emits a
+/// sidecar `_assets/` directory uses these. Either way the face is self-hosted and offline:
+/// no CDN, no network at render time.
+pub const FONT_FILES: &[(&str, &[u8])] = &[
+    (
+        "newsreader-latin-wght-normal.woff2",
+        include_bytes!("../../assets/fonts/newsreader-latin-wght-normal.woff2"),
+    ),
+    (
+        "newsreader-latin-wght-italic.woff2",
+        include_bytes!("../../assets/fonts/newsreader-latin-wght-italic.woff2"),
+    ),
+];
+
+/// [`FONTS_CSS_LINKED`] with each face's `url(fonts/<name>.woff2)` rewritten to the href
+/// the caller shipped it at.
+///
+/// The href a caller passes must be **relative to the stylesheet**, not to the page: a
+/// `url()` inside a sheet resolves against the sheet's own URL. Both the sheet and the
+/// faces live in `_assets/`, so a bare hashed filename is correct at every page depth,
+/// and a `../` climb here would be a bug that only shows up on nested pages.
+fn fonts_css_linked(hrefs: &[(&str, String)]) -> String {
+    let mut css = FONTS_CSS_LINKED.to_string();
+    for (name, href) in hrefs {
+        css = css.replace(&format!("url(fonts/{name})"), &format!("url({href})"));
+    }
+    css
+}
+
 /// The owned design tokens (light + sepia palette, fonts, geometry, motion),
 /// `include_str!`'d ahead of BOTH `base.css` (the page) and `deck.css` (the deck) so
 /// the palette is declared exactly once. See `tokens.css`. The dark palette override
@@ -1767,6 +1810,16 @@ pub fn shared_site_css() -> String {
     format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
 }
 
+/// [`shared_site_css`] with the body typeface **linked** rather than inlined: the same
+/// sheet minus 160 KB of base64, referencing the faces `hrefs` names. For a build that
+/// writes [`FONT_FILES`] beside it in `_assets/` (item 150).
+pub fn shared_site_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
+    format!(
+        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}",
+        fonts_css_linked(hrefs)
+    )
+}
+
 /// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
 pub fn katex_css() -> &'static str {
     KATEX_CSS
@@ -1778,6 +1831,18 @@ pub fn katex_css() -> &'static str {
 /// and gets its own `deck.<hash>.css` instead.
 pub fn deck_shared_css() -> String {
     format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{}", deck::DECK_CSS)
+}
+
+/// [`deck_shared_css`] with the body typeface linked rather than inlined, for a deck inside
+/// a site build. The deck sheet is a *second* copy of the same faces, so leaving them
+/// inlined here would keep 160 KB of base64 in the build even after the page sheet dropped
+/// it — and both sheets sit in `_assets/`, so both reference the same two files.
+pub fn deck_shared_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
+    format!(
+        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{}",
+        fonts_css_linked(hrefs),
+        deck::DECK_CSS
+    )
 }
 
 /// Everything a deck's script tail carries that can be shared across the decks in one

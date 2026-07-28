@@ -269,6 +269,53 @@ pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
             });
         }
 
+        // (4) Label in Name (WCAG 2.1 AA, 2.5.3): a control whose `aria-label` does not
+        // contain its own visible text. A voice-control user says what they can read, so a
+        // button reading "Save draft" but named "Submit" cannot be operated by voice at all
+        // — and a screen-reader user hears one thing while a sighted colleague reads
+        // another. The check is *containment*, not equality: an accessible name may add
+        // context ("Search the site" for a control reading "Search"), it may not replace it.
+        //
+        // R9 picked this as the one axe rule that ports cleanly into the kernel-free
+        // channel, and it is worth having statically for a second reason: Lighthouse
+        // weights `label-content-name-mismatch` **0**, so a page can fail it while the
+        // accessibility category still reads 100.
+        for el in interactives(&b.html)
+            .into_iter()
+            .chain(role_interactives(&b.html))
+        {
+            // `aria-labelledby` wins over `aria-label` and resolves against ids elsewhere
+            // in the document, which this block-local scan cannot see. Skip rather than
+            // guess: a wrong accusation costs more than a missed one.
+            if el.open.contains("aria-labelledby=") {
+                continue;
+            }
+            let Some(label) = tag_attr(el.open, "aria-label=\"") else {
+                continue;
+            };
+            let visible = fold_label(&visible_label(el.inner));
+            // No visible text at all is the icon-only case — rule 2's business, and exactly
+            // what an `aria-label` is *for*. 2.5.3 has nothing to say about it.
+            if visible.is_empty() || fold_label(label).contains(&visible) {
+                continue;
+            }
+            let w = Warning::new(format!(
+                "{} is named `{}` but reads `{}`, so its accessible name disagrees with its \
+                 visible text (WCAG 2.5.3: the name must contain the visible label, or voice \
+                 control cannot reach it)",
+                el.kind,
+                label.trim(),
+                visible_label(el.inner)
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ));
+            out.push(match line {
+                Some(l) => w.at(b.source_file.clone(), l),
+                None => w,
+            });
+        }
+
         // (3) Raw `<img>` with no `alt` attribute.
         let mut i = 0;
         while let Some(pos) = b.html[i..].find("<img") {
@@ -301,6 +348,98 @@ pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
         }
     }
 
+    out
+}
+
+/// The text a sighted reader actually sees inside an interactive element: markup removed
+/// and every `aria-hidden="true"` subtree dropped.
+///
+/// Dropping those subtrees is the whole subtlety of WCAG 2.5.3. A shortcut hint marked
+/// `<kbd aria-hidden="true">⌘K</kbd>` is *painted* but is not part of the accessible name
+/// and is not what a voice-control user says, so counting it as the visible label would
+/// accuse the correct fix of being the defect. That is not hypothetical: it is exactly the
+/// shape item 124 shipped on the search button.
+///
+/// Conservative in one direction on purpose — an unbalanced hidden subtree swallows the
+/// rest of the element, which can only *lose* a warning, never invent one, because an empty
+/// visible label is skipped rather than reported.
+///
+/// Nesting is tracked with a plain depth counter rather than with [`matching_inner`], which
+/// matches a close tag by name *prefix*: there `<i>` would take `<img` for a nested `<i>`
+/// and unbalance the count.
+fn visible_label(inner: &str) -> String {
+    /// Void elements close themselves, so inside a hidden subtree they must not increment
+    /// the depth — otherwise the first `<img>` in an icon swallows the rest of the label.
+    const VOID: &[&str] = &[
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
+        "track", "wbr",
+    ];
+    let mut out = String::new();
+    let mut rest = inner;
+    // How deep we are inside an `aria-hidden` subtree; 0 means the text is visible.
+    let mut hidden = 0usize;
+    loop {
+        let Some(lt) = rest.find('<') else {
+            if hidden == 0 {
+                out.push_str(rest);
+            }
+            break;
+        };
+        if hidden == 0 {
+            out.push_str(&rest[..lt]);
+        }
+        let tail = &rest[lt..];
+        let Some(gt) = tail.find('>') else { break };
+        let tag = &tail[..gt];
+        rest = &tail[gt + 1..];
+        let closing = tag.starts_with("</");
+        let name = tag[1..]
+            .trim_start_matches('/')
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if name.is_empty() {
+            continue; // a comment or a doctype, not an element
+        }
+        // An element that cannot contain anything never changes the depth.
+        let childless = tag.ends_with('/') || VOID.contains(&name.as_str());
+        if hidden > 0 {
+            if closing {
+                hidden -= 1;
+            } else if !childless {
+                hidden += 1;
+            }
+            continue;
+        }
+        if !closing && !childless && tag.contains("aria-hidden=\"true\"") {
+            hidden = 1;
+            continue;
+        }
+        // Element boundaries are word boundaries to a reader, so they must not fuse two
+        // words ("Next" + "page" is not "Nextpage"). `fold_label` collapses the run.
+        out.push(' ');
+    }
+    out
+}
+
+/// Fold a label to the form WCAG 2.5.3 compares: lowercase, punctuation and symbols
+/// dropped, whitespace collapsed. 2.5.3 is about whether a voice-control user saying the
+/// visible words hits the control, so case, an ellipsis and a trailing colon are all noise.
+fn fold_label(s: &str) -> String {
+    let mut out = String::new();
+    let mut pending_gap = false;
+    for c in s.chars() {
+        if c.is_alphanumeric() {
+            if pending_gap && !out.is_empty() {
+                out.push(' ');
+            }
+            pending_gap = false;
+            out.extend(c.to_lowercase());
+        } else {
+            pending_gap = true;
+        }
+    }
     out
 }
 
