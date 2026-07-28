@@ -1210,6 +1210,23 @@ docs; look there rather than re-expanding this list.
     model**, not on emitted HTML: an unexecuted `{python}` cell and a plain ```python fence
     render to the same `<pre><code class="language-python">`, so an HTML needle would pass on
     a deck with no runnable cell at all. The other eleven shapes 113 listed stay unbuilt.
+  - **Gates, measured in an ISOLATED WORKTREE, and that detail is the point.** A parallel
+    session was writing code (not just findings) in the shared tree — `editor/vscode/`
+    largely rewritten with ~2,100 deletions **staged in the index**, plus `lsp.rs`,
+    `lsp_complete.rs`, `vocab.rs` and two new files — so a suite run in the main tree
+    certifies *their* work and mine together and neither alone. Two runs there came back
+    green at **1,728** and then **1,762** tests, the drift being their tests appearing
+    mid-batch, and `cargo fmt --check` **failed on their file**. Re-run on a detached
+    worktree at this batch's commit: **106 binaries, 1,730 passed, 0 failed, 0 ignored**,
+    zero skip lines, all four interpreter canaries `... ok`, with `--test-threads=1` and all
+    four `TALIESIN_REQUIRE_*` armed. **1,730 reconciles exactly** (1,725 baseline + 1 test
+    binary + 5 tests). `cargo fmt --check`, `clippy --workspace --all-targets -D warnings`,
+    both `tsc` gates and `node --test` all exit 0 **in that worktree**; `check` exit 0 on
+    all 16 projects and `cargo audit` / `cargo deny check` exit 0 (main tree, and no
+    dependency changed). **Not run: the VS Code companion gate** — it `npm ci`s the exact
+    directory the other session was working in, and nothing in this batch touches `editor/`.
+    **Lesson for the next batch: commit your own paths explicitly and certify off a
+    worktree whenever another session shares the tree.**
   - **A vacuous row stopped propping up a floor** (111). `a11y_outline.rs`'s book walk
     counted `demo.tmd` and `tour.tmd` toward `pages >= 40` while `a11y.rs` exempts a deck
     from the heading-skip rule wholesale, so two of the rows proving "the walk was live" were
