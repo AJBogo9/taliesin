@@ -3,7 +3,7 @@ title: "Shell completion"
 description: "Tab completion that offers only .tmd files and the directories holding one, site and book roots first: installing it for bash, zsh, fish or PowerShell."
 ---
 
-*Reference: [CLI](cli.tmd) · Shell completion · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+*Reference: [CLI](cli.tmd) · Shell completion · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd)*
 
 Tab completion for the `taliesin` (and `tali`) command. Press Tab and it offers
 subcommands, flags, and, for a path argument, only `.tmd` files plus directories that

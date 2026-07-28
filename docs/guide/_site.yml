@@ -26,3 +26,4 @@ chapters:
       - reference/cli.tmd
       - reference/shell-completion.tmd
       - reference/troubleshooting.tmd
+      - reference/accessibility.tmd
