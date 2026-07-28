@@ -4,6 +4,12 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+**Before proposing a round, read [DETECTION-DEBT.md](DETECTION-DEBT.md).** It is the live
+register of what would ship *silently* — one row per class, with a "what would change this
+score" column — and it exists because three separate rounds re-derived that same list from
+scratch. A round whose only output would be to rebuild those rows is not worth running; a round
+that would *lower* one of them is.
+
 ## Round index — every dated findings doc in `notes/`
 
 **Check here before starting an audit.** This file carries narrative entries for the recent deep
@@ -394,6 +400,16 @@ warning, no phantom cross-page). Method note: the helpers are unit-tested in-cra
 lib target, so `tests/*.rs` can't see `pub(crate)` items); the live-socket wiring is verified via
 chrome-devtools, not a unit test. Cheap follow-ups deferred: DX5 (unknown `:::`-class "did you mean")
 and line-locating `_site.yml` warnings (`check` doesn't locate them either).
+
+**DX2 REVERTED 2026-07-28** — the nudge below was removed; the `◇` dev menu it pointed at stays. Two
+reasons, in order. (1) It could not keep its once-per-browser promise: the preview runs in origins whose
+`localStorage` does not persist, so it re-nagged on **every** server start. The VS Code companion frames
+the preview as a cross-origin iframe inside a per-panel `vscode-webview://<uuid>` document (Chromium
+partitions third-party storage by top-level site), and in a plain browser `bind_with_fallback` moving
+4321→4322 is a new origin outright. Fixing that needs server-side persistence, which is a lot of
+machinery for a one-time hint. (2) It duplicated `log::keys_hint`, which already prints "controls live
+in the browser — open the ◇ dev menu (bottom-left)" at every startup for free. Discovery path is now
+that line, then the panel's own `Source: Alt-click a block` row. The record below stands as written.
 
 **DX2 LANDED 2026-07-18** (Tier 1 discoverability — highest discoverability-per-line). A one-time,
 dismissible, localStorage-gated (`tali-hint-seen`) callout tethered above the collapsed `◇</>` dev

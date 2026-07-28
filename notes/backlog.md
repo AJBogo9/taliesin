@@ -340,7 +340,9 @@ enough to continue; nothing else is required.**
 - **How this file lies to you:** entries rot. Before picking an item, **grep its named symbol/flag in
   source** and prefer measuring the running product over reading this file. Trust an item's
   *symptom*, never its cause, line number or stated cost. Verify a fix by **mutation** (restore the
-  bug, watch the named test fail), not by a green suite. **The full trap catalogue — probes,
+  bug, watch the named test fail), not by a green suite. **What would ship silently is tracked
+  per class in [DETECTION-DEBT.md](DETECTION-DEBT.md)** — a live register, updated in the same
+  change as the fix, not a dated findings doc. **The full trap catalogue — probes,
   instruments, cargo-mutants scoping, the coverage illusions — is in [LESSONS.md](LESSONS.md); read
   it before writing a probe or a pin.**
 
@@ -1150,6 +1152,55 @@ Atom shipped with autodiscovery).
 docs; look there rather than re-expanding this list.
 
 ### Shipped
+
+- **2026-07-28 the honesty + build-cost batch (items 91, 110, 115, 119, 126, 134, 143),** on
+  branch `backlog-batch-2026-07-28`. **Do not re-scope any of the following as open:**
+  - **`chromiumoxide` is an opt-in `headless-js` feature** (91). The premise re-measured
+    properly: it is only 12 of 268 crates, but `chromiumoxide` + `chromiumoxide_cdp` are the
+    two most expensive units in the whole graph — **81 of 336 CPU-seconds, and 2m 30s → 1m 39s
+    wall, 268 → 252 crates, a 44 MB → 32 MB binary** (one machine, `-j3`, clean both times).
+    Off by default; `gates.sh`, `ci.yml` and `release.yml` all pass it, and
+    `crates/core/tests/headless_js_feature.rs` fails if any of the three stops (3 of its 4
+    assertions mutation-killed; the 4th is unreachable because that mutation stops cargo from
+    parsing the manifest at all, which is recorded in the test). Without the feature
+    `read --run-js` reports `skipped` naming the rebuild — verified on a real default-feature
+    binary, not inferred.
+  - **Not linting `draft:` pages is RULED CORRECT** (110); the defect was the silence.
+    `check` now prints what it held back, and `discovery.rs` carries the ruling so it is not
+    "fixed" by linting them. **First design was wrong and measurement caught it:** a second
+    `Site::discover` to learn the drafts cost **+50 to +83 ms** (~20% of a check), not the
+    "<10 ms" the comment claimed, so the fact is threaded out of the discovery that already
+    runs and is now free.
+  - **`Block::sourcepos` documents the empty-string contract** (115). Ten producers write
+    `String::new()` on purpose; the client's `usableSourcepos` gate is what makes that safe,
+    and inventing a plausible range silently sends the editor to line 1.
+  - **`check`'s link scope needed no output change** (134) — `cli.tmd:40` already documented
+    it accurately, including the above-root case. The item had rotted. What was genuinely
+    undocumented was the *draft* scope, now stated in two reference pages.
+  - **The docs-vs-behaviour sweep is finished** (143). ~25 claims re-derived from source and
+    fixed. **Three of its own filed claims were false and were NOT "fixed":**
+    `TALIESIN_MERMAID_URL` is honoured in *both* modes (not preview-only); `build --strict`
+    *does* fail on `_site.yml` problems (`build.rs:1717`); and `SiteApp` exists. Genuinely
+    fixed: 9 Mermaid-as-CDN claims (it is vendored — inlined in a build, same-origin in
+    preview), the `format:` sub-key exemption (linted since the extension mechanism was
+    found not to exist — including in `frontmatter.rs`'s own comment), `PageIncludes.resources`
+    /`has_markup()`/`copy_resources` (none exist), the protocol's message count (**twelve**,
+    documented as nine while listing ten — `build-state` and `cell-state` were missing), the
+    loopback-Origin allowance (**`--host` drops it**), the diff mask (`data-sourcepos` is the
+    *only* thing masked — `data-source-file` must match exactly), 9 stale "book sidebar"
+    instances, `init`'s file count (**five** places said two; it writes 3/4/5 + `.taliesin/`),
+    and ROADMAP's normative guardrails. **Left alone on purpose:** `ROADMAP.md:289`'s "mermaid
+    is the sole CDN dep" and the other `qmd` tokens there sit inside dated `[x] DONE` records
+    that correctly describe the past.
+  - **The ACR is published** (126) at `docs/guide/reference/accessibility.tmd`, linked from
+    the README. **Re-derived before publishing:** the draft's 2.5.3 "Does not support" row was
+    stale — item 124 shipped, the `<kbd>` carries `aria-hidden`, so it is "Supports". The
+    not-evaluated list is as long as the table on purpose.
+  - **`notes/DETECTION-DEBT.md` is the live register** (119), pointed at from AUDITS.md and
+    this file's standing constraints. **Re-derived, not copied:** most of R7's D≥8 rows had
+    since been fixed. Only **three** remain at D≥8, and the top one is `MAX_WARM_PAGES` /
+    `exec_pool.rs` at **D=10 with zero test references** (re-measured) — the standing freeze
+    forbids *tuning* it, not *pinning* it.
 
 - **2026-07-28 the block-model + docs-gate batch (items 138, 146, and the module-path half
   of 143),** on branch `block-single-root-2026-07-28`. Both fixes mutation-verified, the
