@@ -73,10 +73,17 @@ enough to continue; nothing else is required.**
   **127** (comma fences: 329 of 457 problems on a real book, code shipping unstyled), **128** (every
   internal link broken after the rename a stranger must do), **120** (the tool's own two scaffold
   commands contradict each other and the first deck renders flat).
-- **Item 100 blocks the most work and needs the author, not a session.** Publish as a fresh repo
-  with no history, or flip this repo's visibility? Half the register resolves differently per
-  answer, and two self-flagged private strategy notes are git-tracked right now.
-- **Next audit round is R14 (the deck)**, ahead of R6 and R7 — see the lens section below for why,
+- **Item 100 is RULED (2026-07-28) and no longer blocks anything.** The answer is **archive plus
+  fresh public**, specced in
+  [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md):
+  the history *is* published, the money/strategy docs leave every commit that held them, this remote
+  becomes `taliesin-private-archive`, and a new public repo receives the rewritten history.
+  **Neither phase runs without a separate instruction, and Phase 2 is irreversible.** The one thing
+  it hands back to the backlog: **fix items 79, 80 and 81 before Phase 2**, so no still-open finding
+  has to be judged as an exploit recipe.
+- **Auditing is DONE.** All 14 slate rounds have run except **R12** (real-device mobile, Android),
+  which needs the author's phone. **Do not open a new round** — 59 items are open and an audit's
+  value decays to zero if its findings never ship.
   and run it before R7 because R7 consumes its output.
 - **Nothing in Wave 1 changed a line of product code.** The tree is exactly as it was; all 27 items
   are open work. No gates were re-run after the commit because nothing compiled.
@@ -824,7 +831,26 @@ the broken one). Refile here only after re-deriving the cause from source.
 
 ### C. Blocked on an owner ruling (not a task until then)
 
-100. **THE PUBLISH-SURFACE RULING, and it gates half of Wave 1's register.** (HIGH, ruling.)
+100. **RULED 2026-07-28 — the answer is "archive plus fresh public", and it is specced.** See
+     [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md).
+     The ruling threads the needle both routes below missed: **the history IS published** (1,608
+     single-author commits are the evidence a grant applicant wants), and the private planning docs
+     leave *every* commit that ever held them. Mechanism: relocate the purged docs to
+     `~/Documents/personal/taliesin-private/`, rewrite history, rename this remote to
+     `taliesin-private-archive` (stays private, complete backup), create a **new public**
+     `AJBogo9/taliesin` and push the rewritten history there. No force-push, no destructive remote
+     op, and the private blobs never reach the public repo at all. Zero forks and never having been
+     public is what makes it cheap. **Kept, not purged:** security audits, `.claude/`,
+     `docs/superpowers/`, `AGENTS.md`, `LESSONS.md` — for the stated goal those are the exhibit.
+     **Purged:** money and strategy documents only, plus ~11 commit subjects that name them.
+     **Execution status: NOT STARTED and not to be started without a separate instruction.**
+     Phase 1 is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
+     additionally gated on Phase 1's findings being signed off.
+     **What still lands on this item:** the spec's own D-checks (incl. the provenance check on
+     corpus documents), and its rule that any still-open finding reading as an **exploit recipe** is
+     reported for individual judgement, default keep — which is exactly items **79, 80, 81**, so
+     **fix those before Phase 2** rather than deciding whether to redact them.
+     *Original framing, kept because it records why the ruling was hard:*
      `notes/STARTUP-PLAN.md:126` records a plan to publish as a **fresh repo with no history**
      ("Keep this repo private forever; the public one is a separate repo"), *not* to flip this
      repo's visibility. Those two routes resolve different findings, so the prune work cannot be
