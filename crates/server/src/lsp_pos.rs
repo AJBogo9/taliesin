@@ -11,8 +11,25 @@
 /// The 0-based line `line` (a `\n`-split buffer, 0-based) of `text`, or `""` past the end.
 /// The server splits on `\n` everywhere positions are computed (`lsp_nav::classify_target`,
 /// completion, `to_lsp`), so per-line conversion must split the same way.
+///
+/// A trailing `\r` is **not** part of the line. An editor treats CRLF as one terminator, so
+/// a column the client sends never counts the `\r` and a column we emit must not either;
+/// leaving it on made every end-of-line position in a CRLF buffer one column too long.
 pub(crate) fn nth_line(text: &str, line: usize) -> &str {
-    text.split('\n').nth(line).unwrap_or("")
+    line_content(text.split('\n').nth(line).unwrap_or(""))
+}
+
+/// One line of a `\n`-split buffer, minus the `\r` of a CRLF terminator. See [`nth_line`].
+pub(crate) fn line_content(line: &str) -> &str {
+    line.strip_suffix('\r').unwrap_or(line)
+}
+
+/// The end-of-line column of `line`, in UTF-16 code units — what an LSP `Range` that spans a
+/// whole line ends at. CRLF-aware via [`line_content`], which is the whole reason it is a
+/// named function rather than an inline `.chars().map(char::len_utf16).sum()` in each of the
+/// four places that wanted it.
+pub(crate) fn line_end_utf16(line: &str) -> usize {
+    line_content(line).chars().map(char::len_utf16).sum()
 }
 
 /// Convert a UTF-16 code-unit offset into `line` to a scalar (`char`) offset. An offset past

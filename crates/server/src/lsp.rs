@@ -139,7 +139,22 @@ fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + 
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
-                if connection.handle_shutdown(&req)? {
+                // Once `shutdown` arrives the session is over, and the exit code is a
+                // statement about how it ended. `handle_shutdown` replies, then waits up to
+                // 30s for the `exit` notification, and returns `Err` if anything *else*
+                // shows up in that window or if the wait times out — a protocol nit from a
+                // client that is already tearing us down. Propagating that `Err` reached
+                // `cmd_lsp`, which exited **1**, and an editor reads a non-zero exit from
+                // its language server as a crash: VS Code counts it toward the "server
+                // crashed 5 times" cutoff that stops restarting it. A clean `exit` after
+                // `shutdown` exited 0, so whether the author's editor believed Taliesin had
+                // crashed came down to a race on the client's side.
+                if req.method
+                    == <lsp_types::request::Shutdown as lsp_types::request::Request>::METHOD
+                {
+                    if let Err(e) = connection.handle_shutdown(&req) {
+                        crate::log::warn(&format!("lsp: {e}"));
+                    }
                     return Ok(());
                 }
                 // One bad request must not take the session down with it: unhandled, it leaves
@@ -640,10 +655,25 @@ fn alt_text(latex: &str) -> String {
     latex.replace(['[', ']'], "").replace(['\n', '\r'], " ")
 }
 
+/// Do two ranges touch? Used to scope code actions to the range the editor asked about.
+/// Touching at a boundary counts: a cursor sitting immediately after a mis-typed token is
+/// a zero-width range whose start equals the token's end, and refusing it there would make
+/// the lightbulb flicker off at the one position an author is most likely to be in.
+fn ranges_intersect(a: &lsp_types::Range, b: &lsp_types::Range) -> bool {
+    a.start <= b.end && b.start <= a.end
+}
+
 /// Build quick-fix code actions from the diagnostics the client echoed back. For each that
 /// carries a `data.replacement` — a precise "did you mean" fix `to_lsp` attaches only when the
 /// diagnostic's `range` is exactly the mis-typed token — emit a `QuickFix` that replaces that
 /// range with the correction. Read-only w.r.t. the preview; the edit flows through the editor.
+///
+/// Two filters, and both were missing. **Ours only:** `context.diagnostics` is whatever the
+/// editor decided to echo, from every provider attached to the buffer — so a diagnostic from
+/// a spell checker or an embedded-language server that happened to carry a `data.replacement`
+/// key would have been turned into a Taliesin quick fix that rewrote the buffer using
+/// somebody else's range. **In range:** the request carries the range the editor is asking
+/// about, and ignoring it offered every fix in the file at every cursor position.
 fn resolve_code_actions(
     params: &lsp_types::CodeActionParams,
 ) -> Option<lsp_types::CodeActionResponse> {
@@ -651,6 +681,13 @@ fn resolve_code_actions(
     let uri = &params.text_document.uri;
     let mut actions = Vec::new();
     for diag in &params.context.diagnostics {
+        // The same `source` `Diagnostic::to_lsp` stamps. Anything else is not ours to fix.
+        if diag.source.as_deref() != Some(crate::check::LSP_SOURCE) {
+            continue;
+        }
+        if !ranges_intersect(&diag.range, &params.range) {
+            continue;
+        }
         let Some(replacement) = diag
             .data
             .as_ref()
@@ -1396,10 +1433,7 @@ fn format_document(
 
 /// The length of a line in UTF-16 code units, which is what LSP positions count.
 fn line_len_utf16(text: &str, line: usize) -> u32 {
-    text.split('\n')
-        .nth(line)
-        .map(|l| l.encode_utf16().count() as u32)
-        .unwrap_or(0)
+    crate::lsp_pos::line_end_utf16(crate::lsp_pos::nth_line(text, line)) as u32
 }
 
 fn document_symbols(
@@ -1426,11 +1460,12 @@ fn to_document_symbol(
     let last = lines.len().saturating_sub(1);
     let start = node.start_line.min(last);
     let end = node.end_line.max(node.start_line).min(last);
-    // Column 0 needs no conversion; the end-of-line column is a UTF-16 unit count.
+    // Column 0 needs no conversion; the end-of-line column is a UTF-16 unit count, and a
+    // CRLF buffer's `\r` is not part of the line (`line_end_utf16`).
     let line_len = |i: usize| {
         lines
             .get(i)
-            .map_or(0, |l| l.chars().map(char::len_utf16).sum::<usize>()) as u32
+            .map_or(0, |l| crate::lsp_pos::line_end_utf16(l)) as u32
     };
     let name = if node.title.is_empty() {
         "(untitled)".to_string()
@@ -1962,6 +1997,195 @@ mod tests {
 
         shutdown(&client);
         thread.join().unwrap().expect("server loop should exit Ok");
+    }
+
+    /// Positions in a CRLF buffer stop at the last visible character, not one past it.
+    ///
+    /// Every position the server computes comes from a `\n` split, which on a CRLF buffer
+    /// leaves a `\r` on the end of each line. An editor treats CRLF as one terminator, so
+    /// that `\r` is not a column a cursor can occupy — but it was counted, and every
+    /// end-of-line column the server emitted ran one long. Windows-authored `.tmd` files
+    /// and anything through a CRLF-normalizing tool hit this on every symbol, every folding
+    /// range, and every whole-line diagnostic squiggle.
+    #[test]
+    fn crlf_buffers_do_not_run_one_column_long() {
+        let uri = Url::parse("file:///tmp/tali-lsp-crlf.tmd").unwrap();
+        let heading = "# Intro"; // 7 visible characters
+        let body = "Prose.";
+        // The SAME document, once with each terminator. Their symbol ranges must agree:
+        // the line terminator is not content.
+        let lf = format!("{heading}\n\n{body}\n");
+        let crlf = lf.replace('\n', "\r\n");
+
+        let symbols = |text: &str| {
+            let mut docs = std::collections::HashMap::new();
+            docs.insert(uri.clone(), text.to_string());
+            match document_symbols(&docs, &uri).expect("an outline") {
+                lsp_types::DocumentSymbolResponse::Nested(v) => v,
+                other => panic!("expected nested symbols, got {other:?}"),
+            }
+        };
+        let lf_syms = symbols(&lf);
+        let crlf_syms = symbols(&crlf);
+        assert_eq!(lf_syms.len(), 1, "one heading");
+        assert_eq!(
+            crlf_syms[0].selection_range, lf_syms[0].selection_range,
+            "the heading's own range must not depend on the line terminator"
+        );
+        assert_eq!(
+            crlf_syms[0].selection_range.end.character,
+            heading.chars().count() as u32,
+            "the heading range ends at the last visible character"
+        );
+        assert_eq!(
+            crlf_syms[0].range, lf_syms[0].range,
+            "the section range must not depend on the line terminator either"
+        );
+
+        // The same measurement, on the path folding ranges and formatting edits use.
+        assert_eq!(
+            line_len_utf16(&crlf, 0),
+            heading.chars().count() as u32,
+            "line_len_utf16 must not count the CR"
+        );
+
+        // And a whole-line diagnostic squiggle, which shares the defect through `to_lsp`.
+        let lines: Vec<&str> = crlf.split('\n').collect();
+        // 1-based line 2 is the blank line between the heading and the prose: with the CR
+        // counted it spanned one column of nothing.
+        let blank = crate::check::Diagnostic::new("d.tmd".into(), Some(2), "x".into());
+        assert_eq!(
+            blank.to_lsp(&lines).range.end.character,
+            0,
+            "an empty CRLF line spans nothing, not one column"
+        );
+        // 1-based line 1 is the heading: it spans its visible text, not text + CR.
+        let on_heading = crate::check::Diagnostic::new("d.tmd".into(), Some(1), "x".into());
+        assert_eq!(
+            on_heading.to_lsp(&lines).range.end.character,
+            heading.chars().count() as u32,
+            "a whole-line squiggle stops at the last visible character"
+        );
+    }
+
+    /// A quick fix is built only from OUR diagnostics, and only for the range the editor
+    /// asked about.
+    ///
+    /// `context.diagnostics` is whatever the client chose to echo, across every provider
+    /// attached to the buffer. Building an edit from a foreign diagnostic means applying
+    /// *our* replacement text at *their* range — in a `.tmd` that is a Pylance diagnostic
+    /// inside a `{python}` cell, whose range is real and whose `data` is not ours to read.
+    /// And `params.range` was ignored outright, so every fix in the file was offered at
+    /// every cursor position.
+    #[test]
+    fn code_actions_are_scoped_to_our_diagnostics_and_the_requested_range() {
+        use lsp_types::{Position, Range};
+        let uri = Url::parse("file:///tmp/tali-lsp-ca-scope.tmd").unwrap();
+        let ours = |line: u32| lsp_types::Diagnostic {
+            range: Range::new(Position::new(line, 0), Position::new(line, 5)),
+            source: Some(crate::check::LSP_SOURCE.to_string()),
+            message: "unknown front-matter key `titel`".to_string(),
+            data: Some(serde_json::json!({ "replacement": "title" })),
+            ..Default::default()
+        };
+        let ask = |range: Range, diags: Vec<lsp_types::Diagnostic>| {
+            resolve_code_actions(&lsp_types::CodeActionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                range,
+                context: lsp_types::CodeActionContext {
+                    diagnostics: diags,
+                    only: None,
+                    trigger_kind: None,
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap_or_default()
+        };
+        let cursor =
+            |line: u32, ch: u32| Range::new(Position::new(line, ch), Position::new(line, ch));
+
+        // The control: our diagnostic, cursor inside it — still one fix, as before.
+        assert_eq!(
+            ask(cursor(0, 2), vec![ours(0)]).len(),
+            1,
+            "the fix still works"
+        );
+        // Touching the token's far edge counts: that is where a cursor lands after typing it.
+        assert_eq!(
+            ask(cursor(0, 5), vec![ours(0)]).len(),
+            1,
+            "end boundary is inclusive"
+        );
+
+        // Cursor on a different line: nothing on offer.
+        assert!(
+            ask(cursor(9, 0), vec![ours(0)]).is_empty(),
+            "a fix for line 0 must not be offered on line 9"
+        );
+
+        // Another provider's diagnostic, at the cursor, carrying a `replacement` key of its
+        // own. Not ours, so not ours to fix.
+        let theirs = lsp_types::Diagnostic {
+            source: Some("Pylance".to_string()),
+            ..ours(0)
+        };
+        assert!(
+            ask(cursor(0, 2), vec![theirs.clone()]).is_empty(),
+            "another provider's diagnostic must not become a Taliesin quick fix"
+        );
+        // A diagnostic with no source at all is equally not ours.
+        let anonymous = lsp_types::Diagnostic {
+            source: None,
+            ..ours(0)
+        };
+        assert!(
+            ask(cursor(0, 2), vec![anonymous]).is_empty(),
+            "an unattributed diagnostic must not become a Taliesin quick fix"
+        );
+        // Mixed: only ours survives.
+        assert_eq!(ask(cursor(0, 2), vec![theirs, ours(0)]).len(), 1);
+    }
+
+    /// A message arriving between `shutdown` and `exit` must not look like a crash.
+    ///
+    /// `handle_shutdown` errors on anything that is not `exit` in that window, and that
+    /// error used to propagate out to `cmd_lsp`, which exited **1**. An editor reads a
+    /// non-zero exit from its language server as a crash and counts it toward the restart
+    /// cutoff — so a client that sends one last `didChange` while tearing down could get
+    /// Taliesin's LSP marked as crashing, from a completely clean session.
+    #[test]
+    fn a_message_after_shutdown_still_ends_the_session_cleanly() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(77),
+                method: "shutdown".to_owned(),
+                params: serde_json::Value::Null,
+            }))
+            .unwrap();
+        match client.receiver.recv().unwrap() {
+            Message::Response(Response { id, .. }) => assert_eq!(id, RequestId::from(77)),
+            other => panic!("expected the shutdown response, got {other:?}"),
+        }
+        // Not `exit`: a straggler notification, which is exactly what a racing client sends.
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: "textDocument/didChange".to_owned(),
+                params: serde_json::json!({}),
+            }))
+            .unwrap();
+        drop(client);
+
+        thread
+            .join()
+            .unwrap()
+            .expect("a straggler after shutdown is a protocol nit, not a failed session");
     }
 
     // Drive a full initialize → shutdown → exit handshake against an in-process server.
