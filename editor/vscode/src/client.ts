@@ -38,6 +38,11 @@ async function start(output: vscode.LogOutputChannel): Promise<void> {
   const serverOptions: ServerOptions = { run, debug: run };
 
   const clientOptions: LanguageClientOptions = {
+    // The one thing the server cannot work out for itself. A math hover is a rasterized
+    // PNG, and a picture cannot inherit the popup's text colour the way the old text
+    // preview did — light ink on a light theme is an invisible hover. LSP has no concept
+    // of a theme, so this rides in as an initialization option and is refreshed below.
+    initializationOptions: { colorScheme: colorScheme() },
     // `untitled` as well as `file`. A scratch buffer has no directory, so the server
     // answers nothing for the features that resolve a path against one (citations, include
     // paths, document links) — but front matter, cell options, div classes, math commands,
@@ -101,6 +106,18 @@ async function start(output: vscode.LogOutputChannel): Promise<void> {
   }
 }
 
+/**
+ * The editor's colour scheme as the server names it. High-contrast counts as its own kind in
+ * VS Code but not here: what the renderer needs to know is which way the ink goes, and
+ * `HighContrastLight` is a light background like any other.
+ */
+function colorScheme(): "dark" | "light" {
+  const kind = vscode.window.activeColorTheme.kind;
+  return kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight
+    ? "light"
+    : "dark";
+}
+
 /** Stop the running server, if any. Safe to call when nothing is running. */
 async function stop(): Promise<void> {
   const running = client;
@@ -135,6 +152,12 @@ export function registerLanguageClient(context: vscode.ExtensionContext): void {
     // answering from the old one, which would silently serve a stale vocabulary.
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("taliesin.path")) void start(output);
+    }),
+    // Switching theme mid-session must not leave the math hover drawing light ink onto a
+    // light popup. The server caches renders per scheme, so this costs one re-render each
+    // way and never a stale image.
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      void client?.sendNotification("taliesin/colorScheme", { colorScheme: colorScheme() });
     }),
     { dispose: () => void stop() }
   );

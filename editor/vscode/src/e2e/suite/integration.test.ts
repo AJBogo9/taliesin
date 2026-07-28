@@ -308,10 +308,24 @@ suite("Taliesin companion (integration)", () => {
         .flatMap((h) => h.contents)
         .map((c) => (typeof c === "string" ? c : (c as vscode.MarkdownString).value))
         .join("\n");
-      return joined.includes("α+β") ? joined : undefined;
+      // Two legitimate shapes, and which one arrives depends on the binary under test: a
+      // build with `headless-js` on a host with Chrome rasterizes the real KaTeX render,
+      // everything else falls back to the Unicode approximation. Waiting only for the
+      // glyphs would time out precisely when the better path is working.
+      const rendered = joined.includes("α+β");
+      const rasterized = joined.includes("](data:image/png;base64,iVBORw0KGgo");
+      return rendered || rasterized ? joined : undefined;
     }, 15000);
 
-    assert.ok(text, "hover should preview the rendered glyphs");
+    assert.ok(text, "hover should preview the math, rasterized or approximated");
+    if (text.includes("data:image/png")) {
+      // The alt text is what a screen reader announces and what shows if the image is ever
+      // dropped, so an image hover that lost it is a regression even though it looks fine.
+      assert.ok(
+        text.includes("![\\alpha + \\beta]"),
+        `a rasterized hover must keep the source as alt text: ${text.slice(0, 80)}`
+      );
+    }
   });
 
   test("renames a cross-reference anchor and every reference to it", async () => {

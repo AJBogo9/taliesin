@@ -85,9 +85,40 @@ pub(crate) fn cmd_lsp(_args: &[String]) -> ExitCode {
 /// Complete the initialize handshake, then serve the message loop until `exit`.
 /// Takes the connection by value so it (and its channels) drop before the caller
 /// joins the stdio I/O threads.
+/// Is the editor on a dark colour scheme? Decides the ink of a rasterized math hover, which
+/// is the one answer this server gives that cannot adapt to the reader: text in a hover
+/// inherits the theme, an image does not.
+///
+/// Defaults to dark, matching both VS Code's default theme and Taliesin's own. The client
+/// sets it at `initialize` and updates it with `taliesin/colorScheme` when the user switches,
+/// so a hover never renders black ink onto a dark popup.
+static DARK_SCHEME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub(crate) fn dark_scheme() -> bool {
+    DARK_SCHEME.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Read `{ "colorScheme": "dark" | "light" }` out of a client's payload, leaving the current
+/// setting alone when the key is absent or unrecognized — an editor that says nothing must not
+/// be treated as having said "light".
+fn absorb_color_scheme(payload: Option<&serde_json::Value>) {
+    let Some(scheme) = payload
+        .and_then(|v| v.get("colorScheme"))
+        .and_then(|v| v.as_str())
+    else {
+        return;
+    };
+    match scheme {
+        "dark" => DARK_SCHEME.store(true, std::sync::atomic::Ordering::Relaxed),
+        "light" => DARK_SCHEME.store(false, std::sync::atomic::Ordering::Relaxed),
+        other => crate::log::warn(&format!("lsp: ignoring unknown colorScheme {other:?}")),
+    }
+}
+
 pub(crate) fn run(connection: Connection) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let caps = serde_json::to_value(server_capabilities())?;
-    let _initialize_params = connection.initialize(caps)?;
+    let initialize_params = connection.initialize(caps)?;
+    absorb_color_scheme(initialize_params.get("initializationOptions"));
     main_loop(&connection)?;
     Ok(())
 }
@@ -235,9 +266,20 @@ fn handle_notification(
         let p: DidCloseTextDocumentParams = serde_json::from_value(notif.params)?;
         docs.remove(&p.text_document.uri);
         publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
+    } else if method == COLOR_SCHEME_METHOD {
+        // The editor switched theme. Only the rasterized math hover cares, and it caches by
+        // scheme, so this costs one re-render per expression per scheme and never a stale
+        // image. Nothing to publish: hovers are pulled, not pushed.
+        absorb_color_scheme(Some(&notif.params));
     }
     Ok(())
 }
+
+/// The client tells us the editor's colour scheme here, at `initialize` and whenever the user
+/// switches. Custom because LSP has no concept of a theme: it assumes every answer is text
+/// the editor will style itself, which stopped being true when the math hover became a
+/// picture.
+pub(crate) const COLOR_SCHEME_METHOD: &str = "taliesin/colorScheme";
 
 /// Answer a request from the open-buffer store. Only `textDocument/definition` is handled;
 /// any other request gets a `MethodNotFound` reply so the client never hangs waiting.
@@ -542,10 +584,20 @@ fn resolve_hover(
             end_line,
             end_char,
         } => {
-            let preview = taliesin_core::math_preview::unicode_preview(&latex, display)?;
-            if preview.trim().is_empty() {
-                return None;
-            }
+            // Prefer the real thing: a rasterized render of the SAME KaTeX output the
+            // document gets (`math_image`). It is unavailable in a build without the browser
+            // driver, on a host without Chrome, or on a timeout — and in every one of those
+            // cases the Unicode approximation still answers, so the hover never goes blank.
+            let body = match crate::math_image::data_uri(&latex, display, dark_scheme()) {
+                Some(uri) => format!("![{}]({uri})", alt_text(&latex)),
+                None => {
+                    let preview = taliesin_core::math_preview::unicode_preview(&latex, display)?;
+                    if preview.trim().is_empty() {
+                        return None;
+                    }
+                    format!("### {preview}")
+                }
+            };
             let kind = if display { "Display" } else { "Inline" };
             let to_pos = |l: usize, c: usize| {
                 let lt = crate::lsp_pos::nth_line(text, l);
@@ -554,7 +606,7 @@ fn resolve_hover(
             Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
-                    value: format!("### {preview}\n\n{kind} math"),
+                    value: format!("{body}\n\n{kind} math"),
                 }),
                 range: Some(Range::new(
                     to_pos(start_line, start_char),
@@ -564,6 +616,14 @@ fn resolve_hover(
         }
         Target::None => None,
     }
+}
+
+/// Alt text for a rasterized math hover: the expression's own source, minus the two
+/// characters that would close the markdown image early and leave a data URI spilled into the
+/// popup as text. It is what a screen reader announces and what shows if the image is ever
+/// dropped, so the source is the most useful thing it can carry.
+fn alt_text(latex: &str) -> String {
+    latex.replace(['[', ']'], "").replace(['\n', '\r'], " ")
 }
 
 /// Build quick-fix code actions from the diagnostics the client echoed back. For each that
@@ -2323,6 +2383,39 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
+    // A rasterized hover cannot inherit the popup's colour, so getting this wrong is not a
+    // cosmetic slip: it is light ink on a light theme, i.e. an empty-looking hover. Silence
+    // must therefore mean "keep what we have", never "assume light".
+    #[test]
+    fn the_colour_scheme_is_absorbed_only_when_the_client_actually_states_it() {
+        let restore = dark_scheme();
+
+        absorb_color_scheme(Some(&serde_json::json!({ "colorScheme": "light" })));
+        assert!(!dark_scheme(), "an explicit light scheme is taken");
+        absorb_color_scheme(Some(&serde_json::json!({ "colorScheme": "dark" })));
+        assert!(dark_scheme(), "and so is an explicit dark one");
+
+        // Every shape of "said nothing" leaves the setting alone.
+        for quiet in [
+            serde_json::json!({}),
+            serde_json::json!({ "colorScheme": "chartreuse" }),
+            serde_json::json!({ "colorScheme": 3 }),
+        ] {
+            absorb_color_scheme(Some(&quiet));
+            assert!(
+                dark_scheme(),
+                "unrecognized payload must not flip it: {quiet}"
+            );
+        }
+        absorb_color_scheme(None);
+        assert!(
+            dark_scheme(),
+            "a client that sends no options must not flip it"
+        );
+
+        DARK_SCHEME.store(restore, std::sync::atomic::Ordering::Relaxed);
+    }
+
     #[test]
     fn hover_on_math_previews_what_it_renders_as() {
         let (server, client) = Connection::memory();
@@ -2337,10 +2430,27 @@ mod tests {
         // The span opens at char 4; char 8 is inside `\alpha`.
         let h = hover_at(&client, &uri, 11, 0, 8);
         let md = hover_markdown(&h);
-        assert!(
-            md.contains("α+β"),
-            "expected the rendered glyphs, got {md:?}"
-        );
+        // The hover shows the math, never a description of it — but "the math" has two
+        // legitimate spellings, and which one arrives depends on the build and the host:
+        // a real rasterized render where a browser is available, the Unicode approximation
+        // everywhere else. Asserting only the second would have gone red the moment the
+        // image path started working, which is the wrong direction for a regression to fire.
+        if md.starts_with("![") {
+            assert!(
+                md.contains("](data:image/png;base64,iVBORw0KGgo"),
+                "an image hover must carry a real PNG data URI: {md:.120?}"
+            );
+            assert!(
+                md.contains("![\\alpha + \\beta]"),
+                "the alt text must be the source, so it survives a dropped image: {md:.120?}"
+            );
+        } else {
+            assert!(
+                md.contains("α+β"),
+                "expected the rendered glyphs, got {md:?}"
+            );
+        }
+        assert!(md.ends_with("Inline math"), "got {md:.120?}");
 
         shutdown(&client);
         thread.join().unwrap().unwrap();

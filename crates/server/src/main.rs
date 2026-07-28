@@ -25,6 +25,7 @@ mod lsp_links;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
+mod math_image;
 mod mcp;
 mod minify;
 mod preview_diag;
@@ -150,6 +151,7 @@ ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_CELL_TIMEOUT (per-cell seconds; 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
      TALIESIN_JS_TIMEOUT (read --run {js} headless-Chrome settle seconds; default 10),
+     TALIESIN_MATH_IMAGE_TIMEOUT (lsp math-hover render seconds; default 10),
      TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,
      TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
      TALIESIN_NO_EXEC (=--no-exec, never run code cells),
@@ -652,6 +654,12 @@ mod cli_microcopy_tests {
             // skip" into a hard failure (here, Node for the JS-equivalence guard). Not a
             // knob a user of the binary ever sets.
             "TALIESIN_REQUIRE_NODE",
+            // Same shape again, for the browser. The `{js}` observation canary is gated
+            // from `crates/server/tests/`, which this walk never sees; the math hover's
+            // canary has to live in `src/` (a bin crate cannot reach `pub(crate)` from an
+            // integration test), so the scanner meets this one and must be told it is a
+            // test gate rather than a user-facing knob.
+            "TALIESIN_REQUIRE_CHROME",
         ];
 
         fn walk(dir: &std::path::Path, out: &mut std::collections::BTreeSet<String>) {
