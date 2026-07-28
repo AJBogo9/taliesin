@@ -357,20 +357,73 @@ and touch nothing else, so they can land whenever.
 and still the single biggest "it feels like a real IDE" jump. The grammar already maps the
 embedded scopes; making Pylance et al. answer inside a cell is the remaining piece.
 
+## How to verify anything here
+
+The three that matter, in the order that catches the most:
+
+```sh
+TALIESIN_PYTHON=~/.local/share/qmd-venv/bin/python ./tools/gates.sh   # every gate, refuses to be green if one skipped
+cd editor/vscode && npm test                                          # companion unit + manifest gates
+cd editor/vscode && npm run test:e2e                                  # REAL Extension Host, 10 tests
+```
+
+**`npm run test:e2e` genuinely works headless** (no `xvfb` needed, and `xvfb-run` is not
+installed anyway). `editor/vscode/README.md` says an Extension Host "can't be driven
+headlessly"; that is true only of the preview iframe. `@vscode/test-electron` downloads VS
+Code once into `.vscode-test/` and runs a real host in about a second. It needs
+`target/debug/taliesin` to exist.
+
+**Use it.** For anything the editor surfaces, a unit test proves the server answered; only
+the host proves VS Code asked and rendered. The pattern is
+`vscode.commands.executeCommand("vscode.execute<X>Provider", ...)`, polled through
+`waitForValue` because the server answers asynchronously.
+
+To re-measure completion coverage, drive the built binary over stdio the way
+`crates/server/tests/lsp_stdio.rs` does: write fixtures, `didOpen`, then a
+`textDocument/completion` per cursor position, and count the non-empty results. Scope every
+assertion to the RESPONSE id — the same stream carries `publishDiagnostics` notifications
+that quote the document's text, so a `stdout.contains(…)` can pass on a diagnostic while the
+response it claims to test is empty.
+
 ## What to pick up next
 
 Roughly in value order:
 
-1. **Embedded-language completion in code cells** (E above). Large, and the one an author
-   notices every day.
-2. **KaTeX hover preview.** Hovering `$…$` renders the expression rather than describing it.
-   The renderer is already in-process and memoized, so this is a `Target::Math` arm in
-   `resolve_hover` plus a decision about how to get an image into a hover.
-3. **Stepless math completion** (Tinymist's trick: `$ar|$` → `$arrow.r$` with no accept
-   step) and fuzzy matching on the glyph, not just the name.
-4. **`contributes.yamlValidation` for `_site.yml`**, ending the "paste this comment yourself"
-   instruction in `query.rs`.
+1. **Embedded-language completion in code cells** (E above). Inside ` ```{python} `, Pylance
+   (or whatever owns Python) should answer. The grammar already maps the embedded scopes, so
+   the tokenization is right; what is missing is the request routing. Quarto does this and it
+   is the largest remaining "feels like a real IDE" jump. Expect this to be the hard one:
+   it likely needs a virtual-document / middleware layer in `client.ts`, which is the one
+   place TypeScript legitimately grows again.
+2. **KaTeX hover preview.** Hovering `$…$` renders the expression instead of describing it.
+   `crate::math::render` is in-process and memoized, so the render is nearly free; the open
+   question is getting it into a hover (LSP hover is markdown, so likely an inline `data:`
+   SVG, and worth checking what VS Code actually displays). Add a `Target::Math` arm in
+   `lsp_nav::classify_target` and `resolve_hover`. LaTeX Workshop's version of this is the
+   feature its users cite most.
+3. **Stepless math completion** (Tinymist's trick: `$ar|$` → `$arrow.r$` with no separate
+   accept step), and fuzzy matching on the glyph rather than only the name — the vocabulary
+   already carries the glyph in `description`.
+4. **`contributes.yamlValidation` for `_site.yml`.** `query.rs:709` currently prints
+   instructions telling the author to paste a `# yaml-language-server: $schema=…` comment by
+   hand. Needs `crates/core/assets/schema/*.json` copied into the extension at build time
+   plus a drift gate asserting the copy matches, and it only takes effect when
+   `redhat.vscode-yaml` is installed.
 5. **List and blockquote continuation, and a table formatter.** Table stakes since Markdown
-   All in One; cheap.
-6. **Div attribute keys**, the last unanswered probe position.
-7. **A marketplace icon and a `walkthroughs` first-run experience**, if publishing.
+   All in One. Continuation is `onEnterRules` in `language-configuration.json` (which handles
+   only `:::` today); the formatter is a `DocumentFormattingEditProvider` or a command.
+6. **Div attribute keys** (`::: {.theorem ` → `title=`, `#id`), the last of the 21 probe
+   positions still answering nothing.
+7. **A marketplace icon** (128×128 PNG; only the language-file SVG exists) and a
+   `contributes.walkthroughs` first-run experience, if this is ever published.
+
+## Rules that are now load-bearing
+
+- **Editor features go in Rust, in `crates/server/src/lsp*.rs`.** A second copy in
+  TypeScript is exactly what this change deleted. The only things that belong in
+  `editor/vscode/src/` are the preview webview, the source-sync bridge, and commands.
+- **The math vocabulary must stay KaTeX-gated.** `every_command_renders` is what makes
+  `math_vocab.rs` authoritative rather than a guess; adding a command without it reintroduces
+  the possibility of completing something that renders as an error span for the reader.
+- **stdout is the JSON-RPC wire** in the `lsp` modules. Never print to it; use `crate::log`
+  (stderr).
