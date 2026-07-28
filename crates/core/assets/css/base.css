@@ -499,11 +499,19 @@
   details.tali-code-fold > summary { cursor: pointer; color: var(--tali-muted);
     font: 600 .85em var(--tali-font-head); padding: .15rem 0; margin-bottom: .35rem; }
   details.tali-code-fold > summary:hover { color: var(--tali-fg); }
-  /* Themed disclosure chevron for folded code (`tali-code-fold`) + collapsible proofs:
-     the browser-default triangle is small, inconsistent, and easy to read as plain text,
-     so hide it and draw a `currentColor` caret that rotates from a right-pointing to a
-     down-pointing chevron when the details opens. (Callouts keep their icon header, which
-     is already an affordance.) */
+  /* Themed disclosure chevron for folded code (`tali-code-fold`), collapsible proofs, and
+     collapsible callouts: the browser-default triangle is small, inconsistent, and easy to
+     read as plain text, so hide it and draw a `currentColor` caret that rotates from a
+     right-pointing to a down-pointing chevron when the details opens.
+     Callouts were once excluded here on the theory that the kind icon was already an
+     affordance. It is not: the icon says *what kind*, never *that this opens*, and because
+     `.callout-title` is `display: flex` the native marker is not rendered either (a
+     `<summary>` only draws one at `display: list-item`) — so a collapsed callout had no
+     indicator at all, and an open collapsible one was indistinguishable from a plain one.
+     The callout caret TRAILS while these two lead, because the callout's left slot is
+     already the kind icon; trailing also mirrors `.tali-book-expand` in site.css. That is
+     why it is `::after` and not `::before`: `::before` is the first flex item, so pushing it
+     right with `margin-left: auto` would drag the icon and title right along with it. */
   details.tali-code-fold > summary,
   .tali-proof-collapse > details > summary.tali-proof-head {
     display: flex; align-items: center; gap: .45em; list-style: none; }
@@ -516,6 +524,16 @@
     transform: rotate(45deg); transition: transform var(--tali-dur) ease; opacity: .75; }
   details.tali-code-fold[open] > summary::before,
   .tali-proof-collapse > details[open] > summary.tali-proof-head::before { transform: rotate(135deg); }
+  /* The callout's own caret. Deliberately NOT appended to the selector lists above: that rule
+     also sets `gap: .45em`, which would override `.callout-title`'s `gap: .45rem` and shift
+     icon-to-text spacing on every collapsible callout. */
+  .callout-collapse > details > summary.callout-title { list-style: none; }
+  .callout-collapse > details > summary.callout-title::-webkit-details-marker { display: none; }
+  .callout-collapse > details > summary.callout-title::after {
+    content: ""; flex: 0 0 auto; margin-left: auto; width: .42em; height: .42em;
+    margin-bottom: .12em; border-top: 2px solid currentColor; border-right: 2px solid currentColor;
+    transform: rotate(45deg); transition: transform var(--tali-dur) ease; opacity: .75; }
+  .callout-collapse > details[open] > summary.callout-title::after { transform: rotate(135deg); }
   /* Narrated code walkthrough (`::: {.code-walkthrough}`): the code panel is pinned
      full-width at the TOP of the viewport and the prose steps scroll beneath it — the
      same shape at every width (a wide 2-column split left the code column too narrow and

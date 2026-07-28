@@ -6588,3 +6588,41 @@ fn touch_nav_tap_target_grows_without_growing_the_sticky_bar() {
          overlay:\n{link_rule}"
     );
 }
+
+/// A `collapse="true"` callout must show a disclosure caret in BOTH states.
+///
+/// `.callout-title` is `display: flex`, and a `<summary>` renders the browser's own
+/// disclosure marker only at `display: list-item` — so before this rule a collapsed
+/// callout was a title bar with no indicator whatsoever, and an OPEN collapsible one
+/// was indistinguishable from a plain non-collapsible callout.
+///
+/// Asserted against BASE_CSS, never a rendered page: every page inlines the whole
+/// stylesheet, so a page-level `contains` would pass on a page with no callouts.
+#[test]
+fn collapsible_callouts_carry_a_disclosure_caret() {
+    let sel = ".callout-collapse > details > summary.callout-title";
+    assert!(
+        BASE_CSS.contains(&format!("{sel}::after")),
+        "collapsible callouts need a trailing ::after caret"
+    );
+    assert!(
+        BASE_CSS.contains(&format!("{sel}::-webkit-details-marker")),
+        "Safari's native marker must be suppressed too"
+    );
+    // The caret trails, which is what distinguishes it from the leading `::before`
+    // carets on folded code and proofs. Without `margin-left: auto` it would sit
+    // flush against the title text instead of at the right edge of the tinted bar.
+    let i = BASE_CSS
+        .find(&format!("{sel}::after"))
+        .expect("the callout caret rule");
+    let rule = &BASE_CSS[i..i + BASE_CSS[i..].find('}').expect("closing brace")];
+    assert!(rule.contains("margin-left: auto"), "the caret must trail: {rule}");
+    assert!(rule.contains("rotate(45deg)"), "closed state points right: {rule}");
+    // Open rotates to point down, exactly like the proof caret.
+    assert!(
+        BASE_CSS.contains(
+            ".callout-collapse > details[open] > summary.callout-title::after { transform: rotate(135deg); }"
+        ),
+        "open state must rotate the caret down"
+    );
+}

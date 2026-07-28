@@ -284,6 +284,14 @@ body { background: transparent; }
 .tali-deck .tali-slides .callout-body { padding: 0.1em 0.75em 0.4em; }
 .tali-deck .tali-slides .callout-body > :first-child { margin-top: 0.35em; }
 .tali-deck .tali-slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
+/* The same trailing caret base.css gives a collapsible callout: a slide's collapsed callout
+   is the same silent case by a different route (`list-style: none` here rather than the flex
+   display suppressing the marker). */
+.tali-deck .tali-slides .callout-collapse > details > summary.callout-title::after {
+  content: ""; flex: 0 0 auto; margin-left: auto; width: .42em; height: .42em;
+  margin-bottom: .12em; border-top: 2px solid currentColor; border-right: 2px solid currentColor;
+  transform: rotate(45deg); transition: transform var(--tali-dur) ease; opacity: .75; }
+.tali-deck .tali-slides .callout-collapse > details[open] > summary.callout-title::after { transform: rotate(135deg); }
 /* Bound to the tokens above, with the tint derived by color-mix exactly as base.css does, so a
    light deck and a dark deck follow from one definition and no hue is written twice. */
 .tali-deck .tali-slides .callout-note { border-left-color: var(--tali-callout-note); }
