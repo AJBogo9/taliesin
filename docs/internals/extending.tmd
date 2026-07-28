@@ -55,7 +55,7 @@ The core stays lean; two seams let you add behaviour without touching it:
    (a theme-matched `<video>` authored in Markdown), and `{{< input … >}}` (a reactive
    control that feeds the `{js}` graph). Any other name is left verbatim, with a warning so
    a typo is visible rather than shipped as literal text.
-2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance.js`). Your JS registers
+2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
    `fn(root)` that runs after every (re)mount; load it via `include-after-body` in your
    front matter. The built-in copy buttons and `mermaid.js` use this same public API, so a
    third-party enhancer is indistinguishable from core's.

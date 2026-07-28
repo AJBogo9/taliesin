@@ -50,14 +50,23 @@ enough to continue; nothing else is required.**
   "nothing in any of
   these rounds changed a line of product code" is long dead, which is the usual way this file rots:
   **ask git, not this line.**
+- **138 and 146 SHIPPED 2026-07-28** on `block-single-root-2026-07-28`, together with the
+  module-path half of 143 — the multi-root block that half-mounted every op, and the three
+  tree-derived prose gates. Detail in "Do not re-add / re-scope". **Two things that batch is
+  worth reading for:** its filed blast radius was 3× the real one (2 pages → 1) and the bug is
+  invisible to a spot check (editing the *first* of N roots looks correct even unfixed), and
+  the path gate's first run reported six hits of which **five were dated records correctly
+  describing the past** — which is why that gate excludes `notes/` and `docs/superpowers/`.
+  **A parallel session was rewriting the LSP + VS Code companion in the shared tree
+  throughout**, so this batch ran in a worktree and deliberately avoided `main.rs`/`cli.rs`;
+  that is why item 144's CLI residuals were not taken.
 - **The critique round's code band is nearly drained: 139, 140, 141 and 142 shipped 2026-07-28**
   on `critique-fixes-139-142` (LSP rename validation + the external-URL fragment, both TOC escaping
   defects, the Cmd-K scroll lock, and the manifest's icon/`start_url`/pin defects). Detail and the
-  one deliberately-partial half in "Do not re-add / re-scope". **What is left of that round is 138**
-  (the multi-root block, which this file says deserves its own session and was deliberately not
-  raced), **143** (the docs-vs-behaviour sweep), **144** (CLI/diagnostic residuals — note its three
-  LSP sub-items sit in files this batch rewrote, so re-derive them) and **146** (widen the
-  prose-vs-behaviour gate).
+  one deliberately-partial half in "Do not re-add / re-scope". **138 and 146 then shipped
+  2026-07-28** with 143's module-path half. **What is left of that round is 143** (the rest of the
+  docs-vs-behaviour sweep, now with a gate under it) and **144** (CLI/diagnostic residuals — note
+  its three LSP sub-items sit in files a later batch rewrote, so re-derive them).
 - **The findings docs** (each finding carries its measurement and its refutation test). Wave 1:
   [adoption friction](2026-07-27-adoption-friction-audit.md) ·
   [pre-mortem](2026-07-27-premortem-audit.md) ·
@@ -84,9 +93,9 @@ enough to continue; nothing else is required.**
   vertical-stack slide), neither of them filed and neither visible to any emission test —
   which is the strongest evidence this file has that *rendered geometry* was an uncovered
   axis, not just an untested file. What is left in band A is mostly **words, not code**
-  (94, 95, 96, 126, 135, 136), plus the structural pair **119** (a live detection-debt file)
-  and **146** (widen the prose-vs-behaviour gate), and **138**, which still deserves its own
-  session.
+  (94, 95, 96, 126, 135, 136), plus **119** (a live detection-debt file). The structural pair's
+  other half (**146**) and the one item that touched the block model (**138**) both shipped
+  2026-07-28.
   **Two items are rulings and must not be built without one: 101** (what licence a user's built
   page carries, given every page inlines AGPL JS — its CLA sub-bullet is discharged, the rest is
   open) and **122** (its filed fix reverses the PL14 ruling; the cost objection was measured
@@ -663,21 +672,14 @@ imaginary pen tool and ~10 other false doc claims are **already fixed — do not
 **Three of that round's proposed fixes were wrong** and its defender caught each: read the correction
 note in the findings doc before applying any fix text from it.
 
-138. **A block with more than one root element is only half-mounted, which silently inverts the
-    headline claim.** `web-client/client.js:1014` `fragment()` returns `firstElementChild`, so
-    `update`/`insert`/`remove` (`:1325`/`:1341`/`:1365`) operate on one of N roots. Measured on
-    the **shipped** `corpus/descent` explainer: editing a slider's `max` changes the block id —
-    so the op *looks* applied — while the DOM keeps the old value, and deleting the block
-    strands the extra roots in the page forever. Preview then disagrees with what `build`
-    publishes, which is the one thing the block model exists to prevent. Blast radius across 161
-    corpus+docs documents: **2 pages, 6 orphan roots** (`corpus/descent/index.tmd`,
-    `corpus/diagnostics/a11y.tmd`). **Fix server-side** — give every block exactly one root, the
-    invariant `crates/core/src/site/backlinks.rs:338` already asserts for its own emitter. A
-    client-side fix re-derives the same invariant in the wrong layer. *This is the one item in
-    this band that touches the block model; it deserves its own session and a mutation-verified
-    pin that a multi-root block round-trips through a swap.*
+**Item 138 SHIPPED 2026-07-28** on `block-single-root-2026-07-28`, with **146** and the
+module-path half of **143** — see "Do not re-add / re-scope".
 
-143. **The docs-vs-behaviour sweep: ~20 false claims across the guide, the Internals book and
+143. **The docs-vs-behaviour sweep — the module-path half SHIPPED 2026-07-28, the rest is open.**
+    Nine stale source paths in the two books are fixed and now *gated* (item 146's path gate), so
+    do not re-scope that half; the gate would fail if it came back. **What is left is every claim
+    the gate cannot see**, because both spellings resolve or no path is involved:
+    ~20 false claims across the guide, the Internals book and
     ROADMAP.** All measured, all with paste-ready replacements in the findings doc.
     **Read each item's correction note first — three of the critic's proposed fixes were wrong.**
     Highest value first: Mermaid is documented as a CDN dependency in 4 places though it is
@@ -690,8 +692,11 @@ note in the findings doc before applying any fix text from it.
     code says no extension mechanism exists; the Internals book misdescribes the diff mask,
     prints a `SiteApp` struct and a `PageIncludes.resources` field that do not exist, undercounts
     the protocol's twelve message types as nine, and describes the loopback-Origin allowance as
-    always-on when `--host` drops it (**edit `protocol.tmd:318`; `:321` is TRUE**); ~20 stale
-    module paths remain in the Internals book; "book has a sidebar" survives in **11 live
+    always-on when `--host` drops it (**edit `protocol.tmd:318`; `:321` is TRUE**);
+    ~~~20 stale module paths remain in the Internals book~~ **DONE 2026-07-28: measured at
+    nine, not twenty** (`serve.rs`, `serve_site.rs`, `cite.rs`, `diagnostics.rs` had become
+    module directories, `code-enhance.js` had been split into fragments, `extensions.rs` is
+    `theme_css.rs`), all fixed and gated; "book has a sidebar" survives in **11 live
     instances across 5 files** (do NOT re-scope as "restore the rail", item 76); ROADMAP's
     *normative* guardrails section still says `.qmd`/`qmdEnhancers` (**the named corpus pin docs
     DO exist as `.tmd`** — do not "fix" this by authoring new corpus documents); and `init` is
@@ -718,16 +723,10 @@ note in the findings doc before applying any fix text from it.
      neither of the two routes it proposed — it votes off the **emitted href** after the pages
      exist, which is exact rather than over-inclusive. Number retained, never reused.
 
-146. **Widen the prose-vs-behaviour gate — the structural item this whole round argues for.**
-    `crates/core/tests/stale_docs.rs` is repaired and mutation-verified in both directions, but
-    still covers only deck vocabulary and CI claims. Every stale-string finding in this round is
-    a symptom of the same gap this file already named ("no gate compares prose against
-    behaviour"). Candidates that would have caught real defects here: a retired-front-matter-key
-    needle set built from `RETIRED_KEYS` (would have caught `about:` in the README and the
-    marketing site); a check that no doc names a module path that is not a file; a check that
-    documented CLI flags exist in `COMMANDS`/`usage()`. **Follow this file's own rule
-    (`:558-559`): mutation-check every new needle against exactly the shape it guards, or the
-    gate is worse than none.**
+**Item 146 SHIPPED 2026-07-28** (all three candidates) — see "Do not re-add / re-scope".
+**One residual, and it is item 144's, not this one's:** the `COMMANDS` ↔ `usage()` *command*
+parity gate (`skim` is missing from `--help`). The flag half shipped here; the command half
+sits in `main.rs`, which a parallel session is rewriting, so it was deliberately not raced.
 
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
@@ -1152,6 +1151,56 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 the block-model + docs-gate batch (items 138, 146, and the module-path half
+  of 143),** on branch `block-single-root-2026-07-28`. Both fixes mutation-verified, the
+  client-side one additionally reproduced and re-measured in a real browser.
+  **Do not re-scope any of the following as open:**
+  - **Every block now has exactly one root element** (138). `emit_html_block` injected the
+    block's data attrs into the *leading* start tag, so a raw HTML literal that comrak folded
+    into one block (three `{{< input >}}` controls on consecutive lines, as `corpus/descent`
+    ships) put the id on root 1 of N, and the client — which mounts with
+    `firstElementChild` — half-applied every op. Such a literal is now wrapped in a single
+    `<div>` carrying the attrs. Fixed server-side, where `site/backlinks.rs` already asserts
+    the same invariant for its own emitter.
+  - **The filed blast radius was wrong in the direction that matters, and re-measuring is
+    what found it.** Filed as 2 pages / 6 orphan roots; across all 161 corpus + docs
+    documents there is exactly **one** id-carrying block that is not single-root. The second
+    page named (`corpus/diagnostics/a11y.tmd`) is clean — its raw HTML is a lone `<img>` plus
+    inline tags inside paragraphs. The sweep did turn up a separate **benign** class: 21
+    blocks with no `data-block-id` at all (20 comment-only, one stray `</div>`), which nothing
+    in the DOM claims and no op targets. Those are deliberately left alone — wrapping them
+    would add an empty div to a page to hold content that renders nothing — and the pin
+    fixes that class to exactly the comment/closing-tag shapes, so real content cannot
+    quietly become unaddressable.
+  - **The repro needs an edit to a LATER root, which is why this survived so long.** Editing
+    the *first* control looks correct even with the bug: the untouched later roots are already
+    in the DOM and unchanged. Measured in a browser against a build with the fix disabled,
+    editing the *third* control leaves the source at `max="99"` and the live DOM at `max="60"`
+    with the id swapped. A one-root-per-block probe is the only thing that sees this class;
+    a spot check does not.
+  - **Prose is gated against the tree now, not against a needle list** (146, all three
+    candidates). `stale_docs.rs` gains: no shipped doc may name a source file that does not
+    exist (183 path claims examined, resolution accepting suffix and `src`-elided forms so
+    `server/exec.rs` and `tests/regression.rs` stay legal); no shipped doc may show a retired
+    front-matter key, with the key list parsed out of `RETIRED_KEYS` so retiring another key
+    extends the gate for free; every flag the CLI reference documents must exist in the CLI
+    (80 mentions). Each mutation-verified against its own shape, each with a floor on how much
+    it examined — an extractor that stops matching is a gate that passes forever.
+  - **`notes/` and `docs/superpowers/` are excluded from that gate and must stay excluded.**
+    They are dated records, and **five of the six** paths the first version reported were of
+    exactly that kind (a 2026-06 spec correctly describing the tree as it was). One exemption
+    exists, for prose whose *subject* is a dead path, and it asserts the sentence is still
+    there so a rewrite must delete it rather than leave it shadowing the next defect.
+  - **The retired-key gate closes a real hole:** `check` lints the corpus and the books' own
+    front matter, never a YAML block quoted in prose — so the one surface where a reader
+    learns the vocabulary was the one surface nothing checked.
+  - **Nine stale module paths fixed** (143's path half), all four "file became a module
+    directory" (`serve.rs`, `serve_site.rs`, `cite.rs`, `diagnostics.rs`), plus
+    `code-enhance.js` → `code-enhance/` and a test table's `extensions.rs` → `theme_css.rs`.
+    Four of them sat inside **mermaid diagram labels**, which are parsed client-side, so both
+    books' diagrams were re-rendered in a browser (6 of 6 draw). The LAN-token sentence also
+    moved from `serve/mod.rs` to `serve/security.rs`, where those functions actually live —
+    a correction no path gate can make, since both spellings resolve.
 - **2026-07-28 the deck-harness batch (items 112, 125, 113, 111, plus two defects the
   harness found),** on branch `deck-harness-2026-07-28`. Each pin verified by **mutation
   against `deck.js` / `deck.css` itself** (restore the bug, watch the named test fail), not

@@ -175,7 +175,7 @@ execution**, lists every located diagnostic (greppable `path:line: message` line
 `--format json` for a CI gate), and exits non-zero if any are found. It is a strict
 *superset* of what preview and build surface: it collects `doc.warnings` (every validator
 above) **and** a family of static document lints that only `check` runs, all on the same
-click-to-source channel. The lints live in `diagnostics.rs` and are read-only static
+click-to-source channel. The lints live in `crates/core/src/diagnostics/` and are read-only static
 analysis over the rendered block model, plus the cross-page checks in the site layer:
 
 | Check | Function | What it catches |

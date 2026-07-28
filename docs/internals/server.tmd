@@ -6,8 +6,8 @@ description: "Two servers behind one file watcher: what each owns, why they were
 The server (`crates/server`) is the long-running process behind `preview`: an
 [axum](https://github.com/tokio-rs/axum) HTTP/websocket server, a
 [`notify`](https://github.com/notify-rs/notify) file watcher, and the kernel pool
-from [the previous chapter](execution.tmd). There are two of them, `serve.rs`
-for a single document and `serve_site.rs` for a directory (site/book), sharing
+from [the previous chapter](execution.tmd). There are two of them, `serve/mod.rs`
+for a single document and `serve_site/mod.rs` for a directory (site/book), sharing
 the small HTTP/asset helpers and the websocket message contract.
 
 ## The save → preview loop
@@ -32,7 +32,7 @@ broadcasts **only the ops** (`update`/`insert`/`remove`), or a fresh `full_rende
 when recovering from a previous failure, plus a `diagnostics` message when those
 change. The full message contract is in [the websocket protocol](protocol.tmd).
 
-## Single-document server (`serve.rs`)
+## Single-document server (`serve/mod.rs`)
 
 `AppState` is the shared state, behind a non-poisoning lock:
 
@@ -96,7 +96,7 @@ directory of every `{{< include >}}`d file** (recursively, via
 `includes::dependencies`), so editing an out-of-tree included partial still refreshes
 the preview.
 
-## Multi-page server (`serve_site.rs`)
+## Multi-page server (`serve_site/mod.rs`)
 
 A directory generalises the single-doc server to a project. State is **per page**,
 built lazily on first visit:
@@ -127,14 +127,14 @@ The single-doc path has no chrome, no cross-page links, and one block state; the
 site path adds per-page state, navigation, listing/chrome expansion, and the
 cross-page xref + search index. Keeping them separate keeps each one simple; the
 shared surface (the websocket message shapes, the asset/`favicon` helpers, the
-embedded client) lives in `serve.rs` and is reused by `serve_site.rs`.
+embedded client) lives in `serve/mod.rs` and is reused by `serve_site/mod.rs`.
 
 ## LAN exposure & the `--host` token
 
 By default the server binds loopback only. `--host` binds `0.0.0.0` so a phone on
 the same network can open the live preview (the console prints the LAN URL and a QR
 code). That also means anyone on the network could reach it, so a shared guard in
-`serve.rs` (`new_session_token` / `lan_access` / `lan_token_guard`, installed via
+`serve/security.rs` (`new_session_token` / `lan_access` / `lan_token_guard`, installed via
 `with_lan_guard` on both servers) gates **non-loopback** requests behind a
 per-session token: the token is a random UUID minted at startup, threaded into the
 LAN URL/QR as `?t=…`, and the first tokened load sets a `tali_token` cookie so the

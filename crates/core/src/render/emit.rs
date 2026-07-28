@@ -424,6 +424,19 @@ fn emit_cells<'a>(row: &'a AstNode<'a>, aligns: &[TableAlignment], tag: &str, ou
 /// Emit a raw HTML block, injecting block `attrs` into its leading start tag
 /// when one is present (e.g. `<div ...>`). Comments, closing tags, and other
 /// fragments we can't safely annotate are emitted verbatim (no block id).
+///
+/// A literal with SEVERAL top-level roots (three `{{< input >}}` controls on
+/// consecutive lines, say — comrak makes those one HTML block) is wrapped in a
+/// single `<div>` that carries the attrs instead. A block must have exactly one
+/// root element: the preview client mounts an incoming block with
+/// `template.content.firstElementChild`, so injecting the id into the first of N
+/// roots half-applies every op — `update` swaps in root 1 and silently drops the
+/// rest (the id changes, so the op *looks* applied while the DOM keeps the old
+/// content), and `remove` strands roots 2..N in the page forever. That would make
+/// the preview disagree with what `build` publishes, which is the one thing the
+/// block model exists to prevent. `site/backlinks.rs` asserts the same invariant
+/// for its own emitter; `crates/core/tests/block_single_root.rs` asserts it for
+/// every document in the corpus.
 fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
     let lead = literal.trim_start();
     let injectable = !attrs.is_empty()
@@ -431,6 +444,12 @@ fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
         && !lead.starts_with("</")
         && !lead.starts_with("<!")
         && !lead.starts_with("<?");
+    if injectable && !is_single_root(literal) {
+        out.push_str(&format!("<div{attrs} class=\"tali-html-block\">"));
+        out.push_str(literal.trim_end());
+        out.push_str("</div>");
+        return;
+    }
     if injectable && let Some(gt) = tag_end(literal) {
         let (open, rest) = literal.split_at(gt); // rest starts with '>'
         if let Some(open) = open.strip_suffix('/') {
@@ -445,6 +464,114 @@ fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
         return;
     }
     out.push_str(literal);
+}
+
+/// Elements with no end tag, and elements whose body is raw text (a `<` inside a
+/// `<script>` is text, not a tag). Both shapes break a naive depth count.
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+const RAW_TEXT_ELEMENTS: &[&str] = &["script", "style", "textarea", "title"];
+
+/// Whether `literal` is one top-level node: one element (closed or not), with only
+/// whitespace around it. Two sibling elements, or an element plus loose text, are
+/// not — see [`emit_html_block`], which wraps those.
+///
+/// A deliberately small scanner rather than a parser: the input is a raw HTML block
+/// from a `.tmd`, and the question is only "how many nodes would `firstElementChild`
+/// have to choose between". An *unclosed* root (an author opening a `<div>` in one
+/// block and closing it in a later one, which `corpus/layout/dense-output.tmd` does)
+/// counts as one root, so that idiom keeps today's behaviour.
+fn is_single_root(literal: &str) -> bool {
+    let b = literal.as_bytes();
+    let mut i = 0;
+    let mut depth = 0usize;
+    let mut roots = 0usize;
+    let mut in_top_text = false;
+    while i < b.len() {
+        if b[i] != b'<' {
+            // A run of loose top-level text is a root of its own: the client takes the
+            // first element *child*, so text beside an element is dropped just as surely.
+            if !b[i].is_ascii_whitespace() && depth == 0 && !in_top_text {
+                in_top_text = true;
+                roots += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if literal[i..].starts_with("<!--") {
+            i = literal[i + 4..]
+                .find("-->")
+                .map(|r| i + 4 + r + 3)
+                .unwrap_or(b.len());
+            continue;
+        }
+        if literal[i..].starts_with("<!") || literal[i..].starts_with("<?") {
+            i = literal[i..].find('>').map(|r| i + r + 1).unwrap_or(b.len());
+            continue;
+        }
+        let closing = literal[i..].starts_with("</");
+        let name_start = if closing { i + 2 } else { i + 1 };
+        if !literal[name_start..].starts_with(|c: char| c.is_ascii_alphabetic()) {
+            if depth == 0 && !in_top_text {
+                in_top_text = true; // a bare `<` in prose, not the start of a tag
+                roots += 1;
+            }
+            i += 1;
+            continue;
+        }
+        let name: String = literal[name_start..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect::<String>()
+            .to_ascii_lowercase();
+        // This tag's `>`, skipping any inside a quoted attribute value (`alt="a > b"`,
+        // an SVG `d=` path, an inline handler).
+        let mut j = name_start + name.len();
+        let mut quote: Option<u8> = None;
+        while j < b.len() {
+            match (quote, b[j]) {
+                (Some(q), c) if c == q => quote = None,
+                (Some(_), _) => {}
+                (None, c @ (b'"' | b'\'')) => quote = Some(c),
+                (None, b'>') => break,
+                (None, _) => {}
+            }
+            j += 1;
+        }
+        let self_closing = j > 0 && b[j - 1] == b'/';
+        let end = (j + 1).min(b.len());
+        in_top_text = false;
+        if closing {
+            depth = depth.saturating_sub(1);
+            i = end;
+            continue;
+        }
+        if depth == 0 {
+            roots += 1;
+            if roots > 1 {
+                return false;
+            }
+        }
+        if VOID_ELEMENTS.contains(&name.as_str()) || self_closing {
+            i = end;
+            continue;
+        }
+        depth += 1;
+        if RAW_TEXT_ELEMENTS.contains(&name.as_str()) {
+            // Resume ON the close tag (the loop pops it), so a sibling after a
+            // `<script>` is not mistaken for a second root.
+            let close = format!("</{name}");
+            i = match literal[end..].find(&close) {
+                Some(rel) => end + rel,
+                None => b.len(),
+            };
+            continue;
+        }
+        i = end;
+    }
+    roots <= 1
 }
 
 fn collect_text<'a>(node: &'a AstNode<'a>, out: &mut String) {

@@ -208,7 +208,7 @@ corpus must render and satisfy the invariants); the rest lock down one seam each
 | `corpus.rs` | The corpus-wide invariants (ids, sourcepos, order, includes, decks, books, sites). |
 | `incremental.rs` / `transient.rs` | The incremental-update seam and per-keystroke re-render robustness. |
 | `tech_blog.rs` | Per-post feature coverage for the author's real blog. |
-| `config.rs` / `search.rs` / `extensions.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |
+| `config.rs` / `search.rs` / `theme_css.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |
 | `nested_validation.rs`, `cell_option_validation.rs`, `callout_kind_validation.rs`, `located_warnings.rs` | The validators and their click-to-source warnings (see [Validation & schemas](validation.tmd)). |
 | `stale_docs.rs` | Guards that deleted-machinery phrases never return to the docs. |
 | `crates/server/tests/` | The CLI surface: `--version`, `taliesin schema`, the dead-`{{< embed >}}` warning. |
