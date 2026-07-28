@@ -833,9 +833,20 @@ fn resolve_completion(
                     a.iter()
                         .filter_map(|e| {
                             let name = e["name"].as_str()?;
-                            // The typed text always starts with `\`, so a one-char `\` matches
-                            // everything, which is the point of triggering on the backslash.
-                            if !name.starts_with(typed.as_str()) {
+                            let description = e["description"].as_str().unwrap_or("");
+                            // Strip the backslash from BOTH sides, so one rule serves the
+                            // control sequence and the bare token: `\alp` and `alp` are the
+                            // same query. An empty core (a lone `\`) matches everything,
+                            // which is the point of triggering on the backslash.
+                            let core = typed.strip_prefix('\\').unwrap_or(typed.as_str());
+                            let by_name = name.strip_prefix('\\').unwrap_or(name).starts_with(core);
+                            // The vocabulary carries each symbol's glyph as its description,
+                            // so the glyph is a query too. Withheld for a single ASCII
+                            // character, which would match half the list on a substring.
+                            let selective = core.chars().count() >= 2 || !core.is_ascii();
+                            let by_glyph = selective
+                                && description.to_lowercase().contains(&core.to_lowercase());
+                            if !by_name && !by_glyph {
                                 return None;
                             }
                             let snippet = e["snippet"].as_str().unwrap_or("");
@@ -844,10 +855,14 @@ fn resolve_completion(
                             Some(CompletionItem {
                                 label: name.to_string(),
                                 kind: Some(CompletionItemKind::FUNCTION),
-                                detail: Some(format!(
-                                    "{}  ·  {category}",
-                                    e["description"].as_str().unwrap_or("")
-                                )),
+                                detail: Some(format!("{description}  ·  {category}")),
+                                // The client re-filters this list against the text in the
+                                // edit range, so an item the SERVER matched can still be
+                                // dropped by the EDITOR — which looks exactly like the server
+                                // never answering. Leading with what was actually typed makes
+                                // every returned item a prefix match, and the name and glyph
+                                // that follow keep it matching as more characters arrive.
+                                filter_text: Some(format!("{typed} {name} {description}")),
                                 insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
                                 text_edit: Some(CompletionTextEdit::Edit(TextEdit {
                                     range: replace,
@@ -2485,6 +2500,77 @@ mod tests {
             labels,
             vec!["deck"],
             "only the values matching what is typed should be offered"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // Stepless math completion. The author who knows the symbol is called "alpha" should not
+    // also have to know it needs a leading backslash. The edit must REPLACE the bare token:
+    // appending would leave `alp\alpha`.
+    #[test]
+    fn completion_offers_a_math_command_for_a_bare_token() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-stepless.tmd").unwrap();
+        let text = "Let $alp$ stand.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // `$` opens at char 4, so char 8 sits just past the `p` of `alp`.
+        let items = complete_at(&client, &uri, 60, 0, 8);
+        let alpha = items
+            .iter()
+            .find(|i| i.label == "\\alpha")
+            .unwrap_or_else(|| panic!("a bare `alp` in math should offer `\\alpha`: {items:?}"));
+        let Some(lsp_types::CompletionTextEdit::Edit(edit)) = &alpha.text_edit else {
+            panic!("the item must carry a text edit, so the typed token is replaced");
+        };
+        assert_eq!(edit.new_text, "\\alpha");
+        assert_eq!(
+            (edit.range.start.character, edit.range.end.character),
+            (5, 8),
+            "the edit must replace the typed `alp` rather than append after it"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // The vocabulary carries every symbol's glyph, which makes the glyph a legitimate query:
+    // an author who can produce `α` should be able to turn it into `\alpha`.
+    //
+    // `filterText` is load-bearing here rather than decoration. The client re-filters the
+    // server's list against the text in the edit range, so an item whose only match is its
+    // glyph is dropped by VS CODE even though the server returned it — the failure would look
+    // like the server never answered.
+    #[test]
+    fn completion_finds_a_math_command_by_its_glyph() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-comp-glyph.tmd").unwrap();
+        let text = "Let $α$ stand.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // `α` is one UTF-16 unit, so the cursor just past it is char 6.
+        let items = complete_at(&client, &uri, 62, 0, 6);
+        let alpha = items
+            .iter()
+            .find(|i| i.label == "\\alpha")
+            .unwrap_or_else(|| panic!("the glyph `α` should find `\\alpha`: {items:?}"));
+        assert!(
+            alpha
+                .filter_text
+                .as_deref()
+                .is_some_and(|f| f.contains('α')),
+            "the glyph must be in filterText or the client drops the item: {:?}",
+            alpha.filter_text
         );
 
         shutdown(&client);

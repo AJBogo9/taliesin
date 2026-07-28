@@ -287,35 +287,65 @@ pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionC
     CompletionContext::None
 }
 
-/// A partially-typed math control sequence at the cursor: `\` followed by letters, returned
-/// WITH the backslash so the caller replaces the whole sequence.
+/// A partially-typed math command at the cursor, returned exactly as typed so the caller
+/// replaces the whole thing rather than appending to it.
 ///
-/// `\` alone counts (typing the backslash should open the list, which is what makes it a
-/// useful trigger character); `\\` does not, since that is a line break, not a command being
-/// typed.
+/// Two spellings reach the same vocabulary:
+///
+/// - A **control sequence**: `\` followed by letters. `\` alone counts (typing the backslash
+///   should open the list, which is what makes it a useful trigger character); `\\` does not,
+///   since that is a row break rather than a command being typed.
+/// - A **bare token**, with no backslash at all — the stepless path. Knowing a symbol's name
+///   should be enough; remembering that it needs a leading backslash is a step, and the
+///   editor already knows the cursor is in math.
+///
+/// The bare path is the one that can misfire, because single letters are what math is *made*
+/// of, so it is withheld in the three places a short name is a name rather than a command:
+/// a token of one ASCII character (`$x$`), and a token introduced by `{`, `_` or `^`
+/// (`x_{max}`, `a_ij`, `\begin{ali`). A glyph escapes the length rule — `α` is not a
+/// variable, and turning it into `\alpha` is exactly what the vocabulary's glyphs are for.
+///
+/// Everything here is still gated on [`in_math`] by the caller, which is what keeps the bare
+/// path from firing on every word in the prose.
 fn detect_math_command(line_prefix: &str) -> Option<String> {
+    // A glyph belongs to the token for the same reason a letter does: `\α` and a bare `α`
+    // are both a way of asking for `\alpha`.
+    let is_command_char = |c: char| char::is_ascii_alphabetic(&c) || !c.is_ascii();
     let chars: Vec<char> = line_prefix.chars().collect();
     let mut j = chars.len();
-    while j > 0 && chars[j - 1].is_ascii_alphabetic() {
+    while j > 0 && is_command_char(chars[j - 1]) {
         j -= 1;
     }
-    if j == 0 || chars[j - 1] != '\\' {
-        return None;
-    }
-    // An even run of backslashes before this one means it is itself escaped.
-    let mut backslashes = 0;
-    let mut k = j - 1;
-    while chars[k] == '\\' {
-        backslashes += 1;
-        if k == 0 {
-            break;
+    if j > 0 && chars[j - 1] == '\\' {
+        // An even run of backslashes before this one means it is itself escaped, so this is
+        // a row break. What follows it is still a bare token in math, so fall through rather
+        // than refusing: `\\ al` and `x al` are the same position.
+        let mut backslashes = 0;
+        let mut k = j - 1;
+        while chars[k] == '\\' {
+            backslashes += 1;
+            if k == 0 {
+                break;
+            }
+            k -= 1;
         }
-        k -= 1;
+        if backslashes % 2 == 1 {
+            return Some(chars[j - 1..].iter().collect());
+        }
     }
-    if backslashes % 2 == 0 {
+    let token: String = chars[j..].iter().collect();
+    if token.is_empty() {
         return None;
     }
-    Some(chars[j - 1..].iter().collect())
+    // A brace, subscript or superscript introduces a NAME, not a command.
+    if j > 0 && matches!(chars[j - 1], '{' | '_' | '^') {
+        return None;
+    }
+    // One ASCII letter is a variable. One glyph is not.
+    if token.chars().count() < 2 && token.is_ascii() {
+        return None;
+    }
+    Some(token)
 }
 
 /// Is the cursor (the end of `doc_prefix`) inside a math span?
@@ -976,6 +1006,57 @@ mod tests {
         // `\\` ends a row in `aligned`; completing after it would offer commands for a
         // backslash the author already finished.
         assert_eq!(ctx(r"$$ x \\", "$$ x \\\\"), CompletionContext::None);
+    }
+
+    #[test]
+    fn a_bare_word_inside_math_is_a_command_being_typed() {
+        // The stepless path: `\` is a step, and the author who knows the symbol's name
+        // should not have to know that it needs a backslash first.
+        assert_eq!(ctx("$alp", "---\nt: x\n---\n\n$alp"), math("alp"));
+    }
+
+    #[test]
+    fn a_single_letter_inside_math_is_a_variable_not_a_command() {
+        // `$a$`, `$x + y$`: single letters are what math is MADE of. Opening a menu on
+        // every one of them is the failure mode that makes stepless completion unusable.
+        assert_eq!(ctx("$a", "---\nt: x\n---\n\n$a"), CompletionContext::None);
+        assert_eq!(
+            ctx("$x + y", "---\nt: x\n---\n\n$x + y"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_bare_word_in_a_brace_is_a_subscript_not_a_command() {
+        // `x_{max}`, `a_{ij}`, and `\begin{ali` all put a short NAME after a brace. The
+        // backslash path still works there; only the stepless shortcut is withheld.
+        assert_eq!(
+            ctx("$x_{max", "---\nt: x\n---\n\n$x_{max"),
+            CompletionContext::None
+        );
+        assert_eq!(
+            ctx("$x_ij", "---\nt: x\n---\n\n$x_ij"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_bare_word_in_prose_is_just_a_word() {
+        // The whole guard is `in_math`. Without it, stepless completion would fire on
+        // every word in the document.
+        assert_eq!(
+            ctx("the alpha channel", "---\nt: x\n---\n\nthe alpha channel"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_glyph_is_a_way_to_ask_for_its_command() {
+        // The vocabulary carries the glyph, so the glyph is a legitimate query: an author
+        // who can produce `α` should be able to turn it into `\alpha`. One char is enough
+        // here (unlike a bare word) because a glyph is not a variable name.
+        assert_eq!(ctx("$α", "---\nt: x\n---\n\n$α"), math("α"));
+        assert_eq!(ctx(r"$\α", "---\nt: x\n---\n\n$\\α"), math(r"\α"));
     }
 
     #[test]
