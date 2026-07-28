@@ -95,6 +95,14 @@ importable), because agents want it; and `--require-kernel` probes to gate on it
 probe is `doctor`'s business) and points at `taliesin doctor` for the full audit. See the
 [configuration reference](configuration.html) for how the interpreter is chosen.
 
+**A project-supplied interpreter is reported, not run.** When the interpreter comes from
+the project being checked — a `_site.yml` `python:` / `r:` field, or the project's own
+`.venv` — `check` names it but never spawns it, and its `runs` is `null` with a
+`not_probed` reason. Spawning a binary a *document's* author named is execution, and
+`check` is the pass you run on a project before you have read it. `--require-kernel` (or
+`taliesin doctor`) is the opt-in that probes it. An interpreter you chose yourself
+(`TALIESIN_PYTHON` / `TALIESIN_R`, or the `python3` on your `PATH`) is probed as before.
+
 At a glance, here is everything `check` looks at, grouped by what it protects:
 
 | Category | Catches |
@@ -145,7 +153,31 @@ is logged.
 |---|---|
 | `--host` | Bind your LAN and print a **QR code** for phones, gated by a per-session access token (see below) |
 | `--open` | Launch the default browser at the preview URL |
-| `--no-exec` | Render code cells as source without executing them (preview untrusted docs safely) |
+| `--no-exec` | Render code cells as source without executing them: no kernel is started, and a `{js}` cell is not handed to the browser either. It does **not** strip raw HTML — see below |
+
+### Documents you did not write
+
+Previewing a `.tmd` runs it. That is the point of the tool, and it means **opening a
+document someone sent you is the same kind of decision as running a script they sent
+you.** Taliesin is honest about this rather than pretending to a sandbox it does not have
+(see also [`SECURITY.md`](https://github.com/AJBogo9/taliesin/blob/main/SECURITY.md)):
+
+- **Code cells execute.** `{python}` / `{r}` run against a Jupyter kernel with your
+  permissions; a `{js}` cell runs in your browser on the preview's origin.
+- **Raw HTML passes through**, because Markdown says it does. So does anything a
+  document injects via `include-in-header`, `include-before-body`, `include-after-body`
+  or `css:` — those files are inserted verbatim.
+- **`--no-exec` stops the code cells** — both kinds — and starts no kernel. It is *not* a
+  sanitizer: raw `<script>` in the document body and the `include-*` / `css:` injections
+  still reach the page. There is deliberately no HTML sanitizer and no CSP, because a
+  sanitizer that a document's own author can work around buys a false sense of safety.
+- **Two things are enforced rather than documented**, because they are the tool being
+  steered *outside* the document by its metadata rather than the document running its own
+  code: a `mounts:` path may not leave the directory beside the project, and `check` never
+  spawns an interpreter the project itself named.
+
+The practical reading: `--no-exec` is the right flag for *skimming* a stranger's document,
+and a container or a throwaway user is the right answer for *trusting* one.
 
 `build` takes these flags (they may appear anywhere on the line):
 

@@ -451,3 +451,84 @@ fn a_suggestion_only_document_passes_until_strict() {
     assert_eq!(ds[0]["code"], "TAL-SHAPE-DUP");
     assert_eq!(ds[0]["severity"], "suggestion");
 }
+
+/// Item 81 (2026-07-28). `check` is the kernel-free, network-free pass an agent runs first
+/// on a project it has not read, and `_site.yml`'s `python:` field is a string that
+/// project's author wrote. Before this, `check --format json` (the shape the MCP `check`
+/// tool returns, described to the agent only as "Validate") ran
+/// `Command::new(<that string>).arg("--version")`.
+///
+/// The interpreter here is a shell script that *records having been run*, so the assertion
+/// is about a real spawn rather than about output wording. The `--require-kernel` half is
+/// what keeps the test non-vacuous: if the probe were removed outright instead of gated,
+/// the marker would be absent in both halves and only this row would notice.
+#[cfg(unix)]
+#[test]
+fn check_does_not_spawn_a_project_supplied_interpreter_without_an_opt_in() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!(
+        "tali-check-field-interp-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let marker = dir.join("it-ran");
+    let fake = dir.join("fake-python.sh");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\ntouch '{}'\necho 'Python 9.9.9'\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(
+        dir.join("_site.yml"),
+        format!("title: Field\npython: {}\n", fake.display()),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("index.tmd"),
+        "---\ntitle: F\n---\n\n```{python}\n1 + 1\n```\n",
+    )
+    .unwrap();
+    let path = dir.to_str().unwrap();
+
+    // 1. The JSON path resolves and reports the interpreter, and does not run it.
+    let (_ok, stdout, _e) = run(&["check", path, "--format", "json"]);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+    let env = parsed["environment"]
+        .as_array()
+        .expect("environment array present");
+    assert_eq!(env.len(), 1, "one entry for the python cell: {stdout}");
+    assert!(
+        !marker.exists(),
+        "check must not spawn a `_site.yml`-supplied interpreter: {stdout}"
+    );
+    assert!(
+        env[0]["path"]
+            .as_str()
+            .unwrap_or("")
+            .contains("fake-python"),
+        "the entry still names which interpreter would be used: {stdout}"
+    );
+    assert!(
+        env[0]["runs"].is_null() && env[0]["not_probed"].is_string(),
+        "runnability is reported as unknown, with a reason: {stdout}"
+    );
+
+    // 2. `--require-kernel` is the opt-in, and it really does probe — without this the
+    //    assertion above would also pass if the probe had been deleted entirely.
+    let (_ok2, _o2, _e2) = run(&["check", path, "--require-kernel"]);
+    assert!(
+        marker.exists(),
+        "--require-kernel must still probe the project-supplied interpreter"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

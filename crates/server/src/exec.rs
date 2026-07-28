@@ -1067,8 +1067,12 @@ fn py_str_literal(s: &str) -> String {
 /// Whether `--no-exec` / `TALIESIN_NO_EXEC` is in force, i.e. code cells render as source
 /// and no interpreter is ever asked to run anything. Read here rather than inline so the
 /// *build* can consult the same answer before deciding whether to boot a warm pool.
+///
+/// Delegates to `taliesin_core::render::no_exec_in_force`, which the render pass consults
+/// for `{js}` cells (item 79). Two independent reads of one variable is exactly the shape
+/// that lets a flag mean two things in one process, so there is one owner.
 pub(crate) fn exec_disabled() -> bool {
-    std::env::var_os("TALIESIN_NO_EXEC").is_some()
+    taliesin_core::render::no_exec_in_force()
 }
 
 /// Whether an output must not be cached: any execution error (a cell error, a

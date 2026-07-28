@@ -331,6 +331,35 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
     for (page_rel, w) in site.validate_categories() {
         out.push(diag_from(&w, &page_rel));
     }
+    // An `{{< embed >}}`-referenced deck is BUILT and SERVED but deliberately kept out of
+    // `site.pages` so it stays out of nav + search (`site/mod.rs`'s `pages.retain`). Every
+    // static validator walked `site.pages`, so a deck in a site reached **none** of them:
+    // measured, a site whose deck carried two missing assets, a broken link, an alt-less
+    // `<img>`, an unnamed link and malformed `$$` gave "no problems found", exit 0, while
+    // `check talk.tmd` reported all six (item 109). The asymmetry mattered more than its
+    // severity suggests, because a deck's defects are otherwise found by an *audience* —
+    // the latest and most expensive point in the stream (item 132).
+    //
+    // `Scope::Standalone` is the honest scope: a deck is not a page of the site, so
+    // cross-page xref resolution does not apply to it — it is checked as the standalone
+    // document it is served as, which is also what `check talk.tmd` does.
+    for deck in &site.decks {
+        let rel = deck
+            .input
+            .strip_prefix(root)
+            .unwrap_or(&deck.input)
+            .display()
+            .to_string();
+        match collect_file_diagnostics(&deck.input) {
+            // Report the deck by its site-relative path, like every page above it, rather
+            // than the absolute path the single-file path uses.
+            Ok(diags) => out.extend(diags.into_iter().map(|mut d| {
+                d.file = rel.clone();
+                d
+            })),
+            Err(e) => out.push(Diagnostic::new(rel, None, e)),
+        }
+    }
     Ok(out)
 }
 
@@ -342,15 +371,38 @@ struct EnvEntry {
     lang: &'static str,
     path: String,
     provenance: String,
-    /// The interpreter binary spawned + returned a version (it exists and runs). When
-    /// `false`, the binary itself is absent/broken and `kernel_pkg_ok` is moot.
-    runs: bool,
+    /// `Some(true/false)`: the interpreter binary spawned + returned a version (it exists
+    /// and runs); `Some(false)` means the binary itself is absent/broken and
+    /// `kernel_pkg_ok` is moot. **`None` means no probe was run**, so runnability is
+    /// unknown — see `not_probed` (item 81).
+    runs: Option<bool>,
     /// `ipykernel` (python) / `IRkernel` (r).
     kernel_pkg: &'static str,
-    kernel_pkg_ok: bool,
+    kernel_pkg_ok: Option<bool>,
     version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// Why this interpreter was resolved but not spawned, and how to ask for a probe.
+    /// Absent when it was probed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    not_probed: Option<String>,
+}
+
+impl EnvEntry {
+    /// Whether this entry reports a kernel that is *known* not ready.
+    ///
+    /// An unprobed entry (item 81) is **unknown**, not degraded: nothing spawned that
+    /// binary, so printing "interpreter not found or failed to run" for it would be the
+    /// same class of misreport as the promise item 79 fixes.
+    fn known_not_ready(&self) -> bool {
+        self.runs == Some(false) || self.kernel_pkg_ok == Some(false)
+    }
+
+    /// Whether a probe confirmed a ready kernel. `--require-kernel` needs this positive
+    /// form: "not confirmed ready" must fail the gate, whether the probe said no or never ran.
+    fn confirmed_ready(&self) -> bool {
+        self.runs == Some(true) && self.kernel_pkg_ok == Some(true)
+    }
 }
 
 /// Which executable languages (`python`/`r`) a document actually uses, in first-seen
@@ -372,23 +424,55 @@ fn used_languages(blocks: &[taliesin_core::Block]) -> Vec<&'static str> {
     seen
 }
 
-/// Build one `EnvEntry` for `lang` given the resolved interpreter (probes it).
-fn env_entry(lang: &'static str, resolved: &crate::interpreter::Resolved) -> EnvEntry {
+/// Build one `EnvEntry` for `lang` given the resolved interpreter, probing it only when
+/// that is the user's choice rather than the checked project's (item 81).
+///
+/// `allow_project_probe` is the user's explicit opt-in (`--require-kernel`). Without it a
+/// *project-supplied* interpreter — a `_site.yml` `python:`/`r:` field, or the project's own
+/// `.venv` — is reported but never spawned: `check` is the kernel-free pass an agent runs
+/// first on a project it has not read, and `Command::new(bin)` on a string that project's
+/// author wrote is execution the user did not ask for. Resolution, path and provenance are
+/// unchanged, so the report still says exactly which interpreter *would* be used.
+fn env_entry(
+    lang: &'static str,
+    resolved: &crate::interpreter::Resolved,
+    allow_project_probe: bool,
+) -> EnvEntry {
     let lang_enum = if lang == "r" {
         crate::interpreter::Lang::R
     } else {
         crate::interpreter::Lang::Python
     };
-    let p = crate::interpreter::probe(resolved, lang_enum);
-    EnvEntry {
+    let kernel_pkg = if lang == "r" { "IRkernel" } else { "ipykernel" };
+    let base = EnvEntry {
         lang,
         path: resolved.path.display().to_string(),
         provenance: resolved.provenance.label(lang_enum).to_string(),
-        runs: p.runs,
-        kernel_pkg: if lang == "r" { "IRkernel" } else { "ipykernel" },
-        kernel_pkg_ok: p.kernel_pkg_ok,
+        runs: None,
+        kernel_pkg,
+        kernel_pkg_ok: None,
+        version: None,
+        error: None,
+        not_probed: None,
+    };
+    if resolved.provenance.is_project_supplied() && !allow_project_probe {
+        return EnvEntry {
+            not_probed: Some(format!(
+                "not probed: this interpreter was chosen by the project ({}), and `check` \
+                 does not run a project-supplied binary. Pass --require-kernel, or run \
+                 `taliesin doctor`, to probe it",
+                resolved.provenance.label(lang_enum)
+            )),
+            ..base
+        };
+    }
+    let p = crate::interpreter::probe(resolved, lang_enum);
+    EnvEntry {
+        runs: Some(p.runs),
+        kernel_pkg_ok: Some(p.kernel_pkg_ok),
         version: p.version,
         error: p.error,
+        ..base
     }
 }
 
@@ -396,7 +480,11 @@ fn env_entry(lang: &'static str, resolved: &crate::interpreter::Resolved) -> Env
 /// language the target uses, the resolved interpreter + kernel-package probe. Never
 /// affects `check`'s exit code. Field pins come from `_site.yml` for a site; a single
 /// file has none. Empty when the target has no python/r cells.
-fn collect_environment(path: &Path) -> Vec<EnvEntry> {
+///
+/// `allow_project_probe` carries the user's `--require-kernel` opt-in down to
+/// [`env_entry`], which is where item 81's rule lives: a project-supplied interpreter is
+/// resolved and reported, never spawned, unless the user asked.
+fn collect_environment(path: &Path, allow_project_probe: bool) -> Vec<EnvEntry> {
     if path.is_dir() {
         let site = taliesin_core::Site::discover(path);
         // Union of languages across pages, plus the project-level field pins + root.
@@ -428,7 +516,7 @@ fn collect_environment(path: &Path) -> Vec<EnvEntry> {
                 } else {
                     crate::interpreter::resolve_python(site.config.python.as_deref(), path)
                 };
-                env_entry(lang, &resolved)
+                env_entry(lang, &resolved, allow_project_probe)
             })
             .collect()
     } else {
@@ -445,7 +533,7 @@ fn collect_environment(path: &Path) -> Vec<EnvEntry> {
                 } else {
                     crate::interpreter::resolve_python(None, base)
                 };
-                env_entry(lang, &resolved)
+                env_entry(lang, &resolved, allow_project_probe)
             })
             .collect()
     }
@@ -478,7 +566,12 @@ pub(crate) fn check_json(target: &Path) -> String {
         .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
         .and_then(|r| r);
     match collected {
-        Ok(diags) => format_json(&diags, &collect_environment(target)),
+        // `false`: this is the MCP `check` tool's path, described to the agent only as
+        // "Validate". An agent pointed at an unknown project has made no choice to run
+        // anything in it, so a project-supplied interpreter is reported, not spawned
+        // (item 81). There is no opt-in here by design — an agent that wants a live probe
+        // has `doctor`.
+        Ok(diags) => format_json(&diags, &collect_environment(target, false)),
         Err(e) => json_error(&e),
     }
 }
@@ -790,7 +883,9 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     // a live linter's. The JSON still carries `environment: []`, so a consumer parses it
     // identically. A saved-file `check --format json` keeps the probe (agents want it).
     let environment = if !stdin && (format == "json" || require_kernel) {
-        collect_environment(target)
+        // Only `--require-kernel` is an opt-in to spawning a *project-supplied* interpreter
+        // (item 81); a bare `--format json` resolves and reports it without running it.
+        collect_environment(target, require_kernel)
     } else {
         Vec::new()
     };
@@ -811,14 +906,11 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         // Under `--require-kernel` (the only human path that probed), surface just the DEGRADED
         // languages — an all-green probe is `doctor`'s business, not a linter's — then point at
         // `doctor` for the full audit.
-        let degraded: Vec<&EnvEntry> = environment
-            .iter()
-            .filter(|e| !e.runs || !e.kernel_pkg_ok)
-            .collect();
+        let degraded: Vec<&EnvEntry> = environment.iter().filter(|e| e.known_not_ready()).collect();
         if !degraded.is_empty() {
             eprintln!("\nEnvironment (kernels not ready):");
             for e in &degraded {
-                let pkg = if !e.runs {
+                let pkg = if e.runs == Some(false) {
                     // The interpreter binary itself is absent/broken, so the kernel
                     // package is moot; name that instead of a misleading "pkg MISSING".
                     "interpreter not found or failed to run".to_string()
@@ -834,7 +926,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         if kernel_fail {
             let unready: Vec<&str> = environment
                 .iter()
-                .filter(|e| !e.runs || !e.kernel_pkg_ok)
+                .filter(|e| !e.confirmed_ready())
                 .map(|e| e.lang)
                 .collect();
             eprintln!(
@@ -908,7 +1000,11 @@ fn gating(diags: &[Diagnostic], floor: Floor) -> impl Iterator<Item = &Diagnosti
 /// interpreter is absent/broken or its Jupyter kernel package isn't importable. Off by
 /// default, so kernel readiness stays informational and a Python-less CI box can still lint.
 fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
-    require_kernel && environment.iter().any(|e| !e.runs || !e.kernel_pkg_ok)
+    // Positive form on purpose: the gate asks "is a kernel confirmed ready", so an entry
+    // that was never probed fails it. Under `--require-kernel` every entry *is* probed
+    // (item 81's skip is exactly what that flag opts out of), so this cannot silently
+    // downgrade the gate to a pass — it can only refuse to guess.
+    require_kernel && environment.iter().any(|e| !e.confirmed_ready())
 }
 
 #[cfg(test)]
@@ -1830,7 +1926,7 @@ mod tests {
         let f = dir.join("x.tmd");
         std::fs::write(&f, "# Title\n\nJust prose, no cells.\n").unwrap();
         assert!(
-            collect_environment(&f).is_empty(),
+            collect_environment(&f, true).is_empty(),
             "a doc with no python/r cells reports no Environment entries"
         );
     }
@@ -1840,7 +1936,7 @@ mod tests {
         let dir = tmp("env-pycell");
         let f = dir.join("x.tmd");
         std::fs::write(&f, "# T\n\n```{python}\nprint(1)\n```\n").unwrap();
-        let env = collect_environment(&f);
+        let env = collect_environment(&f, true);
         assert_eq!(
             env.len(),
             1,
@@ -2075,11 +2171,23 @@ mod tests {
             lang: "python",
             path: "/usr/bin/python3".into(),
             provenance: "default".into(),
-            runs,
+            runs: Some(runs),
             kernel_pkg: "ipykernel",
-            kernel_pkg_ok,
+            kernel_pkg_ok: Some(kernel_pkg_ok),
             version: None,
             error: None,
+            not_probed: None,
+        }
+    }
+
+    /// An entry that was resolved but never spawned (item 81): the project supplied the
+    /// interpreter and the user did not opt in.
+    fn env_fixture_unprobed() -> EnvEntry {
+        EnvEntry {
+            runs: None,
+            kernel_pkg_ok: None,
+            not_probed: Some("not probed: …".into()),
+            ..env_fixture(false, false)
         }
     }
 
@@ -2097,5 +2205,12 @@ mod tests {
         assert!(kernel_gate_fails(&no_pkg, true));
         // On but no code cells (empty environment): nothing to require, so it passes.
         assert!(!kernel_gate_fails(&[], true));
+        // An unprobed entry is "not confirmed ready", so the gate refuses rather than
+        // guessing (item 81). Unreachable in practice — `--require-kernel` is the opt-in
+        // that makes every entry probed — which is why it is asserted here instead.
+        assert!(kernel_gate_fails(&[env_fixture_unprobed()], true));
+        // …and it is not *degraded* either: nothing spawned it, so the human "kernels not
+        // ready" block must not claim the interpreter was missing.
+        assert!(!env_fixture_unprobed().known_not_ready());
     }
 }

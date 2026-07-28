@@ -33,6 +33,19 @@ pub enum Provenance {
 }
 
 impl Provenance {
+    /// Whether the *project being checked* chose this interpreter, as opposed to the user.
+    ///
+    /// The distinction only matters where taliesin spawns the binary as a side effect of a
+    /// command the user did not think of as executing anything: `check` is the kernel-free,
+    /// network-free pass an agent runs first on an unknown project, and a `_site.yml`
+    /// `python:` field is a string that project's author wrote (item 81). A `.venv` counts
+    /// too — it is the common *legitimate* case, and also just a path inside a directory
+    /// someone else may have sent you. `TALIESIN_PYTHON` and the bare `python3` fallback are
+    /// the user's own choice, so spawning those is not a surprise.
+    pub fn is_project_supplied(self) -> bool {
+        matches!(self, Provenance::Field | Provenance::Venv)
+    }
+
     /// Human label naming where the interpreter came from, for the kernel-start log
     /// line and `check`'s Environment section (e.g. `.venv`, `TALIESIN_PYTHON`).
     pub fn label(self, lang: Lang) -> &'static str {

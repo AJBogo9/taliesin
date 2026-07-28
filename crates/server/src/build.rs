@@ -1031,14 +1031,18 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
 fn mount_warnings(mounts: &[taliesin_core::site::Mount], root: &Path, out: &Path) -> Vec<String> {
     mounts
         .iter()
-        .map(|m| {
-            format!(
+        .filter_map(|m| {
+            // A mount that fails containment (item 80) is not part of this site, so it gets
+            // no build recipe. `load_config` has already dropped it and warned; printing a
+            // `taliesin build /etc` recipe here would be the tool suggesting the escape.
+            let mroot = m.resolve(root).ok()?;
+            Some(format!(
                 "mount '/{}/' is preview-only and not in the static build (its links will 404). \
                  Build it: taliesin build {} --out {}",
                 m.at,
-                root.join(&m.path).display(),
+                mroot.display(),
                 out.join(&m.at).display(),
-            )
+            ))
         })
         .collect()
 }
@@ -1692,7 +1696,38 @@ async fn build_site_async(
             crate::interpreter::resolve_r(site.config.r.as_deref(), root),
         );
         ex.set_progress(None, Some(deck.url.clone()));
-        doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
+        // Item 109: the deck's own render + static diagnostics, counted toward `--strict`
+        // like a page's. This loop rendered `doc` and looked only at cell *errors*, so a
+        // deck's missing assets, broken links, alt-less images and malformed math shipped
+        // under `--strict` with exit 0 — the deck was the one document in a site that no
+        // validator ever read. `Scope::Standalone` matches `check`'s deck pass: a deck is
+        // not a page of the site, so it is judged as the standalone document it is served
+        // as (its `.tmd` links are rewritten below, but not by `Site::render_page_doc_*`).
+        let deck_statics = crate::check::page_static_diagnostics(
+            &src,
+            &doc.blocks,
+            base,
+            doc.format,
+            crate::check::Scope::Standalone,
+        );
+        // Cross-refs too, resolved the way `check <deck.tmd>` resolves them (a deck inside a
+        // project may legitimately point at an anchor another page defines). Without this the
+        // two front doors disagreed by exactly one diagnostic on the same file — measured —
+        // which is the drift item 134 is about.
+        let deck_elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(&deck.input);
+        let deck_xrefs =
+            taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &deck_elsewhere);
+        for w in doc
+            .warnings
+            .iter()
+            .chain(deck_statics.iter())
+            .chain(deck_xrefs.iter())
+        {
+            log::warn(&locate(w, &deck.url));
+        }
+        problems += crate::check::blocking(&doc.warnings)
+            + crate::check::blocking(&deck_statics)
+            + crate::check::blocking(&deck_xrefs);
         kernel_unavailable |= ex.diagnostic().is_some();
         problems += report_cell_errors(&doc.blocks, &deck.url);
         // Give a shared deck link the same rich social treatment a page gets (a deck is

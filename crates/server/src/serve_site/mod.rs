@@ -290,7 +290,17 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .clone()
         .into_iter()
         .filter_map(|m| {
-            let mroot = root.join(&m.path);
+            // Containment (item 80) is enforced once in `load_config`, so a refusal here can
+            // only come from a mount that did not travel through it. Kept anyway: this is
+            // the call site that turns a path into a live HTTP root plus an executor, and it
+            // must not be the one place that trusts the string.
+            let mroot = match m.resolve(&root) {
+                Ok(p) => p,
+                Err(why) => {
+                    crate::log::warn(&m.refusal_warning(&root, why));
+                    return None;
+                }
+            };
             let mroot = mroot.canonicalize().unwrap_or(mroot);
             if !mroot.is_dir() {
                 crate::log::warn(&format!(

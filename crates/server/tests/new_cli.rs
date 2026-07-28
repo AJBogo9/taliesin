@@ -343,3 +343,83 @@ fn tour_deck_matches_the_corpus_fixture() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Items 120 + 121 (2026-07-28). Following the tool's own instructions in order used to
+/// produce a warning and a flat article: `init` prints "Preview it: `taliesin preview .`",
+/// the scaffold's Next steps point at `taliesin new deck`, and `new deck` wrote the deck into
+/// the site root while printing a *different* command. Browser-verified before the fix: the
+/// scaffolded slide reading "Each `##` heading starts a new slide" rendered as one stacked
+/// article under `preview .`, while `preview ./my-talk.tmd` on the same file gave a real deck.
+///
+/// A deck in a site is a component of a page, so the fix is words, not a write: `new` must not
+/// edit the author's `index.tmd` to insert the embed.
+#[test]
+fn a_deck_scaffolded_into_a_site_says_how_to_use_it_there() {
+    let dir = tmp("deck-in-site");
+    // A site, not a bare directory: `_site.yml` is what makes the advice differ.
+    let (ok_init, ..) = run(&["init", dir.to_str().unwrap(), "--template", "basic"]);
+    assert!(ok_init, "init must scaffold the site");
+    assert!(dir.join("_site.yml").is_file(), "init writes _site.yml");
+
+    let (ok, stdout, stderr) = run(&["new", "deck", "my-talk", "--dir", dir.to_str().unwrap()]);
+    assert!(ok, "new deck must still succeed:\n{stderr}");
+    assert!(
+        stdout.contains("{{< embed my-talk.tmd >}}"),
+        "it must give the embed line to paste, naming the file it just wrote:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("preview") && stdout.contains("my-talk.tmd"),
+        "and the way to preview the deck directly:\n{stdout}"
+    );
+    // The trap: recommending the site preview for a loose deck is what produced the flat
+    // article. Naming that command as the thing NOT to do is fine; recommending it is not.
+    assert!(
+        !stdout.contains("Preview it:"),
+        "the plain 'Preview it:' advice is the wrong one for a deck in a site:\n{stdout}"
+    );
+    // Words, not a write: the author's page is untouched.
+    let index = std::fs::read_to_string(dir.join("index.tmd")).unwrap();
+    assert!(
+        !index.contains("embed"),
+        "`new` must not edit the author's index.tmd (the .tmd is their surface)"
+    );
+
+    // And the warning the author sees if they preview the site anyway names the value they
+    // actually wrote. `is_reveal_format` accepts only `deck` / `*-deck`, so the old wording
+    // ("declares a revealjs deck") named a string that cannot be in their file (item 121).
+    let (_ok, err) = check_is_clean(&dir);
+    assert!(
+        err.contains("`format: deck`"),
+        "the loose-deck warning names `format: deck`: {err}"
+    );
+    assert!(
+        !err.contains("revealjs"),
+        "no diagnostic may name `revealjs`, a value the parser rejects: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The other side of the same decision: outside a site, and for every non-deck kind inside
+/// one, the plain "Preview it:" line is still correct and must not change.
+#[test]
+fn other_scaffolds_keep_the_plain_preview_advice() {
+    let loose = tmp("deck-loose");
+    let (ok, stdout, stderr) = run(&["new", "deck", "solo", "--dir", loose.to_str().unwrap()]);
+    assert!(ok, "{stderr}");
+    assert!(
+        stdout.contains("Preview it:") && !stdout.contains("embed"),
+        "a deck outside a site previews directly, with no embed advice:\n{stdout}"
+    );
+
+    let site = tmp("post-in-site");
+    let (ok_init, ..) = run(&["init", site.to_str().unwrap(), "--template", "basic"]);
+    assert!(ok_init);
+    let (ok2, stdout2, stderr2) = run(&["new", "post", "hello", "--dir", site.to_str().unwrap()]);
+    assert!(ok2, "{stderr2}");
+    assert!(
+        stdout2.contains("Preview it:") && !stdout2.contains("embed"),
+        "a post IS a page of the site, so its advice is unchanged:\n{stdout2}"
+    );
+    let _ = std::fs::remove_dir_all(&loose);
+    let _ = std::fs::remove_dir_all(&site);
+}

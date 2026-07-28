@@ -54,7 +54,7 @@ struct Tool {
 const TOOLS: &[Tool] = &[
     Tool {
         name: "check",
-        description: "Validate a .tmd file or project directory. Returns {diagnostics, environment}: each diagnostic carries a stable code, severity, file/line, message, and (for a typo) a suggested replacement.",
+        description: "Validate a .tmd file or project directory. Runs no code and touches no network. Returns {diagnostics, environment}: each diagnostic carries a stable code, severity, file/line, message, and (for a typo) a suggested replacement. An environment entry names the interpreter a language would use; when the project itself supplied that interpreter (a _site.yml python:/r: field, or its .venv) it is NOT spawned, so `runs` is null and `not_probed` says why.",
         takes_path: true,
     },
     Tool {

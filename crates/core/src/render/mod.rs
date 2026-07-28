@@ -136,6 +136,29 @@ pub fn render_document(src: &str) -> RenderedDoc {
     render_internal(src.to_owned(), None, None, None, None, None)
 }
 
+/// Whether `--no-exec` / `TALIESIN_NO_EXEC` is in force: the user asked that this
+/// document's code cells not run.
+///
+/// Read in `crates/core` — not only in the server's executor — because a `{js}` cell is a
+/// **code cell whose runtime is the browser** rather than a kernel. Before this, `--no-exec`
+/// stopped `{python}`/`{r}` and emitted `{js}` unchanged while
+/// `docs/guide/reference/cli.tmd` called the flag a way to "preview untrusted docs safely"
+/// (item 79, measured: `crates/core` contained zero references to the variable). A flag
+/// named "no exec" that runs half the document's code is worse than no flag.
+///
+/// An env read in the render path follows the two already here (`TALIESIN_RENDER_TIMEOUT`,
+/// `TALIESIN_MERMAID_URL`), and the flag is process-wide by construction — `cli.rs` sets the
+/// variable — so there is nothing per-document to thread through the render entry points.
+///
+/// **Deliberately not extended** to raw `<script>` passthrough, `include-in-header` or
+/// `css:`. Removing author-written HTML is a sanitizer, which this project ruled out
+/// (2026-07-03 catalog: no CSP, no sanitizer, no cell sandbox). Those channels are
+/// *documented* instead, in the same place this flag is. `mermaid` is likewise untouched: a
+/// diagram is a declarative description, not the document's program.
+pub fn no_exec_in_force() -> bool {
+    std::env::var_os("TALIESIN_NO_EXEC").is_some()
+}
+
 /// The languages Taliesin executes against a warm kernel, whose *output block* can
 /// therefore carry a figure/table anchor. This is the canonical set: the render pass
 /// reserves a `@fig-`/`@tbl-` number only for a lang that will actually produce the
@@ -858,7 +881,14 @@ fn render_internal_impl(
                     // later figure down by one. `executes_to_kernel` is the canonical
                     // executable set (`exec::kernel_lang` is drift-locked to it).
                     let include = cell.as_ref().is_none_or(|c| c.include);
-                    let emitted_at_render_time = matches!(lang.as_str(), "mermaid" | "js");
+                    // Under `--no-exec` a `{js}` figure no longer materializes, so it must
+                    // not burn a figure number or register an anchor — the same reasoning
+                    // the comment above gives for `{bash}`/`{sql}`, reached for the same
+                    // reason (nothing will emit the float). It falls through to the
+                    // keeps-its-source arm below and warns like any other non-executing
+                    // labelled cell.
+                    let emitted_at_render_time =
+                        lang == "mermaid" || (lang == "js" && !no_exec_in_force());
                     if !(emitted_at_render_time || (executes_to_kernel(&lang) && include)) {
                         if let Some(a) = anchor {
                             warnings.push(if include {
@@ -1032,9 +1062,17 @@ fn render_internal_impl(
                 }
             }
         } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "js") {
-            // Native interactive `{js}` cell: the tali-js enhancer runs it
-            // client-side (no Observable runtime).
-            html.push_str(&emit_js_cell(&c.code, &id, &c.js, &attrs));
+            if no_exec_in_force() {
+                // `--no-exec`: a `{js}` cell is a code cell whose kernel is the browser, so
+                // it renders as source like a `{python}` cell with no kernel does (item 79).
+                // `emit` keeps the highlighted source and the block's id/sourcepos, so
+                // click-to-source and the incremental swap are unaffected.
+                emit(node, &attrs, &mut html);
+            } else {
+                // Native interactive `{js}` cell: the tali-js enhancer runs it
+                // client-side (no Observable runtime).
+                html.push_str(&emit_js_cell(&c.code, &id, &c.js, &attrs));
+            }
         } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
             // `echo: false` / `include: false`: keep the block so the executor still
             // runs it, but hide its source.

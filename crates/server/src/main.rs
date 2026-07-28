@@ -186,8 +186,9 @@ fn usage() {
     println!("                             anyone else's;");
     println!("                             --host exposes it on your LAN with a QR code");
     println!("                             to open on a phone; --open launches a browser;");
-    println!("                             --no-exec previews untrusted docs as source,");
-    println!("                             never running their code cells)");
+    println!("                             --no-exec renders code cells as source,");
+    println!("                             kernel and {{js}} alike, but does not strip raw");
+    println!("                             HTML: see `Documents you did not write`)");
     println!(
         "  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]"
     );
@@ -270,7 +271,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20             over when both are given)\n\
              \x20 --host      bind your LAN + print a QR code for phones (token-gated)\n\
              \x20 --open      launch the default browser at the preview URL\n\
-             \x20 --no-exec   render code cells as source, never executing them\n\
+             \x20 --no-exec   render code cells as source ({python}/{r} and {js} alike),\n\
+             \x20             never executing them. Not an HTML sanitizer\n\
              \n\
              Example:\n\
              \x20 taliesin preview index.tmd --open\n\

@@ -194,7 +194,16 @@ pub(super) fn code_lang(info: &str) -> Option<String> {
     } else {
         info
     };
-    let lang = token.split_whitespace().next().unwrap_or("");
+    // Split on a comma as well as whitespace. ` ```rust,ignore ` is the shared convention of
+    // mdBook, rustdoc, Pandoc, Docusaurus and GitHub for "this is Rust, and here is an
+    // attribute for it", and Taliesin used to take the whole string as the language: measured
+    // on `rust-lang/book`, **329 of 457** reported problems were this one shape (734 fence
+    // occurrences), and on one real chapter 11 of 18 code blocks rendered unstyled with
+    // `class="language-rust,ignore"` — a comma is not a valid class token, so no highlighter
+    // and no CSS rule could ever match it. The diagnostic then called the ecosystem's standard
+    // form a spelling error (item 127). Everything after the first token is an attribute for a
+    // tool Taliesin is not; the language is the first token either way.
+    let lang = token.split([',', ' ', '\t']).next().unwrap_or("").trim();
     if lang.is_empty() || lang.starts_with('=') {
         return None;
     }

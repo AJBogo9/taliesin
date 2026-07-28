@@ -447,7 +447,7 @@ pub(crate) fn try_join_in(
 /// Returning `p` unchanged there left the base relative and the containment root empty,
 /// which no longer names a directory that can be canonicalized. Resolve against the cwd
 /// instead, so every caller gets a real absolute boundary.
-fn absolutize(p: &Path) -> PathBuf {
+pub(crate) fn absolutize(p: &Path) -> PathBuf {
     let abs = std::path::absolute(p)
         .or_else(|_| std::path::absolute(Path::new(".")).map(|cwd| cwd.join(p)))
         .unwrap_or_else(|_| p.to_path_buf());
@@ -557,7 +557,7 @@ pub fn repo_boundary(dir: &Path) -> PathBuf {
 
 /// Lexically normalize a path (resolve `.` and `..`) without touching the
 /// filesystem, so labels and cycle checks are stable.
-fn normalize(p: &Path) -> PathBuf {
+pub(crate) fn normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in p.components() {
         match comp {

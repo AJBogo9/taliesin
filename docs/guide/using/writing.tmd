@@ -34,6 +34,13 @@ That is easy to mistake for broken highlighting, so `taliesin check` reports it:
 to be plain (a terminal transcript, sample output), label it `text` or `console`
 and it stays plain without a warning.
 
+An info string may carry **attributes after the language** in the form other tools use
+(` ```rust,ignore `, ` ```python should_panic `, ` ```rust,no_run,edition2021 `). Taliesin
+reads the language from the first token and ignores the rest, so code pasted from an
+mdBook, rustdoc, Pandoc, Docusaurus or GitHub project highlights as it did there instead of
+losing its colours. Nothing acts on the attributes: they are another tool's instructions,
+kept so the source stays portable in both directions.
+
 ```rust
 /// Every rendered block carries a content-hash id and its source range.
 struct Block {

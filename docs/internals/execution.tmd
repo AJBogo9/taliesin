@@ -33,9 +33,12 @@ struct Executor {
 `run(blocks)` is the entry point each rebuild calls. Its very first check is the
 `no_exec` flag: with `TALIESIN_NO_EXEC` (or `--no-exec`) set, it returns the blocks
 untouched, so every code cell previews as highlighted source with no kernel started and
-no "kernel unavailable" notice. That makes `--no-exec` the safe way to open a document
-you don't trust, and a `--host` preview without it logs a warning (exposing an executing
-preview runs code on every save). Otherwise it groups the cells by language (preserving
+no "kernel unavailable" notice. The render pass reads the same flag for `{js}` cells
+(`taliesin_core::render::no_exec_in_force`), so a browser-side cell is left as source too.
+It is a *code-cell* switch, not a sandbox: raw `<script>` and the `include-*`/`css:`
+injections still reach the page, so it makes `--no-exec` the right flag for **skimming** a
+document you don't trust rather than for trusting it. A `--host` preview without it logs a
+warning (exposing an executing preview runs code on every save). Otherwise it groups the cells by language (preserving
 document order), runs each language's cells, and splices an **output block after each
 cell**:
 

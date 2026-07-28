@@ -92,8 +92,16 @@ pub fn validate_local_links(blocks: &[Block], base: &Path) -> Vec<Warning> {
             if crate::site::link_targets_enclosing_mount(base, path) {
                 continue;
             }
+            // A migrated document's links keep the extension the old tool used, and the
+            // answer is usually sitting right next to the link (item 128). Suggest, never
+            // rewrite: a `.md` link may point at a real shipped `.md`.
+            let hint = crate::ext::migrated_source_candidates(path)
+                .into_iter()
+                .find(|c| base.join(c).is_file())
+                .map(|c| format!(" (did you mean `{c}`?)"))
+                .unwrap_or_default();
             let w = Warning::new(format!(
-                "broken link: `{path}` (no such file under the document directory)"
+                "broken link: `{path}` (no such file under the document directory){hint}"
             ));
             out.push(match line {
                 Some(l) => w.at(b.source_file.clone(), l),

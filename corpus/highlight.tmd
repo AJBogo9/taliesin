@@ -90,3 +90,29 @@ An unlabelled fence is likewise plain, and likewise silent.
 ```
 no language token at all
 ```
+
+## A language plus an attribute, the ecosystem's spelling
+
+mdBook, rustdoc, Pandoc, Docusaurus and GitHub all write ` ```rust,ignore ` — a language
+followed by an attribute for a tool that consumes it. Taliesin consumes none of those
+attributes, but the *language* is still the first token, so the block highlights as Rust
+and `check` stays silent. Before this, the whole string became the class
+(`language-rust,ignore`, which no CSS rule or highlighter can match), so real code from
+migrated projects shipped as unstyled plain text.
+
+```rust,ignore
+fn main() {
+    let unused: u32 = 1;
+}
+```
+
+The same holds for a space-separated attribute and for more than one attribute.
+
+```python should_panic
+def f(x):
+    return x + 1
+```
+
+```rust,no_run,edition2021
+fn main() {}
+```

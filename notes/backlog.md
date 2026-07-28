@@ -38,11 +38,9 @@ enough to continue; nothing else is required.**
   adopted, and can be handed over. Spec:
   [audit slate](../docs/superpowers/specs/2026-07-27-audit-slate-design.md). Wave 1 method:
   [wave 1 plan](../docs/superpowers/plans/2026-07-27-audit-wave-1.md).
-- **Band A now holds items 79-137.** Nothing in any of these rounds changed a line of product code,
-  so **every item is open work** and the tree is exactly as the last code commit left it. No gates
-  were re-run after the notes commits because nothing compiled. The one exception: a `format:
-  revealjs` fixture in `crates/core/src/site/mod.rs` was mutated to `format: html`, the named test
-  run, and **reverted by inverse edit** (`git diff` verified clean).
+- **Band A held items 79-137 when the audits closed; nine of them have since shipped** (see the
+  bullet above). The earlier "nothing in any of these rounds changed a line of product code" is no
+  longer true, which is the usual way this file rots: **ask git, not this line.**
 - **The findings docs** (each finding carries its measurement and its refutation test). Wave 1:
   [adoption friction](2026-07-27-adoption-friction-audit.md) ·
   [pre-mortem](2026-07-27-premortem-audit.md) ·
@@ -64,15 +62,31 @@ enough to continue; nothing else is required.**
   negative is a **broken probe** until proven otherwise — zsh does not word-split `$VAR` in a `for`
   loop, and an all-`NONE` inventory was caught only because one row had been measured by hand
   minutes earlier. Carry a known-positive row in every such probe.
-- **Start with the launch blockers, in R7's order, not Wave 1's.** The FMEA re-ranked them by
-  severity-with-detection: **80** (`mounts:` escape, S9 D9 — zero containment tests) and **83**
-  (tag `v0.2.0` ships MIT, S9 D10 — nothing inspects a tag) rank **above 79**, then **81**, then
-  **109** (a deck reaches zero of thirteen validators, S7 D10). **Pair each fix with its pin**: 117
-  with 80, 118 with 79. A fix with no named test cannot be verified by mutation.
-- **The three highest-yield non-security items are all adoption, all measured on real documents:**
-  **127** (comma fences: 329 of 457 problems on a real book, code shipping unstyled), **128** (every
-  internal link broken after the rename a stranger must do), **120** (the tool's own two scaffold
-  commands contradict each other and the first deck renders flat).
+- **THE LAUNCH BLOCKERS ARE SHIPPED (2026-07-28), on branch `launch-blockers-2026-07-28`, NOT
+  pushed and NOT merged.** Nine items in one batch, each verified by **mutation** (restore the bug,
+  watch the named test fail) and, where it was a browser claim, in a real browser:
+  **80 + 117** (`mounts:` containment + its pin), **81** (`check` no longer spawns a
+  project-supplied interpreter), **79 + 118** (`--no-exec` now covers `{js}`; words made honest),
+  **109** (`check` *and* `build --strict` walk a site's decks), **127** (comma fences),
+  **128** (link-extension did-you-mean), **120 + 121** (`new deck` in a site, and the warning that
+  named a value the parser rejects). Also closed: **82** (re-grepped, the merge had done it) and
+  **parts of 87 and 88** (each amended in place, not deleted, so what remains is visible).
+  **Gates on that branch:** `cargo fmt --check` and `clippy --workspace --all-targets -D warnings`
+  clean; full workspace suite with all four interpreter gates and `--test-threads=1` =
+  **102 binaries, 1,690 tests, 0 failures, 0 ignored** (the 99/1,673 baseline plus 3 new test
+  binaries and 17 tests — the totals reconcile exactly, and *zero ignored* is what proves the
+  gates ran rather than skipped); both `tsc` gates exit 0; `node --test` 6/6; `check` exit 0 on
+  **all 16** corpus/docs/site projects. Not re-run: `cargo audit` / `cargo deny` (no dependency
+  changed).
+- **What is left of the launch-blocking set is one item and it is not code: 83.** It is **wider
+  than filed** — **five** tags ship MIT, not one — and it needs an owner ruling. Read it before
+  Phase 2 of item 100, which pushes a rewritten history to a new public repo.
+- **Two traps this batch hit, both worth knowing.** (1) A mutation **survived**: the `mounts:`
+  lexical containment check was fully shadowed by the canonical symlink check for any target that
+  *exists*, so the test passed with the guard disabled. It took a row whose target does **not**
+  exist to pin it. A guard can be dead and green. (2) A new test failed on its own fixture's
+  **prose**: the pin doc for item 127 explains the defect, so `language-rust,ignore` legitimately
+  appears on the page as inline code. Needle the emitted **tag**, never the bare class name.
 - **Item 100 is RULED (2026-07-28) and no longer blocks anything.** The answer is **archive plus
   fresh public**, specced in
   [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md):
@@ -80,7 +94,9 @@ enough to continue; nothing else is required.**
   becomes `taliesin-private-archive`, and a new public repo receives the rewritten history.
   **Neither phase runs without a separate instruction, and Phase 2 is irreversible.** The one thing
   it hands back to the backlog: **fix items 79, 80 and 81 before Phase 2**, so no still-open finding
-  has to be judged as an exploit recipe.
+  has to be judged as an exploit recipe. **DISCHARGED 2026-07-28** — all three shipped on
+  `launch-blockers-2026-07-28` (unpushed), so they are now descriptions of *fixed* behaviour.
+  Confirm that branch is merged rather than trusting this sentence.
 - **Auditing is DONE.** All 14 slate rounds have run except **R12** (real-device mobile, Android),
   which needs the author's phone. **Do not open a new round** — 59 items are open and an audit's
   value decays to zero if its findings never ship.
@@ -98,7 +114,12 @@ enough to continue; nothing else is required.**
   **handed over**. That thesis paid: **three HIGH security findings, none of which is a correctness
   bug**, which is exactly why ~30 correctness rounds could not see them. They are defects only once
   a document arrives from someone else, and publication creates that condition.
-- **The three HIGH findings, each re-verified from source by the controller, not taken on report.**
+- **The three HIGH findings — ALL THREE FIXED 2026-07-28 on `launch-blockers-2026-07-28`
+  (unpushed).** Kept below as the record of what they were, because each one's *shape* is the
+  reusable part. Item 80 was additionally reproduced end-to-end before the fix and re-measured
+  after: `mounts: { escaped: /etc }` under `preview` answered `GET /escaped/hostname` with **200**
+  and the contents of `/etc/hostname`; it now answers **404** with a diagnostic naming the
+  boundary. What each said, as filed:
   `--no-exec` is documented as "preview untrusted docs safely" but `crates/core` contains **zero**
   references to `TALIESIN_NO_EXEC`, so `{js}`, raw `<script>` and header injection all still run
   (item 79). `mounts:` does `root.join(&m.path)` with no containment, and Rust's `Path::join`
@@ -367,41 +388,29 @@ anything client-side, and **delete the item from this file when it lands**.
 **Items 79-81 are the launch blockers.** Each finding in these docs carries the measurement that
 produced it and the observation that would refute it; trust the symptom, re-derive the cause.
 
-**Security: the three HIGH findings (a stranger's document)**
-
-79. **`--no-exec` does not stop the document's browser-side code, and the guide promises it does.**
-    (HIGH.) `docs/guide/reference/cli.tmd:148` says "preview untrusted docs safely". `cli.rs:937`
-    makes the flag sugar for `TALIESIN_NO_EXEC=1`, which only `exec::Executor` reads;
-    **`crates/core` contains zero references to it** (measured). So `{js}` cells
-    (`render/mod.rs:861`, `:1034-1037`), raw `<script>` passthrough (`emit.rs:90-91`) and
-    `include-in-header`/`css:` injection (`doc_includes.rs:98-124`) all still run. Fix the wording
-    or fix the flag, but a shipped safety promise must not outrun the behaviour. *Refuted if core
-    gains a no-exec path that suppresses `{js}` emission.*
-80. **`mounts:` resolves an unbounded filesystem path.** (HIGH, preview-only.)
-    `serve_site/mod.rs:293` does `root.join(&m.path)` then `canonicalize().unwrap_or(mroot)`.
-    Rust's `Path::join` **replaces** the base when the argument is absolute, and `..` climbs;
-    `site/config/mod.rs:483` validates the *keys* (`at`, `path`), never containment. One `_site.yml`
-    line turns `preview <dir>` into an arbitrary-directory HTTP file server plus live execution of
-    `.tmd` outside the project. *Confirm with one throwaway `_site.yml` before the fix lands.*
-81. **`check` spawns a project-chosen interpreter.** (HIGH.) `check.rs:382` →
-    `interpreter.rs:150` runs `Command::new(bin).arg("--version")` where `bin` comes from
-    `Provenance::Field`, documented at `interpreter.rs:25` as "a `_site.yml` `python:`/`r:` field
-    (highest precedence)". No `TALIESIN_NO_EXEC` gate. The MCP `check` tool inherits it, described
-    only as "Validate". **Care required:** a user's own `.venv` is the common legitimate case, so a
-    refusal must not degrade normal `check` output.
+**Security: the three HIGH findings — ALL SHIPPED 2026-07-28** on branch
+`launch-blockers-2026-07-28` (items 79, 80, 81, with their pins 117 and 118). Details in
+"Do not re-add / re-scope". Item **82** is also gone: the merge closed it and a re-grep
+confirms zero surviving self-MIT claims, which was the whole action it asked for.
 
 **Licence correctness (publication blockers)**
 
-82. **Remove every "Taliesin is MIT" claim — ALREADY FIXED on the other branch; this item is a
-    MERGE obligation, not code.** (Corrected 2026-07-28, and the correction is the lesson: the
-    first version of this item said the other session "misses the third occurrence". **It does
-    not.** Measured on `critique-pass-2026-07-27` @ `1f72853`: `THIRD_PARTY.md` has **zero**
-    remaining self-MIT claims, and `docs/internals/repository.tmd:133` is fixed to
-    `AGPL-3.0-only`.) **Action: merge that branch, then re-grep to confirm; do not re-fix.**
-    An audit's claim about *another branch* rots faster than one about your own.
-83. **Tag a release whose tree and licence match `main`.** (HIGH.) `git show v0.2.0:LICENSE`
-    begins `MIT License` while HEAD ships AGPL-3.0. Anyone cloning the sole version tag gets MIT,
-    which leaks the dual-licence moat that README and `deny.toml` call the commercial strategy.
+83. **Tag a release whose tree and licence match `main` — WIDER THAN FILED, and it needs an
+    owner ruling, not code.** (HIGH.) Re-measured 2026-07-28: **five** local tags ship an MIT
+    `LICENSE`, not one — `v0.2.0` (`268a18f`) plus `stable-2026-06-22`, `stable-2026-06-25`,
+    `stable-2026-06-30` and `stable-2026-07-07`. Every tag predating the relicence commit
+    (`3d474cb`, 2026-07-19) carries MIT, so cloning any of them gets MIT while HEAD ships
+    AGPL-3.0, which leaks the dual-licence moat README and `deny.toml` call the commercial
+    strategy.
+    **Nothing has leaked yet:** `git ls-remote --tags origin` is **empty**, so no tag has ever
+    been pushed. The exposure begins at publication, and item 100's Phase 2 pushes a rewritten
+    history to a *new public repo* — so whether tags travel with it is part of that decision.
+    **Safe to delete:** `~/.local/bin/taliesin-stable` is a frozen 19 MB **binary**, not a
+    tag checkout, and `taliesin-promote` only ever *creates* tags — so removing the old
+    `stable-*` tags breaks no local workflow (verified, not assumed).
+    **Left for the author because deleting tags is destructive and the licence position is a
+    business call.** Three routes: delete the five pre-relicence tags; keep them local forever
+    and never push tags; or move `v0.2.0` to a current commit and drop the four `stable-*`.
 
 **Making an outsider's run mean something**
 
@@ -423,15 +432,19 @@ produced it and the observation that would refute it; trust the symptom, re-deri
 
 **Honesty of shipped words**
 
-88. **Three shipped strings that contradict shipped behaviour.** (MEDIUM.)
-    `docs/internals/repository.tmd:182` claims `--host` auto-enables `--no-exec`;
-    `SECURITY.md`'s symlink allowance assumes *you* placed the symlink (false for an untrusted
-    archive); and `include-in-header`/`include-before-body`/`include-after-body`/`css:` inject
-    verbatim with nothing saying so. Same family as item 75: **no gate compares prose against
-    behaviour.**
-87. **A discoverable "documents you did not write" section, plus a one-line first-run notice.**
-    (MEDIUM.) `SECURITY.md:38-41` already takes the right position; the defect is that nobody about
-    to open a stranger's `.tmd` will find it.
+88. **One shipped string left of the three.** (MEDIUM.) Two fixed 2026-07-28 with item 79:
+    `docs/internals/repository.tmd`'s false "`--host` auto-enables `--no-exec`" claim (verified
+    false in `cli.rs` — `expose` never sets `no_exec`), and the verbatim injection of
+    `include-in-header`/`include-before-body`/`include-after-body`/`css:`, now stated in the CLI
+    reference's new "Documents you did not write" section. **Still open:** `SECURITY.md`'s
+    symlink allowance assumes *you* placed the symlink, which is false for an untrusted archive.
+    Same family as item 75: **no gate compares prose against behaviour.**
+87. **Two of the three surfaces remain.** (MEDIUM.) The section itself shipped 2026-07-28 with
+    item 79: `docs/guide/reference/cli.tmd` now carries **"Documents you did not write"** (what
+    executes, what passes through verbatim, what `--no-exec` does and does not do, and the two
+    things that are *enforced* rather than documented), and both `--help` surfaces point at it.
+    **Still open:** a link from `README.md`, and the one-line first-run notice.
+    `SECURITY.md:38-41` already takes the right position.
 
 **Smaller, verified**
 
@@ -486,46 +499,6 @@ rule.
 
 **Launch blockers**
 
-109. **An embedded deck is invisible to every static validator, on every site surface.** (HIGH.)
-     Not the two documented exemptions — **all thirteen** families. `site/mod.rs:359`
-     (`pages.retain(|p| !decks.iter()…)`) removes a deck from `site.pages` so it stays out of nav,
-     and `check.rs:295` walks that same set. Measured: a site whose embedded deck carries two
-     missing assets, a broken link, an alt-less `<img>`, an unnamed link and malformed `$$` gives
-     `check .` → "no problems found" exit 0, `build . --strict` → exit 0 shipping the defects, while
-     `check talk.tmd` reports all six. Live in the tree: `check docs/guide` never mentions
-     `demo.tmd` or `tour.tmd`. **Fix:** `collect_site_diagnostics` walks `site.decks` (a public
-     field) after `site.pages`, at `Scope::Standalone`. **No test anywhere runs a validator against
-     a deck in a site** — `check_superset.rs` and `check_cli.rs` contain zero `deck`/`Reveal`.
-127. **Comma-separated code-fence attributes are unsupported, so real code ships as plain text.**
-     (HIGH, adoption.) ` ```rust,ignore ` is the shared convention of mdBook, rustdoc, Pandoc,
-     Docusaurus and GitHub. Measured on `rust-lang/book`: **329 of 457 problems** are this one shape
-     (11 distinct forms, 734 fence occurrences), and on one real chapter **11 of 18 code blocks
-     render unstyled** with `class="language-rust,ignore"` (a comma is not a valid class token).
-     The message is also wrong: it calls the ecosystem's standard form a spelling error. **Fix:**
-     split the info string on `,`/whitespace, highlight on the first token. **Pin** with a corpus
-     fixture carrying a `lang,attr` fence — a shape the corpus has nowhere, which is why nothing
-     caught it.
-128. **Every internal link in a migrated document is a hard error, and the registry already knows
-     the answer.** (HIGH, adoption.) After the rename a stranger must do, links keep their old
-     extension: **118 of 123 errors** in `rust-lang/book` (`.md`), **10 of 11** in a real Quarto
-     book (`.qmd`). `creators.qmd` is reported broken while `creators.tmd` is a page in the same
-     site. **Fix:** a did-you-mean, not silent rewriting (a `.md` link may point at a real shipped
-     `.md`) — the pattern exists in `xref_didyoumean.rs` and the front-matter typo rule. This is the
-     concrete, measured version of item **93**.
-120. **Following `init`'s instruction after `new deck` produces a warning and a flat article.**
-     (HIGH for first contact, LOW to fix.) `init` prints "Preview it: `taliesin preview .`"; the
-     scaffold's own Next steps suggest `taliesin new deck`; `new deck` writes the deck into the site
-     root and prints a *different* command. Following the first one warns the deck will flatten, and
-     it does: browser-verified, the scaffolded slide reading "Each `##` heading starts a new slide"
-     renders as one stacked article. `preview ./my-talk.tmd` on the same file gives a real deck.
-     **Fix (words, not a write):** `new deck` detects a `_site.yml` and says to embed it or preview
-     it directly.
-117. **`mounts:` containment has zero tests — item 80's fix must not ship without one.** (HIGH.)
-     Grepping test *bodies* (the filename count is a trap and was wrong here): three files match,
-     two are unrelated ("the diff mounts"), and `map_cli.rs:75-109` asserts only that a mount appears
-     in `taliesin map`'s JSON. Two cases, one test: an absolute `path:` (`Path::join` replaces the
-     base) and a `../`-climbing one.
-
 **Then**
 
 124. **WCAG 2.1 AA 2.5.3 "Label in Name" fails on the search button.** (MEDIUM.) Visible text
@@ -554,22 +527,26 @@ rule.
      - **Two viable routes:** hash eagerly and flush lazily during the page loop (guard against the
        `--jobs N` determinism pins), or pre-scan page *sources* for the three triggers. **The latter
        is over-inclusive, which is the safe direction** — under-inclusive means a live 404.
-122. **`check` says "no problems found" on a document whose code cell cannot run.** (MEDIUM.)
+122. **`check` says "no problems found" on a document whose code cell cannot run — BUT ITS
+     PROPOSED FIX REVERSES A DATED RULING, so read this before building it.** (MEDIUM.)
      Measured cold: plain `check` prints exactly that and exits 0, while `build` on the same file
      warns twice and `doctor` names the missing package. The Environment section is shown **only**
      to a user who already passed `--require-kernel`. **Do not** make that flag the default (it
-     would break the kernel-free property). **Fix:** print the Environment line unconditionally when
-     the document contains a code cell, exit code unchanged.
-121. **The first-run warning names `revealjs`, a value the parser rejects.** (MEDIUM.)
-     `site/mod.rs:391` says "declares a revealjs deck", but `is_reveal_format` (`fm_extract.rs:116`)
-     accepts only `deck`/`*-deck`, `revealjs` appears **zero** times in `docs/`, and **26**
-     references remain in `crates/*/src`. Reword to what the user wrote, and consider adding
-     `reveal` to `retired_names.rs`. (The `format: revealjs` fixture at `site/mod.rs:2125` is inert:
-     mutating it to `format: html` still passes — the test rides the `{{< embed >}}` path.)
-118. **The `--no-exec` test covers a different command from the one the docs promise.** (MEDIUM.)
-     `TALIESIN_NO_EXEC` appears in exactly one test, `read_run.rs:42`, covering `read --run`.
-     Item 79's promise is about *preview* and *browser-side* channels. Whichever way 79 resolves
-     (fix the wording or fix the flag), the pin must name the preview path.
+     would break the kernel-free property). Filed fix: print the Environment line unconditionally
+     when the document contains a code cell, exit code unchanged.
+     **The conflict, found 2026-07-28 while shipping item 81** (which touches this exact code):
+     that is **PL14**, a deliberate decision with a spec
+     ([2026-07-19-pl14-check-env-footer.md](../docs/superpowers/specs/2026-07-19-pl14-check-env-footer.md))
+     and a test that pins it by name — `default_human_check_omits_the_environment_block`
+     (`check_cli.rs`), whose comment states the reason: the footer "duplicated `doctor` on every
+     keystroke/CI run". Implementing 122 as filed deletes that test. **So this is an owner ruling,
+     not a task.** A shape that satisfies both is available and is the recommendation: print the
+     Environment *line* unconditionally but keep **not probing** by default, so the line names the
+     interpreter that would be used and says it was not spawned. Item 81 already built exactly that
+     reporting shape (`runs: null` + `not_probed`), so the remaining work is only where the line is
+     printed. **Cost to check first:** `collect_environment` re-renders every page of a site to find
+     used languages, so putting it on the default path doubles a site `check`'s render work
+     (`check <site>` was measured at 538 ms). Measure that before wiring it in.
 110. **A `draft:` page is unlinted by `check` and `--strict`, same mechanism as 109.** (MEDIUM.)
      `discovery.rs:30` drops drafts in `DraftMode::Exclude`. Measured: `check .` clean, `check
      wip.tmd` → 3 problems. **Lower severity for a stated reason:** the preview uses
@@ -599,8 +576,10 @@ rule.
      128), a `SUMMARY.md`-driven chapter spine, **112 pages in one flat directory** (the largest
      corpus project is 14), and chapter files with **no front matter at all**. **Do NOT grow
      `corpus/` toward these** — the walker renders every corpus doc on every `cargo test`. **Pin
-     only the two that earned it** (127 and 128); the rest are recorded so a later round does not
-     re-derive them.
+     only the two that earned it** (127 and 128) — **both pinned and shipped 2026-07-28**: the
+     `lang,attr` fence is now a fixture in `corpus/highlight.tmd` with its own test, and the
+     link-extension shape has `crates/core/tests/migrated_link_extensions.rs`. The rest are
+     recorded so a later round does not re-derive them.
 135. **Five verified positioning claims the project has never made.** (MEDIUM, words not code.)
      Each backed by a real user asking for what Taliesin already does: marimo
      [#3114](https://github.com/marimo-team/marimo/issues/3114) (edit in your own editor, outputs
@@ -654,10 +633,13 @@ rule.
      structural.) Nine sites write `sourcepos: String::new()`, all correctly (generated chrome has no
      source line). `corpus.rs` guards existing content, not new producers, and QA1 has the least
      automated coverage in the project. **Proposal is a doc comment on `Block`**, not a lint.
-134. **`check <site>` and `check <file>` answer different questions and nothing says so.** (LOW.)
-     538 ms vs 87 ms, and they differ in *coverage* (109, 110) and in link scope
-     (`check.rs:196`). Fold into 109's deliverable: once a site check covers decks, one line of
-     output can state the remaining difference.
+134. **`check <site>` and `check <file>`: the coverage half is closed, the link-scope half is
+     not.** (LOW.) 538 ms vs 87 ms. The **deck** coverage difference is gone (item 109, shipped
+     2026-07-28: a site check walks `site.decks`, and the deck path of `build --strict` gained the
+     cross-ref validation it lacked, so the two front doors now report the *same count* on the same
+     file — measured 5 and 5 where it had been 5 and 0, then 5 and 4). **What remains:** the
+     `draft:` difference (item 110, which may be correct as-is) and the link scope at
+     `check.rs:196`. One line of output can state it.
 131. **The cold-build cliff: 3,981 ms vs 789 ms warm.** (LOW, and probably correct as-is.) Filed so
      it is not rediscovered as a defect. Kernel *variable* state is never cached — the property that
      makes the cache trustworthy — so a cold start genuinely cannot skip work unless the whole
@@ -849,7 +831,11 @@ the broken one). Refile here only after re-deriving the cause from source.
      **What still lands on this item:** the spec's own D-checks (incl. the provenance check on
      corpus documents), and its rule that any still-open finding reading as an **exploit recipe** is
      reported for individual judgement, default keep — which is exactly items **79, 80, 81**, so
-     **fix those before Phase 2** rather than deciding whether to redact them.
+     **fix those before Phase 2** rather than deciding whether to redact them. **All three are
+     FIXED (2026-07-28, `launch-blockers-2026-07-28`, unpushed)**, so this clause is discharged once
+     that branch is merged — verify, do not trust this line. **New input for Phase 2 from item
+     83:** five local tags ship an MIT `LICENSE` and none has been pushed, so whether tags travel
+     to the new public repo belongs to this spec.
      *Original framing, kept because it records why the ruling was hard:*
      `notes/STARTUP-PLAN.md:126` records a plan to publish as a **fresh repo with no history**
      ("Keep this repo private forever; the public one is a separate repo"), *not* to flip this
@@ -1209,6 +1195,37 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 the launch-blocker batch (items 79-82, 109, 117, 118, 120, 121, 127, 128),** all
+  mutation-verified. **Do not re-scope any of the following as open:**
+  - **`mounts:` is contained** (80): `Mount::resolve` refuses an absolute `path:`, a climb past the
+    site root's **parent**, and a symlink whose target leaves it; enforced once in `load_config`, so
+    every consumer (preview, `build`'s recipe, `map`, link validation) sees a filtered list, plus a
+    belt-and-braces refusal at the preview call site that turns a path into an HTTP root. The
+    boundary is the parent **on purpose** — every real mount is a sibling (`../docs/guide`,
+    `../corpus/course`) and all **seven** in `site/_site.yml` still resolve. **Do not narrow it to
+    "no `..` at all"**: a test asserts declared-mounts == kept-mounts on the real config.
+  - **`check` does not spawn a project-supplied interpreter** (81): a `_site.yml` `python:`/`r:`
+    field or the project's own `.venv` is *reported, never run*, with `runs: null` and a
+    `not_probed` reason; `--require-kernel` is the opt-in. The MCP/JSON path deliberately has **no**
+    opt-in. `TALIESIN_PYTHON` and a bare `python3` are the user's own choice and still probe.
+  - **`--no-exec` covers `{js}`** (79): a `{js}` cell is a code cell whose runtime is the browser,
+    so it renders as highlighted source, and a labelled `{js}` figure no longer burns a figure
+    number it will not emit. One owner for the flag (`render::no_exec_in_force`); the server's
+    `exec_disabled` delegates to it. **Deliberately NOT a sanitizer** — raw `<script>`,
+    `include-*` and `css:` still pass through, and the CLI reference's new "Documents you did not
+    write" section says so. Do not re-scope as "strip the HTML too" (2026-07-03 CSP ruling).
+  - **A deck in a site is validated** (109): `collect_site_diagnostics` walks `site.decks` at
+    `Scope::Standalone`, and `build`'s deck loop counts the deck's render + static + **cross-ref**
+    diagnostics toward `--strict`. The two front doors now report the same count on the same file.
+  - **A comma fence highlights on its first token** (127): ` ```rust,ignore ` → `language-rust`.
+    Pinned by a fixture in `corpus/highlight.tmd`. **Do not "fix" the class to keep the attribute**
+    — a comma is not a valid class token, which was the defect.
+  - **A migrated link gets a did-you-mean** (128): `creators.qmd` → "did you mean `creators.tmd`?",
+    on both validators, and it lifts into the structured `suggestion.replacement` an agent or an
+    editor quick fix applies. **A suggestion, never a rewrite** — a `.md` link may point at a real
+    shipped `.md`, and a test row pins that it is left alone.
+  - **`new deck` in a site says how to use it there** (120), words not a write; and the loose-deck
+    warning names **`format: deck`**, the value the author wrote, not `revealjs` (121).
 - **Deck PDF export: already deleted (2026-07-12 deck audit, A2), do not re-scope "remove it."** Asked
   again 2026-07-27; pinned gone by `render/tests.rs:1950`. What survives is ~25 lines of `@media print`
   in `deck.css:522` that keep a stray Cmd/Ctrl+P legible — **that is a don't-emit-garbage guard, not

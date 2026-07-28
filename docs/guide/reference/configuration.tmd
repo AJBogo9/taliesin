@@ -114,7 +114,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
-| `mounts` | Mount other Taliesin projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. The static build skips mounts and prints the per-mount build command |
+| `mounts` | Mount other Taliesin projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. `path:` is relative to the site root and may climb at most one level, so a mount reaches a project *beside* this one and nowhere else; an absolute or further-climbing path is ignored with a warning. The static build skips mounts and prints the per-mount build command |
 | `python`, `r` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
 
 **Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`, an

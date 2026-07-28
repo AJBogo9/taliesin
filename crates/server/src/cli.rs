@@ -800,7 +800,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
                 for f in &written {
                     log::built(&f.display().to_string());
                 }
-                println!("Preview it:\n  taliesin preview {}", written[0].display());
+                println!("{}", new_next_steps(root, kind, &written[0]));
             }
             ExitCode::SUCCESS
         }
@@ -809,6 +809,40 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What to do with a freshly scaffolded document.
+///
+/// A deck inside a site needs different words from every other kind, because the obvious next
+/// command is the wrong one (item 120). `init` prints "Preview it: `taliesin preview .`" and
+/// the scaffold's own Next steps point at `taliesin new deck`; following both in order used to
+/// warn that the deck will flatten, and it did — browser-verified, the scaffolded slide reading
+/// "Each `##` heading starts a new slide" rendered as one stacked article. A deck is a
+/// *component* of a site page, not a page of it, so the site path only builds it when a page
+/// references it with `{{< embed >}}`.
+///
+/// Words, not a write: `new` must not edit an existing `index.tmd` to insert the embed. The
+/// `.tmd` is the author's editing surface and a scaffolder that rewrites their prose is the
+/// same mistake as a preview that writes back.
+fn new_next_steps(root: &Path, kind: NewKind, written: &Path) -> String {
+    let in_site = root.join("_site.yml").is_file();
+    if kind == NewKind::Deck && in_site {
+        let name = written
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| written.display().to_string());
+        return format!(
+            "A deck in a site is a component of a page, not a page of its own.\n\
+             Either embed it in a page (add this line to `index.tmd`):\n\
+             \x20 {{{{< embed {name} >}}}}\n\
+             or preview the deck on its own:\n\
+             \x20 taliesin preview {}\n\
+             `taliesin preview .` renders the site, where an unreferenced deck flattens \
+             into an article.",
+            written.display()
+        );
+    }
+    format!("Preview it:\n  taliesin preview {}", written.display())
 }
 
 /// The `new` usage line, printed when a kind/slug is missing and there's no TTY to prompt at.
@@ -934,8 +968,11 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     };
     let open = parsed.open || std::env::var_os("TALIESIN_OPEN").is_some();
     let expose = parsed.expose || std::env::var_os("TALIESIN_HOST").is_some();
-    // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`, which `exec::Executor` reads:
-    // preview a document you don't trust without running its code cells.
+    // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`. Two readers, one owner
+    // (`taliesin_core::render::no_exec_in_force`): `exec::Executor` skips the kernel, and the
+    // render pass leaves a `{js}` cell as source, since a `{js}` cell is a code cell whose
+    // runtime is the browser (item 79). It does NOT sanitize raw HTML — see the CLI
+    // reference's "Documents you did not write".
     if parsed.no_exec {
         // SAFETY: set once at CLI startup, before the tokio runtime / kernel
         // threads spawn, so no other thread is touching the environment.

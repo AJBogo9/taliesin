@@ -85,6 +85,109 @@ pub struct Mount {
     pub path: String,
 }
 
+/// Why a `mounts:` entry was refused by [`Mount::resolve`].
+///
+/// "Relative to the site root" was this key's documented contract and nothing enforced it,
+/// which made one config line the widest hole in the tool: `Path::join` **replaces** the
+/// base when its argument is absolute, and `..` climbed without limit, so
+/// `mounts: { x: /etc }` served `/etc` over HTTP (measured: `GET /x/hostname` → 200) and
+/// executed any `.tmd` found under a mounted tree. This is not a restriction on what a
+/// document may *compute* — it is a restriction on where a *config key* may point the
+/// server, which is the one class of untrusted-document defect this project does enforce
+/// rather than document (see `SECURITY.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MountRefusal {
+    /// An absolute `path:`. Never legitimate: a project config that names an absolute
+    /// directory is not portable to the machine that clones it.
+    Absolute,
+    /// The resolved directory left [`Mount::boundary`] — a `..` climb past the sibling
+    /// level, or a symlink whose target does.
+    OutsideBoundary,
+}
+
+impl Mount {
+    /// The directory a `path:` may resolve inside: the **parent** of the site root.
+    ///
+    /// `mounts:` exists to serve another project *beside* this one — every real mount in
+    /// this repo is one (`../docs/guide`, `../docs/internals`, `../corpus/course`,
+    /// `../corpus/tarn`) — so one level of `..` is the whole documented use, and anything
+    /// deeper has no caller. A root with no parent (the filesystem root) bounds to itself.
+    pub fn boundary(site_root: &Path) -> PathBuf {
+        let root = crate::includes::absolutize(site_root);
+        root.parent().map(Path::to_path_buf).unwrap_or(root)
+    }
+
+    /// Resolve `path:` against `site_root`, refusing anything outside [`Mount::boundary`].
+    ///
+    /// Returns the *lexical* target (callers canonicalize for display/serving, as before),
+    /// so a mount naming a directory that does not exist still reaches the caller's own
+    /// "no directory at …" warning instead of being reported as a traversal.
+    pub fn resolve(&self, site_root: &Path) -> Result<PathBuf, MountRefusal> {
+        let rel = Path::new(&self.path);
+        // `has_root` as well as `is_absolute` so a Windows drive/UNC root cannot slip past
+        // a Unix-only check, matching `includes::try_join_in`.
+        if rel.is_absolute() || rel.has_root() {
+            return Err(MountRefusal::Absolute);
+        }
+        let root = crate::includes::absolutize(site_root);
+        let target = crate::includes::normalize(&root.join(rel));
+        let boundary = Self::boundary(site_root);
+        if !target.starts_with(&boundary) {
+            return Err(MountRefusal::OutsideBoundary);
+        }
+        // Symlink defense. The lexical check governs the config *text*; a symlink is a
+        // filesystem fact the text cannot conjure, so `SECURITY.md`'s symlink allowance
+        // ("you placed it") holds for your own checkout and fails for an archive someone
+        // sent you — which is exactly the case `mounts:` is reachable in. Only checked when
+        // the target exists; a missing one cannot be an escape.
+        if let Ok(canon) = target.canonicalize() {
+            let cboundary = boundary.canonicalize().unwrap_or(boundary);
+            if !canon.starts_with(&cboundary) {
+                return Err(MountRefusal::OutsideBoundary);
+            }
+        }
+        Ok(target)
+    }
+
+    /// The warning shown for a refused mount: what was refused, why, and the shape that
+    /// works. Phrased so the fix is obvious to the author of a legitimate config, since a
+    /// misplaced project is a likelier cause than an attack.
+    pub fn refusal_warning(&self, site_root: &Path, why: MountRefusal) -> String {
+        let tail = match why {
+            MountRefusal::Absolute => "an absolute path is not allowed".to_string(),
+            MountRefusal::OutsideBoundary => {
+                format!(
+                    "it resolves outside {}",
+                    Self::boundary(site_root).display()
+                )
+            }
+        };
+        format!(
+            "mount '{}': ignoring `path: {}` — {tail}. A mount serves another project \
+             beside this one, so `path:` must be relative to the site root and may climb \
+             at most one level (e.g. `../docs`)",
+            self.at, self.path
+        )
+    }
+}
+
+/// Drop every `mounts:` entry that fails containment, warning once per entry.
+///
+/// Enforced here, at the single parse boundary, rather than at each consumer: `preview`
+/// serves mounts live, `build` prints a per-mount recipe, `map` reports them and
+/// `link_targets_enclosing_mount` validates links into them, and a check placed in one of
+/// those would leave the others reading the raw string. A refused mount is *absent*, so
+/// every one of them degrades the same way.
+fn retain_contained_mounts(root: &Path, mounts: &mut Vec<Mount>, warnings: &mut Vec<String>) {
+    mounts.retain(|m| match m.resolve(root) {
+        Ok(_) => true,
+        Err(why) => {
+            warnings.push(m.refusal_warning(root, why));
+            false
+        }
+    });
+}
+
 /// `publish:` says where `taliesin publish` deploys this project. Optional; when
 /// absent, publish falls back to a slug of the project directory name. The passcode is
 /// never stored here (it lives only as a Cloudflare Pages secret).
@@ -216,7 +319,9 @@ pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> S
             return SiteConfig::default();
         }
     };
-    parse_native(&value, warnings, ConfigSource(Some(&text)))
+    let mut cfg = parse_native(&value, warnings, ConfigSource(Some(&text)));
+    retain_contained_mounts(root, &mut cfg.mounts, warnings);
+    cfg
 }
 
 /// Whether a discovery warning is the benign "this directory has no `_site.yml`" advisory,
@@ -998,6 +1103,110 @@ mod config_tests {
             w.iter()
                 .any(|w| w.contains("publish key `gat`") && w.contains("`gate`")),
             "gate typo did-you-mean: {w:?}"
+        );
+    }
+
+    // Items 80 + 117 (2026-07-28). `mounts:` had *no* containment: measured before the fix,
+    // `mounts: { escaped: /etc }` under `preview` answered `GET /escaped/hostname` with 200
+    // and the contents of `/etc/hostname`, because `Path::join` replaces the base on an
+    // absolute argument and `..` climbed without limit.
+    //
+    // The positive row is load-bearing, not decoration: an all-negative table is a broken
+    // probe until proven otherwise (LESSONS.md), and it is also what stops a future "just
+    // reject `..`" simplification, since every real mount in this repo climbs one level.
+    #[test]
+    fn a_mount_may_not_escape_the_directory_beside_the_project() {
+        let dir = tmp("mount-escape");
+        // `ghost:` climbs to a directory that does not exist, which is the only row the
+        // *lexical* check owns: for a target that exists, the canonical symlink check below
+        // it refuses the same path, so without this row disabling the lexical check leaves
+        // every assertion green (measured — the mutant survived).
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: X\nmounts:\n  etc: /etc\n  up: ../../..\n  ghost: ../../nowhere-unlikely\n  \
+             sibling: ../beside\n",
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+
+        let kept: Vec<&str> = cfg.mounts.iter().map(|m| m.at.as_str()).collect();
+        assert_eq!(
+            kept,
+            ["sibling"],
+            "an absolute and a climbing mount must both be dropped, the sibling kept: {kept:?}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("mount 'etc'") && w.contains("absolute path is not allowed")),
+            "the absolute mount must say why: {warnings:?}"
+        );
+        for at in ["up", "ghost"] {
+            assert!(
+                warnings
+                    .iter()
+                    .any(|w| w.contains(&format!("mount '{at}'")) && w.contains("resolves outside")),
+                "the climbing mount '{at}' must name the boundary: {warnings:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // The lexical check alone is fooled by a symlink, which is the shape an untrusted
+    // *archive* carries (`SECURITY.md`'s symlink allowance assumes you placed it, which is
+    // false for a project someone sent you — item 88's family).
+    #[cfg(unix)]
+    #[test]
+    fn a_mount_may_not_reach_outside_through_a_symlink() {
+        let dir = tmp("mount-symlink");
+        // `/etc` is outside the boundary (the temp dir), exists, and is read-only.
+        std::os::unix::fs::symlink("/etc", dir.join("link")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: X\nmounts:\n  x: link\n").unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        assert!(
+            cfg.mounts.is_empty(),
+            "a mount whose lexical path is in-bounds but whose symlink target is not \
+             must be refused: {:?}",
+            cfg.mounts
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("resolves outside")),
+            "the symlink escape must be reported: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // The repo's own four mounts are the real-world positive row: they are the only mounts
+    // that exist anywhere, and all four climb one level (`../docs/guide`, `../corpus/tarn`).
+    // If containment ever narrows to "no `..` at all", this fails instead of the docs site
+    // silently losing its `/docs/` tree in preview.
+    #[test]
+    fn the_repos_own_site_keeps_every_mount() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../site");
+        let text = std::fs::read_to_string(root.join("_site.yml")).unwrap();
+        // Declared-vs-kept as an identity rather than a literal count, so adding a mount to
+        // the marketing site does not fail this test — only *refusing* one does.
+        let declared = serde_yaml::from_str::<serde_yaml::Value>(&text)
+            .unwrap()
+            .get("mounts")
+            .and_then(|m| m.as_mapping().map(serde_yaml::Mapping::len))
+            .unwrap();
+        assert!(declared >= 4, "the fixture must be real: {declared} mounts");
+
+        let mut warnings = Vec::new();
+        let cfg = load_config(&root, &mut warnings);
+        assert_eq!(
+            cfg.mounts.len(),
+            declared,
+            "every declared mount must survive containment; kept {:?} (warnings {:?})",
+            cfg.mounts.iter().map(|m| &m.at).collect::<Vec<_>>(),
+            warnings
+        );
+        assert!(
+            !warnings.iter().any(|w| w.contains("ignoring `path:")),
+            "no real mount may be refused: {warnings:?}"
         );
     }
 

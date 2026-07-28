@@ -381,14 +381,19 @@ impl Site {
         }
         excluded_drafts.retain(|rel| !decks.iter().any(|d| d.url == tmd_to_html(rel)));
 
-        // A loose deck: a `format: revealjs` page that survived the embed retain
-        // above, so it isn't referenced by `{{< embed >}}` anywhere. It would be
-        // flattened into a chrome-wrapped article (no slides, no deck JS) with no
-        // other signal — warn so the author embeds it or moves it out of the site.
+        // A loose deck: a `format: deck` page that survived the embed retain above, so it
+        // isn't referenced by `{{< embed >}}` anywhere. It would be flattened into a
+        // chrome-wrapped article (no slides, no deck JS) with no other signal — warn so the
+        // author embeds it or moves it out of the site.
+        //
+        // The message says `deck`, the value the author actually wrote, not `revealjs`
+        // (item 121): `is_reveal_format` accepts only `deck` / `*-deck`, so the old wording
+        // named a value the parser *rejects* — it told the reader to look for a string that
+        // cannot be in their file, and `revealjs` appears zero times in `docs/`.
         for p in &pages {
             if std::fs::read_to_string(&p.input).is_ok_and(|s| render::is_reveal_doc(&s)) {
                 warnings.push(format!(
-                    "{}: declares a revealjs deck but is a loose page in the site; it \
+                    "{}: declares `format: deck` but is a loose page in the site, so it \
                      will render as a flat article. Reference it with {{{{< embed {} >}}}} \
                      from a page, or move it out of the site.",
                     p.rel, p.rel
@@ -996,8 +1001,23 @@ impl Site {
                     {
                         continue;
                     }
+                    // The registry already knows the answer for the commonest broken link
+                    // there is: a migrated document's links keep the old tool's extension
+                    // while the renamed source sits in the same directory (item 128).
+                    // Probed against `target_url` (site-root-relative, so a link from a
+                    // subdirectory resolves the way the site resolves it) but *shown* as the
+                    // spelling the author wrote, which is what they have to edit.
+                    let renamed_source_exists = crate::ext::migrated_source_candidates(&target_url)
+                        .into_iter()
+                        .any(|c| self.root.join(c).is_file());
+                    let hint = match crate::ext::migrated_source_candidates(path).first() {
+                        Some(shown) if renamed_source_exists => {
+                            format!(" (did you mean `{shown}`?)")
+                        }
+                        _ => String::new(),
+                    };
                     let w = Warning::new(format!(
-                        "broken link: `{path}` resolves to `{target_url}`, which is no page in this site"
+                        "broken link: `{path}` resolves to `{target_url}`, which is no page in this site{hint}"
                     ));
                     out.push((
                         rel.clone(),
