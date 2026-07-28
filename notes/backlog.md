@@ -22,12 +22,15 @@ enough to continue; nothing else is required.**
   git branch -vv                        # what branches still exist
   ```
 
-  At the time of writing: `main` == `origin/main` == **`a52afc7`** (the launch-blocker batch).
-  One branch is unmerged and **NOT pushed**: **`publication-readiness-2026-07-28`** (`3abeb7d`,
-  two commits). The earlier `book-drawer-section-highlight` and `critique-pass-2026-07-27`
-  branches, which previous versions of this block told you to check, **are gone**: their work is
-  in `origin/main` and the parallel session has ended. `launch-blockers-2026-07-28` was deleted
-  once it was fully contained in `origin/main`.
+  At the time of writing everything is landed: `main` == `origin/main`, working tree clean, and
+  **no unmerged branches** — the launch-blocker batch, the publication-readiness batch and the
+  earlier audit work are all in `origin/main`, and their branches were deleted once each was
+  fully contained in it. So if the two commands above show you a branch, it is **newer than this
+  block**, not something this block forgot.
+
+  **Do not re-add a SHA here.** A previous version of this bullet named one, plus two branches
+  (`book-drawer-section-highlight`, `critique-pass-2026-07-27`) that had already been merged and
+  deleted, and it sent the next session chasing all three. This file cannot track git; git can.
 - **The audit slate is COMPLETE except R12.** Wave 1 (R1 adoption friction, R3 pre-mortem, R4 due
   diligence, R5 untrusted document) ran 2026-07-27. **Waves 2 and 3 plus the tail ran 2026-07-28**
   in one session: R14 deck exemptions, R6 ATAM, R7 FMEA, R2 first contact, R9 conformance/ACR,
@@ -96,8 +99,8 @@ enough to continue; nothing else is required.**
   changed).
 - **THE LAUNCH-BLOCKING SET IS EMPTY.** Item 83 (five MIT tags) was the last one and is resolved:
   the tags are deleted, see "Do not re-add / re-scope".
-- **The publication-readiness batch shipped next (2026-07-28), on branch
-  `publication-readiness-2026-07-28`, committed but NOT PUSHED: items 84, 89, 90, 92, 93.**
+- **The publication-readiness batch shipped next and is PUSHED (2026-07-28): items 84, 89, 90,
+  92, 93.**
   `tools/gates.sh` (the one script that runs every gate and **refuses to be green when one
   skipped**), `CONTRIBUTING.md` with the inbound relicensing grant, the restored `ci.yml` **plus** a
   new `release.yml` (both guarded on `github.event.repository.private != true`, so they are
