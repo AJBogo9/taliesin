@@ -14,21 +14,20 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 **If you are a fresh session with no context, read this block, then "State", then band A. That is
 enough to continue; nothing else is required.**
 
-- **Where the work is.** Audit Wave 1 is committed as **`3a679cb`** on branch
-  **`book-drawer-section-highlight`** (the branch also carries `d0fd071`, the book-drawer section
-  highlight feature). **It is NOT pushed.** `git log --oneline origin/main..HEAD` to confirm what is
-  unpushed; do not trust this line, it rots.
-- **A second session was working the same tree in parallel on 2026-07-27/28**, on branch
-  **`critique-pass-2026-07-27`**, saving its own audit findings. **Check that branch before acting
-  on anything here.** One known overlap: its `6f68386` fixes `THIRD_PARTY.md` MIT→AGPL, which is
-  **all of item 82** (both `THIRD_PARTY.md` claims and `docs/internals/repository.tmd:133` are
-  fixed there; **do not re-fix, just merge and re-grep**). It also adds
-  `crates/core/assets/js/LICENSES.md`, which narrows but does not close item 101. **Its branch does
-  NOT touch `notes/backlog.md`, so this file will not conflict.** It does touch
-  `crates/server/src/serve_site/mod.rs` (a different bug: deck `.tmd`→`.html` link rewrite, not
-  item 80's mounts join) and `docs/guide/reference/cli.tmd` (**not** item 79's wording, which is
-  still open). Its own findings live in `notes/2026-07-28-launch-critique.md`. **Assume more overlap
-  than is listed here and re-derive before building.** Merge order is the author's call.
+- **Git state as of 2026-07-28. Verify it, do not trust it** — this is the line that rots first,
+  and both the author and parallel sessions push:
+
+  ```sh
+  git log --oneline origin/main..HEAD   # what is unpushed on this branch
+  git branch -vv                        # what branches still exist
+  ```
+
+  At the time of writing: `main` == `origin/main` == **`a52afc7`** (the launch-blocker batch).
+  One branch is unmerged and **NOT pushed**: **`publication-readiness-2026-07-28`** (`3abeb7d`,
+  two commits). The earlier `book-drawer-section-highlight` and `critique-pass-2026-07-27`
+  branches, which previous versions of this block told you to check, **are gone**: their work is
+  in `origin/main` and the parallel session has ended. `launch-blockers-2026-07-28` was deleted
+  once it was fully contained in `origin/main`.
 - **The audit slate is COMPLETE except R12.** Wave 1 (R1 adoption friction, R3 pre-mortem, R4 due
   diligence, R5 untrusted document) ran 2026-07-27. **Waves 2 and 3 plus the tail ran 2026-07-28**
   in one session: R14 deck exemptions, R6 ATAM, R7 FMEA, R2 first contact, R9 conformance/ACR,
@@ -38,9 +37,12 @@ enough to continue; nothing else is required.**
   adopted, and can be handed over. Spec:
   [audit slate](../docs/superpowers/specs/2026-07-27-audit-slate-design.md). Wave 1 method:
   [wave 1 plan](../docs/superpowers/plans/2026-07-27-audit-wave-1.md).
-- **Band A held items 79-137 when the audits closed; nine of them have since shipped** (see the
-  bullet above). The earlier "nothing in any of these rounds changed a line of product code" is no
-  longer true, which is the usual way this file rots: **ask git, not this line.**
+- **Band A held items 79-137 when the audits closed; fourteen have since shipped** across two
+  batches (79-83, 109, 117, 118, 120, 121, 127, 128, then 84, 89, 90, 92, 93). Item **150** was
+  added 2026-07-28 from the author's own size question, and **137, 148 and 149 were amended in
+  place** rather than deleted, so what remains of each is visible. The earlier "nothing in any of
+  these rounds changed a line of product code" is long dead, which is the usual way this file rots:
+  **ask git, not this line.**
 - **The findings docs** (each finding carries its measurement and its refutation test). Wave 1:
   [adoption friction](2026-07-27-adoption-friction-audit.md) ·
   [pre-mortem](2026-07-27-premortem-audit.md) ·
@@ -55,16 +57,30 @@ enough to continue; nothing else is required.**
   [R8 value stream](2026-07-28-author-value-stream-audit.md) ·
   [R10 demand](2026-07-28-demand-positioning-audit.md) ·
   [R13 green software](2026-07-28-green-software-audit.md).
-- **Two measurement hazards this session hit, both worth knowing before you measure anything.**
-  (1) `target/release/taliesin` is **shared with the parallel session** and was built from *their*
+- **If your job is to pick the next batch, here is the state of the board.** The
+  **launch-blocking set is empty** and the **publication-readiness set is done**, so nothing in
+  band A is gating anything else; pick on value, not on order. The three largest *un-started*
+  clusters, none of which depends on the others:
+  **(a)** the reader-cost pair, **150** (160 KB of base64 fonts in render-blocking CSS on every
+  page) and **137** (the conditional bundles, whose "not a transfer cost" framing was corrected
+  2026-07-28) — 150 first, it is on 23 of 23 pages where 137 is on 2;
+  **(b)** the deck/conformance pair **112 + 125**, which the file says to do together as one
+  step-the-deck browser harness, and which would be the **first browser test of `deck.js`**;
+  **(c)** **124** (WCAG Label-in-Name on 50 of 54 pages, one emitter, plus its static rule).
+  **Two items are rulings and must not be built without one: 101** (what licence a user's built
+  page carries, given every page inlines AGPL JS — its CLA sub-bullet is discharged, the rest is
+  open) and **122** (its filed fix reverses the PL14 ruling; the cost objection was measured
+  2026-07-28 and is weaker than filed, so it turns on design, not milliseconds).
+- **Two measurement hazards worth knowing before you measure anything.**
+  (1) `target/release/taliesin` is shared across sessions and may have been built from a *different*
   branch: check `taliesin --version` against your own HEAD before trusting any CLI result (the R14
   headline was re-verified after rebuilding, and held). (2) A table-shaped probe whose every cell is
   negative is a **broken probe** until proven otherwise — zsh does not word-split `$VAR` in a `for`
   loop, and an all-`NONE` inventory was caught only because one row had been measured by hand
   minutes earlier. Carry a known-positive row in every such probe.
 - **THE LAUNCH BLOCKERS ARE SHIPPED AND PUSHED (2026-07-28): `origin/main` was at `a52afc7` when
-  the next batch branched off it.** Nine items in one batch, each verified by **mutation** (restore the bug,
-  watch the named test fail) and, where it was a browser claim, in a real browser:
+  the next batch branched off it.** Nine items in one batch, each verified by **mutation** (restore
+  the bug, watch the named test fail) and, where it was a browser claim, in a real browser:
   **80 + 117** (`mounts:` containment + its pin), **81** (`check` no longer spawns a
   project-supplied interpreter), **79 + 118** (`--no-exec` now covers `{js}`; words made honest),
   **109** (`check` *and* `build --strict` walk a site's decks), **127** (comma fences),
@@ -81,12 +97,13 @@ enough to continue; nothing else is required.**
 - **THE LAUNCH-BLOCKING SET IS EMPTY.** Item 83 (five MIT tags) was the last one and is resolved:
   the tags are deleted, see "Do not re-add / re-scope".
 - **The publication-readiness batch shipped next (2026-07-28), on branch
-  `publication-readiness-2026-07-28`, committed but NOT PUSHED: items 84, 89, 90, 92, 93.** `tools/gates.sh` (the one script
-  that runs every gate and **refuses to be green when one skipped**), `CONTRIBUTING.md` with the
-  inbound relicensing grant, the restored `ci.yml` **plus** a new `release.yml` — both guarded on
-  `github.event.repository.private != true`, so they are **inert until publication** and need no
-  follow-up commit — the measured install expectation and platform matrix, and the "Coming from
-  Quarto" chapter generated from the vocabulary consts. Full detail in "Do not re-add / re-scope";
+  `publication-readiness-2026-07-28`, committed but NOT PUSHED: items 84, 89, 90, 92, 93.**
+  `tools/gates.sh` (the one script that runs every gate and **refuses to be green when one
+  skipped**), `CONTRIBUTING.md` with the inbound relicensing grant, the restored `ci.yml` **plus** a
+  new `release.yml` (both guarded on `github.event.repository.private != true`, so they are
+  **inert until publication** and need no follow-up commit), the measured install expectation and
+  platform matrix, and the "Coming from Quarto" chapter generated from the vocabulary consts.
+  Full detail in "Do not re-add / re-scope";
   **`git log --oneline origin/main..HEAD` rather than trusting this line.**
   **Gates: `./tools/gates.sh` itself, all nine, `PASSED` (exit 0)** — the workspace suite with all
   four interpreter gates and `--test-threads=1` at **105 binaries, 1,700 passed, 0 failed,
@@ -514,6 +531,42 @@ rule.
      - **Two viable routes:** hash eagerly and flush lazily during the page loop (guard against the
        `--jobs N` determinism pins), or pre-scan page *sources* for the three triggers. **The latter
        is over-inclusive, which is the safe direction** — under-inclusive means a live 404.
+     **CORRECTION 2026-07-28: "not a transfer cost (a reader never downloads them)" is FALSE for the
+     pages that use the feature, and that is the half worth fixing.** Measured on a built
+     `docs/guide` (23 pages) by reading each page's actual `_assets/` hrefs: a page carrying a
+     mermaid diagram **does** fetch the whole 3,488 KB bundle (950 KB gzipped). Reach: mermaid on
+     **2 of 23** pages, `jslibs` on **1 of 23**, `katex.css` on **4 of 23**. So the finding splits in
+     two, and they have different value: for the ~90% of pages with no diagram it is exactly the
+     storage-only cost as filed, but for a page *with* one it is ~1 MB of real transfer plus **1.15 s
+     of main-thread work** at 6x CPU throttling. **Neither half is the biggest reader cost — see
+     item 150, which is on every page rather than two of them.**
+150. **160 KB of base64 fonts sit inside render-blocking CSS on every page: the only weight a
+     reader pays on all of them.** (MEDIUM.) Filed 2026-07-28 from the author's own question
+     ("should I optimize size?"), which is why it is worth reading before item 137: the answer was
+     that the binary and the zip are the *wrong* metrics, and this is the right one.
+     **Measured** on a built `docs/guide`, gzipped as a real host serves it (Python's `http.server`
+     does not compress, so uncompressed numbers overstate everything):
+     - A prose page's whole transfer is **183 KB gzipped** (html + `app.css` + `app.js`). That is
+       already *better* than the sub-1 MB PDF this was being compared against, and it is one page
+       rather than a whole document. **The per-page story is strong and should not be re-litigated.**
+     - `app.css` is **224 KB raw / 134 KB gzipped, of which 160 KB is two base64 `data:` URIs**: the
+       Newsreader variable font, weight `200 800`, 76 KB + 84 KB. It is a **render-blocking**
+       `<link>` on **23 of 23** pages. Base64 inflates ~33% and gzips poorly, so this is close to a
+       worst case for how to ship a font.
+     - A Chrome trace at **6x CPU throttling + Slow 4G + 390x844** attributes **~621 ms of FCP/LCP
+       savings** to render-blocking requests. Absolute numbers were still fine (prose page **LCP
+       840 ms, CLS 0.00**, no console errors, against Google's 2.5 s "good" bar), so this is
+       headroom, not a fire.
+     - **The tension that makes this a decision, not a chore:** `build <file.tmd>` promises ONE
+       self-contained file, so it *must* inline. A **site** build already emits separate hashed
+       assets, so there the fonts can be their own `.woff2` with `preload` + `font-display: swap`,
+       still self-hosted, still offline, still no CDN. **Per-target, not global** — do not "fix"
+       this by breaking the single-file promise.
+     - Untouched sibling: `katex.css` is 361 KB of which **339 KB is 20 inlined font `data:` URIs**,
+       same shape, but conditional (4 of 23 pages), so it ranks below this.
+     **Context that says do NOT chase the other two numbers:** the binary is **38 MB** (5.5 MB of it
+     bundled assets) against a **408 MB** Quarto dist on the same machine, and the 4.24 MB book zip
+     is an artifact nobody downloads. Both were measured and both are fine.
 122. **`check` says "no problems found" on a document whose code cell cannot run — BUT ITS
      PROPOSED FIX REVERSES A DATED RULING, so read this before building it.** (MEDIUM.)
      Measured cold: plain `check` prints exactly that and exits 0, while `build` on the same file
@@ -908,12 +961,21 @@ the broken one). Refile here only after re-deriving the cause from source.
      "What licence governs a page a user publishes?", independently of Wave 1's item 101 and with
      sharper evidence. Its whole body now lives under **101**; the number is retained, never reused.
 
-148. **Distribution: there is no way to get this except `cargo build --release`.** Measured:
-    `gh release list` empty, `git ls-remote --tags origin` **empty** (the local `v0.2.0` and four
-    `stable-*` tags were never pushed), and crates.io `taliesin` / `taliesin-core` /
-    `taliesin-server` all 404 — i.e. all three names are free. No Homebrew, Nix, or install
-    script. The audience for a documentation tool is not the population that will install a Rust
-    toolchain and wait out a measured **2m59s** cold build.
+148. **Distribution: the binary channel now has a MECHANISM but still has no artifact; the package
+    managers are untouched.** **Amended 2026-07-28 by item 92** — read this before re-filing any of
+    it. What shipped: `.github/workflows/release.yml` builds Linux x86-64, macOS arm64 and macOS
+    x86-64 on a `v*` tag, attaches a tarball + `.sha256` with `LICENSE` + `THIRD_PARTY.md` inside,
+    and the README states the matrix (Windows explicitly unsupported). **What is still true:** no
+    tag has been cut and the workflow is guarded inert until the repo is public, so `gh release
+    list` is still empty and there is still nothing to download **today**; crates.io `taliesin` /
+    `taliesin-core` / `taliesin-server` are all still 404 (all three names free); no Homebrew, Nix,
+    or install script. The remaining work is therefore **cut a tag after the flip**, then decide
+    about crates.io / brew / nix separately.
+    - **Cold-build cost re-measured 2026-07-28: 2m11s, 268 crates, 2.6 GB peak RSS at `-j4`**, for
+      one ~38 MB binary; the README now states this. The filed **2m59s** was a different machine or
+      job count, not a regression. Either way the argument stands: the audience for a documentation
+      tool is not the population that will install a Rust toolchain and wait it out, which is
+      exactly why the release workflow exists.
     - **Prerequisite the critic missed and the defender found:** `cargo publish` will *reject*
       this workspace as-is. `Cargo.toml:14` declares `taliesin-core = { path = "crates/core" }`
       with **no `version`**; add `version = "0.2.0"` first.
@@ -933,11 +995,16 @@ the broken one). Refile here only after re-deriving the cause from source.
       image is the licence badge — while four screencasts demonstrating the moat sit committed
       in `site/assets/` and appear on no page a visitor sees. (They are MP4; a GIF conversion or
       an uploaded asset URL is needed, not a one-line embed.)
-    - **No platform statement anywhere**, while `/proc` is read directly in five places with
+    - ~~**No platform statement anywhere**~~ **DONE 2026-07-28 (item 92).** The README carries a
+      platform matrix naming the three built targets and stating Windows unsupported, and
+      `release_targets.rs` pins it against the release workflow in both directions. The underlying
+      fact is unchanged and still worth knowing: `/proc` is read directly in five places with
       `#[cfg(not(unix))]` fallbacks that `LESSONS.md:88` records as never executed by any test.
-      One honest README line converts every non-Linux issue into an expectation.
-    - **No CONTRIBUTING / CoC / issue templates / CLA or DCO**, while `README.md:156-158`
-      reserves a relicensing right that the first merged outside PR silently ends.
+    - **CoC and issue templates only** — ~~CONTRIBUTING / CLA or DCO~~ **DONE 2026-07-28 (item
+      89).** `CONTRIBUTING.md` exists and its clause 3 is the inbound grant, explicitly including
+      relicensing, so `README.md:156-158` is no longer ended by the first merged outside PR;
+      `gate_script.rs` fails the suite if that grant disappears. Still absent: a code of conduct and
+      GitHub issue templates, both of which are only worth doing once the repo is public.
     - **`taliesin.dev` resolves to nothing** (registered, NS + SPF + a google-site-verification
       TXT, zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
       `site/README.md:11-12` already flags it as a placeholder.
