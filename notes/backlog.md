@@ -1161,6 +1161,16 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 MERGED-TREE figure, which is the one to trust** — the verified sweep and the
+  critique-round batch below were built and gated **together** on
+  `worktree-verified-sweep-2026-07-28` after merging `main`: `./tools/gates.sh` **PASSED, all
+  nine, exit 0**; workspace suite with all four interpreter gates and `--test-threads=1` =
+  **105 binaries, 1,725 passed, 0 failed, 0 ignored**, zero skip messages; `check` exit 0 on all
+  16 projects. **1,725 reconciles exactly** — 1,709 baseline plus 8 test functions from each
+  branch — so the merge lost nothing and introduced no regression. Both branches independently
+  measured **1,717**, which is not a contradiction and is worth knowing before someone "corrects"
+  one of them: each added 8 tests to the same baseline, so the same total twice was arithmetic,
+  not a copied number. Only `notes/backlog.md` conflicted; every source file auto-merged.
 - **2026-07-28 the verified sweep (items 85, 86, 97, 98, 99, 114, 123, 130),** each pinned by a
   test and verified by mutation. **Do not re-scope any of the following as open:**
   - **A `theme:` extension bundle is contained** (85). The `_extensions/<name>/theme.css` arm read
