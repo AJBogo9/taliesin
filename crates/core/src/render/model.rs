@@ -100,6 +100,29 @@ pub struct Block {
     /// Content-hash id (`b-<hex>`), with a positional tiebreak (`-N`) for duplicates.
     pub id: String,
     /// Sourcepos as `startLine:startCol-endLine:endCol`, relative to `source_file`.
+    ///
+    /// **Empty is a value, not a gap — read this before writing a new producer.** Ten
+    /// call sites construct a `Block` that no line of `.tmd` produced (the References
+    /// section, the footnotes section, a book's generated TOC, backlinks, "cite this"),
+    /// and every one of them writes `String::new()` on purpose. It means "my content is
+    /// gathered from lines scattered all over the document, so no single range is
+    /// honest" — which is a different claim from "I forgot to thread the position
+    /// through", and the reader gets a better answer from the first.
+    ///
+    /// The web client honours that distinction: `usableSourcepos` in
+    /// `web-client/client.js` accepts only `L:C…` with a 1-based line, and Alt-click
+    /// walks *past* an unusable block to the nearest ancestor that has one. So an empty
+    /// sourcepos costs nothing — click-to-source simply resolves to the enclosing thing
+    /// that does know where it came from, and a nested unit that knows its own line (a
+    /// footnote `<li>` carries its definition's) still wins.
+    ///
+    /// **Do not invent a plausible-looking range to fill this in.** `openSource()`
+    /// defaults an unparseable sourcepos to line 1, so a fabricated position does not
+    /// fail visibly — it jumps the editor to the top of the file and looks deliberate.
+    /// That was a real defect: every entry in the References list, and the footnotes
+    /// section's own rule, navigated to line 1. Landing nowhere is the honest answer.
+    /// `0:…` is rejected for the same reason (editors are 1-based, so line 0 is not a
+    /// place).
     pub sourcepos: String,
     /// Origin file when the block came from an `{{< include >}}`d file
     /// (relative to the primary document's directory); `None` for the primary
