@@ -839,9 +839,6 @@
   // Mobile pull-up sheet chrome (present only on the live TOC page).
   const tocHandle = tocEl && document.getElementById("tali-toc-handle");
   const tocBackdrop = tocEl && document.getElementById("tali-toc-backdrop");
-  const escText = (/** @type {string|null} */ s) =>
-    (s || "").replace(/[&<>]/g, (/** @type {string} */ c) =>
-      /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   const buildToc = () => {
     if (!tocEl) return;
     // Match the build's `render::toc_items` exactly: every ANCHORED heading, then a
@@ -851,26 +848,53 @@
     // build, so the author was tuning navigation against a TOC no reader ever sees.
     const lvl = (/** @type {Element} */ h) => +h.tagName[1];
     const anchored = [...root.querySelectorAll("h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]")];
-    if (!anchored.length) { tocEl.innerHTML = ""; return; }
+    tocEl.textContent = "";
+    if (!anchored.length) return;
     const base = Math.min(...anchored.map(lvl));
     const heads = anchored.filter((h) => lvl(h) - base <= 2);
-    let html = "<ul>";
+    // Build NODES, never an HTML string. This was the one place the client re-serialized
+    // DOM text back into markup: `h.id` went into an `href` and the whole tree through
+    // `innerHTML`, so any `{#id}` carrying `"`/`<`/`&` corrupted the nav (and executed in
+    // preview). `setAttribute` takes the id verbatim, which also makes the fragment match
+    // the anchor for an id like `r&d-notes` — the client half of the same defect
+    // `render::toc_html` had. `search.js` already refuses to do this; `19-book-outline.js`
+    // is the pattern followed here.
+    const list = document.createElement("ul");
+    let cur = list; // the <ul> the next entry is appended to
     let level = base;
-    let openLi = false;
+    let openLi = /** @type {HTMLLIElement|null} */ (null); // holds a deeper <ul>
+    const up = /** @type {{ul: HTMLUListElement, li: HTMLLIElement|null}[]} */ ([]);
     for (const h of heads) {
       const l = Math.max(lvl(h), base);
-      if (l > level) {
-        while (level < l) { html += "<ul>"; level++; }
-      } else {
-        if (openLi) html += "</li>";
-        while (level > l) { html += "</ul></li>"; level--; }
+      while (level < l) {
+        // A <ul> may only contain <li>, so descending past a skipped heading level needs
+        // a filler <li> to hold the next list — the same repair `toc_html` makes
+        // server-side. The old string emitted a bare nested <ul> here and relied on the
+        // parser, which is why preview and build could disagree on a level-skipping page.
+        if (!openLi) { openLi = document.createElement("li"); cur.appendChild(openLi); }
+        const deeper = document.createElement("ul");
+        openLi.appendChild(deeper);
+        up.push({ ul: cur, li: openLi });
+        cur = deeper;
+        openLi = null;
+        level++;
       }
-      html += `<li><a href="#${h.id}">${escText(h.textContent)}</a>`;
-      openLi = true;
+      while (level > l) {
+        const back = up.pop();
+        if (!back) break;
+        cur = back.ul;
+        openLi = back.li;
+        level--;
+      }
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.setAttribute("href", "#" + h.id);
+      a.textContent = h.textContent;
+      li.appendChild(a);
+      cur.appendChild(li);
+      openLi = li;
     }
-    if (openLi) html += "</li>";
-    while (level > base) { html += "</ul></li>"; level--; }
-    tocEl.innerHTML = html + "</ul>";
+    tocEl.appendChild(list);
   };
 
   // TOC scrollspy lives in the shared toc-spy.js (window.taliInitTocSpy) so the

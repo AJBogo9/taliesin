@@ -2024,6 +2024,40 @@ mod protocol_contract {
         );
     }
 
+    /// `buildToc` was the one place the client re-serialized DOM values back into markup:
+    /// a heading's *decoded* `id` was interpolated into an `href` inside a string that was
+    /// then assigned to `innerHTML`. Two consequences, one per layer — any `{#id}` carrying
+    /// `"`/`<`/`&` corrupted the nav markup (and executed, in preview), and the resulting
+    /// fragment stopped matching the anchor the heading actually carries, which is the
+    /// client half of `render::tests::toc_href_matches_an_explicit_heading_id_containing_an_entity`.
+    ///
+    /// Needled rather than executed for the reason the test above gives: `buildToc` closes
+    /// over `root`/`tocEl` inside client.js's single IIFE and cannot be called from Node.
+    /// The behavioural check is a browser one.
+    #[test]
+    fn the_previews_toc_is_built_from_dom_nodes_never_innerhtml() {
+        let toc = CLIENT_JS
+            .split("const buildToc")
+            .nth(1)
+            .expect("client.js defines buildToc");
+        let body = &toc[..toc.find("\n  };").expect("buildToc has a body")];
+        // Needle the ASSIGNMENT, not the bare word: the comment inside `buildToc` names
+        // `innerHTML` to explain why it is gone, and a substring test on the name alone
+        // fails on its own fixture's prose.
+        assert!(
+            !body.contains("innerHTML ="),
+            "buildToc re-serializes DOM text into HTML: {body}"
+        );
+        assert!(
+            body.contains("setAttribute(\"href\", \"#\" + h.id)"),
+            "the TOC href must take the id verbatim via setAttribute: {body}"
+        );
+        assert!(
+            body.contains("a.textContent = h.textContent"),
+            "the TOC label must be assigned as text, never parsed as markup: {body}"
+        );
+    }
+
     #[test]
     fn client_and_status_css_ship_the_cache_legibility_surface() {
         // DX9: the ⚡ cached badge + the muted cached-cell border are include_str!'d JS/CSS,

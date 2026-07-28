@@ -46,6 +46,14 @@ enough to continue; nothing else is required.**
   place** rather than deleted, so what remains of each is visible. The earlier "nothing in any of
   these rounds changed a line of product code" is long dead, which is the usual way this file rots:
   **ask git, not this line.**
+- **The critique round's code band is nearly drained: 139, 140, 141 and 142 shipped 2026-07-28**
+  on `critique-fixes-139-142` (LSP rename validation + the external-URL fragment, both TOC escaping
+  defects, the Cmd-K scroll lock, and the manifest's icon/`start_url`/pin defects). Detail and the
+  one deliberately-partial half in "Do not re-add / re-scope". **What is left of that round is 138**
+  (the multi-root block, which this file says deserves its own session and was deliberately not
+  raced), **143** (the docs-vs-behaviour sweep), **144** (CLI/diagnostic residuals — note its three
+  LSP sub-items sit in files this batch rewrote, so re-derive them) and **146** (widen the
+  prose-vs-behaviour gate).
 - **The findings docs** (each finding carries its measurement and its refutation test). Wave 1:
   [adoption friction](2026-07-27-adoption-friction-audit.md) ·
   [pre-mortem](2026-07-27-premortem-audit.md) ·
@@ -686,56 +694,6 @@ note in the findings doc before applying any fix text from it.
     this band that touches the block model; it deserves its own session and a mutation-verified
     pin that a multi-root block round-trips through a swap.*
 
-139. **`textDocument/rename` corrupts source, and reaches outside the document.** Two defects in
-    the feature `CLAUDE.md` calls *the* sanctioned way to edit source.
-    - **No validation.** `lsp.rs:523-526` rejects only a blank name. Measured: `F2` → `my
-      section` emits a 3-edit `WorkspaceEdit` producing `{#my section}` (not an anchor — see
-      `is_id_char`, `lsp_complete.rs:320`) and rewrites every reference to match; a newline in
-      the name splits the heading line in two. Fix: validate against the anchor grammar and
-      return a `ResponseError` so the editor surfaces it in the rename box. Leave
-      `resolve_prepare_rename` alone.
-    - **It rewrites external URL fragments.** `lsp_nav.rs:310` `is_anchor_site` treats any `#`
-      before the id as a definition sigil, so renaming a section retargets
-      `[x](https://example.com/other.html#sec-a)` to a fragment on someone else's page. Gate the
-      `'#'` arm on the sigil actually opening a `{#…}` attribute. **Note the mutation campaign
-      measured 29 mutants / 0 survivors here** — that proved the implemented rule is faithfully
-      pinned, not that the rule is right. The missing shape is a fixture with an outbound link.
-
-140. **The web manifest is a phone surface no audit had read, and all three defects ship.**
-    (`crates/core/src/site/manifest.rs`.)
-    - **An installed site shows *Taliesin's* logo on the author's home screen.** `resolve_icons`
-      (`:58-72`) looks only for literal `icon-192.png`/`icon-512.png`; with `favicon: acme.svg`
-      set, the emitted `icon-192.png` is byte-identical to the bundled one. `check` says "no
-      problems found" and the convention is documented nowhere. A trademark artifact on a
-      stranger's phone.
-    - **`start_url: "./"` is emitted for a site with no `index.html`** (`:121-128`), so an app
-      installed from a subpage cold-launches into a 404 — and `display: standalone` removes the
-      address bar, so the reader cannot navigate out.
-    - **`theme_color`/`background_color` are hard-wired `#ffffff`** (`:17`, `:124`) while the
-      page default resolves dark on a dark phone: white splash, then `#16181d`. The existing pin
-      `manifest_color_matches_the_tali_bg_token` (`:279`) asserts the light value is faithfully
-      duplicated, which is the wrong invariant to be asserting.
-
-141. **Two TOC escaping defects, one of which ships a dead link in the published build.**
-    - **`toc_html` double-escapes an explicit heading id** (`render/mod.rs:2502` `escape_attr`
-      over an id `toc_items` already read out of escaped HTML). `## R&D notes {#r&d-notes}` →
-      anchor `r&amp;d-notes`, href `#r&amp;amp;d-notes`. Dead in the **build**. The comment three
-      lines above at `:2498` already documents this exact hazard for `text` and was never
-      applied to `id`. Auto-slugs are unaffected, which is why it stayed invisible.
-    - **`buildToc()` interpolates a decoded `h.id` into an `href` then assigns `innerHTML`**
-      (`web-client/client.js:868`, `:873`); confirmed code execution in preview. Calibrate
-      honestly: a `.tmd` body already passes raw HTML through, so for your own document this is
-      not privilege escalation — but any `{#id}` with `"`/`<`/`&` corrupts the nav markup, and it
-      is the one place the client re-serializes DOM text into HTML (`search.js:694` deliberately
-      does not). Fix with `createElement` + `setAttribute`, as
-      `code-enhance/19-book-outline.js:150` already does.
-
-142. **The Cmd-K palette claims `aria-modal="true"` and never locks the background scroller.**
-    Measured with a real PageDown: the page scrolled 787 px underneath an open palette, on a
-    published site. Two sibling overlays already do it right
-    (`code-enhance/11-lightbox.js:77`, the book drawer). Restore a *saved* overflow value, not
-    `''`, or it unlocks a drawer that was already open.
-
 143. **The docs-vs-behaviour sweep: ~20 false claims across the guide, the Internals book and
     ROADMAP.** All measured, all with paste-ready replacements in the findings doc.
     **Read each item's correction note first — three of the critic's proposed fixes were wrong.**
@@ -1210,6 +1168,64 @@ Atom shipped with autodiscovery).
 docs; look there rather than re-expanding this list.
 
 ### Shipped
+
+- **2026-07-28 the critique-round client/LSP/manifest batch (items 139, 140, 141, 142)** on branch
+  `critique-fixes-139-142`. Each defect was reproduced FIRST as a failing test and each fix is
+  mutation-verified by that test having been red against the unfixed code. **Do not re-scope any of
+  the following as open:**
+  - **`textDocument/rename` validates the new name and refuses with a `ResponseError`** (139).
+    `lsp_nav::anchor_name_error` is the single grammar, living next to the scanner that enforces
+    it, and it checks TWO things: every char is an xref-id char (`my section` wrote
+    `{#my section}` and rewrote every reference to match), and the kind prefix survives (renaming
+    `sec-a` to `intro` would leave every `@intro` as prose, since `anchor_at` only recognises a
+    known prefix). Refusal is JSON-RPC **RequestFailed (-32803)**, which the editor shows in its
+    rename box; a null result reads as "nothing to rename". `resolve_prepare_rename` untouched.
+  - **A rename no longer rewrites the `#fragment` of an external URL** (139). `is_anchor_site`'s
+    `'#' => true` arm now requires the sigil to open a `{#id}` attribute or a bare in-document
+    link destination `](#id)`. Both in-document forms still move; `[x](https://example.com/p.html#sec-a)`
+    does not. **The mutation campaign's 29 mutants / 0 survivors here proved the implemented rule
+    was faithfully pinned, not that it was right** — the missing piece was a fixture with an
+    outbound link, which `rename_leaves_the_fragment_of_an_external_url_alone` now is.
+  - **`toc_html` stopped double-escaping an explicit heading id** (141). `## R&D notes {#r&d-notes}`
+    emitted `href="#r&amp;amp;d-notes"` against an anchor of `r&amp;d-notes` — **a dead link in the
+    published build**, verified fixed by building the fixture and reading the emitted pair. The id
+    reaches `toc_html` via `extract_attr` out of already-escaped HTML, exactly like the entry text
+    three lines above whose comment already warned about this; it now uses the same
+    `escape_attr_from_html`.
+  - **`buildToc` builds DOM nodes instead of an HTML string** (141). It was the one place the
+    client re-serialized DOM text into markup. Browser-verified in preview: all 5 TOC links
+    resolve, including `#r&d-notes`, and the nesting is now `li > ul` rather than the parser-repaired
+    `ul > ul` — so preview and build agree on a level-skipping page, which they did not before.
+  - **The Cmd-K palette locks the background scroller** (142). Browser-verified with a REAL
+    `PageDown`, both directions: 0 px moved with the palette open, **738 px with it closed**, so the
+    probe is not vacuous. It restores the **saved** root `overflow`, not `''` — separately verified
+    by staging a book-drawer lock, opening and closing the palette with real keys, and confirming
+    the palette actually closed *and* the drawer's lock survived. (A first attempt at that check
+    used synthetic `KeyboardEvent`s, which did not close the palette and made the assertion
+    vacuous; the screenshot is what caught it.)
+  - **The web manifest stops shipping Taliesin's brand and stops pointing at a 404** (140).
+    `favicon:` is promoted to the app icon when the project supplied no `icon-192/512` pair, so an
+    author who already declared a mark no longer installs *Taliesin's* logo onto their readers'
+    home screens; an SVG gets `sizes:"any"` (true for a vector), a PNG gets its **real** size read
+    from the IHDR chunk, and an unreadable size is **omitted rather than invented**. A remote,
+    absolute, missing or `.ico` favicon falls back to the bundled set. `start_url` is `./` only
+    when an `index.html` exists, else the first page — `display: standalone` removes the address
+    bar, so cold-launching into a 404 had no way out. `build` now gates the bundled PNGs on
+    `Icons::ships_bundled()`, so they are not written next to a manifest that never cites them.
+    **Partially closed, deliberately:** the splash colour is still a single light value, because a
+    manifest cannot express an OS-conditional colour and `SiteConfig` has no theme key to read
+    (theme is per-document front matter). What *was* fixed is the item's other half — the pin
+    asserted the wrong invariant, and `manifest_bg_tracks_the_theme_bootstrap_fallback` now
+    asserts the splash tracks the bootstrap's own `BG` fallback rather than a CSS token that
+    merely agrees with it. **A dark-mode phone still sees one white splash frame; the address bar
+    is unaffected** (the bootstrap owns `<meta name="theme-color">`). Do not re-file that frame as
+    a bug without a mechanism that does not exist in the format.
+  - **Gates: `./tools/gates.sh`, all nine, PASSED (exit 0)** — workspace suite with all four
+    interpreter gates and `--test-threads=1` at **105 binaries, 1,717 passed, 0 failed, 0 ignored**,
+    plus both `tsc` gates, `node --test`, the VS Code grammar test, `cargo audit` and `cargo deny`.
+    **The +17 against the 1,700 recorded for the publication-readiness batch does NOT reconcile to
+    this branch**, which adds exactly 8 test functions and removes none: the recorded baseline had
+    already rotted by 9. Measure, do not reconcile against a number in this file.
 
 - **2026-07-28 the reader-cost batch (items 150, 137, 124),** each pinned by a test and verified
   by mutation, and browser-verified because every claim in it is about what a browser fetches.

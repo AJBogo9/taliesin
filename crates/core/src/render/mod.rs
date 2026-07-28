@@ -2597,11 +2597,16 @@ fn toc_html(blocks: &[Block]) -> String {
             }
         }
         out.push_str(&format!(
-            // `text` is `strip_tags` output — already HTML-safe (entities intact from
-            // the rendered heading), so it must NOT be `html_escape`'d again (that
-            // turned `&amp;` into `&amp;amp;`). See `toc_html`'s `strip_tags` call above.
+            // NEITHER half may be escaped again. `text` is `strip_tags` output and `id`
+            // is `extract_attr` output: both are read back out of already-escaped heading
+            // HTML, so a second pass turns `&amp;` into `&amp;amp;`. On `text` that is a
+            // visible typo; on `id` it is a DEAD LINK in the published build, because the
+            // href stops matching the anchor the heading actually carries
+            // (`## R&D notes {#r&d-notes}` -> anchor `r&amp;d-notes`, href
+            // `#r&amp;amp;d-notes`). `escape_attr_from_html` is the attribute-context
+            // counterpart: it escapes `"` and leaves existing entities alone.
             "<li><a href=\"#{}\">{text}</a>",
-            escape_attr(id),
+            escape_attr_from_html(id),
         ));
         open_li = true;
     }

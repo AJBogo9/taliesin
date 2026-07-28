@@ -307,7 +307,15 @@ fn is_anchor_site(chars: &[char], i: usize) -> bool {
                 !is_word(p) && p != '@' && p != '['
             }
         }
-        '#' => true,
+        // A `#` is our sigil in exactly two places: a `{#id}` attribute (the definition), and
+        // a link destination that is a BARE fragment, `](#id)`, which points into THIS
+        // document and so must follow a rename. Accepting every `#` meant renaming a section
+        // also rewrote `[x](https://example.com/p.html#id)` — a fragment on someone else's
+        // page, silently retargeted to a heading that only exists here.
+        '#' => {
+            i >= 2
+                && (chars[i - 2] == '{' || (chars[i - 2] == '(' && i >= 3 && chars[i - 3] == ']'))
+        }
         c if is_ws(c) => {
             let mut j = i;
             while j > 0 && is_ws(chars[j - 1]) {
@@ -322,6 +330,39 @@ fn is_anchor_site(chars: &[char], i: usize) -> bool {
 /// Every site in `text` where cross-reference anchor `id` appears as a whole xref-id token in a
 /// rename site — its definition (`{#id}` / `#| label: id`) and all `@id` references — each a
 /// 0-based `(line, start_col, end_col)` covering **exactly the id** (never the `@`/`#` sigil).
+/// Why `name` cannot replace cross-reference anchor `old`, or `None` when it can. Called
+/// before a rename builds any edit, because `rename` is the ONE sanctioned write path back
+/// into source (the preview never writes) — so an unusable name does not fail loudly, it
+/// corrupts every site at once. Two conditions, and neither was checked:
+///
+/// * **Every character must be an xref-id char.** The scanners above stop at anything else,
+///   so `F2` -> `my section` wrote `{#my section}` — an anchor of `my` with a stray word
+///   after it — and rewrote every reference to match. A newline split the heading in two.
+/// * **The kind prefix must survive.** [`anchor_at`] only recognises an id whose prefix is a
+///   known xref kind, so renaming `sec-a` to `intro` strands every `@intro` as prose.
+///
+/// The prefix in the message is read off `old` rather than from a copy of the kind table,
+/// which cannot go stale as kinds are added.
+pub(crate) fn anchor_name_error(old: &str, name: &str) -> Option<String> {
+    if name.is_empty() {
+        return Some("a cross-reference anchor cannot be empty".to_string());
+    }
+    if let Some(bad) = name.chars().find(|c| !is_xref_id_char(*c)) {
+        return Some(format!(
+            "{name:?} is not a cross-reference anchor: {bad:?} is not allowed \
+             — use letters, digits, `-` and `_`"
+        ));
+    }
+    if !taliesin_core::cite::is_xref_anchor(name) {
+        let kind = old.split_once('-').map(|(p, _)| p).unwrap_or("sec");
+        return Some(format!(
+            "{name:?} has no cross-reference kind prefix, so `@{name}` would stop \
+             resolving — keep the `{kind}-` prefix"
+        ));
+    }
+    None
+}
+
 /// The set a rename rewrites; includes the definition so renaming keeps references resolving.
 pub(crate) fn anchor_occurrences(text: &str, id: &str) -> Vec<(u32, u32, u32)> {
     let chars: Vec<char> = text.chars().collect();
