@@ -427,9 +427,9 @@ The `{js}` half needs two things, and reports `[js: skipped, …]` with the reas
 either is missing. It needs a **system Chrome** at runtime (Taliesin never downloads a
 browser), and it needs the binary to have been **built with the `headless-js` feature**.
 That feature is off by default because its browser driver is roughly a third of the whole
-build; the released binaries carry it, and a source build opts in with
-`cargo build --release --features taliesin-server/headless-js`. Everything else about
-`read --run` is unaffected either way.
+build; the released binaries carry it, so a downloaded Taliesin is the complete tool, and
+a source build opts in with one cargo flag (the project README gives the exact command).
+Everything else about `read --run` is unaffected either way.
 
 `map` is the whole-project outline in one read-only call: every page in nav / chapter
 order (its path, URL, title, date, categories, layout), the nav and any `mounts:`, the
