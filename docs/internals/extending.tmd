@@ -101,36 +101,71 @@ window.taliEnhancers.register(function (root) {
 Ship that file and inject it via `include-after-body` in your front matter, and it is
 wired into the same mount cycle the built-ins use.
 
-## Editor integration: the VS Code companion
+## Editor integration: the language server and the VS Code companion
 
-The websocket protocol is open (see [the block model](block-model.tmd)), so an editor
-that hosts the preview is just another thin client, not a fork. One such client already
-ships in-repo, at `editor/vscode/`: the **Taliesin Companion**. It is the concrete
-*producer* for the reverse-sync side of the protocol that `web-client/client.js` already
-*consumes*, so the two halves meet.
+An editor gets two independent things from Taliesin, and keeping them apart is the whole
+design.
+
+### `taliesin lsp`: the language server
+
+`taliesin lsp` is a synchronous, offline, **kernel-free** LSP server over stdio
+(`crates/server/src/lsp.rs` plus `lsp_complete`/`lsp_nav`/`lsp_links`/`lsp_outline`/`lsp_pos`).
+It holds open `.tmd` buffers warm and answers:
+
+| capability | what it gives the author |
+|---|---|
+| `publishDiagnostics` | every `check` finding, live on each keystroke, with its `TAL-*` code and a link to the catalog |
+| `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout and theorem kinds, cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
+| `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target |
+| `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
+| `documentLink` | `{{< include >}}` / `{{< embed >}}` paths, so they *look* navigable |
+| `documentSymbol` | the heading outline (breadcrumbs, sticky scroll, the outline view) |
+| `codeAction` | the "did you mean `X`" quick fix, whenever the diagnostic carried a precise span |
+| `rename` (with `prepareRename`) | a cross-reference anchor and every reference to it, as one edit |
+
+Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
+in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either signal, the
+`taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
+other editor's filetype produces), so the server is never silently inert.
+
+Two properties are load-bearing. It is **parse-only**: no kernel is started, so answering a
+completion cannot execute a cell. And **stdout is the JSON-RPC wire**, so nothing in that
+module may print to it; all human output goes to `crate::log` on stderr.
+
+### The companion: what an LSP cannot do
+
+`editor/vscode/` is the **Taliesin Companion**, and it implements no language features of
+its own — `src/client.ts` is a thin `vscode-languageclient` over `taliesin lsp`. That was
+not always true: the same features were once re-implemented in TypeScript, shelling out to
+`taliesin vocab | symbols | check`, alongside the Rust server that already did all of it.
+Two copies of one contract with no gate between them can only drift, and they had.
+
+What is left in the extension is what the protocol has no concept of:
+
+- **The live preview + bidirectional source sync.** It spawns `taliesin preview` on a free
+  **localhost** port (no `--host`, so the LAN token never enters the picture), embeds that
+  URL in a webview via `vscode.env.asExternalUri`, and runs a small **relay** HTML document
+  inside the webview to bridge the preview iframe's `postMessage` protocol to and from the
+  extension host. Forward sync (`tali-goto`) calls `revealRange` to move the editor cursor;
+  reverse sync turns a cursor move into a debounced `tali-cursor`, which the client resolves
+  with `highlightAtLine` (and, in a deck, jumps `TaliesinDeck` to the containing slide).
+- **Editor commands:** *Open Preview*, *Check This Document*, *Diagnose Setup*, *Insert Math
+  Symbol* (a picker over the same math vocabulary the completion uses, searchable by glyph),
+  *Restart Language Server*, *Show Language Server Log*.
+- **The `.tmd` grammar, the snippets, and `language-configuration.json`** — pure manifest.
 
 It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
 editor/vscode && npm install && npm run build`, then **F5** to launch an Extension
-Development Host). A single command, `taliesin.openPreview` (command palette or the
-editor-title button on a `.tmd`), and one setting, `taliesin.path` (the binary, when
-`taliesin` is not on `PATH`), are its whole surface.
+Development Host).
 
-The host architecture is deliberately thin:
-
-- it spawns `taliesin preview` on a free **localhost** port (no `--host`, so the LAN
-  token never enters the picture) and embeds that URL in a webview via
-  `vscode.env.asExternalUri`;
-- a small **relay** HTML document inside the webview bridges the preview iframe's
-  `postMessage` protocol to and from the extension host. Forward sync (`tali-goto`) calls
-  `revealRange` to move the editor cursor; reverse sync turns a cursor move into a
-  debounced `tali-cursor`, which the client resolves with `highlightAtLine` (and, in a
-  deck, jumps `TaliesinDeck` to the containing slide).
+`taliesin.path` is declared `"scope": "machine"` on purpose: it names a program the
+extension executes, so a repository's own `.vscode/settings.json` must not be able to
+redirect it.
 
 The companion **never writes back to the source**: it only navigates and highlights,
 holding the line that the `.tmd` file is the single editing surface and the preview is a
-read-only view. Phase 1 is exactly this host-plus-cursor loop, localhost only; editor
-*commands* that transform the buffer (insert-block, reorder-slide) are deferred to a
-later phase, and strictly as `.tmd`-text transforms when they land.
+read-only view. Editor *commands* that transform the buffer are in scope, strictly as
+`.tmd`-text transforms; preview gestures that mutate the document are not.
 
 ## Recipes
 
