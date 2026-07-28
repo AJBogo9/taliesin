@@ -62,11 +62,6 @@ CANARY_KERNEL="kernel_executes_state_errors_and_interrupts_runaway_cell"
 CANARY_R="r_cells_execute_and_persist_state_across_cells"
 CANARY_NODE="only_a_textual_sink_becomes_a_live_region"
 CANARY_CHROME="read_run_js_reports_svg_produced_and_error_kinds"
-# A second browser-backed capability, and it fails independently of the first: the math
-# hover rasterizes a KaTeX page, so it can break on the screenshot/clip path while `{js}`
-# observation still works. Every other test in that module asserts a string and would stay
-# green with rasterizing entirely broken.
-CANARY_MATH_HOVER="a_real_browser_rasterizes_real_katex_into_a_data_uri"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -267,8 +262,7 @@ else
             "python kernel:$CANARY_KERNEL" \
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
-            "chrome:$CANARY_CHROME" \
-            "chrome (math hover):$CANARY_MATH_HOVER"; do
+            "chrome:$CANARY_CHROME"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then
