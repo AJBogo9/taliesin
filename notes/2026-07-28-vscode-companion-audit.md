@@ -549,18 +549,61 @@ The shadow is the whole `.tmd` with every non-cell line replaced by an empty lin
   a cell** — the test host has no Python extension. Treat Python as expected-to-work, not
   proven. Installing `ms-python.python` into `.vscode-test` would close this.
 
-### Found while verifying: the companion leaks a preview server
+### Found while verifying: the companion leaked a preview server — now fixed (Part 8)
 
-Not caused by this change, and not fixed here. `extension.ts` calls `server.dispose()` only
-from `panel.onDidDispose`; the `PreviewServer` is never added to `context.subscriptions` and
-`deactivate()` is empty. So closing the window (or killing the extension host) with a preview
-open leaves `taliesin preview` running, holding its port and file watcher.
+Not caused by the embedded-completion change; found because it broke the verification of it.
+Written up in Part 8.
 
-The e2e suite opens a preview every run, so this accumulates: **17 orphaned preview processes
-were live on this machine**, and together they exhausted `fs.inotify.max_user_instances`
-(128) — after which VS Code itself could not start and the e2e run failed at launch with
-`EMFILE: too many open files`. Killing them fixed it. Worth a one-line fix (register the
-server in `context.subscriptions`) plus reaping in the e2e teardown.
+## Part 8: the preview server outlived VS Code (fourth pass, same day)
+
+### The symptom was that the test suite could no longer run
+
+`npm run test:e2e` started failing at *launch*, before any test, with
+`EMFILE: too many open files, watch '/snap/code'`. That is not a test failure and not a
+Taliesin error, which is what made it worth chasing rather than retrying.
+
+Cause: **17 orphaned `taliesin preview` processes**, all previewing the same corpus fixture
+(`corpus/posts/born-machines.tmd` — the e2e's `SAMPLE_POST`, so unmistakably test-spawned,
+not the author's). Each holds a file watcher, and together they had exhausted
+`fs.inotify.max_user_instances` (128, and 128 were in use). Past that ceiling **VS Code
+itself cannot start**. The e2e suite opens a preview every run, so every run added one.
+
+### Two independent leaks
+
+1. **The shutdown path.** `extension.ts` disposed the server only from
+   `panel.onDidDispose`. Closing the *window* tears down the extension host **without**
+   disposing panels, so the spawned server simply outlived VS Code. The `PreviewServer` was
+   never in `context.subscriptions`, and `deactivate()` was empty. Fix: push it into
+   `context.subscriptions`, and make `dispose()` idempotent since both paths can now fire.
+2. **The failed-start path**, found while reading for the first. `PreviewServer.start`
+   spawns, then rejects if `waitForHttp` times out — and **nothing killed the child it had
+   already spawned**. The caller gets an `Error`, not a `PreviewServer`, so no handle to
+   dispose exists anywhere. A binary that spawns fine and never serves leaked a process per
+   attempt. Fix: kill the child on any failure out of `start`.
+
+### How each is pinned
+
+- **The shutdown leak is checked from the RUNNER** (`e2e/runTest.ts`), not from the Mocha
+  suite — the only vantage point that *outlives the Extension Host*, which is exactly what
+  the bug is about. It snapshots matching PIDs before and after `runTests`, so a preview the
+  author started by hand (or a parallel session's) is never blamed on the run, and it reaps
+  what it finds rather than degrading the machine further. It failed before the fix
+  (`VS Code exited leaving 1 taliesin preview server(s) running`) and passes after.
+- **The failed-start leak** has a unit test (`src/test/server.test.ts`) using a fake
+  executable that spawns and never answers. `start` grew a `readyTimeoutMs` parameter
+  (default 8000) so the test runs in ~700 ms instead of 8 s.
+
+  One trap worth keeping: with the fix reverted, this test originally **hung** rather than
+  failed — a live child handle pins Node's event loop. A hanging test blocks a gate without
+  saying why, so its teardown reaps the survivor; the mutation now fails cleanly in 2.7 s
+  with `the spawned process must not outlive the failed start`. Verified by inverse edit.
+
+### Still true after the fix
+
+A **hard kill** of the extension host (SIGKILL, a crash) runs no disposal, so the preview
+server still survives that. Fixing it properly would need the child to watch its parent, and
+the exec-reaping work already ruled out PDEATHSIG for this project. The common paths — close
+the panel, close the window, disable/reload the extension, a failed start — are all covered.
 
 ## Rules that are now load-bearing
 
@@ -579,6 +622,10 @@ server in `context.subscriptions`) plus reaping in the e2e teardown.
 - **`lsp_nav::scan_math` is the only implementation of the `$` delimiter rules.** Completion
   and hover both go through it. A second scanner "just for this one case" is how the
   TypeScript duplicate started.
+- **Anything the companion spawns must be registered in `context.subscriptions`.** A
+  disposal wired only to a panel, view or editor callback does not run when the window
+  closes, and the child outlives VS Code. `e2e/runTest.ts` fails the run if a preview server
+  survives it.
 - **The math preview must stay structure-aware.** `<mfrac>` and `<msup>` flattened to text
   are not an approximation, they are a different expression (`a+1/b` for `\frac{a+1}{b}`). A
   preview that misinforms is worse than no preview, which is what the hover returns when it

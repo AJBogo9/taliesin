@@ -43,6 +43,13 @@ async function openPreview(context: vscode.ExtensionContext) {
     return;
   }
 
+  // Closing the panel is not the only way a preview ends. Closing the WINDOW tears down the
+  // extension host without disposing panels, so a server registered only on
+  // `panel.onDidDispose` outlives VS Code — still holding its port, its file watcher and its
+  // inotify instances. They accumulated until VS Code itself could not start.
+  // `dispose()` is idempotent, so both paths may fire.
+  context.subscriptions.push(server);
+
   const panel = vscode.window.createWebviewPanel(
     "taliesinPreview",
     `Preview: ${docPath.split("/").pop()}`,

@@ -3,12 +3,18 @@ import * as path from "node:path";
 import { freePort, waitForHttp } from "./ports";
 
 export class PreviewServer {
+  private disposed = false;
+
   private constructor(
     readonly port: number,
     private readonly child: ChildProcess
   ) {}
 
-  static async start(binary: string, file: string): Promise<PreviewServer> {
+  static async start(
+    binary: string,
+    file: string,
+    readyTimeoutMs = 8000
+  ): Promise<PreviewServer> {
     const port = await freePort();
     const child = spawn(binary, ["preview", file, String(port)], {
       cwd: path.dirname(file),
@@ -19,14 +25,33 @@ export class PreviewServer {
         reject(new Error(`failed to launch \`${binary}\`: ${e.message}`))
       )
     );
-    const ready = waitForHttp(port, 8000).then((ok) => {
-      if (!ok) throw new Error(`taliesin preview did not answer on ${port} within 8s`);
+    const ready = waitForHttp(port, readyTimeoutMs).then((ok) => {
+      if (!ok) {
+        throw new Error(
+          `taliesin preview did not answer on ${port} within ${readyTimeoutMs}ms`
+        );
+      }
       return new PreviewServer(port, child);
     });
-    return Promise.race([ready, spawnError]);
+    try {
+      return await Promise.race([ready, spawnError]);
+    } catch (e) {
+      // A binary can spawn fine and still never serve. The caller gets an Error rather than
+      // a PreviewServer, so nothing else holds a reference to dispose — without this, the
+      // child runs until the machine reboots, and the live handle also pins the event loop.
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* never started */
+      }
+      throw e;
+    }
   }
 
+  /** Idempotent: the panel and the extension's own disposal may both reach this. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     try {
       this.child.kill("SIGTERM");
     } catch {
