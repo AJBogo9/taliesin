@@ -191,10 +191,23 @@ fn handle_notification(
     assert!(method != PANIC_PROBE_METHOD, "injected notification panic");
     if method == DidOpenTextDocument::METHOD {
         let p: DidOpenTextDocumentParams = serde_json::from_value(notif.params)?;
-        if p.text_document.language_id == "taliesin" {
+        // Accept the buffer on EITHER signal: the `taliesin` language id (what the VS
+        // Code companion declares) or a `.tmd` path. Gating on the id alone made the
+        // server silently inert in every other editor: the documented Neovim recipe is
+        // `cmd = { "taliesin", "lsp" }`, Neovim sends the *filetype* as `languageId`,
+        // and nothing in this repo registers a filetype for `.tmd` — so the id arrives
+        // as "" or "markdown" and every document was dropped. The server still
+        // advertised hover/completion/symbols/rename/diagnostics and then answered
+        // null to all of them, with nothing on stderr to say why.
+        if p.text_document.language_id == "taliesin" || is_tmd_uri(&p.text_document.uri) {
             let uri = p.text_document.uri;
             docs.insert(uri.clone(), p.text_document.text);
             publish(connection, &uri, &docs[&uri])?;
+        } else {
+            crate::log::warn(&format!(
+                "lsp: ignoring {} (languageId {:?} is not `taliesin` and the path is not .tmd)",
+                p.text_document.uri, p.text_document.language_id
+            ));
         }
     } else if method == DidChangeTextDocument::METHOD {
         let mut p: DidChangeTextDocumentParams = serde_json::from_value(notif.params)?;
@@ -912,6 +925,16 @@ fn to_document_symbol(
                 .collect(),
         ),
     }
+}
+
+/// Whether a URI names a `.tmd` document, used as the second admission signal beside
+/// the `taliesin` language id. Editors other than the VS Code companion have no reason
+/// to know that id, so the path extension is what makes `taliesin lsp` work in the
+/// Neovim / Helix / Zed setups the CLI reference documents.
+fn is_tmd_uri(uri: &lsp_types::Url) -> bool {
+    std::path::Path::new(uri.path())
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("tmd"))
 }
 
 /// Lint `text` as the document at `uri` and publish the result.

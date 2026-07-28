@@ -1,4 +1,5 @@
-# cargo-deny configuration. Run `cargo deny check` (wired into CI alongside cargo-audit).
+# cargo-deny configuration. Run `cargo deny check` by hand (alongside cargo-audit) on
+# any dependency change — there is no CI, and the pre-push hook does not cover it.
 # Keeps the dependency tree to redistribution-friendly licenses and flags advisories,
 # mirroring the licenses we actually ship (MIT/Apache/ISC/BSD/…).
 [advisories]
@@ -8,7 +9,8 @@ version = 2
 # rationale. `unmaintained` is already checked by the version-2 default.
 unsound = "all"
 # A few transitive deps are flagged *unmaintained* (not a security vulnerability, and no
-# safe upgrade exists). cargo-audit (the other CI job) already tolerates these as warnings;
+# safe upgrade exists). `cargo audit`, run by hand alongside this file, already tolerates
+# these as warnings;
 # ignoring them here keeps cargo-deny's stricter gate meaningful, a NEW advisory (or any
 # *vulnerability*) still fails the build.
 ignore = [

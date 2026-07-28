@@ -1,11 +1,22 @@
 # Third-party components
 
-Taliesin itself is MIT licensed (see [LICENSE](LICENSE)). It builds on the
-following third-party work.
+Taliesin itself is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0-only, see [LICENSE](LICENSE)); the VS Code editor companion under
+[`editor/vscode`](editor/vscode) is a separate work licensed under the MIT
+License. It builds on the following third-party work.
 
 ## Vendored (redistributed with this project)
 
 Bundled so the tool works fully offline.
+
+MIT and ISC both require the **permission notice** — not just the copyright line — to
+be included in every copy, and the minified bundles carry at most a one-line header.
+The verbatim texts therefore ship beside the files they cover:
+[`crates/core/assets/js/LICENSES.md`](crates/core/assets/js/LICENSES.md) (d3, Observable
+Plot, Mermaid + the dependencies Mermaid inlines) and
+[`crates/core/assets/katex/LICENSE`](crates/core/assets/katex/LICENSE) (KaTeX).
+Fonts and syntax definitions already carried theirs
+(`assets/fonts/OFL.txt`, `assets/syntaxes/PowerShell.LICENSE.txt`).
 
 - **KaTeX** (MIT, Copyright (c) 2013-2020 Khan Academy and other contributors).
   The stylesheet and WOFF2 fonts under `crates/core/assets/katex/` render math
@@ -40,8 +51,9 @@ Bundled so the tool works fully offline.
   `crates/core/assets/fonts/OFL.txt` (and `newsreader-OFL-fontsource.txt`). License:
   <https://github.com/productiontype/Newsreader>.
 
-The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
-`mermaid.js`, `tali-js.js`, `walkthrough.js`, `tabset.js`) are Taliesin's own (MIT).
+The other scripts under `crates/core/assets/js/` (the `code-enhance/` fragments,
+`deck.js`, `mermaid.js`, `tali-js.js`, `walkthrough.js`, `tabset.js`, `scrolly.js`)
+are Taliesin's own, under the project's AGPL-3.0-only license.
 
 ### Sample 3-D models (corpus content)
 
@@ -79,7 +91,8 @@ shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
 The Rust crates in `Cargo.lock` (comrak, axum, tokio, syntect, etc.) are fetched
 by Cargo at build time under their own licenses (predominantly MIT, Apache-2.0,
 and ISC). They are not redistributed in this repository. `deny.toml` pins the
-allowed license set, and CI enforces it (the `deny` job runs `cargo deny check`).
+allowed license set. There is no CI: run `cargo deny check` by hand on any
+dependency change (the `.githooks/pre-push` gate covers fmt/clippy/test only).
 
 One build dependency embeds third-party *data* into the compiled binary rather
 than only linking code:

@@ -67,7 +67,7 @@ language runs against its own warm kernel:
 | `TALIESIN_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the limit. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
 
-(See `Taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,
+(See `taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,
 `TALIESIN_NO_EXEC`, `TALIESIN_NO_CLEAR`.)
 
 **Quick start.** Scaffold a starter site and preview it:
@@ -135,7 +135,7 @@ with `data-block-id` + `data-sourcepos` on every block.
   print stylesheet).
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
   a redesigned navbar/footer + book chapter prev/next, `.tmd`→`.html` link rewriting,
-  `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
+  `listing:` post-card indexes, and `hero:` landing banners. Live preview navigates
   between pages and hot-reloads the edited one.
 - **Live diagnostics** in the preview's dev panel: broken includes, missing kernels,
   config typos (with did-you-mean), and an advisory client-side accessibility audit

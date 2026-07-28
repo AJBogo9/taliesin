@@ -596,10 +596,12 @@ async fn page_or_asset(
             .next()
             .and_then(|f| f.strip_suffix(".html"))
             .unwrap_or("deck");
-        return Html(taliesin_core::render_doc_to_page(
-            &doc,
-            stem,
-            taliesin_core::OutputMode::Preview,
+        // Same rewrite the page path applies below: a deck's author `.tmd` references
+        // must resolve to `.html` here too, or preview disagrees with the build about
+        // where a deck's links point (preview happens to serve the rendered page for a
+        // `.tmd` URL, which is exactly what masks the build's version of this bug).
+        return Html(taliesin_core::site::rewrite_tmd_links(
+            &taliesin_core::render_doc_to_page(&doc, stem, taliesin_core::OutputMode::Preview),
         ))
         .into_response();
     }

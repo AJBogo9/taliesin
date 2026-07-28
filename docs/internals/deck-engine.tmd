@@ -12,7 +12,7 @@ reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
   is the camera transform itself, not state classes. The public JS surface is
   `window.TaliesinDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
   `getCurrentSlide` / `registerPlugin`, …), which the preview client and theme
-  extensions bind to (`window.TaliesinDeck` stays as a back-compat alias).
+  extensions bind to. It is the only name: the reveal-era alias was deleted.
 - **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, the `{js}`
   enhancer, highlight CSS) are `include_str!`'d into the page. No CDN, no network.
 - **Reuse the block model.** Every slide's blocks still carry `data-block-id` +

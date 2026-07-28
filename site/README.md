@@ -73,4 +73,8 @@ cp out/live-edit-light.mp4 out/live-edit-dark.mp4 \
    out/live-code-light.mp4 out/live-code-dark.mp4 ../../site/assets/
 ```
 
-`demo.tmd` is a copy of `docs/demo.tmd`; re-copy it if the showcase deck changes.
+`demo.tmd` is a copy of `docs/guide/demo.tmd`; re-copy it if the showcase deck changes
+(`cp ../docs/guide/demo.tmd demo.tmd`). The stale `docs/demo.tmd` path this line used to
+name does not exist, which is how the two copies drifted: the guide's copy was corrected
+and the marketing copy went on advertising a PDF export, a "reader" mode and a pen tool
+the engine has never had. `crates/core/tests/stale_docs.rs` now gates both copies.

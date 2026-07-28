@@ -1741,21 +1741,28 @@ async fn build_site_async(
         let katex_css = asset_href(&deck.url, &bundle.katex_css);
         let mermaid_js = asset_href(&deck.url, &bundle.mermaid_js);
         let jslibs_js = asset_href(&deck.url, &bundle.jslibs_js);
-        let html = taliesin_core::render_deck_to_page_external(
-            &doc,
-            stem,
-            taliesin_core::ExternalAssets {
-                // A deck never links the page bundle: its stylesheet is `deck.css`, and its
-                // script bundle deliberately leaves out the Cmd-K palette runtime.
-                app_css: "",
-                app_js: "",
-                katex_css: &katex_css,
-                mermaid_js: &mermaid_js,
-                jslibs_js: &jslibs_js,
-                deck_css: &deck_css,
-                deck_js: &deck_js,
-            },
-        );
+        // A deck is built off-`Page`, so it never passes through `Site::render_page_doc_*`
+        // where the intra-site `.tmd`->`.html` rewrite lives. Applying it here is not
+        // cosmetic: `.tmd` is in `SKIP_EXT`, so `deploy_referenced_sources` publishes any
+        // *referenced* `.tmd`, and an unrewritten href therefore turns "link to my page"
+        // into "publish my markdown" — including for a `draft:` page the HTML build
+        // correctly refused to emit.
+        let html =
+            taliesin_core::site::rewrite_tmd_links(&taliesin_core::render_deck_to_page_external(
+                &doc,
+                stem,
+                taliesin_core::ExternalAssets {
+                    // A deck never links the page bundle: its stylesheet is `deck.css`, and its
+                    // script bundle deliberately leaves out the Cmd-K palette runtime.
+                    app_css: "",
+                    app_js: "",
+                    katex_css: &katex_css,
+                    mermaid_js: &mermaid_js,
+                    jslibs_js: &jslibs_js,
+                    deck_css: &deck_css,
+                    deck_js: &deck_js,
+                },
+            ));
         let dest = out.join(&deck.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);

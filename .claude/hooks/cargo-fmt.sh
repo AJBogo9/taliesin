@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse hook: format the just-edited Rust file with rustfmt so the tree
-# stays `cargo fmt`-clean (which CI enforces). Reads the hook payload on stdin
+# stays `cargo fmt`-clean (which the pre-push hook enforces). Reads the hook payload on stdin
 # and only acts on *.rs files; never fails the tool call.
 set -euo pipefail
 
