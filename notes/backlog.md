@@ -395,22 +395,9 @@ confirms zero surviving self-MIT claims, which was the whole action it asked for
 
 **Licence correctness (publication blockers)**
 
-83. **Tag a release whose tree and licence match `main` — WIDER THAN FILED, and it needs an
-    owner ruling, not code.** (HIGH.) Re-measured 2026-07-28: **five** local tags ship an MIT
-    `LICENSE`, not one — `v0.2.0` (`268a18f`) plus `stable-2026-06-22`, `stable-2026-06-25`,
-    `stable-2026-06-30` and `stable-2026-07-07`. Every tag predating the relicence commit
-    (`3d474cb`, 2026-07-19) carries MIT, so cloning any of them gets MIT while HEAD ships
-    AGPL-3.0, which leaks the dual-licence moat README and `deny.toml` call the commercial
-    strategy.
-    **Nothing has leaked yet:** `git ls-remote --tags origin` is **empty**, so no tag has ever
-    been pushed. The exposure begins at publication, and item 100's Phase 2 pushes a rewritten
-    history to a *new public repo* — so whether tags travel with it is part of that decision.
-    **Safe to delete:** `~/.local/bin/taliesin-stable` is a frozen 19 MB **binary**, not a
-    tag checkout, and `taliesin-promote` only ever *creates* tags — so removing the old
-    `stable-*` tags breaks no local workflow (verified, not assumed).
-    **Left for the author because deleting tags is destructive and the licence position is a
-    business call.** Three routes: delete the five pre-relicence tags; keep them local forever
-    and never push tags; or move `v0.2.0` to a current commit and drop the four `stable-*`.
+**Licence at a tag: RESOLVED 2026-07-28 (was item 83) — see "Do not re-add / re-scope".**
+The five pre-relicence tags are deleted. Their commits remain in `main`'s history, so nothing
+was lost but the labels; the SHAs are recorded there in case a snapshot is ever wanted again.
 
 **Making an outsider's run mean something**
 
@@ -1195,6 +1182,20 @@ docs; look there rather than re-expanding this list.
 
 ### Shipped
 
+- **2026-07-28 item 83 — the five MIT tags are DELETED (owner-approved).** Every tag predating
+  the relicence commit (`3d474cb`, 2026-07-19) carried an MIT `LICENSE` while HEAD ships
+  AGPL-3.0, so cloning any of them leaked the dual-licence moat README and `deny.toml` call the
+  commercial strategy. **None had ever been pushed** (`git ls-remote --tags origin` was empty), so
+  nothing leaked; the exposure would have begun at publication, and item 100's Phase 2 pushes a
+  rewritten history to a *new public* repo. Deleted: `v0.2.0` (`268a18f`),
+  `stable-2026-06-22` (`4fbb60b`), `stable-2026-06-25` (`d270bed`),
+  `stable-2026-06-30` (`7eca3a5`), `stable-2026-07-07` (`df394c6`). **All five commits are
+  reachable from `main`**, so only the labels went; re-tag any SHA above if a snapshot is wanted.
+  Safe by measurement, not assumption: `~/.local/bin/taliesin-stable` is a frozen 19 MB **binary**,
+  not a tag checkout, and `taliesin-promote` only ever *creates* tags. **The durable rule: never
+  tag before the licence is settled, and any new release tag must be cut from a tree whose
+  `LICENSE` matches `Cargo.toml`.** The surviving tag is `prune-markdown-bloat-work` (2026-07-26,
+  already AGPL).
 - **2026-07-28 the launch-blocker batch (items 79-82, 109, 117, 118, 120, 121, 127, 128),** all
   mutation-verified. **Do not re-scope any of the following as open:**
   - **`mounts:` is contained** (80): `Mount::resolve` refuses an absolute `path:`, a climb past the
