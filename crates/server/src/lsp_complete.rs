@@ -330,43 +330,12 @@ fn detect_math_command(line_prefix: &str) -> Option<String> {
 /// guard, which is what keeps `$ 5 ` from opening math; a bare `$5` price still does, and
 /// costs at most an offered `\alpha` after a backslash later on that same line.
 fn in_math(doc_prefix: &str) -> bool {
-    let mut display = false;
-    let mut inline = false;
-    let mut in_code = false;
-    for line in doc_prefix.split('\n') {
-        let t = line.trim_start();
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            inline = false;
-            continue;
-        }
-        // Inline math never survives a line break; display math does.
-        inline = false;
-        if in_code {
-            continue;
-        }
-        let chars: Vec<char> = line.chars().collect();
-        let mut i = 0;
-        while i < chars.len() {
-            match chars[i] {
-                '\\' => i += 2, // an escape consumes the next char, so `\$` is literal
-                '$' if chars.get(i + 1) == Some(&'$') => {
-                    display = !display;
-                    i += 2;
-                }
-                '$' => {
-                    // Closing never checks the guard; only an OPEN needs a non-space after it.
-                    let opens = chars.get(i + 1).is_some_and(|c| !c.is_whitespace());
-                    if inline || opens {
-                        inline = !inline;
-                    }
-                    i += 1;
-                }
-                _ => i += 1,
-            }
-        }
-    }
-    display || inline
+    // The cursor sits at the end of `doc_prefix`, so "inside math" is exactly "a span is
+    // still open at end-of-input". `scan_math` drops a span abandoned at a line break, so an
+    // unclosed span here always means the author is typing inside one.
+    crate::lsp_nav::scan_math(doc_prefix)
+        .iter()
+        .any(|s| !s.closed)
 }
 
 /// A ` ```{lang} ` cell language being typed: a fence line whose brace is open.

@@ -231,6 +231,32 @@ suite("Taliesin companion (integration)", () => {
     assert.ok(text, "hover should name the included file");
   });
 
+  test("hovering math previews what it renders as", async () => {
+    // The server can only answer if VS Code asks, and it only asks inside a math span it
+    // routed to the Taliesin server. An untitled buffer also re-proves the documentSelector
+    // covers `scheme: untitled`, which the first migration got wrong.
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content: "---\ntitle: T\n---\n\nLet $\\alpha + \\beta$ stand.\n",
+    });
+    await vscode.window.showTextDocument(doc);
+
+    const text = await waitForValue(async () => {
+      const hovers = (await vscode.commands.executeCommand(
+        "vscode.executeHoverProvider",
+        doc.uri,
+        new vscode.Position(4, 8) // inside `\alpha`
+      )) as vscode.Hover[];
+      const joined = (hovers ?? [])
+        .flatMap((h) => h.contents)
+        .map((c) => (typeof c === "string" ? c : (c as vscode.MarkdownString).value))
+        .join("\n");
+      return joined.includes("α+β") ? joined : undefined;
+    }, 15000);
+
+    assert.ok(text, "hover should preview the rendered glyphs");
+  });
+
   test("renames a cross-reference anchor and every reference to it", async () => {
     // Rename existed in the server the whole time and the companion never exposed it; it is
     // the clearest proof that the editor is now driven by the server rather than by a

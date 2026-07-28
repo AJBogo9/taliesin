@@ -407,7 +407,8 @@ fn resolve_definition(
             }
             hit?
         }
-        Target::FrontmatterKey { .. } | Target::None => return None,
+        // Math has no definition site to jump to; it is a hover-only target.
+        Target::Math { .. } | Target::FrontmatterKey { .. } | Target::None => return None,
     };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
@@ -508,6 +509,38 @@ fn resolve_hover(
                     end,
                 )
             }
+        }
+        // `$…$` → what it renders as. KaTeX is in this binary and memoized, so the preview
+        // is the SAME engine the reader's page goes through, not a second interpretation of
+        // the source. Math KaTeX cannot parse gets no hover: the expression is already
+        // squiggled as a diagnostic, and a preview of a broken parse would contradict it.
+        Target::Math {
+            latex,
+            display,
+            start_line,
+            start_char,
+            end_line,
+            end_char,
+        } => {
+            let preview = taliesin_core::math_preview::unicode_preview(&latex, display)?;
+            if preview.trim().is_empty() {
+                return None;
+            }
+            let kind = if display { "Display" } else { "Inline" };
+            let to_pos = |l: usize, c: usize| {
+                let lt = crate::lsp_pos::nth_line(text, l);
+                Position::new(l as u32, crate::lsp_pos::char_to_utf16(lt, c) as u32)
+            };
+            Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("### {preview}\n\n{kind} math"),
+                }),
+                range: Some(Range::new(
+                    to_pos(start_line, start_char),
+                    to_pos(end_line, end_char),
+                )),
+            })
         }
         Target::None => None,
     }
@@ -2211,6 +2244,29 @@ mod tests {
         assert!(
             md.contains("@fig-scree"),
             "expected the id echoed, got {md:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn hover_on_math_previews_what_it_renders_as() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-lsp-hover-math.tmd").unwrap();
+        let text = "Let $\\alpha + \\beta$ stand.\n".to_string();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // The span opens at char 4; char 8 is inside `\alpha`.
+        let h = hover_at(&client, &uri, 11, 0, 8);
+        let md = hover_markdown(&h);
+        assert!(
+            md.contains("α+β"),
+            "expected the rendered glyphs, got {md:?}"
         );
 
         shutdown(&client);

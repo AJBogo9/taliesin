@@ -116,7 +116,7 @@ It holds open `.tmd` buffers warm and answers:
 |---|---|
 | `publishDiagnostics` | every `check` finding, live on each keystroke, with its `TAL-*` code and a link to the catalog |
 | `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout and theorem kinds, cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
-| `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target |
+| `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
 | `documentLink` | `{{< include >}}` / `{{< embed >}}` paths, so they *look* navigable |
 | `documentSymbol` | the heading outline (breadcrumbs, sticky scroll, the outline view) |
@@ -131,6 +131,18 @@ other editor's filetype produces), so the server is never silently inert.
 Two properties are load-bearing. It is **parse-only**: no kernel is started, so answering a
 completion cannot execute a cell. And **stdout is the JSON-RPC wire**, so nothing in that
 module may print to it; all human output goes to `crate::log` on stderr.
+
+The math hover is worth one note, because the obvious implementation does not exist. LaTeX
+Workshop previews math as an image, and it can: MathJax has an SVG output mode. **KaTeX does
+not** — the `katex` crate emits `Html`, `Mathml` or `HtmlAndMathml`, and its HTML is spans
+positioned by the KaTeX stylesheet, which a hover has no way to load. So the preview is
+built from the **MathML half** of the render (`crates/core/src/math_preview.rs`): KaTeX has
+already done the parsing, and its `<mi>`/`<mo>` carry the Unicode glyphs. The walk is
+structure-aware on purpose — flattening `<mfrac>` would preview `\frac{a+1}{b}` as `a+1/b`,
+a different expression, and `<msup>` would render `x^2` as `x2`. Scripts become Unicode
+super/subscripts where they exist and fall back to `^`/`_` where they do not. There is no
+error branch: a failed render emits no `<math>` at all, so "found MathML" already means
+"parsed", and `error_output_carries_no_mathml` is the canary guarding that assumption.
 
 ### The companion: what an LSP cannot do
 

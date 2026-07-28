@@ -395,12 +395,9 @@ Roughly in value order:
    is the largest remaining "feels like a real IDE" jump. Expect this to be the hard one:
    it likely needs a virtual-document / middleware layer in `client.ts`, which is the one
    place TypeScript legitimately grows again.
-2. **KaTeX hover preview.** Hovering `$…$` renders the expression instead of describing it.
-   `crate::math::render` is in-process and memoized, so the render is nearly free; the open
-   question is getting it into a hover (LSP hover is markdown, so likely an inline `data:`
-   SVG, and worth checking what VS Code actually displays). Add a `Target::Math` arm in
-   `lsp_nav::classify_target` and `resolve_hover`. LaTeX Workshop's version of this is the
-   feature its users cite most.
+2. ~~**KaTeX hover preview.**~~ **DONE — see Part 6.** The plan above was wrong on its
+   central premise (there is no SVG to inline, because KaTeX cannot emit one); what shipped
+   is a MathML-derived Unicode preview. Read Part 6 before touching it.
 3. **Stepless math completion** (Tinymist's trick: `$ar|$` → `$arrow.r$` with no separate
    accept step), and fuzzy matching on the glyph rather than only the name — the vocabulary
    already carries the glyph in `description`.
@@ -417,6 +414,86 @@ Roughly in value order:
 7. **A marketplace icon** (128×128 PNG; only the language-file SVG exists) and a
    `contributes.walkthroughs` first-run experience, if this is ever published.
 
+## Part 6: the math hover (second pass, same day)
+
+### The plan's premise was false, and checking it first saved the work
+
+Item 2 above said to render the expression into the hover, "likely an inline `data:` SVG",
+on the reasoning that KaTeX is already in the binary so the render is nearly free. **KaTeX
+cannot produce an image at all.** `katex-0.4.6`'s `OutputType` is `Html | Mathml |
+HtmlAndMathml` (`opts.rs:235`); the HTML half is `<span>`s positioned by the KaTeX
+stylesheet and its web fonts, which a hover cannot load, and there is no SVG mode to reach
+for. LaTeX Workshop can do the image version because MathJax has SVG output. Taliesin cannot
+follow it without adding a second math engine.
+
+Two further findings from measuring rather than assuming, both worth keeping:
+
+- **VS Code hovers do not render math.** The workbench *does* bundle KaTeX and lazily loads
+  `katex.min.js` with a MathML tag allowlist and a CSS-property allowlist shaped exactly to
+  KaTeX's inline styles — but it is reached through a `…math.enabled` config in the **chat**
+  renderer. The built-in `markdown-math` extension covers the *markdown preview* and
+  *notebooks*. Neither path is the hover renderer. `MarkdownString` has no math flag.
+- So the only preview a hover can display is **text**.
+
+### What shipped
+
+`crates/core/src/math_preview.rs` (new): `unicode_preview(latex, display) -> Option<String>`,
+built from the **MathML half** of the existing `crate::math::render` — so KaTeX does the
+parsing and the preview cannot disagree with the reader's page about what the source means.
+
+The walk is structure-aware because a flat text extraction *lies*, which the spike showed
+before any code was written:
+
+| source | flat extraction | what ships |
+|---|---|---|
+| `\frac{a}{b}` | `ab` | `a/b` |
+| `\frac{a+1}{b}` | `a+1b` | `(a+1)/b` |
+| `x^2` | `x2` (reads as ×) | `x²` |
+| `\int_0^1 x\,dx` | `∫01x dx` | `∫₀¹x dx` |
+| `\sum_{i=1}^n i` (display) | `∑i=1ni` | `∑ᵢ₌₁ⁿi` |
+
+`munder`/`mover`/`munderover` are handled beside `msub`/`msup`/`msubsup` because display mode
+spells the same limits differently — miss them and every `$$…$$` previews worse than every
+`$…$`. Scripts fall back to `^`/`_` when Unicode has no script form (Greek exponents).
+KaTeX's typographic spacing (`\,` is U+2009) is flattened to U+0020 and zero-width
+characters are dropped: a preview must not contain characters you cannot see.
+
+**There is no error branch, deliberately.** The first version had one, and it was dead code
+with a vacuous test: removing `if html.contains("katex-error")` entirely still passed all
+nine tests, because KaTeX with `throw_on_error = false` replaces the *whole* output with a
+bare error span carrying no `<math>` element — so the `?` on the MathML lookup already
+returned `None`. The guard is gone and `error_output_carries_no_mathml` is the canary: if
+KaTeX ever emits partial MathML beside an error marker, it fails first and loudly, rather
+than a reader getting a confident preview of a broken expression.
+
+`lsp_nav.rs` gained `scan_math`, **the single owner of the `$` delimiter rules**, and
+`Target::Math`. `lsp_complete::in_math` (35 lines of its own scanner) now delegates to it, so
+completion's "am I inside math?" and hover's "which expression am I inside?" cannot drift —
+which is the same failure this branch was created to delete. All 34 completion tests,
+including every escape/fence/currency edge case, pass unchanged across that refactor.
+`Target::Math` carries absolute positions because display math crosses lines and every other
+target is line-relative.
+
+### Verified
+
+- `TALIESIN_PYTHON=… ./tools/gates.sh`: **PASSED — every gate ran and passed** (all nine).
+- `npm test` (companion): **45 passing**.
+- `npm run test:e2e`: **11 passing** (was 10) in a real Extension Host, VS Code 1.130.0 — the
+  new one hovers `$\alpha + \beta$` in an untitled buffer and asserts `α+β` came back.
+- Two mutation checks, by inverse edit (never `git checkout` on uncommitted work): neutering
+  `group()` kills only the compound-fraction test; ignoring the code-fence state kills only
+  `math_inside_a_code_fence_is_code_not_math`. Both pins are real, neither is vacuous.
+
+### Left open
+
+- **Hovering a single command** (`\varepsilon` → "ε, Greek") rather than the whole enclosing
+  span. The vocabulary already carries the glyph, and this is arguably the higher-value half
+  for the long tail (`\preccurlyeq`), since an author usually knows what they just typed.
+- **Matrices and cases.** `<mtable>` falls through to plain concatenation, so
+  `\begin{matrix}` previews as a run of cells with no row structure. It is not *wrong*, but
+  it is the weakest output; a `;`-per-row separator would be the cheap fix.
+- Items 1 and 3–7 of the list above are untouched.
+
 ## Rules that are now load-bearing
 
 - **Editor features go in Rust, in `crates/server/src/lsp*.rs`.** A second copy in
@@ -427,3 +504,10 @@ Roughly in value order:
   the possibility of completing something that renders as an error span for the reader.
 - **stdout is the JSON-RPC wire** in the `lsp` modules. Never print to it; use `crate::log`
   (stderr).
+- **`lsp_nav::scan_math` is the only implementation of the `$` delimiter rules.** Completion
+  and hover both go through it. A second scanner "just for this one case" is how the
+  TypeScript duplicate started.
+- **The math preview must stay structure-aware.** `<mfrac>` and `<msup>` flattened to text
+  are not an approximation, they are a different expression (`a+1/b` for `\frac{a+1}{b}`). A
+  preview that misinforms is worse than no preview, which is what the hover returns when it
+  cannot answer.
