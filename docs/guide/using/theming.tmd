@@ -61,9 +61,8 @@ all **fully offline**, the colours baked into the page, no CDN and no client re-
 
 **Diagrams are the one exception.** Mermaid bakes its colours into the rendered SVG, so
 a diagram cannot be recoloured by CSS alone: it listens for the theme toggle (the
-`tali:themechange` event) and re-runs from its stashed source under the new theme. And
-the Mermaid library itself is fetched from a CDN by default, so diagrams are offline
-only when `TALIESIN_MERMAID_URL` points at a local copy.
+`tali:themechange` event) and re-runs from its stashed source under the new theme. The
+library itself is vendored like everything else, so this costs no network either.
 
 ## The variable reference
 
@@ -163,8 +162,7 @@ html[data-theme="dark"] {
 ```
 
 The zoom (click-to-enlarge) backdrop uses `--tali-bg`, so an enlarged diagram
-matches the page. Mermaid itself loads from a CDN by default, so diagrams are
-fully offline only when `TALIESIN_MERMAID_URL` points at a local copy.
+matches the page.
 
 ## Four ways to customize
 

@@ -391,8 +391,7 @@ build shapes do it differently:
   page. Because the scan runs after the cells ran, a freshly written `#| fig-export:`
   figure is on disk and gets picked up like any hand-placed image. A separate pass
   (`copy_js_imports`) follows a `{js}` cell's relative `import()`/`fetch()` specifiers,
-  which the `src=`/`href=` scan can't see, and `copy_resources` copies a format
-  extension's `format-resources` by file name. An **in-place** build (output beside the
+  which the `src=`/`href=` scan can't see. An **in-place** build (output beside the
   source) skips every self-copy.
 - **A site `build`** does not scan HTML at all. `mirror_assets` walks the whole source
   tree once and mirrors every non-source file into `_site/` at the same relative path,

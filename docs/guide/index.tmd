@@ -26,7 +26,7 @@ exactly as they were. No cold start, no full-page flash, no waiting.
   edits show up immediately, and only the cells whose code actually changed
   re-run.
 
-This guide is itself a multi-page **book** built with Taliesin: sidebar, search
+This guide is itself a multi-page **book** built with Taliesin: the Chapters drawer, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
 companion book, [Internals](../internals/), covers how it works inside.
 

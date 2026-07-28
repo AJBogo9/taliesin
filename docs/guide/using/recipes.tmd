@@ -206,8 +206,8 @@ of raw HTML. Available glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`,
 
 ## 3. A documentation book
 
-> Numbered chapters grouped into a part, a sidebar table of contents, and Cmd-K
-> search, all from one `chapters:` list.
+> Numbered chapters grouped into a part, a Chapters drawer, and Cmd-K search, all
+> from one `chapters:` list.
 
 ```text
 handbook/
@@ -220,10 +220,10 @@ handbook/
 ```
 
 The presence of `chapters:` in `_site.yml` is what makes the project a book: no
-`type:` key needed. Taliesin numbers the chapters, builds the left sidebar, wires
+`type:` key needed. Taliesin numbers the chapters, builds the Chapters drawer, wires
 prev/next navigation, and resolves cross-references across chapters. A chapter entry
 is a bare filename, a `{ part:, chapters: }` group header, or a `{ file:, text: }`
-mapping whose `text:` overrides the sidebar label:
+mapping whose `text:` overrides the chapter label:
 
 ```yaml
 title: "The Handbook"
@@ -234,7 +234,7 @@ chapters:
   - part: "Using it"
     chapters:
       - setup.tmd
-      - file: usage.tmd       # { file:, text: } overrides the sidebar label
+      - file: usage.tmd       # { file:, text: } overrides the chapter label
         text: "Everyday use"
   - reference.tmd
 ```
@@ -252,9 +252,9 @@ title: "Introduction"
 ---
 ```
 
-Without an explicit `text:` override, the sidebar label is the chapter's first `#`
+Without an explicit `text:` override, the chapter label is the chapter's first `#`
 heading, then its front-matter `title:`, then the file name. These very docs are a
-book built this way: look at the sidebar and press Cmd-K to try the search.
+book built this way: open the Chapters drawer and press Cmd-K to try the search.
 
 ::: {.callout-note}
 There is no `_metadata.yml` cascade. The root `_site.yml` sets defaults (like

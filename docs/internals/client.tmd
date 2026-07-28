@@ -250,7 +250,9 @@ indistinguishable from core's. The notable ones:
   reactive graph; the [interactive cells chapter](../guide/using/interactive.tmd)
   covers the runtime.
 - **Mermaid** (`mermaid.js`): renders `{mermaid}` cells, lazy-loading the Mermaid
-  library (offline-overridable via `TALIESIN_MERMAID_URL`).
+  library from the vendored copy — inlined into a static build, served same-origin in
+  preview, so neither path touches the network. `TALIESIN_MERMAID_URL` overrides the
+  loader URL in either mode.
 - The **reader menu** and its features (theme / text-size / spacing prefs, focus
   mode, reading progress), the **image lightbox**, **anchor permalinks**, the
   **link-preview card**, the **keyboard shortcuts** layer, the **skip link**, and

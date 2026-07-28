@@ -41,7 +41,7 @@ const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementB
 /// A search control that opens the Cmd-K palette. It carries `data-tali-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
-/// book sidebar.
+/// book topbar.
 fn search_button() -> String {
     // The kbd is a shortcut hint, not part of the label: aria-hidden keeps it out of the
     // accessible name (WCAG 2.5.3 Label-in-Name). The icon-only button names itself with

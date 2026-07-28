@@ -79,9 +79,12 @@ The "with the source-position attributes masked out" step is a precise string
 comparison, `eq_ignoring_sourcepos`. It runs `mask_sourcepos` over **both** the old
 and the new block HTML: every `data-sourcepos="…"` is rewritten to an empty
 `data-sourcepos=""` (the value is dropped, the attribute and quotes kept) before the
-two strings are compared byte for byte. The same masking blanks the
-`data-source-file` value, so a block that moved between files but kept its content
-still reads as equal:
+two strings are compared byte for byte.
+
+`data-sourcepos` is the **only** thing masked. Everything else — the content, the
+`data-block-id`, and `data-source-file` — must still match exactly, so a block that
+moved to a *different file* while keeping its content does **not** read as equal and
+takes the `Update` path rather than `SetMeta`:
 
 - **bodies equal after masking** (so the *only* difference was the position
   attributes) → `SetMeta`. The element is left in the DOM; just its

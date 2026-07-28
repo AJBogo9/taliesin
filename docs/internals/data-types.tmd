@@ -214,7 +214,6 @@ struct PageIncludes {
     in_header: String,      // → <head>
     before_body: String,    // → just after <body>
     after_body: String,     // → just before </body>
-    resources: Vec<PathBuf>, // extension format-resources (e.g. a deck plugin's .js); copied next to the page on build
 }
 ```
 
@@ -224,9 +223,8 @@ author is trusted, see the trust model in [the block model & protocol](block-mod
 but it means nothing untrusted may flow into them without sanitizing first.
 :::
 
-`has_markup()` reports whether any of the three string slots is non-empty (ignoring
-`resources`); `merge(other)` appends `other` after `self` (site-level includes
-first, then the page's own).
+`merge(other)` appends `other` after `self` (site-level includes first, then the
+page's own), slot by slot.
 
 ### Includes & the per-line origin map (`includes.rs`)
 

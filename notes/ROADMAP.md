@@ -35,8 +35,8 @@ paged-media *rendering* of it, not a parallel format.)
 "The corpus is the spec" evolves into **corpus-plus-roadmap.** The relaxation is
 precise and the discipline is preserved by one mechanism: **every new feature ships
 pinned by a target corpus document added in the same change.** A proposal that names
-its pin doc (`corpus/diagnostics/typos.qmd`, `corpus/layout/panels.qmd`,
-`corpus/narrate/walkthrough.qmd`, …) is a real roadmap item; a proposal that cannot
+its pin doc (`corpus/diagnostics/typos.tmd`, `corpus/layout/panels.tmd`,
+`corpus/narrate/walkthrough.tmd`, …) is a real roadmap item; a proposal that cannot
 name one is spec-by-wishful-thinking and waits until a document pulls it in. Scope
 grows on purpose; the regression net grows with it, in lockstep. The corpus is still
 the arbiter of "done", it just now includes documents that *lead* implementation as
@@ -49,7 +49,7 @@ well as record it.
   `data-source-file`. Source mapping, incremental swap, and live-state preservation
   all key off this. Anything mutating the block model / diff / sourcepos is flagged
   and gated.
-- **Single editing surface:** the `.qmd` is the only editing surface; the preview is
+- **Single editing surface:** the `.tmd` is the only editing surface; the preview is
   read-only and never writes back. Click-to-source navigates, never writes.
   Source-edit ergonomics are *editor* commands, never preview gestures (the
   drag-to-reorder resolution).
@@ -60,8 +60,8 @@ well as record it.
   (`cite.rs`), the `{{< include >}}` source-map pass (`includes.rs`), the
   leading-underscore "not a page" convention, the numbering scanners, exec/freeze/
   kernel. New capability rides the *supported* seams, new `build_container` arms, the
-  `qmdEnhancers` registry, additive block metadata, the diagnostics channel, never a
-  rewrite. The `.qmd` content dialect (`:::`, `#|`, `@fig-`/`[@key]`, `{{< >}}`) is
+  `taliEnhancers` registry, additive block metadata, the diagnostics channel, never a
+  rewrite. The `.tmd` content dialect (`:::`, `#|`, `@fig-`/`[@key]`, `{{< >}}`) is
   kept on purpose.
 
 ---

@@ -40,8 +40,15 @@ surfaces, each a list-membership check:
 Two `:::` containers are also checked for **structure** rather than vocabulary: a
 `.panel-tabset` with no headings (it would render no tabs) and a `.code-walkthrough`
 with no code block (its sticky panel would be empty) each warn, since the author almost
-certainly meant something. One deliberate hole: `format:` sub-keys are left unlinted,
-because a format extension may legitimately introduce its own.
+certainly meant something.
+
+`format:` sub-keys used to be the one deliberate hole, exempted "because a format
+extension may introduce its own". There is no such mechanism — `_extensions/` is a
+theme-CSS lookup and nothing else — so the exemption was certifying inert keys as
+supported on a green check. They are linted now, and the sub-key that *appeared* to work
+(`format:` → `html:` → `toc:`) only did so because the TOC scan matched at any depth;
+that scan is top-level-only now, so every `format:` sub-key is uniformly inert and the
+warning is true.
 
 ## Did you mean?
 

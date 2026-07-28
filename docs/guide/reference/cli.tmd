@@ -3,7 +3,7 @@ title: "CLI reference"
 description: "Every subcommand and flag: preview, build and publish, the check gate, and the machine-facing read, map, vocab, mcp and lsp."
 ---
 
-*Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+*Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd)*
 
 | Command | Effect |
 |---|---|
@@ -20,7 +20,7 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 | `vocab` | Emit the editor autocomplete vocabulary as JSON (the companion consumes it) |
 | `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
-| `init [dir]` | Scaffold a minimal previewable site (`_site.yml` + `index.tmd`) in `dir` (default `.`); refuses to overwrite |
+| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, `AGENTS.md`, and a `.taliesin/` holding the editor JSON schemas. `--template site\|book` adds that starter's pages; refuses to overwrite |
 | `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
 | `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
 | `map <dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning) |
@@ -217,11 +217,12 @@ reading progress and resume, the mobile pull-up table of contents), and any `{js
 `d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is *not* shipped into
 a build (it belongs to the live preview), so a reader never gets a dead outline.
 
-The **one** external dependency is **Mermaid diagrams**, which load the Mermaid runtime
-from a CDN by default. For a truly offline book, point `TALIESIN_MERMAID_URL` at a local
-copy of `mermaid.min.js` (copied into the folder) before building, or use `--bare` /
-server-rendered figures on pages that don't need live diagrams. (Everything else is
-already local.)
+**Mermaid diagrams are offline too**, which is worth stating because it is the one part
+that looks like it should not be. A page with a `{mermaid}` block gets the ~2.5 MB Mermaid
+runtime **inlined into the built page itself**, and only into the pages that actually
+contain a diagram. Nothing is fetched at view time. (The live preview serves the same
+vendored copy from a same-origin route instead of inlining it, so the dev loop is offline
+without adding 2.5 MB to every page it re-serves.)
 
 ## Publishing & sharing
 
@@ -299,14 +300,14 @@ deploy is never silent.
 Your readers open the URL, type the passcode once in the browser's password prompt (no
 account needed), and see the current build. A shared passcode keeps casual strangers out;
 it is forwardable and is not per-person access control, which is the right level for a
-work-in-progress draft to a supervisor. Note that a book using live Mermaid diagrams
-still loads Mermaid from a CDN at view time (everything else is offline); this is harmless
-behind the gate.
+work-in-progress draft to a supervisor.
 
 ## Starting from something: `init` and `new`
 
-`init` scaffolds a whole site (`_site.yml` + `index.tmd`). `new` scaffolds a single
-document inside one:
+`init` scaffolds a whole project: `_site.yml`, a hello-world `index.tmd`, an `AGENTS.md`
+briefing for coding agents, and a `.taliesin/` directory holding the JSON schemas your
+editor completes `_site.yml` and front matter from. `--template site` adds an `about.tmd`;
+`--template book` adds the chapter files. `new` scaffolds a single document inside one:
 
 ```sh
 taliesin new post my-first-post   # posts/my-first-post/index.tmd, dated today
@@ -422,6 +423,14 @@ taliesin read post.tmd --run --format json | jq   # structured per-cell results
 available, observes each `{js}` chart (`[js: produced, <svg W×H>]`) and reports what
 every cell produced, so an agent can confirm a figure actually rendered.
 
+The `{js}` half needs two things, and reports `[js: skipped, …]` with the reason when
+either is missing. It needs a **system Chrome** at runtime (Taliesin never downloads a
+browser), and it needs the binary to have been **built with the `headless-js` feature**.
+That feature is off by default because its browser driver is roughly a third of the whole
+build; the released binaries carry it, and a source build opts in with
+`cargo build --release --features taliesin-server/headless-js`. Everything else about
+`read --run` is unaffected either way.
+
 `map` is the whole-project outline in one read-only call: every page in nav / chapter
 order (its path, URL, title, date, categories, layout), the nav and any `mounts:`, the
 cross-reference graph (each anchor, where it is defined, and its backlinks), and any
@@ -511,7 +520,7 @@ See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |
-| `TALIESIN_MERMAID_URL` | Override the Mermaid library URL (self-host next to your site for a fully offline build; on load failure a visible `[data-mermaid-error]` banner shows the diagram source) |
+| `TALIESIN_MERMAID_URL` | Point the Mermaid loader at a different copy of the library. Builds and previews are already offline without it (inlined and same-origin respectively), so this is for pinning a specific Mermaid version or serving your own copy; on load failure a visible `[data-mermaid-error]` banner shows the diagram source |
 
 Without a kernel, cells render as highlighted source and the preview shows a
 "kernel unavailable" diagnostic rather than failing.

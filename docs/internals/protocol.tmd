@@ -25,7 +25,7 @@ how the server's rebuild loop drives it lives in [the dev server](server.tmd).
 ## Server → client messages
 
 Every message is a JSON object with a `type` field; the client switches on it.
-Nine types travel this direction.
+Twelve types travel this direction.
 
 | `type` | When it is sent | Client does |
 |---|---|---|
@@ -39,6 +39,8 @@ Nine types travel this direction.
 | `style` | only the theme CSS changed | hot-swap the theme `<style>` in place |
 | `error` | a render/read failure | show an error overlay |
 | `reload` | a config / kernel-restart change | full page reload |
+| `build-state` | a run's phase changed (`warming-kernel` / `executing` / `idle` / `error`), with `ran`/`total`/`lang` | drive the progress indicator |
+| `cell-state` | one cell moved between `queued` / `running` / `done` / `error`, with its timing and whether it came from `cache` or ran `fresh` | badge that cell in place |
 
 ### `full_render`
 
@@ -315,11 +317,18 @@ compares the upgrade request's `Origin` against its `Host`:
   none), so it is allowed.
 - **`Origin` authority equals `Host`** (same origin) is allowed. This also covers
   the LAN case: a phone dials the exact `Host` it sees.
-- **`Origin` host is loopback** (`localhost`, `127.0.0.1`, `::1`, `[::1]`) is allowed.
+- **`Origin` host is loopback** (`localhost`, `127.0.0.1`, `::1`, `[::1]`) is allowed
+  **on a loopback-bound preview only** — the default, where a page on another local
+  port (a second dev server, the editor companion) is a trusted local peer.
+  **`--host` drops this allowance** (`allow_loopback_origins: false`): there a page at
+  `http://localhost:X` in the author's own browser is a loopback *peer*, so the LAN
+  token guard waves it through, yet it may be hostile — so under `--host` only a
+  same-origin request may drive the control channel.
 - Anything else gets a **`403`** ("cross-origin websocket refused").
 
-This is always installed, with or without `--host`, because a browser always sends
-`Origin`, so it blocks cross-site driving without affecting non-browser clients.
+The *check* is always installed, with or without `--host`, because a browser always
+sends `Origin`, so it blocks cross-site driving without affecting non-browser clients.
+What `--host` changes is not whether it runs but how much it allows: strictly less.
 
 ### LAN access token (`--host` only)
 

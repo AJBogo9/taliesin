@@ -14,8 +14,10 @@ use crate::render::Warning;
 /// actually implements, plus every key the corpus/docs use. Intentionally tight
 /// (the native flip), so a key taliesin doesn't implement, or a typo,
 /// now warns instead of being silently ignored. Top-level keys plus the immediate
-/// children of `execute:` / `listing:` / `hero:` are linted; `format:`
-/// sub-keys are not (an extension owns them).
+/// children of `execute:` / `listing:` / `hero:` are linted — and so are `format:`
+/// sub-keys, by [`validate_format_subkeys`]. They were once deliberately exempt
+/// "because an extension owns them", but no extension mechanism exists; see that
+/// function's docs for why the exemption was a lie rather than a design.
 pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Identity / metadata
     "title",

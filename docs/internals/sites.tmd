@@ -18,7 +18,7 @@ flowchart TB
   disc --> page["per page · render_page"]
   page --> core["core pipeline<br/>(.tmd → blocks → HTML)"]
   core --> fm["expand front-matter blocks<br/>hero: / listing:"]
-  fm --> chrome["wrap in chrome<br/>navbar / footer / sidebar / prev-next"]
+  fm --> chrome["wrap in chrome<br/>navbar / footer / chapter drawer / prev-next"]
   chrome --> links["rewrite .tmd→.html<br/>+ resolve cross-page xrefs"]
   links --> out["page HTML"]
 ```
@@ -261,7 +261,7 @@ prose, not just headings. It is built once at discovery and **written to a separ
 `search-index.js`, lazy-loaded by the client on first open**, rather than inlined into
 every page, so the index never bloats page weight. (On a 17-page book that saved
 over a megabyte across the pages.) The palette is opened by the navbar search
-control (or the book sidebar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcut.
+control (or the book topbar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcut.
 
 `page_fragment` renders each page's Markdown once (no code execution, so the anchor
 ids match the served pages exactly), then emits a flat JSON array of compact records, one

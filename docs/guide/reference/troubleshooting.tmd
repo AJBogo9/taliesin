@@ -3,7 +3,7 @@ title: "Troubleshooting"
 description: "How to decode a diagnostic code, and fixes for the common failures: no kernel, a hanging cell, stale outputs, a port in use, an unstyled deck."
 ---
 
-*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · Troubleshooting*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · Troubleshooting · [Accessibility](accessibility.tmd)*
 
 The preview surfaces most problems as a small **diagnostics** note in the corner
 (non-fatal) or a dismissible **error overlay** (a failed render). Here are the
@@ -89,10 +89,12 @@ hits to clear by hand. Two escape hatches exist if you suspect the cache anyway:
 
 ## Diagrams / `{js}` cells don't render
 
-Mermaid loads from a CDN, so it needs `http(s)` and a network. `{js}` cells run
-offline (d3 + Plot are bundled), but a cell that `import()`s a relative helper module
-needs `http(s)`, not `file://`. Use `preview` (or a deployed/served build). Prose,
-math, and executed figures render offline regardless.
+Both run offline — Mermaid is vendored (inlined into a built page, served same-origin in
+preview) and `{js}` cells have d3 + Plot bundled — so a network is not what is missing.
+What still needs `http(s)` rather than `file://` is a `{js}` cell that `import()`s a
+relative helper module, because the browser blocks module imports on `file://`. Use
+`preview` (or a deployed/served build). Prose, math, and executed figures render
+regardless.
 
 ## "Port already in use"
 

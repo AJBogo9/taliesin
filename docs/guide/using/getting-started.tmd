@@ -69,7 +69,7 @@ the defaults work, and the only ones most projects ever set are the kernel paths
 | `TALIESIN_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
 | `TALIESIN_HOST` | unset | When set, expose the preview on the LAN; same as `--host` |
 | `TALIESIN_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
-| `TALIESIN_MERMAID_URL` | jsDelivr CDN | Override the Mermaid library URL (a relative path next to the site, or an absolute one) to self-host diagrams offline |
+| `TALIESIN_MERMAID_URL` | the vendored copy | Point the Mermaid loader at a different copy of the library (a relative path next to the site, or an absolute one). Diagrams are already offline without it |
 
 `TALIESIN_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
 are read on the same run; the flag and the variable mean the same thing, so use
@@ -78,19 +78,22 @@ whichever fits (the variable is handy in CI). The kernel paths and
 
 ## Scaffold a project (the fast path)
 
-The quickest way to a previewable project is `init`, which writes a minimal
-`_site.yml` plus a hello-world `index.tmd` into a directory (the current one by
-default):
+The quickest way to a previewable project is `init`, which scaffolds one into a
+directory (the current one by default):
 
 ```sh
-taliesin init my-site        # writes my-site/_site.yml + my-site/index.tmd
+taliesin init my-site        # see below for what lands in it
 taliesin preview my-site     # live, immediately
 ```
 
-`init` refuses to overwrite: if either file already exists it stops without
-touching anything, so re-running it never clobbers your work (run it in an empty
-directory, or just hand-write the two files). When you'd rather start from a single
-document, skip straight to the next section.
+You get four things: a minimal `_site.yml`, a hello-world `index.tmd`, an `AGENTS.md`
+briefing for coding agents, and a `.taliesin/` directory holding the JSON schemas your
+editor uses to complete `_site.yml` and front-matter keys. `--template site` adds an
+`about.tmd`; `--template book` adds the chapter files.
+
+`init` refuses to overwrite: if any of them already exists it stops without touching
+anything, so re-running it never clobbers your work. When you'd rather start from a
+single document, skip straight to the next section.
 
 ## Your first document
 
