@@ -1,15 +1,18 @@
 //! Pure, LSP-free navigation helpers for `.tmd`: classify the token under the cursor and
 //! resolve xref/cite/include definitions. Hand-rolled scanning (no `regex` dependency; the
-//! tokens are simple), a Rust port of the companion's `hover.ts` (`classifyHover`,
-//! `definitionSite`, `bibEntryOffset`) + `complete.ts` (`frontmatterBibPaths`), so the
-//! `lsp` server can answer go-to-definition for any editor.
+//! tokens are simple), so the `lsp` server can answer go-to-definition for any editor.
+//!
+//! This began as a port of an equivalent TypeScript layer in the VS Code companion. That
+//! copy is **gone** (2026-07-28): the companion is now a thin client over `taliesin lsp`,
+//! and this is the only implementation. Do not reintroduce a second one — see
+//! `notes/2026-07-28-vscode-companion-audit.md` for what two copies of one contract cost.
 //!
 //! Offsets are scalar (`char`) based, matching the diagnostics slice's `to_lsp`; the `lsp`
 //! server converts them to/from the wire's UTF-16 columns at its boundary (`lsp_pos`), so
-//! parity with the UTF-16 companion holds for all text, astral characters included.
+//! the answer is correct for all text, astral characters included.
 
 /// Front-matter parents whose immediate children have their own vocabulary (mirrors
-/// `hover.ts`/`complete.ts`).
+/// `lsp_complete`).
 const NESTED_PARENTS: &[&str] = &[
     "execute",
     "listing",

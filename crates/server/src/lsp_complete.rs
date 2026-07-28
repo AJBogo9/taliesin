@@ -1,11 +1,15 @@
 //! Pure completion-context detection + live-candidate harvest for `.tmd`: decide WHICH
 //! vocabulary applies at the cursor, and gather the document-defined ids / `.bib` keys /
-//! sibling files that the static vocabulary can't know. A Rust port of the companion's
-//! `complete.ts` (`detectContext` + the harvest helpers + `shortcodePathCandidates`),
-//! hand-rolled (no `regex` dependency; each pattern is anchored at the cursor or the line
-//! start, so a short scan replaces it), so the `lsp` server can answer completion for any
-//! editor. The static vocabulary stays Rust-authoritative (`taliesin_core::vocab`); this
-//! module only routes to it and harvests suggestion-only ids (`check` remains the arbiter).
+//! sibling files that the static vocabulary can't know. Hand-rolled (no `regex` dependency;
+//! each pattern is anchored at the cursor or the line start, so a short scan replaces it),
+//! so the `lsp` server can answer completion for any editor. The static vocabulary stays
+//! Rust-authoritative (`taliesin_core::vocab`); this module only routes to it and harvests
+//! suggestion-only ids (`check` remains the arbiter).
+//!
+//! **This is the only implementation.** It began as a port of the VS Code companion's
+//! `complete.ts`, which is gone as of 2026-07-28: the companion is now a thin client over
+//! `taliesin lsp`. Adding a completion here gives it to every editor at once. See
+//! `notes/2026-07-28-vscode-companion-audit.md`.
 
 /// Front-matter parents whose immediate children have their own vocabulary.
 const NESTED_PARENTS: &[&str] = &[
@@ -41,22 +45,191 @@ pub(crate) enum Shortcode {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CompletionContext {
     None,
-    FrontmatterKey { parent: Option<String> },
-    FrontmatterValue { key: String, typed: String },
+    FrontmatterKey {
+        parent: Option<String>,
+    },
+    FrontmatterValue {
+        key: String,
+        typed: String,
+    },
     CellOption,
     DivClass,
-    Xref { typed: String },
+    Xref {
+        typed: String,
+    },
     Cite,
-    ShortcodePath { shortcode: Shortcode, typed: String },
+    ShortcodePath {
+        shortcode: Shortcode,
+        typed: String,
+    },
+    /// A `\command` being typed inside `$…$` / `$$…$$`. `typed` includes the backslash, so
+    /// the caller can replace the whole control sequence rather than append to it.
+    MathCommand {
+        typed: String,
+    },
+    /// A filesystem path being typed somewhere a path is legal: a path-valued front-matter
+    /// key, a markdown link or image target, or a `{{< video >}}` source. `kind` narrows
+    /// which files are worth offering.
+    Path {
+        typed: String,
+        kind: PathKind,
+    },
+    /// `{{< ` then a partial shortcode name.
+    ShortcodeName {
+        typed: String,
+    },
+    /// A `#| key:` cell option whose value has a closed set, then the partial value.
+    CellOptionValue {
+        key: String,
+        typed: String,
+    },
+    /// A ` ```{lang} ` cell's language, being typed.
+    CellLanguage {
+        typed: String,
+    },
+    /// A `{#id}` anchor being DEFINED (not referenced), then the partial id. Offers the
+    /// cross-reference prefixes, which is the only part of an id that has a vocabulary.
+    AnchorId {
+        typed: String,
+    },
+    /// A `{{< input type=` value.
+    InputType {
+        typed: String,
+    },
 }
 
+/// What a path position is for, which decides the extensions worth offering. A path
+/// completion that lists every file in the directory is barely better than none: the point
+/// is that `bibliography:` shows you the `.bib` files.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum PathKind {
+    Bibliography,
+    Style,
+    Image,
+    Html,
+    Media,
+    /// A markdown link target: another document, or anything else on disk.
+    Link,
+}
+
+impl PathKind {
+    /// The extensions offered, or `&[]` for "any file".
+    pub(crate) fn extensions(self) -> &'static [&'static str] {
+        match self {
+            PathKind::Bibliography => &["bib"],
+            PathKind::Style => &["css"],
+            PathKind::Image => &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"],
+            PathKind::Html => &["html", "htm"],
+            PathKind::Media => &["mp4", "webm", "ogv", "mov", "m4v"],
+            PathKind::Link => &[],
+        }
+    }
+
+    /// The one-word label shown beside a file candidate.
+    pub(crate) fn detail(self) -> &'static str {
+        match self {
+            PathKind::Bibliography => "bibliography",
+            PathKind::Style => "stylesheet",
+            PathKind::Image => "image",
+            PathKind::Html => "HTML partial",
+            PathKind::Media => "video",
+            PathKind::Link => "file",
+        }
+    }
+}
+
+/// The front-matter keys whose value is a path, and what kind. Sourced from what the
+/// renderer actually resolves relative to the page, so a key that stops taking a path stops
+/// offering files.
+const PATH_KEYS: &[(&str, PathKind)] = &[
+    ("bibliography", PathKind::Bibliography),
+    ("css", PathKind::Style),
+    ("image", PathKind::Image),
+    ("logo", PathKind::Image),
+    ("image-alt", PathKind::Image), // alt text, but authors reach for the file name first
+    ("include-in-header", PathKind::Html),
+    ("include-before-body", PathKind::Html),
+    ("include-after-body", PathKind::Html),
+];
+
+/// The shortcodes offered by name, as `(name, description)`. Mirrors the built-ins
+/// `render::extension::render_shortcode` dispatches on plus `include`, which
+/// `includes.rs` resolves before expansion.
+const SHORTCODE_NAMES: &[(&str, &str)] = &[
+    ("include", "Splice another .tmd file in at this point."),
+    ("embed", "Embed a deck or page in an iframe."),
+    ("video", "Embed a local or remote video."),
+    ("input", "A reader-facing control that {js} cells can read."),
+];
+
+/// Cell options whose value has a closed set, as `(key, [(value, description)])`.
+const CELL_OPTION_VALUES: &[(&str, &[(&str, &str)])] = &[
+    (
+        "echo",
+        &[
+            ("true", "Show the cell's source."),
+            ("false", "Hide the cell's source."),
+        ],
+    ),
+    (
+        "include",
+        &[
+            ("true", "Include the cell's output."),
+            ("false", "Run the cell but show nothing."),
+        ],
+    ),
+    (
+        "cache",
+        &[
+            ("true", "Persist the output in `_freeze/`."),
+            ("false", "Never persist this cell's output."),
+        ],
+    ),
+    (
+        "code-fold",
+        &[
+            ("true", "Start collapsed."),
+            ("false", "Never collapse."),
+            ("show", "Collapsible, but start expanded."),
+        ],
+    ),
+];
+
 /// Classify the completion context at the cursor. `line_prefix` is the current line up to the
-/// cursor; `doc_prefix` is the whole document up to the cursor. The order mirrors
-/// `complete.ts`: a shortcode path wins over `@`/`:::` (a path can contain `@`); a citation
-/// `[@` wins over an xref `@`.
+/// cursor; `doc_prefix` is the whole document up to the cursor.
+///
+/// **Order is load-bearing**, because these patterns overlap: a shortcode path wins over
+/// `@`/`:::` (a path can contain either), a link target `](` wins over a citation `[@`, and a
+/// citation `[@` wins over a cross-reference `@`.
 pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionContext {
+    // Math first: `\` opens no other context, and the guard is `in_math`, not the backslash,
+    // so prose is unaffected. Taliesin renders math with KaTeX in-process, which is what
+    // makes this list authoritative rather than a guess (see `math_vocab.rs`).
+    if let Some(typed) = detect_math_command(line_prefix)
+        && in_math(doc_prefix)
+    {
+        return CompletionContext::MathCommand { typed };
+    }
+    // A cell's language: ` ```{py `. Before everything else because a fence line cannot be
+    // any other context, and `{` would otherwise fall through to the div-class scan.
+    if let Some(typed) = detect_cell_language(line_prefix) {
+        return CompletionContext::CellLanguage { typed };
+    }
+    if let Some(typed) = detect_input_type(line_prefix) {
+        return CompletionContext::InputType { typed };
+    }
     if let Some(c) = detect_shortcode_path(line_prefix) {
         return c;
+    }
+    // `{{< ` with the name not yet finished. After `detect_shortcode_path`, so a completed
+    // `{{< include ` is a path position rather than a name still being typed.
+    if let Some(typed) = detect_shortcode_name(line_prefix) {
+        return CompletionContext::ShortcodeName { typed };
+    }
+    // A markdown link/image target, before the `[@cite]` rule: `](` is unambiguous, and a
+    // path may legitimately contain an `@`.
+    if let Some((typed, kind)) = detect_link_target(line_prefix) {
+        return CompletionContext::Path { typed, kind };
     }
     if is_cite_context(line_prefix) {
         return CompletionContext::Cite;
@@ -67,12 +240,43 @@ pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionC
     if is_div_class_context(line_prefix) {
         return CompletionContext::DivClass;
     }
-    if is_cell_option_line(line_prefix) && in_code_cell(doc_prefix) {
-        return CompletionContext::CellOption;
+    // `{#` DEFINES an anchor. The `@` completion offers the prefixes for a reference; the
+    // definition side had nothing, so the one place an id is invented was the one place the
+    // prefix vocabulary was withheld.
+    if let Some(typed) = detect_anchor_id(line_prefix) {
+        return CompletionContext::AnchorId { typed };
+    }
+    if in_code_cell(doc_prefix) {
+        if is_cell_option_line(line_prefix) {
+            return CompletionContext::CellOption;
+        }
+        if let Some((key, typed)) = cell_option_value(line_prefix) {
+            // `label:` is where a cell's cross-reference id is INVENTED, and getting its
+            // prefix right is what decides whether the cell becomes a numbered figure at
+            // all — so it gets the same prefix vocabulary as `{#`, not a value list.
+            if key == "label" {
+                return CompletionContext::AnchorId { typed };
+            }
+            if CELL_OPTION_VALUES.iter().any(|(k, _)| *k == key) {
+                return CompletionContext::CellOptionValue { key, typed };
+            }
+        }
     }
     if in_frontmatter(doc_prefix) {
         if let Some((key, typed)) = frontmatter_value(line_prefix) {
+            // A path-valued key offers files, not a word list. `frontmatterValues` only
+            // ever had `format` and `theme`, so every other key — including the six that
+            // name a file — was detected as a value position and then answered nothing.
+            if let Some((_, kind)) = PATH_KEYS.iter().find(|(k, _)| *k == key) {
+                return CompletionContext::Path { typed, kind: *kind };
+            }
             return CompletionContext::FrontmatterValue { key, typed };
+        }
+        // A YAML list item under a path-valued key (`bibliography:` then `  - refs.bib`).
+        if let Some(typed) = yaml_list_item(line_prefix)
+            && let Some(kind) = enclosing_path_key(doc_prefix)
+        {
+            return CompletionContext::Path { typed, kind };
         }
         if is_frontmatter_key_line(line_prefix) {
             return CompletionContext::FrontmatterKey {
@@ -81,6 +285,228 @@ pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionC
         }
     }
     CompletionContext::None
+}
+
+/// A partially-typed math control sequence at the cursor: `\` followed by letters, returned
+/// WITH the backslash so the caller replaces the whole sequence.
+///
+/// `\` alone counts (typing the backslash should open the list, which is what makes it a
+/// useful trigger character); `\\` does not, since that is a line break, not a command being
+/// typed.
+fn detect_math_command(line_prefix: &str) -> Option<String> {
+    let chars: Vec<char> = line_prefix.chars().collect();
+    let mut j = chars.len();
+    while j > 0 && chars[j - 1].is_ascii_alphabetic() {
+        j -= 1;
+    }
+    if j == 0 || chars[j - 1] != '\\' {
+        return None;
+    }
+    // An even run of backslashes before this one means it is itself escaped.
+    let mut backslashes = 0;
+    let mut k = j - 1;
+    while chars[k] == '\\' {
+        backslashes += 1;
+        if k == 0 {
+            break;
+        }
+        k -= 1;
+    }
+    if backslashes % 2 == 0 {
+        return None;
+    }
+    Some(chars[j - 1..].iter().collect())
+}
+
+/// Is the cursor (the end of `doc_prefix`) inside a math span?
+///
+/// Scans for `$` delimiters, honoring `\` escapes, skipping fenced code blocks, and resetting
+/// inline state at every newline (an inline `$…$` cannot span lines — `render::math_close`
+/// gives up at `\n`). `$$` toggles display state, a single `$` toggles inline.
+///
+/// Unlike the renderer's scanner this must answer for an UNCLOSED span: the author is typing
+/// inside math whose closing `$` does not exist yet, so `math_close` (which needs the close)
+/// cannot be reused. It carries the renderer's "an opening `$` is not followed by whitespace"
+/// guard, which is what keeps `$ 5 ` from opening math; a bare `$5` price still does, and
+/// costs at most an offered `\alpha` after a backslash later on that same line.
+fn in_math(doc_prefix: &str) -> bool {
+    let mut display = false;
+    let mut inline = false;
+    let mut in_code = false;
+    for line in doc_prefix.split('\n') {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            inline = false;
+            continue;
+        }
+        // Inline math never survives a line break; display math does.
+        inline = false;
+        if in_code {
+            continue;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            match chars[i] {
+                '\\' => i += 2, // an escape consumes the next char, so `\$` is literal
+                '$' if chars.get(i + 1) == Some(&'$') => {
+                    display = !display;
+                    i += 2;
+                }
+                '$' => {
+                    // Closing never checks the guard; only an OPEN needs a non-space after it.
+                    let opens = chars.get(i + 1).is_some_and(|c| !c.is_whitespace());
+                    if inline || opens {
+                        inline = !inline;
+                    }
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+        }
+    }
+    display || inline
+}
+
+/// A ` ```{lang} ` cell language being typed: a fence line whose brace is open.
+fn detect_cell_language(line_prefix: &str) -> Option<String> {
+    let t = line_prefix.trim_start();
+    let rest = t.strip_prefix("```").or_else(|| t.strip_prefix("~~~"))?;
+    let inner = rest.strip_prefix('{')?;
+    // Still inside the brace, and still on the bare language name.
+    if inner.contains('}') || inner.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(inner.to_string())
+}
+
+/// A `{{< input type=` value being typed.
+fn detect_input_type(line_prefix: &str) -> Option<String> {
+    let open = line_prefix.rfind("{{<")?;
+    let inner = &line_prefix[open + 3..];
+    if inner.contains(">}}") || inner.split_whitespace().next()? != "input" {
+        return None;
+    }
+    let typed = inner.rsplit_once("type=")?.1;
+    (!typed.contains(char::is_whitespace)).then(|| typed.to_string())
+}
+
+/// A `{#id}` anchor being defined: `{#` then the partial id, before any `}` or space.
+///
+/// Only where an anchor can actually be attached — a `{#` that follows a `.class` in a
+/// fenced-div attribute block is an id there too, so both are accepted; what is excluded is
+/// `@#`-style noise and an already-closed brace.
+fn detect_anchor_id(line_prefix: &str) -> Option<String> {
+    let open = line_prefix.rfind("{#")?;
+    let typed = &line_prefix[open + 2..];
+    if typed.contains('}') || typed.contains(char::is_whitespace) {
+        return None;
+    }
+    Some(typed.to_string())
+}
+
+/// The shortcodes offered by name, with their one-line descriptions.
+pub(crate) fn shortcode_names() -> &'static [(&'static str, &'static str)] {
+    SHORTCODE_NAMES
+}
+
+/// The closed value set for a cell option, or `&[]` when it has none.
+pub(crate) fn cell_option_values(key: &str) -> &'static [(&'static str, &'static str)] {
+    CELL_OPTION_VALUES
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| *v)
+        .unwrap_or(&[])
+}
+
+/// A shortcode name still being typed: the last `{{<` with only word characters after it.
+///
+/// Returns `None` once a space follows the name, which is what makes this safe to run after
+/// `detect_shortcode_path`: by then the name is settled and the cursor is on an argument.
+fn detect_shortcode_name(line_prefix: &str) -> Option<String> {
+    let chars: Vec<char> = line_prefix.chars().collect();
+    let n = chars.len();
+    let start = (0..n.saturating_sub(2))
+        .rev()
+        .find(|&i| chars[i] == '{' && chars[i + 1] == '{' && chars[i + 2] == '<')?;
+    let mut j = start + 3;
+    while j < n && is_hspace(chars[j]) {
+        j += 1;
+    }
+    let typed: String = chars[j..].iter().collect();
+    // A closed `>}}` earlier on the line means this `{{<` is finished, not being typed.
+    if typed.chars().any(|c| !c.is_ascii_alphabetic()) {
+        return None;
+    }
+    Some(typed)
+}
+
+/// A markdown link or image target being typed: `](` then the path, before the closing `)`.
+/// An image (`![alt](`) offers images; a plain link offers anything.
+fn detect_link_target(line_prefix: &str) -> Option<(String, PathKind)> {
+    let open = line_prefix.rfind("](")?;
+    let typed = &line_prefix[open + 2..];
+    if typed.contains(')') || typed.contains(' ') {
+        return None; // past the target (closed, or into a title)
+    }
+    // `![` before the label makes it an image. Walk back to the label's opening bracket.
+    let label_open = line_prefix[..open].rfind('[')?;
+    let is_image = line_prefix[..label_open].ends_with('!');
+    Some((
+        typed.to_string(),
+        if is_image {
+            PathKind::Image
+        } else {
+            PathKind::Link
+        },
+    ))
+}
+
+/// A YAML sequence item being typed (`  - refs.bib`), returning the value after the dash.
+fn yaml_list_item(line_prefix: &str) -> Option<String> {
+    let t = line_prefix.trim_start();
+    let rest = t.strip_prefix('-')?;
+    if !rest.is_empty() && !rest.starts_with(' ') {
+        return None; // `--` or `-x`: not a sequence item
+    }
+    let value = rest.trim_start();
+    (!value.contains(char::is_whitespace)).then(|| value.to_string())
+}
+
+/// The [`PathKind`] of the path-valued front-matter key a list item sits under, scanning
+/// back for the nearest less-indented `key:` line.
+fn enclosing_path_key(doc_prefix: &str) -> Option<PathKind> {
+    let lines: Vec<&str> = doc_prefix.split('\n').collect();
+    let current = lines.last()?;
+    let indent = current.len() - current.trim_start().len();
+    for line in lines.iter().rev().skip(1) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let line_indent = line.len() - line.trim_start().len();
+        if line_indent < indent {
+            let key = line.trim().split_once(':')?.0;
+            return PATH_KEYS.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
+        }
+    }
+    None
+}
+
+/// A `#| key: value` directive with the cursor in the VALUE, as `(key, typed)`. The sibling
+/// of [`is_cell_option_line`], which covers the key position.
+fn cell_option_value(line_prefix: &str) -> Option<(String, String)> {
+    let t = line_prefix.trim_start();
+    let rest = ["#|", "//|", "%%|"]
+        .iter()
+        .find_map(|p| t.strip_prefix(p))?
+        .trim_start();
+    let (key, value) = rest.split_once(':')?;
+    if !key.chars().all(is_id_char) || key.is_empty() {
+        return None;
+    }
+    let typed = value.trim_start();
+    (!typed.contains(char::is_whitespace)).then(|| (key.to_string(), typed.to_string()))
 }
 
 /// `{{< embed `/`{{< include ` then the first (path) token, while still typing that token.
@@ -101,9 +527,14 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     while j < n && chars[j].is_ascii_alphabetic() {
         j += 1;
     }
-    let shortcode = match chars[kw_start..j].iter().collect::<String>().as_str() {
-        "embed" => Shortcode::Embed,
-        "include" => Shortcode::Include,
+    let keyword: String = chars[kw_start..j].iter().collect();
+    // `video`'s positional source is a path too, but it is a media file, not a `.tmd`, and
+    // it has no directory-descent behaviour to preserve — so it routes to the general
+    // `Path` context with the media extensions rather than to `ShortcodePath`.
+    let shortcode = match keyword.as_str() {
+        "embed" => Some(Shortcode::Embed),
+        "include" => Some(Shortcode::Include),
+        "video" => None,
         _ => return None,
     };
     let ws_start = j;
@@ -117,7 +548,18 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     if typed.chars().any(|c| is_hspace(c) || c == '>') {
         return None; // past the path token (into named args / the closer)
     }
-    Some(CompletionContext::ShortcodePath { shortcode, typed })
+    // A `key=value` named argument is not the positional source, so `{{< video poster=x`
+    // must not be completed as if `poster=x` were the clip.
+    if typed.contains('=') {
+        return None;
+    }
+    Some(match shortcode {
+        Some(shortcode) => CompletionContext::ShortcodePath { shortcode, typed },
+        None => CompletionContext::Path {
+            typed,
+            kind: PathKind::Media,
+        },
+    })
 }
 
 /// The cursor is inside an open `[@…` citation: the last `[@` has no `]` before the cursor.
@@ -432,12 +874,351 @@ pub(crate) fn shortcode_path_candidates(
     dirs.into_iter().chain(files).collect()
 }
 
+/// Like [`shortcode_path_candidates`], but for any path position: `exts` are the extensions
+/// worth offering (empty = every file). Descendable subdirectories always come first, so a
+/// path can be walked down without leaving the menu.
+pub(crate) fn path_candidates(
+    entries: &[DirEntry],
+    typed: &str,
+    exts: &[&str],
+    file_detail: &str,
+) -> Vec<PathCandidate> {
+    let (dir_part, leaf) = match typed.rfind('/') {
+        Some(slash) => (&typed[..slash + 1], &typed[slash + 1..]),
+        None => ("", typed),
+    };
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for e in entries {
+        if !e.name.starts_with(leaf) {
+            continue;
+        }
+        if e.name.starts_with('.') && !leaf.starts_with('.') {
+            continue;
+        }
+        if e.is_dir {
+            if IGNORE_DIRS.contains(&e.name.as_str()) {
+                continue;
+            }
+            dirs.push(PathCandidate {
+                value: format!("{dir_part}{}/", e.name),
+                detail: "directory".to_string(),
+            });
+            continue;
+        }
+        let matches = exts.is_empty()
+            || e.name
+                .rsplit_once('.')
+                .is_some_and(|(_, ext)| exts.iter().any(|w| w.eq_ignore_ascii_case(ext)));
+        if matches {
+            files.push(PathCandidate {
+                value: format!("{dir_part}{}", e.name),
+                detail: file_detail.to_string(),
+            });
+        }
+    }
+    dirs.sort_by(|a, b| a.value.cmp(&b.value));
+    files.sort_by(|a, b| a.value.cmp(&b.value));
+    dirs.into_iter().chain(files).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn ctx(line: &str, doc: &str) -> CompletionContext {
         detect_context(line, doc)
+    }
+
+    fn math(typed: &str) -> CompletionContext {
+        CompletionContext::MathCommand {
+            typed: typed.to_string(),
+        }
+    }
+
+    #[test]
+    fn detects_a_math_command_inside_inline_math() {
+        assert_eq!(
+            ctx(r"The $\al", "---\nt: x\n---\n\nThe $\\al"),
+            math(r"\al")
+        );
+    }
+
+    #[test]
+    fn a_bare_backslash_inside_math_opens_the_list() {
+        // Typing the trigger character must show something; requiring a letter first would
+        // make `\` a trigger that opens an empty menu.
+        assert_eq!(ctx(r"$\", "---\nt: x\n---\n\n$\\"), math(r"\"));
+    }
+
+    #[test]
+    fn detects_a_math_command_inside_display_math() {
+        let doc = "---\nt: x\n---\n\n$$\n\\begin{ali";
+        assert_eq!(ctx(r"\begin{ali", doc), CompletionContext::None);
+        // `{` ends the control sequence, so the command being typed is `\begin` already
+        // accepted; the partial after it is not a control sequence.
+        let doc2 = "---\nt: x\n---\n\n$$\n\\alp";
+        assert_eq!(ctx(r"\alp", doc2), math(r"\alp"));
+    }
+
+    #[test]
+    fn display_math_survives_a_line_break_but_inline_math_does_not() {
+        // `$$` opened two lines up: still math.
+        assert_eq!(ctx(r"\su", "$$\nx = 1\n\\su"), math(r"\su"));
+        // An unclosed inline `$` does not reach the next line.
+        assert_eq!(ctx(r"\su", "$x = 1\n\\su"), CompletionContext::None);
+    }
+
+    #[test]
+    fn a_backslash_in_prose_offers_nothing() {
+        assert_eq!(
+            ctx(r"a \emph", "---\nt: x\n---\n\na \\emph"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_backslash_in_a_code_cell_offers_nothing() {
+        // The `$x$` inside the cell must not open math for the line after it: a fenced cell
+        // is code, and a shell/regex backslash there is not a control sequence.
+        let line = r"pattern = \d";
+        let doc = format!("---\nt: x\n---\n\n```{{python}}\ns = $x$\n{line}");
+        assert_eq!(ctx(line, &doc), CompletionContext::None);
+    }
+
+    #[test]
+    fn closed_math_does_not_leak_into_the_prose_after_it() {
+        assert_eq!(
+            ctx(r"$x$ and \al", "---\nt: x\n---\n\n$x$ and \\al"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn an_escaped_dollar_does_not_open_math() {
+        assert_eq!(
+            ctx(r"\$5 \al", "---\nt: x\n---\n\n\\$5 \\al"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn an_escaped_backslash_is_a_line_break_not_a_command() {
+        // `\\` ends a row in `aligned`; completing after it would offer commands for a
+        // backslash the author already finished.
+        assert_eq!(ctx(r"$$ x \\", "$$ x \\\\"), CompletionContext::None);
+    }
+
+    #[test]
+    fn a_dollar_followed_by_a_space_is_not_an_opening_delimiter() {
+        // Mirrors `render::strip_math_for_slug`'s open guard, which is what keeps a lone
+        // currency `$` from swallowing the rest of the line.
+        assert_eq!(
+            ctx(r"costs $ 5 and \al", "costs $ 5 and \\al"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_path_valued_frontmatter_key_offers_files_not_a_word_list() {
+        assert_eq!(
+            ctx("bibliography: ref", "---\nbibliography: ref"),
+            CompletionContext::Path {
+                typed: "ref".to_string(),
+                kind: PathKind::Bibliography
+            }
+        );
+        assert_eq!(
+            ctx("css: ", "---\ncss: "),
+            CompletionContext::Path {
+                typed: String::new(),
+                kind: PathKind::Style
+            }
+        );
+        // A key with a word list still gets the word list.
+        assert_eq!(
+            ctx("format: de", "---\nformat: de"),
+            CompletionContext::FrontmatterValue {
+                key: "format".to_string(),
+                typed: "de".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_yaml_list_item_inherits_its_parent_keys_path_kind() {
+        assert_eq!(
+            ctx("  - re", "---\nbibliography:\n  - re"),
+            CompletionContext::Path {
+                typed: "re".to_string(),
+                kind: PathKind::Bibliography
+            }
+        );
+        // Under a key that takes no path, a list item is just a value.
+        assert_eq!(
+            ctx("  - wr", "---\ncategories:\n  - wr"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_markdown_link_target_completes_and_an_image_narrows_to_images() {
+        assert_eq!(
+            ctx("See [the notes](no", "---\nt: x\n---\n\nSee [the notes](no"),
+            CompletionContext::Path {
+                typed: "no".to_string(),
+                kind: PathKind::Link
+            }
+        );
+        assert_eq!(
+            ctx("![A plot](fig", "---\nt: x\n---\n\n![A plot](fig"),
+            CompletionContext::Path {
+                typed: "fig".to_string(),
+                kind: PathKind::Image
+            }
+        );
+        // Past the closing paren there is no target being typed.
+        assert_eq!(
+            ctx("[a](b.tmd) and ", "---\nt: x\n---\n\n[a](b.tmd) and "),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_video_source_offers_media_files_and_a_named_arg_offers_nothing() {
+        assert_eq!(
+            ctx("{{< video cl", "{{< video cl"),
+            CompletionContext::Path {
+                typed: "cl".to_string(),
+                kind: PathKind::Media
+            }
+        );
+        assert_eq!(
+            ctx("{{< video poster=x", "{{< video poster=x"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn a_cell_option_value_completes_only_for_options_with_a_closed_set() {
+        let doc = |line: &str| format!("---\nt: x\n---\n\n```{{python}}\n{line}");
+        assert_eq!(
+            ctx("#| echo: tr", &doc("#| echo: tr")),
+            CompletionContext::CellOptionValue {
+                key: "echo".to_string(),
+                typed: "tr".to_string()
+            }
+        );
+        // `label:` invents a cross-reference id, so it gets the prefix vocabulary.
+        assert_eq!(
+            ctx("#| label: fig-", &doc("#| label: fig-")),
+            CompletionContext::AnchorId {
+                typed: "fig-".to_string()
+            }
+        );
+        // Outside a cell, a `#|` line is prose.
+        assert_eq!(
+            ctx("#| echo: tr", "---\nt: x\n---\n\n#| echo: tr"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn path_candidates_filter_by_extension_and_list_directories_first() {
+        let entries = vec![
+            DirEntry {
+                name: "refs.bib".to_string(),
+                is_dir: false,
+            },
+            DirEntry {
+                name: "notes.tmd".to_string(),
+                is_dir: false,
+            },
+            DirEntry {
+                name: "bib".to_string(),
+                is_dir: true,
+            },
+            DirEntry {
+                name: ".hidden".to_string(),
+                is_dir: false,
+            },
+            DirEntry {
+                name: "_freeze".to_string(),
+                is_dir: true,
+            },
+        ];
+        let got: Vec<String> = path_candidates(&entries, "", &["bib"], "bibliography")
+            .into_iter()
+            .map(|c| c.value)
+            .collect();
+        assert_eq!(got, vec!["bib/", "refs.bib"]);
+        // An empty extension list means every file.
+        let any: Vec<String> = path_candidates(&entries, "", &[], "file")
+            .into_iter()
+            .map(|c| c.value)
+            .collect();
+        assert_eq!(any, vec!["bib/", "notes.tmd", "refs.bib"]);
+    }
+
+    #[test]
+    fn shortcode_names_and_cell_option_values_are_non_empty_closed_sets() {
+        assert!(shortcode_names().iter().any(|(n, _)| *n == "include"));
+        assert!(shortcode_names().iter().any(|(n, _)| *n == "video"));
+        assert!(cell_option_values("echo").iter().any(|(v, _)| *v == "true"));
+        assert!(cell_option_values("label").is_empty());
+    }
+
+    #[test]
+    fn a_cell_language_completes_only_while_the_brace_is_open() {
+        assert_eq!(
+            ctx("```{py", "---\nt: x\n---\n\n```{py"),
+            CompletionContext::CellLanguage {
+                typed: "py".to_string()
+            }
+        );
+        // Closed brace: the language is settled.
+        assert_eq!(
+            ctx("```{python}", "---\nt: x\n---\n\n```{python}"),
+            CompletionContext::None
+        );
+        // A plain (unbraced) fence is a highlighting hint, not a cell.
+        assert_eq!(
+            ctx("```py", "---\nt: x\n---\n\n```py"),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn an_anchor_definition_offers_the_prefix_vocabulary() {
+        assert_eq!(
+            ctx(
+                "# Scree plot {#fig-",
+                "---\nt: x\n---\n\n# Scree plot {#fig-"
+            ),
+            CompletionContext::AnchorId {
+                typed: "fig-".to_string()
+            }
+        );
+        // A closed attribute block is not an id being typed.
+        assert_eq!(
+            ctx("# H {#sec-intro} ", "---\nt: x\n---\n\n# H {#sec-intro} "),
+            CompletionContext::None
+        );
+    }
+
+    #[test]
+    fn an_input_control_offers_its_types() {
+        assert_eq!(
+            ctx("{{< input type=sl", "{{< input type=sl"),
+            CompletionContext::InputType {
+                typed: "sl".to_string()
+            }
+        );
+        // A different shortcode's `type=` is not an input control.
+        assert_eq!(
+            ctx("{{< video type=x", "{{< video type=x"),
+            CompletionContext::None
+        );
     }
 
     #[test]
@@ -607,9 +1388,31 @@ mod tests {
         const CELL: &str = "```{python}\n"; // an open code cell, for the cell-option rows
         // (document text *before* the current line, the line prefix at the cursor, expected)
         let cases: Vec<(&str, &str, CompletionContext)> = vec![
-            // --- shortcode path: the keyword needs a separating space, and the path ends at ws/`>`
-            ("", "{{<", CompletionContext::None),
-            ("", "{{< include", CompletionContext::None),
+            // --- shortcode NAME: an unfinished `{{<` is a name being typed, not nothing.
+            // Both of these used to be `None`, which is what made `{{<` a dead keystroke:
+            // an author had to already know the four shortcode names to type one.
+            (
+                "",
+                "{{<",
+                CompletionContext::ShortcodeName {
+                    typed: String::new(),
+                },
+            ),
+            (
+                "",
+                "{{< inc",
+                CompletionContext::ShortcodeName {
+                    typed: "inc".to_string(),
+                },
+            ),
+            // A finished name (space after it) is a path position, not a name position.
+            (
+                "",
+                "{{< include",
+                CompletionContext::ShortcodeName {
+                    typed: "include".to_string(),
+                },
+            ),
             (
                 "",
                 "{{< include ",

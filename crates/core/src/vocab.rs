@@ -207,6 +207,44 @@ fn div_classes() -> Value {
     )
 }
 
+/// The languages offered for a ` ```{lang} ` cell, as `(name, description)`.
+///
+/// Two of these have behaviour and the rest are highlighting. The split is not cosmetic —
+/// `executes_to_kernel` decides whether a cell can produce a numbered float — so
+/// `kernel_languages_are_marked_as_executed` pins the executed pair against that function
+/// rather than against this table's prose.
+const CELL_LANGUAGES: &[(&str, &str)] = &[
+    (
+        "python",
+        "Executed by a Jupyter kernel; output is spliced in.",
+    ),
+    ("r", "Executed by an IRkernel; output is spliced in."),
+    (
+        "js",
+        "Reactive cell, run in the reader's browser (no kernel).",
+    ),
+    ("mermaid", "Diagram rendered at build time."),
+    ("bash", "Highlighted only; not executed."),
+    ("sql", "Highlighted only; not executed."),
+    ("julia", "Highlighted only; not executed."),
+    ("rust", "Highlighted only; not executed."),
+];
+
+fn cell_languages() -> Value {
+    Value::Array(
+        CELL_LANGUAGES
+            .iter()
+            .map(|(name, description)| {
+                json!({
+                    "name": name,
+                    "description": description,
+                    "executes": crate::render::executes_to_kernel(name),
+                })
+            })
+            .collect(),
+    )
+}
+
 fn xref_prefixes() -> Value {
     Value::Array(
         crate::cite::XREF_LABELS
@@ -272,6 +310,13 @@ pub fn vocab() -> Value {
         "inputTypes": Value::Array(INPUT_TYPES.iter().map(|t| json!(t)).collect()),
         "xrefPrefixes": xref_prefixes(),
         "frontmatterValues": frontmatter_value_vocab(),
+        // The one vocabulary taliesin does not own the grammar of. It is authoritative
+        // anyway because KaTeX is IN the binary: `math_vocab`'s `every_command_renders`
+        // renders each entry through `crate::math`, so an offered command that KaTeX
+        // cannot parse fails the build instead of shipping a suggestion that renders as a
+        // red error span for the reader.
+        "mathCommands": crate::math_vocab::math_commands(),
+        "cellLanguages": cell_languages(),
     })
 }
 
@@ -391,6 +436,36 @@ mod tests {
                 KNOWN_KEYS.contains(key),
                 "`frontmatter_key_descriptions` carries `{key}`, which is not a KNOWN_KEY: \
                  a retired key leaves dead, never-emitted doc text here"
+            );
+        }
+    }
+
+    /// Every language `executes_to_kernel` accepts must be OFFERED, and must be the only
+    /// ones marked `executes`. That function decides whether a labelled cell can produce a
+    /// numbered float, so a completion that gets the split wrong teaches an author to label
+    /// a `{bash}` cell `fig-…` and wait for a figure that never arrives.
+    #[test]
+    fn kernel_languages_are_marked_as_executed() {
+        use crate::render::executes_to_kernel;
+        let v = cell_languages();
+        for entry in v.as_array().unwrap() {
+            let name = entry["name"].as_str().unwrap();
+            assert_eq!(
+                entry["executes"].as_bool().unwrap(),
+                executes_to_kernel(name),
+                "`{name}`'s `executes` flag disagrees with render::executes_to_kernel"
+            );
+        }
+        // The reverse direction: a kernel language missing from the list would never be
+        // offered, and the loop above could not see it.
+        for lang in ["python", "r"] {
+            assert!(
+                executes_to_kernel(lang),
+                "`{lang}` is expected to be a kernel language"
+            );
+            assert!(
+                CELL_LANGUAGES.iter().any(|(n, _)| *n == lang),
+                "kernel language `{lang}` is not offered to the editor"
             );
         }
     }
