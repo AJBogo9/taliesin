@@ -833,3 +833,245 @@ it is "tried or costed, and the answer was no." Each names the commit that settl
   way to make a source edit ergonomic is an editor command, never a preview gesture.
 - **Read-aloud (`#9` above)** — never built; its SHIPPED mark was an error corrected
   2026-07-25. Out on cost, not on principle.
+
+---
+
+## Session 3: 2026-07-29 — VS Code extension ergonomics (the developer-experience surface)
+
+> **Method.** Author-raised direction: "do a deep dive into the VS Code extension API and
+> brainstorm genuinely novel features; I want the best developer experience currently possible."
+> Read the full extension API surface (all 38 `contributes.*` points, every `vscode.*` namespace)
+> via context7 + `code.visualstudio.com/api`, then filtered every idea through Taliesin's actual
+> code, not against a wish list. **Entry format differs from Sessions 1-2 on purpose** (metadata in
+> a trailing parenthesis rather than dash-separated) to keep this file free of em dashes going
+> forward; the fields are the same: value, size, where it lives, fit.
+>
+> **Idea 67 is being specced now** (2026-07-29). Everything from 68 down is deliberately parked
+> here so it is not lost. Nothing below is a commitment.
+
+### Ground truth established this session (verified in source; do not re-derive)
+
+These six facts are what make the estimates below trustworthy, and several contradict the obvious
+guess. **Re-check them against source before building, per the standing anti-rot rule**, but they
+were read directly, not inferred from a prior note.
+
+- **Fact 1. The LSP's *request* handlers are document-local, but its *diagnostic* path is already
+  project-wide. This was recorded wrongly on first pass and corrected the same session; read the
+  corrected version.** True half: `lsp_nav`, `lsp_links`, `lsp_complete`, `lsp_format`,
+  `lsp_outline`, `lsp_pos`, `lsp_cells` contain **zero** filesystem calls, and `lsp.rs`'s
+  hover/definition/completion paths resolve only *relative to the open document's directory*
+  (front-matter `.bib` paths, `{{< include >}}` targets). **False half:** "no `_site.yml`
+  handling and no cross-page index anywhere". `publish` → `check::buffer_diagnostics` →
+  `collect_file_diagnostics_from_src` (`check.rs:293`) calls
+  `taliesin_core::site::anchors_defined_elsewhere_in_project` (`site/xref.rs:111`), which finds
+  the enclosing `_site.yml` root (`enclosing_site_root`), walks **every page in the project**,
+  reads each from disk, resolves its includes, and collects anchor ids. **So `_site.yml`
+  discovery and a project-wide anchor set already exist and already run.**
+  *Consequence: Cluster C is cheaper than priced below. Re-cost 75 and 76 against this before
+  building; the substrate is partly there.*
+
+- **Fact 7. Unresolved xrefs already squiggle, so "semantic tokens make dangling refs red" is
+  REDUNDANT.** `cite/validate.rs` flags unresolved `data-tali-xref` markers,
+  `validate_xrefs_known_elsewhere` (`check.rs:311`) accepts anchors defined on other pages, and
+  the result is published as LSP diagnostics on every change. **This kills the headline pitch
+  idea 67 was originally written with.** See the rewritten 67 for what value actually remains.
+
+- **Fact 8. There is no debounce: the whole-book walk runs on every keystroke.** `didChange` →
+  `publish` → `buffer_diagnostics` synchronously (`lsp.rs:273-283`, no timer, no coalescing), and
+  that path does a full `render_single_doc` **plus** the `anchors_defined_elsewhere_in_project`
+  walk. For a 60-page book that is a full re-render plus ~60 file reads and include resolutions
+  **per keypress**. Filed as its own concern; it makes the render memo in idea 67's substrate more
+  valuable than first thought (it can memoize the anchor scan too), though **debouncing is
+  probably the larger and simpler win**. Not yet measured, measure before fixing.
+- **Fact 2. Cross-file refs are an acknowledged gap, not an oversight.** `lsp.rs:434` documents
+  go-to-definition returning `None` for "an undefined xref, **a cross-file ref**, a missing
+  include/bib". Everything project-wide in Cluster C is gated on closing this.
+- **Fact 3. `RenderedDoc.xref_numbers` already exists** (`render/model.rs:266`), and `lsp.rs:1323`
+  already reads it (`xref_number()`) to answer hover. **The resolved figure/section number is
+  already computed**, so the inlay hint that sounds hardest is nearly free.
+- **Fact 4. `render_buffer()` is not memoized** (`lsp.rs:1311`): every call re-runs
+  `taliesin_core::render_single_doc` under the `serve::guarded` panic guard. Fine for hover
+  (user-initiated), **not** fine for inlay hints or semantic tokens (fire on edit / scroll). A
+  shared memo keyed on document text is the one piece of new substrate idea 67 needs.
+- **Fact 5. `lsp_nav::classify_target` is a point query** ("the token under the cursor"), hand-rolled, no
+  `regex`. Semantic tokens and document highlight both need a **full-document** scan, so
+  generalizing it to a `scan_all` is shared substrate, not per-feature work.
+- **Fact 6. `documentSymbol` already computes whole-section ranges** (`lsp.rs:1453`: `range` is the whole
+  section, `selection_range` the heading line). Folding is therefore a re-projection of an
+  existing tree, not new analysis.
+
+### Cluster A — The doc-local semantic layer (pure Rust, every editor benefits)
+
+Everything here is a pure function of the open buffer plus its directory, so none of it needs the
+Cluster C index. This is the slice chosen for the 2026-07-29 spec.
+
+> **Ranking revised mid-session by Facts 7 and 8.** The original order led with 67 (semantic
+> tokens). It does not survive contact with the diagnostics that already ship. **Build order is
+> now 68 → 69 → 70/71 → 67 (re-justify or cut) → 72**, and the Fact 8 debounce/memo work should
+> be priced first because it is a prerequisite for 68 being pleasant and is a live defect on its
+> own terms.
+
+67. **Semantic tokens provider (`registerDocumentSemanticTokensProvider`).** **Rewritten after Fact
+    7 killed its original justification. The first draft of this entry claimed the value was
+    "a dangling ref goes red as you type"; diagnostics already do exactly that. Do not restore
+    that framing.** What actually remains, and it is a weaker case:
+    - **Distinguish states that are all VALID and therefore have no diagnostic.** The real one is
+      *locally defined* vs *defined on another page*: both are correct, neither warns, and only
+      one is reachable by go-to-definition (Fact 2). Seeing which is which at a glance is
+      information nothing else in the editor gives.
+    - **Distinguish kinds where TextMate is approximate rather than wrong**, mainly around
+      shortcode and cell-option boundaries.
+    - *Not* error surfacing. Diagnostics own that and own it correctly.
+    (Value: **medium**, revised down from high. Size: **M**. Where: `lsp` + new
+    `lsp_nav::scan_all`. Fit: **fits**.) **Re-justify before building**: on this reduced case it
+    may not deserve a slot ahead of 68/69, and the honest option of cutting it is live.
+    *This also subsumes the author's "should the LaTeX dollar signs be highlighted" note. The
+    lexical half is **already built**: `tmd.injection.tmLanguage.json` scopes
+    `punctuation.definition.math.begin/end.tmd`, `markup.math.inline/display.tmd`,
+    `meta.embedded.math.tmd`, plus native `#math_body` colouring with no external LaTeX extension.
+    If delimiters look flat, that is a theme not painting the punctuation scope, fixable with
+    `contributes.semanticTokenScopes` or a bundled theme, not new grammar work.*
+    **Open design question, unresolved:** whether Taliesin ships its own VS Code colour theme (the
+    project owns a strict `--tali-*` palette with 9 test-banned vendor hexes) or maps its tokens
+    onto standard scopes and inherits the user's theme. Decide before implementing.
+
+68. **Inlay hints (`registerInlayHintsProvider`).** The most under-rated API for this format,
+    because a `.tmd` is full of symbols whose meaning lives elsewhere: `@fig-scree` shows
+    `⟨Figure 3⟩` (free, see fact 3); `[@knuth1984]` shows `⟨Knuth 1984⟩` (the bib is already read);
+    `{{< include intro.tmd >}}` shows `⟨42 lines⟩`; headings show their computed section number.
+    (Value: **high**. Size: **S-M**. Where: `lsp`. Fit: **fits**.)
+    **Withdrawn sub-idea, do not re-scope:** a `⟨4.2s · cached⟩` hint on `{python}` fences.
+    Cache/timing state lives in the preview server's executor and **the LSP is deliberately
+    kernel-free and offline**. It would have to come from TS talking to a live preview, which is a
+    much weaker proposition. See idea 79 for where cell state does belong.
+
+69. **Folding ranges (`FoldingRangeProvider`).** There is no `folding` key in
+    `language-configuration.json` and no LSP folding provider, so **folding is indentation-based
+    today**, which is simply wrong for a Markdown-derived format. Fold by heading level, fold a
+    `:::` div, fold front matter, fold a cell. (Value: **medium-high**, felt every day. Size: **S**,
+    see fact 6. Where: `lsp`. Fit: **fits**.)
+
+70. **Document highlight (`DocumentHighlightProvider`).** Cursor on `fig-scree`, every occurrence
+    in the file lights up. Falls out of idea 67's `scan_all` for almost nothing.
+    (Value: **medium**. Size: **XS** once 67 lands. Where: `lsp`. Fit: **fits**.)
+
+71. **Selection ranges (`SelectionRangeProvider`), smart expand.** Ctrl+Shift+Right grows word →
+    inline math → sentence → paragraph → `:::` div → section. Genuinely pleasant in prose and
+    almost never implemented in Markdown tooling. (Value: **medium**. Size: **S**. Where: `lsp`.
+    Fit: **fits**.)
+
+72. **Document colour provider (`registerColorProvider`)** for `--tali-*` values in `_site.yml` and
+    front matter: native swatches and picker. (Value: **low**. Size: **S**. Where: `lsp`. Fit:
+    **fits**.) *Lowest-value item in the cluster; listed for completeness.*
+
+> **Already got, verify rather than build:** sticky scroll for headings derives from
+> `documentSymbol`, which the LSP already provides. Confirm it works before speccing anything.
+
+### Cluster B — Authoring gestures (TS-side, the most *felt* per day)
+
+73. **The paste/drop cluster (`DocumentPasteEditProvider` + `DocumentDropEditProvider`).** One
+    provider pair, six gestures. Almost nobody implements these well, and they **prevent a bug
+    class the build currently only warns about**: `copy_local_assets` warns and skips assets
+    outside the doc tree (`build.rs:769`), so the editor can stop that at authoring time.
+    (Value: **high**. Size: **M**. Where: `editor/vscode` TS. Fit: **fits** — these are
+    author-initiated edits in the editor, not the preview writing back, so single-editing-surface
+    is untouched.)
+    - **Paste an image from the clipboard** → write `images/<slug>-01.png` beside the doc, insert a
+      figure block with a caption placeholder. *The single most-missed feature in every Markdown
+      editor.*
+    - **Drag an image in from the Explorer** → insert a path relative to the doc; if the source is
+      outside the doc tree, offer to copy it in first.
+    - **Paste a spreadsheet or HTML table** → a pipe table, then run the existing `lsp_format.rs`
+      aligner on it.
+    - **Paste a URL over a selection** → `[selection](url)`.
+    - **Paste a BibTeX entry** → append to the front-matter `.bib`, insert `[@key]` at the cursor.
+    - **Drop a `.csv`** → insert the dataset card plus a loader cell. **Blocked on backlog item
+      176** (dataset provenance); build that first or this gesture has nothing to emit.
+
+### Cluster C — Project-level surfaces (all gated on a book index)
+
+**Every item here requires closing fact 1 and fact 2 first.** That substrate is the cost driver,
+not the surfaces, and it introduces indexing, invalidation and file watching into a component whose
+current statelessness is why it is reliable. Do not cherry-pick a surface from this cluster without
+pricing the index.
+
+74. **A project index in `taliesin lsp`** (workspace folders, `_site.yml`, a cross-page xref
+    table). Substrate, no user-visible feature of its own. (Value: **enabling**. Size: **L**.
+    Where: `lsp`. Fit: **needs-care** — it is the one item in this session that meaningfully
+    changes the LSP's architecture.)
+75. **Cross-file xref resolution**, closing the `lsp.rs:434` gap. (Value: **high**. Size: **M**
+    after 74. Where: `lsp`. Fit: **fits**.)
+76. **Workspace symbols (`workspaceSymbolProvider`).** Ctrl+T to any heading, figure or section
+    **across the whole book**. Today `documentSymbol` is per-file only, so for a 60-page book this
+    is a real daily cost. (Value: **high**. Size: **S** after 74. Where: `lsp`. Fit: **fits**.)
+77. **A Taliesin sidebar (`viewsContainers` + `views` + `TreeView`).** Whole-book outline; a "what
+    links here" cross-reference view with dangling refs grouped; a figure/table/equation index; a
+    bibliography view splitting cited from uncited; a kernel panel (which kernels are warm, what is
+    cached, clear-freeze-for-this-page). (Value: **medium-high**. Size: **L**. Where:
+    `editor/vscode` TS + 74. Fit: **fits**, read-only navigation only.)
+    *Explicitly NOT drag-to-reorder chapters. That is the removed slide-reorder mistake in a new
+    costume; see "Decided against" above.*
+78. **File decorations (`registerFileDecorationProvider`).** Badge `.tmd` files in the Explorer: a
+    warning dot for pages failing `check`, `⚡` for fully cached, a dot for pages with
+    never-executed cells. Project health at a glance with zero interaction. (Value: **medium**.
+    Size: **M**. Where: TS + 74. Fit: **fits**.)
+79. **Status bar item** for kernel state, last build time, cache hit ratio; click to open the
+    preview or restart the kernel. (Value: **low-medium**. Size: **S**. Where: TS. Fit: **fits**.)
+    *This, not idea 68, is where live cell state belongs, because it can talk to a running preview.*
+
+### Cluster D — Toolchain integration (removes a trip to the shell)
+
+80. **Task provider + `contributes.problemMatchers`.** Auto-discovered `taliesin build` / `check` /
+    `build --out` tasks, with `check` diagnostics landing in the **Problems panel for files that
+    are not open**. Today project-wide health requires a terminal. (Value: **medium-high**. Size:
+    **S-M**. Where: TS + `package.json`. Fit: **fits**.)
+81. **Testing API (`tests.createTestController`).** The speculative-but-interesting one. Model each
+    page's `check` rules as test items, so a 60-page book gives a green/red tree of which chapters
+    still render clean, with gutter icons and per-item re-run, instead of a flat diagnostic list. A
+    second reading models **cell execution** as tests, which buys cancellation, run profiles and
+    output panes for free. (Value: **medium**, **high** if the cell reading works. Size: **M-L**.
+    Where: TS. Fit: **needs-care**, it is an unusual use of the API.)
+82. **Terminal link provider.** Make `page.tmd:12:3` in the dev-server log clickable. (Value:
+    **low-medium**. Size: **XS**. Where: TS. Fit: **fits**.)
+83. **URI handler (`registerUriHandler`).** `vscode://taliesin.taliesin-companion/open?file=…&line=…`
+    closes click-to-source for the **standalone browser preview**, which today only bridges back
+    inside the webview relay. (Value: **medium**. Size: **S**. Where: TS + `web-client`. Fit:
+    **fits**.) *Weigh against the standing note that click-to-source has no automated end-to-end
+    coverage: the harness stops at the relay, so this needs a manual check.*
+84. **`onWillRenameFiles`.** Rename `intro.tmd` and every `{{< include >}}`, relative link and
+    `_site.yml` reference updates via a `WorkspaceEdit`, with VS Code's native refactor preview.
+    **Table stakes in TypeScript-land and absent from every Markdown tool I am aware of.** (Value:
+    **high**. Size: **M**, and **L** if it must be correct across a whole book, which needs 74.
+    Where: TS + `lsp`. Fit: **fits**.)
+
+### Cluster E — AI-native editor surface
+
+85. **`lm.registerMcpServerDefinitionProvider` + `contributes.languageModelTools`.** `taliesin mcp`
+    **already exists**; this lets the extension *advertise* it to VS Code automatically instead of
+    the user hand-editing config, and register render/check/resolve-xref/vocab as native LM tools.
+    Very cheap given the server is built. (Value: **medium-high**. Size: **S**. Where: TS +
+    `package.json`. Fit: **fits**.)
+    *This does **not** contradict the reverted Ask-AI hand-off. That was rejected because AI
+    belongs in the browser extension rather than in the published document. This is AI in the
+    **editor**, via the platform's own surface, which is the same principle applied consistently.*
+
+### Cluster F — Editor execution controls
+
+86. **CodeLens on cell fences: `▶ Run cell · ⟲ Run below · ⏹ Interrupt · ⚡ cached (4.2s)`.**
+    Where Jupyter parity actually lands, and the editor is the right home precisely because the
+    `.tmd` is the editing surface: execution controls belong next to the code being edited, and
+    keeping them out of the preview avoids growing a second control surface in the browser.
+    (Value: **high**. Size: **M**. Where: TS + preview-server protocol. Fit: **fits**.)
+    **Filed as backlog item 175(d) and depends on 175(b), output streaming.** Do not build it from
+    both entries.
+
+### Ruled out this session (with the reason, so it is not re-proposed)
+
+- **`registerNotebookSerializer` (open `.tmd` in VS Code's Notebook editor).** Tempting: a mature
+  cell UI with real per-cell run buttons, for free. **But it is a second editing surface with a
+  serializer that writes back**, and it would round-trip prose through a cell model. It breaks the
+  same invariant drag-to-reorder-slides was removed for. Idea 86 gets most of the benefit with
+  none of the conflict.
+- **`registerCustomEditorProvider` for `.tmd`.** Same objection, same verdict.
+- **A `@taliesin` chat participant that edits the document.** Overlaps the settled Ask-AI decision
+  and re-opens the write-back question. Idea 85 is the in-scope version.

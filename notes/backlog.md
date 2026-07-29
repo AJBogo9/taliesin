@@ -296,6 +296,112 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      linter's located diagnostics depend on it). Fix the stale comment whenever this file is
      touched for any other reason.
 
+178. **The LSP re-walks the whole book on every keystroke, undebounced.** (S/M. Found 2026-07-29
+     while speccing 177, which now depends on it. **Not measured yet: measure before fixing, and
+     do not trust this entry's cost estimate over a real number.**) `didChange` calls `publish`
+     synchronously with no timer and no coalescing (`lsp.rs:273-283`), and that path runs
+     `check::buffer_diagnostics` → `collect_file_diagnostics_from_src` (`check.rs:293`), which
+     does a full `taliesin_core::render_single_doc` **plus**
+     `site::anchors_defined_elsewhere_in_project` (`site/xref.rs:111`). The latter finds the
+     enclosing `_site.yml` root, walks **every page in the project**, reads each from disk, and
+     resolves its includes. On a 60-page book that is a full re-render plus ~60 file reads and
+     include resolutions **per keypress**. Two independent fixes, likely both: **debounce
+     `didChange`** (the larger and simpler win), and **memoize** the render + anchor scan keyed on
+     buffer text (keying on text means there is no invalidation logic to get wrong). *The anchor
+     walk is not gratuitous, it exists so a valid cross-page `@sec-`/`@fig-` is not reported as an
+     error (`check.rs:305-310`); do not "fix" this by deleting it.*
+
+177. **Editor ergonomics: the doc-local semantic layer.** (M. **The spec is written:**
+     [2026-07-29-lsp-editor-ergonomics-design.md](../docs/superpowers/specs/2026-07-29-lsp-editor-ergonomics-design.md).
+     Read it before writing code; do not re-derive. Idea-pool detail:
+     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 3, ideas 67-72. Ranking provisional, same caveat
+     as 175.) **Phases: 0 math-delimiter theming → 1 item 178 → 2 inlay hints → 3 folding →
+     4 document highlight → 5 selection ranges.** Pure-Rust LSP additions, each a pure function of the
+     open buffer plus its directory: inlay hints (resolved figure/section numbers, cite
+     author-year, include line counts), folding ranges, document highlight, selection ranges,
+     semantic tokens, and a colour provider.
+     **Build order is 68 → 69 → 70/71 → 67 (re-justify or cut) → 72**, each independently
+     shippable. **The order was revised mid-session and the reason matters:** semantic tokens led
+     the first draft on the pitch "a dangling ref goes red as you type", and that is **already
+     delivered by diagnostics** (`cite/validate.rs` + `validate_xrefs_known_elsewhere`,
+     `check.rs:311`, published on every change). The remaining case for 67 is narrower (telling
+     *locally defined* from *defined on another page*, both valid, neither warning) and **may not
+     justify a slot; cutting it is live.** Do not restore the original framing.
+     Answers the author's "syntax highlighting audit / LaTeX dollar signs" note, whose lexical
+     half turns out to be already built (see idea 67). **Depends on item 178.**
+     **Two facts that de-risk it, both verified in source, both counter-intuitive:**
+     `RenderedDoc.xref_numbers` already exists and is already read by hover (`model.rs:266`,
+     `lsp.rs:1323`), so the hardest-sounding inlay hint is nearly free; and `documentSymbol`
+     already computes whole-section ranges (`lsp.rs:1453`), so folding is a re-projection.
+     **The one piece of new substrate:** `render_buffer` is unmemoized (`lsp.rs:1311`) and
+     `lsp_nav::classify_target` is a point query. **The `scan_all` full-document scanner is no
+     longer needed**: it was required only by semantic tokens (cut), and inlay hints turn out to be
+     range-scoped while document highlight needs only a targeted single-id scan. The text-keyed
+     render memo remains, and it belongs to 178.
+     **Rulings made 2026-07-29, do not reopen without new evidence:** (a) **Taliesin ships no VS
+     Code colour theme** (an editor theme is the user's own choice; minimal-config says perfect the
+     default, not seize the setting); (b) **semantic tokens and the colour provider are CUT** from
+     the slice and parked as ideas 67/72; (c) the author's dollar-sign question has a **verified
+     root cause that is not the grammar**: Taliesin's math scopes match VS Code's own
+     `markdown-math` shape exactly, and **no bundled theme defines any rule for them**, which is
+     why built-in Markdown math is equally invisible. Phase 0 fixes it with one narrowly-scoped
+     `configurationDefaults` rule on the `.tmd`-suffixed delimiter scopes.
+     *Clusters B-F of that session (paste/drop gestures, the project index and everything gated on
+     it, task/testing/URI-handler integration, LM tools, cell CodeLens) are **parked** in
+     FEATURE-IDEAS Session 3, ideas 73-86, with reasons and blockers. Three ideas are ruled out
+     there with their reasons; do not re-propose them.*
+
+175. **The long-running-cell workflow (computationally heavy / ML notebooks).** (LARGE, four
+     separable parts. **Ranking is provisional and probably too low**: it sits here only because
+     the author has not re-ranked the queue, and the case for moving it near the top is that
+     part (a) is a wall on *first contact* for an entire user population Taliesin otherwise
+     serves. Filed 2026-07-29 from an author-raised direction, evidence re-derived from source,
+     not from a prior note.) Jupyter's daily-driver property for expensive work is "watch it
+     run, then re-run only what you choose". Taliesin currently has neither half. **Verified:**
+     - **(a) The default cell timeout is 120 s** (`kernel.rs:29-34`) and expiry produces a SIGINT
+       with "no result", not a traceback (`kernel.rs:531`). A 40-minute training cell dies at two
+       minutes until the author discovers `TALIESIN_CELL_TIMEOUT`. **The fix is a better default,
+       not a knob** (minimal-config convention): cap on *silence*, not wall-clock. A cell printing
+       an epoch line every 30 s is alive; a cell silent for 10 minutes is the real runaway. The
+       machinery already exists, `kernel.rs` (~line 915) tracks last-iopub-arrival for an uncapped
+       "no output for 60 s" signal and only warns with it. **Verify that tracker's exact current
+       role before speccing**, this entry asserts it from one comment.
+     - **(b) There is no streaming output.** `exec_cell` awaits `kernel.execute(code)` and gets the
+       *complete* output vector; `kernel.rs` collects iopub until the kernel returns to idle. So a
+       long cell shows a `⏳` elapsed badge and nothing else: no tqdm bar, no epoch log, no partial
+       figure. This is the biggest gap of the four, and it fits the existing protocol shape (a
+       `cell-output-append` message beside `cell-state`).
+     - **(c) No escape hatch for an expensive cell.** Freeze keys on a cumulative hash (this cell +
+       all upstream same-language code + interpreter id), so editing *any* upstream cell busts the
+       expensive one, and the full cell-option set (`validate.rs:18`) has `cache: false` to opt
+       *out* but nothing to opt *into* stickiness. Proposal: a `#| checkpoint:` cell whose freeze
+       entry survives an upstream edit **but renders a visible stale-relative-to-inputs marker**,
+       with `build` warning or refusing. This is the differentiator, not a copy: **Jupyter lets the
+       notebook lie silently; this would let you defer the re-run while showing the debt.**
+     - **(d) No per-cell run and no interrupt.** The preview can only `restart_kernel`
+       (`serve/mod.rs:43`), which nukes all state. Per-cell run/interrupt belongs in the **editor**
+       (CodeLens), not the preview: it keeps single-editing-surface clean and avoids a second
+       control surface in the browser. **Depends on (b)** and is specced with the editor-ergonomics
+       work, do not build it twice.
+     - **Pin problem, name it before coding:** the corpus walker renders every corpus doc on every
+       `cargo test`, so the pin must *exercise* streaming and the liveness cap without being slow.
+       A cell that emits N lines with sub-100 ms sleeps, not a genuinely long job.
+
+176. **Dataset provenance (`datasets:` / `{{< dataset >}}`).** (M. Filed 2026-07-29 alongside 175,
+     same author-raised direction.) **Verified:** `copy_local_assets` only follows `src=`/`href=`
+     in the emitted HTML (`build.rs:761`) and warns-and-skips anything outside the doc tree
+     (`build.rs:769`), so a `data/train.csv` referenced only inside a `{python}` string is
+     **invisible to the build**: not copied, not validated, not mentioned. **Bundling is the wrong
+     default** (a multi-GB parquet in a book folder), and so is the status quo. The real failure is
+     that a reader cannot re-run the book, so the web-native answer is *provenance, not a blob*: a
+     front-matter `datasets:` block or a `{{< dataset data/train.csv >}}` shortcode rendering a
+     card with name, size, sha256, licence, and either a download link (small, in-tree) or a fetch
+     snippet plus checksum (large, remote). Gives the build something to validate against, which
+     turns "my figure changed and I do not know why" into a diagnostic. **Explicitly out of scope:**
+     shipping large data inside the built book. Pin: one corpus doc with a small in-tree CSV and one
+     declared remote entry. *Touches the drop-a-`.csv` gesture in the editor-ergonomics spec; that
+     gesture should insert the card plus a loader cell, so land this first.*
+
 170. **Marketing site.** (Last by the author's own standing feature-first policy, which is why it
      sits below everything above it even though parts are buildable today.) The
      `live-edit-hero-demo` clip (= `ROADMAP.md` Wave 2's unshipped deliverable), swapping the
