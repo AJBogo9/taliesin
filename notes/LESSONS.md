@@ -52,6 +52,21 @@ throughout.
 Two items ("this function has NO test at all") were wrong the same way: the function was reached
 through its wrappers. What was actually missing was a fixture *shape*.
 
+- **A guard can be dead and green.** (2026-07-28, item 80.) The `mounts:` *lexical* containment
+  check was fully shadowed by the canonical-symlink check for any target that **exists**, so the
+  test passed with the guard disabled — a survived mutation on a fix that was itself correct. It
+  took a row whose target does **not** exist to pin the lexical half. **When two checks can both
+  reject the same input, mutation-test each one against an input only IT rejects.**
+- **A `|` inside an inline code span still splits a Markdown table cell, and `check` is green on
+  it.** (2026-07-29, the new guide chapter.) `` | Cell option (`#| label: fig-x`) | 139 | `` came
+  out as two broken cells. Escape it `\|`. Same family: a `# ` heading on top of a front-matter
+  `title:` prints a book chapter's name twice. Neither is a diagnostic, both are obvious in a
+  browser, and neither is visible to any emission test — **render the page you just wrote.**
+- **An existing test can be the thing holding the bug in place.** (2026-07-29, item 144b.)
+  `strict_single_doc_build_fails_on_a_missing_image` asserted `doc:5:` — the bare `file_stem()`
+  label that no editor resolves — so fixing the label broke it. A red test after a fix is not
+  automatically the fix's fault: **read what the test was pinning before you adjust either.**
+
 ## Running cargo-mutants
 
 - **Any test-command narrowing fabricates MISSED, and `--lib` is only the loudest case.** Scoping to
@@ -99,6 +114,22 @@ through its wrappers. What was actually missing was a fixture *shape*.
   (`auto-animate`) had been measured by hand minutes earlier and was *known* to be non-empty.
   **Carry a known-positive row in every table probe and print it first**, so a broken instrument
   announces itself instead of reading as a clean result. Use `${=VAR}` or a real array.
+- **A first-match selector picks the element the feature deliberately excludes.** (2026-07-29,
+  items 151 and the earlier click-to-source probe — **three instances now, so it is a class.**)
+  `document.querySelector('a.tali-xref')` on `corpus/demo-book/results.html` returns a `sec-`
+  cross-reference, and section anchors are *deliberately* absent from the hover index (the link
+  text is already the heading's title), so the probe hovered the one link guaranteed to open
+  nothing. The click-to-source probe clicked the first `[data-block-id]`, which is the title block
+  and carries no `data-sourcepos`. **A probe must select on the property the feature keys on, not
+  on the first element of the right shape** — and when no such element exists, that must FAIL,
+  never pass quietly. Every one of the three reported a failure that was about the selector.
+- **A probe can be pointed at a surface a RULING removed.** (2026-07-29, item 151.) The
+  `toc-scrollspy` probe waited on `#TOC a` against `docs/internals`, a book — and `Site::page_toc`
+  returns false for a book ahead of the page's own `toc:`, by the ruling that made the drawer a
+  book's only nav surface. It could only ever fail, and the item filed the cause as "`id="TOC"`
+  appears in no emitter", which is false: it is emitted, just never on that page. **Before
+  believing a probe's stated cause, check whether its target still has the feature.**
+
 - **`taliesin --version` before any CLI measurement: `target/` is shared with the parallel session.**
   (2026-07-28.) The release binary reported a SHA from the *other* branch, so a round's headline was
   measured against code this branch does not contain. It held on re-measurement after
@@ -352,3 +383,15 @@ which 2 are false positives.
   and arms it with no follow-up commit — and because it *is* inert, the "there is no CI" prose had to
   be corrected rather than reversed. **A gate on the tree and the prose about it belong in one
   assertion**, or half the change ships and the docs start lying in the other direction.
+- **Certify off a worktree whenever another session shares the tree.** (2026-07-28, the deck-harness
+  batch.) A parallel session had ~2,100 deletions **staged in the index** plus five modified source
+  files, so a suite run in the shared tree certifies both sessions' work together and neither
+  alone — two runs came back green at 1,728 and then 1,762 as their tests appeared mid-batch, and
+  `cargo fmt --check` failed on *their* file. **Commit your own paths explicitly, then run the gates
+  on a detached worktree at your own commit.**
+- **Measure; do not reconcile against a number written in a notes file.** (2026-07-28 and again
+  2026-07-29.) A recorded test total is invalidated by the commit that writes it and by every
+  commit another session lands afterwards: a "+17 against 1,700" that should have been +8 meant the
+  *baseline* had rotted by 9, not that the branch added 17. A total is evidence only of the run that
+  produced it. What is worth carrying forward is **0 ignored** plus each interpreter canary printing
+  `... ok` — those two mean the gates ran, and they do not rot.
