@@ -164,6 +164,41 @@ html[data-theme="dark"] {
 The zoom (click-to-enlarge) backdrop uses `--tali-bg`, so an enlarged diagram
 matches the page.
 
+### An `.svg` file you wrote yourself
+
+A figure written as `![Caption](diagram.svg)` is embedded as `<img src="diagram.svg">`,
+and an `<img>` is **style-isolated**: the SVG is a separate document, so nothing inside it
+can see the page's `--tali-*` variables or the `data-theme` attribute the toggle sets.
+This is a browser rule, not a Taliesin one. Inline `{js}` graphics and Mermaid diagrams
+are part of the page and follow the toggle normally; an `<img>`-embedded SVG cannot.
+
+The consequence worth knowing: an SVG that themes itself with
+
+```css
+@media (prefers-color-scheme: dark) { … }
+```
+
+follows the reader's **operating system**, not the page. For most readers those agree. For
+a reader who has deliberately set the page to light while their OS is dark, they disagree,
+and the figure comes out in the wrong palette on an otherwise correct page.
+
+Two ways to write a figure that is right either way:
+
+- **Use a palette that works on both.** Mid-tone strokes and fills, chosen to hold contrast
+  against a light and a dark background alike, and no `prefers-color-scheme` block. This is
+  the cheapest option and the one to reach for by default. `corpus/course/likelihood.svg` is
+  written this way.
+- **Draw it in the page instead.** A `{js}` cell (or a Mermaid diagram) renders into the
+  document, reads `--tali-*` directly, and re-renders on `tali:themechange`. Right for a
+  figure whose colours genuinely have to match the page.
+
+::: {.callout-note}
+An `<style>` block inside an `.svg` file is parsed as **XML**, not as CDATA. A bare `<`,
+`>` or `&` anywhere in it — including inside a CSS comment — makes the file malformed, and
+a malformed SVG still serves with a `200` and still copies into the build while rendering
+as nothing. Escape them, or keep the CSS free of those characters.
+:::
+
 ## Four ways to customize
 
 From lightest touch to a full bundle.

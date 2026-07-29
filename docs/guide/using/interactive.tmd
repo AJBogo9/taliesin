@@ -220,6 +220,27 @@ animation frames and dispose GPU resources. And because a cell returns a node ra
 than printing markup, you can attach controls, an `OrbitControls` from three.js, a
 `<select>`, sliders, straight to the same container.
 
+::: {.callout-important}
+## Gate teardown on `invalidation`, never on DOM attachment
+
+The node a cell returns is mounted **after** the cell body finishes. Inside the body it
+is not yet in the document, so a guard like this silently does nothing on the first
+paint:
+
+```js
+const node = document.createElement("div");
+if (!node.isConnected) return;      // always true here — the cell never renders
+```
+
+That reads like a defensive check and behaves like an early return. The same mistake
+appears as an init gated on `offsetWidth`, on `getBoundingClientRect()`, or on a
+`ResizeObserver` that has not fired yet: none of them has a useful answer until the node
+is mounted, and none of them is how you learn the cell is finished. `invalidation` is,
+and it works whether or not the node ever reaches the DOM. If you genuinely need
+post-mount measurements (a canvas sized to its container), take them inside a
+`requestAnimationFrame` callback, which runs after the mount.
+:::
+
 The data can come from a `{python}` or `{r}` cell. Compute coordinates or a mesh in
 the kernel, `define()` them, and read them back in the `{js}` cell with
 `tali.get("...")`: the numbers come from your kernel, the rendering is browser-native.
