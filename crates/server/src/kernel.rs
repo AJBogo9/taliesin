@@ -1258,8 +1258,15 @@ fn render_media(media: &Media) -> String {
         MediaType::Png(b) => Some(b.clone()),
         _ => None,
     }) {
+        // `alt=""`, not `alt="output"` (item 41). An executed cell's image is spliced into
+        // a captioned `<figure>`, so the caption is already the accessible description;
+        // a second one reading "output" is noise a screen reader says out loud before it
+        // gets to the sentence that means something. Empty alt marks it presentational,
+        // which is the correct role for an image whose description sits beside it. The
+        // matplotlib twin-render path has always emitted `alt=""`; this is the same
+        // treatment for every other inline image (R figures, PIL, anything else).
         return format!(
-            "<img alt=\"output\" src=\"data:image/png;base64,{}\" />",
+            "<img alt=\"\" src=\"data:image/png;base64,{}\" />",
             b.trim()
         );
     }
@@ -1274,7 +1281,7 @@ fn render_media(media: &Media) -> String {
         _ => None,
     }) {
         return format!(
-            "<img alt=\"output\" src=\"data:image/jpeg;base64,{}\" />",
+            "<img alt=\"\" src=\"data:image/jpeg;base64,{}\" />",
             b.trim()
         );
     }

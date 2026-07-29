@@ -208,3 +208,50 @@ fn a_transparent_r_figure_keeps_its_alpha_and_a_default_one_stays_opaque() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Item 41's separable a11y half: an executed cell's image must not carry `alt="output"`.
+///
+/// The image is spliced into a captioned `<figure>`, so the caption is already the
+/// accessible description. A second one reading "output" is noise a screen reader says
+/// aloud before it reaches the sentence that means something. The matplotlib twin-render
+/// path always emitted `alt=""`; every other inline image (an R figure, a PIL image) got
+/// `alt="output"` from the generic PNG fallback in `render_media`.
+///
+/// Uses an R figure because that is where it was measured, and because the R path is the
+/// one with no formatter of its own.
+#[test]
+fn an_executed_figure_carries_no_alt_text_beside_its_caption() {
+    let Some(program) = r_program() else { return };
+    let dir = tmp_dir("alt");
+    let doc = dir.join("doc.tmd");
+    std::fs::write(
+        &doc,
+        "---\ntitle: R figure\n---\n\n\
+         ```{r}\nplot(1:10, (1:10)^2)\n```\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", doc.to_str().unwrap()])
+        .env("TALIESIN_R", &program)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run build");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let html = std::fs::read_to_string(dir.join("doc.html")).expect("built page");
+    // Needle the emitted tag, not the bare token: the page inlines the whole CSS/JS
+    // payload, so a loose substring check can match something that is not this image.
+    assert!(
+        html.contains(r#"<img alt="" src="data:image/png;base64,"#),
+        "an executed figure is emitted with an empty alt; stderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !html.contains(r#"<img alt="output""#),
+        "`alt=\"output\"` is noise read aloud beside the caption that already describes it"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
