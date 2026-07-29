@@ -25,6 +25,18 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
+- **Two items have a written, self-reviewed implementation plan; nothing else on the board does.**
+  Items **178 + 177** (LSP editor ergonomics) are covered end to end by
+  [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md):
+  8 TDD tasks, real code in every step, a mutation check and a commit per task. **A session sent
+  here to implement should open that plan and start at Task 1**, which is independent of
+  everything else and is the smallest useful change. **This overrides "take from the top" for a
+  session whose job is to implement rather than to choose**, because 177/178 sit low in the ranked
+  queue for historical reasons (they were filed last), not because they are low value. Their
+  entries say the same. Read the spec first for the why; do not re-derive either document.
+  *As of filing, a parallel session was actively building items 153-156, so expect uncommitted
+  work under `crates/core/` and `corpus/reactive/`: stage by explicit pathspec, never `git add -A`.*
+
 - **The board was refilled on 2026-07-29 by an owner ruling.** Every feature parked in the old
   "Tier 3, demand-driven" tail was reviewed with the author and **promoted**. That includes the
   **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
@@ -298,7 +310,11 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
 
 178. **The LSP re-walks the whole book on every keystroke, undebounced.** (S/M. Found 2026-07-29
      while speccing 177, which now depends on it. **Not measured yet: measure before fixing, and
-     do not trust this entry's cost estimate over a real number.**) `didChange` calls `publish`
+     do not trust this entry's cost estimate over a real number.**)
+     **This is Tasks 2 and 3 of the written plan:**
+     [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md).
+     Task 3 carries the measurement step and an explicit instruction to **stop early** if
+     debouncing alone fixes this, rather than also memoizing the anchor scan. `didChange` calls `publish`
      synchronously with no timer and no coalescing (`lsp.rs:273-283`), and that path runs
      `check::buffer_diagnostics` → `collect_file_diagnostics_from_src` (`check.rs:293`), which
      does a full `taliesin_core::render_single_doc` **plus**
@@ -311,9 +327,14 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      walk is not gratuitous, it exists so a valid cross-page `@sec-`/`@fig-` is not reported as an
      error (`check.rs:305-310`); do not "fix" this by deleting it.*
 
-177. **Editor ergonomics: the doc-local semantic layer.** (M. **The spec is written:**
+177. **Editor ergonomics: the doc-local semantic layer.** (M. **Both the spec and a task-by-task
+     implementation plan are written. Do not re-derive either.**
+     Plan (start here):
+     [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md).
+     Spec (read first, for the why):
      [2026-07-29-lsp-editor-ergonomics-design.md](../docs/superpowers/specs/2026-07-29-lsp-editor-ergonomics-design.md).
-     Read it before writing code; do not re-derive. Idea-pool detail:
+     **The plan's 8 tasks cover items 177 AND 178 together**; Task 1 is independent of both and is
+     the smallest possible start. Idea-pool detail:
      [FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 3, ideas 67-72. Ranking provisional, same caveat
      as 175.) **Phases: 0 math-delimiter theming → 1 item 178 → 2 inlay hints → 3 folding →
      4 document highlight → 5 selection ranges.** Pure-Rust LSP additions, each a pure function of the
