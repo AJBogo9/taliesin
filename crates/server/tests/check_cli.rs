@@ -261,11 +261,18 @@ fn require_kernel_gates_a_missing_interpreter() {
 }
 
 #[test]
-fn default_human_check_omits_the_environment_block() {
-    // PL14: `check` is a static linter, so a default human run does NOT spawn interpreters or
-    // print the Environment footer (it duplicated `doctor` on every keystroke/CI run). Forcing a
-    // BROKEN interpreter makes this deterministic AND pins the probe-skip: if the default path
-    // still probed, a broken interpreter would print a degraded "Environment …" block.
+fn default_human_check_names_the_interpreter_without_spawning_it() {
+    // Item 122, superseding PL14's `default_human_check_omits_the_environment_block`.
+    //
+    // PL14 was right that `check` must not SPAWN on every keystroke, and wrong to conclude it
+    // must therefore say NOTHING: a document whose only code cell cannot run reported "no
+    // problems found", exit 0, while `build` on the same file warned twice. The ruled shape
+    // separates the two halves PL14 conflated — NAME the interpreter unconditionally, PROBE it
+    // only on request.
+    //
+    // A BROKEN interpreter keeps this deterministic and pins both halves at once: the path must
+    // be NAMED (so the silence is gone) and must NOT be reported as broken (so nothing spawned
+    // it). A mutant that reinstates the probe fails on the second assert, not the first.
     let doc = tmp_doc(
         "static-check",
         "---\ntitle: S\n---\n\n```{python}\n1 + 1\n```\n",
@@ -275,11 +282,66 @@ fn default_human_check_omits_the_environment_block() {
     let (ok, _o, stderr) = run_env(&["check", path], &broken);
     assert!(
         ok,
-        "static check passes without probing, even with a broken interpreter: {stderr}"
+        "naming an interpreter never changes the exit code: {stderr}"
     );
     assert!(
+        stderr.contains("Environment (not probed)"),
+        "a doc with a code cell names the environment it would use: {stderr}"
+    );
+    assert!(
+        stderr.contains("/nonexistent/definitely-not-python"),
+        "the line names the interpreter that WOULD be used: {stderr}"
+    );
+    // The probe-skip, stated positively: nothing spawned that binary, so `check` must not
+    // claim to know it is broken. This is the assert PL14's concern actually needed.
+    assert!(
+        !stderr.contains("interpreter not found or failed to run")
+            && !stderr.contains("MISSING")
+            && !stderr.contains("kernels not ready"),
+        "check never reports a verdict on a binary it did not run: {stderr}"
+    );
+}
+
+#[test]
+fn a_document_with_no_code_cell_prints_no_environment_line() {
+    // The other half of item 122's contract, and the one that keeps PL14's real win: a prose
+    // document must stay silent. Without this, "name it unconditionally" would print a python
+    // line on every README-shaped page in the tree.
+    let doc = tmp_doc("prose-only", "---\ntitle: P\n---\n\nJust prose.\n");
+    let (ok, _o, stderr) = run_env(&["check", doc.to_str().unwrap()], &[]);
+    assert!(ok, "clean prose passes: {stderr}");
+    assert!(
         !stderr.contains("Environment"),
-        "default human check omits the Environment block (it never probed): {stderr}"
+        "no code cell, no environment line: {stderr}"
+    );
+}
+
+#[test]
+fn require_kernel_still_reports_a_probed_verdict() {
+    // The `--require-kernel` path is unchanged by item 122: it is the opt-in that SPAWNS, so it
+    // is the only surface allowed to say a kernel is not ready. Pins that the new unconditional
+    // line did not swallow the probed one — with a broken interpreter this must fail AND name
+    // the failure, where the default run above passes and names nothing.
+    let doc = tmp_doc(
+        "require-kernel",
+        "---\ntitle: R\n---\n\n```{python}\n1 + 1\n```\n",
+    );
+    let broken = [("TALIESIN_PYTHON", "/nonexistent/definitely-not-python")];
+    let (ok, _o, stderr) = run_env(
+        &["check", doc.to_str().unwrap(), "--require-kernel"],
+        &broken,
+    );
+    assert!(
+        !ok,
+        "--require-kernel fails on an unrunnable kernel: {stderr}"
+    );
+    assert!(
+        stderr.contains("Environment (kernels not ready)"),
+        "the probed path keeps its degraded block: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Environment (not probed)"),
+        "a probed run does not also claim it declined to probe: {stderr}"
     );
 }
 

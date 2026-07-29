@@ -1,5 +1,21 @@
 # PL14 — `check`'s Environment footer: probe only when needed, show only when degraded
 
+> **PARTLY SUPERSEDED 2026-07-29 by backlog item 122 (owner ruling).** The "does not probe"
+> half below is intact and is now enforced by `ProbePolicy::Never`. The "**no** Environment
+> footer" half is reversed: a default human `check` on a target with `{python}`/`{r}` cells
+> now prints `Environment (not probed):` naming the resolved interpreter, because the silence
+> made `check` answer "no problems found", exit 0, on a document whose only cell could not
+> run. This spec conflated two decisions — whether to SPAWN and whether to SPEAK — and the
+> ruling separates them: name it always, spawn it only on request. The pinning test
+> `default_human_check_omits_the_environment_block` is replaced by
+> `default_human_check_names_the_interpreter_without_spawning_it`.
+>
+> The cost objection recorded here and in item 122 also **did not survive measurement**:
+> `collect_environment` no longer walks anything, because `CheckScope` carries the language
+> list off the render the diagnostics pass already did. Default `check` measured identical
+> to the pre-change binary on all four projects in the tree (`docs/guide` 0.35 s,
+> `corpus/tech-blog` 0.52 s, `docs/internals` 0.21 s, `site` 0.12 s).
+
 `collect_environment` ran unconditionally and `check` printed an Environment footer whenever
 non-empty — even all-green — on a command documented "does NOT execute code cells". So every
 human/CI `check` of a doc with a `{python}`/`{r}` cell **spawned python3/R**, and duplicated

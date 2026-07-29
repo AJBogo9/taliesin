@@ -176,7 +176,7 @@ fn collect_diagnostics(path: &Path, scope: &mut CheckScope) -> Result<Vec<Diagno
     if path.is_dir() {
         collect_site_diagnostics(path, scope)
     } else {
-        collect_file_diagnostics(path)
+        collect_file_diagnostics(path, Some(scope))
     }
 }
 
@@ -275,9 +275,14 @@ pub(crate) fn cannot_read(path: &Path, e: &std::io::Error) -> String {
     }
 }
 
-fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
+/// `scope` is `None` for the callers that only want diagnostics (a site's per-deck pass hands
+/// its own in; `buffer_diagnostics` has no report to fill).
+fn collect_file_diagnostics(
+    path: &Path,
+    scope: Option<&mut CheckScope>,
+) -> Result<Vec<Diagnostic>, String> {
     let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
-    collect_file_diagnostics_from_src(path, &src)
+    collect_file_diagnostics_from_src(path, &src, scope)
 }
 
 /// Lint an already-in-hand source buffer as if it were the file at `path` — the seam
@@ -285,9 +290,17 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
 /// `path` supplies the base dir (relative includes/assets/links) + the reported location;
 /// the file on disk is never read. `collect_file_diagnostics` is just this with the buffer
 /// read from disk first.
-fn collect_file_diagnostics_from_src(path: &Path, src: &str) -> Result<Vec<Diagnostic>, String> {
+fn collect_file_diagnostics_from_src(
+    path: &Path,
+    src: &str,
+    scope: Option<&mut CheckScope>,
+) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_single_doc(src, base);
+    // Free: this render already happened for the lints below.
+    if let Some(scope) = scope {
+        scope.note_languages(&doc.blocks);
+    }
     let path_str = path.display().to_string();
     // A document inside a site project may legitimately refer across its pages, so
     // resolve what the project defines before calling anything broken: this path is the
@@ -319,7 +332,7 @@ fn collect_file_diagnostics_from_src(path: &Path, src: &str) -> Result<Vec<Diagn
 /// but a hypothetical error surfaces as one line-1 diagnostic (parity with the
 /// companion's check-error handling) rather than vanishing.
 pub(crate) fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
-    match collect_file_diagnostics_from_src(path, src) {
+    match collect_file_diagnostics_from_src(path, src, None) {
         Ok(diags) => diags,
         Err(e) => vec![Diagnostic::new(path.display().to_string(), Some(1), e)],
     }
@@ -334,6 +347,33 @@ pub(crate) fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
 pub(crate) struct CheckScope {
     /// `draft: true` pages held out of the published set, and so out of this check.
     pub excluded_drafts: Vec<String>,
+    /// Executable languages (`python`/`r`) seen anywhere in the checked target, in
+    /// first-seen order — the input to the Environment report.
+    ///
+    /// Recorded **from the walk the diagnostics already did**, which is the whole reason item
+    /// 122's cost objection evaporated: `collect_environment` used to re-render every page of
+    /// a site purely to learn this, measured at **+50%** on a site check. The rendered block
+    /// model is right there in `collect_site_diagnostics`; reading two booleans off it is free.
+    ///
+    /// A site's DECKS contribute here too, and deliberately: a deck is built and served but
+    /// held out of `site.pages`, so the old page-only walk reported an empty environment for a
+    /// project whose only code cells live in a talk. Same class as item 109.
+    pub used_languages: Vec<&'static str>,
+    /// The project's `_site.yml` `python:` / `r:` pins, so resolution needs no second
+    /// `Site::discover`. `None` for a single file, which has no project to pin them.
+    pub python_pin: Option<String>,
+    pub r_pin: Option<String>,
+}
+
+impl CheckScope {
+    /// Merge one page's languages in, preserving first-seen order and skipping duplicates.
+    fn note_languages(&mut self, blocks: &[taliesin_core::Block]) {
+        for lang in used_languages(blocks) {
+            if !self.used_languages.contains(&lang) {
+                self.used_languages.push(lang);
+            }
+        }
+    }
 }
 
 /// The one-line "here is what I did **not** look at" note for a site check, or `None` when
@@ -369,8 +409,11 @@ fn collect_site_diagnostics(
     scope: &mut CheckScope,
 ) -> Result<Vec<Diagnostic>, String> {
     let site = taliesin_core::Site::discover(root);
-    // Free: this discovery already ran, and it is the only thing that knows what it dropped.
+    // Free: this discovery already ran, and it is the only thing that knows what it dropped —
+    // or which interpreters the project pinned.
     scope.excluded_drafts = site.excluded_drafts.clone();
+    scope.python_pin = site.config.python.clone();
+    scope.r_pin = site.config.r.clone();
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {}", root.display()));
     }
@@ -401,6 +444,8 @@ fn collect_site_diagnostics(
         // reader sees.
         let doc =
             taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+        // Free: this page is already rendered, so the Environment report costs no second walk.
+        scope.note_languages(&doc.blocks);
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
         for w in &page_static_diagnostics(&src, &doc.blocks, base, doc.format, Scope::InSite) {
@@ -441,7 +486,10 @@ fn collect_site_diagnostics(
             .unwrap_or(&deck.input)
             .display()
             .to_string();
-        match collect_file_diagnostics(&deck.input) {
+        // A deck's languages count toward the Environment report: it is built and served, so
+        // its cells run, and holding it out of `site.pages` must not also hold it out of the
+        // report of what this project needs installed.
+        match collect_file_diagnostics(&deck.input, Some(scope)) {
             // Report the deck by its site-relative path, like every page above it, rather
             // than the absolute path the single-file path uses.
             Ok(diags) => out.extend(diags.into_iter().map(|mut d| {
@@ -515,19 +563,36 @@ fn used_languages(blocks: &[taliesin_core::Block]) -> Vec<&'static str> {
     seen
 }
 
-/// Build one `EnvEntry` for `lang` given the resolved interpreter, probing it only when
-/// that is the user's choice rather than the checked project's (item 81).
+/// Whether an [`env_entry`] may SPAWN the interpreter it resolved.
 ///
-/// `allow_project_probe` is the user's explicit opt-in (`--require-kernel`). Without it a
-/// *project-supplied* interpreter — a `_site.yml` `python:`/`r:` field, or the project's own
-/// `.venv` — is reported but never spawned: `check` is the kernel-free pass an agent runs
-/// first on a project it has not read, and `Command::new(bin)` on a string that project's
-/// author wrote is execution the user did not ask for. Resolution, path and provenance are
-/// unchanged, so the report still says exactly which interpreter *would* be used.
+/// The three states exist because "report the environment" and "run something" are separate
+/// decisions that two booleans kept conflating. Item 122 is the case that forced them apart:
+/// naming the interpreter a document would use costs nothing and is what a user needs when a
+/// cell cannot run, while spawning it on every keystroke is what PL14 removed.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum ProbePolicy {
+    /// Resolve and report; spawn nothing. The default human `check` — a static linter that
+    /// says which interpreter *would* be used and states plainly that it did not run it.
+    Never,
+    /// Spawn, except an interpreter the checked *project* chose (item 81). `--format json`.
+    UnlessProjectSupplied,
+    /// Spawn whatever was resolved: the user asked with `--require-kernel`.
+    Always,
+}
+
+/// Build one `EnvEntry` for `lang` given the resolved interpreter, spawning it only when
+/// `policy` allows (item 81 for the project-supplied case, item 122 for the default case).
+///
+/// [`ProbePolicy::UnlessProjectSupplied`] is item 81's rule: a *project-supplied* interpreter
+/// — a `_site.yml` `python:`/`r:` field, or the project's own `.venv` — is reported but never
+/// spawned, because `check` is the kernel-free pass an agent runs first on a project it has
+/// not read, and `Command::new(bin)` on a string that project's author wrote is execution the
+/// user did not ask for. Resolution, path and provenance are unchanged under every policy, so
+/// the report always says exactly which interpreter *would* be used.
 fn env_entry(
     lang: &'static str,
     resolved: &crate::interpreter::Resolved,
-    allow_project_probe: bool,
+    policy: ProbePolicy,
 ) -> EnvEntry {
     let lang_enum = if lang == "r" {
         crate::interpreter::Lang::R
@@ -546,7 +611,17 @@ fn env_entry(
         error: None,
         not_probed: None,
     };
-    if resolved.provenance.is_project_supplied() && !allow_project_probe {
+    if policy == ProbePolicy::Never {
+        return EnvEntry {
+            not_probed: Some(
+                "not probed: `check` is a static linter and does not spawn interpreters. \
+                 Run `taliesin doctor`, or pass --require-kernel, to probe it"
+                    .to_string(),
+            ),
+            ..base
+        };
+    }
+    if resolved.provenance.is_project_supplied() && policy != ProbePolicy::Always {
         return EnvEntry {
             not_probed: Some(format!(
                 "not probed: this interpreter was chosen by the project ({}), and `check` \
@@ -568,66 +643,34 @@ fn env_entry(
 }
 
 /// The informational Environment section for a file or site: for each executable
-/// language the target uses, the resolved interpreter + kernel-package probe. Never
-/// affects `check`'s exit code. Field pins come from `_site.yml` for a site; a single
-/// file has none. Empty when the target has no python/r cells.
+/// language the target uses, the resolved interpreter and — when `policy` allows the spawn
+/// — its kernel-package probe. Never affects `check`'s exit code.
 ///
-/// `allow_project_probe` carries the user's `--require-kernel` opt-in down to
-/// [`env_entry`], which is where item 81's rule lives: a project-supplied interpreter is
-/// resolved and reported, never spawned, unless the user asked.
-fn collect_environment(path: &Path, allow_project_probe: bool) -> Vec<EnvEntry> {
-    if path.is_dir() {
-        let site = taliesin_core::Site::discover(path);
-        // Union of languages across pages, plus the project-level field pins + root.
-        let mut langs: Vec<&'static str> = Vec::new();
-        for page in &site.pages {
-            let Ok(src) = std::fs::read_to_string(&page.input) else {
-                continue;
-            };
-            let base = page.input.parent().unwrap_or(path);
-            let doc = taliesin_core::render_document_with_includes_scoped(
-                &src,
-                base,
-                site.chapter_for(page),
-            );
-            for l in used_languages(&doc.blocks) {
-                if !langs.contains(&l) {
-                    langs.push(l);
-                }
-            }
-            if langs.len() == 2 {
-                break;
-            }
-        }
-        langs
-            .into_iter()
-            .map(|lang| {
-                let resolved = if lang == "r" {
-                    crate::interpreter::resolve_r(site.config.r.as_deref(), path)
-                } else {
-                    crate::interpreter::resolve_python(site.config.python.as_deref(), path)
-                };
-                env_entry(lang, &resolved, allow_project_probe)
-            })
-            .collect()
+/// Everything this needs was learned by the diagnostics walk and handed over in `scope`:
+/// which languages appear, and the project's `python:`/`r:` pins. It renders nothing itself.
+/// That is deliberate and load-bearing — the earlier version re-rendered every page of a site
+/// to recover the language list, which is the **+50%** that made item 122 look expensive.
+/// Empty when the target has no python/r cells.
+fn collect_environment(path: &Path, scope: &CheckScope, policy: ProbePolicy) -> Vec<EnvEntry> {
+    // Interpreter resolution is relative to the *project*: the directory itself for a site,
+    // the containing directory for a single file (matching what `exec` will do at run time).
+    let project_dir = if path.is_dir() {
+        path
     } else {
-        let Ok(src) = std::fs::read_to_string(path) else {
-            return Vec::new();
-        };
-        let base = path.parent().unwrap_or_else(|| Path::new("."));
-        let doc = taliesin_core::render_single_doc(&src, base);
-        used_languages(&doc.blocks)
-            .into_iter()
-            .map(|lang| {
-                let resolved = if lang == "r" {
-                    crate::interpreter::resolve_r(None, base)
-                } else {
-                    crate::interpreter::resolve_python(None, base)
-                };
-                env_entry(lang, &resolved, allow_project_probe)
-            })
-            .collect()
-    }
+        path.parent().unwrap_or_else(|| Path::new("."))
+    };
+    scope
+        .used_languages
+        .iter()
+        .map(|&lang| {
+            let resolved = if lang == "r" {
+                crate::interpreter::resolve_r(scope.r_pin.as_deref(), project_dir)
+            } else {
+                crate::interpreter::resolve_python(scope.python_pin.as_deref(), project_dir)
+            };
+            env_entry(lang, &resolved, policy)
+        })
+        .collect()
 }
 
 /// Serialize `check --format json` as `{ "diagnostics": [...], "environment": [...] }`.
@@ -658,12 +701,15 @@ pub(crate) fn check_json(target: &Path) -> String {
         .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
         .and_then(|r| r);
     match collected {
-        // `false`: this is the MCP `check` tool's path, described to the agent only as
-        // "Validate". An agent pointed at an unknown project has made no choice to run
+        // `UnlessProjectSupplied`: this is the MCP `check` tool's path, described to the agent
+        // only as "Validate". An agent pointed at an unknown project has made no choice to run
         // anything in it, so a project-supplied interpreter is reported, not spawned
         // (item 81). There is no opt-in here by design — an agent that wants a live probe
         // has `doctor`.
-        Ok(diags) => format_json(&diags, &collect_environment(target, false)),
+        Ok(diags) => format_json(
+            &diags,
+            &collect_environment(target, &scope, ProbePolicy::UnlessProjectSupplied),
+        ),
         Err(e) => json_error(&e),
     }
 }
@@ -849,7 +895,9 @@ fn collect_stdin_diagnostics(target: &Path) -> Result<Vec<Diagnostic>, String> {
     }
     let src =
         std::io::read_to_string(std::io::stdin()).map_err(|e| format!("cannot read stdin: {e}"))?;
-    crate::serve::guarded(|| collect_file_diagnostics_from_src(target, &src))
+    // `None`: `--stdin` reports no Environment section (it is the every-keystroke path), so
+    // there is nothing to fill.
+    crate::serve::guarded(|| collect_file_diagnostics_from_src(target, &src, None))
         .map_err(|panic| {
             format!(
                 "render panicked on stdin buffer for {}: {panic}",
@@ -968,21 +1016,29 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // The interpreter probe (which SPAWNS python3/R) runs only when the output or a gate needs
-    // it: `--format json` always carries `environment` (agents want the full probe), and
-    // `--require-kernel` gates on it. A default human `check` is a static linter ("does NOT
-    // execute code cells"), so it skips the spawn on every keystroke/CI run and leaves the
-    // environment audit to `taliesin doctor` (which the always-green footer only duplicated).
-    // `--stdin` (the on-type buffer path) skips the interpreter probe: it SPAWNS python3/R,
-    // which must not run on every keystroke, and the environment audit is `doctor`'s job, not
-    // a live linter's. The JSON still carries `environment: []`, so a consumer parses it
-    // identically. A saved-file `check --format json` keeps the probe (agents want it).
-    let environment = if !stdin && (format == "json" || require_kernel) {
-        // Only `--require-kernel` is an opt-in to spawning a *project-supplied* interpreter
-        // (item 81); a bare `--format json` resolves and reports it without running it.
-        collect_environment(target, require_kernel)
+    // WHICH interpreter the document would use is always reported; whether anything SPAWNS it
+    // is the separate decision `ProbePolicy` carries (item 122). PL14 tied the two together and
+    // so bought its "no spawn on every keystroke" win by going silent — a document whose only
+    // code cell could not run printed "no problems found", exit 0, while `build` warned twice.
+    //
+    // `--stdin` (the on-type buffer path) is the one caller that still reports nothing: it is
+    // the LSP's every-keystroke validator, whose consumer is a diagnostics list with no surface
+    // for an environment note. The JSON still carries `environment: []`, so a consumer parses
+    // it identically.
+    let policy = if require_kernel {
+        ProbePolicy::Always
+    } else if format == "json" {
+        // A bare `--format json` resolves a project-supplied interpreter without running it
+        // (item 81); only `--require-kernel` opts into that spawn.
+        ProbePolicy::UnlessProjectSupplied
     } else {
+        // The default human run: name it, never spawn it.
+        ProbePolicy::Never
+    };
+    let environment = if stdin {
         Vec::new()
+    } else {
+        collect_environment(target, &scope, policy)
     };
     // `--errors-only` drops warnings from what is shown AND from the exit decision.
     let diags = at_severity_floor(diags, floor);
@@ -1002,23 +1058,42 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         if let Some(note) = scope_note(&scope.excluded_drafts) {
             eprintln!("{note}");
         }
-        // Under `--require-kernel` (the only human path that probed), surface just the DEGRADED
-        // languages — an all-green probe is `doctor`'s business, not a linter's — then point at
-        // `doctor` for the full audit.
-        let degraded: Vec<&EnvEntry> = environment.iter().filter(|e| e.known_not_ready()).collect();
-        if !degraded.is_empty() {
-            eprintln!("\nEnvironment (kernels not ready):");
-            for e in &degraded {
-                let pkg = if e.runs == Some(false) {
-                    // The interpreter binary itself is absent/broken, so the kernel
-                    // package is moot; name that instead of a misleading "pkg MISSING".
-                    "interpreter not found or failed to run".to_string()
-                } else {
-                    format!("{} MISSING", e.kernel_pkg)
-                };
-                eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
+        if policy == ProbePolicy::Never {
+            // Item 122. The document runs code, so say what it would run it WITH and be
+            // explicit that nothing was spawned. This is the line whose absence let `check`
+            // answer "no problems found" for a document whose only cell cannot execute: the
+            // interpreter is named, so a wrong `TALIESIN_PYTHON` or a stale `.venv` is visible
+            // at a glance, and the verdict `check` has not earned is not asserted.
+            //
+            // No probe means no `runs`/`kernel_pkg_ok` to report, which is the honest shape —
+            // reporting "ready" here would be the same class of misreport as item 79's.
+            if !environment.is_empty() {
+                eprintln!("\nEnvironment (not probed):");
+                for e in &environment {
+                    eprintln!("  {}: {} ({})", e.lang, e.path, e.provenance);
+                }
+                eprintln!("run `taliesin doctor` to check these kernels are ready");
             }
-            eprintln!("run `taliesin doctor` for the full environment audit");
+        } else {
+            // Under a probing policy (`--require-kernel`), surface just the DEGRADED languages
+            // — an all-green probe is `doctor`'s business, not a linter's — then point at
+            // `doctor` for the full audit.
+            let degraded: Vec<&EnvEntry> =
+                environment.iter().filter(|e| e.known_not_ready()).collect();
+            if !degraded.is_empty() {
+                eprintln!("\nEnvironment (kernels not ready):");
+                for e in &degraded {
+                    let pkg = if e.runs == Some(false) {
+                        // The interpreter binary itself is absent/broken, so the kernel
+                        // package is moot; name that instead of a misleading "pkg MISSING".
+                        "interpreter not found or failed to run".to_string()
+                    } else {
+                        format!("{} MISSING", e.kernel_pkg)
+                    };
+                    eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
+                }
+                eprintln!("run `taliesin doctor` for the full environment audit");
+            }
         }
         // Make the reason legible when `--require-kernel` is the *only* thing failing (0
         // diagnostics would otherwise print "no problems found" then exit non-zero).
@@ -1542,7 +1617,7 @@ mod tests {
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
         let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";
-        let diags = collect_file_diagnostics_from_src(&f, buffer).expect("ok");
+        let diags = collect_file_diagnostics_from_src(&f, buffer, None).expect("ok");
         assert!(
             diags.iter().any(|d| d.message.contains("titel")),
             "the buffer's front-matter typo must be linted, not the clean disk file: {diags:?}"
@@ -2068,13 +2143,26 @@ mod tests {
         );
     }
 
+    /// Run the real two-step the CLI runs: the diagnostics walk fills `CheckScope`, then the
+    /// Environment report reads it. Going through `collect_diagnostics` rather than calling
+    /// `collect_environment` with a hand-built scope is the point — it pins the *handoff*,
+    /// which is where item 122's whole cost argument lives. A walk that forgot to record its
+    /// languages would leave these green if the scope were faked here.
+    fn environment_for(path: &Path, policy: ProbePolicy) -> Vec<EnvEntry> {
+        let mut scope = CheckScope::default();
+        // `super::` on purpose: this module has a one-arg `collect_diagnostics` shim that
+        // would shadow the real walk, and the real walk is exactly what fills the scope.
+        super::collect_diagnostics(path, &mut scope).expect("target lints");
+        collect_environment(path, &scope, policy)
+    }
+
     #[test]
     fn environment_is_empty_for_a_doc_with_no_code_cells() {
         let dir = tmp("env-nocells");
         let f = dir.join("x.tmd");
         std::fs::write(&f, "# Title\n\nJust prose, no cells.\n").unwrap();
         assert!(
-            collect_environment(&f, true).is_empty(),
+            environment_for(&f, ProbePolicy::Always).is_empty(),
             "a doc with no python/r cells reports no Environment entries"
         );
     }
@@ -2084,7 +2172,7 @@ mod tests {
         let dir = tmp("env-pycell");
         let f = dir.join("x.tmd");
         std::fs::write(&f, "# T\n\n```{python}\nprint(1)\n```\n").unwrap();
-        let env = collect_environment(&f, true);
+        let env = environment_for(&f, ProbePolicy::Always);
         assert_eq!(
             env.len(),
             1,
@@ -2094,6 +2182,54 @@ mod tests {
         // Path + provenance are populated; kernel_pkg_ok reflects the box (may be false
         // in CI). The section is informational, so we assert shape, not availability.
         assert!(!env[0].path.is_empty());
+    }
+
+    #[test]
+    fn never_policy_resolves_the_interpreter_and_spawns_nothing() {
+        // Item 122's core contract at unit level: the entry is fully populated with WHICH
+        // interpreter would run (path + provenance) and carries no verdict about whether it
+        // works. `runs`/`kernel_pkg_ok` staying `None` is what keeps `check` kernel-free.
+        let dir = tmp("env-never");
+        let f = dir.join("x.tmd");
+        std::fs::write(&f, "# T\n\n```{python}\nprint(1)\n```\n").unwrap();
+        let env = environment_for(&f, ProbePolicy::Never);
+        assert_eq!(env.len(), 1);
+        assert!(!env[0].path.is_empty(), "the interpreter is still named");
+        assert_eq!(
+            env[0].runs, None,
+            "nothing was spawned, so nothing is known"
+        );
+        assert_eq!(env[0].kernel_pkg_ok, None);
+        assert!(
+            env[0].not_probed.is_some(),
+            "and the report says so out loud"
+        );
+    }
+
+    #[test]
+    fn a_site_deck_contributes_its_language_to_the_environment() {
+        // A deck is built and served but held out of `site.pages`, so the old page-only walk
+        // reported an empty environment for a project whose only code cells live in a talk
+        // (item 109's family). Sourcing languages from the diagnostics walk fixes it, and this
+        // pins that it stays fixed.
+        let dir = tmp("env-deck");
+        std::fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nProse only.\n\n{{< embed talk.tmd >}}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("talk.tmd"),
+            "---\ntitle: Talk\nformat: deck\n---\n\n## One\n\n```{python}\nprint(1)\n```\n",
+        )
+        .unwrap();
+        let env = environment_for(&dir, ProbePolicy::Never);
+        assert_eq!(
+            env.iter().map(|e| e.lang).collect::<Vec<_>>(),
+            vec!["python"],
+            "the deck's python cell is reported even though the deck is not a page"
+        );
     }
 
     #[test]

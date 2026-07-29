@@ -86,14 +86,36 @@ missing path (or an empty site) is reported as a single `{"error": "…"}` objec
 **stdout** (with a non-zero exit), so `taliesin check x --format json | jq` never chokes
 on a stray human message. Human format keeps that error on stderr.
 
-`check` is a static linter, so by default it does **not** spawn interpreters — the
-environment audit lives in `taliesin doctor`. Two paths still probe: `--format json`
-always carries the full `environment` array (for each language used: the resolved
-interpreter, where it came from, and whether its `ipykernel` / `IRkernel` package is
-importable), because agents want it; and `--require-kernel` probes to gate on it. Under
-`--require-kernel` the human output lists only the **degraded** languages (an all-green
-probe is `doctor`'s business) and points at `taliesin doctor` for the full audit. See the
-[configuration reference](configuration.html) for how the interpreter is chosen.
+`check` is a static linter, so it does **not** spawn interpreters — the environment audit
+lives in `taliesin doctor`. It does, though, tell you **which** interpreter it would use.
+Whenever the target contains `{python}` or `{r}` cells, the human output ends with a
+footer naming the resolved interpreter per language:
+
+```
+no problems found
+
+Environment (not probed):
+  python: /home/you/.venv/bin/python (project .venv)
+run `taliesin doctor` to check these kernels are ready
+```
+
+Naming it costs nothing and answers the question a silent pass could not: a document whose
+only cell cannot run used to report `no problems found` and exit 0, while `build` on the
+same file warned twice. The footer deliberately carries **no verdict** — nothing spawned
+that binary, so `check` does not claim to know whether it works. A wrong `TALIESIN_PYTHON`
+or a stale `.venv` is visible at a glance; whether the kernel is ready is `doctor`'s answer.
+
+Two paths do probe. `--format json` always carries the full `environment` array (for each
+language used: the resolved interpreter, where it came from, and whether its `ipykernel` /
+`IRkernel` package is importable), because agents want it; and `--require-kernel` probes to
+gate on it. Under `--require-kernel` the human output replaces the footer above with only
+the **degraded** languages (an all-green probe is `doctor`'s business) and points at
+`taliesin doctor` for the full audit. See the [configuration
+reference](configuration.html) for how the interpreter is chosen.
+
+A site's `{{< embed >}}`-referenced **decks** count toward this footer too. A deck is built
+and served but held out of the page list, so a project whose only code cells live in a talk
+would otherwise report no environment at all.
 
 **A project-supplied interpreter is reported, not run.** When the interpreter comes from
 the project being checked — a `_site.yml` `python:` / `r:` field, or the project's own

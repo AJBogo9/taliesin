@@ -301,6 +301,10 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              it is printed and never fails the run unless you ask with --strict. Does NOT\n\
              execute code cells.\n\
              \n\
+             If the target contains {python}/{r} cells, an Environment footer names the\n\
+             interpreter each language WOULD run on. It is not spawned, so the footer says\n\
+             nothing about whether it works -- ask `taliesin doctor` or --require-kernel.\n\
+             \n\
              Flags:\n\
              \x20 --format human   path:line: message lines to stderr (default)\n\
              \x20 --format json    {diagnostics:[{code,docs_url,severity,file,line,message,\n\
