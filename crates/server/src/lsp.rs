@@ -432,11 +432,15 @@ fn handle_request(
         // An unopened document, or one that cannot be rendered, is an empty result rather
         // than an error: a half-typed buffer is the normal case for a provider that fires on
         // every scroll.
+        // Citations and includes resolve against files beside the document, so the hints
+        // need its directory. An unsaved buffer has no path and simply gets fewer hints.
+        let file = uri.to_file_path().ok();
+        let dir = file.as_deref().and_then(std::path::Path::parent);
         let hints = docs
             .get(uri)
             .and_then(|text| {
                 memo.get(uri, text)
-                    .map(|doc| crate::lsp_hints::inlay_hints(text, &doc, params.range))
+                    .map(|doc| crate::lsp_hints::inlay_hints(text, &doc, params.range, dir))
             })
             .unwrap_or_default();
         lsp_server::Response {
