@@ -213,6 +213,19 @@
           "comments": false,
           "strings": true
         }
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": [
+              "punctuation.definition.math.begin.tmd",
+              "punctuation.definition.math.end.tmd"
+            ],
+            "settings": {
+              "fontStyle": "bold"
+            }
+          }
+        ]
       }
     },
     "configuration": {

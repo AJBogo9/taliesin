@@ -222,6 +222,33 @@ test("Phase 2 (injection): inline $…$ and display $$…$$ math get a math scop
   assert.ok(hasScope(dis, "eq-area", "entity.name.label.tmd"), "the {#eq-…} label is scoped");
 });
 
+// `package.json` paints the math delimiters bold, because no bundled theme defines a rule for
+// them. That contribution is a pair of scope STRINGS, so a typo in either one is silently inert:
+// the manifest test still passes, and the delimiters stay invisible. This is the gate that
+// notices — every scope the manifest paints must be one the tokenizer actually emits on real
+// `$…$` and `$$…$$`, matched exactly rather than by prefix.
+test("Phase 2 (injection): the manifest's math-delimiter scopes are scopes the grammar emits", async () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(EXT_ROOT, "package.json"), "utf8"));
+  const rules = manifest.contributes.configurationDefaults["editor.tokenColorCustomizations"]
+    .textMateRules as { scope: string | string[] }[];
+  const painted = rules.flatMap((r) => (typeof r.scope === "string" ? [r.scope] : r.scope));
+
+  const toks = [
+    ...(await tokenizeTmd("Euler: $e^{i\\pi}+1=0$ is nice\n")),
+    ...(await tokenizeTmd("$$\\int_0^1 x\\,dx$$\n")),
+  ];
+  const emitted = new Set(toks.flatMap((t) => t.scopes));
+  for (const scope of painted) {
+    assert.ok(emitted.has(scope), `package.json paints \`${scope}\`, which the grammar never emits`);
+  }
+  // And both delimiters really are what carries them, so the rule lands on the `$` rather than
+  // on the body the `#math_body` patterns already colour.
+  assert.deepStrictEqual(
+    toks.filter((t) => t.scopes.includes("punctuation.definition.math.begin.tmd")).map((t) => t.text),
+    ["$", "$$"]
+  );
+});
+
 test("Phase 2 (injection): math-body inner tokens are highlighted natively (no external LaTeX grammar)", async () => {
   // Multi-line so the `% note` comment stays on an interior line (a `%` runs to EOL, so it must
   // not share a line with the closing `$$` or `\end{…}`). Empirically the form that tokenizes

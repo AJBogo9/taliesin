@@ -435,6 +435,38 @@ test("every walkthrough step resolves: media file, commands, completion events",
   }
 });
 
+// The grammar scopes `$` delimiters as `punctuation.definition.math.{begin,end}.tmd`, but no
+// bundled VS Code theme defines a rule for that scope (checked across dark_plus, light_plus,
+// dark_vs, light_vs, hc_black, hc_light and the 2026 pair), which is why built-in Markdown
+// math delimiters are invisible too. One narrowly-scoped default fixes it. The rules below
+// are the ones that keep the fix from becoming a bigger claim than it is: `.tmd`-only scopes
+// so a window-level setting cannot restyle Markdown, and no foreground so the delimiters
+// inherit whatever colour the active theme already uses for surrounding text.
+test("contributes a math-delimiter token colour scoped to .tmd only", () => {
+  const defaults = manifest.contributes.configurationDefaults;
+  const rules = defaults["editor.tokenColorCustomizations"]?.textMateRules;
+  assert.ok(Array.isArray(rules), "expected textMateRules in configurationDefaults");
+
+  const scopes = rules.flatMap((r: { scope: string | string[] }) =>
+    typeof r.scope === "string" ? [r.scope] : r.scope
+  );
+  assert.deepStrictEqual(scopes.slice().sort(), [
+    "punctuation.definition.math.begin.tmd",
+    "punctuation.definition.math.end.tmd",
+  ]);
+
+  // The `.tmd` suffix is what keeps a window-level setting from restyling Markdown.
+  for (const s of scopes) {
+    assert.ok(s.endsWith(".tmd"), `scope must be .tmd-suffixed, got ${s}`);
+  }
+  // No foreground: the rule inherits the active theme's colour, so it is legible in
+  // light, dark and both high-contrast themes without Taliesin picking one.
+  for (const r of rules) {
+    assert.strictEqual(r.settings.foreground, undefined, "must not hardcode a colour");
+    assert.strictEqual(r.settings.fontStyle, "bold");
+  }
+});
+
 // The manifest names an icon; the .vsix has to contain it. A marketplace listing with a
 // missing icon is the kind of thing only noticed after publishing.
 test("the declared icon exists and is a PNG", () => {

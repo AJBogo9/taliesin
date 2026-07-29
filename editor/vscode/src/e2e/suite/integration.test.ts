@@ -65,6 +65,25 @@ suite("Taliesin companion (integration)", () => {
     assert.equal(doc.languageId, "taliesin", ".tmd resolves to the taliesin language");
   });
 
+  // The manifest paints the `$` math delimiters bold, because no bundled theme defines a rule
+  // for that scope and they are otherwise invisible. Whether VS Code *accepts* an
+  // extension-contributed default for `editor.tokenColorCustomizations` is a platform question
+  // the manifest and grammar tests cannot answer: both would still pass if VS Code silently
+  // dropped the contribution, and the delimiters would stay plain. `inspect().defaultValue` is
+  // the exact answer — it is the merged default, so our rule appearing there means the
+  // contribution was read and honoured, with no user setting involved.
+  test("VS Code accepts the contributed math-delimiter token colour default", async () => {
+    const info = vscode.workspace.getConfiguration().inspect("editor.tokenColorCustomizations");
+    const rules = (info?.defaultValue as { textMateRules?: { scope: string | string[] }[] })
+      ?.textMateRules;
+    assert.ok(rules, "the contributed default never reached the configuration service");
+    const scopes = rules.flatMap((r) => (typeof r.scope === "string" ? [r.scope] : r.scope));
+    assert.ok(
+      scopes.includes("punctuation.definition.math.begin.tmd"),
+      `expected the math-delimiter scope among the defaults, got ${JSON.stringify(scopes)}`
+    );
+  });
+
   test("Open Preview creates a webview panel for the active source document", async () => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_POST));
     await vscode.window.showTextDocument(doc);
