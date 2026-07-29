@@ -233,6 +233,13 @@ Taliesin is licensed under the **GNU Affero General Public License v3.0**
 loophole": anyone who runs a modified version as a network service must offer
 their complete corresponding source to that service's users.
 
+**What you build with it is yours.** A built page contains copies of Taliesin's own
+CSS and JavaScript — that is what makes it work offline with no CDN — so the
+[**Taliesin Output Exception**](LICENSE-OUTPUT-EXCEPTION.md) grants you the right to
+publish that output under any terms you like, with nothing to attribute and no offer
+of source. The AGPL governs *Taliesin*; it makes no claim on the documents you write
+with it. Serving a page you built does not engage section 13.
+
 As the sole copyright holder, the author is not bound by the AGPL grant and
 reserves the right to offer Taliesin under other terms, including a proprietary
 hosted service or a commercial license.

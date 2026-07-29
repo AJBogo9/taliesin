@@ -3,7 +3,7 @@ title: "Accessibility conformance report"
 description: "An honest WCAG 2.1 AA conformance report for the HTML Taliesin generates: what it supports, what it partially supports, and what has not been evaluated."
 ---
 
-*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · Accessibility*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · Accessibility · [Licensing](licensing.tmd)*
 
 This is an **Accessibility Conformance Report** (the ACR half of a VPAT) for the HTML
 Taliesin produces. It exists because "is it accessible?" is a procurement question as

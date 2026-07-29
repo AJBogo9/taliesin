@@ -1,0 +1,63 @@
+---
+title: "Licensing: what you build is yours"
+description: "Taliesin is AGPL-3.0. The documents you build with it are not: the Output Exception grants you unrestricted rights over your own pages, with nothing to attribute."
+---
+
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · Licensing*
+
+Taliesin is licensed under the **GNU Affero General Public License v3.0**. That governs
+*the program*. It makes no claim on the blog posts, lecture notes, papers, decks and books
+you write with it.
+
+That distinction needs saying out loud, because of how Taliesin builds a page.
+
+## Why the question comes up at all
+
+A built page is self-contained on purpose. There is no CDN, no build step for the reader,
+and no network fetch at view time, which is what lets a page work offline and keeps a
+document readable in ten years. Taliesin achieves that by copying its own stylesheets and
+scripts **into the page it produces** — `base.css`, `tali-js.js`, the `code-enhance/`
+fragments, `deck.js` for a slide deck, and so on.
+
+So a page you build genuinely does contain a copy of some of Taliesin's own AGPL-licensed
+source. Read strictly and without any further grant, someone could argue that every page
+you publish is therefore an AGPL work, and that publishing it obliges you to offer source
+to your readers. That would be an absurd reading of what the licence is for, but "absurd"
+is not the same as "answered".
+
+## The answer
+
+It is answered, in [`LICENSE-OUTPUT-EXCEPTION.md`](https://github.com/AJBogo9/taliesin/blob/main/LICENSE-OUTPUT-EXCEPTION.md)
+at the repository root: an **additional permission under AGPL section 7**, the same
+instrument GCC uses so that compiling a program with GCC does not make the program GPL.
+
+In short:
+
+- **Your document is yours.** Building or serving it with Taliesin does not make it, its
+  source, or its contents an AGPL work.
+- **Nothing to attribute.** You do not have to reproduce the exception, the AGPL, a
+  copyright line, or an offer of source anywhere in a page you build.
+- **Publishing is not a section 13 trigger.** Hosting output that contains Taliesin's
+  runtime does not, by itself, oblige you to offer anyone source.
+- **It applies however you produced the output** — `build`, `render`, `preview` or
+  `publish`.
+
+You may publish, sell, host or relicense what you build, under any terms you choose.
+
+## What the AGPL still covers
+
+Taliesin itself. If you modify Taliesin and run *that* as a network service, you owe its
+users the corresponding source — which is the whole point of choosing the AGPL, and the
+part the exception deliberately leaves intact. The runtime assets are AGPL **as source in
+the repository**; the exception speaks only to the copies that land in a built document.
+
+Vendored third-party assets (KaTeX, D3, Observable Plot, Mermaid) keep their own licences,
+all permissive, all imposing no copyleft obligation on your document. They are listed in
+`THIRD_PARTY.md` and `crates/core/assets/js/LICENSES.md`.
+
+::: {.callout-note}
+## The one-sentence version
+
+If you only wanted to know whether you can publish what you wrote: **yes**, under any terms
+you like, with nothing to attribute.
+:::

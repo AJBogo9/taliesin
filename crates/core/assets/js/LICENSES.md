@@ -7,8 +7,16 @@ live in this file, which ships beside them.
 
 This covers the redistributed third-party bundles only. Taliesin's own scripts in this
 directory (`deck.js`, `mermaid.js`, `tali-js.js`, `tabset.js`, `walkthrough.js`,
-`scrolly.js`, and the `code-enhance/` fragments) are covered by the project's own
-`LICENSE` at the repository root.
+`scrolly.js`, and the `code-enhance/` fragments) — and the stylesheets in `../css/` —
+are covered by the project's own `LICENSE` at the repository root.
+
+**In a document you build, those own scripts and stylesheets carry the
+[Taliesin Output Exception](../../../../LICENSE-OUTPUT-EXCEPTION.md)**, which lets you
+publish that output under any terms with nothing to attribute. The AGPL still governs
+them *as source in this repository*. That is why none of these files carries a licence
+header: every byte here is copied verbatim into every page Taliesin builds, so a header
+would add ~1 KB to each page to assert a licence the exception exists to disclaim. The
+notice belongs here, where it costs a reader nothing.
 
 ---
 
