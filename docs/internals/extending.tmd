@@ -109,12 +109,13 @@ design.
 ### `taliesin lsp`: the language server
 
 `taliesin lsp` is a synchronous, offline, **kernel-free** LSP server over stdio
-(`crates/server/src/lsp.rs` plus `lsp_complete`/`lsp_nav`/`lsp_links`/`lsp_outline`/`lsp_pos`).
+(`crates/server/src/lsp.rs` plus
+`lsp_complete`/`lsp_nav`/`lsp_links`/`lsp_outline`/`lsp_pos`/`lsp_memo`/`lsp_hints`/`lsp_fold`).
 It holds open `.tmd` buffers warm and answers:
 
 | capability | what it gives the author |
 |---|---|
-| `publishDiagnostics` | every `check` finding, live on each keystroke, with its `TAL-*` code and a link to the catalog |
+| `publishDiagnostics` | every `check` finding, live as you type, with its `TAL-*` code and a link to the catalog. **Coalesced**, not per-keystroke: this path runs a full render *plus* a walk of every page in the project (so a cross-page `@sec-` is not wrongly reported as broken), which is far too much to pay per keypress. Edits inside a 120 ms window collapse to one publish; `didOpen` still publishes immediately, because opening a document is one event rather than a burst |
 | `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout and theorem kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
 | `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
@@ -123,6 +124,10 @@ It holds open `.tmd` buffers warm and answers:
 | `codeAction` | the "did you mean `X`" quick fix, whenever the diagnostic carried a precise span |
 | `rename` (with `prepareRename`) | a cross-reference anchor and every reference to it, as one edit |
 | `formatting` | pipe tables, aligned to their widest cell, alignment markers kept — and **nothing else in the file** |
+| `inlayHint` | the resolved number beside a cross-reference, author-year beside a citation, line count beside an include. Range-scoped, so only the visible lines are scanned. A reference to an anchor on *another* page is valid but has no number here, and the hint is **omitted** rather than filled with a placeholder: a missing hint reads as "no information", a placeholder reads as a claim |
+| `foldingRange` | front matter, each heading down to the next of equal or shallower level, `:::` divs, code fences. Without this an editor folds `.tmd` by *indentation*, which is meaningless in a format where nesting is heading level and fences |
+| `documentHighlight` | the anchor under the cursor, its definition marked as a write and every reference as a read |
+| `selectionRange` | expand-selection by structure: word, then the enclosing inline construct, paragraph, `:::` div, section |
 
 Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
 in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either signal, the

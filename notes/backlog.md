@@ -25,6 +25,13 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
+- **Two small things were left open on 2026-07-30 and are the top of P1: items 179 and 180.**
+  179 is a **load-flaky browser test** that makes `gates.sh` unreliable under load (diagnosis
+  complete, cause identified, fix not written; it is a timing assumption, not a code defect).
+  180 is the **user-facing docs** for the four capabilities that just shipped, plus the one ruling
+  the author owes: whether the new inlay hints are pleasant to actually write with, since VS Code
+  turns them on by default. Neither blocks anything else.
+
 - **Items 178 + 177 (LSP editor ergonomics) shipped on 2026-07-30** against
   [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
   all 8 tasks, `./tools/gates.sh` green. The plan and its spec stay in the repo as the record of
@@ -129,6 +136,50 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
 - **Promotion is not a design.** Several of these were parked with an open design question, not
   just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
   trap). Those say so; brainstorm before coding.
+
+179. **`a_glsl_cell_compiles_and_paints` is load-flaky, so `./tools/gates.sh` is not trustworthy
+     under load.** (XS/S. Filed 2026-07-30 from a real gate failure, **diagnosis complete, cause
+     not yet fixed**. Ranked first because it is cheap and because it degrades the one gate every
+     batch depends on; re-rank freely. **The parallel session that wrote this test on 2026-07-29
+     may already be on it, so check with them before starting.**) The test asserts that a `{glsl}`
+     cell *painted pixels*, and the paint runs on **SwiftShader software WebGL**
+     (`--use-angle=swiftshader`, `reactive_browser.rs:292-298`), which is CPU-bound. Under a loaded
+     machine the probe samples the canvas before the draw lands and the assertion fails on
+     `reactive_browser.rs:731`, "no pixel was painted".
+     **What was measured, so none of it needs redoing:** it FAILED twice in the main working tree
+     during full `gates.sh` runs while a second Claude session was active, and PASSED (a) alone,
+     (b) with all 8 tests of its own binary, (c) at its own base commit `c0d202f` in a clean
+     worktree under the full `cargo test --workspace` command, (d) at the LSP batch's HEAD in that
+     same worktree under the same command, and (e) in the main tree once the machine was quiet.
+     **So it is neither a code defect nor caused by the LSP batch: it is a timing assumption.**
+     `has_context` passes throughout, so this is not "headless Chrome has no GPU".
+     **The fix is to wait for the draw rather than to assume it has happened**: poll the canvas
+     until a pixel is non-transparent with a generous timeout, instead of sampling once. Do NOT fix
+     it by loosening the assertion to "a context exists": the comment at `reactive_browser.rs:292`
+     records that the whole shader half of that file would then pass vacuously on an error box,
+     which is exactly what SwiftShader was introduced to prevent. **This will bite CI**, whose
+     runners are far slower than this machine, the moment the repo goes public and the workflow
+     arms itself.
+
+180. **The four new LSP capabilities are undocumented for *users*, and the inlay hints need the
+     author's eye before they are called done.** (XS for the docs; the evaluation is a ruling only
+     the author can make. Filed 2026-07-30 on landing items 177 + 178.) The **Internals** book is
+     current (`docs/internals/extending.tmd`: all four rows plus the coalescing note landed with
+     the batch). The **User Guide** is not: nothing in `docs/guide/` tells an author that inlay
+     hints, folding, document highlight or expand-selection exist, and `using/preview.tmd` covers
+     only click-to-source. Two parts:
+     - **Docs.** A short section, most naturally in `using/writing.tmd` or `using/preview.tmd`.
+       *Optional and cheap:* a drift gate asserting the internals capability table names every
+       field `server_capabilities()` sets. The table went stale the moment four capabilities were
+       added and nothing noticed, which is the same failure mode `manifest.test.ts` exists to
+       catch on the companion side.
+     - **The ruling.** `editor.inlayHints.enabled` defaults to **on** in VS Code, so every author
+       now sees `⟨1⟩` beside every resolving `@fig-`, `⟨Bishop 2006⟩` beside every citation and
+       `⟨42 lines⟩` beside every include, **without opting in**. That is the intended value, but it
+       has only been verified in tests and one screenshot, never lived with in a real writing
+       session. Judge in use, then decide: keep as is, change the `⟨…⟩` delimiter, or narrow which
+       of the three hint kinds are on by default. **This is a minimal-config question** (perfect
+       the default rather than add a knob), so the answer is a better default, not a setting.
 
 150. **Phase A2: site-aware in-editor preview — the WIRING half only; the risk half shipped
      2026-07-29.** (MEDIUM.) **The spec is written and its facts are verified:**
