@@ -119,24 +119,116 @@ fn absorb_color_scheme(payload: Option<&serde_json::Value>) {
     }
 }
 
+/// How long `didChange` edits are coalesced before diagnostics are published.
+///
+/// `publish` runs a full render **plus** `site::anchors_defined_elsewhere_in_project`, which
+/// walks every page in the project, reads each from disk and resolves its includes — so
+/// undebounced, one keystroke cost a whole-book pass. 120 ms is below the threshold at which
+/// an author notices a lag in their squiggles and well above a fast typist's inter-key
+/// interval, so a burst of typing collapses to one pass.
+const DEFAULT_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(120);
+
 pub(crate) fn run(connection: Connection) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    run_with_debounce(connection, DEFAULT_DEBOUNCE)
+}
+
+/// `run` with the coalescing window as a parameter, so a test can pick one it can wait on
+/// without either flaking or sleeping for a real editor's interval.
+fn run_with_debounce(
+    connection: Connection,
+    debounce: std::time::Duration,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let caps = serde_json::to_value(server_capabilities())?;
     let initialize_params = connection.initialize(caps)?;
     absorb_color_scheme(initialize_params.get("initializationOptions"));
-    main_loop(&connection)?;
+    main_loop(&connection, debounce)?;
     Ok(())
+}
+
+/// Diagnostics that are owed but not yet published, and when their coalescing window closes.
+///
+/// Two decisions live here. **Repeated edits to one buffer collapse** — that is the whole
+/// point — but **an edit to a second buffer does not evict the first**: a single slot would
+/// drop A's diagnostics silently the moment B was touched inside the window, and they would
+/// not reappear until A was edited again.
+///
+/// And the deadline is set by the *edit*, not refreshed by every message that arrives. A
+/// client that polls (inlay hints on scroll, hovers as the pointer moves) would otherwise
+/// push the window out indefinitely and starve the publish it is waiting for.
+#[derive(Default)]
+struct PendingPublishes {
+    uris: Vec<lsp_types::Url>,
+    deadline: Option<std::time::Instant>,
+}
+
+impl PendingPublishes {
+    /// Record that `uri`'s diagnostics are owed, and (re)start the coalescing window.
+    fn owe(&mut self, uri: lsp_types::Url, debounce: std::time::Duration) {
+        if !self.uris.contains(&uri) {
+            self.uris.push(uri);
+        }
+        self.deadline = Some(std::time::Instant::now() + debounce);
+    }
+
+    /// Drop any debt owed to `uri`, so closing a document does not publish diagnostics for a
+    /// buffer that is gone.
+    fn forget(&mut self, uri: &lsp_types::Url) {
+        self.uris.retain(|u| u != uri);
+        if self.uris.is_empty() {
+            self.deadline = None;
+        }
+    }
+
+    /// How long to wait for the next message before the window closes, or `None` when nothing
+    /// is owed and the loop should simply block.
+    fn wait(&self) -> Option<std::time::Duration> {
+        self.deadline
+            .map(|d| d.saturating_duration_since(std::time::Instant::now()))
+    }
+
+    /// Take everything owed, closing the window.
+    fn take(&mut self) -> Vec<lsp_types::Url> {
+        self.deadline = None;
+        std::mem::take(&mut self.uris)
+    }
 }
 
 /// Read messages until `shutdown`/`exit`. Text-document notifications keep the open-buffer
 /// store current and drive diagnostics; requests (other than shutdown) are answered from
 /// that store.
-fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main_loop(
+    connection: &Connection,
+    debounce: std::time::Duration,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Open taliesin documents, by URI → current buffer text. `didChange` carries no
     // languageId, so we only track what `didOpen` admitted; a request between edits reads
     // the buffer text from here.
     let mut docs: std::collections::HashMap<lsp_types::Url, String> =
         std::collections::HashMap::new();
-    for msg in &connection.receiver {
+    let mut pending = PendingPublishes::default();
+    loop {
+        // Block outright when nothing is owed, so an idle server costs nothing; wait only as
+        // long as the open window when a publish is pending.
+        let msg = match pending.wait() {
+            None => match connection.receiver.recv() {
+                Ok(m) => m,
+                Err(_) => break,
+            },
+            Some(remaining) => match connection.receiver.recv_timeout(remaining) {
+                Ok(m) => m,
+                // The window closed with no further edit: publish the latest text of every
+                // buffer that is owed.
+                Err(e) if e.is_timeout() => {
+                    for uri in pending.take() {
+                        if let Some(text) = docs.get(&uri) {
+                            publish(connection, &uri, text)?;
+                        }
+                    }
+                    continue;
+                }
+                Err(_) => break,
+            },
+        };
         match msg {
             Message::Request(req) => {
                 // Once `shutdown` arrives the session is over, and the exit code is a
@@ -211,7 +303,9 @@ fn main_loop(connection: &Connection) -> Result<(), Box<dyn std::error::Error + 
             // is then gone, and `connection.receiver` ends this loop on its own.
             Message::Notification(notif) => {
                 let method = notif.method.clone();
-                match crate::serve::guarded(|| handle_notification(connection, &mut docs, notif)) {
+                match crate::serve::guarded(|| {
+                    handle_notification(connection, &mut docs, &mut pending, debounce, notif)
+                }) {
                     Ok(Ok(())) => {}
                     Ok(Err(e)) => {
                         crate::log::error(&format!("lsp: invalid params for {method}: {e}"))
@@ -239,6 +333,8 @@ pub(crate) const PANIC_PROBE_METHOD: &str = "taliesin/testPanic";
 fn handle_notification(
     connection: &Connection,
     docs: &mut std::collections::HashMap<lsp_types::Url, String>,
+    pending: &mut PendingPublishes,
+    debounce: std::time::Duration,
     notif: lsp_server::Notification,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::notification::{
@@ -279,11 +375,19 @@ fn handle_notification(
             && let Some(change) = p.content_changes.pop()
         {
             docs.insert(uri.clone(), change.text);
-            publish(connection, &uri, &docs[&uri])?;
+            // Coalesced rather than published here: the main loop publishes once the edits
+            // stop. Publishing on every keystroke re-walked the whole project each time
+            // (backlog item 178). `didOpen` above still publishes immediately — opening a
+            // document is a single event, not a burst, and waiting would only delay the
+            // first squiggles an author sees.
+            pending.owe(uri, debounce);
         }
     } else if method == DidCloseTextDocument::METHOD {
         let p: DidCloseTextDocumentParams = serde_json::from_value(notif.params)?;
         docs.remove(&p.text_document.uri);
+        // Before the clear below, or a window that closes after this would re-publish
+        // diagnostics for a buffer that is gone.
+        pending.forget(&p.text_document.uri);
         publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
     } else if method == COLOR_SCHEME_METHOD {
         // The editor switched theme. Only the rasterized math hover cares, and it caches by
@@ -3579,5 +3683,178 @@ mod tests {
             .unwrap();
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Debounced diagnostics (backlog item 178).
+    //
+    // `publish` runs a full render PLUS `site::anchors_defined_elsewhere_in_project`, which
+    // walks and reads every page in the project. Undebounced, that ran once per keystroke.
+    // The debounce is deliberately long here (250 ms) so the five sends below cannot straddle
+    // the window on a loaded machine and turn a real regression into a flake.
+    // ---------------------------------------------------------------------------
+
+    // A full-buffer `didChange`, which is what FULL sync sends.
+    fn did_change(client: &Connection, uri: &Url, version: i32, text: &str) {
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: DidChangeTextDocument::METHOD.to_owned(),
+                params: serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: uri.clone(),
+                        version,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: text.to_owned(),
+                    }],
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+    }
+
+    // An unknown front-matter key is the cheapest diagnostic that quotes text we choose, so
+    // the published message names WHICH edit it describes.
+    fn typo_doc(key: &str) -> String {
+        format!("---\n{key}: a\n---\n")
+    }
+
+    #[test]
+    fn rapid_edits_coalesce_into_one_publish_of_the_final_text() {
+        let (server, client) = Connection::memory();
+        let handle =
+            std::thread::spawn(move || run_with_debounce(server, Duration::from_millis(250)));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-debounce.tmd").unwrap();
+        did_open(&client, &uri, typo_doc("tittle"));
+        let _ = recv_publish(&client); // the didOpen publish is not debounced
+
+        // Five edits inside one window. Only the last text may be reported on.
+        for n in 0..5 {
+            did_change(&client, &uri, n + 2, &typo_doc(&format!("tittle{n}")));
+        }
+
+        let published = recv_publish(&client);
+        assert_eq!(published.uri, uri);
+        assert!(
+            published
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("tittle4")),
+            "the coalesced publish must describe the LAST edit, got: {:?}",
+            published
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+
+        // Nothing further arrives: the other four edits were dropped, not queued.
+        assert!(
+            client
+                .receiver
+                .recv_timeout(Duration::from_millis(600))
+                .is_err(),
+            "five edits in one window must produce exactly one publish"
+        );
+
+        shutdown(&client);
+        handle.join().unwrap().unwrap();
+    }
+
+    // Coalescing collapses repeated edits to ONE buffer. It must not collapse across buffers:
+    // a single-slot `pending` would let an edit to B evict the diagnostics owed to A, and A's
+    // squiggles would then never arrive at all — silently, and only for whoever edits two
+    // files inside one window.
+    #[test]
+    fn an_edit_to_a_second_document_does_not_evict_the_first() {
+        let (server, client) = Connection::memory();
+        let handle =
+            std::thread::spawn(move || run_with_debounce(server, Duration::from_millis(250)));
+        handshake(&client);
+
+        let a = Url::parse("file:///tmp/tali-debounce-a.tmd").unwrap();
+        let b = Url::parse("file:///tmp/tali-debounce-b.tmd").unwrap();
+        did_open(&client, &a, typo_doc("aaa"));
+        let _ = recv_publish(&client);
+        did_open(&client, &b, typo_doc("bbb"));
+        let _ = recv_publish(&client);
+
+        did_change(&client, &a, 2, &typo_doc("aaaa"));
+        did_change(&client, &b, 2, &typo_doc("bbbb"));
+
+        let mut seen: Vec<Url> = vec![recv_publish(&client).uri, recv_publish(&client).uri];
+        seen.sort();
+        assert_eq!(seen, vec![a, b], "both documents must be published for");
+
+        shutdown(&client);
+        handle.join().unwrap().unwrap();
+    }
+
+    // The window must close on a deadline set by the EDIT, not be reset by every message that
+    // arrives. A client that polls (inlay hints on scroll, hovers as the pointer moves) sends a
+    // steady stream of requests; if each one pushed the deadline out, the pending diagnostics
+    // would be starved for as long as the pointer kept moving.
+    #[test]
+    fn a_stream_of_requests_does_not_starve_a_pending_publish() {
+        let (server, client) = Connection::memory();
+        let handle =
+            std::thread::spawn(move || run_with_debounce(server, Duration::from_millis(120)));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-debounce-starve.tmd").unwrap();
+        did_open(&client, &uri, typo_doc("tittle"));
+        let _ = recv_publish(&client);
+
+        did_change(&client, &uri, 2, &typo_doc("tittlex"));
+        // Hover requests spanning well past the window, each one an opportunity to reset it.
+        for n in 0..12 {
+            client
+                .sender
+                .send(Message::Request(Request {
+                    id: RequestId::from(200 + n),
+                    method: lsp_types::request::HoverRequest::METHOD.to_owned(),
+                    params: serde_json::json!({
+                        "textDocument": { "uri": uri },
+                        "position": { "line": 1, "character": 0 },
+                    }),
+                }))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(30));
+        }
+
+        // The publish must be in there somewhere, not still waiting behind the hovers.
+        let mut published = None;
+        for _ in 0..40 {
+            match client.receiver.recv_timeout(Duration::from_secs(5)) {
+                Ok(Message::Notification(n)) if n.method == PublishDiagnostics::METHOD => {
+                    published =
+                        Some(serde_json::from_value::<PublishDiagnosticsParams>(n.params).unwrap());
+                    break;
+                }
+                Ok(_) => continue, // a hover response
+                Err(e) => panic!("nothing more arrived: {e}"),
+            }
+        }
+        let published = published.expect("the pending publish was starved by the request stream");
+        assert!(
+            published
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("tittlex")),
+            "expected the edited text's diagnostic, got {:?}",
+            published
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+
+        shutdown(&client);
+        handle.join().unwrap().unwrap();
     }
 }
