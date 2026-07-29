@@ -461,7 +461,9 @@ fn handle_request(
         let params: lsp_types::SelectionRangeParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_selection_ranges(docs, &params))?),
+            result: Some(serde_json::to_value(resolve_selection_ranges(
+                docs, &params,
+            ))?),
             error: None,
         }
     } else if req.method == DocumentHighlightRequest::METHOD {

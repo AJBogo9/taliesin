@@ -602,8 +602,13 @@ fn inlay_hints_number_the_one_reference_that_resolves() {
     );
     // Line 15 (0-based) is `…never warns: see @fig-results.`, and the hint sits just past
     // the id rather than at the start of the line.
-    assert_eq!(hints[0]["position"]["line"], 15, "hint on the right line: {hints:?}");
-    let col = hints[0]["position"]["character"].as_u64().expect("a column");
+    assert_eq!(
+        hints[0]["position"]["line"], 15,
+        "hint on the right line: {hints:?}"
+    );
+    let col = hints[0]["position"]["character"]
+        .as_u64()
+        .expect("a column");
     let line15 = text.lines().nth(15).expect("line 15");
     assert_eq!(
         col as usize,
@@ -739,9 +744,18 @@ fn document_highlight_marks_the_anchor_definition_apart_from_its_references() {
     // `fig-results` is defined on line 11 (`{#fig-results}`) and referenced once, on line 15.
     assert_eq!(hits.len(), 2, "definition + one reference: {hits:?}");
     // DocumentHighlightKind on the wire is Text=1, Read=2, Write=3.
-    assert_eq!(hits[0]["range"]["start"]["line"], 11, "the definition: {hits:?}");
-    assert_eq!(hits[0]["kind"], 3, "the definition is the write site: {hits:?}");
-    assert_eq!(hits[1]["range"]["start"]["line"], 15, "the reference: {hits:?}");
+    assert_eq!(
+        hits[0]["range"]["start"]["line"], 11,
+        "the definition: {hits:?}"
+    );
+    assert_eq!(
+        hits[0]["kind"], 3,
+        "the definition is the write site: {hits:?}"
+    );
+    assert_eq!(
+        hits[1]["range"]["start"]["line"], 15,
+        "the reference: {hits:?}"
+    );
     assert_eq!(hits[1]["kind"], 2, "a reference is a read: {hits:?}");
 }
 
@@ -801,7 +815,11 @@ fn selection_ranges_nest_from_the_word_out_to_the_section() {
 
     let ranges = response(&stdout, 2);
     let ranges = ranges.as_array().expect("selectionRange returns an array");
-    assert_eq!(ranges.len(), 3, "one entry per requested position: {ranges:?}");
+    assert_eq!(
+        ranges.len(),
+        3,
+        "one entry per requested position: {ranges:?}"
+    );
 
     // Walk the parent chain of the first position, checking containment at every step —
     // which is the invariant a client relies on and the one thing it cannot repair.
@@ -809,24 +827,38 @@ fn selection_ranges_nest_from_the_word_out_to_the_section() {
     let mut seen = 0;
     loop {
         let (sl, sc) = (
-            level["range"]["start"]["line"].as_u64().expect("start line"),
-            level["range"]["start"]["character"].as_u64().expect("start char"),
+            level["range"]["start"]["line"]
+                .as_u64()
+                .expect("start line"),
+            level["range"]["start"]["character"]
+                .as_u64()
+                .expect("start char"),
         );
         let (el, ec) = (
             level["range"]["end"]["line"].as_u64().expect("end line"),
-            level["range"]["end"]["character"].as_u64().expect("end char"),
+            level["range"]["end"]["character"]
+                .as_u64()
+                .expect("end char"),
         );
         seen += 1;
         let Some(parent) = level.get("parent").filter(|p| !p.is_null()) else {
             break;
         };
         let (psl, psc) = (
-            parent["range"]["start"]["line"].as_u64().expect("parent start line"),
-            parent["range"]["start"]["character"].as_u64().expect("parent start char"),
+            parent["range"]["start"]["line"]
+                .as_u64()
+                .expect("parent start line"),
+            parent["range"]["start"]["character"]
+                .as_u64()
+                .expect("parent start char"),
         );
         let (pel, pec) = (
-            parent["range"]["end"]["line"].as_u64().expect("parent end line"),
-            parent["range"]["end"]["character"].as_u64().expect("parent end char"),
+            parent["range"]["end"]["line"]
+                .as_u64()
+                .expect("parent end line"),
+            parent["range"]["end"]["character"]
+                .as_u64()
+                .expect("parent end char"),
         );
         assert!(
             (psl, psc) <= (sl, sc) && (pel, pec) >= (el, ec),
