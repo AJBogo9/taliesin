@@ -23,6 +23,7 @@ mod lsp_cells;
 mod lsp_complete;
 mod lsp_format;
 mod lsp_links;
+mod lsp_memo;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;

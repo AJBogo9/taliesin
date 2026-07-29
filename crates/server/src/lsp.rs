@@ -1308,7 +1308,10 @@ fn merged_xref_targets(
 /// Render the live buffer parse-only (no kernel), rooted at the document's directory, the
 /// same render `symbols` uses. Panic-guarded so a malformed buffer yields `None` rather than
 /// crashing the request loop. Shared by hover and completion for xref resolution.
-fn render_buffer(uri: &lsp_types::Url, text: &str) -> Option<taliesin_core::RenderedDoc> {
+pub(crate) fn render_buffer(
+    uri: &lsp_types::Url,
+    text: &str,
+) -> Option<taliesin_core::RenderedDoc> {
     let base = uri
         .to_file_path()
         .ok()
