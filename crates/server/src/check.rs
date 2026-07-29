@@ -456,6 +456,18 @@ fn collect_site_diagnostics(
             out.push(diag_from(w, &page.rel));
         }
     }
+    // A `mounts:` entry is served by `preview` and is NOT wired into the static build, so
+    // every link into it 404s in the deploy (item 149). `build` has always warned; `check`
+    // said "no problems found" on exactly that project, which is the gate that matters —
+    // `check` is what runs before you publish. Same message text as the build path (shared
+    // builder), so the two channels cannot drift and the catalog needle matches both.
+    //
+    // The output directory is the one this project is configured to build into, so the
+    // per-mount recipe `check` prints is the command that actually fixes it.
+    let out_dir = root.join(site.output_dir());
+    for w in crate::build::mount_warnings(&site.config.mounts, root, &out_dir) {
+        out.push(Diagnostic::new("_site.yml".to_string(), None, w));
+    }
     // Cross-page relative-link + anchor existence, resolved against the site page
     // registry (file links here, not the single-doc `validate_local_links`: a `.tmd`
     // link rewrites to its built `.html` and only the registry knows the real urls).

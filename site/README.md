@@ -38,16 +38,22 @@ request, so content edits show on refresh).
 ## Build (single-tree: site at root, two docs books under /docs)
 
 ```sh
-taliesin build site            --out _site
-taliesin build docs/guide      --out _site/docs/guide
-taliesin build docs/internals  --out _site/docs/internals
-# gallery exhibits (each `mounts:` entry gets its own build into _site/gallery/<name>)
-taliesin build ../corpus/course     --out _site/gallery/course
-taliesin build ../corpus/tarn       --out _site/gallery/tarn
-taliesin build ../corpus/descent    --out _site/gallery/descent
-taliesin build ../corpus/graphics3d --out _site/gallery/graphics3d
-taliesin build ../corpus/analyst    --out _site/gallery/analyst
+./site/build.sh          # -> _site/ at the repo root
+./site/build.sh /tmp/out # or an explicit output directory
 ```
+
+**Use the script, not a bare `taliesin build site`.** `mounts:` is a *preview* feature: the
+static build renders this project's own pages and nothing else, so a plain build produces a
+tree whose Guide, Internals and every gallery link 404 — including the landing page's
+primary call to action. `build` warns about this (and, since item 149, `--strict` fails on
+it and `check` reports `TAL-MOUNT-PREVIEW`), but only the script produces a complete tree.
+
+It runs eight builds: the parent, then one per `mounts:` entry into `_site/<at>/`. **That
+order is load-bearing** — the parent build sweeps stale output, deleting anything under the
+output directory it did not itself write, so a mount built *first* is silently swept away.
+For the same reason, re-running `taliesin build site` on its own afterwards puts you back to
+the broken tree. `crates/server/tests/site_build_script.rs` fails the suite if the script
+and `_site.yml` ever disagree about the mount list.
 
 The `analyst` exhibit is the only one whose pages **execute**, and in two languages: it
 needs a python with `ipykernel` (`TALIESIN_PYTHON`) plus `pandas`/`matplotlib`, and an R

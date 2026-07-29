@@ -1040,7 +1040,11 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
 /// `preview` serves them), so a previewed site's `/<at>/` links 404 in the deploy. Each
 /// line gives the exact command to build that mount into `<out>/<at>/`. Empty when the
 /// site has no mounts. (Auto-building mounts is a deferred follow-up.)
-fn mount_warnings(mounts: &[taliesin_core::site::Mount], root: &Path, out: &Path) -> Vec<String> {
+pub(crate) fn mount_warnings(
+    mounts: &[taliesin_core::site::Mount],
+    root: &Path,
+    out: &Path,
+) -> Vec<String> {
     mounts
         .iter()
         .filter_map(|m| {
@@ -1619,8 +1623,20 @@ async fn build_site_async(
 
     // `mounts:` are served live in `preview` but the static build doesn't wire them, so
     // warn (with the per-mount build command) rather than ship 404'ing links silently.
+    //
+    // These COUNT toward `--strict` (item 149). The warning existed and was correct, and
+    // both automated gates blessed the deploy anyway — a warning no CI can act on is a
+    // warning that gets scrolled past, which is how this project's own site shipped with its
+    // primary call-to-action 404ing. A plain build still succeeds and still writes every page
+    // it can: previewing a site with mounts is a legitimate workflow, so the gate is opt-in.
     for w in mount_warnings(&site.config.mounts, root, &out) {
         log::warn(&w);
+        config_problems += 1;
+        diagnostics.push(crate::check::Diagnostic::new(
+            "_site.yml".to_string(),
+            None,
+            w,
+        ));
     }
 
     // Persistent execution cache, rooted at the project source (not the build

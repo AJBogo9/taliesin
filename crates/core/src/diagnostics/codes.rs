@@ -62,6 +62,16 @@ const TABLE: &[(&str, &str, &str)] = &[
     // TAL-CITE-BIB. Also ahead of `broken link`, whose needle it contains as a substring
     // ("ambiguous link text" does not, but a link whose TEXT is "broken link" would).
     ("ambiguous link text", "TAL-LINK-TEXT", SUGGESTION),
+    // A `mounts:` entry is preview-only, so every link into it 404s in the static build.
+    // SUGGESTION rather than WARNING because whether it bites depends on whether you deploy
+    // the build at all: a project that is only ever previewed is not broken, and a rule that
+    // failed `check` for every site using `mounts:` would be a false-positive machine. What
+    // it fixes is the silence — `check` used to answer "no problems found" here.
+    (
+        "is preview-only and not in the static build",
+        "TAL-MOUNT-PREVIEW",
+        SUGGESTION,
+    ),
     // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and ahead of every
     // catalogued family on purpose: the needles below include ones as generic as
     // `("math", …)`, and a weasel-word message naming a word that contains a generic needle
@@ -307,6 +317,22 @@ const EXPLANATIONS: &[Explanation] = &[
               label that disagrees with the visible text breaks voice control (WCAG 2.5.3, \
               Label in Name). This is advice, severity `suggestion`, so it never fails \
               `check`, `build --strict` or `publish` unless you ask with `check --strict`.",
+    },
+    Explanation {
+        code: "TAL-MOUNT-PREVIEW",
+        title: "a mounted project that the static build does not contain",
+        cause: "`_site.yml` declares a `mounts:` entry, which `taliesin preview` serves live \
+                under that URL prefix. The static build does NOT wire mounts: it renders this \
+                project's own pages and nothing else, so every link into the mounted prefix \
+                404s in the deployed site. The failure is invisible while you work, because \
+                the preview is exactly where the link does work.",
+        fix: "Build each mounted project into the same output directory, at its `at:` prefix \
+              — the warning prints the exact command per mount. A shell script beside the \
+              site that runs the parent build plus one build per mount is the usual shape, \
+              so the whole deploy is one command. This is advice, severity `suggestion`, so \
+              it never fails `check` or `publish` unless you ask with `check --strict`; \
+              `build --strict` does fail on it, because there the 404 is a fact about the \
+              artifact just written.",
     },
     Explanation {
         code: "TAL-PROSE-WEASEL",
