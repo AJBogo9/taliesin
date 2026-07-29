@@ -36,9 +36,59 @@ export function parseSourcepos(sp: string): { line: number; col: number } | null
   return m ? { line: +m[1], col: +m[2] } : null;
 }
 
-export function resolveSourceFile(docPath: string, sourceFile: string | null): string {
-  if (!sourceFile) return docPath;
-  return path.resolve(path.dirname(docPath), sourceFile);
+/**
+ * The absolute source file a `tali-goto` refers to.
+ *
+ * `sourceFile` is defined relative to the **currently-loaded page's** directory, which is
+ * not necessarily the document the preview was opened for: in a site preview the webview
+ * navigates between pages, so anchoring on the opened document silently resolves a click on
+ * chapter B against chapter A's directory and opens the wrong `index.tmd` (item 150).
+ *
+ * So the page supplies its own anchor. `anchor` is `{ baseDir, docPath }` as reported by the
+ * page that sent the message (`window.TALIESIN_DOC`), and it wins whenever present. It is
+ * absent only when an older preview client is talking to this host, in which case the
+ * opened document is the best guess available and the previous behaviour is kept exactly.
+ */
+export function resolveSourceFile(
+  docPath: string,
+  sourceFile: string | null,
+  anchor?: { baseDir?: string | null; docPath?: string | null } | null
+): string {
+  const baseDir = anchor?.baseDir || null;
+  const pageDoc = anchor?.docPath || docPath;
+  if (!sourceFile) return pageDoc;
+  return path.resolve(baseDir ?? path.dirname(docPath), sourceFile);
+}
+
+/**
+ * The project a document belongs to: the nearest ancestor directory holding a `_site.yml`,
+ * or `null` for a document that is not in one.
+ *
+ * The rule is **`_site.yml` and nothing else** — deliberately NOT `.git`. A repository
+ * boundary is not a document-project boundary: rooting at `.git` swallows every unrelated
+ * directory in the repo into one "project", and a document outside any project has no
+ * boundary to infer (backlog item 70). This mirrors the include-root rule
+ * `render_single_doc` already applies in Rust, so the editor and the renderer agree on
+ * where a project starts.
+ *
+ * `exists` is injected so the walk is unit-testable without a filesystem.
+ */
+export function projectRootFor(
+  docPath: string,
+  exists: (p: string) => boolean = (p) => {
+    // Local require keeps `node:fs` out of the module's import graph for the pure callers.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return require("node:fs").existsSync(p);
+  }
+): string | null {
+  let dir = path.dirname(path.resolve(docPath));
+  // Bounded by reaching the filesystem root, where `path.dirname` becomes a fixed point.
+  for (;;) {
+    if (exists(path.join(dir, "_site.yml"))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
 }
 
 export function relativeKey(docPath: string, editorPath: string): string | null {

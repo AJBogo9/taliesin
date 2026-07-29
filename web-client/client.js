@@ -1462,7 +1462,17 @@
     const doc = window.TALIESIN_DOC;
     if (!doc) return;
     if (inWebview) {
-      window.parent.postMessage({ type: "tali-goto", source_file: file, sourcepos: line + ":1" }, "*");
+      // `base_dir`/`doc_path` travel WITH the message (item 150). `source_file` is defined
+      // relative to the currently-loaded page's directory, and in a site preview the
+      // webview navigates between pages — so the host's cached "the document I was opened
+      // for" is the wrong anchor the moment the reader follows a cross-page link, and it
+      // silently opens the same-named file in the wrong chapter's directory. The page that
+      // owns the coordinates is the one that should supply the anchor. Older hosts ignore
+      // the extra fields and keep their previous behaviour.
+      window.parent.postMessage(
+        { type: "tali-goto", source_file: file, sourcepos: line + ":1", base_dir: doc.baseDir, doc_path: doc.path },
+        "*"
+      );
       return;
     }
     const abs = file ? doc.baseDir.replace(/\/+$/, "") + "/" + file : doc.path;
@@ -1484,7 +1494,11 @@
     } else {
       const ref = blockRef(el);
       if (inWebview) {
-        window.parent.postMessage({ type: "tali-goto", ...ref }, "*");
+        // Anchor travels with the message; see `gotoSource` above (item 150).
+        window.parent.postMessage(
+          { type: "tali-goto", ...ref, base_dir: doc.baseDir, doc_path: doc.path },
+          "*"
+        );
         return;
       }
       abs = ref.source_file ? doc.baseDir.replace(/\/+$/, "") + "/" + ref.source_file : doc.path;

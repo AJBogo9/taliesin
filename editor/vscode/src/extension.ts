@@ -131,7 +131,13 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
   panel.webview.onDidReceiveMessage(
     async (m) => {
       if (!m || m.type !== "tali-goto") return;
-      const abs = resolveSourceFile(docPath, m.source_file ?? null);
+      // The page that sent the message supplies the directory its `source_file` is relative
+      // to, so a preview that has navigated to another page resolves against THAT page
+      // rather than the one this preview was opened for (item 150).
+      const abs = resolveSourceFile(docPath, m.source_file ?? null, {
+        baseDir: m.base_dir ?? null,
+        docPath: m.doc_path ?? null,
+      });
       const pos = parseSourcepos(m.sourcepos || "") || { line: 1, col: 1 };
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
       const ed = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);

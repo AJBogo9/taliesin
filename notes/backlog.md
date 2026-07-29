@@ -25,11 +25,17 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
-- **The board is nearly drained.** P1 holds **two** buildable items and neither gates anything
-  else. Everything below P2 is blocked on an owner ruling, a device, or a real user. The audit
-  slate is complete except **R12** (real-device mobile, Android — needs the author's phone), and
-  **no new round should be opened**: an audit's value decays to zero if its findings never ship,
-  and three waves of them have now shipped.
+- **The board was refilled on 2026-07-29 by an owner ruling.** Every feature parked in the old
+  "Tier 3, demand-driven" tail was reviewed with the author and **promoted**. That includes the
+  **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
+  deferral no longer holds. P1 is therefore a **ranked build queue of 24**, not a drained board.
+  Take from the top.
+- **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
+  line in the demand-driven tail.
+- **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
+  audit slate is complete except **R12** (real-device mobile, Android, needs the author's
+  phone), and **no new round should be opened**: an audit's value decays to zero if its findings
+  never ship, three waves of them have now shipped, and the P1 queue is now the work.
 - **Nothing is owed by the author** except R12 and the rulings in P3.
 - **Two measurement hazards, both of which have cost time.** (1) `target/release/taliesin` is
   shared across sessions and may be built from another branch — check `taliesin --version` against
@@ -93,6 +99,24 @@ watch the named test fail), browser-verify anything client-side, and **delete th
 file when it lands**.
 
 ### P1 — build now
+
+**A ranked build queue, not a menu: the order below IS the priority order.** Take from the top.
+The ranking encodes three things: **dependencies** (153 before its graduate 158), **size** (cheap
+substrate and small wins first, the two large swings at positions 14 and 15), and the author's
+standing **feature-first policy** (170, the marketing site, is deliberately last).
+
+**Items 153-174 were promoted on 2026-07-29 by owner ruling** from the demand-driven tail, where
+several had sat since 2026-06-24. Each keeps a **pointer** to its design detail in
+[ROADMAP.md](ROADMAP.md) or [FEATURE-IDEAS.md](FEATURE-IDEAS.md) instead of re-expanding it here;
+that is the anti-bloat rule this file exists under. Two standing conditions apply to all of them:
+
+- **Each still owes a corpus pin doc** (corpus-plus-roadmap: a capability ships pinned by a target
+  corpus document added in the same change). Where the pin is already named upstream it is
+  repeated below. **Do not grow `corpus/` past the pin a feature needs**, the walker renders every
+  corpus doc on every `cargo test`.
+- **Promotion is not a design.** Several of these were parked with an open design question, not
+  just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
+  trap). Those say so; brainstorm before coding.
 
 150. **Phase A2: site-aware in-editor preview.** (MEDIUM, own spec.) Opening a book chapter in the
      companion previews the single file, so the author gets an orphan page: no nav, dead cross-page
