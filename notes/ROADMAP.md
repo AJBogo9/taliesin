@@ -316,11 +316,14 @@ books as versioned spec, integrity debt paid.
   books to a versioned normative spec. (The `configuration.qmd`/`sites.qmd` fixes are
   handled once, by `prune-and-fix-stale-docs`.) *Invariant: authoring + version stamp;
   editor-only.*
-- [ ] **`build-seo-completeness` (low / small / none).** The concrete spec of the
-  existing backlog "built-site production quality" fold-in: at publish time, when `url:`
-  is set, emit `sitemap.xml` + `robots.txt` + `Article`/`WebSite` JSON-LD, reusing the
-  nav `_`/`.`/`draft:` exclusion. Build-time metadata files, HTML-only intact. Sequence
-  after the `draft:` wire-up. *Invariant: build-time only; HTML-only.*
+- [x] **`build-seo-completeness` (low / small / none). DONE (verified 2026-07-30 by a
+  real build of `corpus/cite-this`).** At publish time, when `url:` is set, the build emits
+  `sitemap.xml` (per-page `<loc>` + a validated `<lastmod>`, 404 excluded) + `robots.txt`
+  (allow-all + `Sitemap:`) + JSON-LD (`BlogPosting`, upgraded to `ScholarlyArticle` for a
+  cited post; `WebSite` + `Person` on the root index) — plus `llms.txt`, the Atom feeds and
+  the per-page citations sidecar, which were never in this entry's scope. `site/seo.rs` +
+  `site/meta.rs`, written by `build.rs`; drafts and `_`/`.` names are already out of
+  `site.pages`. *Invariant: build-time only; HTML-only.*
 
 ---
 
@@ -352,9 +355,9 @@ validation → jsonschema`) and the scope-skeptic's "land integrity debt first."
   derived from the built HTML, pinned by `corpus/print/paged.qmd`. Scheduled when the
   HTML output is stable enough to be worth pinning a paged rendering to it.
 - **Later / demand-driven** (not scheduled): `docs-as-spec` (after validation settles)
-  · `{glsl}` registry (when a demo doc lands) · `build-seo-completeness` (at publish
-  time) · everything in CUT/DEFER, revived only when a corpus doc or a measured penalty
-  pulls it in.
+  · everything in CUT/DEFER, revived only when a corpus doc or a measured penalty
+  pulls it in. (`{glsl}` shipped 2026-07-29; `build-seo-completeness` is done — see its
+  entry above.)
 
 **Backlog cross-refs (integrate, don't duplicate):** #1d → Wave 4 (companion LAN
 token). #4 → optional branch of the Wave 2 benchmark + the gate for any crossref-family

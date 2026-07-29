@@ -196,12 +196,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
        book; and `relativeKey`'s mirror problem — reverse sync must *select the page* (a new
        `tali-navigate` host→iframe message) before marking the block. §1-4 of the spec.
 
-163. **Site-level shared bibliography + hygiene.** (M.) `bibliography:` is per-document only, so
-     a growing blog retypes keys per post and nothing reports an unused or duplicate entry. Allow
-     `bibliography:` in `_site.yml`, merged **under** each page's own, plus two **read-only**
-     diagnostics ("entry never cited", "duplicate key"). *Explicitly does not touch the BibTeX
-     parser or the CSL formatter, which are Do-NOT-touch-for-rewrite.*
-
 162. **Session revision digest.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #36.) Surface the
      `BlockOp` stream the client already receives: a session word delta (`+340 / -180`) plus a
      feed of the last N ops, each click-to-source, so an edit answers "what did that actually
@@ -239,14 +233,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      (`formatting_never_changes_the_line_count` pins that). **A prose pretty-printer still has
      the original problem**, reflowing a paragraph moves every line after it. **Brainstorm the
      line-shift answer before any reflow code.**
-
-168. **`build-seo-completeness`.** (LOW value tag upstream, small.
-     [ROADMAP.md](ROADMAP.md) Pillar V.) At publish time, when `url:` is set, emit `sitemap.xml`
-     + `robots.txt` + `Article`/`WebSite` JSON-LD, reusing the existing nav `_`/`.`/`draft:`
-     exclusion. Build-time metadata files, HTML-only intact. **Author flagged this as
-     publish-critical on 2026-07-29**, so it outranks its upstream "low" tag. Pairs naturally
-     with the auto social-card idea ([FEATURE-IDEAS.md](FEATURE-IDEAS.md) #58), which is NOT in
-     scope here.
 
 169. **Image optimization.** (Large.) WebP/AVIF transcode + responsive `srcset` + lazy-load
      behind a content-hashed asset cache. Parked as "deferred until posts get image-heavy";
@@ -772,6 +758,23 @@ branch are enough to find its commits.
     silently inert), and a real Extension Host confirming VS Code *accepts* an
     extension-contributed `editor.tokenColorCustomizations` default.
 
+- **2026-07-29/30 site bibliography + SEO board correction** (163, 168), branch
+  `batch-site-biblio-seo-2026-07-29`.
+  - **163 — `bibliography:` in `_site.yml`, merged UNDER each page's own** (`site/bibliography.rs`,
+    `render::SiteDefaults`), plus the two read-only lints. The **duplicate-key half already
+    shipped** (`parse_bib_warned`); only the unused-entry half was new. **Unused is site-wide by
+    necessity** — judged per page, every shared entry a page ignores would fire. Pin:
+    `corpus/shared-bib/`. Three traps, all measured: a second `let mut warnings` in `cite::process`
+    **shadowed** the lint so it only fired on pages citing *nothing* (every test that caught it
+    cited nothing, so all passed vacuously); `check <dir>` rendered pages with **no** site defaults,
+    so a project check disagreed with its own build; and `citations_without_bibliography` inferred
+    "no bibliography" from front-matter *shape*, which a shared `.bib` falsifies. `render_single_doc`
+    now reads the nearest `_site.yml`'s key too, so `preview post.tmd` and `preview <dir>` render one
+    document (the PP-3 rule).
+  - **168 — `build-seo-completeness` was ALREADY SHIPPED**; the entry was rot. `sitemap.xml`,
+    `robots.txt` and `BlogPosting`/`ScholarlyArticle`/`WebSite`+`Person` JSON-LD all emit,
+    url-gated, wired at `build.rs`, pinned in `tech_blog.rs` + `site/meta.rs` + `webmanifest.rs` —
+    verified by a real build of `corpus/cite-this`. Do not re-file: **grep `site/seo.rs` first.**
 - **2026-07-29 explorable cluster** (153, 154, 155, 156, 157): the whole `{js}`-side batch, on
   branch `explorable-cluster-2026-07-29`.
   - **153 — the cell-language registry, with `{glsl}` as the proof.** `render/client_lang.rs`
