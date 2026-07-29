@@ -75,6 +75,13 @@ pub struct SiteConfig {
     /// config declares it; a chapter with no `theorems:` block of its own inherits it, a
     /// chapter that declares one overrides it wholesale. `None` = no book-level policy.
     pub theorems: Option<crate::render::TheoremConfig>,
+    /// Project-wide `bibliography:` — `.bib` path(s) relative to the site root, shared by
+    /// every page. Unlike `theorems:` this is **not** an inherit-if-absent fallback: it is a
+    /// layer *under* each page's own `bibliography:`, so a post can cite a shared key and
+    /// still add or override entries locally (`Site::shared_bibliography`).
+    ///
+    /// Empty = no shared bibliography, which is the pre-existing per-document-only world.
+    pub bibliography: Vec<String>,
 }
 
 /// One `mounts:` entry: serve the project at `path` (relative to the site root)
@@ -260,6 +267,7 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "python",
     "r",
     "theorems",
+    "bibliography",
 ];
 
 /// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
@@ -429,6 +437,7 @@ fn parse_native(
         python: str_of("python"),
         r: str_of("r"),
         theorems,
+        bibliography: crate::site::frontmatter::string_list(value.get("bibliography")),
     }
 }
 
@@ -735,6 +744,40 @@ mod config_tests {
         assert!(
             cfg2.theorems.is_none(),
             "an absent theorems: parses to None"
+        );
+    }
+
+    #[test]
+    fn parses_a_site_level_bibliography_in_both_shapes() {
+        // A shared `.bib` declared once in `_site.yml` instead of retyped in every post's
+        // front matter. Accepts the same two shapes a page's `bibliography:` does.
+        for (yaml, want) in [
+            ("title: X\nbibliography: refs.bib\n", vec!["refs.bib"]),
+            (
+                "title: X\nbibliography: [a.bib, b.bib]\n",
+                vec!["a.bib", "b.bib"],
+            ),
+            (
+                "title: X\nbibliography:\n  - a.bib\n  - b.bib\n",
+                vec!["a.bib", "b.bib"],
+            ),
+        ] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            let cfg = parse_native(&v, &mut w, ConfigSource(None));
+            assert_eq!(cfg.bibliography, want, "shape {yaml:?}");
+            assert!(
+                w.iter().all(|m| !m.contains("config key")),
+                "bibliography is a recognized _site.yml key: {w:?}"
+            );
+        }
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str("title: X\n").unwrap();
+        assert!(
+            parse_native(&v, &mut w, ConfigSource(None))
+                .bibliography
+                .is_empty(),
+            "an absent bibliography: is an empty list"
         );
     }
 

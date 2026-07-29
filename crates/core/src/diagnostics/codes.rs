@@ -191,6 +191,13 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("code cell did not run", "TAL-KERNEL", ERROR),
     ("code cell did not complete", "TAL-KERNEL", ERROR),
     // Citations, math, code, categories.
+    // Dead weight in a `.bib`: declared and never cited. SUGGESTION, not WARNING — the
+    // page renders exactly right, so failing `check` on it would make a shared
+    // bibliography (whose whole point is that most pages cite a few of it) unusable; it
+    // still gates under `--strict`. MUST precede both the generic `bibliography` needle it
+    // contains and the generic `math` one, because the message embeds the author's own
+    // citation keys and a key like `mathworks2020` would otherwise classify as TAL-MATH.
+    ("declared but never cited", "TAL-CITE-UNUSED", SUGGESTION),
     ("citations are present", "TAL-CITE-BIB", WARNING),
     ("bibliography", "TAL-CITE-BIB", WARNING),
     ("math", "TAL-MATH", WARNING),
@@ -673,6 +680,18 @@ const EXPLANATIONS: &[Explanation] = &[
                 reference cannot be looked up.",
         fix: "Add a `bibliography:` pointing at your `.bib` and make sure each key exists in \
               it. Wrap a citation you meant as one in brackets: `[@key]`.",
+    },
+    Explanation {
+        code: "TAL-CITE-UNUSED",
+        title: "a bibliography entry that is never cited",
+        cause: "A `.bib` entry is declared but no `[@key]` cites it, so it is dead weight: \
+                it never reaches the reference list and nothing links to it. Reported \
+                against whatever declared it — a page's own `bibliography:` is judged \
+                against that page, and a project-wide `bibliography:` in `_site.yml` \
+                against every page of the site, since a shared entry one page cites is in \
+                use however many pages leave it alone.",
+        fix: "Cite it (`[@key]`) or delete the entry. Advice, not a defect: it never fails \
+              `check` or a build unless you ask with `--strict`.",
     },
     Explanation {
         code: "TAL-MATH",

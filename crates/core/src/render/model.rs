@@ -314,6 +314,27 @@ pub struct PageIncludes {
     pub after_body: String,
 }
 
+/// What a page inherits from its project's `_site.yml`. One value rather than a parameter
+/// per key, so adding the next project-wide policy does not widen six render signatures
+/// again. `None` at a render entry point means "no project": a single `.tmd` invoked
+/// directly, which is byte-identical to the pre-existing behaviour.
+///
+/// The two members are inherited by **different rules**, and the difference is deliberate:
+/// - `theorems` is a *fallback*. A chapter that declares its own `theorems:` block
+///   overrides this wholesale.
+/// - `bibliography` is a *layer*. A page's own `bibliography:` is merged on top of it, so a
+///   post can cite a shared key and still add or correct entries locally
+///   (`cite::Bibliography::overlay`).
+#[derive(Debug, Clone, Default)]
+pub struct SiteDefaults {
+    /// Book-wide theorem-numbering policy (`theorems:` in `_site.yml`).
+    pub theorems: Option<super::TheoremConfig>,
+    /// Readable absolute paths to the project-wide `.bib` file(s), already resolved
+    /// against the site root by `Site::discover` — so the render pass neither re-derives
+    /// "relative to what?" nor repeats a bad-path diagnostic once per page.
+    pub bibliography: Vec<std::path::PathBuf>,
+}
+
 impl PageIncludes {
     /// Append `other` after `self` (site-level first, then the page's own).
     pub fn merge(&mut self, other: &PageIncludes) {

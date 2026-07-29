@@ -197,7 +197,7 @@ analysis over the rendered block model, plus the cross-page checks in the site l
 | Accessibility | `validate_a11y` | a heading-level skip, an `<a>`/`<button>` with no accessible name, an `<img>` with no `alt` |
 | Code languages | `validate_code_languages` | a fence whose language resolves to no syntax, so it silently renders unhighlighted (a typo like ` ```pyton `). Tokens that are plain on purpose (`text`, `txt`, `plain`, `console`, `output`, `none`) never warn |
 | Math | `validate_math` | a `$…$` / `$$…$$` expression KaTeX cannot parse |
-| Citations | `citations_without_bibliography` | references present but no `bibliography:` declared |
+| Citations | `citations_without_bibliography` | references present but no `bibliography:` declared, by the page **or** its project |
 
 Each lint is conservative by design, so a green `check` is a no-false-positive promise.
 Two patterns recur: anything a static (no-execution) pass can't resolve is **skipped**

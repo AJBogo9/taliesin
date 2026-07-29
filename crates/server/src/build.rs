@@ -433,51 +433,6 @@ pub(crate) fn build_json(path: &Path) -> String {
     }
 }
 
-/// The citation keys a page actually cites, scanned from its source: every `@key` inside a
-/// `[ … ]` span (the Pandoc bracketed-citation form), deduped in first-seen order. Bracketed
-/// only, so a narrative `@fig-x` cross-reference or a `@decorator` in a code cell is never
-/// mistaken for a citation; a key that is itself a cross-reference anchor is excluded too.
-fn cited_keys(src: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let bytes = src.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'['
-            && let Some(rel_close) = src[i + 1..].find(']')
-        {
-            let span = &src[i + 1..i + 1 + rel_close];
-            let sb = span.as_bytes();
-            let mut j = 0;
-            while j < sb.len() {
-                if sb[j] == b'@' {
-                    let start = j + 1;
-                    let mut k = start;
-                    while k < sb.len()
-                        && (sb[k].is_ascii_alphanumeric()
-                            || matches!(sb[k], b'_' | b':' | b'.' | b'-' | b'/'))
-                    {
-                        k += 1;
-                    }
-                    let key = span[start..k].trim_end_matches(['.', ':', '-']);
-                    if !key.is_empty()
-                        && !taliesin_core::cite::is_xref_anchor(key)
-                        && !out.iter().any(|k| k == key)
-                    {
-                        out.push(key.to_string());
-                    }
-                    j = k;
-                } else {
-                    j += 1;
-                }
-            }
-            i += 1 + rel_close + 1;
-            continue;
-        }
-        i += 1;
-    }
-    out
-}
-
 /// The located "cell error" message for a failed cell output — one string shape shared by
 /// the single-doc and site build paths (and their structured-diagnostic mirror).
 ///
@@ -1128,11 +1083,11 @@ async fn build_one_page(
         };
     };
     let base = page.input.parent().unwrap_or(root);
-    let mut doc = taliesin_core::render_document_scoped_with_theorems(
+    let mut doc = taliesin_core::render_document_scoped_with_site(
         &src,
         base,
         site.chapter_for(page),
-        site.config.theorems.as_ref(),
+        Some(&site.render_defaults()),
     );
     let mut problems = 0usize;
     // Malformed front-matter YAML: the lenient line-parser silently mis-extracts fields, so
@@ -1842,7 +1797,12 @@ async fn build_site_async(
             continue;
         };
         let base = deck.input.parent().unwrap_or(root);
-        let mut doc = taliesin_core::render_document_with_includes(&src, base);
+        let mut doc = taliesin_core::render_document_scoped_with_site(
+            &src,
+            base,
+            None,
+            Some(&site.render_defaults()),
+        );
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
         ex.set_interpreters(
@@ -2115,7 +2075,7 @@ async fn build_site_async(
             let Ok(src) = std::fs::read_to_string(&page.input) else {
                 continue;
             };
-            let keys = cited_keys(&src);
+            let keys = taliesin_core::cite::cited_keys_in_source(&src);
             if keys.is_empty() {
                 continue;
             }
@@ -2210,6 +2170,11 @@ async fn build_site_async(
         problems += 1;
         log::warn(&locate(&w, &rel));
         diagnostics.push(crate::check::diag_from(&w, &rel));
+    }
+    for w in site.validate_shared_bibliography() {
+        problems += 1;
+        log::warn(&locate(&w, "_site.yml"));
+        diagnostics.push(crate::check::diag_from(&w, "_site.yml"));
     }
     for (rel, w) in site.validate_categories() {
         problems += 1;

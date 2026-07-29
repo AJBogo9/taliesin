@@ -59,10 +59,16 @@ pub fn is_xref_anchor(id: &str) -> bool {
 /// Returns one warning per citation key not in the (non-empty) bibliography, for
 /// the dev server's diagnostics. Empty when every citation resolves (or there's no
 /// bibliography at all, in which case the missing-file case is reported elsewhere).
+///
+/// Also reports the **mirror** of that check — an entry the page declared and never cited —
+/// which belongs here because this is the one place that holds both the cited set and the
+/// bibliography. `bib_line` locates both families on the front-matter `bibliography:` line
+/// (a `.bib` entry has no position in the `.tmd`), matching `render::load_bibliography`.
 pub fn process(
     blocks: &mut Vec<Block>,
     bib: &Bibliography,
     xrefs: &HashMap<String, String>,
+    bib_line: Option<u32>,
 ) -> Vec<Warning> {
     let mut order: Vec<String> = Vec::new();
     let mut number: HashMap<String, usize> = HashMap::new();
@@ -91,8 +97,23 @@ pub fn process(
     }
     let key_loc = key_loc.into_inner();
 
+    // The dead-weight lint, reported whether or not the page cites anything: a page that
+    // declares a `bibliography:` and cites none of it is the loudest instance, not an
+    // exemption. One warning for the whole set rather than one per key — every one of them
+    // would point at the same `bibliography:` line, so N warnings would be N copies of one
+    // click-to-source target.
+    let mut warnings: Vec<Warning> = Vec::new();
+    let uncited = bib.uncited_local(&order);
+    if !uncited.is_empty() {
+        let w = Warning::new(super::uncited_message(&uncited));
+        warnings.push(match bib_line {
+            Some(l) => w.at(None, l),
+            None => w,
+        });
+    }
+
     if order.is_empty() {
-        return Vec::new();
+        return warnings;
     }
     // If the author already wrote a `# References` / `# Bibliography` heading, render
     // the reference list under it instead of emitting a second "References" heading,
@@ -103,7 +124,6 @@ pub fn process(
     let manual_heading = blocks
         .iter()
         .position(|b| is_manual_references_heading(&b.html));
-    let mut warnings: Vec<Warning> = Vec::new();
     let mut list =
         String::from("<section class=\"tali-references\" data-block-id=\"tali-references\">");
     if manual_heading.is_none() {

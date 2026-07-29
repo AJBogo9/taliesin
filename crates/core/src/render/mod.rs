@@ -15,7 +15,7 @@ mod model;
 pub(crate) use model::CellRole;
 pub use model::{
     AssetMode, Block, Cell, CellFigure, CellTable, DocFormat, ExternalAssets, JsOpts, OutputMode,
-    PageIncludes, RenderedDoc, Warning,
+    PageIncludes, RenderedDoc, SiteDefaults, Warning,
 };
 
 fn parse_options() -> Options<'static> {
@@ -193,18 +193,19 @@ pub fn render_document_with_includes_scoped(
     render_doc_with_includes_impl(src, base_dir, chapter, None, None)
 }
 
-/// Like [`render_document_with_includes_scoped`] but with a book-level `theorems:`
-/// fallback: the site book path passes `Some` (from `_site.yml`), so a chapter with no
-/// `theorems:` block of its own inherits the book-wide numbering policy. Everything else
-/// passes `None` and is byte-identical to [`render_document_with_includes_scoped`]. Public
-/// so the server's site build + live preview render each page with the book policy.
-pub fn render_document_scoped_with_theorems(
+/// Like [`render_document_with_includes_scoped`] but carrying what the page inherits from
+/// its project's `_site.yml` ([`SiteDefaults`]): the book-wide `theorems:` policy a chapter
+/// with no block of its own falls back to, and the project-wide `bibliography:` laid under
+/// the page's own. Everything else passes `None` and is byte-identical to
+/// [`render_document_with_includes_scoped`]. Public so the server's site build + live
+/// preview render each page with the project's policies.
+pub fn render_document_scoped_with_site(
     src: &str,
     base_dir: &Path,
     chapter: Option<u32>,
-    book_theorems: Option<&TheoremConfig>,
+    site: Option<&SiteDefaults>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, book_theorems)
+    render_doc_with_includes_impl(src, base_dir, chapter, None, site)
 }
 
 /// Render one **invoked** document: `build`, `preview`, `check`, `read`, `map` or the LSP
@@ -219,7 +220,16 @@ pub fn render_document_scoped_with_theorems(
 /// answer the question. Route a new single-document command through here.
 pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
     let root = crate::includes::single_doc_root(base_dir);
-    render_doc_with_includes_impl(src, base_dir, None, Some(&root), None)
+    // A page of a project inherits its project-wide `bibliography:` even when invoked on its
+    // own, so `preview post.tmd` and `preview <dir>` render the same document (see
+    // `site::shared_for_single_doc`). `theorems:` deliberately does NOT come along: a book's
+    // numbering policy scopes a chapter to its chapter number, which a document opened
+    // outside its book has no business claiming.
+    let site = SiteDefaults {
+        theorems: None,
+        bibliography: crate::site::shared_for_single_doc(&root),
+    };
+    render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site))
 }
 
 fn render_doc_with_includes_impl(
@@ -227,7 +237,7 @@ fn render_doc_with_includes_impl(
     base_dir: &Path,
     chapter: Option<u32>,
     root: Option<&Path>,
-    book_theorems: Option<&TheoremConfig>,
+    site: Option<&SiteDefaults>,
 ) -> RenderedDoc {
     let (expanded, origins, include_warnings) =
         crate::includes::resolve_warned_in(src, base_dir, root);
@@ -244,7 +254,7 @@ fn render_doc_with_includes_impl(
         Some(base_dir.to_path_buf()),
         root.map(Path::to_path_buf),
         chapter,
-        book_theorems.cloned(),
+        site.cloned(),
     );
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
@@ -376,7 +386,7 @@ fn render_internal(
     base_dir: Option<PathBuf>,
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
-    book_theorems: Option<TheoremConfig>,
+    site: Option<SiteDefaults>,
 ) -> RenderedDoc {
     // Behind an `Arc` so the worker and the spawn-failure fallback can both reach it: a
     // failed `Builder::spawn` drops its closure rather than handing it back, so the inputs
@@ -387,7 +397,7 @@ fn render_internal(
         base_dir,
         include_root,
         chapter,
-        book_theorems,
+        site,
     });
     let big_stack = || std::thread::Builder::new().stack_size(256 * 1024 * 1024);
 
@@ -437,7 +447,7 @@ struct RenderInput {
     base_dir: Option<PathBuf>,
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
-    book_theorems: Option<TheoremConfig>,
+    site: Option<SiteDefaults>,
 }
 
 impl RenderInput {
@@ -448,7 +458,7 @@ impl RenderInput {
             self.base_dir.as_deref(),
             self.include_root.as_deref(),
             self.chapter,
-            self.book_theorems.as_ref(),
+            self.site.as_ref(),
         )
     }
 }
@@ -459,7 +469,7 @@ fn render_internal_impl(
     base_dir: Option<&Path>,
     include_root: Option<&Path>,
     chapter: Option<u32>,
-    book_theorems: Option<&TheoremConfig>,
+    site: Option<&SiteDefaults>,
 ) -> RenderedDoc {
     // Bound nesting BEFORE the parse. Past the measured cliff the recursive descent
     // overflows even this thread's 256 MB stack and *aborts the process* — uncatchable, and
@@ -469,8 +479,7 @@ fn render_internal_impl(
     // supplies a well-formed doc to hang the warning on (`""` cannot recurse: no nesting).
     if let Some((line, depth)) = overlong_nesting(src) {
         let (file, mapped) = map_origin(origins, line);
-        let mut doc =
-            render_internal_impl("", None, base_dir, include_root, chapter, book_theorems);
+        let mut doc = render_internal_impl("", None, base_dir, include_root, chapter, site);
         doc.warnings.push(
             Warning::new(format!(
                 "document nests {depth} levels deep at this line, over the {MAX_NESTING_DEPTH}-level limit; \
@@ -547,7 +556,7 @@ fn render_internal_impl(
     // starts straight into `#` with no front-matter still inherits it; a page that DOES
     // carry front-matter re-derives via `theorem_config_with_fallback` below (its own
     // `theorems:` wins, else the book).
-    let mut theorem_config = book_theorems.cloned().unwrap_or_default();
+    let mut theorem_config = site.and_then(|s| s.theorems.clone()).unwrap_or_default();
     // Whether this render will emit a visible title block — and therefore demote every
     // body heading one level. Read from the front matter up front (not from the in-loop
     // `title`/`format`/`hide_title_block`, which are only set once the walk has passed
@@ -655,7 +664,8 @@ fn render_internal_impl(
                 theme = detect_theme(fm);
                 includes = resolve_doc_includes(fm, base_dir, include_root);
                 (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
-                theorem_config = theorem_config_with_fallback(fm, book_theorems);
+                theorem_config =
+                    theorem_config_with_fallback(fm, site.and_then(|s| s.theorems.as_ref()));
                 continue;
             }
             let sp = data.sourcepos;
@@ -1147,8 +1157,20 @@ fn render_internal_impl(
         chapter,
     );
     let bib_line = crate::frontmatter::bibliography_line(src);
-    let bib = load_bibliography(&bib_paths, base_dir, include_root, bib_line, &mut warnings);
-    warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
+    let bib = load_bibliography(
+        &bib_paths,
+        site.map(|s| s.bibliography.as_slice()).unwrap_or(&[]),
+        base_dir,
+        include_root,
+        bib_line,
+        &mut warnings,
+    );
+    warnings.extend(crate::cite::process(
+        &mut blocks,
+        &bib,
+        &xref_registry,
+        bib_line,
+    ));
     // Gather the footnote definitions (collected above, in comrak's reference order)
     // into one footnotes section, appended after any References.
     if !footnote_items.is_empty() {
@@ -1393,17 +1415,32 @@ fn title_block_html(
 const DARK_CSS: &str = include_str!("../../assets/css/dark.css");
 
 /// Load and merge the bibliography file(s) named in the front matter, resolved
-/// relative to `base_dir`. Returns an empty bibliography when none is found
+/// relative to `base_dir`, laid **over** the project-wide `shared` files (already resolved
+/// to absolute paths by `Site::discover`). Returns an empty bibliography when none is found
 /// (citations still de-leak; cross-references still resolve).
+///
+/// Layer order is the feature: `shared` is read first so a page's own entry with the same
+/// key wins, which is how a post corrects a shared reference without editing the shared
+/// file. `shared`'s own diagnostics (unreadable path, duplicate key, dead entry) are NOT
+/// raised here — they belong to `_site.yml`, and raising them per page would print one
+/// project-level mistake once per page (`Site::validate_shared_bibliography`).
 fn load_bibliography(
     paths: &[String],
+    shared: &[PathBuf],
     base_dir: Option<&Path>,
     root: Option<&Path>,
     bib_line: Option<u32>,
     warnings: &mut Vec<Warning>,
 ) -> crate::cite::Bibliography {
+    let mut shared_text = String::new();
+    for p in shared {
+        if let Ok(content) = std::fs::read_to_string(p) {
+            shared_text.push_str(&content);
+            shared_text.push('\n');
+        }
+    }
     let Some(base) = base_dir else {
-        return crate::cite::Bibliography::default();
+        return crate::cite::parse_bib(&shared_text);
     };
     // Point every `.bib` diagnostic at the front-matter `bibliography:` line (the
     // .bib is an external file with no in-doc position of its own), so it is
@@ -1449,8 +1486,10 @@ fn load_bibliography(
             }
         }
     }
-    let (bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
+    let (page_bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
     warnings.extend(bib_warnings.into_iter().map(|m| locate(Warning::new(m))));
+    let mut bib = crate::cite::parse_bib(&shared_text);
+    bib.overlay(page_bib);
     bib
 }
 

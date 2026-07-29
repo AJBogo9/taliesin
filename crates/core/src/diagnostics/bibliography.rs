@@ -6,12 +6,33 @@ use super::helpers::start_line;
 use crate::render::{Block, Warning};
 use std::path::Path;
 
-/// Citations are present (`cite::process` appended the `tali-references` section) but the
-/// front matter declares no `bibliography:`, so every reference renders as a raw key with
-/// no diagnostic today. (A declared-but-missing bibliography file is a separate warning.)
+/// Citations are present (`cite::process` appended the `tali-references` section), the page
+/// declares no `bibliography:`, and **not one reference resolved** — so every reference
+/// renders as a raw key with no diagnostic of its own.
+///
+/// Two conditions, and each rules out a different false positive:
+///
+/// - *Every row raw*, rather than "the front matter declares nothing". A page can now
+///   inherit a project-wide `bibliography:` from `_site.yml`, declaring nothing of its own
+///   while resolving every citation correctly; the old shape-only check called that "no
+///   bibliography is declared" (regression caught by `corpus/shared-bib/index.tmd` in the
+///   check-superset false-positive walk). Observing the outcome cannot be fooled by where
+///   the bibliography came from, and it closes the mirror blind spot too — a declared `.bib`
+///   that exists but is empty resolves nothing and used to pass silently.
+/// - *The page declares nothing*, so one mistake does not draw two diagnostics: a declared
+///   file that cannot be read is already `bibliography file not found`, which is the
+///   actionable message. (A declared file missing only *some* keys is `broken citation` per
+///   key, and does not reach here at all, since those rows resolve.)
+///
+/// The raw-key marker is `cite::process`'s unresolved branch, the only place a reference row
+/// contains a `<code>` element.
 pub fn citations_without_bibliography(src: &str, blocks: &[Block]) -> Vec<Warning> {
-    let has_citations = blocks.iter().any(|b| b.id == "tali-references");
-    if !has_citations {
+    let Some(refs) = blocks.iter().find(|b| b.id == "tali-references") else {
+        return Vec::new();
+    };
+    let rows = refs.html.matches("class=\"csl-entry\">").count();
+    let raw = refs.html.matches("</code></div>").count();
+    if rows == 0 || raw < rows {
         return Vec::new();
     }
     let declares_bib = crate::frontmatter::front_matter_block(src)

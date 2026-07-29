@@ -6416,14 +6416,18 @@ fn book_theorem_config_is_a_fallback_for_a_page_with_none_of_its_own() {
     );
     let base = std::path::Path::new(".");
     // With the book fallback (numbered: false) the number span stays empty.
-    let doc = render_document_scoped_with_theorems(src, base, None, Some(&book));
+    let defaults = SiteDefaults {
+        theorems: Some(book.clone()),
+        ..Default::default()
+    };
+    let doc = render_document_scoped_with_site(src, base, None, Some(&defaults));
     let html = doc.body_html();
     assert!(
         html.contains(r#"tali-theorem-number"></span>"#),
         "book policy (numbered:false) applied to a page without its own:\n{html}"
     );
     // Without the book fallback the default numbers it.
-    let plain = render_document_scoped_with_theorems(src, base, None, None);
+    let plain = render_document_scoped_with_site(src, base, None, None);
     assert!(
         plain
             .body_html()

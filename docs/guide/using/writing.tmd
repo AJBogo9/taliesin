@@ -187,6 +187,10 @@ resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-`, `@lst-`,
 `@fig-scree` above do): **across chapters**, so a `@fig-` in one chapter resolves
 to its figure in another.
 
+In a site or book, `bibliography:` can instead live once in `_site.yml` and be shared
+by every page; a page's own `bibliography:` is then merged over it. See
+[Configuration](../reference/configuration.tmd).
+
 ## Footnotes and sidenotes
 
 Footnotes use the standard `[^label]` syntax. A reference renders as a superscript

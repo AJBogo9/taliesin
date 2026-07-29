@@ -600,7 +600,12 @@ async fn page_or_asset(
         && let Ok(src) = std::fs::read_to_string(&deck.input)
     {
         let base = deck.input.parent().unwrap_or(&project.dir).to_path_buf();
-        let doc = taliesin_core::render_document_with_includes(&src, &base);
+        // A deck is a page of the project too: it inherits the project-wide
+        // `bibliography:`, and `Site::validate_shared_bibliography` counts a deck's
+        // citations, so the two must agree about what a deck can resolve.
+        let defaults = { project.site.lock().render_defaults() };
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, &base, None, Some(&defaults));
         let stem = deck
             .url
             .rsplit('/')
@@ -663,11 +668,11 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         };
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
-    let mut doc = taliesin_core::render_document_scoped_with_theorems(
+    let mut doc = taliesin_core::render_document_scoped_with_site(
         &src,
         base,
         site.chapter_for(page),
-        site.config.theorems.as_ref(),
+        Some(&site.render_defaults()),
     );
     let toc = site.page_toc(page, doc.toc_explicit, &doc.blocks);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
@@ -1242,16 +1247,12 @@ async fn build_page(
         return BuildOutcome::Done;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let (chapter, book_theorems) = {
+    let (chapter, site_defaults) = {
         let site = project.site.lock();
-        (site.chapter_for(&page), site.config.theorems.clone())
+        (site.chapter_for(&page), site.render_defaults())
     };
-    let mut doc = taliesin_core::render_document_scoped_with_theorems(
-        &src,
-        &base,
-        chapter,
-        book_theorems.as_ref(),
-    );
+    let mut doc =
+        taliesin_core::render_document_scoped_with_site(&src, &base, chapter, Some(&site_defaults));
 
     // Which lane this page actually belongs on, decided from the rendered blocks rather
     // than a guess about the source: exactly the cells the executor would run.
@@ -1733,9 +1734,9 @@ fn rebuild_project(
         let found = {
             let site = project.site.lock();
             site.page(rel)
-                .map(|p| (p.clone(), site.chapter_for(p), site.config.theorems.clone()))
+                .map(|p| (p.clone(), site.chapter_for(p), site.render_defaults()))
         };
-        let Some((page, chapter, book_theorems)) = found else {
+        let Some((page, chapter, site_defaults)) = found else {
             continue;
         };
         let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1743,7 +1744,7 @@ fn rebuild_project(
                 &page,
                 chapter,
                 &xref_targets,
-                book_theorems.as_ref(),
+                Some(&site_defaults),
             )
         }));
         // A render panic keeps the last-good fragment (don't wipe the page from search).

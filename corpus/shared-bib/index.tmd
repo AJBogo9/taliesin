@@ -1,0 +1,14 @@
+---
+title: "Shared Bibliography"
+description: "A page citing the project-wide `.bib` without declaring one of its own."
+---
+
+## Citing without declaring
+
+This page has no `bibliography:` in its front matter. It cites
+[@shannon1948] anyway, because `_site.yml` declares the project-wide
+`bibliography: references.bib` that every page of the site inherits.
+
+That is the whole point of the key: a series of posts sharing one reference file
+declares it once, instead of retyping the same line in every front matter and
+letting the copies drift.

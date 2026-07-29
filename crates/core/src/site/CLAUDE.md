@@ -13,6 +13,10 @@ Module map:
                   (a second `impl Site`, methods `pub(super)` so `page_chrome()` calls them)
 - `frontmatter.rs` per-page `---` parsing (reuses `crate::frontmatter::front_matter_block`)
 - `config/`       `_site.yml` → `SiteConfig` (flat native schema; the only path)
+- `bibliography.rs` the project-wide `bibliography:` — resolved once at discovery against the
+                  site root, laid **under** each page's own; plus the site-wide unused-entry +
+                  duplicate-key lints (unused must be site-wide, or every shared entry a page
+                  ignores would fire)
 - `book.rs` `meta.rs` `search.rs` `xref.rs`
 
 Conventions:

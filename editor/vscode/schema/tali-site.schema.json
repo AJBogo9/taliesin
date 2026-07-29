@@ -3,6 +3,7 @@
   "additionalProperties": false,
   "properties": {
     "author": {},
+    "bibliography": {},
     "body-end": {},
     "body-start": {},
     "chapters": {

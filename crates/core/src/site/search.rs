@@ -17,12 +17,12 @@ pub(super) fn build_sections(
     pages: &[Page],
     book: &Option<Book>,
     targets: &HashMap<String, XrefTarget>,
-    book_theorems: Option<&render::TheoremConfig>,
+    site_defaults: Option<&render::SiteDefaults>,
 ) -> Vec<(String, String)> {
     pages
         .iter()
         .filter_map(|p| {
-            page_fragment(p, super::book::chapter_of(book, p), targets, book_theorems)
+            page_fragment(p, super::book::chapter_of(book, p), targets, site_defaults)
                 .map(|frag| (p.rel.clone(), frag))
         })
         .collect()
@@ -58,14 +58,14 @@ pub(super) fn page_fragment(
     page: &Page,
     chapter: Option<u32>,
     targets: &HashMap<String, XrefTarget>,
-    book_theorems: Option<&render::TheoremConfig>,
+    site_defaults: Option<&render::SiteDefaults>,
 ) -> Option<String> {
     // The author's own 404 page (output URL `404.html`) is navigation chrome, not
     // content: keep it out of the full-text index so a search never surfaces it.
     if page.url == "404.html" {
         return None;
     }
-    let (src, doc) = render_finished(page, chapter, targets, book_theorems)?;
+    let (src, doc) = render_finished(page, chapter, targets, site_defaults)?;
     let page_title = page
         .title
         .clone()
@@ -152,11 +152,11 @@ pub(super) fn render_finished(
     page: &Page,
     chapter: Option<u32>,
     targets: &HashMap<String, XrefTarget>,
-    book_theorems: Option<&render::TheoremConfig>,
+    site_defaults: Option<&render::SiteDefaults>,
 ) -> Option<(String, render::RenderedDoc)> {
     let src = std::fs::read_to_string(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
-    let mut doc = render::render_document_scoped_with_theorems(&src, base, chapter, book_theorems);
+    let mut doc = render::render_document_scoped_with_site(&src, base, chapter, site_defaults);
     if let Some(chapter) = chapter {
         super::chapter::number_chapter_headings(&mut doc.blocks, chapter);
     }

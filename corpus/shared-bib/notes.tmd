@@ -1,0 +1,17 @@
+---
+title: "Notes"
+description: "A page whose own bibliography is laid over the project-wide one."
+bibliography: local.bib
+---
+
+## Overriding a shared entry
+
+This page declares its own `bibliography: local.bib`, which is merged **over**
+the project-wide `references.bib` rather than replacing it. Two things follow.
+
+A key defined in both resolves to *this page's* entry, so [@turing1950] renders
+the corrected reprint rather than the shared record. That is how a post fixes or
+sharpens one reference without editing the file every other page reads.
+
+A key defined only locally still resolves, so [@hamming1950] works here and
+nowhere else.

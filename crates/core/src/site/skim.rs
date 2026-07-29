@@ -101,12 +101,12 @@ pub(super) fn page_skim(
     page: &Page,
     chapter: Option<u32>,
     targets: &HashMap<String, XrefTarget>,
-    book_theorems: Option<&render::TheoremConfig>,
+    site_defaults: Option<&render::SiteDefaults>,
 ) -> Option<PageSkim> {
     if page.url == "404.html" {
         return None;
     }
-    let (src, doc) = super::search::render_finished(page, chapter, targets, book_theorems)?;
+    let (src, doc) = super::search::render_finished(page, chapter, targets, site_defaults)?;
     let title = page
         .title
         .clone()

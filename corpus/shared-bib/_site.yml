@@ -1,0 +1,8 @@
+title: "Shared Bibliography"
+# The project-wide bibliography: declared ONCE here instead of retyped in every page's
+# front matter. Every page cites against it; a page that also declares its own
+# `bibliography:` gets that laid OVER this one (same key -> the page's entry wins).
+bibliography: references.bib
+nav:
+  - { text: Home, href: index.tmd }
+  - { text: Notes, href: notes.tmd }

@@ -154,6 +154,11 @@ pub struct Site {
     /// Site-wide `format: html:` includes (header/body/css), resolved once at
     /// discovery relative to the site root and merged ahead of each page's own.
     pub includes: render::PageIncludes,
+    /// The project-wide `bibliography:` (`_site.yml`), resolved once at discovery against
+    /// the site root: readable absolute `.bib` paths, in declaration order. Empty for a
+    /// project that declares none. Laid **under** each page's own `bibliography:`, so a
+    /// page can override a shared entry (`site::bibliography`).
+    pub bibliography: Vec<PathBuf>,
     /// Warnings gathered during discovery (bad config, etc.), surfaced by the
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
@@ -193,9 +198,9 @@ pub fn page_search_fragment(
     page: &Page,
     chapter: Option<u32>,
     targets: &HashMap<String, XrefTarget>,
-    book_theorems: Option<&render::TheoremConfig>,
+    site_defaults: Option<&render::SiteDefaults>,
 ) -> Option<String> {
-    search::page_fragment(page, chapter, targets, book_theorems)
+    search::page_fragment(page, chapter, targets, site_defaults)
 }
 
 mod book;
@@ -209,6 +214,8 @@ pub use card::{
 };
 mod backlinks;
 pub use backlinks::Backref;
+mod bibliography;
+pub(crate) use bibliography::shared_for_single_doc;
 mod book_toc;
 mod categories;
 mod cite_this;
@@ -450,6 +457,11 @@ impl Site {
             Some(root),
         );
 
+        // Likewise once, and against the site root: a project-wide `.bib` path is written
+        // relative to `_site.yml`, not to whichever page happens to be rendering, and a bad
+        // one should be reported once rather than on every page.
+        let bibliography = bibliography::resolve_shared(root, &config.bibliography, &mut warnings);
+
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
 
         let mut site = Site {
@@ -460,6 +472,7 @@ impl Site {
             xref_targets,
             backlinks: HashMap::new(),
             includes,
+            bibliography,
             warnings,
             // Both are built below, once the registry's numbers exist: the search index
             // READS `xref_targets`, so building it here (as it used to) indexed every
@@ -504,6 +517,7 @@ impl Site {
     /// Renders each page once with its post-passes finished (the same recipe the search
     /// index uses), so every number here is the number the page shows. Executes no code.
     pub fn skim(&self) -> Vec<skim::PageSkim> {
+        let defaults = self.render_defaults();
         self.pages
             .iter()
             .filter_map(|p| {
@@ -511,7 +525,7 @@ impl Site {
                     p,
                     book::chapter_of(&self.book, p),
                     &self.xref_targets,
-                    self.config.theorems.as_ref(),
+                    Some(&defaults),
                 )
             })
             .collect()
@@ -522,7 +536,7 @@ impl Site {
             &self.pages,
             &self.book,
             &self.xref_targets,
-            self.config.theorems.as_ref(),
+            Some(&self.render_defaults()),
         );
         self.search_index_json = search::assemble(&self.search_sections);
     }
@@ -612,7 +626,7 @@ impl Site {
                     page,
                     self.chapter_for(page),
                     &self.xref_targets,
-                    self.config.theorems.as_ref(),
+                    Some(&self.render_defaults()),
                 ),
             )
         }) else {
@@ -640,7 +654,7 @@ impl Site {
                     &self.pages,
                     &self.book,
                     &self.xref_targets,
-                    self.config.theorems.as_ref(),
+                    Some(&self.render_defaults()),
                 );
             }
             None => return,
@@ -769,11 +783,11 @@ impl Site {
         let base = page.input.parent().unwrap_or(&self.root);
         // A numbered book chapter scopes its theorems to its chapter number
         // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
-        let doc = render::render_document_scoped_with_theorems(
+        let doc = render::render_document_scoped_with_site(
             &src,
             base,
             self.chapter_for(page),
-            self.config.theorems.as_ref(),
+            Some(&self.render_defaults()),
         );
         Some(self.render_page_doc(page, doc))
     }
@@ -1272,16 +1286,17 @@ impl Site {
         // not final until the enrichment loop below has run. Retaining a handful of
         // block strings per page is what buys that ordering without a second render pass.
         let mut per_page: Vec<(String, Vec<String>)> = Vec::new();
+        let defaults = self.render_defaults();
         for page in &self.pages {
             let Ok(src) = std::fs::read_to_string(&page.input) else {
                 continue;
             };
             let base = page.input.parent().unwrap_or(&self.root);
-            let doc = render::render_document_scoped_with_theorems(
+            let doc = render::render_document_scoped_with_site(
                 &src,
                 base,
                 self.chapter_for(page),
-                self.config.theorems.as_ref(),
+                Some(&defaults),
             );
             let referring: Vec<String> = doc
                 .blocks
@@ -1416,6 +1431,7 @@ impl Site {
                 .push(anchor.as_str());
         }
         let mut entries: Vec<(String, String)> = Vec::new();
+        let defaults = self.render_defaults();
         for page in &self.pages {
             let Some(anchors) = by_page.get(page.url.as_str()) else {
                 continue;
@@ -1424,11 +1440,11 @@ impl Site {
                 continue;
             };
             let base = page.input.parent().unwrap_or(&self.root);
-            let mut doc = render::render_document_scoped_with_theorems(
+            let mut doc = render::render_document_scoped_with_site(
                 &src,
                 base,
                 self.chapter_for(page),
-                self.config.theorems.as_ref(),
+                Some(&defaults),
             );
             // Apply the book's chapter/section numbering so a hovered section heading
             // shows its number ("2.1"), matching the page it previews (the scoped render

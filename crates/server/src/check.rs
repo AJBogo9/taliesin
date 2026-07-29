@@ -180,8 +180,8 @@ fn collect_diagnostics(path: &Path, scope: &mut CheckScope) -> Result<Vec<Diagno
     }
 }
 
-/// Whether the document being validated is a page of a multi-page site, which changes
-/// exactly one rule (see [`page_static_diagnostics`]).
+/// Whether the document being validated is a page of a multi-page site, which changes two
+/// rules (see [`page_static_diagnostics`]).
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Scope {
     Standalone,
@@ -426,6 +426,10 @@ fn collect_site_diagnostics(
         .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
         .map(|m| Diagnostic::new("_site.yml".to_string(), None, m.clone()))
         .collect();
+    // The project's own policies, bound once: `check` must render each page the way the
+    // build and the preview do, or it reports diagnostics for a document nobody ships (a
+    // page inheriting the project `bibliography:` looked uncited here).
+    let defaults = site.render_defaults();
     for page in &site.pages {
         let Ok(src) = std::fs::read_to_string(&page.input) else {
             out.push(Diagnostic::new(
@@ -442,8 +446,12 @@ fn collect_site_diagnostics(
         // Scope a numbered book chapter's floats + theorems to its chapter ("Theorem 2.3"),
         // matching the build + live-preview paths, so `check` reports the same numbers a
         // reader sees.
-        let doc =
-            taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+        let doc = taliesin_core::render_document_scoped_with_site(
+            &src,
+            base,
+            site.chapter_for(page),
+            Some(&defaults),
+        );
         // Free: this page is already rendered, so the Environment report costs no second walk.
         scope.note_languages(&doc.blocks);
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
@@ -478,6 +486,12 @@ fn collect_site_diagnostics(
     // site's vocabulary reveals it, so this runs here rather than per page.
     for (page_rel, w) in site.validate_categories() {
         out.push(diag_from(&w, &page_rel));
+    }
+    // Hygiene for the project-wide `bibliography:`, reported against `_site.yml` because
+    // that is where it is declared. Unused-entry is site-wide by necessity: a shared entry
+    // one page cites is used, however many pages leave it alone.
+    for w in site.validate_shared_bibliography() {
+        out.push(Diagnostic::new("_site.yml".to_string(), None, w.message));
     }
     // An `{{< embed >}}`-referenced deck is BUILT and SERVED but deliberately kept out of
     // `site.pages` so it stays out of nav + search (`site/mod.rs`'s `pages.retain`). Every

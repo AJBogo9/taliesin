@@ -240,10 +240,11 @@ fn cmd_read_dir(path: &str, format: &str, run: bool) -> ExitCode {
             let src = std::fs::read_to_string(&page.input).ok()?;
             let base = page.input.parent().unwrap_or_else(|| Path::new("."));
             let doc = crate::serve::guarded(|| {
-                let mut d = taliesin_core::render_document_with_includes_scoped(
+                let mut d = taliesin_core::render_document_scoped_with_site(
                     &src,
                     base,
                     site.chapter_for(page),
+                    Some(&site.render_defaults()),
                 );
                 site.number_chapter(page, &mut d.blocks);
                 site.resolve_cross_refs(&mut d.blocks, &page.url);
@@ -428,8 +429,12 @@ fn scoped_site_doc(path: &Path, src: &str) -> Option<taliesin_core::RenderedDoc>
         .iter()
         .find(|p| p.input.canonicalize().ok().as_deref() == Some(canon.as_path()))?;
     crate::serve::guarded(|| {
-        let mut doc =
-            taliesin_core::render_document_with_includes_scoped(src, base, site.chapter_for(page));
+        let mut doc = taliesin_core::render_document_scoped_with_site(
+            src,
+            base,
+            site.chapter_for(page),
+            Some(&site.render_defaults()),
+        );
         site.number_chapter(page, &mut doc.blocks);
         site.resolve_cross_refs(&mut doc.blocks, &page.url);
         doc

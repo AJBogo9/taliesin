@@ -171,11 +171,11 @@ impl Site {
             return String::new();
         };
         let base = page.input.parent().unwrap_or(&self.root);
-        let doc = render::render_document_scoped_with_theorems(
+        let doc = render::render_document_scoped_with_site(
             &src,
             base,
             self.chapter_for(page),
-            self.config.theorems.as_ref(),
+            Some(&self.render_defaults()),
         );
         let mut parts = Vec::new();
         for b in &doc.blocks {
