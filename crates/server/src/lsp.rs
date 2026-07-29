@@ -39,6 +39,8 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // The anchor under the cursor and its other occurrences: a targeted single-id scan,
         // not a full-document tokenizer.
         document_highlight_provider: Some(OneOf::Left(true)),
+        // Expand-selection by document structure: word out to the enclosing section.
+        selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         // Replaces indentation-based folding, which is what `.tmd` gets without this and is
         // meaningless in a format where nesting is heading level and fences.
         folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
@@ -429,7 +431,7 @@ fn handle_request(
     use lsp_types::request::{
         CodeActionRequest, Completion, DocumentHighlightRequest, DocumentLinkRequest,
         DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
-        InlayHintRequest, PrepareRenameRequest, Rename, Request as _,
+        InlayHintRequest, PrepareRenameRequest, Rename, Request as _, SelectionRangeRequest,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -455,11 +457,20 @@ fn handle_request(
             result: Some(serde_json::to_value(hints)?),
             error: None,
         }
+    } else if req.method == SelectionRangeRequest::METHOD {
+        let params: lsp_types::SelectionRangeParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_selection_ranges(docs, &params))?),
+            error: None,
+        }
     } else if req.method == DocumentHighlightRequest::METHOD {
         let params: lsp_types::DocumentHighlightParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_document_highlight(docs, &params))?),
+            result: Some(serde_json::to_value(resolve_document_highlight(
+                docs, &params,
+            ))?),
             error: None,
         }
     } else if req.method == FoldingRangeRequest::METHOD {
@@ -592,6 +603,54 @@ fn handle_request(
 
 /// Resolve go-to-definition for the token under the cursor, or `None` when it points
 /// nowhere resolvable (an undefined xref, a cross-file ref, a missing include/bib).
+/// One nested `SelectionRange` per requested position: word → inline construct → paragraph →
+/// `:::` div → section, each the `parent` of the one below it.
+///
+/// A position with no chain still gets an entry, collapsed to the position itself: the
+/// response array is positional, so dropping one would silently shift every later cursor's
+/// answer onto the wrong cursor.
+fn resolve_selection_ranges(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::SelectionRangeParams,
+) -> Vec<lsp_types::SelectionRange> {
+    use lsp_types::{Position, Range, SelectionRange};
+
+    let text = docs
+        .get(&params.text_document.uri)
+        .map(String::as_str)
+        .unwrap_or("");
+    params
+        .positions
+        .iter()
+        .map(|pos| {
+            let line = crate::lsp_pos::nth_line(text, pos.line as usize);
+            let cursor_char = crate::lsp_pos::utf16_to_char(line, pos.character as usize);
+            let chain = crate::lsp_nav::selection_chain(text, pos.line as usize, cursor_char);
+            // Built outermost-in, so each level can take the previous as its parent.
+            let mut parent: Option<Box<SelectionRange>> = None;
+            for &(sl, sc, el, ec) in chain.iter().rev() {
+                let (sline, eline) = (
+                    crate::lsp_pos::nth_line(text, sl as usize),
+                    crate::lsp_pos::nth_line(text, el as usize),
+                );
+                parent = Some(Box::new(SelectionRange {
+                    range: Range::new(
+                        Position::new(sl, crate::lsp_pos::char_to_utf16(sline, sc as usize) as u32),
+                        Position::new(el, crate::lsp_pos::char_to_utf16(eline, ec as usize) as u32),
+                    ),
+                    parent,
+                }));
+            }
+            *parent.unwrap_or_else(|| {
+                Box::new(SelectionRange {
+                    range: Range::new(*pos, *pos),
+                    parent: None,
+                })
+            })
+        })
+        .collect()
+}
+
 /// Every occurrence of the cross-reference anchor under the cursor, the definition marked
 /// `WRITE` and the references `READ`. Empty when the cursor is not on an anchor.
 ///
@@ -3763,6 +3822,10 @@ mod tests {
         assert_eq!(
             caps["inlayHintProvider"], true,
             "the resolved number beside a cross-reference"
+        );
+        assert_eq!(
+            caps["selectionRangeProvider"], true,
+            "expand-selection by structure rather than by the editor's word heuristics"
         );
         assert_eq!(
             caps["documentHighlightProvider"], true,

@@ -563,6 +563,113 @@ pub(crate) fn anchor_occurrences(text: &str, id: &str) -> Vec<(u32, u32, u32)> {
     out
 }
 
+/// The nesting chain at `(line, col)`, innermost first, as
+/// `(start_line, start_char, end_line, end_char)` in scalar offsets.
+///
+/// Levels are built inside-out — word, enclosing inline construct, paragraph, then every
+/// enclosing fold (div, then section) — and each is kept only if it strictly *grows* the one
+/// below it, so the containment invariant LSP requires holds by construction rather than by
+/// hope. A level that cannot be determined is skipped, never emitted as a zero-width guess.
+pub(crate) fn selection_chain(text: &str, line: usize, col: usize) -> Vec<(u32, u32, u32, u32)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(src) = lines.get(line).copied() else {
+        return Vec::new();
+    };
+    let l = line as u32;
+    let mut chain: Vec<(u32, u32, u32, u32)> = Vec::new();
+
+    // 1. The word under the cursor.
+    if let Some((s, e)) = word_span(src, col) {
+        chain.push((l, s as u32, l, e as u32));
+    }
+    // 2. The inline construct enclosing it, when there is one. Math is classified against the
+    //    whole document because a `$$…$$` span crosses lines; the rest are line-local.
+    match classify_target(text, line, col) {
+        Target::Xref { start, end, .. }
+        | Target::Cite { start, end, .. }
+        | Target::Include { start, end, .. } => chain.push((l, start as u32, l, end as u32)),
+        Target::Math {
+            start_line,
+            start_char,
+            end_line,
+            end_char,
+            ..
+        } => chain.push((
+            start_line as u32,
+            start_char as u32,
+            end_line as u32,
+            end_char as u32,
+        )),
+        _ => {}
+    }
+    // 3. The paragraph, then 4-5. every enclosing fold, innermost first.
+    let full = |s: u32, e: u32| (s, 0, e, lines[e as usize].chars().count() as u32);
+    if let Some((s, e)) = paragraph_span(&lines, line) {
+        chain.push(full(s, e));
+    }
+    let mut folds: Vec<(u32, u32)> = crate::lsp_fold::folding_ranges(text)
+        .into_iter()
+        .filter(|r| r.start_line <= l && r.end_line >= l && (r.end_line as usize) < lines.len())
+        .map(|r| (r.start_line, r.end_line))
+        .collect();
+    // Innermost fold first: the one that starts latest and ends earliest encloses least.
+    folds.sort_by_key(|&(s, e)| (std::cmp::Reverse(s), e));
+    for (s, e) in folds {
+        chain.push(full(s, e));
+    }
+
+    // Keep only levels that strictly grow.
+    let mut kept: Vec<(u32, u32, u32, u32)> = Vec::new();
+    for cand in chain {
+        match kept.last() {
+            None => kept.push(cand),
+            Some(&prev) => {
+                let starts_before_or_at = (cand.0, cand.1) <= (prev.0, prev.1);
+                let ends_after_or_at = (cand.2, cand.3) >= (prev.2, prev.3);
+                let grew =
+                    (cand.0, cand.1) < (prev.0, prev.1) || (cand.2, cand.3) > (prev.2, prev.3);
+                if starts_before_or_at && ends_after_or_at && grew {
+                    kept.push(cand);
+                }
+            }
+        }
+    }
+    kept
+}
+
+/// `[start, end)` of the word at `col`, in scalar offsets, or `None` in whitespace.
+fn word_span(line: &str, col: usize) -> Option<(usize, usize)> {
+    let cs: Vec<char> = line.chars().collect();
+    if col >= cs.len() || !is_word(cs[col]) {
+        return None;
+    }
+    let mut s = col;
+    while s > 0 && is_word(cs[s - 1]) {
+        s -= 1;
+    }
+    let mut e = col;
+    while e < cs.len() && is_word(cs[e]) {
+        e += 1;
+    }
+    Some((s, e))
+}
+
+/// The blank-line-delimited paragraph containing `line`, as inclusive line numbers.
+fn paragraph_span(lines: &[&str], line: usize) -> Option<(u32, u32)> {
+    if lines.get(line)?.trim().is_empty() {
+        return None;
+    }
+    let mut s = line;
+    while s > 0 && !lines[s - 1].trim().is_empty() {
+        s -= 1;
+    }
+    let mut e = line;
+    while e + 1 < lines.len() && !lines[e + 1].trim().is_empty() {
+        e += 1;
+    }
+    Some((s as u32, e as u32))
+}
+
 /// Every site of the cross-reference anchor under the cursor, as `(line, start_col, end_col,
 /// is_definition)` in scalar offsets, in reading order. Empty when the cursor is not on an
 /// anchor — highlighting every word would be worse than highlighting none.
@@ -989,6 +1096,69 @@ mod tests {
         ] {
             let _ = anchor_highlights(text, line, col);
         }
+    }
+
+    #[test]
+    fn each_selection_level_strictly_contains_the_previous() {
+        let text = "# S {#sec-s}\n\n::: {.callout}\nSee @fig-x here.\n:::\n";
+        let chain = selection_chain(text, 3, 6); // inside `@fig-x`
+        assert!(
+            chain.len() >= 3,
+            "expected word, construct, paragraph, div, section: {chain:?}"
+        );
+        for w in chain.windows(2) {
+            let (inner, outer) = (w[0], w[1]);
+            let starts_at_or_before = (outer.0, outer.1) <= (inner.0, inner.1);
+            let ends_at_or_after = (outer.2, outer.3) >= (inner.2, inner.3);
+            assert!(
+                starts_at_or_before && ends_at_or_after,
+                "level {outer:?} must contain {inner:?}"
+            );
+        }
+    }
+
+    // The chain starts at the WORD, not at the line: an editor's expand-selection is useless
+    // if the first press already swallows the sentence.
+    #[test]
+    fn the_innermost_level_is_the_word_under_the_cursor() {
+        let text = "# S {#sec-s}\n\nSee @fig-x here.\n";
+        let chain = selection_chain(text, 2, 12); // inside `here`
+        assert_eq!(
+            chain.first().copied(),
+            Some((2, 11, 2, 15)),
+            "expected the word `here` first: {chain:?}"
+        );
+    }
+
+    // The case the containment filter exists for, which a tidy document never reaches: with no
+    // blank line around the div, the blank-line-delimited PARAGRAPH runs past the div's
+    // closing fence, so the fold that comes after it in the chain is SMALLER. Emitting both
+    // would hand the client word ⊂ paragraph ⊃ div, which is not a nesting chain at all.
+    #[test]
+    fn a_level_that_would_shrink_the_selection_is_dropped_rather_than_emitted() {
+        let text = "::: {.callout}\ninside\n:::\nmore text\n";
+        let chain = selection_chain(text, 1, 2); // inside the word `inside`
+        assert!(!chain.is_empty(), "expected a chain: {chain:?}");
+        for w in chain.windows(2) {
+            let (inner, outer) = (w[0], w[1]);
+            assert!(
+                (outer.0, outer.1) <= (inner.0, inner.1)
+                    && (outer.2, outer.3) >= (inner.2, inner.3),
+                "level {outer:?} must contain {inner:?}, chain was {chain:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_position_in_empty_space_yields_a_chain_without_panicking() {
+        let text = "\n\n\n";
+        let _ = selection_chain(text, 1, 0);
+    }
+
+    #[test]
+    fn a_position_past_the_end_of_the_document_is_an_empty_chain() {
+        let text = "# S\n\ntext\n";
+        assert!(selection_chain(text, 99, 0).is_empty());
     }
 
     #[test]

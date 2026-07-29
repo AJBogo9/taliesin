@@ -744,3 +744,117 @@ fn document_highlight_marks_the_anchor_definition_apart_from_its_references() {
     assert_eq!(hits[1]["range"]["start"]["line"], 15, "the reference: {hits:?}");
     assert_eq!(hits[1]["kind"], 2, "a reference is a read: {hits:?}");
 }
+
+/// Selection ranges reach the editor over the real wire, nested through `parent`.
+///
+/// Two positions are sent, because the response array is positional: an implementation that
+/// dropped a position with no chain would silently shift every later cursor's answer onto the
+/// wrong cursor, and one position can never show that.
+#[test]
+fn selection_ranges_nest_from_the_word_out_to_the_section() {
+    let dir = std::env::temp_dir().join(format!("tali-lsp-sel-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let doc = dir.join("sel.tmd");
+    let text = "# S {#sec-s}\n\n::: {.callout}\nSee @fig-x here.\n:::\n";
+    std::fs::write(&doc, text).expect("fixture doc");
+    let uri = format!("file://{}", doc.display());
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/selectionRange",
+            "params": {
+                "textDocument": { "uri": uri },
+                // Inside `@fig-x`; a blank line, which still sits inside the enclosing
+                // section; and a line past the end of the document, which has no chain.
+                "positions": [
+                    { "line": 3, "character": 6 },
+                    { "line": 1, "character": 0 },
+                    { "line": 99, "character": 0 }
+                ]
+            }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    assert!(
+        !stdout.contains("MethodNotFound"),
+        "selectionRange must be handled, not rejected.\nstdout:\n{stdout}"
+    );
+
+    let ranges = response(&stdout, 2);
+    let ranges = ranges.as_array().expect("selectionRange returns an array");
+    assert_eq!(ranges.len(), 3, "one entry per requested position: {ranges:?}");
+
+    // Walk the parent chain of the first position, checking containment at every step —
+    // which is the invariant a client relies on and the one thing it cannot repair.
+    let mut level = &ranges[0];
+    let mut seen = 0;
+    loop {
+        let (sl, sc) = (
+            level["range"]["start"]["line"].as_u64().expect("start line"),
+            level["range"]["start"]["character"].as_u64().expect("start char"),
+        );
+        let (el, ec) = (
+            level["range"]["end"]["line"].as_u64().expect("end line"),
+            level["range"]["end"]["character"].as_u64().expect("end char"),
+        );
+        seen += 1;
+        let Some(parent) = level.get("parent").filter(|p| !p.is_null()) else {
+            break;
+        };
+        let (psl, psc) = (
+            parent["range"]["start"]["line"].as_u64().expect("parent start line"),
+            parent["range"]["start"]["character"].as_u64().expect("parent start char"),
+        );
+        let (pel, pec) = (
+            parent["range"]["end"]["line"].as_u64().expect("parent end line"),
+            parent["range"]["end"]["character"].as_u64().expect("parent end char"),
+        );
+        assert!(
+            (psl, psc) <= (sl, sc) && (pel, pec) >= (el, ec),
+            "every parent must contain its child: ({psl},{psc})-({pel},{pec}) vs \
+             ({sl},{sc})-({el},{ec})"
+        );
+        level = parent;
+    }
+    assert!(
+        seen >= 3,
+        "expected at least word, construct and paragraph levels, saw {seen}"
+    );
+    // The innermost level is the word `fig`, not the whole line.
+    assert_eq!(ranges[0]["range"]["start"]["line"], 3);
+    assert_eq!(ranges[0]["range"]["end"]["line"], 3);
+
+    // A blank line has no word and no paragraph, but it is still inside the section, so its
+    // entry is that enclosing range rather than nothing.
+    assert!(
+        ranges[1]["range"]["start"]["line"].as_u64().unwrap() <= 1
+            && ranges[1]["range"]["end"]["line"].as_u64().unwrap() >= 1,
+        "the blank line's entry must contain it: {:?}",
+        ranges[1]
+    );
+    // A position past the end has no chain at all, and still gets its own entry: the array is
+    // positional, so dropping it would shift this answer onto the cursor before it.
+    assert_eq!(ranges[2]["range"]["start"]["line"], 99, "{:?}", ranges[2]);
+    assert_eq!(ranges[2]["range"]["end"]["line"], 99, "{:?}", ranges[2]);
+    assert!(ranges[2]["parent"].is_null(), "{:?}", ranges[2]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
