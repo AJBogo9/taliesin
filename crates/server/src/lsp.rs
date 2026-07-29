@@ -36,6 +36,9 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // Range-scoped, so only the visible lines are scanned and there is no full-document
         // tokenizer behind this.
         inlay_hint_provider: Some(OneOf::Left(true)),
+        // The anchor under the cursor and its other occurrences: a targeted single-id scan,
+        // not a full-document tokenizer.
+        document_highlight_provider: Some(OneOf::Left(true)),
         // Replaces indentation-based folding, which is what `.tmd` gets without this and is
         // meaningless in a format where nesting is heading level and fences.
         folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
@@ -424,9 +427,9 @@ fn handle_request(
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest,
-        FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest, InlayHintRequest,
-        PrepareRenameRequest, Rename, Request as _,
+        CodeActionRequest, Completion, DocumentHighlightRequest, DocumentLinkRequest,
+        DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
+        InlayHintRequest, PrepareRenameRequest, Rename, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -450,6 +453,13 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(hints)?),
+            error: None,
+        }
+    } else if req.method == DocumentHighlightRequest::METHOD {
+        let params: lsp_types::DocumentHighlightParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(resolve_document_highlight(docs, &params))?),
             error: None,
         }
     } else if req.method == FoldingRangeRequest::METHOD {
@@ -582,6 +592,47 @@ fn handle_request(
 
 /// Resolve go-to-definition for the token under the cursor, or `None` when it points
 /// nowhere resolvable (an undefined xref, a cross-file ref, a missing include/bib).
+/// Every occurrence of the cross-reference anchor under the cursor, the definition marked
+/// `WRITE` and the references `READ`. Empty when the cursor is not on an anchor.
+///
+/// Scalar columns from `lsp_nav` are converted back to UTF-16 here, at the boundary, exactly
+/// as `resolve_definition` does.
+fn resolve_document_highlight(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    params: &lsp_types::DocumentHighlightParams,
+) -> Vec<lsp_types::DocumentHighlight> {
+    use lsp_types::{DocumentHighlight, DocumentHighlightKind, Position, Range};
+
+    let uri = &params.text_document_position_params.text_document.uri;
+    let pos = params.text_document_position_params.position;
+    let Some(text) = docs.get(uri) else {
+        return Vec::new();
+    };
+    let cursor_char = crate::lsp_pos::utf16_to_char(
+        crate::lsp_pos::nth_line(text, pos.line as usize),
+        pos.character as usize,
+    );
+    crate::lsp_nav::anchor_highlights(text, pos.line as usize, cursor_char)
+        .into_iter()
+        .map(|(line, start, end, is_def)| {
+            let l = crate::lsp_pos::nth_line(text, line as usize);
+            DocumentHighlight {
+                range: Range::new(
+                    Position::new(
+                        line,
+                        crate::lsp_pos::char_to_utf16(l, start as usize) as u32,
+                    ),
+                    Position::new(line, crate::lsp_pos::char_to_utf16(l, end as usize) as u32),
+                ),
+                kind: Some(match is_def {
+                    true => DocumentHighlightKind::WRITE,
+                    false => DocumentHighlightKind::READ,
+                }),
+            }
+        })
+        .collect()
+}
+
 fn resolve_definition(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     params: &lsp_types::GotoDefinitionParams,
@@ -3712,6 +3763,10 @@ mod tests {
         assert_eq!(
             caps["inlayHintProvider"], true,
             "the resolved number beside a cross-reference"
+        );
+        assert_eq!(
+            caps["documentHighlightProvider"], true,
+            "the anchor under the cursor and its other occurrences"
         );
         assert_eq!(
             caps["foldingRangeProvider"], true,

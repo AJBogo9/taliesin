@@ -563,6 +563,25 @@ pub(crate) fn anchor_occurrences(text: &str, id: &str) -> Vec<(u32, u32, u32)> {
     out
 }
 
+/// Every site of the cross-reference anchor under the cursor, as `(line, start_col, end_col,
+/// is_definition)` in scalar offsets, in reading order. Empty when the cursor is not on an
+/// anchor — highlighting every word would be worse than highlighting none.
+///
+/// This is [`anchor_occurrences`] plus the one thing document highlight adds: which site is
+/// the *definition*, so an editor can paint it as a write and the rest as reads. It
+/// deliberately does not rescan; a second scanner could disagree with rename about what an
+/// anchor is, and rename is the one sanctioned write path back into source.
+pub(crate) fn anchor_highlights(text: &str, line: usize, col: usize) -> Vec<(u32, u32, u32, bool)> {
+    let Some((id, _, _)) = anchor_at(text, line, col) else {
+        return Vec::new();
+    };
+    let def = definition_site(text, &id);
+    anchor_occurrences(text, &id)
+        .into_iter()
+        .map(|(l, s, e)| (l, s, e, def == Some((l, s))))
+        .collect()
+}
+
 /// The cross-reference anchor id under the cursor and its 0-based `[start, end)` char span on
 /// `line`, whether the cursor is on an `@id` *reference* or a `{#id}` / `label: id`
 /// *definition*. The span covers the id only (never the `@`/`#`), so a rename's placeholder and
@@ -908,6 +927,68 @@ mod tests {
             vec![(0, 13, 22), (2, 5, 14), (2, 23, 32)],
             "expected the definition and both `@` references, never the `[@…]` citation"
         );
+    }
+
+    #[test]
+    fn anchor_highlights_mark_the_definition_apart_from_its_references() {
+        let text = "# R {#sec-r}\n\nSee @sec-r and again @sec-r.\n";
+        // Cursor inside the SECOND reference: the answer must not depend on which site the
+        // cursor is on.
+        let hits = anchor_highlights(text, 2, 23);
+        assert_eq!(
+            hits,
+            vec![(0, 6, 11, true), (2, 5, 10, false), (2, 22, 27, false)],
+            "one definition (write) and two references (read)"
+        );
+        // From the definition itself, the same set.
+        assert_eq!(anchor_highlights(text, 0, 7), hits);
+    }
+
+    #[test]
+    fn anchor_highlights_do_not_match_a_longer_id_that_starts_the_same() {
+        let text = "See @sec-r and @sec-results.\n";
+        let hits = anchor_highlights(text, 0, 6);
+        assert_eq!(
+            hits.len(),
+            1,
+            "`sec-r` must not match inside `sec-results`: {hits:?}"
+        );
+    }
+
+    // Guards are a separate axis from span arithmetic: a cursor walk over well-formed text
+    // never reaches them. A cursor in prose, past the end of a line, on a citation key, and
+    // in three half-typed buffers.
+    #[test]
+    fn anchor_highlights_are_empty_when_the_cursor_is_not_on_an_anchor() {
+        for (what, text, line, col) in [
+            ("prose", "just prose here\n", 0, 4),
+            ("past the end of the line", "See @sec-r.\n", 0, 99),
+            ("past the last line", "See @sec-r.\n", 9, 0),
+            ("a citation key", "cite [@sec-r] here\n", 0, 8),
+            ("a heading id with no xref kind", "# T {#plain}\n", 0, 7),
+        ] {
+            let hits = anchor_highlights(text, line, col);
+            assert!(
+                hits.is_empty(),
+                "{what}: expected no highlights, got {hits:?}"
+            );
+        }
+    }
+
+    // Guards are a separate axis from span arithmetic: a cursor walk over well-formed text
+    // never reaches them. A half-typed buffer is the normal case for a provider that fires as
+    // the cursor moves, so each of these must return rather than panic.
+    #[test]
+    fn anchor_highlights_on_a_malformed_buffer_do_not_panic() {
+        for (text, line, col) in [
+            ("::: {.callout}\n@sec-r", 1, 3),
+            ("$$\n\\frac{1}{\n@sec-r", 2, 3),
+            ("---\ntitle: x\n\n@sec-r", 3, 3),
+            ("@ @- @sec-\n", 0, 6),
+            ("", 0, 0),
+        ] {
+            let _ = anchor_highlights(text, line, col);
+        }
     }
 
     #[test]

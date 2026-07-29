@@ -681,3 +681,66 @@ fn folding_ranges_cover_heading_div_fence_and_front_matter() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Document highlight reaches the editor over the real wire, and distinguishes the anchor's
+/// definition (a write) from its references (reads).
+///
+/// The cursor is put on a REFERENCE, because the answer must not depend on which site it sits
+/// on: an implementation that only searched forwards from the cursor would still pass with the
+/// cursor on the definition.
+#[test]
+fn document_highlight_marks_the_anchor_definition_apart_from_its_references() {
+    let doc = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/refs.tmd"),
+    )
+    .expect("corpus fixture");
+    let text = std::fs::read_to_string(&doc).expect("read fixture");
+    let uri = format!("file://{}", doc.display());
+    // Line 15 holds `@fig-results`; put the cursor inside the id.
+    let line15 = text.lines().nth(15).expect("line 15");
+    let col = line15.find("@fig-results").expect("the reference") + 3;
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/documentHighlight",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": 15, "character": col }
+            }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    assert!(
+        !stdout.contains("MethodNotFound"),
+        "documentHighlight must be handled, not rejected.\nstdout:\n{stdout}"
+    );
+
+    let hits = response(&stdout, 2);
+    let hits = hits.as_array().expect("documentHighlight returns an array");
+    // `fig-results` is defined on line 11 (`{#fig-results}`) and referenced once, on line 15.
+    assert_eq!(hits.len(), 2, "definition + one reference: {hits:?}");
+    // DocumentHighlightKind on the wire is Text=1, Read=2, Write=3.
+    assert_eq!(hits[0]["range"]["start"]["line"], 11, "the definition: {hits:?}");
+    assert_eq!(hits[0]["kind"], 3, "the definition is the write site: {hits:?}");
+    assert_eq!(hits[1]["range"]["start"]["line"], 15, "the reference: {hits:?}");
+    assert_eq!(hits[1]["kind"], 2, "a reference is a read: {hits:?}");
+}
