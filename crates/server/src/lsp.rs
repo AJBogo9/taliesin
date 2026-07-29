@@ -33,6 +33,9 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         )),
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        // Range-scoped, so only the visible lines are scanned and there is no full-document
+        // tokenizer behind this.
+        inlay_hint_provider: Some(OneOf::Left(true)),
         // `{{< include >}}` / `{{< embed >}}` paths. Go-to-definition already resolved
         // these, but a definition is invisible: nothing on screen says the path is
         // navigable, so it is only found by an author who already guessed. A document link
@@ -206,6 +209,10 @@ fn main_loop(
     let mut docs: std::collections::HashMap<lsp_types::Url, String> =
         std::collections::HashMap::new();
     let mut pending = PendingPublishes::default();
+    // Shared by every request that needs the rendered document (hover's cross-reference
+    // number, inlay hints). Keyed on the buffer text, so it is a hit for as long as the
+    // author is reading rather than typing — which is exactly when these fire in bursts.
+    let mut memo = crate::lsp_memo::RenderMemo::default();
     loop {
         // Block outright when nothing is owed, so an idle server costs nothing; wait only as
         // long as the open window when a publish is pending.
@@ -268,8 +275,9 @@ fn main_loop(
                 // is gone — and then the reply below fails too and `?` ends the session, as
                 // it should.
                 let (id, method) = (req.id.clone(), req.method.clone());
-                let failure = match crate::serve::guarded(|| handle_request(connection, &docs, req))
-                {
+                let failure = match crate::serve::guarded(|| {
+                    handle_request(connection, &docs, &mut memo, req)
+                }) {
                     Ok(Ok(())) => None,
                     // JSON-RPC InvalidParams.
                     Ok(Err(e)) => {
@@ -409,15 +417,34 @@ pub(crate) const COLOR_SCHEME_METHOD: &str = "taliesin/colorScheme";
 fn handle_request(
     connection: &Connection,
     docs: &std::collections::HashMap<lsp_types::Url, String>,
+    memo: &mut crate::lsp_memo::RenderMemo,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
         CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest, Formatting,
-        GotoDefinition, HoverRequest, PrepareRenameRequest, Rename, Request as _,
+        GotoDefinition, HoverRequest, InlayHintRequest, PrepareRenameRequest, Rename, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
-    let response = if req.method == GotoDefinition::METHOD {
+    let response = if req.method == InlayHintRequest::METHOD {
+        let params: lsp_types::InlayHintParams = serde_json::from_value(req.params)?;
+        let uri = &params.text_document.uri;
+        // An unopened document, or one that cannot be rendered, is an empty result rather
+        // than an error: a half-typed buffer is the normal case for a provider that fires on
+        // every scroll.
+        let hints = docs
+            .get(uri)
+            .and_then(|text| {
+                memo.get(uri, text)
+                    .map(|doc| crate::lsp_hints::inlay_hints(text, &doc, params.range))
+            })
+            .unwrap_or_default();
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(hints)?),
+            error: None,
+        }
+    } else if req.method == GotoDefinition::METHOD {
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
@@ -3663,6 +3690,10 @@ mod tests {
         );
         assert_eq!(caps["hoverProvider"], true);
         assert_eq!(caps["codeActionProvider"], true);
+        assert_eq!(
+            caps["inlayHintProvider"], true,
+            "the resolved number beside a cross-reference"
+        );
         assert_eq!(
             caps["renameProvider"]["prepareProvider"], true,
             "without prepareRename the editor offers rename on anything, not just an anchor"

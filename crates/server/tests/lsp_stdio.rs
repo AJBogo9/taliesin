@@ -533,3 +533,81 @@ fn formatting_rewrites_a_table_and_names_no_other_line() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Inlay hints reach the editor over the real wire, carrying the resolved number.
+///
+/// `corpus/diagnostics/refs.tmd` is the right fixture because it holds one reference that
+/// resolves (`@fig-results`) and three that do not, so a provider that annotated everything
+/// and a provider that annotated nothing would both fail here.
+#[test]
+fn inlay_hints_number_the_one_reference_that_resolves() {
+    let doc = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/refs.tmd"),
+    )
+    .expect("corpus fixture");
+    let text = std::fs::read_to_string(&doc).expect("read fixture");
+    let uri = format!("file://{}", doc.display());
+    let last = text.lines().count() as u64;
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/inlayHint",
+            "params": {
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 0, "character": 0 },
+                    "end": { "line": last, "character": 0 }
+                }
+            }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    assert!(
+        !stdout.contains("MethodNotFound"),
+        "inlayHint must be handled, not rejected.\nstdout:\n{stdout}"
+    );
+
+    // Scoped to the inlayHint RESPONSE: the same stream carries publishDiagnostics
+    // notifications that quote the document's own near-miss anchors.
+    let hints = response(&stdout, 2);
+    let hints = hints.as_array().expect("inlayHint returns an array");
+    assert_eq!(
+        hints.len(),
+        1,
+        "only `@fig-results` resolves in this document; the three near-misses are valid \
+         diagnostics, not numbers: {hints:?}"
+    );
+    assert_eq!(
+        hints[0]["label"], " ⟨1⟩",
+        "the sole figure is Figure 1: {hints:?}"
+    );
+    // Line 15 (0-based) is `…never warns: see @fig-results.`, and the hint sits just past
+    // the id rather than at the start of the line.
+    assert_eq!(hints[0]["position"]["line"], 15, "hint on the right line: {hints:?}");
+    let col = hints[0]["position"]["character"].as_u64().expect("a column");
+    let line15 = text.lines().nth(15).expect("line 15");
+    assert_eq!(
+        col as usize,
+        line15.find("@fig-results").expect("the reference") + "@fig-results".len(),
+        "the hint must sit just past the id it annotates"
+    );
+}
