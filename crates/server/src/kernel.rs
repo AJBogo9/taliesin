@@ -183,13 +183,79 @@ try:
                     print('taliesin: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
             _tali_pending_export.clear()
 
+        def _tali_fill_boxes(ax):
+            # Data-space rectangles painted by a colour-mapped artist: an image
+            # (imshow) or a quad mesh (pcolormesh). These are the regions whose
+            # colour comes from the DATA and therefore does not change with the
+            # page theme. Deliberately not PolyCollection in general: `fill_between`
+            # produces one spanning most of the axes, and over-skipping would leave
+            # real chrome baked at one colour.
+            boxes = []
+            for _im in getattr(ax, 'images', ()):
+                try:
+                    _x0, _x1, _y0, _y1 = _im.get_extent()
+                    boxes.append((min(_x0, _x1), max(_x0, _x1), min(_y0, _y1), max(_y0, _y1)))
+                except Exception:
+                    pass
+            try:
+                import matplotlib.collections as _mc
+            except Exception:
+                return boxes
+            for _c in getattr(ax, 'collections', ()):
+                if not isinstance(_c, _mc.QuadMesh):
+                    continue
+                try:
+                    if _c.get_array() is None:
+                        continue
+                    _b = _c.get_datalim(ax.transData)
+                    boxes.append((min(_b.x0, _b.x1), max(_b.x0, _b.x1),
+                                  min(_b.y0, _b.y1), max(_b.y0, _b.y1)))
+                except Exception:
+                    pass
+            return boxes
+
+        def _tali_texts_on_fill(fig):
+            # ids of Text artists sitting INSIDE a colour-mapped fill (item 78).
+            #
+            # `_tali_recolour` exists because a figure's chrome sits on the
+            # transparent page background, so it has to follow the reader's theme.
+            # An annotation drawn on top of a heatmap cell is the opposite case: its
+            # background is a data colour that is identical in both themes, so
+            # forcing it to the page foreground is what MAKES it illegible. Measured:
+            # a `1.00` cell is near-black #67000d and the author had written
+            # color='white'; the light render turned that white into #1a1a1a.
+            #
+            # Only `ax.texts` is considered, which is exactly the artists the author
+            # added with text()/annotate(). The title, axis labels and tick labels are
+            # NOT in that list (they hang off `ax.title` / `ax.xaxis`), so chrome can
+            # never be skipped by accident however the axes are laid out.
+            _on = set()
+            for _ax in fig.axes:
+                _boxes = _tali_fill_boxes(_ax)
+                if not _boxes:
+                    continue
+                for _o in list(getattr(_ax, 'texts', ())):
+                    try:
+                        _x, _y = _o.get_position()
+                    except Exception:
+                        continue
+                    for _x0, _x1, _y0, _y1 in _boxes:
+                        if _x0 <= _x <= _x1 and _y0 <= _y <= _y1:
+                            _on.add(id(_o))
+                            break
+            return _on
+
         def _tali_recolour(fig, fg, grid):
             # Recolour foreground (text/spines/ticks) to `fg` and grid lines to
             # `grid`, and make axes backgrounds transparent. Returns the originals
-            # so the figure can be restored exactly. Data colours are untouched.
+            # so the figure can be restored exactly. Data colours are untouched, and
+            # so is any text sitting ON a data colour (see _tali_texts_on_fill).
             import matplotlib.text as _t
             saved = []
+            _on_fill = _tali_texts_on_fill(fig)
             for _o in fig.findobj(_t.Text):
+                if id(_o) in _on_fill:
+                    continue
                 saved.append((_o.set_color, _o.get_color())); _o.set_color(fg)
             for _ax in fig.axes:
                 saved.append((_ax.patch.set_facecolor, _ax.patch.get_facecolor())); _ax.patch.set_facecolor('none')
