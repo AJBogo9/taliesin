@@ -118,16 +118,161 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
   just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
   trap). Those say so; brainstorm before coding.
 
-150. **Phase A2: site-aware in-editor preview.** (MEDIUM, own spec.) Opening a book chapter in the
-     companion previews the single file, so the author gets an orphan page: no nav, dead cross-page
-     links. Resolution rule is the nearest `_site.yml` walking up (the include-root rule, **never**
-     `.git`); the file-to-URL map already exists in Rust as `taliesin map <dir> --format json`
-     (`{rel, url}` per page), so TS reads JSON and reimplements nothing. **The risk is not the
-     wiring:** once the webview navigates between pages, `docPath` goes stale and
-     `resolveSourceFile` (`paths.ts:39`) resolves a `tali-goto` from page B against page A's
-     directory, opening the wrong file. `relativeKey` has the mirror problem. Resolution must key
-     off the project root; `serve_site` already emits `root` in `TALIESIN_DOC`
-     (`serve_site/mod.rs:788`), so the data is there. Write the spec before the code.
+150. **Phase A2: site-aware in-editor preview — the WIRING half only; the risk half shipped
+     2026-07-29.** (MEDIUM.) **The spec is written and its facts are verified:**
+     [2026-07-29-site-aware-in-editor-preview.md](../docs/superpowers/specs/2026-07-29-site-aware-in-editor-preview.md).
+     Read it before writing code; do not re-derive.
+     - **Done:** the staleness bug this item called "the risk". `data-source-file` is relative to
+       the *currently loaded* page, and the host resolved it against the document the preview was
+       *opened for* — so after a cross-page navigation a click on chapter B opened chapter A's
+       same-named file (a real file, no error). The page now sends `base_dir`/`doc_path` with each
+       `tali-goto` and `resolveSourceFile` prefers it, back-compatible both directions.
+       `projectRootFor()` (nearest `_site.yml`, never `.git`) also landed with tests.
+     - **Left:** spawn `taliesin preview <root>` instead of the file and open the page's URL from
+       `map --format json`; key `PreviewRegistry` by project root so one server serves a whole
+       book; and `relativeKey`'s mirror problem — reverse sync must *select the page* (a new
+       `tali-navigate` host→iframe message) before marking the block. §1-4 of the spec.
+
+153. **Cell-language registry + `{glsl}`.** (MEDIUM / low risk. Detail: [ROADMAP.md](ROADMAP.md)
+     Pillar III, the one unshipped item there.) Generalize the hardcoded `lang == "js"` gate in
+     `render/mod.rs` into a registry of client-side cell languages over the existing
+     `taliEnhancers` seam, each emitting the same wrapper-div contract; then ship `{glsl}` (a
+     fragment shader to a live `<canvas>`) as the proof the seam works. Unusually cheap because
+     **WebGL is a browser API**: nothing to vendor, no licence question, no payload. **Build this
+     before 158**, which is a registry graduate; `{sql}`/DuckDB and `{ts}`/esbuild stay CUT until
+     a corpus doc needs one. *Invariant: same wrapper-carries-data-attrs contract; idempotent
+     enhancer; never touches exec/freeze/kernel.*
+
+154. **Bundled numerics global for `{js}` cells.** (S/M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
+     #62.) A small curated numerics namespace beside the vendored `Plot`/`d3`: distribution
+     pdf/cdf (gaussian/gamma/beta/poisson/exp), summary stats, a **seeded** PRNG, and small dense
+     linear algebra (matmul, Cholesky, 2x2 eig/inv). Removes the number-one friction of
+     scientific explorables, which is hand-rolling a pdf in every cell, and lands as one more
+     drawing-global with **no reactive-graph change**. Came from the author dogfooding a
+     Bayesian-ML study site, not from an audit lens. Pin: `corpus/reactive/numerics.tmd`.
+     *Keep it small and curated: this must not grow into a numeric VM.*
+
+155. **Two explorable `{{< input >}}` types: `animate` tick + draggable `point`.** (M.
+     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #63.) Extend the shipped input vocabulary with (a) a
+     play/pause/step/reset control publishing a monotonic tick, so iterative demos advance a
+     frame (EM sweeps, CAVI, gradient descent), and (b) a drag/click 2-D point publishing
+     `{x, y}`, for "place a data point and watch it refit". Both reuse
+     `registerInput`/`scheduleFrom`, exactly as scrolly did. **The trap is named and standing:**
+     the tick must schedule **one** downstream pass per frame through the existing scheduler plus
+     `invalidation`, never a continuous dataflow loop. Pins: `corpus/reactive/animate.tmd` +
+     `corpus/reactive/point.tmd`.
+
+156. **`tali.state`, a blessed cross-re-run store.** (S/M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
+     #64.) A small keyed store that survives a scheduled re-run so a tick-driven demo
+     accumulates (EM parameters across frames) instead of recomputing from scratch; cleared on
+     cell edit, deck-skip, never writes back to source. Formalizes what `invalidation` today only
+     tears down. **Pairs with 155 and should follow it.** Scope to a per-name store with an
+     explicit lifecycle: same reactive-VM trap as 155.
+
+157. **Richer `{js}` output helpers: KaTeX value + mini table.** (S.
+     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #65.) Convenience builders over the existing
+     DOM-return contract: typeset a returned number/array/matrix as KaTeX math (reusing the
+     bundled KaTeX, so a posterior precision echoes typeset rather than as plain text), plus a
+     minimal table renderer for arrays/records. Closes the rich-display gap against Jupyter's
+     MIME protocol with no new machinery. Smallest item in the explorable cluster.
+
+163. **Site-level shared bibliography + hygiene.** (M.) `bibliography:` is per-document only, so
+     a growing blog retypes keys per post and nothing reports an unused or duplicate entry. Allow
+     `bibliography:` in `_site.yml`, merged **under** each page's own, plus two **read-only**
+     diagnostics ("entry never cited", "duplicate key"). *Explicitly does not touch the BibTeX
+     parser or the CSL formatter, which are Do-NOT-touch-for-rewrite.*
+
+162. **Session revision digest.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #36.) Surface the
+     `BlockOp` stream the client already receives: a session word delta (`+340 / -180`) plus a
+     feed of the last N ops, each click-to-source, so an edit answers "what did that actually
+     do?" instead of being console-only. Makes the moat **visible**, which is worth as much to
+     150's marketing half as to authoring. Honest caveat carried from the parked entry: the pin
+     is behavioural (a `tools/live-edit-bench` assertion), not a corpus doc.
+
+161. **Author structure panel.** (M/L, and **smaller than when it was parked**.
+     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #26.) A read-only preview sidebar: heading tree with
+     per-section word count and a badge per node for unresolved xref / TODO / over-goal length,
+     click to scroll. This is the *revision* view, not the reader TOC. **Re-scope before
+     building:** the heading-tree half is now largely free from the shipped LSP
+     (`textDocument/documentSymbol`, `lsp_outline.rs`), so the unique value left is the
+     **annotation layer**. Scope it as an annotation layer on the dev panel or it grows to L.
+
+160. **Block-level transclusion** `{{< include file.tmd#sec-id >}}`. (M, needs-care.
+     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #28.) Pull one anchored section instead of a whole
+     file, so a shared derivation lives in one place across a post series without copy-paste
+     drift. **Must ride on top of the `includes.rs` source-map pass** (resolve the fragment to a
+     block range, hand the existing machinery a sub-slice), never rewrite it: `includes.rs` is on
+     the do-not-rewrite list. **Hard merge gate: the source map must not perturb.**
+
+165. **Companion Phase 2: editor commands.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #31/#33.)
+     Insert block, reorder slide, move/promote/demote a heading section, strictly as `.tmd`-buffer
+     text transforms in the **editor**, never preview gestures. This is the *legal* replacement
+     for the drag-to-reorder that was removed for breaking single-editing-surface. **Cap the
+     command set**: this is the named route by which the companion metastasizes into WYSIWYG.
+     Note #32 (rename label) already shipped in the LSP, so it is out of scope here.
+
+166. **`.tmd` format-on-save for PROSE.** (Open design question, and narrower than it was.) The
+     table-only formatter shipped 2026-07-28 (`crates/server/src/lsp_format.rs`,
+     `textDocument/formatting`), and it **sidesteps** the recorded objection rather than
+     answering it: a table's rows map one-to-one onto its lines, so the replacement has exactly
+     the line count of the range it replaces and no `data-sourcepos` below it moves
+     (`formatting_never_changes_the_line_count` pins that). **A prose pretty-printer still has
+     the original problem**, reflowing a paragraph moves every line after it. **Brainstorm the
+     line-shift answer before any reflow code.**
+
+168. **`build-seo-completeness`.** (LOW value tag upstream, small.
+     [ROADMAP.md](ROADMAP.md) Pillar V.) At publish time, when `url:` is set, emit `sitemap.xml`
+     + `robots.txt` + `Article`/`WebSite` JSON-LD, reusing the existing nav `_`/`.`/`draft:`
+     exclusion. Build-time metadata files, HTML-only intact. **Author flagged this as
+     publish-critical on 2026-07-29**, so it outranks its upstream "low" tag. Pairs naturally
+     with the auto social-card idea ([FEATURE-IDEAS.md](FEATURE-IDEAS.md) #58), which is NOT in
+     scope here.
+
+169. **Image optimization.** (Large.) WebP/AVIF transcode + responsive `srcset` + lazy-load
+     behind a content-hashed asset cache. Parked as "deferred until posts get image-heavy";
+     **author flagged it publish-critical on 2026-07-29.** Split from `image-lightbox`, which
+     shipped. Watch the payload and the build-time cost.
+
+159. **Print/PDF track.** (Large. **The deferral is lifted: the author warmed to it 2026-07-29.**
+     [ROADMAP.md](ROADMAP.md) Pillar IV / Wave 5 is the frame, and
+     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #57 is the substance.) A paged-media rendering
+     **derived from the built HTML**, HTML staying the single source of truth: `@page` running
+     chapter and section heads (`string-set` + `running()`), real folios, `@fig-`/`@sec-` refs
+     that become "Figure 3 (p. 12)" via `target-counter()`, auto list-of-figures and index with
+     true page numbers, widow/orphan control and optical hyphenation; paged.js (vendored) where
+     native paged media is absent; `{js}` and video degrade to a poster frame. Pin:
+     `corpus/print/paged.tmd`. **The line, restated because this is the item most likely to
+     cross it:** the moment it forks into a separate Pandoc/Typst/LaTeX path it has violated
+     HTML-only. It is a *rendering of* the build artifact, not a second compiler target.
+
+158. **Opt-in Pyodide `{python}` cells.** (L, needs-care. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
+     #66. **Depends on 153.**) Client-side `{python}` backed by Pyodide, feeding the reactive
+     graph like any cell, so a published document stays interactive with numpy/scipy and no
+     kernel. This is what JupyterLite is. **Bundle guard is the whole risk:** Pyodide is 10 MB+,
+     so opt-in per page and vendored offline. Known caveats: **no torch**, and a real cold-start
+     cost. Registry graduate, so it must land as a *registration*, not as surgery.
+
+164. **`docs-as-spec`.** (L. [ROADMAP.md](ROADMAP.md) Pillar V.) Promote the two dogfooded books
+     to a versioned normative spec: an RFC-2119 `.tmd`-dialect reference plus a WebSocket
+     protocol reference. Upstream says start only once the validation epic has settled, which it
+     has. Value is credibility and adoption, not capability.
+
+167. **`check --online`.** (Opt-in.) Dead-link checking as the **single sanctioned network
+     call**; the default stays offline, deterministic, kernel-free and network-free. **Scope
+     note:** the *citation/DOI-existence* half of this was separately **declined 2026-07-16** and
+     is not revived by the 2026-07-29 promotion; if it is ever wanted it needs its own ruling.
+
+172. **`taliesin publish` follow-up: an optional `--init` wrapper** for the one-time `wrangler`
+     setup. (S.)
+
+171. **An end-to-end live-HTTP test for `mounts:` serving.** (S, test debt.) The F-04 work
+     unit-pins the pure `match_mount`/`resolve_project`/`classify_change` helpers and live mount
+     serving is browser-verified; what is missing is only the bin-crate gap of a real
+     `reqwest`/`TcpListener` harness. Mounts are preview-only.
+
+173. **PMF reader tail** ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md), Tier C): a
+     document-level reader show/hide-code toggle, a reader code+data download affordance, and
+     instant client-side navigation polish. Three small reader affordances, promoted together.
 
 56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
     2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
@@ -141,6 +286,22 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
       xrefs (17 guide + 16 internals) are all intra-page, so **0** "Referenced by" lines are emitted
       in either book. Real cross-chapter references would light it up, but they have to be references
       someone means — a writing judgment, not a sweep.
+
+174. **`serde_yaml` fallback swap.** (Conditional: **this one has no trigger yet**, and is ranked
+     last-but-one for that reason.) The `Cargo.toml` workspace comment names `serde_yml`, which
+     carries RUSTSEC-2025-0068 (unsound + unmaintained); `serde_norway` is over a year stale. The
+     maintained continuation is **`serde_yaml_ng`** (v0.10). No urgency: config is trusted and
+     local, and 0.9 still builds. **Act when** 0.9 breaks against a future serde or edition, and
+     gate the swap on a test that `Error::location().line()` still works (the front-matter
+     linter's located diagnostics depend on it). Fix the stale comment whenever this file is
+     touched for any other reason.
+
+170. **Marketing site.** (Last by the author's own standing feature-first policy, which is why it
+     sits below everything above it even though parts are buildable today.) The
+     `live-edit-hero-demo` clip (= `ROADMAP.md` Wave 2's unshipped deliverable), swapping the
+     `site/_site.yml` placeholders, a demo-led hero rebuild, mobile embed refinement, and deploy.
+     **The deploy half is additionally flip-gated** and overlaps item 149's launch-presentation
+     group in P3; do not build the same thing twice from both entries.
 
 ### P2 — filed so it is not rediscovered as a defect
 
@@ -172,40 +333,6 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      `/proc/sys/fs/inotify/max_user_instances` before suspecting the code.
 
 ### P3 — blocked on an owner ruling (not a task until then)
-
-101. **State the licence position on what Taliesin *emits*.** (HIGH, ruling.) Measured: **zero**
-     statements across README, LICENSE, THIRD_PARTY, SECURITY and both books' source about what a
-     user's output is licensed as. It is a genuinely non-obvious question here because every built
-     page inlines AGPL-licensed CSS/JS (`base.css`, `deck.js`, `tali-js.js` spot-checked, **none
-     carries a licence header**), so a user's blog contains AGPL material. **No licence change is
-     proposed** — the finding is that the position is unstated, and stating it discounts the
-     licence, bus-factor and portability anxieties at once.
-     **Narrowed 2026-07-28:** the other branch added `crates/core/assets/js/LICENSES.md`, which
-     carries the full permission notices for the **vendored third-party** bundles. That is adjacent
-     and good, but its own text says "This covers the redistributed third-party bundles only", so
-     **it does not answer this item**: what a *user's built page* is licensed as, given it inlines
-     Taliesin's *own* AGPL scripts, is still unstated.
-     **Merged in from the critique round's item 88 (2026-07-28), which found the same question
-     independently with sharper evidence and a named remedy** — that item is retired into this one:
-     - **Mechanism, measured.** Taliesin's own runtime JS is `include_str!`'d into every page a user
-       builds (`render/mod.rs:1658-1660` plus the `code-enhance/` fragments): a probe page measured
-       **1.2 MB with 13 `taliEnhancers` hits and zero licence statements**. If that runtime is AGPL,
-       arguably **every page a user publishes is an AGPL work** — an adoption tax larger than §13's,
-       landing on *document authors* rather than on a hosted competitor.
-     - **The standard remedy is known:** an explicit output exception (the GCC runtime-library /
-       Bison-output pattern), or an MIT carve-out for the emitted runtime only.
-     - **Decide before publishing anything.** The first published page fixes the answer in the wild.
-     - **A separable second question the same finding raised: AGPL vs MPL-2.0.** §13 is *not*
-       inapplicable here — a `--host` LAN preview is network interaction (`LICENSE:542-548` +
-       `SECURITY.md:44-47`) — so the "nobody stands in that hole" framing is wrong. But the tax
-       lands on exactly the adopters the project needs. MPL keeps file-level copyleft, passes most
-       corporate bans, and ***REMOVED*** `deny.toml` protects.
-     - ~~**Either way, the reservation at `README.md:156-158` is fiction the moment one outside PR
-       merges without a CLA or DCO.**~~ **DISCHARGED 2026-07-28 by item 89:** `CONTRIBUTING.md`
-       clause 3 is the inbound grant (perpetual, worldwide, irrevocable, sublicensable, explicitly
-       including **relicensing**), and `gate_script.rs` fails the suite if that grant disappears.
-       **This does not touch the rest of item 101**, which is about what a *user's built page* is
-       licensed as, not what a contribution is.
 
 100. **RULED 2026-07-28 — the answer is "archive plus fresh public", and it is specced.** See
      [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md).
@@ -246,60 +373,11 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
        due-diligence doc's §6 proposes a third route (targeted `filter-repo`) with its honest cost.
      Supersedes the "flip-day artefact checklist" framing; **extends item 25, does not replace it.**
 
-122. **`check` says "no problems found" on a document whose code cell cannot run — BUT ITS
-     PROPOSED FIX REVERSES A DATED RULING, so read this before building it.** (MEDIUM.)
-     Measured cold: plain `check` prints exactly that and exits 0, while `build` on the same file
-     warns twice and `doctor` names the missing package. The Environment section is shown **only**
-     to a user who already passed `--require-kernel`. **Do not** make that flag the default (it
-     would break the kernel-free property). Filed fix: print the Environment line unconditionally
-     when the document contains a code cell, exit code unchanged.
-     **The conflict, found 2026-07-28 while shipping item 81** (which touches this exact code):
-     that is **PL14**, a deliberate decision with a spec
-     ([2026-07-19-pl14-check-env-footer.md](../docs/superpowers/specs/2026-07-19-pl14-check-env-footer.md))
-     and a test that pins it by name — `default_human_check_omits_the_environment_block`
-     (`check_cli.rs`), whose comment states the reason: the footer "duplicated `doctor` on every
-     keystroke/CI run". Implementing 122 as filed deletes that test. **So this is an owner ruling,
-     not a task.** A shape that satisfies both is available and is the recommendation: print the
-     Environment *line* unconditionally but keep **not probing** by default, so the line names the
-     interpreter that would be used and says it was not spawned. Item 81 already built exactly that
-     reporting shape (`runs: null` + `not_probed`), so the remaining work is only where the line is
-     printed. **Cost to check first:** `collect_environment` re-renders every page of a site to find
-     used languages, so putting it on the default path doubles a site `check`'s render work
-     (`check <site>` was measured at 538 ms). Measure that before wiring it in.
-     **MEASURED 2026-07-28 (release `b8c93bb`), and the cost objection is weaker than filed.**
-     Default vs `--require-kernel` (which is the only surface that collects the environment today),
-     best of three each: `docs/guide` (20 pages) **0.36 s → 0.54 s**; `corpus/tech-blog` (17)
-     **0.54 s → 0.79 s**; `docs/internals` (15) **0.21 s → 0.31 s**; `site` (5) **0.11 s → 0.15 s**.
-     So it is **about +50%, not a doubling**, and **+100-250 ms absolute** on the largest projects
-     in the tree — and the "538 ms" in the line above did not reproduce as a *baseline*: 540 ms is
-     the whole `--require-kernel` run on the slowest project. **That delta is an upper bound for the
-     recommended shape**, because it includes actually spawning the interpreters, which the
-     "name it, do not probe it" line would not do. The remaining open question is not cost but
-     whether used-language detection can be had without the render walk; if not, the walk is what
-     the +50% buys.
-
 102. **Decide what to do about constructs that render elsewhere and silently do not here.**
      (Ruling.) Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
 
 103. **Clear the name in software classes before the flip.** (Ruling, legal not code.) Trademark
      search in the relevant classes; the name is the retained optionality per the product stance.
-
-71. **Two deck-on-touch behaviours that are working-as-written, and may be working-as-wrong**
-    (DT-3 + DT-4, detail: [2026-07-27-deck-touch-audit.md](2026-07-27-deck-touch-audit.md)).
-    Neither is a bug; both are a choice someone made that the touch crossing put a number on.
-    - **A slow swipe does nothing.** Measured: 200 px in ~30 ms navigates, the same 200 px over
-      **750 ms** does not (`deck.js:1859`, `dt > 600`). A swipe's time bound normally separates a
-      swipe from a pan/scroll — but in stepped mode there is no competing one-finger gesture to
-      separate from (`deck.feed` returns at `:1798`, `deck.overview` at `:1799`, both above it, and
-      the stepped stage does not scroll), and the 50 px distance floor already rejects a tap. So in
-      the only mode where the bound is live it can *only* reject input the reader meant, and what it
-      rejects is the slow deliberate swipe a motor-impaired reader makes. Proposed: drop `dt` in
-      stepped mode, keep the distance floor. **No real user has been observed failing on it.**
-    - **The share panel says "Point a phone here" — to a phone.** The QR takes most of the card and
-      is the one useless half on the device reading it; Copy is the action that works and is
-      secondary. Panel geometry is otherwise correct at 390 px (nothing clipped, QR legible).
-      `navigator.share` was absent under emulation, **so the Web Share option was not measured and
-      is not claimed**.
 
 148. **Distribution: the binary channel now has a MECHANISM but still has no artifact; the package
     managers are untouched.** **Amended 2026-07-28 by item 92** — read this before re-filing any of
@@ -348,11 +426,16 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
     - **`taliesin.dev` resolves to nothing** (registered, NS + SPF + a google-site-verification
       TXT, zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
       `site/README.md:11-12` already flags it as a placeholder.
-    - **`taliesin build site` 404s its own primary CTA** — `docs/guide/` and five `gallery/*`
-      mounts are preview-only, and `site/README.md` documents an 8-command build that nothing
-      runs. Worse than filed: `--strict` exits **0** on it and `check` says "no problems found",
-      so both automated gates bless a deploy the tool has already warned about. A `site/build.sh`
-      is the cheap fix; counting mount warnings as `--strict` problems is the durable one.
+    - ~~**`taliesin build site` 404s its own primary CTA**~~ **DONE 2026-07-29.** `build --strict`
+      counts each mount warning as a problem (site/: exit 0 → 1) and `check` reports
+      `TAL-MOUNT-PREVIEW` per mount at severity `suggestion`, so neither gate blesses the deploy
+      any more. `site/build.sh` builds all 8 projects into one tree (verified: `/`,
+      `/docs/guide/`, `/docs/internals/`, `/gallery/*` all serve 200 where a plain build 404s
+      three of them), pinned against `_site.yml` in both directions by `site_build_script.rs`.
+      **The ordering is load-bearing and the test pins it:** the parent build's `sweep_stale`
+      deletes anything under the output dir it did not write, so a mount built first is silently
+      swept away — and re-running `taliesin build site` alone afterwards puts you back to the
+      broken tree.
     - **The name** (surfaced, not a task): TALIESIN is a live registered mark of the Frank Lloyd
       Wright Foundation (Reg. 4150375). Software is outside the recited goods so legal risk is
       low; the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are
@@ -427,49 +510,44 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
    proved only that pan does not misfire, not that panning works. Chromium touch emulation is still
    not evidence for a pinch on glass.
 
-78. **The figure recolour has no notion of "text sitting on a data fill", so it can *cause* the
-    contrast failure it exists to prevent** (P3, filed 2026-07-27 while fixing item 77's fourth
-    residual; item 41's family). `MPL_THEME_PREAMBLE`'s `_tali_recolour` sets **every** `Text` in a
-    figure to the reader's foreground. That is right for titles, axis labels and ticks, which sit on
-    the transparent page background — and wrong for an annotation drawn *inside* a data-coloured
-    mark, whose background does not change with the theme. **Measured** on
-    `corpus/tech-blog/posts/pca-geometry/`'s covariance heatmap: the `1.00` cells are near-black
-    `#67000d`, so in the **light** render the annotation is recoloured to near-black `#1a1a1a` on
-    near-black and is effectively illegible; the dark render is fine. The author cannot fix it in the
-    document — an explicit `color=` on the annotation is exactly what the recolour overrides, which
-    is what makes this a tool item and not a corpus one.
-    **Not obvious how to fix, which is why it is filed rather than done.** Matplotlib does not mark
-    which `Text` is "on" a mark, so candidates are all heuristics: skip a `Text` whose axes-fraction
-    position lands inside a filled artist; skip `Text` parented to a `QuadMesh`/`AxesImage`; or pick
-    per-annotation black/white from the *underlying* fill's luminance instead of the page
-    foreground (what matplotlib's own `annotate` helpers do). **Do NOT "fix" it by dropping the
-    recolour** — that reinstates the baked-foreground bug the preamble exists for.
-
 41. **R graphics cannot follow the page theme; matplotlib figures can** (P3, M; detail:
     [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md), AN-2b).
-    Taliesin renders every inline matplotlib figure **twice** (light + dark foreground) and swaps them
-    on the theme toggle (`kernel.rs`'s `MPL_THEME_PREAMBLE`); measured on `corpus/analyst/` the Python
-    figure emits two genuinely different PNGs and the ggplot figure emits one, so a mixed-language
-    report has half its figures track the reader's theme and half baked. **Blocked on being a feature,
-    not a fix:** a real version re-renders the figure twice against two foregrounds. **Do NOT confuse
-    this with AN-2a, which is fixed** — the R device no longer paints opaque white under a transparent
-    figure; the *ink* is still baked at one colour, and that is what is left. The documented workaround
-    (a neutral mid-grey palette) is the second instance of the convention named in item 18's F-02.
-    Minor and separable: an R figure is emitted `<img alt="output">` where the Python pair is `alt=""`;
-    both sit inside a captioned `<figure>`, so `alt=""` is right and `"output"` is noise read aloud.
+    **The `alt="output"` half SHIPPED 2026-07-29** (every executed figure now emits `alt=""`,
+    pinned in `r_kernel.rs`). What is left is the theming, and an attempt on 2026-07-29 was
+    **built and then reverted**, so start from what it measured rather than from the framing above:
+    - **The interception point is NOT the value's repr, and NOT a global `print` override.**
+      ipykernel asks the returned figure for a representation; **IRkernel does not**. Printing a
+      ggplot DRAWS it, and IRkernel captures the graphics DEVICE and publishes that as `image/png`.
+      Measured: `repr::repr_html(p)` returned a correct themed light/dark pair while the built page
+      still carried a single un-themed `<img>`; a `print.ggplot` assigned into `globalenv()` never
+      fired for an auto-printed plot (file-marker probe), though it fired for an explicit `print(p)`
+      and produced two correct PNGs. Registering `repr_html`/`repr_png` for **both** S7 class names
+      (`ggplot2::ggplot` and `ggplot`, ggplot2 4.0.2) did not reach it either, and pushing the
+      method into base's S3 table **broke a passing test and hung the suite**.
+    - **So the remaining question is a narrow one:** which IRkernel seam publishes an
+      auto-displayed plot, and can it be given a `text/html` twin-PNG pair. `render_media` already
+      prefers `text/html` over `image/png`, so nothing needs suppressing once that seam is found.
+    - **The twin render itself is solved** and is not the hard part: a `ggplot2::theme()` override
+      of the colour slots plus `ggsave(bg="transparent")` at the reader's `repr.plot.*` size
+      produces two genuinely different PNGs (verified standalone). Emit the same
+      `tali-fig-light`/`tali-fig-dark` pair the Python side does, so `base.css` needs no new rule.
+    - **Trap, cost one debugging round:** every Taliesin page inlines `base.css`, which *contains*
+      the strings `tali-fig-light`/`tali-fig-dark`, so a whole-page `contains()` for them passes on
+      a page with no figure at all. Needle the full emitted `<img class="tali-fig tali-fig-light"
+      alt="" src="data:image/png;base64,` tag. **Do NOT confuse this with AN-2a, which is fixed.**
 
-18. **Demand-probe (interactive-explainer) residuals** (P3; detail:
-    [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md)):
-    - **F-02 (gap, P3):** an authored numbered figure is emitted as `<img src="fig.svg">`, and an
-      `<img>`-embedded SVG is style-isolated: it can't see `--tali-*` or the theme toggle, only the
-      **OS** `prefers-color-scheme`. So a reader who forces the page theme opposite their OS gets the
-      figure in the wrong palette. Inline `{js}`/SVG graphics on the same page track the toggle fine.
-      Candidates: an inline-SVG figure path so `![](x.svg)` inherits page vars, or a documented
-      neutral-palette convention. Edits `crates/core/src/render/figure.rs`.
-    - **F-03 (WAI, authoring nuance):** a `{js}` "once" cell's returned node is mounted *after* the
-      cell body runs, so an attachment-gated init (`if (!node.isConnected) return`) silently no-ops the
-      first paint. Gate teardown on `invalidation`, not DOM attachment. Candidate: a doc line in the
-      `{js}`-cell reference, or an optional post-mount hook.
+18. **Demand-probe residual: the inline-SVG figure path.** (P3; detail:
+    [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md).)
+    **F-03 and F-02's documented-convention half both SHIPPED 2026-07-29** — the `{js}` once-cell
+    attachment trap is in `using/interactive.tmd`, and the `<img>`-is-style-isolated rule plus the
+    palette-that-works-on-both convention are in `using/theming.tmd` (with `corpus/course/likelihood.svg`
+    as the worked example and `corpus/descent/landscape.svg` as the counter-example).
+    **Left: F-02's other candidate, an inline-SVG figure path** so `![](x.svg)` inherits `--tali-*`.
+    Deliberately not built, and the reason is the whole design problem: inlining an authored SVG
+    puts its `<style>` selectors and element ids into the page, where `.label` / `.ink` / `.axis`
+    from two figures collide with each other and with page CSS. So it needs a **selector-scoping
+    strategy**, not a change of emitter, and that wants its own spec before any code. Edits
+    `crates/core/src/render/figure.rs`.
 
 70. **A project with no `_site.yml` declares no boundary** (P3, filed 2026-07-27 from the path-parity
     batch's "surfaced, not fixed"). `build <dir>` accepts a bare directory, so a single-document render
@@ -529,67 +607,18 @@ Kept visible so they are not re-scoped. Revive on a real signal, not on capacity
   silently, which makes it a feature question not a defect). Edits `crates/core/src/cite/`, needs
   sign-off if revived.
 
-## Tier 3 — demand-driven (below every band above; build only when a real user asks)
+## Tier 3 — demand-driven (build only when a real user asks)
 
-**Waits on demand, not on capacity.** The PMF audit's verdict is that what is missing is **real users,
-not more features**, so nothing here is scheduled. One line each; the reasoning lives in the linked
-audits.
+**This tail held 17 lines until 2026-07-29, when the author reviewed all of them and promoted
+every one but the first below into the P1 queue as items 153-174.** Do not re-file a promoted
+item here: it has a number now, and the number is where its detail lives.
 
-- **An end-to-end live-HTTP test for `mounts:` serving.** The F-04 work unit-pins the pure
-  `match_mount`/`resolve_project`/`classify_change` helpers and live mount serving is browser-verified;
-  what is missing is only the bin-crate gap of a real `reqwest`/`TcpListener` harness. Mounts are
-  preview-only, so this waits for a reason to exist.
-- **Companion (Phase 2):** editor commands (insert block / reorder slide) — strictly `.tmd`-buffer text
-  transforms in the editor, never preview gestures.
-- **`.tmd` format-on-save for PROSE** (open question, and narrower than it was). The
-  table-only formatter shipped 2026-07-28 (`crates/server/src/lsp_format.rs`,
-  `textDocument/formatting`), and it sidesteps the recorded objection rather than answering
-  it: a table's rows map one-to-one onto its lines, so the replacement has exactly the line
-  count of the range it replaces and no `data-sourcepos` below it moves
-  (`formatting_never_changes_the_line_count` pins that). **A prose pretty-printer still has
-  the original problem** — reflowing paragraphs moves every line after them — so the
-  brainstorm is still owed before any reflow work.
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto to Taliesin migration +
   portability stress test (exercises `book.rs`, includes, the freeze cache, file-mode portability). If
-  it renders clean, consider pinning a reduced version under `corpus/`.
-- **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic, kernel-free and
-  network-free).
-- **`taliesin publish` follow-ups:** an optional `--init` wrapper for the one-time `wrangler` setup.
-- **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none pinned; promote one only with a
-  corpus pin).
-- **Wave 5** (`ROADMAP.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec (RFC-2119
-  dialect + protocol reference), `{glsl}` cell-language registry, SEO completeness (sitemap/robots/JSON-LD
-  at publish with `url:`).
-- **Site-level shared bibliography + hygiene** (M). `bibliography:` is per-document only, so a growing
-  blog retypes keys per post and nothing reports an unused or duplicate entry. Allow `bibliography:` in
-  `_site.yml` merged under each page's own, plus two **read-only** diagnostics ("entry never cited",
-  "duplicate key"). Explicitly does not touch the BibTeX parser / CSL formatter.
-- **Author structure panel** (M/L). A read-only preview sidebar: the heading tree with per-section word
-  count and a badge per node for unresolved xref / TODO / over-goal length; click to scroll. This is the
-  *revision* view, not the reader TOC. Scope it as an annotation layer on the dev panel, or it grows to L.
-- **Session revision digest** (M). Surface the `BlockOp` stream the client already receives: a session
-  word delta (`+340 / -180`) plus a feed of the last N ops, each click-to-source. Honest caveat: the pin
-  is behavioural (a `tools/live-edit-bench` assertion), not a corpus doc.
-- **Block-level transclusion** `{{< include file.tmd#sec-id >}}` (M). Reuse a section across a series
-  without copy-paste drift. Must ride **on top of** the `includes.rs` source-map pass (resolve the
-  fragment to a block range, hand the existing machinery a sub-slice), never rewrite it. Hard merge
-  gate: the source map must not perturb.
-- **LSP for the language intelligence, browser stays the view** (L). Everything an LSP needs is already
-  in Rust (`check`, `vocab`, `register_xref`, the bib parser, `closest()`); it is write-once for
-  Neovim/Helix/Zed/VS Code and removes the drift that causes the `#| label:` completion gap (JS regexes
-  reimplementing Rust knowledge). An LSP cannot render the preview and does not need to.
-- **Image optimization** (large): WebP/AVIF transcode + responsive `srcset` + lazy-load behind a
-  content-hashed asset cache. Deferred until posts get image-heavy.
-- **Marketing site** (deferred, feature-first; rolls into a demo-machine rebuild): `live-edit-hero-demo`
-  clip; swap `site/_site.yml` placeholders; demo-led hero rebuild; mobile embed refine; deploy.
-- **`serde_yaml` fallback watch-item:** the `Cargo.toml` workspace comment names `serde_yml`, which
-  carries RUSTSEC-2025-0068 (unsound + unmaintained); `serde_norway` is 1+ yr stale. The maintained
-  continuation is **`serde_yaml_ng`** (v0.10). No urgency (trusted local config; 0.9 still builds). If
-  0.9 ever breaks against a future serde/edition, swap, gated on a test that `Error::location().line()`
-  still works. Fix the stale comment when touched.
-- **PMF demand-driven tail** ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md), Tier C): a
-  document-level reader show/hide-code toggle, a reader code+data download affordance, instant
-  client-side navigation polish. Each waits on a real ask.
+  it renders clean, consider pinning a reduced version under `corpus/`. **Explicitly declined
+  2026-07-29** as unnecessary, and kept only because the *class* of defect it would surface is
+  real (it is the same class the external-document audit found, see item 129). Revive on a
+  concrete portability doubt, not on capacity.
 
 ## Audit lenses — closed, do not open a new round
 
@@ -636,6 +665,40 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-07-29 ruled-and-built batch** (101, 122, 71, 78, 149's buildable half, 18's doc halves,
+  41's `alt` half, 150's risk half). Four owner rulings taken in one pass, then built:
+  - **101 — the licence position on what Taliesin *emits* is stated.**
+    `LICENSE-OUTPUT-EXCEPTION.md` is an **additional permission under AGPL §7** (the GCC
+    runtime-library pattern): output may be conveyed under any terms, no notice required in it,
+    publishing it does not by itself engage §13. The carve-out stays carved — conveying Taliesin
+    itself, or running a modified one as a service, is untouched. **Deliberately NO per-asset
+    licence headers**: those files are copied verbatim into every page, so a header would add
+    ~1 KB per page to assert a licence the exception exists to disclaim. `output_exception.rs`
+    pins the grant, its limits, the three places a user looks, and the premise (first-party
+    assets are still `include_str!`'d into pages).
+  - **122 — `check` names the interpreter it would use, and still spawns nothing.** PL14 was
+    right that it must not SPAWN and wrong to conclude it must therefore say NOTHING.
+    `ProbePolicy` splits the two decisions. **The filed +50% cost objection is GONE, not
+    accepted:** `CheckScope` carries the language list off the render the diagnostics walk
+    already did, so `collect_environment` renders nothing — measured identical to the
+    pre-change binary on all four projects. A site's decks now count toward the report too.
+  - **71 — both deck-on-touch behaviours.** The stepped-mode swipe has **no time bound** (only
+    the 50 px floor); the share panel leads with Copy and demotes the QR on `(hover: none) and
+    (pointer: coarse)`, changing DOM order so tab order follows reading order.
+  - **78 — figure text on a data fill keeps its own colour.** The discriminator is `ax.texts`
+    (the author's own `text()`/`annotate()` artists; the title and axis labels are never in it).
+  - **150's risk half** — the click-to-source anchor travels with the message.
+  **Two probe traps re-confirmed the hard way, both already in LESSONS.md:** a whole-page
+  `contains()` for a new class matches the *inlined CSS* (cost one wrong "it works"), and a
+  deck probe that compares only the `h` index reads every fragment step as "ignored".
+- **2026-07-29: the demand-driven tail's "LSP for the language intelligence" line was DELETED as
+  stale, not promoted.** It had survived in that tail describing work that already shipped:
+  `taliesin lsp` exists (`crates/server/src/lsp.rs` plus seven sibling modules), the VS Code
+  companion was rewritten as a thin client over it on 2026-07-28, and the specific gap the entry
+  cited as its own justification, the `#| label:` completion drift, is closed at
+  `lsp_complete.rs:281-284` and pinned by a test at `:1250`. **Do not re-file it.** It is also
+  why item 161 shrank: `textDocument/documentSymbol` now supplies the heading tree that the
+  structure panel was going to build.
 - **2026-07-29 first-hour + positioning** (144, 151, 87, 88, 94, 95, 96, 135, 136): eight CLI /
   diagnostic / LSP residuals, the two lying ui-audit probes (suite now 7/7), the first-run
   execution notice, and `docs/guide/using/choosing.tmd`. **Three filed causes were false** — 151's
