@@ -846,8 +846,9 @@ it is "tried or costed, and the answer was no." Each names the commit that settl
 > a trailing parenthesis rather than dash-separated) to keep this file free of em dashes going
 > forward; the fields are the same: value, size, where it lives, fit.
 >
-> **Idea 67 is being specced now** (2026-07-29). Everything from 68 down is deliberately parked
-> here so it is not lost. Nothing below is a commitment.
+> **Ideas 68-71 shipped 2026-07-30** (backlog items 178 + 177); **67 and 72 stay parked** with
+> their reasons intact. Everything in Clusters B-F is still deliberately parked here so it is not
+> lost. Nothing below is a commitment.
 
 ### Ground truth established this session (verified in source; do not re-derive)
 
@@ -910,6 +911,26 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
 > now 68 → 69 → 70/71 → 67 (re-justify or cut) → 72**, and the Fact 8 debounce/memo work should
 > be priced first because it is a prerequisite for 68 being pleasant and is a live defect on its
 > own terms.
+>
+> **SHIPPED 2026-07-30: 68, 69, 70 and 71, plus the Fact 8 debounce.** Backlog items 178 + 177,
+> against `docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md`. **67 and 72 remain parked
+> with their reasons below, unchanged and un-rejustified.** Three notes worth carrying, because
+> each contradicts an estimate above:
+>
+> - **Fact 5 was wrong about what was needed.** No `scan_all` was built. Inlay hints turned out to
+>   be range-scoped, and document highlight reused `lsp_nav::anchor_occurrences`, which already
+>   existed with the exact signature, so idea 70's "falls out of 67's `scan_all`" is now "needed
+>   nothing from 67 at all". **67 is not a prerequisite for anything.**
+> - **Fact 8's cost was over-estimated, and it was measured rather than argued.** One `publish` on
+>   the largest page of the 25-page guide is 33 ms in a debug build, against a 120 ms debounce
+>   window. Debouncing alone sufficed; the anchor scan got no memo. `render_buffer` is memoized
+>   on `(uri, text)` for the request path.
+> - **Idea 67's parenthetical fix for flat delimiters named the wrong mechanism.** It suggested
+>   `contributes.semanticTokenScopes` or a bundled theme. The actual fix needed neither: one
+>   `contributes.configurationDefaults` → `editor.tokenColorCustomizations` rule on the two
+>   `.tmd`-suffixed delimiter scopes, no theme and no semantic tokens. Verified in a real
+>   Extension Host. So the math-visibility half of 67 is **done and gone**; whatever case 67 has
+>   left does not include it.
 
 67. **Semantic tokens provider (`registerDocumentSemanticTokensProvider`).** **Rewritten after Fact
     7 killed its original justification. The first draft of this entry claimed the value was
@@ -935,7 +956,7 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
     project owns a strict `--tali-*` palette with 9 test-banned vendor hexes) or maps its tokens
     onto standard scopes and inherits the user's theme. Decide before implementing.
 
-68. **Inlay hints (`registerInlayHintsProvider`).** The most under-rated API for this format,
+68. **SHIPPED 2026-07-30. Inlay hints (`registerInlayHintsProvider`).** The most under-rated API for this format,
     because a `.tmd` is full of symbols whose meaning lives elsewhere: `@fig-scree` shows
     `⟨Figure 3⟩` (free, see fact 3); `[@knuth1984]` shows `⟨Knuth 1984⟩` (the bib is already read);
     `{{< include intro.tmd >}}` shows `⟨42 lines⟩`; headings show their computed section number.
@@ -945,17 +966,19 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
     kernel-free and offline**. It would have to come from TS talking to a live preview, which is a
     much weaker proposition. See idea 79 for where cell state does belong.
 
-69. **Folding ranges (`FoldingRangeProvider`).** There is no `folding` key in
+69. **SHIPPED 2026-07-30. Folding ranges (`FoldingRangeProvider`).** There is no `folding` key in
     `language-configuration.json` and no LSP folding provider, so **folding is indentation-based
     today**, which is simply wrong for a Markdown-derived format. Fold by heading level, fold a
     `:::` div, fold front matter, fold a cell. (Value: **medium-high**, felt every day. Size: **S**,
     see fact 6. Where: `lsp`. Fit: **fits**.)
 
-70. **Document highlight (`DocumentHighlightProvider`).** Cursor on `fig-scree`, every occurrence
-    in the file lights up. Falls out of idea 67's `scan_all` for almost nothing.
-    (Value: **medium**. Size: **XS** once 67 lands. Where: `lsp`. Fit: **fits**.)
+70. **SHIPPED 2026-07-30. Document highlight (`DocumentHighlightProvider`).** Cursor on `fig-scree`, every occurrence
+    in the file lights up. ~~Falls out of idea 67's `scan_all` for almost nothing.~~ It needed
+    nothing from 67: `lsp_nav::anchor_occurrences` already existed with the exact semantics, and a
+    second scanner would have been free to disagree with rename about what an anchor is.
+    (Value: **medium**. Size: **XS**, and it did not depend on 67. Where: `lsp`. Fit: **fits**.)
 
-71. **Selection ranges (`SelectionRangeProvider`), smart expand.** Ctrl+Shift+Right grows word →
+71. **SHIPPED 2026-07-30. Selection ranges (`SelectionRangeProvider`), smart expand.** Ctrl+Shift+Right grows word →
     inline math → sentence → paragraph → `:::` div → section. Genuinely pleasant in prose and
     almost never implemented in Markdown tooling. (Value: **medium**. Size: **S**. Where: `lsp`.
     Fit: **fits**.)

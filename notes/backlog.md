@@ -25,17 +25,15 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
-- **Two items have a written, self-reviewed implementation plan; nothing else on the board does.**
-  Items **178 + 177** (LSP editor ergonomics) are covered end to end by
-  [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md):
-  8 TDD tasks, real code in every step, a mutation check and a commit per task. **A session sent
-  here to implement should open that plan and start at Task 1**, which is independent of
-  everything else and is the smallest useful change. **This overrides "take from the top" for a
-  session whose job is to implement rather than to choose**, because 177/178 sit low in the ranked
-  queue for historical reasons (they were filed last), not because they are low value. Their
-  entries say the same. Read the spec first for the why; do not re-derive either document.
-  *As of filing, a parallel session was actively building items 153-156, so expect uncommitted
-  work under `crates/core/` and `corpus/reactive/`: stage by explicit pathspec, never `git add -A`.*
+- **Items 178 + 177 (LSP editor ergonomics) shipped on 2026-07-30** against
+  [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
+  all 8 tasks, `./tools/gates.sh` green. The plan and its spec stay in the repo as the record of
+  *why*; nothing on the board depends on them now. Four new LSP capabilities (inlay hints,
+  folding, document highlight, selection ranges) plus visible math delimiters, and item 178's open
+  question is **answered with a number**: one `publish` on the largest page of the 25-page guide is
+  33 ms in a debug build against a 120 ms debounce window, so debouncing alone was enough and the
+  anchor scan needs no memo. Ideas 67 and 72 remain parked in
+  [FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 3.
 
 - **The board was refilled on 2026-07-29 by an owner ruling.** Every feature parked in the old
   "Tier 3, demand-driven" tail was reviewed with the author and **promoted**. That includes the
@@ -270,70 +268,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      gate the swap on a test that `Error::location().line()` still works (the front-matter
      linter's located diagnostics depend on it). Fix the stale comment whenever this file is
      touched for any other reason.
-
-178. **The LSP re-walks the whole book on every keystroke, undebounced.** (S/M. Found 2026-07-29
-     while speccing 177, which now depends on it. **Not measured yet: measure before fixing, and
-     do not trust this entry's cost estimate over a real number.**)
-     **This is Tasks 2 and 3 of the written plan:**
-     [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md).
-     Task 3 carries the measurement step and an explicit instruction to **stop early** if
-     debouncing alone fixes this, rather than also memoizing the anchor scan. `didChange` calls `publish`
-     synchronously with no timer and no coalescing (`lsp.rs:273-283`), and that path runs
-     `check::buffer_diagnostics` → `collect_file_diagnostics_from_src` (`check.rs:293`), which
-     does a full `taliesin_core::render_single_doc` **plus**
-     `site::anchors_defined_elsewhere_in_project` (`site/xref.rs:111`). The latter finds the
-     enclosing `_site.yml` root, walks **every page in the project**, reads each from disk, and
-     resolves its includes. On a 60-page book that is a full re-render plus ~60 file reads and
-     include resolutions **per keypress**. Two independent fixes, likely both: **debounce
-     `didChange`** (the larger and simpler win), and **memoize** the render + anchor scan keyed on
-     buffer text (keying on text means there is no invalidation logic to get wrong). *The anchor
-     walk is not gratuitous, it exists so a valid cross-page `@sec-`/`@fig-` is not reported as an
-     error (`check.rs:305-310`); do not "fix" this by deleting it.*
-
-177. **Editor ergonomics: the doc-local semantic layer.** (M. **Both the spec and a task-by-task
-     implementation plan are written. Do not re-derive either.**
-     Plan (start here):
-     [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md).
-     Spec (read first, for the why):
-     [2026-07-29-lsp-editor-ergonomics-design.md](../docs/superpowers/specs/2026-07-29-lsp-editor-ergonomics-design.md).
-     **The plan's 8 tasks cover items 177 AND 178 together**; Task 1 is independent of both and is
-     the smallest possible start. Idea-pool detail:
-     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 3, ideas 67-72. Ranking provisional, same caveat
-     as 175.) **Phases: 0 math-delimiter theming → 1 item 178 → 2 inlay hints → 3 folding →
-     4 document highlight → 5 selection ranges.** Pure-Rust LSP additions, each a pure function of the
-     open buffer plus its directory: inlay hints (resolved figure/section numbers, cite
-     author-year, include line counts), folding ranges, document highlight, selection ranges,
-     semantic tokens, and a colour provider.
-     **Build order is 68 → 69 → 70/71 → 67 (re-justify or cut) → 72**, each independently
-     shippable. **The order was revised mid-session and the reason matters:** semantic tokens led
-     the first draft on the pitch "a dangling ref goes red as you type", and that is **already
-     delivered by diagnostics** (`cite/validate.rs` + `validate_xrefs_known_elsewhere`,
-     `check.rs:311`, published on every change). The remaining case for 67 is narrower (telling
-     *locally defined* from *defined on another page*, both valid, neither warning) and **may not
-     justify a slot; cutting it is live.** Do not restore the original framing.
-     Answers the author's "syntax highlighting audit / LaTeX dollar signs" note, whose lexical
-     half turns out to be already built (see idea 67). **Depends on item 178.**
-     **Two facts that de-risk it, both verified in source, both counter-intuitive:**
-     `RenderedDoc.xref_numbers` already exists and is already read by hover (`model.rs:266`,
-     `lsp.rs:1323`), so the hardest-sounding inlay hint is nearly free; and `documentSymbol`
-     already computes whole-section ranges (`lsp.rs:1453`), so folding is a re-projection.
-     **The one piece of new substrate:** `render_buffer` is unmemoized (`lsp.rs:1311`) and
-     `lsp_nav::classify_target` is a point query. **The `scan_all` full-document scanner is no
-     longer needed**: it was required only by semantic tokens (cut), and inlay hints turn out to be
-     range-scoped while document highlight needs only a targeted single-id scan. The text-keyed
-     render memo remains, and it belongs to 178.
-     **Rulings made 2026-07-29, do not reopen without new evidence:** (a) **Taliesin ships no VS
-     Code colour theme** (an editor theme is the user's own choice; minimal-config says perfect the
-     default, not seize the setting); (b) **semantic tokens and the colour provider are CUT** from
-     the slice and parked as ideas 67/72; (c) the author's dollar-sign question has a **verified
-     root cause that is not the grammar**: Taliesin's math scopes match VS Code's own
-     `markdown-math` shape exactly, and **no bundled theme defines any rule for them**, which is
-     why built-in Markdown math is equally invisible. Phase 0 fixes it with one narrowly-scoped
-     `configurationDefaults` rule on the `.tmd`-suffixed delimiter scopes.
-     *Clusters B-F of that session (paste/drop gestures, the project index and everything gated on
-     it, task/testing/URI-handler integration, LM tools, cell CodeLens) are **parked** in
-     FEATURE-IDEAS Session 3, ideas 73-86, with reasons and blockers. Three ideas are ruled out
-     there with their reasons; do not re-propose them.*
 
 175. **The long-running-cell workflow (computationally heavy / ML notebooks).** (LARGE, four
      separable parts. **Ranking is provisional and probably too low**: it sits here only because
@@ -754,6 +688,38 @@ and in [LESSONS.md](LESSONS.md) — look there rather than re-expanding this lis
 branch are enough to find its commits.
 
 ### Shipped
+
+- **2026-07-30 LSP editor ergonomics** (178, 177): all 8 tasks of
+  [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
+  one commit each, `./tools/gates.sh` green with all five interpreter canaries named and passing.
+  Zero new TypeScript: the four new capabilities reach Zed/Neovim/Helix too.
+  - **178, `didChange` is coalesced**, and the spec's open question is answered by measurement
+    rather than argument: `buffer_diagnostics` on the largest page of the 25-page guide is **33 ms
+    in a debug build** against a 120 ms window, so debouncing alone was enough and the anchor scan
+    got **no** memo. Two departures from a naive debounce, each with its own test: `pending` is a
+    **list**, because a single slot lets an edit to document B silently discard the diagnostics
+    owed to A; and the window's deadline is set by the **edit**, not refreshed by every message,
+    or a client that polls (hover as the pointer moves, inlay hints on scroll) starves the
+    publish. `render_buffer` is memoized on `(uri, text)`, and text as the key means there is no
+    invalidation logic and no staleness class.
+  - **177, inlay hints, folding, document highlight, selection ranges**, plus visible math
+    delimiters. **Three of the plan's steps were wrong in ways only the code showed.** (a) Folding
+    had to track code fences, which the plan omitted: a `# comment` on a `{python}` cell's first
+    line parses as an h1 and closes the enclosing section's fold at the cell. (b) Document
+    highlight needed **no new scanner**: `lsp_nav::anchor_occurrences` already had the exact
+    signature and semantics, and a second scanner could disagree with rename about what an anchor
+    is. (c) The plan's `bib_field` was a substring search, which finds "year" inside a title and
+    then reads the *next* field's value.
+  - **Three tests were vacuous as first written and were caught by mutation, not by review**: a
+    scope-name check that passed because `str::find` is case-sensitive; a heading-fold fixture that
+    only ever deepened, so nothing distinguished "close this level or shallower" from "close this
+    level"; and a containment check whose levels already grew, so deleting the filter changed
+    nothing. Each was rewritten until the mutation failed. **This is the third batch in which the
+    mutation step, not the test-writing step, found the real gap.**
+  - Math delimiters are pinned at three levels because the manifest alone proves nothing: the
+    manifest's shape, the **grammar** actually emitting those scope strings (a typo would be
+    silently inert), and a real Extension Host confirming VS Code *accepts* an
+    extension-contributed `editor.tokenColorCustomizations` default.
 
 - **2026-07-29 explorable cluster** (153, 154, 155, 156, 157): the whole `{js}`-side batch, on
   branch `explorable-cluster-2026-07-29`.
