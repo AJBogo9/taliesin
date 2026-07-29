@@ -542,7 +542,69 @@ fn input_shortcode(
             .map(|v| format!(" {k}=\"{}\"", escape_attr(&v)))
             .unwrap_or_default()
     };
+    // The same optional argument under a `data-` name: `animate`/`point` carry their bounds
+    // as `data-min`/`data-max`/`data-step` rather than as the HTML validation attributes,
+    // because the element holding them is a hidden field (whose `min`/`max` the browser
+    // would apply to a value the reader never types) or a `<span>` pad (where they are not
+    // attributes at all).
+    let data_attr = |data_key: &str, arg: &str| {
+        shortcode_named(args, arg)
+            .map(|v| format!(" {data_key}=\"{}\"", escape_attr(&v)))
+            .unwrap_or_default()
+    };
+    // The label is a `<label for>` for a plain form field, but `animate` and `point` are
+    // operated through a button group / a focusable pad while their VALUE lives in a hidden
+    // field — and `<label for>` pointing at a hidden input names nothing. Those two take a
+    // plain `<span>` with an id instead, which the operable element references with
+    // `aria-labelledby`.
+    let structural = kind == "animate" || kind == "point";
+    let label_id = format!("{ctrl_id}-lbl");
     let control = match kind.as_str() {
+        // A monotonic tick with transport controls. The value rides a hidden
+        // `type="number"` so `readValue`'s existing `valueAsNumber` branch returns a NUMBER
+        // (a `type="hidden"` field would hand every downstream cell the string "3"), and
+        // the `hidden` ATTRIBUTE keeps it out of both the layout and the a11y tree.
+        "animate" => {
+            let btn = |act: &str, aria: &str, glyph: &str, pressed: &str| {
+                format!(
+                    "<button type=\"button\" class=\"tali-animate-btn\" data-tali-animate=\"{act}\" \
+                     aria-label=\"{aria}\"{pressed}>{glyph}</button>"
+                )
+            };
+            format!(
+                "<span class=\"tali-animate-controls\" role=\"group\" aria-labelledby=\"{label_id}\">\
+                 {play}{step}{reset}</span>\
+                 <input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" \
+                 data-tali-tick type=\"number\" hidden{min}{max}{step_a}{fps} value=\"{start}\">",
+                play = btn("play", "Play", "▶", " aria-pressed=\"false\""),
+                step = btn("step", "Step forward", "⏭", ""),
+                reset = btn("reset", "Reset", "⏮", ""),
+                min = data_attr("data-min", "min"),
+                max = data_attr("data-max", "max"),
+                step_a = data_attr("data-step", "step"),
+                fps = data_attr("data-fps", "fps"),
+                start = escape_attr(
+                    value
+                        .as_deref()
+                        .or(shortcode_named(args, "min").as_deref())
+                        .unwrap_or("0")
+                ),
+            )
+        }
+        // A draggable 2-D point. The published value is `{"x":…,"y":…}` JSON on a hidden
+        // field tagged `data-tali-json`, which is the one widening `readValue` needed: the
+        // string still round-trips through the URL fragment like every other control.
+        "point" => format!(
+            "<span class=\"tali-point-pad\" tabindex=\"0\" role=\"application\" \
+             aria-labelledby=\"{label_id}\" aria-describedby=\"{ctrl_id}-out\"\
+             {min}{max}{step}><span class=\"tali-point-dot\"></span></span>\
+             <input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" \
+             data-tali-json type=\"hidden\" value=\"{start}\">",
+            min = data_attr("data-min", "min"),
+            max = data_attr("data-max", "max"),
+            step = data_attr("data-step", "step"),
+            start = escape_attr(&point_value(value.as_deref())),
+        ),
         "select" => {
             let opts: String = options
                 .as_deref()
@@ -589,19 +651,66 @@ fn input_shortcode(
             )
         }
     };
-    let readout = if kind == "slider" || kind == "range" {
+    // Every control whose value is not visible in the control itself gets a readout. For a
+    // slider that is a convenience; for `animate` and `point` it is the ONLY place the
+    // current value appears, and it is the live region a screen-reader user hears when the
+    // pad moves — so those two get `aria-live` as well (a slider announces itself).
+    let readout = match kind.as_str() {
+        "slider" | "range" => Some(String::new()),
+        "animate" => Some(html_escape(value.as_deref().unwrap_or("0"))),
+        "point" => Some(String::new()),
+        _ => None,
+    }
+    .map(|initial| {
+        // The id + live region are for the two structural controls only: `point` points
+        // its pad's `aria-describedby` here, and both need the readout to SPEAK because it
+        // is the only place their value appears. A slider announces its own value, so it
+        // keeps the markup it already had.
+        let extra = if structural {
+            format!(" id=\"{ctrl_id}-out\" aria-live=\"polite\"")
+        } else {
+            String::new()
+        };
         // `for` ties the readout to the control it reflects, so AT announces them together.
         format!(
-            "<output class=\"tali-input-out\" for=\"{ctrl_id}\" data-tali-out>{}</output>",
-            html_escape(value.as_deref().unwrap_or(""))
+            "<output class=\"tali-input-out\"{extra} for=\"{ctrl_id}\" data-tali-out>{}</output>",
+            if initial.is_empty() {
+                html_escape(value.as_deref().unwrap_or(""))
+            } else {
+                initial
+            }
         )
+    })
+    .unwrap_or_default();
+    let label_html = if structural {
+        format!(
+            "<span class=\"tali-input-label\" id=\"{label_id}\">{}</span>",
+            html_escape(&label)
+        )
+    } else {
+        format!(
+            "<label class=\"tali-input-label\" for=\"{ctrl_id}\">{}</label>",
+            html_escape(&label)
+        )
+    };
+    let kind_class = if structural {
+        format!(" tali-input-{kind}")
     } else {
         String::new()
     };
-    format!(
-        "<div class=\"tali-input\"><label class=\"tali-input-label\" for=\"{ctrl_id}\">{}</label>{control}{readout}</div>",
-        html_escape(&label)
-    )
+    format!("<div class=\"tali-input{kind_class}\">{label_html}{control}{readout}</div>")
+}
+
+/// The `point` control's initial `{"x":…,"y":…}` JSON, from a `value="0.3,0.7"` argument.
+/// Defaults to the centre of the default 0..1 domain, which is the only starting position
+/// that is not a claim about the reader's data.
+fn point_value(value: Option<&str>) -> String {
+    let parsed = value.and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((x.trim().parse::<f64>().ok()?, y.trim().parse::<f64>().ok()?))
+    });
+    let (x, y) = parsed.unwrap_or((0.5, 0.5));
+    format!("{{\"x\":{x},\"y\":{y}}}")
 }
 
 /// The HTML for a `{{< video >}}`: a framed `<video>` with an optional caption. Playback is

@@ -129,6 +129,69 @@
   .tali-input-out { font-variant-numeric: tabular-nums; min-width: 2.5em;
     color: var(--tali-muted); }
 
+  /* `type="animate"`: transport buttons over a hidden monotonic tick. The buttons are the
+     operable surface, so they get a real focus ring and a >=44px touch target. */
+  .tali-animate-controls { display: inline-flex; gap: .25rem; }
+  .tali-animate-btn { font: inherit; line-height: 1; min-width: 2.5rem; min-height: 2.5rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius-sm);
+    background: var(--tali-code-bg); color: inherit; cursor: pointer; }
+  .tali-animate-btn:hover { border-color: var(--tali-accent); }
+  .tali-animate-btn[aria-pressed="true"] { border-color: var(--tali-accent);
+    color: var(--tali-accent); }
+
+  /* `type="point"`: a square pad the reader drags (or arrow-keys) a dot around. Sized in
+     `rem` so it tracks the reader's text-size preference, and capped so it never eats a
+     phone viewport. `touch-action: none` is required, not cosmetic: without it the browser
+     claims the gesture for scrolling and the drag never reaches the handler. */
+  .tali-point-pad { position: relative; display: inline-block; width: 9rem; height: 9rem;
+    max-width: 60vw; max-height: 60vw; touch-action: none; cursor: crosshair;
+    border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius-sm);
+    background:
+      linear-gradient(to right, var(--tali-border) 1px, transparent 1px) 0 0 / 25% 100%,
+      linear-gradient(to bottom, var(--tali-border) 1px, transparent 1px) 0 0 / 100% 25%; }
+  .tali-point-dot { position: absolute; width: .7rem; height: .7rem; border-radius: 50%;
+    background: var(--tali-accent); transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 2px var(--tali-bg); pointer-events: none; }
+
+  /* `tali.tex(v)` output: a number / vector / matrix typeset over the bundled KaTeX FONTS
+     with our own bracket + grid layout (see the note in tali-js.js for why this is not
+     KaTeX-the-parser). The fallback stack matters — a page with no `$math$` ships no KaTeX
+     sheet, so `KaTeX_Main` is undefined there and this must land on a serif, not on the UI
+     sans. The brackets are drawn, so they stretch to any number of rows for free. */
+  .tali-math { display: inline-flex; align-items: center; gap: .3em;
+    font-family: KaTeX_Main, "Latin Modern Math", Cambria, "Times New Roman", serif;
+    font-variant-numeric: tabular-nums lining-nums; }
+  .tali-math-var { font-family: KaTeX_Math, KaTeX_Main, Cambria, serif; font-style: italic; }
+  .tali-math-rel { margin: 0 .1em; }
+  .tali-math-matrix { display: inline-flex; align-items: stretch; gap: .25em; }
+  .tali-math-delim { width: .3em; border: 1px solid currentColor; }
+  .tali-math-delim:first-child { border-right: 0; }
+  .tali-math-delim:last-child { border-left: 0; }
+  .tali-math-grid { display: inline-grid; gap: .15em .7em; align-items: center;
+    justify-items: end; padding: .15em 0; }
+  .tali-math sup { font-size: .75em; vertical-align: super; line-height: 0; }
+  /* A cell whose whole output is one typeset value has no block box of its own, so it sat
+     flush against the next paragraph. Charts never showed this — they are tall enough that
+     the crowding is invisible. */
+  .tali-js-out > .tali-math { margin: .5rem 0; }
+
+  /* `tali.table(rows)` output: a compact data table. Scrolls in its OWN box so a wide
+     result never makes the page scroll sideways. */
+  .tali-mini-table { overflow-x: auto; margin: .6rem 0; }
+  .tali-mini-table table { border-collapse: collapse; font-size: .92em; }
+  .tali-mini-table th, .tali-mini-table td { padding: .2em .6em; text-align: left;
+    border-bottom: 1px solid var(--tali-border); }
+  .tali-mini-table th { font-weight: 600; white-space: nowrap; }
+  .tali-mini-table .tali-mini-num { text-align: right;
+    font-variant-numeric: tabular-nums lining-nums; }
+  .tali-mini-table caption { caption-side: bottom; padding-top: .3em; text-align: left;
+    font-size: .85em; color: var(--tali-muted); }
+
+  /* `{glsl}` cells: the shader canvas fills its output box at a 16:9 stage. */
+  .tali-glsl-canvas { display: block; width: 100%; aspect-ratio: 16 / 9;
+    border-radius: var(--tali-radius-sm); }
+
   /* Screen-reader-only utility (used by anchor-links / focus-mode / toc-spy live regions).
      `.sr-only` is aliased so a site that hand-writes the conventional class (e.g. a footer
      `<span class='sr-only'>` label) hides it without needing a per-site custom.css. */

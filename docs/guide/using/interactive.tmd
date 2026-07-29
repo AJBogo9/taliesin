@@ -51,16 +51,89 @@ return document.createTextNode("n squared = " + tali.get("squared"));
 When an input changes, Taliesin re-runs exactly the cells downstream of it, once
 each, in dependency order, following `//| name` edges. This is one controlled pass,
 not a continuously-recomputing dataflow engine: cycles are detected and shown as an
-error rather than run. `Plot` and `d3` are available as globals for drawing; a cell
+error rather than run. `Plot`, `d3` and `num` are available as globals for drawing; a cell
 returns a DOM node (mounted for you) or builds into `tali.container`, and an
 `invalidation` promise lets long-running cells (animations, WebGL) tear down before
 a re-run.
+
+### Numerics: the `num` global
+
+Beside `Plot` and `d3` sits `num`, a small curated numerics namespace, so a cell that
+wants a probability density does not hand-roll one:
+
+```js
+const xs = num.linspace(-4, 4, 200);
+return Plot.plot({
+  marks: [Plot.line(xs, { x: (d) => d, y: (d) => num.gaussian.pdf(d, 0, 1) })],
+});
+```
+
+It holds distributions (`gaussian`/`normal`, `gamma`, `beta`, `poisson`, `exponential`,
+each with `pdf`/`pmf` and `cdf`), summary statistics (`mean`, `variance`, `sd`, `median`,
+`quantile`, `sum`), grids (`linspace`, `range`), small dense linear algebra (`matmul`,
+`matvec`, `transpose`, `identity`, `cholesky`, `inv2`, `eig2`) and a **seeded** generator.
+
+The seed is the point of `num.random`:
+
+```js
+const rng = num.random(20260729);
+const draws = rng.sample(400, () => rng.normal(0, 1));
+```
+
+A published explorable that resamples on every render is not reproducible — the prose says
+"note the outlier on the right" and the outlier is gone. `Math.random()` cannot be seeded,
+so anything that samples should come from here. Values are plain arrays throughout, so
+they cross straight into `Plot` and `d3` with no conversion.
+
+`num` is deliberately small: it is what a *drawing* cell needs, not a numerical library.
+Anything wanting more than a Cholesky or a 2×2 eigendecomposition belongs in a `{python}`
+cell, where there is a real kernel.
+
+### Showing a value: `tali.tex` and `tali.table`
+
+A cell that computes a number usually wants to *show* it. Two builders turn a value into
+output over the same DOM-return contract:
+
+```js
+//| input: fitted
+return tali.tex(tali.get("fitted").cov, { label: "Σ̂" });
+```
+
+`tali.tex(value, { label, digits })` typesets a number, a vector (a 1-D array) or a matrix
+(a 2-D array), using the same typeface as the `$math$` in your prose. It is **not** a TeX
+engine and takes no TeX: real mathematics stays `$\Sigma = L L^\top$` in the text, and this
+exists so a computed posterior precision reads as a quantity rather than as
+`0.4472135954999579`.
+
+`tali.table(rows, { columns, limit, digits })` renders an array of records (columns
+inferred in first-seen order), an array of arrays, or an array of values. It shows 20 rows
+by default and *says* when it is showing 20 of 5,000, rather than stopping silently.
+
+### Accumulating across re-runs: `tali.state`
+
+A cell body re-runs from scratch on every pass, which is what keeps this a scheduler rather
+than a reactive virtual machine. For an iterative demo — an EM sweep, a descent trace —
+that means there is nowhere to keep the thing being iterated. `tali.state` is the exception:
+
+```js
+//| input: t
+let theta = tali.state("theta", { mu: 0, sigma: 1 });
+theta = emStep(theta);
+tali.setState("theta", theta);
+return tali.tex([[theta.mu, theta.sigma]], { label: "μ, σ" });
+```
+
+Three limits are the design, not omissions. The store is **per cell**, so two cells using
+`"theta"` do not collide. Writing it **schedules nothing**, so no write can start a
+cascade. Its lifetime is the cell's: editing the cell clears it. To share a value *between*
+cells, publish it with `//| name:` — an edge the graph can see and order — rather than
+writing it here.
 
 ## Inputs without boilerplate: `{{< input >}}`
 
 The `{{< input >}}` shortcode emits a labelled, keyboard-accessible control whose
 value becomes a reactive node, so a `{js}` cell reacts with `//| input:` and no
-control-building code. Five types are available:
+control-building code. Five of them are ordinary form fields:
 
 ```markdown
 {{< input name="k" type="slider" min="1" max="10" step="1" value="3" label="k" >}}
@@ -97,6 +170,88 @@ then reacts to it:
 const name = tali.value("palette");          // "viridis" | "magma" | "cividis"
 return Plot.plot({ color: { scheme: name }, marks: [/* … */] });
 ```
+
+### Two controls that are not form fields
+
+`animate` and `point` publish through the same reactive node as everything above; they
+just are not a box you type in.
+
+**`animate`** is a play / pause / step / reset control over a monotonic tick, for a demo
+that advances a frame at a time: an EM sweep, a gradient descent, a travelling wave.
+
+```markdown
+{{< input name="t" type="animate" min="0" max="60" step="1" fps="10" label="frame" >}}
+```
+
+`min` is the starting value (and where Reset returns to), `step` is how far one frame
+moves, `fps` is how fast Play advances, and `max` makes the tick **loop** back to `min`
+rather than stop — a sweep that halts on its last frame reads as a hang. Leave `max` off
+and it counts on forever. A consuming cell is an ordinary sink:
+
+```js
+//| input: t
+const k = tali.value("t");                   // a number, not a string
+return Plot.plot({ marks: [/* … drawn for frame k … */] });
+```
+
+Playback advances **one** scheduled pass per frame, and the next frame is not requested
+until that pass has finished, so a slow cell slows the animation instead of queueing
+passes behind itself.
+
+**`point`** is a two-dimensional coordinate the reader drags, for "place a data point and
+watch it refit". It is the one control whose value is structured: `tali.value()` returns
+`{x, y}`.
+
+```markdown
+{{< input name="p" type="point" min="-3" max="3" step="0.2" value="0.8,1.2" label="new observation" >}}
+```
+
+`min`/`max` are the domain of **both** axes, `value` is `"x,y"` (default: the centre of
+the domain), and `step` is how far one arrow-key press moves. **`y` increases upward**,
+because these pads place points on plots. The pad is focusable and arrow-key operable, and
+the readout beside it announces the new coordinates, so it works without a pointer.
+
+Both controls ride the URL fragment like every other input, so a link captures the frame
+you paused on or the point you dragged to.
+
+## Shader cells: `{glsl}`
+
+A `{glsl}` cell is a fragment shader drawn to a live `<canvas>`. Like `{js}`, its kernel
+is the reader's browser: nothing runs at build time, nothing is vendored, and the whole
+language costs no payload, because WebGL is already in the page.
+
+The cell body is the shader's `main`. Taliesin supplies the vertex shader and a preamble,
+so you write only the part that differs:
+
+````markdown
+```{glsl}
+//| input: freq
+void main() {
+  vec2 p = (uv - 0.5) * 2.0;
+  float v = 0.5 + 0.5 * sin(length(p) * u_freq - u_time * 2.0);
+  gl_FragColor = vec4(v * 0.62, v * 0.55, v * 0.86, 1.0);
+}
+```
+````
+
+The preamble gives you:
+
+| name | type | meaning |
+| --- | --- | --- |
+| `uv` | `varying vec2` | position in the canvas, `0..1`, y up |
+| `u_res` | `uniform vec2` | canvas size in device pixels |
+| `u_time` | `uniform float` | seconds since the cell mounted |
+| `u_<name>` | `uniform float` or `vec2` | one per `//| input:` name |
+
+An input whose value is a number arrives as a `float`; a `point` input arrives as a
+`vec2`. **`u_time` only ticks when your shader mentions it** — a shader that does not is
+drawn once and on each input change, and then costs nothing, so a page of static shaders
+does not pin a core rendering pixels that never change.
+
+A `{glsl}` cell takes `//| label:` and `//| fig-cap:` like any other, so a shader can be a
+numbered, cross-referenceable figure. It participates in the same reactive graph, so
+`//| name:` and `//| input:` mean exactly what they mean for `{js}`, and `check` reports a
+dangling input in a shader the same way.
 
 ## Scrollytelling: `::: {.scrolly}`
 

@@ -1,0 +1,62 @@
+---
+title: "Numerics in {js} cells"
+---
+
+`{js}` cells get a `num` global beside `Plot` and `d3`: distributions, summary statistics,
+a **seeded** generator, and small dense linear algebra. It exists so a scientific
+explorable does not hand-roll a probability density in every cell.
+
+{{< input name="sigma" type="slider" min="0.3" max="3" step="0.1" value="1" label="σ" >}}
+
+```{js}
+//| label: fig-densities
+//| fig-cap: Gaussian and gamma densities over a shared grid.
+//| input: sigma
+const xs = num.linspace(-4, 6, 240);
+const s = tali.value("sigma");
+return Plot.plot({
+  height: 220,
+  marks: [
+    Plot.line(xs, { x: (d) => d, y: (d) => num.gaussian.pdf(d, 0, s), stroke: "currentColor" }),
+    Plot.line(xs, { x: (d) => d, y: (d) => num.gamma.pdf(d, 2, 1 / s), strokeDasharray: "3,3", stroke: "currentColor" }),
+    Plot.ruleY([0]),
+  ],
+});
+```
+
+A seeded generator means the sample is the *same* sample every time the page is opened, so
+the prose can point at what the reader is actually looking at:
+
+```{js}
+//| name: draws
+const rng = num.random(20260729);
+return rng.sample(400, () => rng.normal(0, 1));
+```
+
+```{js}
+//| input: draws
+return tali.tex(
+  [[num.mean(tali.get("draws")), num.sd(tali.get("draws"))]],
+  { label: "x̄, s" },
+);
+```
+
+`tali.tex` typesets a number, a vector or a matrix; `tali.table` renders rows. Neither is a
+TeX engine — real mathematics is still `$\Sigma = L L^\top$` in prose — they exist so a
+computed value can be *read* rather than stringified.
+
+```{js}
+const S = [[2, 0.8], [0.8, 1]];
+return tali.tex(num.cholesky(S), { label: "L" });
+```
+
+```{js}
+const e = num.eig2([[2, 0.8], [0.8, 1]]);
+return tali.table([
+  { component: 1, eigenvalue: e.values[0], x: e.vectors[0][0], y: e.vectors[1][0] },
+  { component: 2, eigenvalue: e.values[1], x: e.vectors[0][1], y: e.vectors[1][1] },
+]);
+```
+
+@fig-densities and the tables above all read from the same `num` namespace, which is a
+plain global: it publishes no reactive names and the scheduler does not know it exists.

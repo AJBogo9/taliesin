@@ -40,8 +40,9 @@ enough to start.**
 - **The board was refilled on 2026-07-29 by an owner ruling.** Every feature parked in the old
   "Tier 3, demand-driven" tail was reviewed with the author and **promoted**. That includes the
   **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
-  deferral no longer holds. P1 is therefore a **ranked build queue of 24**, not a drained board.
-  Take from the top.
+  deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
+  take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
+  2026-07-29.
 - **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
   line in the demand-driven tail.
 - **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
@@ -113,12 +114,13 @@ file when it lands**.
 ### P1 — build now
 
 **A ranked build queue, not a menu: the order below IS the priority order.** Take from the top.
-The ranking encodes three things: **dependencies** (153 before its graduate 158), **size** (cheap
-substrate and small wins first, the two large swings at positions 14 and 15), and the author's
+The ranking encodes three things: **dependencies**, **size** (cheap
+substrate and small wins first, then the two large swings), and the author's
 standing **feature-first policy** (170, the marketing site, is deliberately last).
 
 **Items 153-174 were promoted on 2026-07-29 by owner ruling** from the demand-driven tail, where
-several had sat since 2026-06-24. Each keeps a **pointer** to its design detail in
+several had sat since 2026-06-24; **153-157 shipped the same day** and are gone from this
+list. Each keeps a **pointer** to its design detail in
 [ROADMAP.md](ROADMAP.md) or [FEATURE-IDEAS.md](FEATURE-IDEAS.md) instead of re-expanding it here;
 that is the anti-bloat rule this file exists under. Two standing conditions apply to all of them:
 
@@ -144,49 +146,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
        `map --format json`; key `PreviewRegistry` by project root so one server serves a whole
        book; and `relativeKey`'s mirror problem — reverse sync must *select the page* (a new
        `tali-navigate` host→iframe message) before marking the block. §1-4 of the spec.
-
-153. **Cell-language registry + `{glsl}`.** (MEDIUM / low risk. Detail: [ROADMAP.md](ROADMAP.md)
-     Pillar III, the one unshipped item there.) Generalize the hardcoded `lang == "js"` gate in
-     `render/mod.rs` into a registry of client-side cell languages over the existing
-     `taliEnhancers` seam, each emitting the same wrapper-div contract; then ship `{glsl}` (a
-     fragment shader to a live `<canvas>`) as the proof the seam works. Unusually cheap because
-     **WebGL is a browser API**: nothing to vendor, no licence question, no payload. **Build this
-     before 158**, which is a registry graduate; `{sql}`/DuckDB and `{ts}`/esbuild stay CUT until
-     a corpus doc needs one. *Invariant: same wrapper-carries-data-attrs contract; idempotent
-     enhancer; never touches exec/freeze/kernel.*
-
-154. **Bundled numerics global for `{js}` cells.** (S/M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
-     #62.) A small curated numerics namespace beside the vendored `Plot`/`d3`: distribution
-     pdf/cdf (gaussian/gamma/beta/poisson/exp), summary stats, a **seeded** PRNG, and small dense
-     linear algebra (matmul, Cholesky, 2x2 eig/inv). Removes the number-one friction of
-     scientific explorables, which is hand-rolling a pdf in every cell, and lands as one more
-     drawing-global with **no reactive-graph change**. Came from the author dogfooding a
-     Bayesian-ML study site, not from an audit lens. Pin: `corpus/reactive/numerics.tmd`.
-     *Keep it small and curated: this must not grow into a numeric VM.*
-
-155. **Two explorable `{{< input >}}` types: `animate` tick + draggable `point`.** (M.
-     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #63.) Extend the shipped input vocabulary with (a) a
-     play/pause/step/reset control publishing a monotonic tick, so iterative demos advance a
-     frame (EM sweeps, CAVI, gradient descent), and (b) a drag/click 2-D point publishing
-     `{x, y}`, for "place a data point and watch it refit". Both reuse
-     `registerInput`/`scheduleFrom`, exactly as scrolly did. **The trap is named and standing:**
-     the tick must schedule **one** downstream pass per frame through the existing scheduler plus
-     `invalidation`, never a continuous dataflow loop. Pins: `corpus/reactive/animate.tmd` +
-     `corpus/reactive/point.tmd`.
-
-156. **`tali.state`, a blessed cross-re-run store.** (S/M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
-     #64.) A small keyed store that survives a scheduled re-run so a tick-driven demo
-     accumulates (EM parameters across frames) instead of recomputing from scratch; cleared on
-     cell edit, deck-skip, never writes back to source. Formalizes what `invalidation` today only
-     tears down. **Pairs with 155 and should follow it.** Scope to a per-name store with an
-     explicit lifecycle: same reactive-VM trap as 155.
-
-157. **Richer `{js}` output helpers: KaTeX value + mini table.** (S.
-     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #65.) Convenience builders over the existing
-     DOM-return contract: typeset a returned number/array/matrix as KaTeX math (reusing the
-     bundled KaTeX, so a posterior precision echoes typeset rather than as plain text), plus a
-     minimal table renderer for arrays/records. Closes the rich-display gap against Jupyter's
-     MIME protocol with no new machinery. Smallest item in the explorable cluster.
 
 163. **Site-level shared bibliography + hygiene.** (M.) `bibliography:` is per-document only, so
      a growing blog retypes keys per post and nothing reports an unused or duplicate entry. Allow
@@ -258,11 +217,15 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      HTML-only. It is a *rendering of* the build artifact, not a second compiler target.
 
 158. **Opt-in Pyodide `{python}` cells.** (L, needs-care. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
-     #66. **Depends on 153.**) Client-side `{python}` backed by Pyodide, feeding the reactive
+     #66. **Its dependency on 153 is discharged: the registry shipped 2026-07-29**, so this
+     is now a `registerLanguage` call plus the bundle question.) Client-side `{python}`
+     backed by Pyodide, feeding the reactive
      graph like any cell, so a published document stays interactive with numpy/scipy and no
      kernel. This is what JupyterLite is. **Bundle guard is the whole risk:** Pyodide is 10 MB+,
      so opt-in per page and vendored offline. Known caveats: **no torch**, and a real cold-start
-     cost. Registry graduate, so it must land as a *registration*, not as surgery.
+     cost. Registry graduate, so it must land as a *registration*, not as surgery — the seam is
+     `window.taliJs.registerLanguage` (client) + `render/client_lang.rs` (server), and `{glsl}`
+     is the worked example of using it.
 
 164. **`docs-as-spec`.** (L. [ROADMAP.md](ROADMAP.md) Pillar V.) Promote the two dogfooded books
      to a versioned normative spec: an RFC-2119 `.tmd`-dialect reference plus a WebSocket
@@ -792,6 +755,40 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-07-29 explorable cluster** (153, 154, 155, 156, 157): the whole `{js}`-side batch, on
+  branch `explorable-cluster-2026-07-29`.
+  - **153 — the cell-language registry, with `{glsl}` as the proof.** `render/client_lang.rs`
+    (server) + `window.taliJs.registerLanguage` (client) replace six spellings of
+    `lang == "js"`. **The refactor found a live bug**: `reactive.rs` read "any cell that is not
+    `js`" as "a cell that could publish names at runtime", so a second client language would
+    have silently switched the whole dangling-input check off for its page. `{glsl}` is one
+    file and zero vendored bytes (WebGL is a browser API). **Two gaps closed on the way**: the
+    External/site path gated the runtime on `{js}` alone (a `{glsl}`-only page shipped a dead
+    canvas), and a static shader blanked on any resize (`canvas.width =` clears the buffer).
+  - **154 — the `num` global**, first-party, on the existing `{js}` asset gate. Keep it
+    curated: it is what a *drawing* cell needs, not a numeric library.
+  - **155 — `animate` + `point`.** Both publish through the same hidden `[data-tali-input]`
+    element and the same `input` event as a slider, so the fragment sync, the readout and the
+    single scheduled pass are all reused. The one widening was `readValue` parsing
+    `data-tali-json`. **The tick is a `type="number"` field, not `type="hidden"`** — the latter
+    hands every downstream cell the *string* `"3"`.
+  - **156 — `tali.state`**, per cell, scheduling nothing, keyed by the container id so an edit
+    clears it for free.
+  - **157 — `tali.tex` / `tali.table`.** **Not KaTeX-the-parser** (only its CSS + fonts are
+    bundled, and a 280 KB parser on the `{js}` gate is not worth it): the grammar is closed, so
+    the glyphs come from KaTeX's faces and the bracket/grid layout is ours, with a serif
+    fallback for a page that ships no KaTeX sheet.
+  - **Coverage**: `crates/core/tests/client_lang.rs` + `crates/server/tests/reactive_browser.rs`
+    (the first browser test of the reactive client — 9 tests over all four new corpus pages,
+    reading pixels, published values and DOM back). 13 mutants killed.
+  - **Two illusions deleted rather than shipped**: both candidate assertions for 155's
+    "one pass per frame" trap stayed green with the pacing removed, so the property is recorded
+    in [DETECTION-DEBT.md](DETECTION-DEBT.md) instead of faked. See the note in
+    `reactive_browser.rs`.
+  - **A new gate came out of it**: `every_tali_custom_property_read_is_defined_somewhere`
+    (`token_contract.rs`). Three invented `--tali-*` names made the `point` pad render as a
+    floating dot with no box, and **only a browser screenshot caught it** — a `var()` naming a
+    property nothing defines makes the browser drop the whole declaration, silently.
 - **2026-07-29 ruled-and-built batch** (101, 122, 71, 78, 149's buildable half, 18's doc halves,
   41's `alt` half, 150's risk half). Four owner rulings taken in one pass, then built:
   - **101 — the licence position on what Taliesin *emits* is stated.**

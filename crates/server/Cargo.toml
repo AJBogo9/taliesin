@@ -34,6 +34,10 @@ required-features = ["headless-js"]
 name = "deck_browser"
 required-features = ["headless-js"]
 
+[[test]]
+name = "reactive_browser"
+required-features = ["headless-js"]
+
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
 dialoguer = { workspace = true }

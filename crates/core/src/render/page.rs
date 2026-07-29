@@ -313,8 +313,19 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // emitted inline just below, ahead of the deferred app.js, so it already exists by the
             // time this runs), and the deferred jslibs (d3/Plot) have executed by the
             // DOMContentLoaded mount, so the cells still see `window.d3` / `Plot`.
-            let tali_js_inline = if !bare && has_js_cells(p.body) {
-                format!("\n<script>{TALIESIN_JS}</script>")
+            //
+            // Gated on [`has_client_cells`], NOT on `{js}` alone: every registered
+            // client-side language runs through this one runtime, so a page whose only
+            // cells are `{glsl}` needs it just as much. Each language's own enhancer
+            // follows it inline (and must, since it calls `window.taliJs.registerLanguage`
+            // on the object this script has just defined).
+            let tali_js_inline = if !bare && has_client_cells(p.body) {
+                let glsl = if has_client_cells_of(p.body, "glsl") {
+                    format!("\n<script>{GLSL_JS}</script>")
+                } else {
+                    String::new()
+                };
+                format!("\n<script>{TALIESIN_JS}</script>{glsl}")
             } else {
                 String::new()
             };
@@ -762,18 +773,27 @@ pub(super) fn default_favicon() -> String {
     )
 }
 
-/// Remove `<script type="application/tali-js">…</script>` blocks (a `{js}` cell's
-/// runtime payload) from a rendered body, leaving the empty output container behind.
-/// Used only for `--bare` output, whose contract is zero `<script>`; a `{js}` cell is
-/// inert without its browser runtime. The author source escapes any `</script` to
-/// `<\/script` (see `emit_js_cell`), so the first `</script>` after the opening tag
-/// is always the real terminator.
+/// Remove every client-side cell's `<script type="application/tali-…">…</script>` payload
+/// from a rendered body, leaving the empty output container behind. Used only for `--bare`
+/// output, whose contract is zero `<script>`; a client-side cell is inert without its
+/// browser runtime. The author source escapes any `</script` to `<\/script` (see
+/// [`emit_client_cell`]), so the first `</script>` after the opening tag is always the
+/// real terminator.
+///
+/// Driven off the [`client_lang`] registry rather than a literal, so registering a
+/// language cannot leave a `<script>` in output whose whole contract is having none.
 fn strip_tali_js_scripts(body: &str) -> String {
-    const OPEN: &str = "<script type=\"application/tali-js\"";
+    CLIENT_LANGS.iter().fold(body.to_string(), |acc, lang| {
+        strip_scripts_of_type(&acc, lang.mime)
+    })
+}
+
+fn strip_scripts_of_type(body: &str, mime: &str) -> String {
+    let open = format!("<script type=\"{mime}\"");
     const CLOSE: &str = "</script>";
     let mut out = String::with_capacity(body.len());
     let mut rest = body;
-    while let Some(start) = rest.find(OPEN) {
+    while let Some(start) = rest.find(&open) {
         out.push_str(&rest[..start]);
         let after = &rest[start..];
         match after.find(CLOSE) {

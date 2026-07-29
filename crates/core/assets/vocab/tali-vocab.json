@@ -38,6 +38,11 @@
       "name": "js"
     },
     {
+      "description": "Fragment shader drawn to a live canvas in the reader's browser (no kernel).",
+      "executes": false,
+      "name": "glsl"
+    },
+    {
       "description": "Diagram rendered at build time.",
       "executes": false,
       "name": "mermaid"
@@ -480,7 +485,9 @@
     "number",
     "checkbox",
     "text",
-    "select"
+    "select",
+    "animate",
+    "point"
   ],
   "mathCommands": [
     {

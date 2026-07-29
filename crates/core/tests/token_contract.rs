@@ -21,7 +21,10 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-block-id",
     "data-code-lines",
     "data-cw-lines",
+    "data-fps",
     "data-inputs",
+    "data-max",
+    "data-min",
     "data-name",
     "data-scrolly-name",
     "data-section-end",
@@ -29,6 +32,8 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-source-file",
     "data-sourcepos",
     "data-state",
+    "data-step",
+    "data-tali-animate",
     "data-tali-input",
     "data-tali-out",
     "data-tali-theorem-kind",
@@ -71,12 +76,15 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-drawer-wired",
     "data-filename",
     "data-format",
+    "data-fps",
     "data-i",
     "data-inputs",
     "data-label",
     "data-level",
+    "data-max",
     "data-media-wired",
     "data-mermaid-error",
+    "data-min",
     "data-name",
     "data-nav-wired",
     "data-playing",
@@ -93,7 +101,9 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-src",
     "data-src-",
     "data-state",
+    "data-step",
     "data-tabset-init",
+    "data-tali-animate",
     "data-tali-book",
     "data-tali-bound",
     "data-tali-cell-source",
@@ -103,6 +113,7 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-drawer-close",
     "data-tali-input",
     "data-tali-input-bound",
+    "data-tali-json",
     "data-tali-lb",
     "data-tali-n",
     "data-tali-out",
@@ -112,6 +123,7 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-src",
     "data-tali-theme-toggle",
     "data-tali-theorem-kind",
+    "data-tali-tick",
     "data-tali-xref",
     "data-target",
     "data-theme",
@@ -432,5 +444,124 @@ fn every_emitted_attribute_has_a_runtime_consumer() {
          or by dataset accessor:\n{orphans:#?}\n\
          Either a rename moved the Rust side without the browser side, or the attribute \
          is informational and belongs in NO_RUNTIME_CONSUMER with a reason."
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The `--tali-*` custom-property vocabulary
+// ---------------------------------------------------------------------------
+
+/// Every `--tali-*` a stylesheet READS must be defined somewhere, or carry a fallback.
+///
+/// **Why this gate exists.** CSS custom properties fail *silently and destructively*: a
+/// `var()` naming a property nothing defines makes the whole declaration invalid at
+/// computed-value time, so the browser drops it — and for a shorthand it drops every
+/// longhand with it. `border: 1px solid var(--tali-rule)` where no `--tali-rule` exists is
+/// not a hairline in the wrong colour, it is **no border at all**, and nothing anywhere
+/// reports it: the sheet parses, the page loads, the suite is green, and the element is
+/// simply invisible.
+///
+/// This is not hypothetical. It shipped on 2026-07-29 in the same change that added this
+/// test: three invented names (`--tali-rule`, `--tali-surface`, `--tali-radius`, against
+/// the real `--tali-border`, `--tali-code-bg`, `--tali-radius-sm`) made the draggable
+/// `point` pad render as a floating dot with no box, and it took a browser screenshot to
+/// notice. The real vocabulary is 60-odd names; guessing one is easy.
+///
+/// A `var(--x, fallback)` reference is exempt: the fallback is what makes it well-defined.
+#[test]
+fn every_tali_custom_property_read_is_defined_somewhere() {
+    let root = repo_root();
+
+    // Definitions come from anywhere a value can be assigned: the bundled sheets (including
+    // inside `@keyframes`), a JS `setProperty`, and the Rust that emits inline custom
+    // themes / per-page style blocks.
+    let mut defined: BTreeSet<String> = BTreeSet::new();
+    let mut read: BTreeSet<(String, String)> = BTreeSet::new(); // (name, file)
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for d in [
+        root.join("crates/core/assets/css"),
+        root.join("crates/core/assets/js"),
+        root.join("crates/core/assets/js/code-enhance"),
+        root.join("web-client"),
+    ] {
+        if let Ok(entries) = std::fs::read_dir(&d) {
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                if name.ends_with(".min.js") || !(name.ends_with(".js") || name.ends_with(".css")) {
+                    continue;
+                }
+                files.push(p);
+            }
+        }
+    }
+    let mut rs = Vec::new();
+    for d in ["crates/core/src", "crates/server/src"] {
+        rust_files(&root.join(d), &mut rs);
+    }
+    files.extend(rs);
+    files.sort();
+
+    for p in &files {
+        let text = std::fs::read_to_string(p).unwrap_or_default();
+        let label = p
+            .strip_prefix(&root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .to_string();
+        for (i, _) in text.match_indices("--tali-") {
+            let rest = &text[i..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+                .unwrap_or(rest.len());
+            let name = rest[..end].to_string();
+            let after = rest[end..].trim_start();
+            // `--x:` is a definition (in a rule, in `@keyframes`, or in a JS/Rust string).
+            if after.starts_with(':') {
+                defined.insert(name);
+                continue;
+            }
+            // `setProperty('--x', …)` / `setProperty("--x", …)` is a runtime definition.
+            let before = &text[..i];
+            let head = before.trim_end().trim_end_matches(['"', '\'']);
+            if head.ends_with("setProperty(") {
+                defined.insert(name);
+                continue;
+            }
+            // A read. `var(--x, fallback)` is well-defined by its fallback, so exempt.
+            if before.trim_end().ends_with("var(") && !after.starts_with(',') {
+                read.insert((name, label.clone()));
+            }
+        }
+    }
+
+    assert!(
+        defined.len() > 30,
+        "only {} `--tali-*` definitions found — the scan broke, and an empty gate passes \
+         forever",
+        defined.len()
+    );
+    assert!(
+        read.len() > 30,
+        "only {} `--tali-*` reads found — the scan broke",
+        read.len()
+    );
+
+    let orphans: Vec<String> = read
+        .iter()
+        .filter(|(name, _)| !defined.contains(name))
+        .map(|(name, file)| format!("{name} (read in {file})"))
+        .collect();
+    assert!(
+        orphans.is_empty(),
+        "these `--tali-*` properties are read but never defined, so every declaration \
+         using one is silently DROPPED by the browser (a missing border, not a wrong \
+         one). Use an existing token or define it in tokens.css:\n  {}",
+        orphans.join("\n  ")
     );
 }

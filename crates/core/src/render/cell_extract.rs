@@ -210,10 +210,13 @@ pub(super) fn code_lang(info: &str) -> Option<String> {
     Some(lang.to_string())
 }
 
-/// Parse the native `{js}` cell options (`//| name:`/`//| viewof:`/`//| input:`)
-/// from the raw fence body. Empty for every other language.
+/// Parse the reactive cell options (`//| name:`/`//| viewof:`/`//| input:`) from the raw
+/// fence body. Read for every **client-side** language (`{js}`, `{glsl}`; see
+/// [`super::client_lang`]) and empty for every other, so a `{glsl}` shader can take a
+/// `//| input: k` uniform through the same graph a `{js}` cell uses. `//` is the comment
+/// marker in both languages, so [`option_directive`] already recognizes the directive.
 pub(super) fn parse_js_opts(literal: &str, lang: &str) -> JsOpts {
-    if lang != "js" {
+    if super::client_lang(lang).is_none() {
         return JsOpts::default();
     }
     JsOpts {

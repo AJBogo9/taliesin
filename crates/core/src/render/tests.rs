@@ -3148,6 +3148,156 @@ fn input_slider_shortcode_emits_reactive_control() {
     assert!(h.contains(">k</label>"), "label: {h}");
 }
 
+/// `type="animate"` (item 155): transport buttons over a hidden **numeric** tick.
+///
+/// The `type="number"` is the load-bearing detail and the reason this asserts it by name.
+/// `readValue` returns `valueAsNumber` for `number`/`range` and the raw STRING for anything
+/// else, so a `type="hidden"` field would hand every downstream cell `"3"` instead of `3` —
+/// and `"3" + 1` is `"31"`, which is a wrong plot rather than an error.
+#[test]
+fn input_animate_shortcode_emits_transport_controls_over_a_numeric_tick() {
+    let doc = render_document_with_includes(
+        "{{< input name=\"t\" type=\"animate\" min=\"0\" max=\"60\" step=\"1\" fps=\"10\" label=\"frame\" >}}\n",
+        std::path::Path::new("."),
+    );
+    let h = doc.body_html();
+    assert!(
+        h.contains("class=\"tali-input tali-input-animate\""),
+        "kind class: {h}"
+    );
+    assert!(
+        h.contains("data-tali-input=\"t\"") && h.contains("data-tali-tick"),
+        "the reactive node + the tick marker the runtime binds on: {h}"
+    );
+    assert!(
+        h.contains("type=\"number\" hidden"),
+        "the tick must be a hidden NUMBER field, not type=hidden: {h}"
+    );
+    for (act, aria) in [
+        ("play", "Play"),
+        ("step", "Step forward"),
+        ("reset", "Reset"),
+    ] {
+        assert!(
+            h.contains(&format!("data-tali-animate=\"{act}\"")),
+            "missing the {act} button: {h}"
+        );
+        assert!(
+            h.contains(&format!("aria-label=\"{aria}\"")),
+            "{act} label: {h}"
+        );
+    }
+    assert!(
+        h.contains("data-min=\"0\"")
+            && h.contains("data-max=\"60\"")
+            && h.contains("data-step=\"1\"")
+            && h.contains("data-fps=\"10\""),
+        "bounds ride as data-* (a hidden field's own min/max would be applied by the \
+         browser to a value the reader never types): {h}"
+    );
+    // The buttons are the operable surface, so the label is a `<span>` they reference —
+    // a `<label for>` pointing at a hidden input names nothing.
+    assert!(
+        h.contains("<span class=\"tali-input-label\" id=\"qin-t-lbl\">frame</span>")
+            && h.contains("aria-labelledby=\"qin-t-lbl\""),
+        "label wired to the button group: {h}"
+    );
+    assert!(
+        h.contains("aria-live=\"polite\""),
+        "the readout is this control's only visible value, so it must speak: {h}"
+    );
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("input type"))
+    );
+}
+
+/// `type="point"` (item 155): a focusable pad publishing `{x, y}` JSON.
+#[test]
+fn input_point_shortcode_emits_a_focusable_pad_publishing_json() {
+    let doc = render_document_with_includes(
+        "{{< input name=\"p\" type=\"point\" min=\"-3\" max=\"3\" step=\"0.2\" value=\"0.8,1.2\" label=\"obs\" >}}\n",
+        std::path::Path::new("."),
+    );
+    let h = doc.body_html();
+    assert!(
+        h.contains("class=\"tali-input tali-input-point\""),
+        "kind class: {h}"
+    );
+    assert!(
+        h.contains("data-tali-json") && h.contains("type=\"hidden\""),
+        "the structured value rides a hidden field tagged for JSON parsing: {h}"
+    );
+    assert!(
+        h.contains(r#"value="{&quot;x&quot;:0.8,&quot;y&quot;:1.2}""#),
+        "`value=\"x,y\"` becomes the published JSON: {h}"
+    );
+    assert!(
+        h.contains("class=\"tali-point-pad\" tabindex=\"0\" role=\"application\""),
+        "the PAD is the operable element, and it is keyboard-reachable: {h}"
+    );
+    assert!(
+        h.contains("aria-labelledby=\"qin-p-lbl\"") && h.contains("aria-describedby=\"qin-p-out\""),
+        "pad named by the label and described by the live readout: {h}"
+    );
+    assert!(
+        h.contains("data-min=\"-3\"")
+            && h.contains("data-max=\"3\"")
+            && h.contains("data-step=\"0.2\""),
+        "the pad carries its own domain: {h}"
+    );
+}
+
+/// The default position is the centre of the domain, because any other default is a claim
+/// about data the document has not shown yet.
+#[test]
+fn a_point_without_a_value_starts_at_the_centre() {
+    let h = render_document_with_includes(
+        "{{< input name=\"p\" type=\"point\" >}}\n",
+        std::path::Path::new("."),
+    )
+    .body_html();
+    assert!(
+        h.contains(r#"value="{&quot;x&quot;:0.5,&quot;y&quot;:0.5}""#),
+        "centre of the default 0..1 domain: {h}"
+    );
+}
+
+/// A malformed `value=` must not produce malformed JSON — the runtime would then hand a
+/// downstream cell a raw string and every `p.x` on the page would be `undefined`.
+#[test]
+fn a_point_with_an_unparseable_value_falls_back_rather_than_emitting_junk() {
+    for bad in ["nonsense", "1", "a,b", "1,"] {
+        let h = render_document_with_includes(
+            &format!("{{{{< input name=\"p\" type=\"point\" value=\"{bad}\" >}}}}\n"),
+            std::path::Path::new("."),
+        )
+        .body_html();
+        assert!(
+            h.contains(r#"value="{&quot;x&quot;:0.5,&quot;y&quot;:0.5}""#),
+            "`value=\"{bad}\"` should fall back to the centre, got: {h}"
+        );
+    }
+}
+
+/// Both new types are in the linted vocabulary, so a typo still gets a did-you-mean rather
+/// than rendering a silent slider.
+#[test]
+fn the_new_input_types_are_in_the_linted_vocabulary() {
+    let doc = render_document_with_includes(
+        "{{< input name=\"t\" type=\"animte\" >}}\n",
+        std::path::Path::new("."),
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("did you mean `animate`?")),
+        "expected a did-you-mean for `animte`: {:?}",
+        doc.warnings
+    );
+}
+
 /// The `data-block-id` of a `tali-input` block, extracted from rendered `body_html`.
 fn tali_input_block_id(h: &str) -> String {
     let key = "class=\"tali-input\" data-block-id=\"";

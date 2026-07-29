@@ -92,6 +92,37 @@ fn no_exec_renders_a_js_cell_as_source_instead_of_running_it() {
     );
 }
 
+/// The same guarantee for the second client-side language (item 153). This is the seam a
+/// registry makes easy to get wrong: `--no-exec` was spelled `lang == "js"`, so a language
+/// added to the registry without moving that line would keep running under the flag — the
+/// flag's whole promise being that *nothing* the document carries executes in the browser.
+#[test]
+fn no_exec_renders_a_glsl_cell_as_source_too() {
+    const LIVE_SHADER: &str = r#"type="application/tali-glsl""#;
+    let doc = fixture(
+        "glsl",
+        "---\ntitle: Shader\n---\n\n```{glsl}\nvoid main() { gl_FragColor = vec4(1.0); }\n```\n",
+    );
+    let path = doc.to_str().unwrap();
+
+    // The known-positive row: without the flag the shader IS live.
+    let live = render(path, false);
+    assert!(
+        live.contains(LIVE_SHADER) && live.contains("tali-glsl-cell"),
+        "without the flag a {{glsl}} cell must be live"
+    );
+
+    let inert = render(path, true);
+    assert!(
+        !inert.contains(LIVE_SHADER) && !inert.contains("tali-glsl-cell"),
+        "under --no-exec no shader may be handed to the browser"
+    );
+    assert!(
+        inert.contains("gl_FragColor"),
+        "the shader source must still render"
+    );
+}
+
 #[test]
 fn no_exec_does_not_number_a_js_figure_it_will_not_emit() {
     // A labelled `{js}` figure materializes only because the render pass emits it. With the

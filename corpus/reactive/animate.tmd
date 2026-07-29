@@ -1,0 +1,53 @@
+---
+title: "Animated ticks and cross-run state"
+---
+
+`{{< input type="animate" >}}` is a play / pause / step / reset control over a monotonic
+tick. It publishes a plain number through the same reactive node a slider does, so a cell
+advances a frame by listing it in `//| input:`.
+
+{{< input name="t" type="animate" min="0" max="60" step="1" fps="10" label="frame" >}}
+
+Each frame is **one** scheduled downstream pass, and the next frame is not requested until
+that pass has finished — a slow cell slows the animation rather than queueing behind it.
+
+```{js}
+//| name: wave
+//| input: t
+const k = tali.value("t");
+return num.linspace(0, 6.28, 120).map((x) => Math.sin(x + k * 0.12));
+```
+
+```{js}
+//| label: fig-wave
+//| fig-cap: A travelling wave, advanced one frame per tick.
+//| input: wave
+return Plot.plot({
+  height: 180,
+  y: { domain: [-1.1, 1.1] },
+  marks: [Plot.line(tali.get("wave"), { x: (_, i) => i, y: (d) => d, stroke: "currentColor" })],
+});
+```
+
+## Accumulating across frames
+
+A cell body re-runs from scratch on every pass, which is what keeps this a scheduler rather
+than a reactive virtual machine. `tali.state` is the blessed exception: a small per-cell
+store that survives a scheduled re-run, so an iterative demo accumulates instead of
+recomputing from nothing each frame.
+
+```{js}
+//| input: t
+const seen = tali.state("seen", []);
+const k = tali.value("t");
+if (seen[seen.length - 1] !== k) seen.push(k);
+tali.setState("seen", seen.slice(-8));
+const p = document.createElement("p");
+p.textContent = "last frames: " + tali.state("seen").join(", ");
+return p;
+```
+
+The store is **per cell**, writing it schedules nothing, and its lifetime is the cell's:
+editing this cell mints a new block id and the old store is dropped with the old cell. To
+share a value *between* cells, publish it with `//| name:` — an edge the graph can see and
+order — rather than writing it here.

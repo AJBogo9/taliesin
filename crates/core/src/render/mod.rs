@@ -63,7 +63,10 @@ use cell_extract::{
 };
 mod cell_numbered;
 pub(crate) use cell_numbered::numbered_caption;
-use cell_numbered::{emit_code_listing, emit_js_cell, emit_js_figure};
+use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
+mod client_lang;
+pub(crate) use client_lang::CLIENT_LANGS;
+pub use client_lang::{ClientLang, client_lang, has_client_cells, has_client_cells_of};
 mod deck;
 pub use deck::{
     DeckParts, ScriptSummary, assemble_deck_page, deck_client_script, deck_overlay_html,
@@ -882,14 +885,14 @@ fn render_internal_impl(
                     // later figure down by one. `executes_to_kernel` is the canonical
                     // executable set (`exec::kernel_lang` is drift-locked to it).
                     let include = cell.as_ref().is_none_or(|c| c.include);
-                    // Under `--no-exec` a `{js}` figure no longer materializes, so it must
-                    // not burn a figure number or register an anchor — the same reasoning
-                    // the comment above gives for `{bash}`/`{sql}`, reached for the same
-                    // reason (nothing will emit the float). It falls through to the
-                    // keeps-its-source arm below and warns like any other non-executing
-                    // labelled cell.
+                    // Under `--no-exec` a client-side figure (`{js}`, `{glsl}`) no longer
+                    // materializes, so it must not burn a figure number or register an
+                    // anchor — the same reasoning the comment above gives for
+                    // `{bash}`/`{sql}`, reached for the same reason (nothing will emit the
+                    // float). It falls through to the keeps-its-source arm below and warns
+                    // like any other non-executing labelled cell.
                     let emitted_at_render_time =
-                        lang == "mermaid" || (lang == "js" && !no_exec_in_force());
+                        lang == "mermaid" || (client_lang(&lang).is_some() && !no_exec_in_force());
                     if !(emitted_at_render_time || (executes_to_kernel(&lang) && include)) {
                         if let Some(a) = anchor {
                             warnings.push(if include {
@@ -940,14 +943,17 @@ fn render_internal_impl(
                                 &attrs,
                                 &fig_num,
                             )),
-                            "js" => html.push_str(&emit_js_figure(
+                            l if client_lang(l).is_some() => html.push_str(&emit_client_figure(
+                                client_lang(l).expect("guarded by the match arm"),
                                 &code,
                                 &id,
                                 cell.as_ref().map(|c| &c.js),
-                                anchor.as_deref(),
-                                caption.as_deref(),
                                 &attrs,
-                                &fig_num,
+                                &FloatLabel {
+                                    anchor: anchor.as_deref(),
+                                    caption: caption.as_deref(),
+                                    num: &fig_num,
+                                },
                             )),
                             // Python/R: the source renders now; tag the cell so the
                             // executor wraps the (later) output in the numbered figure.
@@ -1062,17 +1068,20 @@ fn render_internal_impl(
                     }
                 }
             }
-        } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "js") {
+        } else if let Some((c, spec)) = cell
+            .as_ref()
+            .and_then(|c| client_lang(&c.lang).map(|spec| (c, spec)))
+        {
             if no_exec_in_force() {
-                // `--no-exec`: a `{js}` cell is a code cell whose kernel is the browser, so
-                // it renders as source like a `{python}` cell with no kernel does (item 79).
-                // `emit` keeps the highlighted source and the block's id/sourcepos, so
-                // click-to-source and the incremental swap are unaffected.
+                // `--no-exec`: a client-side cell is a code cell whose kernel is the
+                // browser, so it renders as source like a `{python}` cell with no kernel
+                // does (item 79). `emit` keeps the highlighted source and the block's
+                // id/sourcepos, so click-to-source and the incremental swap are unaffected.
                 emit(node, &attrs, &mut html);
             } else {
-                // Native interactive `{js}` cell: the tali-js enhancer runs it
-                // client-side (no Observable runtime).
-                html.push_str(&emit_js_cell(&c.code, &id, &c.js, &attrs));
+                // Native interactive client-side cell (`{js}`, `{glsl}`): the matching
+                // enhancer runs it in the reader's browser (no Observable runtime).
+                html.push_str(&emit_client_cell(spec, &c.code, &id, &c.js, &attrs));
             }
         } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
             // `echo: false` / `include: false`: keep the block so the executor still
@@ -1689,13 +1698,14 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{walk_s}{tabset_s}{scrolly_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
             String::new()
         },
-        talijs_s = gate(has_js_cells(body), TALIESIN_JS),
+        talijs_s = gate(has_client_cells(body), TALIESIN_JS),
+        glsl_s = gate(has_client_cells_of(body, "glsl"), GLSL_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
@@ -1740,17 +1750,28 @@ pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
 const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
 const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
+/// The curated numerics/stats namespace `{js}` cells draw with (`num`): distributions,
+/// summary statistics, a seeded PRNG and small dense linear algebra. First-party and
+/// tiny, so it rides with d3/Plot on the same `{js}` gate rather than earning its own.
+const NUMERICS_JS: &str = include_str!("../../assets/js/numerics.js");
+/// `{glsl}` cells: compiles a fragment shader onto a `<canvas>` and drives its uniforms
+/// from the same reactive graph. Registers into `tali-js.js`'s language registry, so it is
+/// gated on `{glsl}` cells being present rather than shipping with every `{js}` page.
+const GLSL_JS: &str = include_str!("../../assets/js/glsl.js");
 
-/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. Emit
-/// only when a page actually has `{js}` cells (gated on [`has_js_cells`]). The
-/// enhancer itself rides in [`code_scripts`].
+/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot + the
+/// first-party numerics global. Emit only when a page actually has `{js}` cells (gated on
+/// [`has_js_cells`]). The enhancer itself rides in [`code_scripts`].
 pub(crate) fn js_cell_head() -> String {
-    format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>")
+    format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>\n<script>{NUMERICS_JS}</script>")
 }
 
-/// True if a rendered body contains native `{js}` cells (gates the Plot/d3 libs).
+/// True if a rendered body contains native `{js}` cells (gates the Plot/d3/numerics libs).
+///
+/// Deliberately **narrower** than [`has_client_cells`]: a `{glsl}`-only page needs the
+/// shared runtime but not half a megabyte of plotting library.
 pub fn has_js_cells(body: &str) -> bool {
-    body.contains("application/tali-js")
+    has_client_cells_of(body, "js")
 }
 
 // `code-enhance.js` is authored as ordered per-feature fragments under
@@ -1902,10 +1923,13 @@ pub fn mermaid_bundle_js() -> String {
     )
 }
 
-/// The vendored d3 + Observable Plot globals for the conditional `jslibs.<hash>.js`
-/// (ships only on pages with `{js}` cells).
+/// The `{js}` drawing globals for the conditional `jslibs.<hash>.js` (ships only on pages
+/// with `{js}` cells): vendored d3 + Observable Plot, plus the first-party numerics
+/// namespace. **Must stay the External-mode twin of [`js_cell_head`]** — a global present
+/// on one path and absent on the other is a cell that works in preview and is `undefined`
+/// in the built site, which no render test would see.
 pub fn js_cell_libs_js() -> String {
-    format!("{D3_JS}\n;\n{PLOT_JS}")
+    format!("{D3_JS}\n;\n{PLOT_JS}\n;\n{NUMERICS_JS}")
 }
 
 /// True if a rendered body contains a mermaid diagram (gates the mermaid file link).

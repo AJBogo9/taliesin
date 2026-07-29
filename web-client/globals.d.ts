@@ -27,10 +27,27 @@ interface Window {
 
   /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
   TaliesinDeck?: any;
-  /** `{js}` reactive runtime API (defined by tali-js.js): teardown a removed cell
-   *  subtree and reset the whole runtime on a full re-mount, to avoid leaking
-   *  WebGL contexts / RAF loops across edits + reconnects. */
-  taliJs?: { teardown?: (n: Element) => void; reset?: () => void };
+  /** Client-side cell runtime API (defined by tali-js.js): teardown a removed cell
+   *  subtree, reset the whole runtime on a full re-mount (to avoid leaking WebGL
+   *  contexts / RAF loops across edits + reconnects), and register a client-side cell
+   *  LANGUAGE. `registerLanguage` is the seam `glsl.js` mounts on: the `mime` must
+   *  match the `<script type>` that language's `render/client_lang.rs` entry emits. */
+  taliJs?: {
+    teardown?: (n: Element) => void;
+    reset?: () => void;
+    registerLanguage?: (
+      mime: string,
+      setup: (
+        src: string,
+        api: any,
+        opts: { name: string | null; viewof: string | null; inputs: string[]; kind: string },
+      ) => { run: () => any; dispose?: () => void },
+    ) => void;
+  };
+  /** The curated numerics namespace `{js}` cells draw with (numerics.js), handed to a
+   *  cell body as `num` beside `Plot` and `d3`. Typed loosely on purpose: it is a plain
+   *  data-and-functions object, and pinning its shape here would fork the definition. */
+  taliNum?: any;
   /** Theme API from the head script (`theme_head`). The reader's *choice* may be
    *  `"auto"`; the resolved *mode* that paints never is. Passing `"auto"` (or any
    *  unrecognized value) to `taliSetTheme` clears the saved choice. */

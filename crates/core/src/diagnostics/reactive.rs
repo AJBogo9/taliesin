@@ -30,9 +30,10 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
         .iter()
         .filter_map(|b| {
             let cell = b.cell.as_ref()?;
-            if cell.lang != "js" {
-                return None;
-            }
+            // Every client-side language shares the `//| name`/`viewof`/`input` wiring, so
+            // a `{glsl}` shader taking a `//| input:` uniform is a node in the same graph
+            // and gets the same dangling-input / cycle diagnostics.
+            crate::render::client_lang(&cell.lang)?;
             let mut defines = Vec::new();
             if let Some(n) = cell.js.name.as_deref() {
                 defines.push(n.to_string());
@@ -77,9 +78,16 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
 
     // (a) Dangling inputs — suppressed if a non-js executable cell could define names at
     // runtime (Python/R `ojs_define`).
-    let runtime_defines = blocks
-        .iter()
-        .any(|b| b.cell.as_ref().is_some_and(|c| c.lang != "js"));
+    // "Could a name appear at runtime?" means "is there a cell this static pass cannot
+    // read", i.e. a KERNEL cell (Python/R `ojs_define`) — not merely "a cell that is not
+    // `{js}`". Spelled the old way, registering a second client-side language would have
+    // silently suppressed the whole dangling-input check on any page carrying one, since
+    // a `{glsl}` cell is `lang != "js"` while publishing nothing at runtime.
+    let runtime_defines = blocks.iter().any(|b| {
+        b.cell
+            .as_ref()
+            .is_some_and(|c| crate::render::client_lang(&c.lang).is_none())
+    });
     if !runtime_defines {
         let candidates: Vec<String> = defined.iter().cloned().collect();
         for n in &nodes {

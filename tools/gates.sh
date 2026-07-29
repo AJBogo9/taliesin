@@ -67,6 +67,11 @@ CANARY_CHROME="read_run_js_reports_svg_produced_and_error_kinds"
 # observation still works. Every other test in that module asserts a string and would stay
 # green with rasterizing entirely broken.
 CANARY_MATH_HOVER="a_real_browser_rasterizes_real_katex_into_a_data_uri"
+# A third browser-backed capability, independent of both: the reactive client. It is the
+# only thing that runs a `{glsl}` shader, the `animate` pump, the `point` pad, `tali.state`
+# and the numerics bundle at all — every other test of those five features asserts what Rust
+# EMITTED, and would stay green with the whole client runtime broken.
+CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -218,7 +223,7 @@ run_gate "cargo clippy -D warnings" clippy.log \
 #
 # `--features taliesin-server/headless-js` because the browser driver is OFF by
 # default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
-# `read_run_js` / `deck_browser` declare it in `required-features` — so without this
+# `read_run_js` / `deck_browser` / `reactive_browser` declare it in `required-features` — so without this
 # flag cargo would quietly skip building them and the chrome canary below would go
 # missing. That pairing is deliberate: forgetting the feature turns this gate RED
 # rather than shrinking the suite silently.
@@ -268,7 +273,8 @@ else
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
             "chrome:$CANARY_CHROME" \
-            "chrome (math hover):$CANARY_MATH_HOVER"; do
+            "chrome (math hover):$CANARY_MATH_HOVER" \
+            "chrome (reactive client):$CANARY_REACTIVE"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

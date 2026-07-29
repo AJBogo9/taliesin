@@ -41,12 +41,26 @@ pub(crate) fn numbered_caption(label: &str, num: &str, caption: Option<&str>) ->
     }
 }
 
-/// Emit a native interactive `{js}` cell: an output target div plus an
-/// `application/tali-js` script carrying the author source verbatim (only `</script`
+/// Emit a client-side cell (`{js}`, `{glsl}`, …): an output target div plus a
+/// `<script type="{lang.mime}">` carrying the author source verbatim (only `</script`
 /// escaped, so it is readable in devtools — no base64). The `data-*` attrs tell the
-/// `tali-js` enhancer how to wire the cell (shared-scope name, named input, re-run
+/// client registry how to wire the cell (shared-scope name, named input, re-run
 /// inputs). Block data attrs ride on the wrapper for click-to-source.
-pub(super) fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: &str) -> String {
+///
+/// **This is the one wrapper contract every registered language shares** (see
+/// [`client_lang`]): same target-div-plus-script shape, same `data-*` vocabulary, so the
+/// client's language registry, the teardown hook and the reactive graph are all written
+/// once against the shape rather than per language.
+pub(super) fn emit_client_cell(
+    lang: &ClientLang,
+    src: &str,
+    block_id: &str,
+    js: &JsOpts,
+    block_attrs: &str,
+) -> String {
+    // The target id keeps the `tali-js-` prefix for every language: it is a DOM id, not a
+    // language tag, and renaming it per language would fork the one selector the preview
+    // client, the screenshot harness and `strip_client_scripts` all key off.
     let target = format!("tali-js-{block_id}");
     let mut data = format!(" data-target=\"{target}\"");
     if let Some(n) = js.name.as_deref() {
@@ -64,27 +78,38 @@ pub(super) fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: 
     // `</script` is the only sequence that can terminate the script element; escape
     // it so author source carrying it (e.g. in a template literal) stays intact.
     let safe_src = src.replace("</script", "<\\/script");
+    let (mime, class) = (lang.mime, lang.class);
     format!(
-        "<div{block_attrs} class=\"cell tali-js-cell\"><div class=\"tali-js-out\" id=\"{target}\"></div>\
-         <script type=\"application/tali-js\"{data}>{safe_src}</script></div>"
+        "<div{block_attrs} class=\"cell {class}\"><div class=\"tali-js-out\" id=\"{target}\"></div>\
+         <script type=\"{mime}\"{data}>{safe_src}</script></div>"
     )
 }
 
-/// Wrap a native `{js}` cell in a numbered `<figure>` (for `label: fig-x` js cells,
-/// e.g. a Three.js scene). The block attrs + `#fig-` anchor ride on the figure.
-pub(super) fn emit_js_figure(
+/// The float identity a numbered client figure carries. Bundled rather than passed
+/// positionally: with the language spec, the source, the block id, the cell options and
+/// the block attrs already in the signature, three more `Option<&str>`/`&str` in a row is
+/// where a call site starts silently transposing the anchor and the caption.
+pub(super) struct FloatLabel<'a> {
+    pub anchor: Option<&'a str>,
+    pub caption: Option<&'a str>,
+    pub num: &'a str,
+}
+
+/// Wrap a client-side cell in a numbered `<figure>` (for `label: fig-x` cells, e.g. a
+/// Three.js scene or a `{glsl}` shader). The block attrs + `#fig-` anchor ride on the
+/// figure.
+pub(super) fn emit_client_figure(
+    lang: &ClientLang,
     src: &str,
     block_id: &str,
     js: Option<&JsOpts>,
-    anchor: Option<&str>,
-    caption: Option<&str>,
     block_attrs: &str,
-    num: &str,
+    float: &FloatLabel<'_>,
 ) -> String {
     let default = JsOpts::default();
-    let cell = emit_js_cell(src, block_id, js.unwrap_or(&default), "");
-    let id_attr = id_attr(anchor);
-    let figcap = numbered_caption("Figure", num, caption);
+    let cell = emit_client_cell(lang, src, block_id, js.unwrap_or(&default), "");
+    let id_attr = id_attr(float.anchor);
+    let figcap = numbered_caption("Figure", float.num, float.caption);
     format!(
         "<figure{block_attrs}{id_attr} class=\"tali-figure tali-figure-center\">\
          {cell}<figcaption>{figcap}</figcaption></figure>"

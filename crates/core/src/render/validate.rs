@@ -81,8 +81,14 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
 ];
 
 /// Input control types `.input type=` recognizes.
-pub(crate) const INPUT_TYPES: &[&str] =
-    &["slider", "range", "number", "checkbox", "text", "select"];
+///
+/// The first six are plain form fields. `animate` (a play/pause/step/reset tick) and
+/// `point` (a draggable 2-D coordinate) are not — but they publish through the same hidden
+/// `[data-tali-input]` element and the same `input` event, so from the reactive graph's
+/// side they are indistinguishable from a slider.
+pub(crate) const INPUT_TYPES: &[&str] = &[
+    "slider", "range", "number", "checkbox", "text", "select", "animate", "point",
+];
 
 /// Enumerate a cell's leading option keys with each key's 0-based line offset within
 /// `literal` (the fence body). Mirrors `cell_option`'s scan: only the contiguous

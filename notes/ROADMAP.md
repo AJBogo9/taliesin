@@ -206,14 +206,22 @@ cannot reach, while resisting the reactive-VM trap.
   errors). Strong hero-demo content for #7. *Invariant held: inner blocks keep ids/
   sourcepos via `group_divs`; enhancer is read-only/scroll-only; `:::` scanner, cite,
   includes, numbering, exec, deck engine all untouched.*
-- [ ] **`cell-language-registry` (high / med / low).** Ship the registry refactor +
-  `{glsl}` only. Generalize the hardcoded `lang=="js"` gate (`mod.rs:1763`) into a
-  registry of client-side cell languages over the existing `qmdEnhancers` seam, each
-  emitting the same wrapper-div contract. Ship `{glsl}` (shader → live canvas, tiny
-  vendor, strong hero demo). `{sql}`/DuckDB + `{ts}`/esbuild are CUT until a corpus doc
-  needs one; then add exactly that one, ship-only-if-used, gated on **backlog #5**
-  (license/size sign-off). *Invariant: same wrapper-carries-data-attrs contract;
-  idempotent enhancer; never touches exec/freeze/kernel.*
+- [x] **`cell-language-registry` (high / med / low). DONE (2026-07-29, branch
+  `explorable-cluster-2026-07-29`, backlog item 153).** `render/client_lang.rs` is the
+  server half (fence language → script mime → wrapper class) and
+  `window.taliJs.registerLanguage` the client half; between them they replaced **six**
+  spellings of `lang == "js"` (the figure gate, the figure emitter's match, the plain-cell
+  arm, the `--no-exec` fallback, the asset gates, the reactive diagnostic). `{glsl}` ships
+  as the proof, in one file with **zero vendored bytes** — WebGL is a browser API — and it
+  is a full citizen: `//| name:`/`//| input:` uniforms, `label: fig-` numbering,
+  `--no-exec`, and the dangling-input diagnostic. **The refactor found a live bug**:
+  `reactive.rs` read "any cell that is not `js`" as "could publish names at runtime", so a
+  second client language would have silently disabled that check for its whole page.
+  Pinned by `crates/core/tests/client_lang.rs` + `crates/server/tests/reactive_browser.rs`.
+  `{sql}`/DuckDB + `{ts}`/esbuild stay CUT until a corpus doc needs one; each is now a
+  `registerLanguage` call plus its own license/size sign-off. *Invariant held: same
+  wrapper-carries-data-attrs contract; idempotent enhancer; exec/freeze/kernel untouched
+  (`client_langs_never_reach_a_kernel` pins the two sets disjoint).*
 
 ### Pillar IV, Breadth (web-native breadth, corpus-pinned)
 

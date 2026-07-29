@@ -381,6 +381,10 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
         "js",
         "Reactive cell, run in the reader's browser (no kernel).",
     ),
+    (
+        "glsl",
+        "Fragment shader drawn to a live canvas in the reader's browser (no kernel).",
+    ),
     ("mermaid", "Diagram rendered at build time."),
     ("bash", "Highlighted only; not executed."),
     ("sql", "Highlighted only; not executed."),
