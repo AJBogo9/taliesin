@@ -611,3 +611,73 @@ fn inlay_hints_number_the_one_reference_that_resolves() {
         "the hint must sit just past the id it annotates"
     );
 }
+
+/// Folding ranges reach the editor over the real wire.
+///
+/// The fixture is deliberately one of each construct, because the failure this guards is a
+/// provider that folds only the easy one: a heading section, a `:::` div, a code fence whose
+/// `#` comment must not be read as a heading, and the front matter.
+#[test]
+fn folding_ranges_cover_heading_div_fence_and_front_matter() {
+    let dir = std::env::temp_dir().join(format!("tali-lsp-fold-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let doc = dir.join("fold.tmd");
+    let text = "---\ntitle: T\n---\n\n\
+                # One\n\n\
+                ```{python}\n# not a heading\nx = 1\n```\n\n\
+                ::: {.callout-note}\ninside\n:::\n";
+    std::fs::write(&doc, text).expect("fixture doc");
+    let uri = format!("file://{}", doc.display());
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/foldingRange",
+            "params": { "textDocument": { "uri": uri } }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    assert!(
+        !stdout.contains("MethodNotFound"),
+        "foldingRange must be handled, not rejected.\nstdout:\n{stdout}"
+    );
+
+    let folds = response(&stdout, 2);
+    let folds = folds.as_array().expect("foldingRange returns an array");
+    let spans: Vec<(u64, u64)> = folds
+        .iter()
+        .map(|f| {
+            (
+                f["startLine"].as_u64().expect("startLine"),
+                f["endLine"].as_u64().expect("endLine"),
+            )
+        })
+        .collect();
+    assert!(spans.contains(&(0, 2)), "front matter: {spans:?}");
+    assert!(spans.contains(&(6, 9)), "the code fence: {spans:?}");
+    assert!(spans.contains(&(11, 13)), "the ::: div: {spans:?}");
+    assert!(
+        spans.contains(&(4, 13)),
+        "`# One` runs to the end of the document; the `#` inside the cell is a comment, \
+         not a heading that would cut it short at line 7: {spans:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

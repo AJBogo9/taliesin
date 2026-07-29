@@ -36,6 +36,9 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // Range-scoped, so only the visible lines are scanned and there is no full-document
         // tokenizer behind this.
         inlay_hint_provider: Some(OneOf::Left(true)),
+        // Replaces indentation-based folding, which is what `.tmd` gets without this and is
+        // meaningless in a format where nesting is heading level and fences.
+        folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
         // `{{< include >}}` / `{{< embed >}}` paths. Go-to-definition already resolved
         // these, but a definition is invisible: nothing on screen says the path is
         // navigable, so it is only found by an author who already guessed. A document link
@@ -421,8 +424,9 @@ fn handle_request(
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest, Formatting,
-        GotoDefinition, HoverRequest, InlayHintRequest, PrepareRenameRequest, Rename, Request as _,
+        CodeActionRequest, Completion, DocumentLinkRequest, DocumentSymbolRequest,
+        FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest, InlayHintRequest,
+        PrepareRenameRequest, Rename, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -446,6 +450,17 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(hints)?),
+            error: None,
+        }
+    } else if req.method == FoldingRangeRequest::METHOD {
+        let params: lsp_types::FoldingRangeParams = serde_json::from_value(req.params)?;
+        let folds = docs
+            .get(&params.text_document.uri)
+            .map(|text| crate::lsp_fold::folding_ranges(text))
+            .unwrap_or_default();
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(folds)?),
             error: None,
         }
     } else if req.method == GotoDefinition::METHOD {
@@ -3697,6 +3712,11 @@ mod tests {
         assert_eq!(
             caps["inlayHintProvider"], true,
             "the resolved number beside a cross-reference"
+        );
+        assert_eq!(
+            caps["foldingRangeProvider"], true,
+            "without this the editor falls back to indentation folding, which is \
+             meaningless for a Markdown-derived format"
         );
         assert_eq!(
             caps["renameProvider"]["prepareProvider"], true,

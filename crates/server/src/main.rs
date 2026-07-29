@@ -21,6 +21,7 @@ mod log;
 mod lsp;
 mod lsp_cells;
 mod lsp_complete;
+mod lsp_fold;
 mod lsp_format;
 mod lsp_hints;
 mod lsp_links;

@@ -45,8 +45,10 @@ fn clean_title(raw: &str) -> String {
     }
 }
 
-/// A leading `\s*(```+|~~~+)` fence marker char, or None.
-fn fence_marker(line: &str) -> Option<char> {
+/// A leading `\s*(```+|~~~+)` fence marker char, or None. Shared with `lsp_fold`, which
+/// must skip fenced code for the same reason this does: a `# comment` inside a `{python}`
+/// cell is not a heading.
+pub(crate) fn fence_marker(line: &str) -> Option<char> {
     let t = line.trim_start();
     if t.starts_with("```") {
         Some('`')
@@ -57,8 +59,8 @@ fn fence_marker(line: &str) -> Option<char> {
     }
 }
 
-/// `^(#{1,6})\s+(.*)$` → (level, title-slice).
-fn atx_heading(line: &str) -> Option<(u8, &str)> {
+/// `^(#{1,6})\s+(.*)$` → (level, title-slice). Shared with `lsp_fold`.
+pub(crate) fn atx_heading(line: &str) -> Option<(u8, &str)> {
     let hashes = line.chars().take_while(|&c| c == '#').count();
     if !(1..=6).contains(&hashes) {
         return None;
