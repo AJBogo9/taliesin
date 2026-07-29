@@ -1774,7 +1774,7 @@
     // defensively to lift a curtain that may already be down) (WCAG 4.1.3).
     if (deck.blackout !== was) announce(deck.blackout ? 'Screen blanked' : 'Resumed');
   }
-  var touch = /** @type {{ x: number | null, y: number | null, t: number }} */ ({ x: null, y: null, t: 0 });
+  var touch = /** @type {{ x: number | null, y: number | null }} */ ({ x: null, y: null });
   var ovTouch = /** @type {any} */ (null); // overview touch-gesture state: 1-finger pan or 2-finger pinch (mode-dependent shape)
   var pinchStart = 0; // step mode: the span of a 2-finger gesture, watched for a zoom-out
   /** @param {Touch} a @param {Touch} b */
@@ -1808,7 +1808,8 @@
       return;
     }
     pinchStart = 0;
-    touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY; touch.t = Date.now();
+    // No start time is recorded: onTouchEnd judges a swipe by distance alone (item 71).
+    touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY;
   }
   // In overview, one finger pans the map and two fingers pinch-zoom toward the
   // centroid (reusing the wheel's zoom math). preventDefault keeps the browser off
@@ -1854,9 +1855,19 @@
     if (!e.touches || e.touches.length === 0) pinchStart = 0; // the pinch is over
     if (touch.x == null || touch.y == null) return;
     var c = e.changedTouches[0];
-    var dx = c.clientX - touch.x, dy = c.clientY - touch.y, dt = Date.now() - touch.t;
+    var dx = c.clientX - touch.x, dy = c.clientY - touch.y;
     touch.x = null;
-    if (dt > 600 || Math.max(Math.abs(dx), Math.abs(dy)) < 50) return;
+    // Distance only, deliberately: there is NO time bound here (item 71 / DT-3).
+    //
+    // A swipe's time limit normally exists to tell a swipe apart from a pan or a scroll.
+    // In stepped mode there is no competing one-finger gesture to tell it apart FROM --
+    // the feed returned at the top of this function, the overview returned just above it,
+    // and the stepped stage does not scroll -- and the 50 px floor below already rejects a
+    // tap. So in the only mode where a time bound was live it could only reject input the
+    // reader meant, and what it rejected was the slow deliberate swipe a motor-impaired
+    // reader makes. Measured before removal: 200 px in ~30 ms navigated, the same 200 px
+    // over 750 ms did nothing.
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 50) return;
     if (Math.abs(dx) > Math.abs(dy)) { dx < 0 ? right() : left(); }
     else { dy < 0 ? down() : up(); }
   }
@@ -2453,14 +2464,33 @@
     wrap.setAttribute('aria-modal', 'true');
     wrap.setAttribute('aria-label', 'Share this view');
     wrap.setAttribute('hidden', '');
+    // A QR exists to move this URL onto a DIFFERENT device: you are at a laptop and you
+    // point your phone at the screen. On a touch device the viewer IS that other device,
+    // so the QR is the one useless half of the card — and it was taking most of it, above
+    // a "Point a phone here" heading addressed to a phone, with Copy (the action that
+    // actually works there) demoted underneath (item 71 / DT-4).
+    //
+    // Ask the device what it is, using the same `(hover: none) and (pointer: coarse)` query
+    // the rest of the tree uses rather than a width guess, and lead with the half that
+    // works. The QR stays — scanning from a second device is still meaningful — but it
+    // becomes the secondary option and says what it is for.
+    //
+    // The DOM order changes, not just the visual order, so tab order follows the reading
+    // order (WCAG 2.4.3) instead of contradicting it.
+    var touchViewer = !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+    var qrBlock =
+      '<div class="tali-share-qr"></div>' +
+      '<div class="tali-share-note" hidden>This link is too long for a QR code — copy it instead.</div>';
+    var copyBlock =
+      '<div class="tali-share-row"><input class="tali-share-url" name="tali-share-url" type="text" readonly aria-label="Link to this view">' +
+      '<button class="tali-share-copy">Copy</button></div>';
     wrap.innerHTML =
-      '<div class="tali-share-card">' +
+      '<div class="tali-share-card' + (touchViewer ? ' tali-share-card--touch' : '') + '">' +
         '<button class="tali-share-close" aria-label="Close">' + svg('<path d="M6 6l12 12M18 6L6 18"/>') + '</button>' +
-        '<div class="tali-share-head">Point a phone here</div>' +
-        '<div class="tali-share-qr"></div>' +
-        '<div class="tali-share-note" hidden>This link is too long for a QR code — copy it instead.</div>' +
-        '<div class="tali-share-row"><input class="tali-share-url" name="tali-share-url" type="text" readonly aria-label="Link to this view">' +
-        '<button class="tali-share-copy">Copy</button></div>' +
+        '<div class="tali-share-head">' + (touchViewer ? 'Share this view' : 'Point a phone here') + '</div>' +
+        (touchViewer
+          ? copyBlock + '<div class="tali-share-sub">or scan from another device</div>' + qrBlock
+          : qrBlock + copyBlock) +
       '</div>';
     document.body.appendChild(wrap);
     var backdrop = document.createElement('div');

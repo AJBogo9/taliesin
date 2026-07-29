@@ -848,6 +848,14 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-share-copy { flex: 0 0 auto; padding: 8px 14px; border: 0; border-radius: var(--tali-radius-md); cursor: pointer;
   background: var(--tali-accent-fill); color: var(--tali-on-accent); font: inherit; font-weight: 600; }
 .tali-share-copy:hover { filter: brightness(1.1); }
+/* Touch viewer (item 71 / DT-4): the copy row leads and the QR is the secondary option,
+   so the QR gives its space back rather than taking most of a card whose one useful
+   control was underneath it. The DOM order is what changed (see `buildShare`); these
+   rules only resize what is now secondary. Scoped to the modifier class, so a desktop
+   card is untouched. */
+.tali-share-card--touch .tali-share-row { margin-bottom: 14px; }
+.tali-share-card--touch .tali-share-qr { width: min(150px, 40vw); padding: 10px; margin-bottom: 0; }
+.tali-share-sub { color: #c7ccd6; font-size: 13px; margin: 0 0 8px; }
 
 /* ===========================================================================
    Deck theme: the typographic + content styling for slides. Clean, modern, fully
