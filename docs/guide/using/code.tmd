@@ -42,6 +42,13 @@ fine too: cells just render as highlighted source, and the preview shows a quiet
 "kernel unavailable" note instead of failing.
 :::
 
+A cell that takes a while does not make you wait blind. **Output streams into the
+preview as the cell produces it**, so a training loop printing an epoch line, or a
+progress bar redrawing itself, shows up live beside a running-elapsed badge rather
+than appearing all at once at the end. Nothing is required to opt in: print as you
+go and you can watch it. Progress bars that redraw with a carriage return (tqdm and
+friends) render as one updating line, not one line per frame.
+
 The kernel is resilient: if it crashes mid-session the server detects the dead
 process and respawns it on the next run, and a wedged cell is interrupted instead
 of locking up the kernel. The cap is on **silence**, not on runtime:

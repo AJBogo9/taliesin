@@ -195,6 +195,26 @@ pub fn cell_state(
     .to_string()
 }
 
+/// `cell-output-append`: one cell output, delivered **while the cell is still
+/// running** (item 175b), so a long job shows its epoch log or progress bar instead
+/// of a bare `⏳` badge until it finishes.
+///
+/// `op` is `"append"` (a new output) or `"replace_last"` (the last output redrew
+/// itself, which is how a `\r` progress bar updates in place). `html` is the same
+/// server-rendered, escaped and scrubbed fragment the finished block would carry.
+///
+/// **This is a preview, not the source of truth.** The authoritative output still
+/// arrives afterwards as a normal block `update` through the diff, and only that is
+/// cached in `_freeze`. A client that ignores this message entirely still ends up
+/// with the right document, which is why `build` (no websocket) emits nothing here.
+pub fn cell_output_append(page: Option<&str>, cell_id: &str, op: &str, html: &str) -> String {
+    serde_json::json!({
+        "type": "cell-output-append", "page": page, "cell_id": cell_id,
+        "op": op, "html": html
+    })
+    .to_string()
+}
+
 /// A single incremental block op. `rewrite_html` is applied to the block HTML of
 /// `Update`/`Insert` before it goes over the wire: identity for the single-doc
 /// server, and `.tmd`→`.html` link rewriting for the site server.
@@ -477,5 +497,33 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&fresh).unwrap();
         assert_eq!(v["source"], "fresh");
         assert_eq!(v["duration_ms"], 1200);
+    }
+
+    #[test]
+    fn cell_output_append_carries_the_op_and_the_rendered_fragment() {
+        // 175b: the live view is built from these. `op` distinguishes a new output
+        // from a redraw of the last one (a `\r` progress bar), which is the whole
+        // difference between one moving bar and a stack of frames.
+        let appended = super::cell_output_append(
+            Some("ch1.tmd"),
+            "abc",
+            "append",
+            "<pre class=\"tali-stream\">epoch 1\n</pre>",
+        );
+        let v: serde_json::Value = serde_json::from_str(&appended).unwrap();
+        assert_eq!(v["type"], "cell-output-append");
+        assert_eq!(v["page"], "ch1.tmd");
+        assert_eq!(v["cell_id"], "abc");
+        assert_eq!(v["op"], "append");
+        assert!(
+            v["html"].as_str().unwrap().contains("epoch 1"),
+            "the fragment must travel as rendered HTML, not raw text: {v}"
+        );
+
+        // The single-doc server sends no page, exactly as `cell-state` does.
+        let redraw = super::cell_output_append(None, "abc", "replace_last", "<pre>100%</pre>");
+        let v: serde_json::Value = serde_json::from_str(&redraw).unwrap();
+        assert!(v["page"].is_null());
+        assert_eq!(v["op"], "replace_last");
     }
 }

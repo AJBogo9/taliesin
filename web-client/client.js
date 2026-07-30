@@ -28,7 +28,8 @@
  * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
  * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
+ * @typedef {{ type: "cell-output-append", page: ?string, cell_id: string, op: "append"|"replace_last", html: string }} CellOutputAppendMsg
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg|CellOutputAppendMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("tali-root");
@@ -883,6 +884,11 @@
       activeCell = msg.cell_id; // track the active cell for click-to-scroll
       runningTimers[msg.cell_id] = msg.started_ms || Date.now();
       badge.textContent = "⏳ 0.0s";
+      // Ready this cell's output block for live output (175b). Without this a
+      // re-run streams underneath the previous run's output, so the cell reads as
+      // having produced both. The block `update` that follows would fix it, but
+      // only after the cell finishes, which is exactly the window this is for.
+      openLiveOutput(msg.cell_id);
     } else {
       delete runningTimers[msg.cell_id];
       if (msg.state === "error") activeCell = msg.cell_id; // keep erroring cell as scroll target
@@ -903,6 +909,57 @@
       if (b) b.textContent = "⏳ " + fmtElapsed(now - runningTimers[id]);
     });
   }, 200);
+
+  // --- live cell output (175b) -----------------------------------------------
+  // A running cell streams its outputs as they arrive, so a long job shows its
+  // epoch log or progress bar instead of only a ticking badge. Everything here is
+  // a PREVIEW: the authoritative output still arrives as a normal block `update`,
+  // which replaces the whole block including this container. That is why nothing
+  // below tries to be clever about merging — it only has to look right until the
+  // cell finishes.
+  //
+  // `replace_last` is how a `\r` progress bar redraws in place; the server has
+  // already resolved the carriage returns, so the fragment is final as sent.
+  // Prepare a cell's output block to receive live output, called when it starts
+  // running. Two cases, and getting either wrong duplicates the output on screen:
+  //
+  //  - The block EXISTS (the cell re-ran without its source changing, so its
+  //    content hash and therefore its id are the same). Empty it: what is in there
+  //    is the previous run's output, and streaming into it would append this run
+  //    underneath the last one.
+  //  - The block does NOT exist (the cell was edited, so its id changed, and the
+  //    element carrying the new id is only created by the block op that arrives
+  //    AFTER execution). Insert a stand-in carrying that id, positioned after the
+  //    code block. Because it carries `data-block-id`, the authoritative `update`
+  //    replaces this element wholesale when it lands.
+  //
+  // Targeting `{id}-out` and never the cell block itself matters: `data-tali-cell-state`
+  // lives on the CODE block, so falling back to it appends output inside the source
+  // listing and leaves a duplicate behind once the real output block arrives.
+  function openLiveOutput(/** @type {string} */ cellId) {
+    var out = elById(cellId + "-out");
+    if (out) {
+      out.textContent = "";
+    } else {
+      var code = elById(cellId);
+      if (!code || !code.parentNode) return;
+      out = document.createElement("div");
+      out.setAttribute("data-block-id", cellId + "-out");
+      code.parentNode.insertBefore(out, code.nextSibling);
+    }
+    out.classList.add("tali-live-output");
+  }
+  function applyCellOutputAppend(/** @type {CellOutputAppendMsg} */ msg) {
+    var host = elById(msg.cell_id + "-out");
+    if (!host) return; // no `running` seen for this cell; the block update will carry it
+    var node = fragment(msg.html);
+    if (!node) return;
+    if (msg.op === "replace_last" && host.lastElementChild) {
+      host.lastElementChild.replaceWith(node);
+    } else {
+      host.appendChild(node);
+    }
+  }
 
   // --- progress chip: idle/busy dot, k/N bar, click-to-scroll, tab-title/favicon ---
   var progressEl = /** @type {HTMLElement|null} */ (null);
@@ -1626,6 +1683,9 @@
         break;
       case "cell-state":
         applyCellState(/** @type {CellStateMsg} */ (msg));
+        break;
+      case "cell-output-append":
+        applyCellOutputAppend(/** @type {CellOutputAppendMsg} */ (msg));
         break;
       case "update": {
         renderOk();

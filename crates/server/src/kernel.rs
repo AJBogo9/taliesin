@@ -591,7 +591,11 @@ impl KernelProc {
 }
 
 /// One execution output, already rendered to a self-contained HTML fragment.
-#[derive(Debug, Clone)]
+///
+/// `PartialEq` exists for the streaming tests: the live-vs-final invariant compares
+/// output lists directly, and comparing rendered HTML instead would let an escaping
+/// change mask a divergence.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Output {
     Stream {
         stderr: bool,
@@ -984,6 +988,22 @@ impl Kernel {
 
     /// Run `code` and collect its outputs (waits until the kernel is idle).
     pub async fn execute(&mut self, code: &str) -> io::Result<Vec<Output>> {
+        self.execute_streaming(code, |_| {}).await
+    }
+
+    /// [`Kernel::execute`], but `on_output` is called with each output **as it
+    /// arrives** rather than only with the finished vector (item 175b). The returned
+    /// vector is unchanged, so a caller that wants no streaming passes a no-op and
+    /// sees exactly the previous behavior.
+    ///
+    /// The callback fires from one watermark flush rather than from each of the
+    /// seven `outputs.push` sites, so a push added later cannot silently stop being
+    /// streamed.
+    pub async fn execute_streaming(
+        &mut self,
+        code: &str,
+        mut on_output: impl FnMut(&Output),
+    ) -> io::Result<Vec<Output>> {
         let request = JupyterMessage::new(
             JupyterMessageContent::ExecuteRequest(ExecuteRequest::new(code.to_string())),
             None,
@@ -1016,7 +1036,15 @@ impl Kernel {
         // Last time any iopub message arrived: the silence cap measures from here, so it
         // resets on every output and a chatty long cell is never capped.
         let mut last_msg = Instant::now();
+        // How many outputs have been handed to `on_output`. Flushed at the top of
+        // every iteration and once after the loop, so every path that pushes and then
+        // either loops or breaks is covered without touching the push sites.
+        let mut streamed = 0usize;
         loop {
+            while streamed < outputs.len() {
+                on_output(&outputs[streamed]);
+                streamed += 1;
+            }
             let now = Instant::now();
             // Time left before this cell's REAL deadline: the post-interrupt grace window,
             // or whichever liveness cap expires first.
@@ -1164,6 +1192,12 @@ impl Kernel {
                 grace_until = Some(Instant::now() + Duration::from_secs(5));
             }
         }
+        // Anything pushed on the way out (a cap's notice, `kernel_died`) still reaches
+        // the client, so a cell that dies mid-run says so in the live view too.
+        while streamed < outputs.len() {
+            on_output(&outputs[streamed]);
+            streamed += 1;
+        }
         // Drain *our* shell execute_reply so the channel stays in sync. Match on
         // msg_id: after an interrupt a previous cell's late reply can still be in the
         // queue, and consuming it here would leave every later cell one reply behind.
@@ -1299,9 +1333,120 @@ impl Drop for Kernel {
 
 /// Render outputs into an HTML fragment (the inner content of an output block),
 /// or empty if there are none. The caller wraps this in the block element.
+/// Apply terminal carriage-return semantics to one text run: `\r` returns the cursor
+/// to column 0, so what follows replaces the current line. A line already committed
+/// by `\n` is never touched.
+///
+/// A real terminal overwrites character by character, leaving a tail behind when the
+/// new line is shorter. We clear instead, because the writers that use `\r` (tqdm and
+/// friends) redraw a full padded line each frame, and a stale tail would be a visual
+/// artefact of emulating the terminal too faithfully.
+fn apply_carriage_returns(text: &str) -> String {
+    let mut committed = String::new();
+    let mut line = String::new();
+    for ch in text.chars() {
+        match ch {
+            '\r' => line.clear(),
+            '\n' => {
+                committed.push_str(&line);
+                committed.push('\n');
+                line.clear();
+            }
+            c => line.push(c),
+        }
+    }
+    committed.push_str(&line);
+    committed
+}
+
+/// What the client should do with an arriving output.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LiveOp {
+    Append(Output),
+    ReplaceLast(Output),
+}
+
+/// Accumulates outputs the way the browser does, one at a time, deciding for each
+/// whether it extends the list or redraws its last element.
+///
+/// **Consecutive chunks of the same stream become one output.** A cell's stdout is
+/// one stream, and where the kernel chose to cut it into messages is an artefact of
+/// the kernel, not of the document: `print` in a loop may arrive as one message or as
+/// twenty depending on buffering and timing. Rendering each as its own `<pre>` turned
+/// a log into a stack of boxes and made the emitted HTML depend on that chunking.
+///
+/// This is the single definition of the rule. [`collapse_carriage_returns`] is a fold
+/// over it, so the streamed view and the authoritative block **cannot** drift apart:
+/// a divergence would have to be a divergence from itself.
+#[derive(Default)]
+pub(crate) struct LiveOutputs {
+    last: Option<Output>,
+}
+
+impl LiveOutputs {
+    pub(crate) fn push(&mut self, next: Output) -> LiveOp {
+        // Same stream (stdout with stdout, stderr with stderr) merges; anything else
+        // starts a new output. stdout and stderr stay apart because they are styled
+        // differently and interleaving them would attribute one to the other.
+        let merge = matches!(
+            (&self.last, &next),
+            (
+                Some(Output::Stream { stderr: prev, .. }),
+                Output::Stream { stderr: now, .. },
+            ) if prev == now
+        );
+        if merge {
+            let (stderr, prev) = match self.last.take() {
+                Some(Output::Stream { stderr, text }) => (stderr, text),
+                _ => unreachable!("merge is only set when the last output is a stream"),
+            };
+            let Output::Stream { text, .. } = &next else {
+                unreachable!("merge is only set when the next output is a stream")
+            };
+            let merged = Output::Stream {
+                stderr,
+                text: apply_carriage_returns(&(prev + text)),
+            };
+            self.last = Some(merged.clone());
+            return LiveOp::ReplaceLast(merged);
+        }
+        let fresh = match &next {
+            Output::Stream { stderr, text } => Output::Stream {
+                stderr: *stderr,
+                text: apply_carriage_returns(text),
+            },
+            other => other.clone(),
+        };
+        self.last = Some(fresh.clone());
+        LiveOp::Append(fresh)
+    }
+}
+
+/// Batch form of [`LiveOutputs`]: what the whole output list looks like once
+/// carriage returns have been applied. Identity for any run containing no `\r`, so
+/// documents that do not draw progress bars render exactly as they did before.
+pub(crate) fn collapse_carriage_returns(outputs: &[Output]) -> Vec<Output> {
+    let mut acc: Vec<Output> = Vec::with_capacity(outputs.len());
+    let mut live = LiveOutputs::default();
+    for o in outputs {
+        match live.push(o.clone()) {
+            LiveOp::Append(o) => acc.push(o),
+            LiveOp::ReplaceLast(o) => {
+                acc.pop();
+                acc.push(o);
+            }
+        }
+    }
+    acc
+}
+
 pub fn render_outputs(outputs: &[Output]) -> String {
     let mut s = String::new();
-    for o in outputs {
+    // Carriage returns are resolved here rather than at capture time, so the cached
+    // and replayed paths get the same treatment as a fresh run and a progress bar
+    // never renders as a stack of frames. Identity when no `\r` is present.
+    let collapsed = collapse_carriage_returns(outputs);
+    for o in &collapsed {
         match o {
             Output::Stream { stderr, text } => {
                 let class = if *stderr {
@@ -1549,6 +1694,148 @@ mod tests {
         assert!(
             !budget.is_zero(),
             "an unarmed cap must never expire the cell"
+        );
+    }
+
+    // --- carriage returns / streaming (item 175b) ------------------------------
+
+    fn out(text: &str) -> Output {
+        Output::Stream {
+            stderr: false,
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn a_carriage_return_overwrites_the_current_line() {
+        // Terminal semantics: `\r` returns the cursor to column 0, so what follows
+        // replaces the line. This is how a progress bar redraws itself in place.
+        assert_eq!(
+            collapse_carriage_returns(&[out("10%\r20%\r30%\n")]),
+            vec![out("30%\n")]
+        );
+        // A committed line (one ended by `\n`) is never touched by a later `\r`.
+        assert_eq!(
+            collapse_carriage_returns(&[out("done\nbar 1\rbar 2")]),
+            vec![out("done\nbar 2")]
+        );
+    }
+
+    #[test]
+    fn consecutive_chunks_of_one_stream_become_one_output() {
+        // A cell's stdout is ONE stream. Where the kernel cut it into messages is an
+        // artefact of buffering and timing, so rendering a `<pre>` per message made
+        // the emitted HTML depend on that chunking (and a printing loop render as a
+        // stack of boxes rather than a log). Verified against the whole corpus when
+        // this landed: merging changed no existing document's output.
+        assert_eq!(
+            collapse_carriage_returns(&[out("first\n"), out("second\n"), out("third\n")]),
+            vec![out("first\nsecond\nthird\n")]
+        );
+
+        // stdout and stderr do NOT merge: they are styled differently, and joining
+        // them would attribute a warning to stdout or vice versa.
+        let err = |t: &str| Output::Stream {
+            stderr: true,
+            text: t.into(),
+        };
+        assert_eq!(
+            collapse_carriage_returns(&[out("out 1\n"), err("warn\n"), out("out 2\n")]),
+            vec![out("out 1\n"), err("warn\n"), out("out 2\n")],
+            "stdout and stderr must stay separate outputs"
+        );
+
+        // A rich output (a figure) also breaks a run, so text keeps its position
+        // relative to the image it was printed around.
+        assert_eq!(
+            collapse_carriage_returns(&[
+                out("before\n"),
+                Output::Rich("<img>".into()),
+                out("after\n"),
+            ]),
+            vec![
+                out("before\n"),
+                Output::Rich("<img>".into()),
+                out("after\n"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_progress_bar_arriving_in_chunks_collapses_across_outputs() {
+        // The real tqdm shape: each redraw is its own iopub message, so the `\r`
+        // handling has to work ACROSS outputs, not just inside one.
+        let chunks: Vec<Output> = ["\r 0%|    |", "\r 50%|##  |", "\r100%|####|\n"]
+            .iter()
+            .map(|c| out(c))
+            .collect();
+        assert_eq!(
+            collapse_carriage_returns(&chunks),
+            vec![out("100%|####|\n")],
+            "a 3-frame bar must render as one line, not three stacked ones"
+        );
+
+        // A chunk carrying no `\r` of its own still joins the run, so tqdm's final
+        // newline and the line printed after it land in the same block as the bar.
+        //
+        // Note the live-vs-final invariant test CANNOT pin this: both sides of that
+        // comparison run the same code, so a rule change moves them together. Only a
+        // written-out expectation catches it, which is how the first version of these
+        // tests let a mutant live through exactly this case.
+        assert_eq!(
+            collapse_carriage_returns(&[out("\rbar 1"), out(" done\n"), out("next\n")]),
+            vec![out("bar 1 done\nnext\n")],
+            "a redrawing run must keep absorbing plain chunks until something breaks it"
+        );
+        let mixed = vec![out("\rbar"), Output::Rich("<img>".into()), out("\rbar2")];
+        assert_eq!(
+            collapse_carriage_returns(&mixed),
+            vec![out("bar"), Output::Rich("<img>".into()), out("bar2")]
+        );
+    }
+
+    #[test]
+    fn the_live_stream_and_the_final_render_agree() {
+        // THE invariant for 175b. The client builds its live view by applying the
+        // ops the server emits as each output arrives; the block that replaces it is
+        // `render_outputs` over the whole list. If those two disagree, a finished
+        // cell visibly rewrites itself, so they are pinned equal here rather than
+        // checked by eye in a browser.
+        let raw = vec![
+            out("epoch 1\n"),
+            out("\r 10%"),
+            out("\r 90%"),
+            out("\r100%\n"),
+            Output::Rich("<img src=x>".into()),
+            out("done\n"),
+            Output::Stream {
+                stderr: true,
+                text: "warning\n".into(),
+            },
+        ];
+
+        // Replay the wire ops into the list a client would hold.
+        let mut client: Vec<Output> = Vec::new();
+        let mut state = LiveOutputs::default();
+        for o in &raw {
+            match state.push(o.clone()) {
+                LiveOp::Append(o) => client.push(o),
+                LiveOp::ReplaceLast(o) => {
+                    client.pop();
+                    client.push(o);
+                }
+            }
+        }
+
+        assert_eq!(
+            client,
+            collapse_carriage_returns(&raw),
+            "the replayed live view diverged from the batch collapse"
+        );
+        assert_eq!(
+            render_outputs(&client),
+            render_outputs(&raw),
+            "the live HTML diverged from the authoritative block HTML"
         );
     }
 

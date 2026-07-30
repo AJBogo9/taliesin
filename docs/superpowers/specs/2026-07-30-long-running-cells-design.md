@@ -74,24 +74,39 @@ This is one changed default and no new knob on the common path, per the minimal-
 - **Client:** a `case "cell-output-append"` appending into a live container inside the
   `{cell_id}-out` block.
 
-### Carriage returns, and why they are in scope
+### Carriage returns and stream chunking, and why they are in scope
 
 A tqdm bar is not newline-delimited output. It is a chunk beginning with `\r` that overwrites the
 current line. `render_outputs` emits one `<pre>` per `Output::Stream`, so a 100-update bar renders
 as 100 stacked bars. **This is already true of the final render today**, so streaming it naively
 would ship a live view that disagrees with the block that replaces it.
 
-Fix both with one pure function, `collapse_carriage_returns(&[Output]) -> Vec<Output>`, applying
-terminal semantics: within a run of consecutive same-stream `Output::Stream` values, a chunk
-beginning with `\r` overwrites the current line. `render_outputs` calls it, and the live path
-applies the same rule incrementally:
+`LiveOutputs` is the single definition of the rule, and `collapse_carriage_returns` is a fold over
+it, so the streamed view and the authoritative block cannot drift apart. Two parts:
 
-- merging **modified the last element** → `op: "replace_last"`
-- merging **appended** → `op: "append"`
+1. **Consecutive chunks of the same stream merge into one output.** Where the kernel cut stdout
+   into messages is an artefact of buffering and timing, not a property of the document, so a
+   `<pre>` per message made the emitted HTML depend on that chunking and rendered a printing loop
+   as a stack of boxes. stdout and stderr never merge with each other, and a rich output breaks
+   the run.
+2. **Terminal `\r` semantics apply within the merged text:** `\r` returns the cursor to column 0,
+   so what follows replaces the current line; a line committed by `\n` is untouched.
 
-**The invariant that makes this safe is testable:** feeding a synthetic output sequence through the
-streaming path and concatenating what the client would build must equal
-`render_outputs(&collapse(raw))`. That is the pin, not a screenshot.
+The live path emits `op: "replace_last"` when a chunk merged into the previous output and
+`op: "append"` when it started a new one.
+
+**As-built note.** Part 1 was not in the original design, which specified `\r`-only collapsing and
+an identity guarantee for everything else. It was taken after the browser check showed a streamed
+log rendering as a stack of boxes, and only after **measuring** that merging drifts nothing:
+across the whole corpus and every snapshot test, the sole failure was the identity guard written
+for the narrower rule. The guard was replaced by a test of the rule that actually holds.
+
+**Two testing notes that cost a round each.** The live-vs-final invariant compares two callers of
+the *same* code, so it pins drift but not semantics: a mutant survived it and was killed only by a
+written-out expectation. And "is it streaming" cannot be asserted by message order, because `done`
+is emitted after `exec_cell` returns and a single end-of-cell flush still precedes it; the
+assertion is that appends are **spread out in time** (202 µs under a batching mutant, seconds when
+streaming).
 
 ### Why this cannot corrupt anything
 
@@ -101,23 +116,29 @@ The streamed HTML is transient. The authoritative output still arrives as a norm
 so `data-block-id` / `data-sourcepos` and freeze correctness are untouched. It is preview-only:
 `build` has no websocket and emits nothing new.
 
-## Corpus pin
+## Pins, and why none of them is a corpus document
 
-The walker renders every corpus doc on every `cargo test`, so the pin must exercise streaming and
-the caps **without being slow**: a `{python}` cell emitting about five lines at 50 ms sleeps plus
-one `\r` progress bar, roughly 300 ms. The caps are unit-tested against tiny budgets via env var,
-never through the corpus.
+**As built, no corpus document was added, and that is the right answer rather than a shortcut.**
+The walker renders every corpus doc on every `cargo test` but does **not execute cells**, so a
+corpus pin would pay the render cost while exercising none of this. Execution-dependent pins live
+in `crates/server/tests/` against a temp-dir fixture, which is the pattern
+`executed_output_reproducible.rs` already established; `progress_bar_collapses.rs` follows it and
+builds a real document through a real kernel. The caps are unit-tested against tiny budgets, and
+proved against a live kernel with a 2 s budget rather than the shipped 600 s one.
 
 ## Testing
 
 | Claim | How it is pinned |
 |---|---|
-| Silence cap fires; wall-clock does not by default | Unit test on the budget computation with tiny budgets |
-| `TALIESIN_CELL_TIMEOUT=120` reproduces today | Unit test asserting the wall-clock branch is taken |
-| `\r` collapsing matches terminal semantics | Unit tests on `collapse_carriage_returns` |
-| Live stream and final render agree | Invariant test: replayed appends == `render_outputs(&collapse(raw))` |
-| A real kernel streams before completion | `TALIESIN_REQUIRE_KERNEL` test asserting an append arrives before the terminal `cell-state` |
-| Message shape | `protocol.rs` unit test beside `cell_state_*` |
+| Silence cap fires; wall-clock does not by default | `the_default_cap_is_silence_not_wall_clock` and siblings, on the pure `cell_budget` |
+| `TALIESIN_CELL_TIMEOUT=120` reproduces today | `setting_the_wall_clock_cap_reproduces_the_old_default_exactly` |
+| The budget resets on output, against a live kernel | `a_chatty_cell_outlives_the_silence_budget_and_a_quiet_one_does_not` (2 s budget) |
+| Merging and `\r` semantics | `consecutive_chunks_of_one_stream_become_one_output`, `a_carriage_return_overwrites_the_current_line`, `a_progress_bar_arriving_in_chunks_collapses_across_outputs` |
+| Live stream and final render agree | `the_live_stream_and_the_final_render_agree` (drift only, **not** semantics: both sides call the same code) |
+| A real kernel streams *during* the cell | `a_running_cell_streams_its_output_before_it_finishes`, asserting appends are spread in time |
+| A bar collapses through a real build | `crates/server/tests/progress_bar_collapses.rs` |
+| Message shape | `cell_output_append_carries_the_op_and_the_rendered_fragment` |
+| The client DOM path | **Nothing.** Browser-verified by hand; see the DETECTION-DEBT row |
 
 Every fix is verified by **mutation** (restore the bug, watch the named test fail), per the
 standing rule.

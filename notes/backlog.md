@@ -337,26 +337,11 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      linter's located diagnostics depend on it). Fix the stale comment whenever this file is
      touched for any other reason.
 
-175. **The long-running-cell workflow (computationally heavy / ML notebooks).** (LARGE, four
-     separable parts. **Ranking is provisional and probably too low**: it sits here only because
-     the author has not re-ranked the queue, and the case for moving it near the top is that
-     part (a) is a wall on *first contact* for an entire user population Taliesin otherwise
-     serves. Filed 2026-07-29 from an author-raised direction, evidence re-derived from source,
-     not from a prior note.) Jupyter's daily-driver property for expensive work is "watch it
-     run, then re-run only what you choose". Taliesin currently has neither half. **Verified:**
-     - **(a) The default cell timeout is 120 s** (`kernel.rs:29-34`) and expiry produces a SIGINT
-       with "no result", not a traceback (`kernel.rs:531`). A 40-minute training cell dies at two
-       minutes until the author discovers `TALIESIN_CELL_TIMEOUT`. **The fix is a better default,
-       not a knob** (minimal-config convention): cap on *silence*, not wall-clock. A cell printing
-       an epoch line every 30 s is alive; a cell silent for 10 minutes is the real runaway. The
-       machinery already exists, `kernel.rs` (~line 915) tracks last-iopub-arrival for an uncapped
-       "no output for 60 s" signal and only warns with it. **Verify that tracker's exact current
-       role before speccing**, this entry asserts it from one comment.
-     - **(b) There is no streaming output.** `exec_cell` awaits `kernel.execute(code)` and gets the
-       *complete* output vector; `kernel.rs` collects iopub until the kernel returns to idle. So a
-       long cell shows a `⏳` elapsed badge and nothing else: no tqdm bar, no epoch log, no partial
-       figure. This is the biggest gap of the four, and it fits the existing protocol shape (a
-       `cell-output-append` message beside `cell-state`).
+175. **The long-running-cell workflow (computationally heavy / ML notebooks).** (**Parts (a) and
+     (b) SHIPPED 2026-07-30**; what is left is (c) and (d), and (d) is still blocked on nothing
+     now that (b) exists. Filed 2026-07-29 from an author-raised direction.) Jupyter's
+     daily-driver property for expensive work is "watch it run, then re-run only what you
+     choose". Taliesin now has the *watch it run* half. **Verified:**
      - **(c) No escape hatch for an expensive cell.** Freeze keys on a cumulative hash (this cell +
        all upstream same-language code + interpreter id), so editing *any* upstream cell busts the
        expensive one, and the full cell-option set (`validate.rs:18`) has `cache: false` to opt
@@ -367,11 +352,15 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      - **(d) No per-cell run and no interrupt.** The preview can only `restart_kernel`
        (`serve/mod.rs:43`), which nukes all state. Per-cell run/interrupt belongs in the **editor**
        (CodeLens), not the preview: it keeps single-editing-surface clean and avoids a second
-       control surface in the browser. **Depends on (b)** and is specced with the editor-ergonomics
-       work, do not build it twice.
-     - **Pin problem, name it before coding:** the corpus walker renders every corpus doc on every
-       `cargo test`, so the pin must *exercise* streaming and the liveness cap without being slow.
-       A cell that emits N lines with sub-100 ms sleeps, not a genuinely long job.
+       control surface in the browser. **Its dependency on (b) is discharged** (2026-07-30), so
+       this is now buildable; it is the same work as `FEATURE-IDEAS.md` idea 86, do not build it
+       twice.
+     - **The pin problem is answered, do not re-derive it.** A corpus document is the *wrong*
+       instrument for anything execution-dependent: the walker renders every corpus doc on every
+       `cargo test` but does **not execute cells**, so a corpus pin pays the render cost and
+       exercises none of the behavior. Execution pins go in `crates/server/tests/` against a
+       temp-dir fixture, as `executed_output_reproducible.rs` and the new
+       `progress_bar_collapses.rs` do.
 
 170. **Marketing site.** (Last by the author's own standing feature-first policy, which is why it
      sits below everything above it even though parts are buildable today.) The
@@ -742,6 +731,44 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-07-30 long-running cells** (175a + 175b), branch `long-running-cells-2026-07-30`,
+  against
+  [2026-07-30-long-running-cells-design.md](../docs/superpowers/specs/2026-07-30-long-running-cells-design.md).
+  A cell is capped on **silence** (`TALIESIN_CELL_SILENCE`, default 600 s) instead of 120 s of
+  wall-clock, and a running cell **streams its output** as it arrives. `./tools/gates.sh` green,
+  all four interpreter gates armed. Five things a later session should carry:
+  - **The item's own "verify this before speccing" flag paid out, in the opposite direction.**
+    The silence tracker did not "only warn": it already pushed a terminal `Output::timeout`. Its
+    real limitation was **reachability** — the budget match consulted the wall-clock deadline
+    first and reached the silence branch only when the cap was disabled. So (a) was a *swap of
+    which cap is the default*, not new machinery.
+  - **Removing the wall-clock default loses no protection, but only because of a second
+    mechanism.** A streaming runaway (`while True: print(x)`) never goes silent and was never
+    caught by silence; it is caught by the existing output caps, which interrupt the moment
+    `MAX_OUTPUTS`/`MAX_STREAM_BYTES` trips. **Do not re-add a wall-clock default** on the theory
+    that runaways are unguarded.
+  - **A self-consistency invariant cannot pin the rule it is consistent about.** The live-vs-final
+    test compares the replayed stream against the batch collapse, but both sides call the same
+    code, so a rule change moves them together: a mutant survived it untouched. Only a
+    written-out expectation killed it. **Reach for an invariant test for drift, never for
+    semantics.**
+  - **Order was the wrong assertion for "is it streaming".** `done` is emitted after `exec_cell`
+    returns, so a single flush at the end of `execute` still lands before it and satisfies any
+    index comparison. The assertion that discriminates is **timing**: appends must be spread out
+    in time. Measured under the mutant, all appends arrived within **202 µs**; streaming spreads
+    them across the cell's sleeps.
+  - **`data-tali-cell-state` is on the CODE block, not the output block**, which the first client
+    version got wrong: it appended live output *inside the source listing*. The rule is to own
+    `{id}-out` — empty it when it exists, otherwise insert a stand-in carrying that
+    `data-block-id` so the authoritative `update` replaces it. Found only in a browser, and the
+    first attempt to measure it produced a **phantom duplicate**, because the rendered source
+    listing contains the cell's own `print` strings; scope any such assertion to
+    `[data-block-id$="-out"]`.
+  - **One rendering change rode along, deliberately:** consecutive chunks of the same stream now
+    merge into one output. Where a kernel cuts stdout into messages is an artefact of buffering,
+    so a `<pre>` per message made the emitted HTML depend on it and turned a printing loop into a
+    stack of boxes. **Measured before taking it: zero drift across the whole corpus and every
+    snapshot test** — the only failure was the anti-drift guard written minutes earlier.
 - **2026-07-30 image optimization** (169), branch `image-optimization-2026-07-30`, against
   [2026-07-30-image-optimization-design.md](../docs/superpowers/specs/2026-07-30-image-optimization-design.md).
   Core annotates every local raster `<img>` with its intrinsic size + a loading policy; the

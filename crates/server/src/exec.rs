@@ -809,7 +809,7 @@ impl Executor {
                         );
                         t0
                     });
-                    let out = self.exec_cell(lang, &code).await;
+                    let out = self.exec_cell(lang, &code, &cell.id, page.as_deref()).await;
                     if let Some(t0) = t0 {
                         let state = if is_uncacheable(&out) {
                             "error"
@@ -1050,11 +1050,51 @@ impl Executor {
             .is_some_and(|k| k.is_alive())
     }
 
-    async fn exec_cell(&mut self, lang: &'static str, code: &str) -> String {
+    /// Run one cell, streaming its output to the client as it arrives (item 175b).
+    ///
+    /// `cell_id` and `page` only address the live messages; they do not affect the
+    /// returned HTML, which is still the authoritative render of the whole output
+    /// vector and is what gets cached and diffed into the block.
+    async fn exec_cell(
+        &mut self,
+        lang: &'static str,
+        code: &str,
+        cell_id: &str,
+        page: Option<&str>,
+    ) -> String {
+        // Cloned before the kernel borrow so the callback can emit while `self` is
+        // mutably borrowed by `execute_streaming`.
+        let sink = self.sink.clone();
+        let page = page.map(str::to_string);
+        let cell_id = cell_id.to_string();
         let Some(kernel) = self.langs.get_mut(lang).and_then(|s| s.kernel.as_mut()) else {
             return String::new(); // kernel unavailable: cell renders as source
         };
-        match kernel.execute(code).await {
+        // Mirrors the list the browser is building, so each arriving output becomes
+        // either a new element or a redraw of the last one. Same rule the final
+        // `render_outputs` applies, by construction: both go through `LiveOutputs`.
+        let mut live = crate::kernel::LiveOutputs::default();
+        let result = kernel
+            .execute_streaming(code, |o| {
+                if sink.is_none() {
+                    return; // a build has no websocket; skip the render entirely
+                }
+                let (op, shown) = match live.push(o.clone()) {
+                    crate::kernel::LiveOp::Append(o) => ("append", o),
+                    crate::kernel::LiveOp::ReplaceLast(o) => ("replace_last", o),
+                };
+                emit(
+                    &sink,
+                    crate::protocol::cell_output_append(
+                        page.as_deref(),
+                        &cell_id,
+                        op,
+                        &render_outputs(std::slice::from_ref(&shown)),
+                    ),
+                );
+            })
+            .await;
+        match result {
             Ok(outs) => render_outputs(&outs),
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
@@ -2124,6 +2164,86 @@ mod tests {
             vec!["queued", "running", "error"],
             "an erroring cell must end on `error`, never `done`",
         );
+    }
+
+    #[test]
+    fn a_running_cell_streams_its_output_before_it_finishes() {
+        // 175b's actual claim, and the assertion is on TIMING rather than on order.
+        //
+        // Order alone cannot prove streaming here: `done` is emitted by the caller
+        // after `exec_cell` returns, so even a single flush at the end of `execute`
+        // would still land before it and satisfy an index comparison. What only real
+        // streaming can produce is appends SPREAD OUT IN TIME, matching the gaps the
+        // cell sleeps between prints. A batched flush delivers them microseconds
+        // apart. The message shape itself is covered unconditionally in `protocol.rs`.
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise output streaming; this run did not."
+            );
+            return;
+        }
+
+        // A sink that stamps each message with its arrival time, so the test can see
+        // WHEN an append reached the client, not just that it did.
+        let stamped: Arc<Mutex<Vec<(std::time::Instant, serde_json::Value)>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let sink: ProgressSink = {
+            let stamped = stamped.clone();
+            Some(Arc::new(move |m: String| {
+                stamped
+                    .lock()
+                    .push((std::time::Instant::now(), serde_json::from_str(&m).unwrap()));
+            }))
+        };
+        let mut ex = Executor::new();
+        ex.set_progress(sink, Some("ch1.tmd".into()));
+        // Three prints separated by a real sleep. Under streaming the appends arrive
+        // ~150ms apart; under any end-of-cell flush they arrive together.
+        let blocks = vec![python_cell_block_with(
+            "s-1",
+            "import time\nfor i in range(3):\n    print('step', i, flush=True); time.sleep(0.15)",
+        )];
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let _ = ex.run(blocks).await;
+        });
+        if ex.diagnostic().is_some() {
+            return; // no working kernel here
+        }
+
+        let msgs = stamped.lock();
+        let appends: Vec<&(std::time::Instant, serde_json::Value)> = msgs
+            .iter()
+            .filter(|(_, v)| v["type"] == "cell-output-append" && v["cell_id"] == "s-1")
+            .collect();
+
+        assert!(
+            appends.len() >= 2,
+            "expected an append per print, got {}; streaming is not wired up",
+            appends.len()
+        );
+        // The discriminator: real streaming spreads these across the cell's sleeps.
+        // 100ms is well above scheduler noise and well below the ~300ms separating
+        // the three prints, so this fails loudly if the appends are ever batched.
+        let spread = appends[appends.len() - 1].0.duration_since(appends[0].0);
+        assert!(
+            spread >= std::time::Duration::from_millis(100),
+            "all {} appends arrived within {spread:?} of each other, so output is being \
+             flushed in one batch rather than streamed as the cell produces it",
+            appends.len()
+        );
+        for (_, v) in &appends {
+            assert_eq!(
+                v["page"], "ch1.tmd",
+                "append is not tagged with its page: {v}"
+            );
+            assert!(
+                v["html"].as_str().unwrap().contains("tali-stream"),
+                "append must carry rendered HTML: {v}"
+            );
+        }
     }
 
     #[test]
