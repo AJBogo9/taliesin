@@ -72,10 +72,15 @@ completion cannot suggest something the validator would reject.
   `title=`, `collapse=`, `icon=` and `appearance=`; a `.step` offers `lines=` and `state=`.
   A `.lemma` is *not* offered `collapse=`, because only `proof` has a collapse branch and
   suggesting it elsewhere would be recommending something that renders no differently.
-- **Format Document** tidies pipe tables: columns padded to their widest cell, alignment
-  markers preserved. It touches nothing else in the file — no prose re-wrapping, no
-  re-indenting, no emphasis normalizing. A table with a row longer than its header is left
-  exactly as written, because tidying it would mean deleting your text.
+- **Format Document** tidies pipe tables (columns padded to their widest cell, alignment
+  markers preserved) and removes whitespace that renders as nothing: trailing spaces that
+  are not a hard line break, runs of three or more blank lines, a missing or doubled final
+  newline. **Your prose is never re-wrapped**, no line is re-indented, no emphasis marker is
+  normalized: the rule is that formatting cannot change one byte of the rendered page, which
+  is checked against every document in this repository on every build. A table with a row
+  longer than its header is left exactly as written, because tidying it would mean deleting
+  your text, and anything inside a code fence or an indented code block is left alone
+  because there a trailing space may be yours on purpose.
 - **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
 - **Insert Math Symbol** (`Ctrl+Alt+M`) searches the math vocabulary by name, glyph or

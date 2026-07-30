@@ -1735,7 +1735,7 @@ fn format_document(
     use lsp_types::{Position, Range, TextEdit};
     let text = docs.get(uri)?;
     Some(
-        crate::lsp_format::format_tables(text)
+        crate::lsp_format::format_edits(text)
             .into_iter()
             .map(|e| TextEdit {
                 range: Range {
