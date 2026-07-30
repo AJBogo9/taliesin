@@ -102,6 +102,11 @@ pub(crate) use emit::emit_children;
 pub(crate) use emit::safe_url;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
+// Intrinsic `width`/`height` + loading hints on local raster images. A post-emission pass
+// over each block's HTML (like `shift_heading_html` below), because neither `<img>` emitter
+// can reach a `base_dir`.
+mod image_meta;
+use image_meta::ImageAnnotator;
 // Text projection (`taliesin read`): a plain-text VIEW of the block model, not an output
 // format. Crate-internal; reached via `RenderedDoc::body_text()`.
 mod text;
@@ -578,6 +583,9 @@ fn render_internal_impl(
     let mut heading_slugs: HashMap<String, u32> = HashMap::new();
     let mut fig_count: usize = 0;
     let mut eq_count: usize = 0;
+    // Per-DOCUMENT, not per-block: the LCP rule needs to know which image is the first one
+    // on the page, so the annotator is threaded across the whole walk.
+    let mut image_annotator = ImageAnnotator::new();
     let mut lst_count: usize = 0;
     let mut sec_count: usize = 0;
     // Section numbering for a book chapter, advanced over EVERY heading in document
@@ -1133,6 +1141,13 @@ fn render_internal_impl(
             if !section_attrs.is_empty() {
                 html = apply_heading_bg(&html, &section_attrs);
             }
+        }
+        // Reserve each local raster image's box before its bytes arrive, so loading one does
+        // not shove the text below it down the page. Relative to `base_dir` like every other
+        // asset reference the build resolves (`copy_local_assets`), which is also what an
+        // `{{< include >}}`d block's paths already resolve against.
+        if let Some(base) = base_dir {
+            html = image_annotator.annotate(&html, base);
         }
         flat.push(FlatBlock {
             buf_start,

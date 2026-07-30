@@ -507,7 +507,12 @@
   pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow-x: auto; }
   pre.mermaid svg { max-width: none; height: auto; }
   blockquote { border-left: 3px solid var(--tali-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--tali-muted); }
-  img { max-width: 100%; }
+  /* `height: auto` is load-bearing, not tidiness. Every local raster <img> now carries its
+     intrinsic `width`/`height` attributes (render/image_meta.rs) so the browser can reserve
+     the box before the bytes arrive. Without `height: auto`, `max-width: 100%` shrinks the
+     width on a narrow screen while the height attribute still applies — every image narrower
+     than its intrinsic size would render stretched. `figure.tali-figure img` already had it. */
+  img { max-width: 100%; height: auto; }
   /* embedded media ({js}/Three.js canvases, SVG figures, video, embeds) is clamped
      to the page width so a fixed-size canvas can't force a horizontal scroll on
      mobile; max-width clamps even against an author width: rule. */

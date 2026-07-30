@@ -59,6 +59,24 @@ libc = "0.2"
 ab_glyph = "0.2"
 png = "0.17"
 
+# Image optimization (item 169). Core uses ONLY `image_dimensions`, a header read, to emit
+# intrinsic `width`/`height`; the server adds the `avif` + `rayon` features to transcode.
+# The decoder set is exactly what the corpus contains — `.svg` has no intrinsic pixel size
+# and is not handled here, and `.avif` *decoding* is deliberately absent because it means
+# dav1d (C) via `avif-native`.
+#
+# NEVER depend on `ravif` directly. That turns on rav1e's `asm` feature, whose build script
+# fails with "NASM build failed. Make sure you have nasm installed" — measured — which would
+# break `cargo install` and the macOS cross-builds in `release.yml`. Going through `image`'s
+# own `avif` feature configures rav1e without asm; a cold release build of it is 21.8 s at
+# `-j4` on a machine with no nasm at all.
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+] }
+
 # The interactive `new`/`init` wizard: an arrow-key kind/template picker + slug/dir
 # input, when a human runs an under-specified command at a TTY. `default-features =
 # false` drops editor/password/tempfile/zeroize/fuzzy-*, leaving just `Select` + `Input`
