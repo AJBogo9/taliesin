@@ -4,6 +4,8 @@ import * as vscode from "vscode";
 import * as http from "node:http";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
+import { dropProvider } from "../../insert";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
@@ -847,3 +849,125 @@ function get(url: string): Promise<string> {
       .on("error", reject);
   });
 }
+
+
+// The paste and drop gestures, in a real Extension Host.
+//
+// A unit test proves the routing is right and `lsp_insert.rs` proves the emitted text is right.
+// Neither can prove VS Code ACCEPTED the provider, which is exactly how a provider registered
+// against a stale `engines.vscode` fails: silently, with the feature simply absent.
+//
+// What is drivable here was measured, not assumed. Listing every command matching /drop|paste/
+// inside a real host shows `editor.action.clipboardPasteAction` and `editor.action.pasteAs` for
+// paste and NOTHING for drop, and `vscode.env.clipboard` is text-only. So: the text/plain routes
+// go end to end, and the drop route calls the provider directly. See DETECTION-DEBT.md for the
+// two gestures that cannot be reached at all.
+suite("Taliesin authoring gestures", () => {
+  /** A scratch project with a `_site.yml`, so the server sees a declared boundary. */
+  function scratch(tag: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tali-${tag}-`));
+    fs.writeFileSync(path.join(dir, "_site.yml"), "title: Scratch\n");
+    return dir;
+  }
+
+  /** Wait until `check` passes, polling rather than sleeping once. */
+  async function until(check: () => boolean, what: string): Promise<void> {
+    for (let i = 0; i < 80; i++) {
+      if (check()) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.fail(`timed out waiting for ${what}`);
+  }
+
+  test("pasting a URL over a selection makes a link", async () => {
+    const dir = scratch("url");
+    const doc = path.join(dir, "notes.tmd");
+    fs.writeFileSync(doc, "See the manual here.\n");
+
+    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
+    const editor = await vscode.window.showTextDocument(opened);
+    // Select "manual".
+    editor.selection = new vscode.Selection(new vscode.Position(0, 8), new vscode.Position(0, 14));
+
+    await vscode.env.clipboard.writeText("https://taliesin.dev/guide");
+    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
+
+    await until(() => opened.getText().includes("]("), "the link paste to apply");
+    assert.match(opened.getText(), /\[manual\]\(https:\/\/taliesin\.dev\/guide\)/);
+  });
+
+  test("pasting a BibTeX entry cites it and appends it to the .bib", async () => {
+    const dir = scratch("bib");
+    const doc = path.join(dir, "notes.tmd");
+    const bib = path.join(dir, "refs.bib");
+    fs.writeFileSync(doc, "---\nbibliography: refs.bib\n---\n\nAs shown in \n");
+    fs.writeFileSync(bib, "@book{knuth1984, title = {TeX}}\n");
+
+    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
+    const editor = await vscode.window.showTextDocument(opened);
+    const end = new vscode.Position(4, 13);
+    editor.selection = new vscode.Selection(end, end);
+
+    await vscode.env.clipboard.writeText("@article{bishop2006,\n  title = {Pattern Recognition},\n}");
+    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
+
+    await until(() => opened.getText().includes("[@bishop2006]"), "the citation to be inserted");
+    // The append is a WorkspaceEdit on another document, so read it through the editor's model
+    // rather than off disk: it is applied but not necessarily saved.
+    const bibDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(bib));
+    await until(() => bibDoc.getText().includes("bishop2006"), "the .bib append to apply");
+    assert.match(bibDoc.getText(), /@book\{knuth1984/, "the existing entry survives");
+  });
+
+  test("pasting a tab-separated grid is offered as a table, but is not the default", async () => {
+    const dir = scratch("tsv");
+    const doc = path.join(dir, "notes.tmd");
+    fs.writeFileSync(doc, "\n");
+
+    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
+    await vscode.window.showTextDocument(opened);
+    await vscode.env.clipboard.writeText("site\tdepth\nnorth\t3\n");
+
+    // The plain paste first: the TSV edit yields to text, so tab-separated prose must NOT
+    // silently become a table.
+    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
+    await until(() => opened.getText().includes("site"), "the plain paste to apply");
+    assert.ok(
+      !opened.getText().includes("|"),
+      `the default paste stayed plain text: ${JSON.stringify(opened.getText())}`
+    );
+
+    // Now ask for the table explicitly, the way the paste-as menu does.
+    await vscode.commands.executeCommand("undo");
+    await vscode.commands.executeCommand("editor.action.pasteAs", { kind: "text.taliesin" });
+    await until(() => opened.getText().includes("|"), "the table paste to apply");
+    assert.match(opened.getText(), /\| site\s+\| depth \|/, "aligned by the server");
+  });
+
+  test("dropping a CSV inserts a dataset card and a loader cell", async () => {
+    const dir = scratch("drop");
+    const doc = path.join(dir, "notes.tmd");
+    fs.writeFileSync(doc, "# Notes\n");
+    const csv = path.join(dir, "m.csv");
+    fs.writeFileSync(csv, "a,b\n1,2\n");
+
+    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
+    await vscode.window.showTextDocument(opened);
+
+    const dt = new vscode.DataTransfer();
+    dt.set("text/uri-list", new vscode.DataTransferItem(vscode.Uri.file(csv).toString()));
+
+    // Called directly: no built-in command drives a drop provider (measured, see the suite note).
+    const edit = await dropProvider.provideDocumentDropEdits!(
+      opened,
+      new vscode.Position(1, 0),
+      dt,
+      new vscode.CancellationTokenSource().token
+    );
+    assert.ok(edit, "the provider answered the drop");
+    const text = String((edit as vscode.DocumentDropEdit).insertText);
+    assert.match(text, /\{\{< dataset m\.csv >\}\}/, `card: ${text}`);
+    assert.match(text, /```\{python\}/, `loader: ${text}`);
+    assert.match(text, /pd\.read_csv\("m\.csv"\)/, `loader body: ${text}`);
+  });
+});

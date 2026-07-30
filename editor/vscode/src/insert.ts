@@ -139,7 +139,16 @@ const pasteProvider: vscode.DocumentPasteEditProvider = {
   },
 };
 
-const dropProvider: vscode.DocumentDropEditProvider = {
+/**
+ * Exported for the Extension Host suite only.
+ *
+ * VS Code publishes no command that drives a drop provider (verified by listing every command
+ * matching `/drop|paste/` inside a real host: `editor.action.pasteAs` and
+ * `clipboardPasteAction` exist for paste, and there is no drop equivalent), so the drop test
+ * calls this directly. That covers the provider's logic, the server round-trip and the real
+ * `DataTransfer`, but NOT VS Code's own routing of a drop event to it.
+ */
+export const dropProvider: vscode.DocumentDropEditProvider = {
   async provideDocumentDropEdits(document, _position, dataTransfer, token) {
     const list = await dataTransfer.get("text/uri-list")?.asString();
     if (!list || token.isCancellationRequested) return undefined;
