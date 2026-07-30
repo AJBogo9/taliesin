@@ -25,6 +25,7 @@ mod lsp_edits;
 mod lsp_fold;
 mod lsp_format;
 mod lsp_hints;
+mod lsp_insert;
 mod lsp_links;
 mod lsp_memo;
 mod lsp_nav;

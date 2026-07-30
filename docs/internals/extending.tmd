@@ -134,7 +134,7 @@ in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either sign
 `taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
 other editor's filetype produces), so the server is never silently inert.
 
-Three requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
+Four requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
 method. Each exists because the protocol has no way to express what it does, and each is
 answered by the same server:
 
@@ -142,6 +142,7 @@ answered by the same server:
 |---|---|
 | `taliesin/cellRegions` | where the code cells are and what language each one is, so a client can route completion inside one to whoever owns that language. LSP cannot say "this range is Python, go ask Pylance" |
 | `taliesin/sectionEdit` | the four structural transforms — move a section up or down, promote or demote a heading — as `TextEdit`s over the buffer (`lsp_edits.rs`). It takes a **cursor**, which is why it is not a code action (that would put a lightbulb on every section, for an operation the author asks for by keystroke) and not `workspace/executeCommand` (whose client-side forwarder is invoked by a keybinding with no arguments at all). rust-analyzer's "move item up/down" is a custom request for the same reason |
+| `taliesin/insertEdit` | the text a paste or drop gesture inserts: a figure block for a pasted image, a pipe table for a pasted spreadsheet, `[@key]` plus a `.bib` append for a pasted BibTeX entry, a `{{< dataset >}}` card plus a loader cell for a dropped `.csv`. The split is forced, not chosen: only the client has the clipboard, and only the server knows what a figure looks like (`lsp_insert.rs`), so the gesture goes in and the text comes out |
 | `taliesin/colorScheme` | a notification, not a request: the editor's light/dark scheme, because the rasterized math hover is a picture and cannot inherit the popup's text colour |
 
 `taliesin/sectionEdit` refuses rather than guesses. Moving past a shallower heading would

@@ -597,6 +597,44 @@ fn handle_request(
                 }),
             },
         }
+    } else if req.method == INSERT_EDIT_METHOD {
+        // Also a Taliesin extension rather than an LSP method. The protocol has no concept of
+        // "the author pasted an image, what should the document say", and it could not: the
+        // gesture is the client's (only it has the clipboard) while the answer is this crate's
+        // vocabulary. Splitting it any other way puts a figure shape, a pipe table or a
+        // citation key in TypeScript, free to disagree with the renderer.
+        let params: crate::lsp_insert::InsertEditParams = serde_json::from_value(req.params)?;
+        let text = docs
+            .get(&params.text_document.uri)
+            .cloned()
+            .unwrap_or_default();
+        let result = params
+            .text_document
+            .uri
+            .to_file_path()
+            .map_err(|()| format!("{} is not a file", params.text_document.uri))
+            .and_then(|path| {
+                crate::lsp_insert::insert_edit(&path, &text, params.kind, &params.payload)
+            });
+        match result {
+            Ok(edit) => lsp_server::Response {
+                id: req.id,
+                result: Some(serde_json::to_value(edit)?),
+                error: None,
+            },
+            // A refusal is a first-class answer here, exactly as for `sectionEdit`: "that is
+            // not a table" and "unsupported image type" are information the author should see,
+            // and the client shows `message`. A null result would read as "nothing happened".
+            Err(message) => lsp_server::Response {
+                id: req.id,
+                result: None,
+                error: Some(lsp_server::ResponseError {
+                    code: -32803, // JSON-RPC RequestFailed
+                    message,
+                    data: None,
+                }),
+            },
+        }
     } else if req.method == PrepareRenameRequest::METHOD {
         let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
@@ -818,6 +856,12 @@ pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
 /// down, promote or demote a heading). Namespaced for the same reason as
 /// [`CELL_REGIONS_METHOD`]: it is not an LSP method.
 pub(crate) const SECTION_EDIT_METHOD: &str = "taliesin/sectionEdit";
+
+/// The custom request behind the companion's paste and drop gestures. Namespaced for the same
+/// reason as [`SECTION_EDIT_METHOD`]: it is not an LSP method, and it cannot be one. A paste is
+/// a client event (only the client has the clipboard) whose *answer* is this crate's vocabulary,
+/// so the request carries the gesture in and the text out.
+pub(crate) const INSERT_EDIT_METHOD: &str = "taliesin/insertEdit";
 
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
