@@ -16,6 +16,7 @@ import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
 import { registerInsertProviders } from "./insert";
 import { registerRenameRepair } from "./rename";
+import { registerTerminalLinks } from "./termlinks";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -79,6 +80,8 @@ export function activate(context: vscode.ExtensionContext) {
   // Renaming a .tmd is the same kind of thing: an author-initiated edit whose knowledge lives in
   // the server. The repair rides VS Code's rename transaction, so it is one undo.
   registerRenameRepair(context);
+  // And the smallest of the three: a diagnostic location in the terminal becomes clickable.
+  registerTerminalLinks(context);
 }
 
 /**
