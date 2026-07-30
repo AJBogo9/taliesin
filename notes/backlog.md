@@ -25,6 +25,43 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
+- **The editor scope is CLOSED as of 2026-07-30.** `FEATURE-IDEAS.md` Session 3 ideas **75, 76,
+  77, 78, 79, 80, 85** shipped against
+  [2026-07-30-editor-scope-completion-design.md](../docs/superpowers/specs/2026-07-30-editor-scope-completion-design.md);
+  **67, 72, 74 and 83 were CUT on measured evidence**; **81 was dropped by owner ruling**. The only
+  editor-surface idea still open anywhere is **86** (cell CodeLens), which stays filed as item
+  **175(d)** behind output streaming. Five things a later session should carry:
+  - **"Gated on the project index" was false for every surface it was claimed for.** Idea 74 (L,
+    needs-care) was cut, not built: F12, Ctrl+T, opening a view and an Explorer refresh all fire
+    on a *gesture*, so they need a walk. `crates/server/src/lsp_project.rs` is one walk behind a
+    memo validated by `stat`ing each page for `(mtime, len)`, with no watcher and no invalidation
+    protocol. **Second time the "re-cost against 74" rule paid out**, after idea 84. Treat a
+    "needs the index first" claim as something to disprove.
+  - **Three parked ideas died on contact with their own premises, and two of them were rot.**
+    67 lost its last justification the moment 75 shipped (it existed to distinguish states only
+    one of which F12 could reach). 83 claimed the browser preview cannot reach the editor, while
+    `client.js` has navigated to `vscode://file<abs>:<line>:<col>` all along. 72 proposed swatches
+    for `--tali-*` in `_site.yml` and front matter, where **no such token is authored anywhere in
+    the repo**; they live in a `theme:` CSS file, and VS Code's own `css-language-features`
+    already paints those. **Before building a provider, grep for where the value is actually
+    authored.**
+  - **A surviving mutant is a finding about the test, twice over here.** Deleting the
+    `is_xref_anchor` gate in `xref_occurrences` left the suite green, because the fixture's only
+    non-anchor `@` was an email address already rejected by the *site* predicate; the fixture
+    needed `@handle`, an `@` at a valid site with no kind prefix. Separately, deleting the
+    `needle.is_empty() ||` short-circuit in `workspace_symbols` also stayed green, and that one
+    was correct: `contains("")` is true for every string, so the guard was dead code and was
+    removed rather than re-pinned.
+  - **`taliesin check`'s human format was mis-transcribed in the ideas file and had to be
+    re-derived from a real run.** Severities are **lowercase** (`error`/`warning`/`suggestion`,
+    `crates/core/src/diagnostics/codes.rs`) and codes are `TAL-XREF-UNDEF`-shaped. There is also
+    an **unlocated** `file: severity[CODE]: message` form with no line, which needs its own
+    matcher or those findings never reach the Problems panel. The older `:col` correction held.
+  - **The engine floor moved to `^1.101.0` with `@types/vscode` pinned exactly to `1.101.0`**, for
+    `registerMcpServerDefinitionProvider`. Measured by packing both candidates: absent at 1.100.0,
+    present at 1.101.0. The pin was then proved load-bearing by passing the constructor one
+    argument and watching `tsc` answer `Expected 2-5 arguments`.
+
 - **The editor authoring-gesture batch shipped 2026-07-30** (`FEATURE-IDEAS.md` Session 3 ideas
   **73**, **84**, **82**, promoted by owner ruling; spec and plan under `docs/superpowers/`). Six
   paste/drop gestures, rename-repairs-references in both directions, and clickable `file:line:`

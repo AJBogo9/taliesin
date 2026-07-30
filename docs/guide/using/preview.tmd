@@ -149,6 +149,54 @@ without opting in. If you want them only when you ask, set it to `offUnlessPress
 shows them while `Ctrl+Alt` is held.
 :::
 
+### The rest of the book, from inside one chapter
+
+A book is one project, but an editor shows you one file. These four close that gap. Like
+the ones above, the first two are the protocol rather than the extension, so any LSP editor
+gets them.
+
+- **Go to definition crosses files.** `F12` on `@sec-priors` jumps to the chapter that
+  defines it, not just to a definition in the file you are in. Your **open buffer still
+  wins**: an anchor you just typed and have not saved resolves to where you typed it, never
+  to the older copy on disk. Hovering a cross-chapter reference names the page that defines
+  it, since the *number* belongs to that page and is not known here.
+- **Go to symbol in workspace** (`Ctrl+T`) reaches every heading and every anchor in the
+  project, so you can jump to a section six chapters away without first remembering which
+  file it lives in.
+- **The Taliesin sidebar** adds three read-only views: **Outline**, the whole book as one
+  tree; **References**, every cross-reference target with what points at it, with dangling
+  ones grouped separately so a broken link is visible without running anything; and
+  **Figures & Tables**, the numbered-float index. Clicking a row navigates. Nothing in the
+  sidebar edits, and nothing reorders: the `.tmd` is the only editing surface.
+- **Explorer badges** mark each `.tmd` with the worst problem `taliesin check` found in it,
+  refreshed when you save. This is the one thing the squiggles cannot do for you: the
+  language server only sees files you have opened, so a chapter you have not touched all
+  week is invisible to it. Turn them off with `taliesin.explorerBadges` if you would rather
+  not have `check` run on save.
+- **The status bar** shows whether a preview is running for this project and on which port,
+  plus the project's problem count. Click it to open or focus the preview.
+
+### Build and check without leaving the editor
+
+`Run Task` (`Ctrl+Shift+P`, "Tasks: Run Task") offers **check**, **build** and **build
+--out** for the project you are in. Their output is parsed, so a `check` run fills the
+**Problems** panel with real, clickable locations for **every page**, including the ones
+you have never opened. A `suggestion` lands as information rather than as an error, because
+advice is not a defect.
+
+::: {.callout-note}
+## Taliesin's tools are available to AI in the editor
+
+The extension registers Taliesin's read-only commands as VS Code language-model tools, so a
+model working in your editor can run `check`, read what a page actually renders to, list a
+document's anchors, outline the project, or look up the accepted vocabulary. Reference one
+in a prompt with `#tali-check`, `#tali-read`, `#tali-symbols`, `#tali-map` or `#tali-vocab`.
+
+`build` is deliberately **not** offered: it writes files and executes your code cells, which
+is not something to do on a model's hunch. The extension also advertises the `taliesin mcp`
+server to VS Code, so an agent you point at it explicitly gets the wider set.
+:::
+
 ## The dev menu
 
 Every live preview carries a small **dev menu**: a `</>` button tucked in the
