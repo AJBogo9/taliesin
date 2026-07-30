@@ -85,6 +85,10 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "Enable prose linting (`true` or `{ banned: [...] }`).",
         ),
         ("theorems", "Theorem-environment numbering configuration."),
+        (
+            "datasets",
+            "Provenance for the data files `{{< dataset >}}` cites.",
+        ),
     ]
 }
 
@@ -118,8 +122,28 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "numbered",
             "Whether or when to number (`true`, `false`, `unless-unique`).",
         ),
+        // datasets: (only what a file cannot say about itself — an in-tree file's size
+        // and digest are measured, so neither is required here)
+        ("path", "A data file in the project, relative to this page."),
+        (
+            "url",
+            "A data file hosted elsewhere, cited rather than shipped.",
+        ),
+        ("licence", "The licence the data is published under."),
+        ("license", "Alias of `licence`."),
+        ("source", "Where the data came from (a URL or a citation)."),
+        (
+            "sha256",
+            "The file's SHA-256. Checked against an in-tree file; the only thing a reader can verify a remote one with.",
+        ),
+        (
+            "bytes",
+            "Size of a remote file (an in-tree one is measured).",
+        ),
         // shared across blocks (hero/listing reuse these):
         ("image-alt", "Alt text for the image."),
+        ("title", "A human-readable name for this entry."),
+        ("description", "A one-line description of this entry."),
     ]
 }
 
@@ -463,6 +487,10 @@ pub fn vocab() -> Value {
                 "hero": named(HERO_KEYS, nested_desc),
                 "prose-lint": named(PROSE_LINT_KEYS, nested_desc),
                 "theorems": named(THEOREM_KEYS, nested_desc),
+                "datasets": named(
+                    crate::render::extension::dataset::DATASET_KEYS,
+                    nested_desc,
+                ),
             }
         },
         "cellOptions": named(CELL_OPTION_KEYS, cell_option_descriptions()),
@@ -545,7 +573,14 @@ mod tests {
         }
         let v = vocab();
         check_named(&v["frontmatter"]["keys"], "frontmatter.keys");
-        for parent in ["execute", "listing", "hero", "prose-lint", "theorems"] {
+        for parent in [
+            "execute",
+            "listing",
+            "hero",
+            "prose-lint",
+            "theorems",
+            "datasets",
+        ] {
             check_named(&v["frontmatter"]["nested"][parent], parent);
         }
         check_named(&v["cellOptions"], "cellOptions");

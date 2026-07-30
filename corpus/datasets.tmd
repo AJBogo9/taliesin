@@ -1,0 +1,51 @@
+---
+title: "Dataset provenance"
+description: "Citing the data a document was computed from, so a reader can re-run it."
+datasets:
+  - path: data/measurements.csv
+    title: "Tarn temperature profiles"
+    licence: "CC0-1.0"
+    source: "https://example.org/tarn-survey"
+    description: "Three sites, three depths, two field days. Small enough to ship."
+    sha256: "fdc42fe505d0f7f81bba9db4d4182f073040b573f02e7ecf598b0a44163feae3"
+  - url: "https://example.org/tarn-survey/full-season.parquet"
+    title: "Full-season profiles"
+    licence: "ODbL-1.0"
+    bytes: 2400000000
+    sha256: "9f2c4a1e7b3d5860af0c19d4e2b78356cd91f0a4e6b28d7c135e9af0b64c2d81"
+    description: "Every cast of the season. Too large to ship with a book; fetch and verify."
+---
+
+A figure computed from data is only reproducible if a reader can get the same data.
+Taliesin does not ship the data: a multi-gigabyte file has no business in a folder of
+HTML. It ships the **provenance** instead, so the file is cited the way a source is.
+
+## A small file, in the tree
+
+`{{< dataset data/measurements.csv >}}` states what the file is and links it. Because
+the card carries an `href`, the build copies the file into the output beside the page,
+so this one really does travel with the document:
+
+{{< dataset data/measurements.csv >}}
+
+The size and checksum are read off the file itself. Nothing in the front matter is
+required to get them: the `datasets:` entry above only adds what the file cannot say
+about itself, which is its licence, where it came from, and what it is.
+
+## A large file, elsewhere
+
+A file too big to ship is cited by URL, with the digest a reader needs to confirm they
+got the same bytes:
+
+{{< dataset https://example.org/tarn-survey/full-season.parquet >}}
+
+Nothing is fetched at build time. `check` stays offline, so the card is a claim the
+author makes and the reader verifies, not a network call.
+
+## What the build checks
+
+The declared `sha256:` of an in-tree file is compared against the file on every render.
+If they disagree the document reports it, which is the difference between "my figure
+changed and I do not know why" and a diagnostic that says the data moved. A remote entry
+with no `sha256:` is reported too: without one, a reader has downloaded something and has
+no way to tell whether it is the same something.

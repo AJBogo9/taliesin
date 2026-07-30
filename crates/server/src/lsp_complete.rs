@@ -167,6 +167,10 @@ const SHORTCODE_NAMES: &[(&str, &str)] = &[
     ("embed", "Embed a deck or page in an iframe."),
     ("video", "Embed a local or remote video."),
     ("input", "A reader-facing control that {js} cells can read."),
+    (
+        "dataset",
+        "A provenance card for a data file: size, checksum, licence, where it came from.",
+    ),
 ];
 
 /// Cell options whose value has a closed set, as `(key, [(value, description)])`.

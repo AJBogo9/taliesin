@@ -1,20 +1,41 @@
 //! Declarative shortcodes: expand `{{< name args >}}` invocations to inline HTML. The
 //! built-ins are `{{< embed deck.tmd >}}` (an isolated deck iframe), `{{< video
-//! clip.mp4 >}}` (a framed screencast), and `{{< input … >}}` (a reactive control).
-//! Line-preserving so the include source map stays valid; `use super::*` reaches the
-//! shared `Warning` and HTML-escape helpers.
+//! clip.mp4 >}}` (a framed screencast), `{{< input … >}}` (a reactive control) and
+//! `{{< dataset … >}}` (a data-provenance card). Line-preserving so the include source
+//! map stays valid; `use super::*` reaches the shared `Warning` and HTML-escape helpers.
 
 use super::*;
+
+pub(crate) mod dataset;
+
+/// What a shortcode may need beyond its own arguments. Only `{{< dataset >}}` uses it so
+/// far: a provenance card reads the file it names (size, digest) and the front-matter
+/// `datasets:` entry that annotates it, neither of which is on the invocation line.
+///
+/// `base_dir` is `None` for a render with no filesystem context, which is a real case
+/// (`render_document` on a string). A dataset card then states only what was declared,
+/// rather than claiming a size it could not measure.
+pub(super) struct ShortcodeCtx<'a> {
+    pub base_dir: Option<&'a std::path::Path>,
+    pub datasets: Vec<dataset::Declared>,
+}
 
 /// Expand declarative shortcodes (`{{< name args >}}`) to inline HTML. Line-preserving
 /// — each invocation opens and closes on one line — so the include source map stays
 /// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example* in a
 /// code fence stays literal; unknown shortcodes are left untouched (with a warning).
-pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
+pub(super) fn expand_shortcodes(
+    src: &str,
+    base_dir: Option<&std::path::Path>,
+) -> (String, Vec<Warning>) {
     let mut warnings: Vec<Warning> = Vec::new();
     if !src.contains("{{<") {
         return (src.to_string(), warnings);
     }
+    let ctx = ShortcodeCtx {
+        base_dir,
+        datasets: dataset::declared(src),
+    };
     let mut out = String::with_capacity(src.len());
     let mut in_code = false;
     // Deduplicates `{{< input >}}` control ids across the document, so two controls that
@@ -33,7 +54,13 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
         } else if in_code {
             out.push_str(line); // literal inside a code block (it's an example)
         } else {
-            out.push_str(&expand_in_line(line, i + 1, &mut warnings, &mut input_ids));
+            out.push_str(&expand_in_line(
+                line,
+                i + 1,
+                &mut warnings,
+                &mut input_ids,
+                &ctx,
+            ));
         }
     }
     if src.ends_with('\n') {
@@ -52,6 +79,7 @@ fn expand_in_line(
     line_no: usize,
     warnings: &mut Vec<Warning>,
     input_ids: &mut std::collections::HashMap<String, u32>,
+    ctx: &ShortcodeCtx<'_>,
 ) -> String {
     if !line.contains("{{<") {
         return line.to_string();
@@ -86,6 +114,32 @@ fn expand_in_line(
             if inner.split_whitespace().next() == Some("input") {
                 let toks = tokenize_args(inner);
                 out.push_str(&input_shortcode(&toks[1..], line_no, warnings, input_ids));
+                i = end + 3;
+                continue;
+            }
+            // `{{< dataset >}}` is expanded here for the same reason `input` is: it needs
+            // the line number and the warning sink, plus the document's directory and its
+            // `datasets:` declarations, none of which `render_shortcode` carries.
+            if inner.split_whitespace().next() == Some("dataset") {
+                let toks = tokenize_args(inner);
+                match toks.get(1) {
+                    Some(target) => {
+                        let (html, ws) =
+                            dataset::render(target, &ctx.datasets, ctx.base_dir, line_no);
+                        warnings.extend(ws);
+                        out.push_str(&html);
+                    }
+                    None => {
+                        warnings.push(
+                            Warning::new(format!(
+                                "`{{{{< dataset >}}}}` at line {line_no} has no source path \
+                                 (write `{{{{< dataset data/file.csv >}}}}` or a URL)"
+                            ))
+                            .at(None, line_no as u32),
+                        );
+                        out.push_str(&line[i..end + 3]);
+                    }
+                }
                 i = end + 3;
                 continue;
             }
@@ -895,7 +949,7 @@ mod arg_validation_tests {
 
     /// Every warning `expand_shortcodes` produces for one line of source.
     fn warn_msgs(src: &str) -> Vec<String> {
-        expand_shortcodes(src)
+        expand_shortcodes(src, None)
             .1
             .into_iter()
             .map(|w| w.message)
@@ -916,7 +970,7 @@ mod arg_validation_tests {
             "{{< video https://evil.example/x.mp4 >}}\n",
             "{{< video data:text/html,x >}}\n",
         ] {
-            let (html, warnings) = expand_shortcodes(src);
+            let (html, warnings) = expand_shortcodes(src, None);
             // The shortcode does not expand at all. What is left is the source text
             // verbatim — the existing "nothing is lost" path an unrecognised shortcode
             // already takes — so the URL survives as inert page text and never becomes an
@@ -948,6 +1002,7 @@ mod arg_validation_tests {
         // what it understood".
         let (html, warnings) = expand_shortcodes(
             "{{< video tour.mp4 dark=javascript:alert(1) poster=//e.x/p.png >}}\n",
+            None,
         );
         assert!(
             html.contains("src=\"tour.mp4\"") || html.contains("data-src=\"tour.mp4\""),
@@ -980,12 +1035,13 @@ mod arg_validation_tests {
             "{{< embed talk.tmd >}}\n",
             "{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption=\"A: a tour\" >}}\n",
         ] {
-            let (_, warnings) = expand_shortcodes(src);
+            let (_, warnings) = expand_shortcodes(src, None);
             let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
             assert!(msgs.is_empty(), "{src:?} must not warn: {msgs:?}");
         }
         // And a caption is prose: a colon in a sentence is not a scheme.
-        let (html, _) = expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n");
+        let (html, _) =
+            expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n", None);
         assert!(html.contains("Fig 1: the tour"), "caption survives: {html}");
     }
 
@@ -1031,7 +1087,7 @@ mod arg_validation_tests {
         // `key=value` nor a known flag", so a typo'd flag WRITTEN FIRST became the `src`
         // and the real clip became a stray argument. A bare token with no `.` and no `/`
         // that is within edit distance 2 of a known flag is read as the typo it is.
-        let (html, warnings) = expand_shortcodes("{{< video control tour.mp4 >}}\n");
+        let (html, warnings) = expand_shortcodes("{{< video control tour.mp4 >}}\n", None);
         assert!(
             html.contains("src=\"tour.mp4\""),
             "the real clip must still be the source: {html}"
@@ -1089,7 +1145,7 @@ mod arg_validation_tests {
     #[test]
     fn an_argument_warning_is_located_on_its_own_line() {
         // Located like every other render warning, so the preview can link to it.
-        let (_, warnings) = expand_shortcodes("intro\n\n{{< video tour.mp4 control >}}\n");
+        let (_, warnings) = expand_shortcodes("intro\n\n{{< video tour.mp4 control >}}\n", None);
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].line, Some(3), "warning: {:?}", warnings[0]);
     }

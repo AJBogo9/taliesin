@@ -114,6 +114,41 @@ in their own sections below.
 |---|---|---|
 | `theorems` | map | Numbering for theorem environments: `shared:` (a list of kinds drawing on one counter) and `numbered:` (`true` / `false` / `unless-unique`). Numbering *scope* is deliberately not a key: an environment scopes to its numbered book chapter automatically. See [Theorems and proofs](../using/theorems.tmd) |
 
+### Data provenance
+
+| Key | Type | Meaning |
+|---|---|---|
+| `datasets` | list of maps | Annotations for the data files [`{{< dataset >}}`](shortcodes.tmd) cites. Each entry is addressed by `path:` (a file in the project) or `url:` (one hosted elsewhere), and carries only what the file cannot say about itself: `title:`, `licence:` (or `license:`), `source:`, `description:`, `sha256:`, `bytes:`. See [`datasets:`](#datasets-where-the-data-came-from) |
+
+## `datasets:` (where the data came from) {#datasets-where-the-data-came-from}
+
+A `{{< dataset data/x.csv >}}` card needs no front matter at all for a file that is in
+the project: its size and SHA-256 are read off the file. A `datasets:` entry adds the
+things a file cannot state about itself, and is the only way to describe a file that
+lives somewhere else.
+
+```yaml
+datasets:
+  - path: data/measurements.csv
+    title: "Tarn temperature profiles"
+    licence: "CC0-1.0"
+    source: "https://example.org/tarn-survey"
+    sha256: "fdc42fe5…"          # checked against the file on every render
+  - url: "https://example.org/full-season.parquet"
+    title: "Full-season profiles"
+    bytes: 2400000000            # a remote file has no local size to measure
+    sha256: "9f2c4a1e…"          # what a reader checks their download against
+```
+
+Two of those are load-bearing rather than decorative. A `sha256:` on an **in-tree** file
+is compared against the file every time the document renders, so data that moved under
+your figures is reported instead of silently changing them. A `sha256:` on a **remote**
+file is the only thing a reader can verify a download with, so leaving it out is
+reported too.
+
+Nothing here is fetched. `check` stays offline and network-free; a remote entry is a
+claim you make and your reader verifies.
+
 ## `execute:` (document-wide cell defaults) {#execute-document-wide-cell-defaults}
 
 A nested `execute:` block sets defaults for **every** code cell in the document. A

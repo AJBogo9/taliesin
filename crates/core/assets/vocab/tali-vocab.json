@@ -370,9 +370,51 @@
       {
         "description": "Theorem-environment numbering configuration.",
         "name": "theorems"
+      },
+      {
+        "description": "Provenance for the data files `{{< dataset >}}` cites.",
+        "name": "datasets"
       }
     ],
     "nested": {
+      "datasets": [
+        {
+          "description": "A data file in the project, relative to this page.",
+          "name": "path"
+        },
+        {
+          "description": "A data file hosted elsewhere, cited rather than shipped.",
+          "name": "url"
+        },
+        {
+          "description": "A human-readable name for this entry.",
+          "name": "title"
+        },
+        {
+          "description": "The licence the data is published under.",
+          "name": "licence"
+        },
+        {
+          "description": "Alias of `licence`.",
+          "name": "license"
+        },
+        {
+          "description": "Where the data came from (a URL or a citation).",
+          "name": "source"
+        },
+        {
+          "description": "A one-line description of this entry.",
+          "name": "description"
+        },
+        {
+          "description": "The file's SHA-256. Checked against an in-tree file; the only thing a reader can verify a remote one with.",
+          "name": "sha256"
+        },
+        {
+          "description": "Size of a remote file (an in-tree one is measured).",
+          "name": "bytes"
+        }
+      ],
       "execute": [
         {
           "description": "Show the cell's source code.",

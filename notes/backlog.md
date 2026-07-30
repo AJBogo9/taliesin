@@ -307,21 +307,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
        `cargo test`, so the pin must *exercise* streaming and the liveness cap without being slow.
        A cell that emits N lines with sub-100 ms sleeps, not a genuinely long job.
 
-176. **Dataset provenance (`datasets:` / `{{< dataset >}}`).** (M. Filed 2026-07-29 alongside 175,
-     same author-raised direction.) **Verified:** `copy_local_assets` only follows `src=`/`href=`
-     in the emitted HTML (`build.rs:761`) and warns-and-skips anything outside the doc tree
-     (`build.rs:769`), so a `data/train.csv` referenced only inside a `{python}` string is
-     **invisible to the build**: not copied, not validated, not mentioned. **Bundling is the wrong
-     default** (a multi-GB parquet in a book folder), and so is the status quo. The real failure is
-     that a reader cannot re-run the book, so the web-native answer is *provenance, not a blob*: a
-     front-matter `datasets:` block or a `{{< dataset data/train.csv >}}` shortcode rendering a
-     card with name, size, sha256, licence, and either a download link (small, in-tree) or a fetch
-     snippet plus checksum (large, remote). Gives the build something to validate against, which
-     turns "my figure changed and I do not know why" into a diagnostic. **Explicitly out of scope:**
-     shipping large data inside the built book. Pin: one corpus doc with a small in-tree CSV and one
-     declared remote entry. *Touches the drop-a-`.csv` gesture in the editor-ergonomics spec; that
-     gesture should insert the card plus a loader cell, so land this first.*
-
 170. **Marketing site.** (Last by the author's own standing feature-first policy, which is why it
      sits below everything above it even though parts are buildable today.) The
      `live-edit-hero-demo` clip (= `ROADMAP.md` Wave 2's unshipped deliverable), swapping the

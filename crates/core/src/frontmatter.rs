@@ -63,6 +63,10 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "prose-lint",
     // Theorem environments (per-document numbering config; see render::TheoremConfig).
     "theorems",
+    // Data provenance: annotations for the files `{{< dataset >}}` cards cite. Only what
+    // a file cannot say about itself (licence, origin, a remote file's size + digest);
+    // an in-tree file needs no entry at all.
+    "datasets",
 ];
 
 /// Keys taliesin RECOGNIZES but does not honor: it reads them, then ignores them.
@@ -208,6 +212,23 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
             }
         }
         _ => {}
+    }
+    // `datasets:` is a sequence of mappings. Same closed-vocabulary treatment as
+    // `listing:`, so a `souce:` typo gets a did-you-mean instead of silently dropping the
+    // one field that says where the data came from.
+    if let Some(serde_yaml::Value::Sequence(seq)) = map.get("datasets") {
+        for item in seq {
+            if let Some(m) = item.as_mapping() {
+                validate_child_keys(
+                    m,
+                    "datasets",
+                    "dataset key",
+                    crate::render::extension::dataset::DATASET_KEYS,
+                    block,
+                    &mut out,
+                );
+            }
+        }
     }
     out
 }

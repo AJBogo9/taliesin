@@ -77,7 +77,10 @@ pub use deck::{
 // the tests rather than re-exported.
 #[cfg(test)]
 use deck::deck_theme_head;
-mod extension;
+// `pub(crate)` only so `frontmatter` can reach `extension::dataset::DATASET_KEYS`: the
+// front-matter linter validates `datasets:` sub-keys against the same closed list the
+// renderer reads, rather than a second copy that could drift from it.
+pub(crate) mod extension;
 pub use extension::embed_targets;
 mod divs;
 mod validate;
@@ -245,7 +248,7 @@ fn render_doc_with_includes_impl(
     // expand after includes, line-preserving so `origins` stays valid. A `{{< name >}}`
     // that no built-in declares is left verbatim but reported, so a typo'd shortcode
     // doesn't ship silently as literal text.
-    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
+    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded, Some(base_dir));
     // Hands `expanded`/`origins` over rather than copying them: the watchdog needs owned
     // inputs, and this path already owns both.
     let mut doc = render_internal(

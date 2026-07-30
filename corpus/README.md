@@ -70,6 +70,13 @@ rather than the order they land in. The shared file keeps a `{#sec-unused}`
 section nobody names, as the control that proves the slicing happens at all.
 Pinned by `crates/core/tests/transclusion.rs`.
 
+`datasets.tmd` pins data provenance (`{{< dataset >}}`): one small in-tree file
+(`data/measurements.csv`, whose `sha256:` the document declares and every render
+checks) and one declared remote entry that is cited but never fetched. Editing the CSV
+without updating the declared digest is meant to turn the pin red — that is the
+diagnostic, not a maintenance burden. Pinned by
+`crates/core/tests/dataset_provenance.rs`.
+
 `diagnostics/` holds docs that deliberately trip Taliesin's schema validators
 (`typos.tmd`: a misspelled key in each surface, front-matter top-level + nested,
 callout kind, cell option). It is pinned by `crates/core/tests/nested_validation.rs`,
