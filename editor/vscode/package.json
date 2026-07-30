@@ -368,7 +368,7 @@
         "source": "taliesin",
         "severity": "info",
         "fileLocation": [
-          "autoDetected",
+          "relative",
           "${workspaceFolder}"
         ],
         "pattern": {
@@ -386,7 +386,7 @@
         "source": "taliesin",
         "severity": "info",
         "fileLocation": [
-          "autoDetected",
+          "relative",
           "${workspaceFolder}"
         ],
         "pattern": {

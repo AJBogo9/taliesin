@@ -8,17 +8,15 @@
 // The task shapes themselves are a pure function in `taskspecs.ts`, unit-tested against the
 // manifest so the offered set and the declared `enum` cannot drift apart.
 
-import * as path from "node:path";
 import * as vscode from "vscode";
 import { projectRootFor, isSourceFile } from "./paths";
-import { taskSpecs, type TaskSpec } from "./taskspecs";
+import { taskSpecs, taskLocation, type TaskSpec } from "./taskspecs";
 
 const TASK_TYPE = "taliesin";
 
-/** True when `target` is `dir` or sits under it, by directory boundary rather than by prefix. */
-function isInside(dir: string, target: string): boolean {
-  const rel = path.relative(path.resolve(dir), path.resolve(target));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+/** The open workspace folders as plain paths, which is all `taskLocation` needs. */
+function folderPaths(): string[] {
+  return (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
 }
 
 /** The project root the tasks should target, or `null` when nothing tells us one. */
@@ -34,21 +32,24 @@ function activeRoot(): string | null {
   return folder ? folder.uri.fsPath : null;
 }
 
-function buildTask(spec: TaskSpec, root: string, binary: string): vscode.Task {
+function buildTask(spec: TaskSpec, cwd: string, binary: string): vscode.Task {
   // Scope to the workspace folder the project actually lives in when there is one, so a
-  // multi-root workspace runs the task against the right folder rather than the first.
+  // multi-root workspace runs the task against the right folder rather than the first. That
+  // folder IS `cwd` whenever one contains the project (`taskLocation` picked it), so this
+  // matches by path rather than searching again: a second search is a second answer waiting
+  // to disagree with the directory the task actually runs in.
   //
   // No `Global` fallback: measured in a real Extension Host with no folder open,
   // `vscode.tasks.fetchTasks()` returns zero tasks of ANY type, so VS Code's task system is
   // inert without a workspace regardless of the scope a provider asks for. A `Global` scope
   // there would be dead code dressed as a fix.
-  const folder = vscode.workspace.workspaceFolders?.find((f) => isInside(f.uri.fsPath, root));
+  const folder = vscode.workspace.workspaceFolders?.find((f) => f.uri.fsPath === cwd);
   const task = new vscode.Task(
     { type: TASK_TYPE, command: spec.name },
     folder ?? vscode.TaskScope.Workspace,
     spec.name,
     TASK_TYPE,
-    new vscode.ShellExecution(binary, spec.args, { cwd: root }),
+    new vscode.ShellExecution(binary, spec.args, { cwd }),
     // Both matchers: `check` emits located and unlocated diagnostics, and a run that reported
     // only the located half would quietly drop every `_site.yml` finding.
     ["$taliesin", "$taliesin-unlocated"]
@@ -72,7 +73,8 @@ export function registerTasks(context: vscode.ExtensionContext): void {
       provideTasks: () => {
         const root = activeRoot();
         if (!root) return [];
-        return taskSpecs(root).map((s) => buildTask(s, root, binary()));
+        const { cwd, target } = taskLocation(root, folderPaths());
+        return taskSpecs(target).map((s) => buildTask(s, cwd, binary()));
       },
       // Called for a task the user wrote into `tasks.json` by hand, where VS Code hands back
       // the definition and expects the execution filled in. Returning `undefined` for one we
@@ -81,8 +83,9 @@ export function registerTasks(context: vscode.ExtensionContext): void {
         const command = (task.definition as { command?: string }).command;
         const root = activeRoot();
         if (!command || !root) return undefined;
-        const spec = taskSpecs(root).find((s) => s.name === command);
-        return spec ? buildTask(spec, root, binary()) : undefined;
+        const { cwd, target } = taskLocation(root, folderPaths());
+        const spec = taskSpecs(target).find((s) => s.name === command);
+        return spec ? buildTask(spec, cwd, binary()) : undefined;
       },
     })
   );

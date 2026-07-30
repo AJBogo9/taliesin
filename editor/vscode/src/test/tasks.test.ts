@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { taskSpecs } from "../taskspecs";
+import { taskSpecs, taskLocation } from "../taskspecs";
 
 const EXT_ROOT = path.join(__dirname, "..", "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(EXT_ROOT, "package.json"), "utf8"));
@@ -25,6 +25,7 @@ interface Pattern {
 interface Matcher {
   name: string;
   severity?: string;
+  fileLocation?: string | string[];
   pattern: Pattern | Pattern[];
 }
 
@@ -61,8 +62,79 @@ test("the check task targets the project root, not a single file", () => {
 });
 
 test("the build --out task writes to _site under the project, not the cwd", () => {
-  const out = taskSpecs("/r").find((t) => t.name === "build --out")!;
-  assert.deepStrictEqual(out.args, ["build", "/r", "--out", "_site"]);
+  // MEASURED: `--out` resolves against the process cwd, not the project. The task now runs
+  // from the workspace folder (so the problem matcher can resolve paths), so a bare `_site`
+  // would follow the cwd and write the built site to the repository root.
+  assert.deepStrictEqual(taskSpecs("docs/guide").find((t) => t.name === "build --out")!.args, [
+    "build",
+    "docs/guide",
+    "--out",
+    "docs/guide/_site",
+  ]);
+  // When the folder IS the project, `.` must not leak into the output path as `./_site`.
+  assert.deepStrictEqual(taskSpecs(".").find((t) => t.name === "build --out")!.args, [
+    "build",
+    ".",
+    "--out",
+    "_site",
+  ]);
+});
+
+test("every matcher declares a fileLocation VS Code actually accepts", () => {
+  // This is the assertion whose absence shipped both matchers dead. `["autoDetected", …]` is
+  // not in VS Code's enum, its parser lowercases and compares against `autodetect`, so
+  // `FileLocationKind.fromString` returned undefined, `checkProblemMatcherValid` logged
+  // "the description doesn't define a file location" and the matcher was never registered.
+  // Every task then printed "Problem matcher $taliesin can't be resolved" and nothing at all
+  // reached the Problems panel. The regex tests below all passed throughout.
+  const allowed = ["absolute", "relative", "autoDetect", "search"];
+  for (const name of ["taliesin", "taliesin-unlocated"]) {
+    const loc = matcher(name).fileLocation;
+    const kind = Array.isArray(loc) ? loc[0] : loc;
+    assert.ok(
+      kind && allowed.includes(kind),
+      `${name}: "${kind}" is not one of VS Code's ${allowed.join(" | ")}; ` +
+        "an unrecognised kind makes the whole matcher unregistrable"
+    );
+    // The base must be a directory the task actually runs in; see `taskLocation`.
+    assert.deepStrictEqual(loc, ["relative", "${workspaceFolder}"], `${name} base`);
+  }
+});
+
+test("a nested project is run from the workspace folder, named relative to it", () => {
+  // The whole reason the matcher can work: `${workspaceFolder}` is the only base VS Code can
+  // resolve, so the task has to run there and name the project from there. Every project in
+  // this repository is nested (`docs/guide`, `corpus/*`, `site`), so this is the normal case,
+  // not an edge one.
+  const { cwd, target } = taskLocation("/w/docs/guide", ["/w"]);
+  assert.strictEqual(cwd, "/w");
+  assert.strictEqual(target, "docs/guide");
+  assert.deepStrictEqual(taskSpecs(target).find((t) => t.name === "check")!.args, [
+    "check",
+    "docs/guide",
+  ]);
+});
+
+test("a project that is itself the workspace folder is named `.`, never an empty argument", () => {
+  const { cwd, target } = taskLocation("/w", ["/w"]);
+  assert.strictEqual(cwd, "/w");
+  assert.strictEqual(target, ".", "an empty string would be passed to argv as an empty arg");
+});
+
+test("a project outside every workspace folder falls back to running in its own root", () => {
+  // Nothing to resolve against, so the honest answer is the root itself. Picking an unrelated
+  // folder's path would produce a target that names a different project entirely.
+  const { cwd, target } = taskLocation("/elsewhere/book", ["/w", "/other"]);
+  assert.strictEqual(cwd, "/elsewhere/book");
+  assert.strictEqual(target, "/elsewhere/book");
+});
+
+test("the containing folder is chosen by directory boundary, not by string prefix", () => {
+  // `/w-old` is a string prefix of neither, but `/w` IS a string prefix of `/w-old/book`.
+  // Choosing by prefix would run the task in `/w` and name the project `../w-old/book`.
+  const { cwd, target } = taskLocation("/w-old/book", ["/w", "/w-old"]);
+  assert.strictEqual(cwd, "/w-old");
+  assert.strictEqual(target, "book");
 });
 
 test("the problem matcher matches real located check output for every severity", () => {
