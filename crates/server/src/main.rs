@@ -31,6 +31,7 @@ mod lsp_memo;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
+mod lsp_rename_file;
 mod math_image;
 mod mcp;
 mod minify;

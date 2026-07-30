@@ -635,6 +635,18 @@ fn handle_request(
                 }),
             },
         }
+    } else if req.method == RENAME_FILE_EDITS_METHOD {
+        // No refusal path: an empty list is the correct answer for "nothing to repair", and a
+        // rename must never fail because the repair found nothing to do.
+        let params: crate::lsp_rename_file::RenameFileEditsParams =
+            serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(
+                crate::lsp_rename_file::rename_file_edits(&params),
+            )?),
+            error: None,
+        }
     } else if req.method == PrepareRenameRequest::METHOD {
         let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
@@ -862,6 +874,13 @@ pub(crate) const SECTION_EDIT_METHOD: &str = "taliesin/sectionEdit";
 /// a client event (only the client has the clipboard) whose *answer* is this crate's vocabulary,
 /// so the request carries the gesture in and the text out.
 pub(crate) const INSERT_EDIT_METHOD: &str = "taliesin/insertEdit";
+
+/// The custom request behind the companion's rename repair. Namespaced for the same reason as
+/// [`SECTION_EDIT_METHOD`]. LSP's `workspace/willRenameFiles` is close, but the companion needs
+/// this on its own `onWillRenameFiles` hook so the edits land inside VS Code's rename
+/// transaction, and the *knowledge* (which reference spellings exist, where a `_site.yml` scalar
+/// sits) is this crate's either way.
+pub(crate) const RENAME_FILE_EDITS_METHOD: &str = "taliesin/renameFileEdits";
 
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
