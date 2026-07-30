@@ -25,12 +25,14 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
-- **Two small things were left open on 2026-07-30 and are the top of P1: items 179 and 180.**
-  179 is a **load-flaky browser test** that makes `gates.sh` unreliable under load (diagnosis
-  complete, cause identified, fix not written; it is a timing assumption, not a code defect).
-  180 is the **user-facing docs** for the four capabilities that just shipped, plus the one ruling
-  the author owes: whether the new inlay hints are pleasant to actually write with, since VS Code
-  turns them on by default. Neither blocks anything else.
+- **Item 179 shipped 2026-07-30 and its filed cause was wrong**, which is worth one line here
+  because the item read as fully diagnosed. The load-flaky shader test was not "the probe samples
+  before the draw lands": the WebGL context is **lost** under CPU starvation (`isContextLost()`,
+  `getError()` 37442) on both canvases before any read, so the prescribed "poll with a generous
+  timeout" fix made it *worse* (23% → 33% failure). The mechanism and the general lesson are in
+  [LESSONS.md](LESSONS.md). Item **180** remains the top of P1: the **user-facing docs** for the
+  four capabilities that shipped, plus the one ruling the author owes on whether the new inlay
+  hints are pleasant to write with, since VS Code turns them on by default.
 
 - **Items 178 + 177 (LSP editor ergonomics) shipped on 2026-07-30** against
   [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
@@ -136,30 +138,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
 - **Promotion is not a design.** Several of these were parked with an open design question, not
   just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
   trap). Those say so; brainstorm before coding.
-
-179. **`a_glsl_cell_compiles_and_paints` is load-flaky, so `./tools/gates.sh` is not trustworthy
-     under load.** (XS/S. Filed 2026-07-30 from a real gate failure, **diagnosis complete, cause
-     not yet fixed**. Ranked first because it is cheap and because it degrades the one gate every
-     batch depends on; re-rank freely. **The parallel session that wrote this test on 2026-07-29
-     may already be on it, so check with them before starting.**) The test asserts that a `{glsl}`
-     cell *painted pixels*, and the paint runs on **SwiftShader software WebGL**
-     (`--use-angle=swiftshader`, `reactive_browser.rs:292-298`), which is CPU-bound. Under a loaded
-     machine the probe samples the canvas before the draw lands and the assertion fails on
-     `reactive_browser.rs:731`, "no pixel was painted".
-     **What was measured, so none of it needs redoing:** it FAILED twice in the main working tree
-     during full `gates.sh` runs while a second Claude session was active, and PASSED (a) alone,
-     (b) with all 8 tests of its own binary, (c) at its own base commit `c0d202f` in a clean
-     worktree under the full `cargo test --workspace` command, (d) at the LSP batch's HEAD in that
-     same worktree under the same command, and (e) in the main tree once the machine was quiet.
-     **So it is neither a code defect nor caused by the LSP batch: it is a timing assumption.**
-     `has_context` passes throughout, so this is not "headless Chrome has no GPU".
-     **The fix is to wait for the draw rather than to assume it has happened**: poll the canvas
-     until a pixel is non-transparent with a generous timeout, instead of sampling once. Do NOT fix
-     it by loosening the assertion to "a context exists": the comment at `reactive_browser.rs:292`
-     records that the whole shader half of that file would then pass vacuously on an error box,
-     which is exactly what SwiftShader was introduced to prevent. **This will bite CI**, whose
-     runners are far slower than this machine, the moment the repo goes public and the workflow
-     arms itself.
 
 180. **The four new LSP capabilities are undocumented for *users*, and the inlay hints need the
      author's eye before they are called done.** (XS for the docs; the evaluation is a ruling only

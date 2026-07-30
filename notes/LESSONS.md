@@ -335,6 +335,19 @@ which 2 are false positives.
 - **An audit's stated fix can be a revert.** PP-3's proposed "give the single-file build the same
   inferred root" would have re-opened PT-2 (`9359a2c`). **Read the code the item proposes to change
   before trusting the change.**
+- **A filed cause with a filed fix is still only a hypothesis, and implementing it first can make
+  the bug worse.** Item 179 recorded a load-flaky shader test as "the probe samples the canvas
+  before the draw lands" and prescribed "poll until a pixel is non-transparent with a generous
+  timeout" — a diagnosis written after five careful measurements, none of which was wrong, and the
+  conclusion was still false. Implementing it raised the failure rate from 23% to 33%, because the
+  backoff it required destroyed the frame-ordering trick the probe depended on. **One round of
+  instrumenting the thing itself** (`isContextLost()` / `getError()`, four lines) named the real
+  cause immediately: the WebGL context was *lost*, on both canvases, before any read — so no
+  waiting strategy could ever have worked. **When an item hands you a cause AND a fix, the cheap
+  move is not to implement the fix; it is to add the one measurement that would distinguish that
+  cause from its neighbours.** A probe reporting only what it set out to prove ("no pixel was
+  painted") cannot tell you it was asking a dead object, which is the same shape as the
+  known-positive-row rule in "Probes and instruments" above.
 - **A documented reason can be true of a sibling path and false of yours.** PP-1 was held back by "the
   client doesn't re-index on a live edit" — true of a site's cross-page index, false of a single doc.
 - **A finding that names one instance has not enumerated the shape.** The `.git`-dependence was two

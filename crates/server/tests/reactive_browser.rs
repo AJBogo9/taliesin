@@ -148,6 +148,26 @@ struct GlslFacts {
     /// Whether any pixel is non-transparent. Separates "drew one flat colour" from
     /// "never drew at all", which `distinct_colours == 1` alone cannot.
     painted: bool,
+    /// Whether ANY canvas reported `isContextLost()`. A lost context cannot paint by
+    /// definition, so a reading taken through one is **void, not negative** — see
+    /// `read_glsl`, which retakes it rather than believing it.
+    #[serde(rename = "contextLost")]
+    context_lost: bool,
+    /// Distinct colours on each canvas in document order, so a failure says *which*
+    /// shader was blank. The animated one and the static one fail for different reasons
+    /// and `[394, 1]` is a very different bug report from `[1, 1]`.
+    #[serde(rename = "perCanvas")]
+    per_canvas: Vec<usize>,
+    /// How many sample rounds the probe needed, and how long that took. Not asserted on —
+    /// it is the diagnostic that separates "ran out of time" from "read a genuinely blank
+    /// canvas over and over", which is the distinction the 2026-07-30 flake turned on.
+    rounds: usize,
+    #[serde(rename = "waitedMs")]
+    waited_ms: f64,
+    /// How many page loads it took to get a reading through a live context. `> 1` means
+    /// the environment lost a context and the probe retook the reading.
+    #[serde(default)]
+    attempts: usize,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -322,14 +342,52 @@ async fn drive(dir: &Path) -> Result<Run, String> {
     result
 }
 
+/// How many page loads the shader reading gets before the environment is blamed out loud.
+/// At the measured ~30% context-loss rate under load ≈ 60 this leaves a ~0.8% chance of a
+/// spurious failure, against ~30% for a single load; on a quiet machine it never retries.
+const GLSL_ATTEMPTS: usize = 4;
+
+/// The shader reading, retaken when the environment throws it away (item 179).
+///
+/// **This is not a loosened assertion, and the distinction is the whole design.** A lost
+/// WebGL context cannot paint, so pixels read through one are not evidence *against* the
+/// shader — they are no evidence at all, the same way a kernel that never started says
+/// nothing about a cell. `Kernel::start_with_retry` is the existing precedent in this
+/// repo: re-roll a genuinely transient infrastructure failure, and fail hard when it does
+/// not clear. So a void reading is retaken on a fresh page, a live one is returned
+/// immediately and asserted on in full, and if every attempt is void the last one is
+/// handed back *with `context_lost` set* so the test fails naming the real reason.
+///
+/// The alternative the backlog explicitly forbids — relaxing the assertion to "a context
+/// exists" — is what this avoids: the pixel checks below are byte for byte the ones that
+/// ran before, and they run on every non-void reading.
+async fn read_glsl(browser: &Browser, dir: &Path) -> Result<GlslFacts, String> {
+    let built = build(dir, "glsl")?;
+    let mut last: Option<GlslFacts> = None;
+    for attempt in 1..=GLSL_ATTEMPTS {
+        let page = open(browser, &built).await?;
+        // One extra frame beyond "all cells done": an unanimated shader draws in a
+        // `requestAnimationFrame` after mount, so the pixels exist a tick later than the
+        // cell. A head start only — `GLSL_BODY` polls for the draw itself.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let mut facts: GlslFacts = read(&page, &probe(GLSL_BODY)).await?;
+        let _ = page.close().await;
+        facts.attempts = attempt;
+        let lost = facts.context_lost;
+        last = Some(facts);
+        if !lost {
+            break;
+        }
+        // Let the compositor settle before asking it for another context; a fresh page
+        // immediately after a loss tends to land in the same bad moment.
+        tokio::time::sleep(Duration::from_millis(750)).await;
+    }
+    last.ok_or_else(|| "glsl probe produced no reading at all".to_string())
+}
+
 async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
     // --- {glsl} -----------------------------------------------------------
-    let glsl_page = open(browser, &build(dir, "glsl")?).await?;
-    // One extra frame beyond "all cells done": an unanimated shader draws in a
-    // `requestAnimationFrame` after mount, so the pixels exist a tick later than the cell.
-    tokio::time::sleep(Duration::from_millis(400)).await;
-    let glsl: GlslFacts = read(&glsl_page, &probe(GLSL_BODY)).await?;
-    let _ = glsl_page.close().await;
+    let glsl = read_glsl(browser, dir).await?;
 
     // --- animate + tali.state ---------------------------------------------
     let anim_page = open(browser, &build(dir, "animate")?).await?;
@@ -532,18 +590,61 @@ const READY_BODY: &str = "return pageFacts;";
 /// `requestAnimationFrame(draw)` calls are queued during that dispatch, the first
 /// synchronously and the rest in microtasks. One macrotask turn (`setTimeout`) drains all
 /// of them, so the read registered after it runs last in the next frame.
+///
+/// **Item 179, and the filed cause was wrong.** This test was flaky under load, and the
+/// backlog recorded the reason as "the probe samples the canvas before the draw lands,
+/// so poll for the paint with a generous timeout". Measured 2026-07-30 at load ≈ 30-60,
+/// that fix does **nothing**: polling for a full 10 s returned `[1, 1]` colours after 43
+/// rounds. Instrumenting the context instead named the real cause in one run —
+/// `isContextLost() === true` and `getError()` 37442 (`CONTEXT_LOST_WEBGL`) on **both**
+/// canvases, ~20 ms after the page settled, on 3 runs in 10. SwiftShader's context simply
+/// dies under CPU starvation, and no amount of waiting revives it. Two things were
+/// refuted on the way, so neither needs retrying: `--disable-gpu-watchdog` does not
+/// prevent it (still 3 in 10), and `glsl.js`'s own `dispose()` — which really does call
+/// `WEBGL_lose_context` — is not reached, because nothing calls `taliJs.reset`/`teardown`
+/// on a static `file://` page. The retry lives in `read_glsl`.
+///
+/// What the loop below is for is the **second, rarer** mode the same instrumentation
+/// found: `[394, 1]`, the animated shader painted and the static one blank. That one *is*
+/// an ordering miss, and it is why the loop keeps its `setTimeout(0)` cadence rather than
+/// backing off. A delay is actively wrong here: the static cell draws once per input
+/// change, so a read registered 250 ms later lands in a frame that composited long ago
+/// and is blank *by construction* (measured — a 25→250 ms backoff turned a 23% failure
+/// rate into 33%). Tight turns are the whole trick; what the deadline adds is **more of
+/// them than a hardcoded 10** when the machine is slow, and an early exit that keeps a
+/// quiet machine at one or two. `read`'s own `evaluate` timeout is 15 s, so the budget
+/// stays under it, and the round cap bounds the `readPixels` traffic (~1.2 MB a canvas a
+/// round) so the probe cannot starve the draw it is waiting for.
 const GLSL_BODY: &str = r#"
+  var DEADLINE_MS = 8000;
+  var MAX_ROUNDS = 120;
   var cs = document.querySelectorAll('canvas.tali-glsl-canvas');
   var out = Object.assign({}, pageFacts, {
     canvases: cs.length, hasContext: false, distinctColours: 0, painted: false,
+    contextLost: false, perCanvas: [], rounds: 0, waitedMs: 0,
   });
   if (!cs.length) return Promise.resolve(out);
   out.hasContext = !!cs[0].getContext('webgl');
   var slider = document.querySelector('[data-tali-input]');
-  function nudge() {
+  // The slider's own value, bounced between two in-range settings rather than climbing.
+  // A deadline loop can run for hundreds of rounds, and `+1` per round would pin the
+  // input at its `max` — where the value stops changing and the static shader, which
+  // redraws only on a *change*, would stop redrawing exactly when we need it to.
+  var base = slider ? Number(slider.value) : 0;
+  var min = slider && slider.min !== '' ? Number(slider.min) : base - 1;
+  var max = slider && slider.max !== '' ? Number(slider.max) : base + 1;
+  var lo = base - 1 >= min ? base - 1 : (base + 1 <= max ? base + 1 : base);
+  function nudge(round) {
     if (!slider) return;
-    slider.value = String(Number(slider.value) + 1);
+    slider.value = String(round % 2 === 0 ? base : lo);
     slider.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function anyContextLost() {
+    for (var i = 0; i < cs.length; i++) {
+      var g = cs[i].getContext('webgl');
+      if (g && g.isContextLost()) return true;
+    }
+    return false;
   }
   function sample(c) {
     var gl = c.getContext('webgl');
@@ -559,33 +660,62 @@ const GLSL_BODY: &str = r#"
     }
     return { colours: Object.keys(seen).length, painted: painted };
   }
+  // The WORST canvas of the best readings, so one working shader cannot hide a broken
+  // sibling. This is what the test asserts on, and therefore also what decides whether
+  // the loop below has waited long enough.
   var best = [];
+  function worstSoFar() {
+    var worst = null;
+    for (var j = 0; j < cs.length; j++) {
+      var b = best[j] || { colours: 0, painted: false };
+      if (!worst || b.colours < worst.colours) worst = b;
+    }
+    return worst || { colours: 0, painted: false };
+  }
   return new Promise(function (resolve) {
     var round = 0;
+    var started = Date.now();
+    function finish() {
+      var worst = worstSoFar();
+      out.distinctColours = worst.colours;
+      out.painted = worst.painted;
+      out.rounds = round;
+      out.waitedMs = Date.now() - started;
+      out.contextLost = anyContextLost();
+      for (var k = 0; k < cs.length; k++) out.perCanvas.push((best[k] || {}).colours || 0);
+      resolve(out);
+    }
     function go() {
-      nudge();
+      nudge(round);
       // A macrotask turn drains the microtasks in which the cells queue their own
       // `requestAnimationFrame(draw)`, so the read below is usually registered after them.
       // "Usually" is why this repeats: the static cell's `run()` resumes after an `await`,
       // so on some rounds its draw lands in a later turn than this one and reads blank.
-      // Keeping the best reading per canvas over several rounds makes that ordering
-      // irrelevant instead of hoping for it (a single round was measurably flaky).
+      // Keeping the best reading per canvas across rounds makes that ordering irrelevant
+      // instead of hoping for it (a single round was measurably flaky).
       setTimeout(function () {
         requestAnimationFrame(function () {
           for (var i = 0; i < cs.length; i++) {
             var r = sample(cs[i]);
             if (!best[i] || r.colours > best[i].colours) best[i] = r;
           }
-          if (++round < 10) { go(); return; }
-          // Report the WORST canvas, so one working shader cannot hide a broken sibling.
-          var worst = null;
-          for (var j = 0; j < cs.length; j++) {
-            var b = best[j] || { colours: 0, painted: false };
-            if (!worst || b.colours < worst.colours) worst = b;
+          round++;
+          // Stop as soon as every canvas satisfies what the test asserts; otherwise keep
+          // waiting for the draw until the budget is spent. Reporting a partial reading
+          // at the deadline (rather than throwing) keeps the failure message honest: the
+          // test still says which assertion failed, and `rounds`/`waitedMs` say whether
+          // it was starved or genuinely blank.
+          // Stop as soon as every canvas clears what the test asserts. A lost context
+          // ends it too: it cannot come back on this page, so further rounds would only
+          // burn the deadline before reporting the same thing.
+          var w = worstSoFar();
+          var satisfied = w.painted && w.colours > 8;
+          var out_of_budget = round >= MAX_ROUNDS || Date.now() - started >= DEADLINE_MS;
+          if (satisfied || anyContextLost() || out_of_budget) {
+            finish();
+            return;
           }
-          out.distinctColours = worst ? worst.colours : 0;
-          out.painted = !!(worst && worst.painted);
-          resolve(out);
+          go();
         });
       }, 0);
     }
@@ -728,15 +858,40 @@ fn a_glsl_cell_compiles_and_paints() {
     assert_clean(&r.glsl.page, "glsl");
     assert_eq!(r.glsl.canvases, 2, "both shader cells mounted a canvas");
     assert!(r.glsl.has_context, "the canvas has a live WebGL context");
+    // Checked BEFORE the pixels, because it changes what a blank canvas means. Every
+    // pixel assertion below is conditional on a live context, and this is the line that
+    // establishes it — so a machine that cannot hold a software GL context fails here,
+    // naming that, instead of failing below as "the shader never drew".
+    assert!(
+        !r.glsl.context_lost,
+        "the WebGL context was lost on all {} attempts, so no pixel reading was possible: \
+         this machine could not hold a SwiftShader context, it is not a shader defect",
+        r.glsl.attempts
+    );
+    // `rounds`/`waitedMs`/`perCanvas` are in both messages on purpose. They separate the
+    // failure modes that look identical from the assertion alone: a full budget spent
+    // means starved, a couple of fast rounds means genuinely blank, and `[394, 1]` means
+    // the *static* shader missed its frame while the animated one drew fine. Without
+    // them, one afternoon went into reading an environment failure as a code bug.
     assert!(
         r.glsl.painted,
-        "no pixel was painted — the shader mounted but never drew"
+        "no pixel was painted — the shader mounted but never drew (polled {} rounds over \
+         {:.0} ms across {} page load(s), colours per canvas {:?})",
+        r.glsl.rounds, r.glsl.waited_ms, r.glsl.attempts, r.glsl.per_canvas
     );
+    // Kept in step with the probe's own early-exit threshold: it stops waiting once every
+    // canvas clears this bar, so raising it here without raising it there would let the
+    // loop stop short of what is now being asserted.
     assert!(
         r.glsl.distinct_colours > 8,
         "the corpus shader paints a ring, so a flat canvas ({} distinct colours) means the \
-         uniforms never arrived or the draw is wrong",
-        r.glsl.distinct_colours
+         uniforms never arrived or the draw is wrong (polled {} rounds over {:.0} ms across \
+         {} page load(s), colours per canvas {:?})",
+        r.glsl.distinct_colours,
+        r.glsl.rounds,
+        r.glsl.waited_ms,
+        r.glsl.attempts,
+        r.glsl.per_canvas
     );
 }
 
