@@ -31,6 +31,11 @@ mod lsp_memo;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
+// TEMPORARY, removed by the commit that wires cross-file go-to-definition: until `lsp.rs`
+// calls `ProjectCache::get`, nothing outside the tests reaches this module, so every item in
+// it (and `lsp_nav::xref_occurrences`, its only new callee) reads as dead in a non-test build.
+#[allow(dead_code)]
+mod lsp_project;
 mod lsp_rename_file;
 mod math_image;
 mod mcp;

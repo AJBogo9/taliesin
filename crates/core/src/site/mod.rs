@@ -277,7 +277,11 @@ pub fn enclosing_site_root(start: &Path) -> Option<PathBuf> {
 /// the editor's every-keystroke diagnostic path, where wrongly deciding a page has no project
 /// turns every legitimate cross-page reference into a broken-reference squiggle, which is the
 /// exact harm that function was written to stop.
-pub(crate) fn enclosing_site_root_across_git(start: &Path) -> Option<PathBuf> {
+///
+/// Public for the same reason: the editor's project walk (`lsp_project`) has to answer "what
+/// project is this page in" the *same* way the diagnostics do. Two answers inside one editor
+/// session means a reference that resolves in the squiggle and not under F12.
+pub fn enclosing_site_root_across_git(start: &Path) -> Option<PathBuf> {
     walk_up_for_site_yml(start, false)
 }
 

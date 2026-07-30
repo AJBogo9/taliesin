@@ -577,9 +577,6 @@ pub(crate) fn anchor_occurrences(text: &str, id: &str) -> Vec<(u32, u32, u32)> {
 /// Definitions (`{#id}`) and bare-fragment links (`](#id)`) are **not** uses and are excluded
 /// here even though `anchor_occurrences` matches them, so the relation between the two is
 /// containment, not equality.
-// TEMPORARY, remove with the `lsp_project::walk` commit that consumes this: until the project
-// walk lands, the only caller is the test module, and clippy rejects the non-test build.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn xref_occurrences(text: &str) -> Vec<(String, u32, u32)> {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
