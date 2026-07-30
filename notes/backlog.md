@@ -139,25 +139,19 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
   just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
   trap). Those say so; brainstorm before coding.
 
-180. **The four new LSP capabilities are undocumented for *users*, and the inlay hints need the
-     author's eye before they are called done.** (XS for the docs; the evaluation is a ruling only
-     the author can make. Filed 2026-07-30 on landing items 177 + 178.) The **Internals** book is
-     current (`docs/internals/extending.tmd`: all four rows plus the coalescing note landed with
-     the batch). The **User Guide** is not: nothing in `docs/guide/` tells an author that inlay
-     hints, folding, document highlight or expand-selection exist, and `using/preview.tmd` covers
-     only click-to-source. Two parts:
-     - **Docs.** A short section, most naturally in `using/writing.tmd` or `using/preview.tmd`.
-       *Optional and cheap:* a drift gate asserting the internals capability table names every
-       field `server_capabilities()` sets. The table went stale the moment four capabilities were
-       added and nothing noticed, which is the same failure mode `manifest.test.ts` exists to
-       catch on the companion side.
-     - **The ruling.** `editor.inlayHints.enabled` defaults to **on** in VS Code, so every author
-       now sees `⟨1⟩` beside every resolving `@fig-`, `⟨Bishop 2006⟩` beside every citation and
-       `⟨42 lines⟩` beside every include, **without opting in**. That is the intended value, but it
-       has only been verified in tests and one screenshot, never lived with in a real writing
-       session. Judge in use, then decide: keep as is, change the `⟨…⟩` delimiter, or narrow which
-       of the three hint kinds are on by default. **This is a minimal-config question** (perfect
-       the default rather than add a knob), so the answer is a better default, not a setting.
+180. **AUTHOR RULING ONLY — the docs half shipped 2026-07-30.** `docs/guide/using/preview.tmd`
+     now carries "What a reference resolves to, without leaving the line" (all four
+     capabilities, plus the `offUnlessPressed` escape hatch), and the drift gate landed as
+     `lsp::tests::the_internals_capability_table_names_every_capability_the_server_advertises`,
+     mutation-verified in both directions (delete a table row → red; add a provider with no row
+     → red). **What is left is the one thing only the author can do:**
+     `editor.inlayHints.enabled` defaults to **on** in VS Code, so every author sees `⟨1⟩` beside
+     every resolving `@fig-`, `⟨Bishop 2006⟩` beside every citation and `⟨42 lines⟩` beside every
+     include **without opting in**. That is the intended value, but it has only been verified in
+     tests and one screenshot, never lived with in a real writing session. Judge in use, then
+     decide: keep as is, change the `⟨…⟩` delimiter, or narrow which of the three hint kinds are
+     on by default. **This is a minimal-config question** (perfect the default rather than add a
+     knob), so the answer is a better default, not a setting.
 
 150. **Phase A2: site-aware in-editor preview — the WIRING half only; the risk half shipped
      2026-07-29.** (MEDIUM.) **The spec is written and its facts are verified:**

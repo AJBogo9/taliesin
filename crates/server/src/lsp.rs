@@ -3860,6 +3860,59 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
+    /// The Internals book documents this surface as a table, and that table is the only
+    /// place an author or a maintainer can read what the server answers. It went stale the
+    /// moment four capabilities were added in one batch and **nothing noticed** — the same
+    /// failure mode `manifest.test.ts` exists to catch on the companion side, which is why
+    /// this gate is worth its lines.
+    ///
+    /// The direction matters: this asserts every advertised `*Provider` has a row, not that
+    /// every row has a provider. A row with no capability behind it is a *documentation*
+    /// error the reader can see and report; a capability with no row is invisible, which is
+    /// exactly the state item 180 was filed to fix.
+    ///
+    /// Only `*Provider` keys are checked. `positionEncoding` and `textDocumentSync` are wire
+    /// settings rather than things an author gets, and they are deliberately not table rows.
+    #[test]
+    fn the_internals_capability_table_names_every_capability_the_server_advertises() {
+        let doc = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/internals/extending.tmd");
+        let text =
+            std::fs::read_to_string(&doc).unwrap_or_else(|e| panic!("{}: {e}", doc.display()));
+
+        let caps = serde_json::to_value(server_capabilities()).unwrap();
+        let advertised: Vec<String> = caps
+            .as_object()
+            .expect("ServerCapabilities serializes to an object")
+            .keys()
+            .filter_map(|k| k.strip_suffix("Provider").map(str::to_owned))
+            .collect();
+        assert!(
+            advertised.len() >= 12,
+            "only {} providers found — the filter stopped matching, so this test would pass \
+             vacuously however stale the table got",
+            advertised.len()
+        );
+
+        for name in &advertised {
+            // The one place the wire name and the prose name differ. The table says
+            // `formatting` because that is what the editor command is called, and calling
+            // it `documentFormatting` in the book to satisfy a test would be the test
+            // writing the documentation.
+            let row = match name.as_str() {
+                "documentFormatting" => "formatting",
+                other => other,
+            };
+            assert!(
+                text.contains(&format!("| `{row}`")),
+                "`{name}Provider` is advertised by `server_capabilities()` but \
+                 docs/internals/extending.tmd has no `| `{row}`` row for it. An \
+                 undocumented capability is one no author knows to use — add the row in \
+                 the same change that adds the capability."
+            );
+        }
+    }
+
     // ---------------------------------------------------------------------------
     // Debounced diagnostics (backlog item 178).
     //

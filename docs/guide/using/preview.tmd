@@ -75,6 +75,39 @@ completion cannot suggest something the validator would reject.
   extension installed. Outside VS Code, `taliesin schema --out <dir>` writes the schema and
   tells you the one comment line to add.
 
+### What a reference resolves to, without leaving the line
+
+Four of these answer a question you would otherwise have to scroll to answer. None of
+them needs a preview window open, and none is specific to VS Code — they are the
+protocol, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or Zed too.
+
+- **Inlay hints** put the *resolved* value in dim text just past the thing that resolves,
+  so `@fig-scree` reads `@fig-scree ⟨1⟩`, `[@bishop2006]` reads `[@bishop2006] ⟨Bishop
+  2006⟩`, and an `{{< include >}}` reads `⟨42 lines⟩`. This is the answer to "which figure
+  *is* that, and did I mean the other one" without jumping. A reference whose anchor lives
+  in **another chapter** is perfectly valid but has no number on this page, and it gets
+  **no hint at all** rather than a placeholder: a missing hint reads as "no information",
+  where `⟨elsewhere⟩` would read as a claim.
+- **Folding** follows the document's own structure instead of indentation. Front matter,
+  each heading down to the next of equal or shallower level, `:::` divs and code fences
+  each fold as a unit. Without it an editor folds `.tmd` by *indentation*, which means
+  nothing in a format whose nesting is heading level and fences: collapsing a chapter to
+  its headings is the point.
+- **Highlight** marks the anchor under your cursor everywhere it occurs, its definition as
+  a write and every reference as a read, so putting the caret on `fig-scree` shows you
+  every place that figure is cited.
+- **Expand selection** (`Alt+Shift+→` in VS Code) grows by structure rather than by the
+  editor's word heuristics: word, then the enclosing inline construct, then the paragraph,
+  then the `:::` div, then the whole section. Shrink with `Alt+Shift+←`.
+
+::: {.callout-note}
+## Inlay hints are on unless you turn them off
+
+`editor.inlayHints.enabled` defaults to `on` in VS Code, so the `⟨…⟩` annotations appear
+without opting in. If you want them only when you ask, set it to `offUnlessPressed`, which
+shows them while `Ctrl+Alt` is held.
+:::
+
 ## The dev menu
 
 Every live preview carries a small **dev menu**: a `</>` button tucked in the
