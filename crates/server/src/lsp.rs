@@ -221,6 +221,11 @@ fn main_loop(
     // number, inlay hints). Keyed on the buffer text, so it is a hit for as long as the
     // author is reading rather than typing — which is exactly when these fire in bursts.
     let mut memo = crate::lsp_memo::RenderMemo::default();
+    // Shared by every request that reaches past the open buffer (cross-file definition and
+    // hover, workspace symbols, the sidebar's two views). A stat-validated walk, not an index:
+    // all of those fire on a user gesture, so re-validating with one `stat` per page is
+    // cheaper than the file watching an index would need. See `lsp_project`.
+    let mut project = crate::lsp_project::ProjectCache::new();
     loop {
         // Block outright when nothing is owed, so an idle server costs nothing; wait only as
         // long as the open window when a publish is pending.
@@ -284,7 +289,7 @@ fn main_loop(
                 // it should.
                 let (id, method) = (req.id.clone(), req.method.clone());
                 let failure = match crate::serve::guarded(|| {
-                    handle_request(connection, &docs, &mut memo, req)
+                    handle_request(connection, &docs, &mut memo, &mut project, req)
                 }) {
                     Ok(Ok(())) => None,
                     // JSON-RPC InvalidParams.
@@ -426,6 +431,7 @@ fn handle_request(
     connection: &Connection,
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     memo: &mut crate::lsp_memo::RenderMemo,
+    project: &mut crate::lsp_project::ProjectCache,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
@@ -490,7 +496,9 @@ fn handle_request(
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_definition(docs, &params))?),
+            result: Some(serde_json::to_value(resolve_definition(
+                docs, project, &params,
+            ))?),
             error: None,
         }
     } else if req.method == Completion::METHOD {
@@ -511,7 +519,7 @@ fn handle_request(
         let params: lsp_types::HoverParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_hover(docs, &params))?),
+            result: Some(serde_json::to_value(resolve_hover(docs, project, &params))?),
             error: None,
         }
     } else if req.method == DocumentLinkRequest::METHOD {
@@ -784,6 +792,7 @@ fn resolve_document_highlight(
 
 fn resolve_definition(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
+    project: &mut crate::lsp_project::ProjectCache,
     params: &lsp_types::GotoDefinitionParams,
 ) -> Option<lsp_types::GotoDefinitionResponse> {
     use crate::lsp_nav::Target;
@@ -826,14 +835,25 @@ fn resolve_definition(
                 .unwrap_or(0) as u32;
             Location::new(Url::from_file_path(&abs).ok()?, point("", line, 0, 0))
         }
-        // `@fig-x` → its definition in this document (cross-file refs get nothing).
-        Target::Xref { id, .. } => {
-            let (line, col) = crate::lsp_nav::definition_site(text, &id)?;
-            Location::new(
+        // `@fig-x` → its definition. The open buffer wins: it is ahead of the on-disk copy,
+        // and an unsaved anchor must not send the author to yesterday's file. Only when the
+        // buffer does not define it does the project walk answer, which is what closes the
+        // cross-file half of the gap this function's doc comment names.
+        Target::Xref { id, .. } => match crate::lsp_nav::definition_site(text, &id) {
+            Some((line, col)) => Location::new(
                 uri.clone(),
                 point(text, line, col, col + id.chars().count() as u32),
-            )
-        }
+            ),
+            None => {
+                let here = uri.to_file_path().ok()?;
+                let anchor = project.get(&here)?.anchors.iter().find(|a| a.id == id)?;
+                // The target's own text, so the outgoing range is built against the file the
+                // author lands in rather than the one they came from.
+                let body = std::fs::read_to_string(&anchor.path).ok()?;
+                let target = Url::from_file_path(&anchor.path).ok()?;
+                Location::new(target, point(&body, anchor.line, 0, 0))
+            }
+        },
         // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
         Target::Cite { key, .. } => {
             let dir = uri.to_file_path().ok()?;
@@ -889,6 +909,7 @@ pub(crate) const RENAME_FILE_EDITS_METHOD: &str = "taliesin/renameFileEdits";
 /// companion). Markdown content, ranged to the token so the editor highlights it.
 fn resolve_hover(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
+    project: &mut crate::lsp_project::ProjectCache,
     params: &lsp_types::HoverParams,
 ) -> Option<lsp_types::Hover> {
     use crate::lsp_nav::Target;
@@ -924,9 +945,29 @@ fn resolve_hover(
         // `@fig-2` → the rendered label + number ("Figure 2"). The label lookup gates it: an
         // anchor whose prefix names no cross-reference kind gets no hover.
         Target::Xref { id, start, end } => {
-            let number = xref_number(uri, text, &id)?;
             let label = xref_label(&id)?;
-            markup(format!("**{label} {number}** — `@{id}`"), start, end)
+            match xref_number(uri, text, &id) {
+                Some(number) => markup(format!("**{label} {number}** — `@{id}`"), start, end),
+                // Defined on another page. The *number* belongs to that page's render, which
+                // this kernel-free path does not have, so name the page instead of answering
+                // nothing: "which chapter is this in" is the question a cross-page hover is
+                // actually asked.
+                None => {
+                    let here = uri.to_file_path().ok()?;
+                    let anchor = project.get(&here)?.anchors.iter().find(|a| a.id == id)?;
+                    let page = anchor
+                        .path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let head = if anchor.number.is_empty() {
+                        format!("**{label}** `@{id}`")
+                    } else {
+                        format!("**{label} {}** `@{id}`", anchor.number)
+                    };
+                    markup(format!("{head}\n\nDefined in `{page}`"), start, end)
+                }
+            }
         }
         // A front-matter key → its one-line docs, scoped to a nested parent when there is one.
         Target::FrontmatterKey {
@@ -2077,6 +2118,101 @@ mod tests {
             .unwrap();
         let resp = recv_response(client, RequestId::from(id));
         serde_json::from_value(resp.result.expect("a definition result")).unwrap()
+    }
+
+    /// A two-page project on disk plus the open-buffer map the resolvers read, for the
+    /// cross-file tests below. `here_text` is what the editor holds for `one.tmd`, which is
+    /// deliberately allowed to differ from what is written to disk: an unsaved buffer being
+    /// ahead of its file is the case `a_local_definition_still_wins_over_the_project_walk`
+    /// exists for.
+    fn cross_page_fixture(
+        name: &str,
+        other: &str,
+        here_text: &str,
+    ) -> (
+        std::path::PathBuf,
+        Url,
+        std::collections::HashMap<Url, String>,
+    ) {
+        let root =
+            std::env::temp_dir().join(format!("tali-lsp-xpage-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(root.join("two.tmd"), other).unwrap();
+        let here = root.join("one.tmd");
+        std::fs::write(&here, here_text).unwrap();
+        let uri = Url::from_file_path(&here).unwrap();
+        let mut docs = std::collections::HashMap::new();
+        docs.insert(uri.clone(), here_text.to_string());
+        (root, uri, docs)
+    }
+
+    #[test]
+    fn go_to_definition_resolves_an_xref_defined_on_another_page() {
+        // The gap `resolve_definition` documented for a year: "cross-file refs get nothing".
+        let (root, uri, docs) =
+            cross_page_fixture("goto", "# Two {#sec-two}\n", "# One\n\nSee @sec-two.\n");
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let found = resolve_definition(&docs, &mut project, &goto_params(&uri, 2, 6))
+            .expect("a cross-page xref must resolve");
+        let lsp_types::GotoDefinitionResponse::Scalar(loc) = found else {
+            panic!("expected a single location");
+        };
+        assert!(loc.uri.to_file_path().unwrap().ends_with("two.tmd"));
+        assert_eq!(loc.range.start.line, 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_local_definition_still_wins_over_the_project_walk() {
+        // The project scan reads DISK; the buffer is ahead of it. Jumping to the on-disk copy
+        // of the page you are typing in is worse than useless, so the buffer must win. The
+        // fixture makes the two disagree on purpose: `one.tmd` on disk has no anchor at all,
+        // while the open buffer defines `sec-x`, and `two.tmd` also defines it.
+        let (root, uri, docs) = cross_page_fixture(
+            "local",
+            "# Other {#sec-x}\n",
+            "# Local {#sec-x}\n\nSee @sec-x.\n",
+        );
+        std::fs::write(root.join("one.tmd"), "# Local\n\nSee @sec-x.\n").unwrap();
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let lsp_types::GotoDefinitionResponse::Scalar(loc) =
+            resolve_definition(&docs, &mut project, &goto_params(&uri, 2, 6)).unwrap()
+        else {
+            panic!("expected a single location");
+        };
+        assert_eq!(loc.uri, uri, "the buffer's own definition must win");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_xref_defined_nowhere_still_resolves_to_nothing() {
+        let (root, uri, docs) = cross_page_fixture("nowhere", "# Two\n", "See @sec-nowhere.\n");
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert!(resolve_definition(&docs, &mut project, &goto_params(&uri, 0, 6)).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hover_on_a_cross_page_xref_names_the_page_that_defines_it() {
+        let (root, uri, docs) =
+            cross_page_fixture("hover", "# Two {#sec-two}\n", "See @sec-two.\n");
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let hover = resolve_hover(&docs, &mut project, &hover_params(&uri, 0, 6))
+            .expect("a cross-page xref must hover");
+        let lsp_types::HoverContents::Markup(m) = hover.contents else {
+            panic!("expected markup");
+        };
+        assert!(
+            m.value.contains("two.tmd"),
+            "the hover must name the page, since the number lives in that page's render: {:?}",
+            m.value
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn hover_params(uri: &Url, line: u32, character: u32) -> lsp_types::HoverParams {
