@@ -17,6 +17,7 @@ import { registerCommands } from "./commands";
 import { registerInsertProviders } from "./insert";
 import { registerRenameRepair } from "./rename";
 import { registerTerminalLinks } from "./termlinks";
+import { registerSidebar } from "./sidebar";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -82,6 +83,10 @@ export function activate(context: vscode.ExtensionContext) {
   registerRenameRepair(context);
   // And the smallest of the three: a diagnostic location in the terminal becomes clickable.
   registerTerminalLinks(context);
+  // Three read-only views over the whole project. A `TreeView` is one of the few surfaces LSP
+  // has no concept of, but every row in it is a projection of what the server replied, and
+  // every row navigates: nothing here writes to a document.
+  registerSidebar(context);
 }
 
 /**

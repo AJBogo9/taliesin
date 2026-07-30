@@ -58,29 +58,45 @@
             "id": "taliesin.setup",
             "title": "Check your setup",
             "description": "The companion answers nothing on its own: it is a client over `taliesin lsp`. Confirm the binary is there.\n[Diagnose Setup](command:taliesin.doctor)",
-            "media": { "markdown": "walkthroughs/setup.md" },
-            "completionEvents": ["onCommand:taliesin.doctor"]
+            "media": {
+              "markdown": "walkthroughs/setup.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.doctor"
+            ]
           },
           {
             "id": "taliesin.preview",
             "title": "Open a live preview",
             "description": "Block-level updates as you type, and Ctrl+click to jump from the preview back to the source line.\n[Open Preview](command:taliesin.openPreview)",
-            "media": { "markdown": "walkthroughs/preview.md" },
-            "completionEvents": ["onCommand:taliesin.openPreview"]
+            "media": {
+              "markdown": "walkthroughs/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.openPreview"
+            ]
           },
           {
             "id": "taliesin.write",
             "title": "Let the editor help you write",
             "description": "Completion for classes, attributes, paths, cell options and math — plus a symbol picker for what you cannot spell.\n[Insert Math Symbol](command:taliesin.insertMathSymbol)",
-            "media": { "markdown": "walkthroughs/write.md" },
-            "completionEvents": ["onCommand:taliesin.insertMathSymbol"]
+            "media": {
+              "markdown": "walkthroughs/write.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.insertMathSymbol"
+            ]
           },
           {
             "id": "taliesin.check",
             "title": "Check before you publish",
             "description": "Cross-references, citations, links and front-matter keys, validated the way the build validates them.\n[Check This Document](command:taliesin.check)",
-            "media": { "markdown": "walkthroughs/check.md" },
-            "completionEvents": ["onCommand:taliesin.check"]
+            "media": {
+              "markdown": "walkthroughs/check.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.check"
+            ]
           }
         ]
       }
@@ -292,6 +308,34 @@
           "description": "Log the traffic between the editor and `taliesin lsp` to the Taliesin Language Server output channel."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "taliesin",
+          "title": "Taliesin",
+          "icon": "icons/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "taliesin": [
+        {
+          "id": "taliesin.outline",
+          "name": "Outline",
+          "contextualTitle": "Taliesin: whole-book outline"
+        },
+        {
+          "id": "taliesin.references",
+          "name": "References",
+          "contextualTitle": "Taliesin: cross-references, dangling grouped"
+        },
+        {
+          "id": "taliesin.floats",
+          "name": "Figures & Tables",
+          "contextualTitle": "Taliesin: numbered float index"
+        }
+      ]
     }
   },
   "capabilities": {
