@@ -116,6 +116,7 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-json",
     "data-tali-lb",
     "data-tali-n",
+    "data-tali-op",
     "data-tali-out",
     "data-tali-ran",
     "data-tali-search",

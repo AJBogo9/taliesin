@@ -172,6 +172,32 @@ Click it to expand a panel with the preview-only tools:
   has none.
 - The **diagnostics** list (detailed below), each entry click-to-source, with the
   button's badge tracking the count.
+- **Changes**: what this session's edits actually did (below).
+
+### Changes: what that edit actually did
+
+Under **Changes** the panel keeps a running `+13 / −2 words` for the session and a
+feed of your last dozen edits, newest first. Each row names the block and what
+happened to it, and clicking a row opens that block's source:
+
+```
+± A probability table over 10 binary variab…  +4 −2
++ A freshly typed opening paragraph…          +9 −0
+⇕ 16 blocks shifted
+```
+
+`±` is a block that changed, `+` one that appeared, `−` one that went away, and `⇕`
+blocks whose line numbers moved because an edit above them changed the length of the
+document. That last one is not busywork being reported: those blocks were *not*
+re-rendered, so anything live inside them (a playing video, a `{js}` widget, an open
+`<details>`) kept running while its source position was corrected underneath it.
+
+The word figures are a real comparison of the words in and out, so rewording a
+sentence reads `+4 −2` rather than `+2`. The two session totals count every edit
+that way, which means their **difference** is exactly how much the document grew or
+shrank while you worked, however you got there. The feed starts empty on every
+reload: it is a record of this sitting, not a history of the file, which is what
+version control is for.
 
 ## Live-edit feedback
 
