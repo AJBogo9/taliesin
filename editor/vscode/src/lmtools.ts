@@ -56,3 +56,38 @@ export function registerLmTools(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.lm.registerTool(spec.name, toolFor(spec)));
   }
 }
+
+/**
+ * Advertise `taliesin mcp` to VS Code, so the MCP server this project already ships is
+ * discovered instead of hand-registered in user configuration.
+ *
+ * The whole server exists already; this is the difference between "there is an MCP server, go
+ * read the docs and edit a JSON file" and "it is there". Note the surface is WIDER than
+ * {@link LM_TOOLS}: the MCP server also offers `build`, which writes and executes. That is
+ * correct, because pointing an agent at an MCP server is an explicit act, where an always-on
+ * editor tool is not.
+ *
+ * Needs VS Code 1.101: `registerMcpServerDefinitionProvider` is absent from the 1.100 API
+ * surface. That measurement is what set the engine floor, and `manifest.test.ts` pins it.
+ */
+export function registerMcpProvider(context: vscode.ExtensionContext): void {
+  const changed = new vscode.EventEmitter<void>();
+  context.subscriptions.push(
+    changed,
+    vscode.lm.registerMcpServerDefinitionProvider("taliesin", {
+      onDidChangeMcpServerDefinitions: changed.event,
+      provideMcpServerDefinitions: async () => {
+        // Read at call time, not at activation: the author may point `taliesin.path` at a
+        // different build after the extension has started.
+        const binary = vscode.workspace
+          .getConfiguration("taliesin")
+          .get<string>("path", "taliesin");
+        return [new vscode.McpStdioServerDefinition("Taliesin", binary, ["mcp"])];
+      },
+    }),
+    // A changed binary path means a different server; tell VS Code to ask again.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("taliesin.path")) changed.fire();
+    })
+  );
+}

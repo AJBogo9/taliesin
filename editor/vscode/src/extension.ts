@@ -21,7 +21,7 @@ import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
 import { registerDecorations } from "./decorations";
 import { registerStatusBar } from "./statusbar";
-import { registerLmTools } from "./lmtools";
+import { registerLmTools, registerMcpProvider } from "./lmtools";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -109,6 +109,9 @@ export function activate(context: vscode.ExtensionContext) {
   // model in this editor can check and read documents rather than guess about them. Nothing
   // that writes or executes is offered here; see `lmspecs.ts`.
   registerLmTools(context);
+  // And the MCP server itself, advertised rather than hand-registered. Wider than the tool
+  // surface above on purpose: pointing an agent at an MCP server is an explicit act.
+  registerMcpProvider(context);
 }
 
 /**

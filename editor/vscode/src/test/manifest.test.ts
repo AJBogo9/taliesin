@@ -468,9 +468,13 @@ test("contributes a math-delimiter token colour scoped to .tmd only", () => {
 });
 
 // The engine floor and the types have to agree, and the floor has to be new enough for the
-// APIs the source calls. `registerDocumentPasteEditProvider` and `DocumentDropOrPasteEditKind`
-// are absent from stable @types/vscode 1.96.0 and present in 1.97.0, so 1.97 is the real floor
-// once the paste gestures exist.
+// APIs the source calls. Each floor here was MEASURED by packing the candidate types and
+// grepping them, never recalled:
+//
+//   - `registerDocumentPasteEditProvider` / `DocumentDropOrPasteEditKind`: absent from stable
+//     @types/vscode 1.96.0, present in 1.97.0. That set the previous floor.
+//   - `registerMcpServerDefinitionProvider` / `McpStdioServerDefinition`: absent from 1.100.0,
+//     present in 1.101.0. That sets the current one.
 //
 // The types are pinned EXACTLY to that floor, with no caret, and that is the load-bearing
 // half. The manifest previously declared `^1.91.0` while `@types/vscode: ^1.91.0` resolved to
@@ -482,10 +486,10 @@ test("contributes a math-delimiter token colour scoped to .tmd only", () => {
 test("the declared engine is new enough for the APIs we call, and the types pin that floor", () => {
   const engine = manifest.engines.vscode;
   const types = manifest.devDependencies["@types/vscode"];
-  assert.strictEqual(engine, "^1.97.0", "engines.vscode must state the paste API floor");
+  assert.strictEqual(engine, "^1.101.0", "engines.vscode must state the MCP provider floor");
   assert.strictEqual(
     types,
-    "1.97.0",
+    "1.101.0",
     "@types/vscode must be pinned to the engine floor, with no caret: a range resolves to the " +
       "latest types and lets tsc bless APIs the minimum engine does not have"
   );

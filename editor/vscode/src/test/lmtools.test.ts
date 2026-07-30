@@ -92,6 +92,25 @@ test("every declared tool can be referenced in a prompt and describes itself", (
   }
 });
 
+test("the MCP provider id the source registers is the one the manifest declares", () => {
+  // VS Code matches these by string. A mismatch means the provider is registered and never
+  // consulted, which looks exactly like the server not existing.
+  const declaredIds: string[] = (manifest.contributes.mcpServerDefinitionProviders ?? []).map(
+    (p: { id: string }) => p.id
+  );
+  const source = fs.readFileSync(path.join(EXT_ROOT, "src", "lmtools.ts"), "utf8");
+  const used = [...source.matchAll(/registerMcpServerDefinitionProvider\(\s*"([^"]+)"/g)].map(
+    (m) => m[1]
+  );
+  assert.ok(used.length > 0, "no registerMcpServerDefinitionProvider call found in lmtools.ts");
+  for (const id of used) {
+    assert.ok(declaredIds.includes(id), `provider id "${id}" is registered but not declared`);
+  }
+  for (const id of declaredIds) {
+    assert.ok(used.includes(id), `provider id "${id}" is declared but never registered`);
+  }
+});
+
 test("only the path-taking tools declare a path input", () => {
   for (const spec of LM_TOOLS) {
     const d = declared.find((x) => x.name === spec.name) as
