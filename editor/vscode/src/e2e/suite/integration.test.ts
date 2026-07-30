@@ -971,3 +971,44 @@ suite("Taliesin authoring gestures", () => {
     assert.match(text, /pd\.read_csv\("m\.csv"\)/, `loader body: ${text}`);
   });
 });
+
+// The rename repair, in a real Extension Host.
+//
+// This is the test the unit layer cannot write: `lsp_rename_file.rs` proves the edits are right,
+// but only a real host proves the `onWillRenameFiles` hook fires, that `waitUntil` is honoured,
+// and that the returned WorkspaceEdit is applied to files that are not open.
+suite("Taliesin rename repair", () => {
+  test("renaming a chapter repairs the references pointing at it", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tali-rn-"));
+    fs.writeFileSync(path.join(dir, "_site.yml"), "title: P\nchapters:\n  - intro.tmd\n");
+    fs.writeFileSync(path.join(dir, "intro.tmd"), "# Intro\n");
+    // Deliberately NOT opened in an editor: the repair has to reach a file on disk.
+    fs.writeFileSync(path.join(dir, "two.tmd"), "See [intro](intro.html) and intro.tmd.\n");
+
+    const oldUri = vscode.Uri.file(path.join(dir, "intro.tmd"));
+    const newUri = vscode.Uri.file(path.join(dir, "overview.tmd"));
+
+    // The real editor rename, so this covers the hook, the request and the edit application
+    // rather than any one of them alone.
+    const we = new vscode.WorkspaceEdit();
+    we.renameFile(oldUri, newUri);
+    assert.ok(await vscode.workspace.applyEdit(we), "the rename applied");
+
+    const two = path.join(dir, "two.tmd");
+    for (let i = 0; i < 100; i++) {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(two));
+      if (doc.getText().includes("overview.html")) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const text = (await vscode.workspace.openTextDocument(vscode.Uri.file(two))).getText();
+    assert.match(text, /\(overview\.html\)/, `the .html spelling: ${text}`);
+    assert.match(text, /overview\.tmd/, `the .tmd spelling: ${text}`);
+    assert.ok(!text.includes("intro.html"), `no stale reference: ${text}`);
+
+    // The book spine too, or the chapter drops out of the book entirely.
+    const yml = (
+      await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(dir, "_site.yml")))
+    ).getText();
+    assert.match(yml, /- overview\.tmd/, `the spine: ${yml}`);
+  });
+});

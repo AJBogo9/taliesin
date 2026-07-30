@@ -15,6 +15,7 @@ import { readSiteMap } from "./map";
 import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
 import { registerInsertProviders } from "./insert";
+import { registerRenameRepair } from "./rename";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -75,6 +76,9 @@ export function activate(context: vscode.ExtensionContext) {
   // in the editing surface, so they are not preview write-back, and they are not language features
   // either. The gesture is VS Code's; every string they insert comes from the server.
   registerInsertProviders(context);
+  // Renaming a .tmd is the same kind of thing: an author-initiated edit whose knowledge lives in
+  // the server. The repair rides VS Code's rename transaction, so it is one undo.
+  registerRenameRepair(context);
 }
 
 /**
