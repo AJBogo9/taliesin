@@ -306,6 +306,11 @@
           ],
           "default": "off",
           "description": "Log the traffic between the editor and `taliesin lsp` to the Taliesin Language Server output channel."
+        },
+        "taliesin.explorerBadges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Badge .tmd files in the Explorer with their worst `taliesin check` severity. Runs `check` on save."
         }
       }
     },

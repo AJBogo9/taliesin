@@ -19,6 +19,7 @@ import { registerRenameRepair } from "./rename";
 import { registerTerminalLinks } from "./termlinks";
 import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
+import { registerDecorations } from "./decorations";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -91,6 +92,10 @@ export function activate(context: vscode.ExtensionContext) {
   // `check` and `build` as tasks, so project-wide findings reach the Problems panel for files
   // that are not open. The language server only ever diagnoses buffers it has been sent.
   registerTasks(context);
+  // Project health with zero interaction: each `.tmd` wears its worst check severity. The
+  // language server only sees buffers it has been sent, so a page never opened is invisible
+  // to it; `check` sees the whole project.
+  registerDecorations(context);
 }
 
 /**
