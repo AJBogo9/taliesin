@@ -136,20 +136,20 @@ pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
 
 /// The nearest ancestor directory of `page` holding a `_site.yml`, or `None`. Starts at
 /// the file's own directory, so a page IS in the project its own `_site.yml` roots.
+///
+/// Climbs **past** a `.git` boundary, unlike the plain [`super::enclosing_site_root`]. That
+/// difference was an accident of two separate implementations until it was measured; it is now
+/// one shared walk with a named parameter, and
+/// `the_two_project_root_walks_differ_only_at_a_git_boundary` pins it so neither side drifts.
+/// The unbounded form is deliberate here: this function feeds the editor's every-keystroke
+/// diagnostics, where a wrong `None` squiggles every valid cross-page reference.
 fn enclosing_site_root(page: &Path) -> Option<PathBuf> {
+    // Kept from the original: a path that does not exist on disk is resolved against the
+    // working directory rather than abandoned, which `canonicalize().ok()?` alone would do.
     let abs = page
         .canonicalize()
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(page));
-    let mut cur = abs.parent()?;
-    loop {
-        if cur.join("_site.yml").is_file() {
-            return Some(cur.to_path_buf());
-        }
-        cur = cur.parent()?;
-        if cur.as_os_str().is_empty() {
-            return None;
-        }
-    }
+    super::enclosing_site_root_across_git(abs.parent()?)
 }
 
 /// The cross-reference anchors a page's code cells define through `#| label: fig-x`.
@@ -224,20 +224,30 @@ fn heading_levels(src: &str) -> Vec<usize> {
 }
 
 /// One cross-referenceable anchor as the source scan sees it.
-struct ScannedAnchor {
-    id: String,
+/// One cross-reference anchor found in a page's source.
+///
+/// Public because the editor's project walk (`lsp_project`) reads the same scan this module
+/// does. Before that, `anchors_defined_elsewhere_in_project` collected every field here and
+/// then threw all but `id` away, so go-to-definition across pages had no location to jump to
+/// even though the walk had already computed one.
+pub struct ScannedAnchor {
+    pub id: String,
     /// Section number for a `{#sec-}` heading in a numbered chapter; empty otherwise.
-    number: String,
+    pub number: String,
     /// The heading's own text when the anchor sits on a heading line; empty otherwise.
-    title: String,
+    pub title: String,
     /// 1-based source line, for the duplicate-label warning.
-    line: usize,
+    pub line: usize,
 }
 
 /// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
 /// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
 /// are counted in order so an unlabeled section still advances the numbering.
-fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> {
+///
+/// Public so the editor's project walk uses this scanner rather than a second one: two
+/// implementations of "what defines an anchor" would let go-to-definition and the built page
+/// disagree about which file owns a label.
+pub fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> {
     let mut out = Vec::new();
     // The numbering base is the shallowest heading below the chapter's own, so the whole
     // heading shape has to be known before the first anchor is numbered: pre-scan it.
@@ -453,6 +463,84 @@ fn rewrite_one_xref(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A scratch directory following the house idiom (no `tempfile` dependency in this crate).
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tali-xrefroot-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_two_project_root_walks_differ_only_at_a_git_boundary() {
+        // `xref.rs` carried its own copy of this walk and `mod.rs` has the public one, and a
+        // third caller (the editor's project walk) was about to be added against the
+        // duplicate. Measuring them found ONE difference, at a `.git` boundary, which neither
+        // side documented. The bodies are now a single function parameterized on that choice;
+        // this test pins both the agreement and the deliberate difference, so a later change
+        // to either cannot go unnoticed.
+        let base = scratch("agree");
+        let root = base.join("proj");
+        std::fs::create_dir_all(root.join("part")).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(root.join("index.tmd"), "# i\n").unwrap();
+        std::fs::write(root.join("part/ch.tmd"), "# c\n").unwrap();
+
+        // A page with no `_site.yml` above it at all. Both must say `None`, and this row is
+        // here as the KNOWN-NEGATIVE control.
+        let repo = base.join("repo");
+        std::fs::create_dir_all(repo.join("nested")).unwrap();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join("nested/solo.tmd"), "# s\n").unwrap();
+
+        // The row that actually exercises the difference: an `_site.yml` ABOVE a `.git`
+        // boundary. The first version of this test only had the row above, where both walks
+        // answer `None` for the trivial reason that there is no `_site.yml` anywhere, so it
+        // passed while testing nothing.
+        let outer = base.join("outer");
+        let inner = outer.join("repo");
+        std::fs::create_dir_all(inner.join(".git")).unwrap();
+        std::fs::write(outer.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(inner.join("page.tmd"), "# p\n").unwrap();
+
+        // Everywhere a `.git` is not in the way, the two must answer identically. The first
+        // two rows are KNOWN-POSITIVE and the third KNOWN-NEGATIVE, so a probe that broke and
+        // answered `None` to everything could not pass.
+        for probe in [
+            root.join("index.tmd"),
+            root.join("part/ch.tmd"),
+            repo.join("nested/solo.tmd"),
+        ] {
+            assert_eq!(
+                enclosing_site_root(&probe),
+                super::super::enclosing_site_root(&probe),
+                "the two walks must agree wherever no `.git` boundary is involved: {}",
+                probe.display()
+            );
+        }
+        assert_eq!(
+            enclosing_site_root(&root.join("index.tmd")).as_deref(),
+            Some(root.canonicalize().unwrap().as_path()),
+            "known-positive row: a page in a project must find it"
+        );
+
+        // The one deliberate difference, named rather than discovered.
+        let across = inner.join("page.tmd");
+        assert_eq!(
+            enclosing_site_root(&across).as_deref(),
+            Some(outer.canonicalize().unwrap().as_path()),
+            "the editor path climbs past `.git`: a wrong `None` here would squiggle every \
+             valid cross-page reference on the page"
+        );
+        assert_eq!(
+            super::super::enclosing_site_root(&across),
+            None,
+            "the public walk stops at `.git`, so an unrelated ancestor project cannot adopt \
+             a document that lives in its own repository"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn brace_id_reads_an_id_in_a_later_brace_block() {
