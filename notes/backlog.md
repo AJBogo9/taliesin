@@ -25,6 +25,35 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
+- **Items 165, 166, 162 and 161 shipped 2026-07-30**, and three of them carry something a
+  later session needs.
+  - **166's recorded blocker was already solved.** The item said a prose formatter cannot
+    ship because reflowing moves every `data-sourcepos` below it. `BlockOp::SetMeta` has
+    handled exactly that all along (shifted lines, unchanged content, live DOM state kept),
+    so the objection was rot. The *reflow* is still declined, but now on measured grounds:
+    86 of 174 corpus documents are hand-wrapped and 379 prose lines pass 100 columns, so
+    there is no house style to enforce. What shipped is the render-identical subset, gated by
+    `formatting_the_whole_corpus_renders_identical_html` — which immediately caught a case no
+    reasoning had produced (adding a final newline to a document ending in an HTML comment
+    puts the newline *inside* the passthrough). **A whole-corpus render-identity gate is the
+    reusable shape here**; reach for it before hand-reasoning about parser edge cases.
+  - **165's keybindings were chosen from the running editor, not from memory.** The first
+    choice (`ctrl+alt+pageup`/`pagedown`) is taken by quick-input paging and chat code-block
+    navigation. The e2e suite now reads VS Code's real default table
+    (`workbench.action.openDefaultKeybindingsFile`) and fails on a clash, with punctuation
+    keys normalized (the default table spells `[` as `[BracketLeft]`, so a raw string
+    compare calls every punctuation binding free). **Do not pick a keybinding by recall.**
+    One deliberate override is listed: `ctrl+shift+k` shadows `editor.action.deleteLines`.
+  - **162 and 161 are client-side and their arithmetic is browser-verified by hand**, not by
+    a test: `client.js` is deliberately one IIFE with no unit harness. The drift halves are
+    gated in `serve/mod.rs`, and the gap is now a DETECTION-DEBT row naming the harness
+    change it needs (a `tools/ui-audit` probe that edits a *copy* of a corpus doc under a
+    live preview). 161 also fixed three things found only by using it: a `0w` parent section,
+    the `#` anchor glyph in every title, and the title block counting as a five-word section.
+  - **A new `data-*` attribute in browser code trips `token_contract.rs`'s census.** Expected,
+    and the fix is one sorted line — but the census is also the prompt to namespace it
+    (`data-kind` became `data-tali-op`).
+
 - **Item 179 shipped 2026-07-30 and its filed cause was wrong**, which is worth one line here
   because the item read as fully diagnosed. The load-flaky shader test was not "the probe samples
   before the draw lands": the WebGL context is **lost** under CPU starvation (`isContextLost()`,
@@ -61,7 +90,8 @@ enough to start.**
   **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
   deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
   take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
-  2026-07-29.
+  2026-07-29 and four more (165, 166, 162, 161) on 2026-07-30, so the top of the queue is now
+  **169 (image optimization)**, with 180 above it needing only the author's ruling.
 - **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
   line in the demand-driven tail.
 - **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
@@ -164,37 +194,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      decide: keep as is, change the `⟨…⟩` delimiter, or narrow which of the three hint kinds are
      on by default. **This is a minimal-config question** (perfect the default rather than add a
      knob), so the answer is a better default, not a setting.
-
-162. **Session revision digest.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #36.) Surface the
-     `BlockOp` stream the client already receives: a session word delta (`+340 / -180`) plus a
-     feed of the last N ops, each click-to-source, so an edit answers "what did that actually
-     do?" instead of being console-only. Makes the moat **visible**, which is worth as much to
-     150's marketing half as to authoring. Honest caveat carried from the parked entry: the pin
-     is behavioural (a `tools/live-edit-bench` assertion), not a corpus doc.
-
-161. **Author structure panel.** (M/L, and **smaller than when it was parked**.
-     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #26.) A read-only preview sidebar: heading tree with
-     per-section word count and a badge per node for unresolved xref / TODO / over-goal length,
-     click to scroll. This is the *revision* view, not the reader TOC. **Re-scope before
-     building:** the heading-tree half is now largely free from the shipped LSP
-     (`textDocument/documentSymbol`, `lsp_outline.rs`), so the unique value left is the
-     **annotation layer**. Scope it as an annotation layer on the dev panel or it grows to L.
-
-165. **Companion Phase 2: editor commands.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #31/#33.)
-     Insert block, reorder slide, move/promote/demote a heading section, strictly as `.tmd`-buffer
-     text transforms in the **editor**, never preview gestures. This is the *legal* replacement
-     for the drag-to-reorder that was removed for breaking single-editing-surface. **Cap the
-     command set**: this is the named route by which the companion metastasizes into WYSIWYG.
-     Note #32 (rename label) already shipped in the LSP, so it is out of scope here.
-
-166. **`.tmd` format-on-save for PROSE.** (Open design question, and narrower than it was.) The
-     table-only formatter shipped 2026-07-28 (`crates/server/src/lsp_format.rs`,
-     `textDocument/formatting`), and it **sidesteps** the recorded objection rather than
-     answering it: a table's rows map one-to-one onto its lines, so the replacement has exactly
-     the line count of the range it replaces and no `data-sourcepos` below it moves
-     (`formatting_never_changes_the_line_count` pins that). **A prose pretty-printer still has
-     the original problem**, reflowing a paragraph moves every line after it. **Brainstorm the
-     line-shift answer before any reflow code.**
 
 169. **Image optimization.** (Large.) WebP/AVIF transcode + responsive `srcset` + lazy-load
      behind a content-hashed asset cache. Parked as "deferred until posts get image-heavy";

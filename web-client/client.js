@@ -235,6 +235,146 @@
     full: "⟳",
   });
 
+  // --- section annotations ------------------------------------------------------
+  // The revision view of the document's shape: every heading with the weight of its
+  // section and the problems inside it. Deliberately NOT a heading tree for its own
+  // sake — the editor already has one from the language server
+  // (`textDocument/documentSymbol`), and a second one here would be the same list in a
+  // worse place. What the editor cannot show is what only the *rendered* page knows:
+  // how many words a section actually weighs, and which of the page's diagnostics fall
+  // inside it.
+  //
+  // The problem counts come from the diagnostics the server already pushed, never from
+  // re-deriving them here. A `data-tali-xref` marker in the DOM means "not resolved on
+  // this page", which on a site is often a perfectly good reference to another chapter —
+  // so counting markers would badge a section as broken for doing something correct.
+  // The server knows the difference (it walks the project); this only has to place its
+  // answers.
+  let sectionsEl = /** @type {HTMLElement|null} */ (null);
+  let sectionsStale = true;
+  let lastDiagnostics = /** @type {Diagnostic[]} */ ([]);
+
+  /** The heading level of an element, or 0 when it is not a heading. */
+  const headingLevel = (/** @type {Element} */ el) => {
+    const m = /^H([1-6])$/.exec(el.tagName);
+    return m ? Number(m[1]) : 0;
+  };
+
+  /** The 1-based start line of a block, or null when it has none worth trusting. */
+  const startLine = (/** @type {Element} */ el) => {
+    if (!(el instanceof HTMLElement)) return null;
+    const n = parseInt((el.dataset.sourcepos || "").split(":")[0], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  /**
+   * Each heading with its section's word count and the problems inside it.
+   *
+   * The section's *content* is taken as a DOM range between consecutive headings, which
+   * is exact whatever the nesting: a heading inside a `:::` div still ends the section
+   * above it, and `root.children` would not have seen it at all.
+   */
+  const collectSections = () => {
+    // The title block's `<h1>` is page furniture, not a section: the only content
+    // "inside" it is the date and the reading time, which counted as a five-word section
+    // and read as a defect in the document.
+    const headings = /** @type {HTMLElement[]} */ ([
+      ...root.querySelectorAll("h1,h2,h3,h4,h5,h6"),
+    ]).filter((h) => !h.closest(".tali-title-block"));
+    return headings.map((h, i) => {
+      const level = headingLevel(h);
+      // A section is the heading plus everything down to the next heading of the same or
+      // SHALLOWER level — the definition `lsp_outline::sections` uses for the outline and
+      // for "move section down", so the three agree. Ending at the next heading of any
+      // level instead made a chapter with subsections report `0w` for itself, which reads
+      // as a defect in the document rather than as an artefact of the count.
+      const next = headings.slice(i + 1).find((n) => headingLevel(n) <= level);
+      const range = document.createRange();
+      range.setStartAfter(h);
+      if (next) range.setEndBefore(next);
+      else range.setEnd(root, root.childNodes.length);
+      const holder = document.createElement("div");
+      holder.appendChild(range.cloneContents());
+      const words = proseWords(holder).length;
+      // `\b` around each keyword so "todos" in prose is not a marker. The author's own
+      // markers, not a lint: nothing in Rust claims TODO means anything, so nothing here
+      // pretends this is validation.
+      const todos = ((holder.textContent || "").match(/\b(TODO|FIXME)\b/g) || []).length;
+      const from = startLine(h);
+      const to = next ? startLine(next) : null; // the same boundary, so badges match words
+      const file = h.dataset.sourceFile || null;
+      // A diagnostic belongs to this section when it is in the same file and its line
+      // falls between this heading and the next. An unlocated one belongs to no section
+      // (it is about the document as a whole) and stays in the diagnostics list only.
+      const problems = lastDiagnostics.filter((d) => {
+        if (typeof d.line !== "number" || from === null) return false;
+        if ((d.file || null) !== file) return false;
+        return d.line >= from && (to === null || d.line < to);
+      });
+      // `.tali-anchor` is the `#` copy-link the code-enhance pass injects into every
+      // heading at runtime. It is not part of the title, and it showed up glued to the end
+      // of every row.
+      const label = /** @type {HTMLElement} */ (h.cloneNode(true));
+      label.querySelectorAll(".tali-anchor, .tali-sr-only").forEach((n) => n.remove());
+      return {
+        el: h,
+        level,
+        title: (label.textContent || "").replace(/\s+/g, " ").trim(),
+        words,
+        todos,
+        errors: problems.filter((d) => d.level === "error").length,
+        warnings: problems.filter((d) => d.level !== "error").length,
+      };
+    });
+  };
+
+  const renderSections = () => {
+    if (!sectionsEl) return;
+    const host = sectionsEl;
+    sectionsStale = false;
+    host.textContent = "";
+    const sections = collectSections();
+    if (!sections.length) {
+      const empty = document.createElement("div");
+      empty.className = "tali-section-empty";
+      empty.textContent = "no headings yet";
+      host.appendChild(empty);
+      return;
+    }
+    const deepest = Math.min(...sections.map((s) => s.level));
+    sections.forEach((s) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "tali-section-row";
+      // Indent by level rather than by a per-level class: the tree is up to six deep and
+      // six CSS rules would say nothing this one line does not.
+      row.style.paddingLeft = 0.35 + (s.level - deepest) * 0.6 + "rem";
+      const name = document.createElement("span");
+      name.className = "tali-section-name";
+      name.textContent = s.title || "(untitled)";
+      const meta = document.createElement("span");
+      meta.className = "tali-section-meta";
+      const badges = [];
+      if (s.errors) badges.push("✗" + s.errors);
+      if (s.warnings) badges.push("⚠" + s.warnings);
+      if (s.todos) badges.push("TODO" + (s.todos > 1 ? " " + s.todos : ""));
+      badges.push(s.words.toLocaleString() + "w");
+      meta.textContent = badges.join(" · ");
+      if (s.errors) meta.dataset.taliOp = "error";
+      else if (s.warnings || s.todos) meta.dataset.taliOp = "warn";
+      row.append(name, meta);
+      row.title = "Scroll to this section";
+      // Scrolls the preview; it does not open the editor. Ctrl-clicking the heading in
+      // the page is still how you get to the source, so this row adds a way to *look*
+      // without adding a second way to navigate.
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        s.el.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+      });
+      host.appendChild(row);
+    });
+  };
+
   // --- diagnostics: render/include/kernel issues the server pushes -----------
   // A small bottom-left stack, shown only when there are issues, so the author
   // sees a broken include or a missing kernel without watching the terminal.
@@ -273,6 +413,11 @@
 
   const setDiagnostics = (/** @type {Diagnostic[]=} */ items) => {
     const list = (items || []).filter(Boolean);
+    // The section annotations badge these by section, so they are kept rather than only
+    // rendered. A diagnostics-only message (no re-render) must still move the badges.
+    lastDiagnostics = list;
+    if (sectionsEl && !document.getElementById("tali-dev-panel")?.hidden) renderSections();
+    else sectionsStale = true;
     diagEl.textContent = "";
     diagEl.style.display = list.length ? "flex" : "none";
     for (const it of list) {
@@ -572,6 +717,7 @@
       e.stopPropagation();
       panel.hidden = !panel.hidden;
       toggle.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+      if (!panel.hidden && sectionsStale) renderSections();
     });
     document.addEventListener("click", (e) => {
       if (!panel.hidden && e.target instanceof Node && !host.contains(e.target)) {
@@ -637,7 +783,10 @@
     digestListEl = document.createElement("div");
     digestListEl.className = "tali-dev-digest";
 
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint), devRow("Changes", digestSumEl), digestListEl);
+    sectionsEl = document.createElement("div");
+    sectionsEl.className = "tali-dev-sections";
+
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint), devRow("Changes", digestSumEl), digestListEl, devRow("Sections", document.createElement("span")), sectionsEl);
     renderDigest();
 
     // Draft pages (preview only): a count that expands to click-to-open links. The server
@@ -1337,6 +1486,10 @@
     buildToc();
     if (window.taliInitTocSpy) window.taliInitTocSpy(); // re-collect against the fresh nav
     updateWordCount();
+    // Recomputed only when someone is looking: the section walk clones a DOM range per
+    // heading, and afterChange is already the O(document) part of the save hot path.
+    sectionsStale = true;
+    if (sectionsEl && !document.getElementById("tali-dev-panel")?.hidden) renderSections();
     if (window.taliEnhanceCode) window.taliEnhanceCode(root);
     scanCellErrors();
     scanA11y();

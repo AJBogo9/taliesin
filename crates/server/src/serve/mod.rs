@@ -824,6 +824,19 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-dev-digest .tali-digest-row:disabled { cursor: default; opacity: .7; } \
     .tali-dev-digest .tali-digest-row[data-tali-op=\"insert\"] { border-left-color: #3fa45b; } \
     .tali-dev-digest .tali-digest-row[data-tali-op=\"remove\"] { border-left-color: #e5534b; } \
+    .tali-dev-sections { display: flex; flex-direction: column; gap: .1rem; max-width: 22rem; \
+      max-height: 14rem; overflow-y: auto; } \
+    .tali-dev-sections .tali-section-row { display: flex; gap: .5rem; justify-content: space-between; \
+      width: 100%; text-align: left; font: inherit; font-size: 12px; line-height: 1.35; \
+      cursor: pointer; background: none; border: 0; padding: .1rem .35rem; \
+      color: var(--tali-muted, #888); } \
+    .tali-dev-sections .tali-section-row:hover { color: var(--tali-fg, #111); \
+      background: var(--tali-code-bg, #f5f5f5); border-radius: 4px; } \
+    .tali-dev-sections .tali-section-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
+    .tali-dev-sections .tali-section-meta { flex: none; font-variant-numeric: tabular-nums; } \
+    .tali-dev-sections .tali-section-meta[data-tali-op=\"warn\"] { color: #d9a23a; } \
+    .tali-dev-sections .tali-section-meta[data-tali-op=\"error\"] { color: #e5534b; } \
+    .tali-dev-sections .tali-section-empty { padding: .1rem .35rem; color: var(--tali-muted, #888); font-size: 12px; } \
     .tali-dev-drafts { display: flex; flex-direction: column; gap: .2rem; margin-top: -.2rem; } \
     .tali-dev-drafts a { color: var(--tali-accent, #4c8dff); text-decoration: none; font-size: 12px; } \
     .tali-dev-drafts a:hover { text-decoration: underline; } \
@@ -2118,6 +2131,44 @@ mod protocol_contract {
         assert!(
             CLIENT_JS.contains("gotoSource(e.at.file, e.at.line)"),
             "a digest row must open its block's source"
+        );
+    }
+
+    /// The section annotations (item 161). Two claims worth pinning, both of which would
+    /// fail silently: the CSS half exists, and the problem counts come from the
+    /// **server's** diagnostics rather than from a DOM scan.
+    ///
+    /// The second is the one that matters. `data-tali-xref` in a rendered page means "not
+    /// resolved on THIS page", which on a site is usually a good cross-chapter reference —
+    /// so a client-side marker count would badge correct references as broken, and it would
+    /// look plausible while doing it. Only the server walks the project, so only the server
+    /// can say. This asserts the client never learns to count markers itself.
+    #[test]
+    fn section_annotations_badge_the_servers_diagnostics_not_a_dom_scan() {
+        assert!(
+            CLIENT_JS.contains("lastDiagnostics"),
+            "the section badges must be built from the diagnostics the server pushed"
+        );
+        assert!(
+            !CLIENT_JS.contains("querySelectorAll(\"[data-tali-xref]")
+                && !CLIENT_JS.contains("querySelectorAll('[data-tali-xref]"),
+            "the client must NOT count unresolved-xref markers itself: a cross-page \
+             reference carries that marker and is correct, so this would report a defect \
+             where there is none. The server walks the project; the client places its answers"
+        );
+        assert!(
+            CLIENT_JS.contains("tali-section-row"),
+            "client.js must emit the section rows"
+        );
+        assert!(
+            STATUS_CSS.contains(".tali-section-row"),
+            "STATUS_CSS must style the section rows"
+        );
+        // Recomputing on every op would put a per-heading DOM-range clone on the save hot
+        // path, which is the cliff `scheduleAfterChange` exists to avoid.
+        assert!(
+            CLIENT_JS.contains("sectionsStale"),
+            "the section walk must be deferred until the panel is actually open"
         );
     }
 
