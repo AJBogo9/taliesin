@@ -59,9 +59,14 @@ pub(crate) struct ProjectScan {
 /// watching the filesystem.
 type Stamp = (PathBuf, Option<std::time::SystemTime>, u64);
 
-/// The single-entry, stat-validated memo described in the module docs.
+/// The stat-validated memo described in the module docs, keyed by project root.
+///
+/// Keyed rather than single-entry because an editor routinely has files from more than one
+/// project open at once (a chapter of the guide beside a corpus document), and workspace
+/// symbols searches **every** open project. A single entry would re-walk both on every
+/// keystroke of a Ctrl+T query, turning the memo into pure overhead exactly when it matters.
 pub(crate) struct ProjectCache {
-    entry: Option<(ProjectScan, Vec<Stamp>)>,
+    entries: HashMap<PathBuf, (ProjectScan, Vec<Stamp>)>,
     /// How many real walks have happened. Test-visible so the memo cannot be decoration.
     walks: usize,
 }
@@ -69,7 +74,7 @@ pub(crate) struct ProjectCache {
 impl ProjectCache {
     pub(crate) fn new() -> Self {
         Self {
-            entry: None,
+            entries: HashMap::new(),
             walks: 0,
         }
     }
@@ -89,15 +94,33 @@ impl ProjectCache {
     pub(crate) fn get(&mut self, page: &Path) -> Option<&ProjectScan> {
         let root = taliesin_core::site::enclosing_site_root_across_git(page.parent()?)?;
         let stamps = stamps_for(&root);
-        let fresh = match &self.entry {
-            Some((scan, seen)) => scan.root == root && *seen == stamps,
-            None => false,
-        };
+        let fresh = self
+            .entries
+            .get(&root)
+            .is_some_and(|(_, seen)| *seen == stamps);
         if !fresh {
-            self.entry = Some((walk(&root), stamps));
+            self.entries.insert(root.clone(), (walk(&root), stamps));
             self.walks += 1;
         }
-        self.entry.as_ref().map(|(scan, _)| scan)
+        self.entries.get(&root).map(|(scan, _)| scan)
+    }
+
+    /// The distinct project roots among `pages`, in a stable order.
+    ///
+    /// Workspace symbols needs this because the `workspace/symbol` request names **no file**:
+    /// picking one open document to stand for "the project" silently searches whichever
+    /// document happened to be first, which with two projects open is a coin flip. Answering
+    /// for every open project is the only behaviour an author can predict.
+    pub(crate) fn roots_of<'a>(pages: impl Iterator<Item = &'a Path>) -> Vec<PathBuf> {
+        let mut roots: Vec<PathBuf> = pages
+            .filter_map(|p| {
+                p.parent()
+                    .and_then(taliesin_core::site::enclosing_site_root_across_git)
+            })
+            .collect();
+        roots.sort();
+        roots.dedup();
+        roots
     }
 }
 

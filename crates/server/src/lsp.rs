@@ -561,14 +561,22 @@ fn handle_request(
         }
     } else if req.method == WorkspaceSymbolRequest::METHOD {
         let params: lsp_types::WorkspaceSymbolParams = serde_json::from_value(req.params)?;
-        // The request names no file, so the project is discovered from any open document:
-        // every open `.tmd` in one window belongs to the same project in practice, and the
-        // scan is keyed on the project root either way. An empty editor answers an empty
+        // The request names no file, so the projects are discovered from the open documents.
+        // **Every** distinct project, not one of them: an editor routinely holds files from
+        // two projects at once, and picking whichever document came first out of a hash map
+        // makes Ctrl+T search an arbitrary one of them. An empty editor answers an empty
         // list, which is correct rather than an error.
-        let anchor = docs.keys().find_map(|u| u.to_file_path().ok());
-        let found = anchor
-            .map(|p| workspace_symbols(project, &p, &params.query))
-            .unwrap_or_default();
+        let open: Vec<std::path::PathBuf> =
+            docs.keys().filter_map(|u| u.to_file_path().ok()).collect();
+        let mut found = Vec::new();
+        for root in crate::lsp_project::ProjectCache::roots_of(open.iter().map(|p| p.as_path())) {
+            // Any page under the root locates it; the scan is keyed on the root itself.
+            found.extend(workspace_symbols(
+                project,
+                &root.join("_site.yml"),
+                &params.query,
+            ));
+        }
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(found)?),
@@ -2500,6 +2508,54 @@ mod tests {
         assert!(
             !names.contains(&"Introduction"),
             "non-matching symbol leaked in: {names:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_symbols_search_every_open_project_not_an_arbitrary_one() {
+        // Found by the e2e suite, which runs with documents from earlier tests still open: the
+        // handler picked `docs.keys().find_map(...)`, the FIRST key of a hash map, to stand for
+        // "the project". With two projects open that is a coin flip, and Ctrl+T searched
+        // whichever one the hasher happened to yield. An author cannot predict that.
+        let a = symbol_fixture("multi-a", &[("index.tmd", "# Alpha Heading\n")]);
+        let b = symbol_fixture("multi-b", &[("index.tmd", "# Alpha Sibling\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let roots = crate::lsp_project::ProjectCache::roots_of(
+            [a.join("index.tmd"), b.join("index.tmd")]
+                .iter()
+                .map(|p| p.as_path()),
+        );
+        assert_eq!(roots.len(), 2, "two distinct projects: {roots:?}");
+
+        let mut names: Vec<String> = Vec::new();
+        for root in roots {
+            names.extend(
+                workspace_symbols(&mut project, &root.join("_site.yml"), "Alpha")
+                    .into_iter()
+                    .map(|s| s.name),
+            );
+        }
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["Alpha Heading".to_string(), "Alpha Sibling".to_string()],
+            "both projects must be searched"
+        );
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn a_root_locates_its_own_project_so_the_handler_need_not_pick_a_page() {
+        // The handler passes `<root>/_site.yml` as the probe path. That file need not be a
+        // page, but it must resolve to the project, or workspace symbols answers nothing.
+        let root = symbol_fixture("byroot", &[("index.tmd", "# Findable\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert_eq!(
+            workspace_symbols(&mut project, &root.join("_site.yml"), "Findable").len(),
+            1
         );
         let _ = std::fs::remove_dir_all(&root);
     }

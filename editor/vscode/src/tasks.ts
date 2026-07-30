@@ -8,11 +8,18 @@
 // The task shapes themselves are a pure function in `taskspecs.ts`, unit-tested against the
 // manifest so the offered set and the declared `enum` cannot drift apart.
 
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { projectRootFor, isSourceFile } from "./paths";
 import { taskSpecs, type TaskSpec } from "./taskspecs";
 
 const TASK_TYPE = "taliesin";
+
+/** True when `target` is `dir` or sits under it, by directory boundary rather than by prefix. */
+function isInside(dir: string, target: string): boolean {
+  const rel = path.relative(path.resolve(dir), path.resolve(target));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
 
 /** The project root the tasks should target, or `null` when nothing tells us one. */
 function activeRoot(): string | null {
@@ -28,9 +35,17 @@ function activeRoot(): string | null {
 }
 
 function buildTask(spec: TaskSpec, root: string, binary: string): vscode.Task {
+  // Scope to the workspace folder the project actually lives in when there is one, so a
+  // multi-root workspace runs the task against the right folder rather than the first.
+  //
+  // No `Global` fallback: measured in a real Extension Host with no folder open,
+  // `vscode.tasks.fetchTasks()` returns zero tasks of ANY type, so VS Code's task system is
+  // inert without a workspace regardless of the scope a provider asks for. A `Global` scope
+  // there would be dead code dressed as a fix.
+  const folder = vscode.workspace.workspaceFolders?.find((f) => isInside(f.uri.fsPath, root));
   const task = new vscode.Task(
     { type: TASK_TYPE, command: spec.name },
-    vscode.TaskScope.Workspace,
+    folder ?? vscode.TaskScope.Workspace,
     spec.name,
     TASK_TYPE,
     new vscode.ShellExecution(binary, spec.args, { cwd: root }),

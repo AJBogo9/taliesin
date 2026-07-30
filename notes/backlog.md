@@ -61,6 +61,20 @@ enough to start.**
     `registerMcpServerDefinitionProvider`. Measured by packing both candidates: absent at 1.100.0,
     present at 1.101.0. The pin was then proved load-bearing by passing the constructor one
     argument and watching `tsc` answer `Expected 2-5 arguments`.
+  - **The e2e suite found a real bug that every unit test and a green `gates.sh` missed**, which is
+    the fifth consecutive batch where the last gate found what the earlier ones could not.
+    `workspace/symbol` names no file, and the handler picked `docs.keys().find_map(...)` (the first
+    key of a **hash map**) to stand for "the project", so with documents from two projects open
+    Ctrl+T searched an arbitrary one. It now searches every open project;
+    `workspace_symbols_search_every_open_project_not_an_arbitrary_one` pins it. **A second stale-
+    artifact trap sat on top of it:** the e2e runs `target/debug/taliesin`, which `cargo test`
+    does **not** rebuild, so the first fix appeared not to work. `cargo build --bin taliesin`
+    before believing any e2e result.
+  - **Two e2e list-continuation failures are PRE-EXISTING, verified against a worktree at
+    `origin/main`** (27 passing / 2 failing there; 33 / 2 on the branch). They also failed at
+    **load ~2-3.4**, not the "load ~6-7" this file previously recorded, so that threshold is
+    understated: treat the two `pressEnterAfter` tests as unreliable at any load until someone
+    fixes them, and always compare against a baseline run rather than the recorded number.
 
 - **The editor authoring-gesture batch shipped 2026-07-30** (`FEATURE-IDEAS.md` Session 3 ideas
   **73**, **84**, **82**, promoted by owner ruling; spec and plan under `docs/superpowers/`). Six
