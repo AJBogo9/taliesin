@@ -404,16 +404,22 @@ fn strict_build_fails_on_everything_check_fails_on() {
     );
 
     // Every diagnostic `check` reports is reported by the build, located. The two surfaces
-    // decorate the SAME located defect differently: `check`'s linter line is
-    // `file:line: severity[CODE]: message` (PL1), while `build --strict` logs it via `log::warn`
-    // as `warn  file:line: message` (the log level already conveys severity). So compare on the
-    // located message core, stripping `check`'s `severity[CODE]: ` insertion.
+    // decorate the SAME located defect differently, in three ways now:
+    //   * `check`'s linter line is `file:line: severity[CODE]: message` (PL1), while
+    //     `build --strict` logs it via `log::warn` as `warn  file:line: message` (the log
+    //     level already conveys severity), so the `severity[CODE]: ` insertion is stripped;
+    //   * `check` roots each path on the target as typed (here an absolute temp dir) so the
+    //     path opens from wherever the command ran, while `build`'s log label is still
+    //     project-relative. That divergence is why the target prefix comes off below.
+    // The identity under test is the SET OF LOCATED DEFECTS, not how either spells a path.
+    let prefix = format!("{}/", dir.display());
     let check_msgs: Vec<String> = String::from_utf8_lossy(&check.stderr)
         .lines()
         .filter(|l| l.contains("error[") || l.contains("warning["))
         .map(|l| {
             let l = l.trim();
             let (loc, rest) = l.split_once(": ").expect("a located finding line");
+            let loc = loc.strip_prefix(&prefix).unwrap_or(loc);
             let msg = rest.split_once("]: ").map(|(_, m)| m).unwrap_or(rest);
             format!("{loc}: {msg}")
         })

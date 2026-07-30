@@ -740,12 +740,50 @@ pub(crate) fn check_json(target: &Path) -> String {
     }
 }
 
+/// The path to print for one diagnostic: the one the reader would type from the directory
+/// they ran the command in.
+///
+/// A site's diagnostics are located against the **project root** (`sub/page.tmd`), which names
+/// nothing from anywhere else: `taliesin check docs/guide` run from the repo printed
+/// `sub/page.tmd:5:`, a path no terminal can open and no editor can resolve. Re-rooting it on
+/// the target *as typed* gives `docs/guide/sub/page.tmd:5:` — the tsc/cargo convention, and
+/// what a problem-matcher resolving against the invocation directory needs.
+///
+/// `root` is `None` for the single-file and `--stdin` paths, which already report the path as
+/// given; re-rooting those onto their own directory would double the prefix. `check .` keeps
+/// printing a bare `sub/page.tmd`, so every existing grep of that output still matches.
+///
+/// The JSON format is deliberately untouched: its consumer passed the root itself and resolves
+/// against it (`editor/vscode/src/checkstatus.ts` does exactly that), so a path relative to the
+/// project is the right contract there.
+fn displayed_path(file: &str, root: Option<&Path>) -> String {
+    let Some(root) = root else {
+        return file.to_string();
+    };
+    let joined = root.join(file);
+    // Component-wise, not a string strip, so this is right on every separator.
+    let clean = joined.strip_prefix(".").unwrap_or(&joined);
+    clean.display().to_string()
+}
+
+/// Which root the human lines should be printed against: the target as typed when it is a
+/// project directory, nothing when it is a single file.
+///
+/// Split out so the wiring is pinned by a test. Inlining the `is_dir()` at the call site put
+/// the decision somewhere no test could reach, which is how the printed path could go back to
+/// being project-relative with the formatter's own tests still green.
+fn human_root(target: &Path) -> Option<&Path> {
+    target.is_dir().then_some(target)
+}
+
 /// Greppable linter lines that also surface the DX6 machinery the JSON path already carries:
 /// the `severity` word and the stable `TAL-*` code. The `file:line:` prefix stays first (the
 /// linter convention VS Code problem-matchers / gcc / tsc key off), with `severity[CODE]:`
 /// inserted before the message (the gcc/clang shape). The `docs_url` is JSON-only; it never
 /// leaks here — the code + `--explain` footer are the human path back to the catalog.
-fn format_human(diags: &[Diagnostic], color: bool) -> String {
+///
+/// `root` re-roots each path onto the target as typed; see [`displayed_path`].
+fn format_human(diags: &[Diagnostic], color: bool, root: Option<&Path>) -> String {
     let mut s = String::new();
     for d in diags {
         // Paint just the severity word (rustc/cargo/tsc all colorize severity). `color` is
@@ -761,12 +799,13 @@ fn format_human(diags: &[Diagnostic], color: bool) -> String {
         } else {
             d.severity.to_string()
         };
+        let file = displayed_path(&d.file, root);
         match d.line {
             Some(l) => s.push_str(&format!(
                 "{}:{}: {}[{}]: {}\n",
-                d.file, l, sev, d.code, d.message
+                file, l, sev, d.code, d.message
             )),
-            None => s.push_str(&format!("{}: {}[{}]: {}\n", d.file, sev, d.code, d.message)),
+            None => s.push_str(&format!("{}: {}[{}]: {}\n", file, sev, d.code, d.message)),
         }
     }
     s
@@ -1078,7 +1117,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         // word is colorized only at a TTY (and not under NO_COLOR), so piped/redirected output
         // stays byte-identical for problem-matchers.
         let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
-        eprint!("{}", format_human(&diags, color));
+        eprint!("{}", format_human(&diags, color, human_root(target)));
         eprint!("{}", human_summary(&diags));
         // What this run deliberately did not cover.
         if let Some(note) = scope_note(&scope.excluded_drafts) {
@@ -1532,7 +1571,7 @@ mod tests {
             url.ends_with("#tal-xref-undef"),
             "anchored by lowercased code: {json}"
         );
-        let human = format_human(std::slice::from_ref(&d), false);
+        let human = format_human(std::slice::from_ref(&d), false, None);
         assert!(!human.contains("http"), "no url in human output: {human}");
         assert!(
             human.contains("error[TAL-XREF-UNDEF]"),
@@ -2266,7 +2305,7 @@ mod tests {
             Diagnostic::new("a.tmd".into(), Some(3), "m1".into()),
             Diagnostic::new("b.tmd".into(), None, "m2".into()),
         ];
-        let text = format_human(&diags, false);
+        let text = format_human(&diags, false, None);
         assert!(
             text.contains("a.tmd:3: error[TAL-CHECK]: m1"),
             "located line carries severity + code: {text}"
@@ -2278,17 +2317,92 @@ mod tests {
     }
 
     #[test]
+    fn a_site_check_prints_paths_relative_to_where_the_command_ran() {
+        // A site's diagnostics are located against the PROJECT ROOT. Printed bare, they name
+        // nothing: `taliesin check docs/guide` from the repo said `sub/page.tmd:5:`, which no
+        // terminal can open and which an editor's problem-matcher resolves onto a file that
+        // does not exist. Both the located and the unlocated line carry the prefix — the
+        // unlocated form is how a `_site.yml` finding is reported, and dropping the prefix
+        // from just that one is the shape this asserts against.
+        let diags = vec![
+            Diagnostic::new("sub/page.tmd".into(), Some(5), "m1".into()),
+            Diagnostic::new("_site.yml".into(), None, "m2".into()),
+        ];
+        let text = format_human(&diags, false, Some(Path::new("docs/guide")));
+        assert!(
+            text.contains("docs/guide/sub/page.tmd:5: error[TAL-CHECK]: m1"),
+            "located line names the path the reader would type: {text}"
+        );
+        assert!(
+            text.contains("docs/guide/_site.yml: error[TAL-CHECK]: m2"),
+            "unlocated line is re-rooted too: {text}"
+        );
+    }
+
+    #[test]
+    fn checking_the_current_directory_does_not_grow_a_dot_slash_prefix() {
+        // `check .` is the in-project spelling, and there the project-relative path already IS
+        // the path from the shell. `./sub/page.tmd` would be a gratuitous change to output
+        // that greps and matchers already read.
+        let diags = vec![Diagnostic::new("sub/page.tmd".into(), Some(5), "m".into())];
+        let text = format_human(&diags, false, Some(Path::new(".")));
+        assert!(
+            text.starts_with("sub/page.tmd:5:"),
+            "no ./ prefix on the current directory: {text}"
+        );
+    }
+
+    #[test]
+    fn a_single_file_check_leaves_the_path_exactly_as_typed() {
+        // `collect_file_diagnostics_from_src` already reports `path.display()`, i.e. the path
+        // as given. Re-rooting that onto its own directory would double the prefix.
+        let diags = vec![Diagnostic::new(
+            "docs/guide/index.tmd".into(),
+            Some(2),
+            "m".into(),
+        )];
+        let text = format_human(&diags, false, None);
+        assert!(
+            text.starts_with("docs/guide/index.tmd:2:"),
+            "single-file path is untouched: {text}"
+        );
+    }
+
+    #[test]
+    fn only_a_directory_target_re_roots_its_paths() {
+        // The wiring, not the formatter: `human_root` is what decides, and with this test
+        // absent a `None` for every target would leave the formatter's own tests green while
+        // the shipped output went back to naming files that do not exist.
+        let dir = std::env::temp_dir().join(format!("tali-human-root-{}", std::process::id()));
+        let file = dir.join("index.tmd");
+        fs::create_dir_all(&dir).expect("temp dir");
+        fs::write(&file, "---\ntitle: x\n---\n").expect("temp file");
+
+        assert_eq!(
+            human_root(&dir),
+            Some(dir.as_path()),
+            "a project directory re-roots its diagnostics onto the target as typed"
+        );
+        assert_eq!(
+            human_root(&file),
+            None,
+            "a single file already reports the path as given"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn format_human_colorizes_only_when_asked_and_stays_greppable_plain() {
         // The non-TTY path must be byte-identical to the historical greppable line (no ANSI),
         // so a problem-matcher keeps working; the TTY path paints just the severity word.
         let diags = vec![Diagnostic::new("a.tmd".into(), Some(3), "m1".into())];
-        let plain = format_human(&diags, false);
+        let plain = format_human(&diags, false, None);
         assert!(
             !plain.contains('\x1b'),
             "plain output must carry no ANSI: {plain:?}"
         );
         assert!(plain.contains("a.tmd:3: error[TAL-CHECK]: m1"));
-        let colored = format_human(&diags, true);
+        let colored = format_human(&diags, true, None);
         assert!(
             colored.contains("\x1b[31merror\x1b[0m"),
             "severity must be painted: {colored:?}"

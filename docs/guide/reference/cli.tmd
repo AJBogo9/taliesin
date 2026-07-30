@@ -53,6 +53,12 @@ per-severity summary (`3 problems (1 error, 2 warnings)`) and a `taliesin check
 docs_url}], "environment": [...] }` object with `--format json`. It exits `0` when
 nothing above the severity floor fired, so it drops straight into CI or a pre-commit hook:
 
+Each human `path` is rooted on the target **as you typed it**, so it opens from wherever
+you ran the command: `taliesin check docs/guide` from the repository root reports
+`docs/guide/using/formats.tmd:12:`, not a bare `using/formats.tmd` that only resolves
+inside the project. (The `file` in `--format json` stays relative to the target, since
+whoever passed the target can resolve against it.)
+
 ```sh
 taliesin check .                          # fails (exit 1) on any error or warning
 taliesin check . --strict                 # …and on suggestions too

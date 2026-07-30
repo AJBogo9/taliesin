@@ -313,9 +313,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              nothing about whether it works -- ask `taliesin doctor` or --require-kernel.\n\
              \n\
              Flags:\n\
-             \x20 --format human   path:line: message lines to stderr (default)\n\
+             \x20 --format human   path:line: message lines to stderr (default). Each path is\n\
+             \x20                  rooted on the target as you typed it, so it opens from where\n\
+             \x20                  you are (`check docs/guide` -> `docs/guide/sub/page.tmd:5:`)\n\
              \x20 --format json    {diagnostics:[{code,docs_url,severity,file,line,message,\n\
-             \x20                     suggestion?}], environment:[...]} object to stdout (jq)\n\
+             \x20                     suggestion?}], environment:[...]} object to stdout (jq).\n\
+             \x20                  `file` is relative to the TARGET, which the caller passed\n\
              \x20 --errors-only    report + gate on errors only; warnings no longer fail\n\
              \x20 --strict         also fail on suggestions (the strictest gate)\n\
              \x20 --require-kernel also fail if a used language's Jupyter kernel isn't ready\n\
