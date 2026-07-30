@@ -53,6 +53,14 @@ libc = { workspace = true }
 notify = "8.2.0"
 parking_lot = { workspace = true }
 taliesin-core = { workspace = true }
+# The build's AVIF transcode (item 169). Core already depends on `image` for header-only
+# dimension reads; the two extra features are the encoder and the parallelism to run it
+# across a page's images, since one 1200x630 encode is ~0.9 s. Feature unification means the
+# workspace compiles `image` once with the union.
+image = { workspace = true, features = ["avif", "rayon"] }
+rayon = "1"
+# Cache keys for image derivatives, keyed on source BYTES. Already a workspace dep.
+sha2 = { workspace = true }
 # terminal QR rendering only; default features pull in image/svg backends we don't need
 qrcode = { version = "0.14", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }

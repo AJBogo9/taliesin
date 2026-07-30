@@ -755,10 +755,36 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
         return false;
     }
     let copied = copy_local_assets(html, base, dir);
+    // AVIF derivatives + the `<picture>` that offers them, exactly as the site path does. The
+    // page sits at the output root here, so its `rel_dir` is empty. The cache lives beside the
+    // SOURCE (not the output): a portable folder is a deliverable and should not ship a build
+    // cache, and keying it to the source is what makes a rebuild into a fresh directory cheap.
+    let (optimized, images) = crate::image_opt::optimize(
+        html,
+        base,
+        dir,
+        Path::new(""),
+        Some(&base.join("_freeze").join(crate::image_opt::CACHE_SUBDIR)),
+    );
     let index = dir.join("index.html");
-    if let Err(e) = std::fs::write(&index, html) {
+    if let Err(e) = std::fs::write(&index, &optimized) {
         log::error(&format!("cannot write {}: {e}", index.display()));
         return false;
+    }
+    if images.images > 0 {
+        log::info(&format!(
+            "optimized {} image{} -> {} AVIF file{} ({} saved{})",
+            images.images,
+            if images.images == 1 { "" } else { "s" },
+            images.files(),
+            if images.files() == 1 { "" } else { "s" },
+            crate::image_opt::human_bytes(images.saved),
+            if images.cached > 0 {
+                format!(", {} from cache", images.cached)
+            } else {
+                String::new()
+            }
+        ));
     }
     log::built(&format!(
         "{}  ·  {copied} asset{}{}",
@@ -1117,6 +1143,10 @@ struct PageOutcome {
     /// The conditional `_assets/` blobs this page's HTML links, folded across the build so
     /// only the linked ones are written (item 137).
     used: AssetUse,
+    /// AVIF derivatives this page produced. Folded across the build for the report line AND —
+    /// load-bearing — for `sweep_stale`'s keep set, which would otherwise delete every one of
+    /// them on the same build that wrote them.
+    images: crate::image_opt::Stats,
 }
 
 /// Build one page: render its markdown, execute its code cells on a *fresh, page-private*
@@ -1150,6 +1180,7 @@ async fn build_one_page(
             kernel_failure: None,
             written: false,
             used: AssetUse::default(),
+            images: crate::image_opt::Stats::default(),
         };
     };
     let base = page.input.parent().unwrap_or(root);
@@ -1253,6 +1284,19 @@ async fn build_one_page(
     for w in offline_ref_warnings(&html, &page.rel) {
         warnings.push(w);
     }
+    // AVIF derivatives for this page's local raster images, and the `<picture>` that offers
+    // them. Build-only: one 1200x630 encode is ~0.9 s, so the preview serves the author's
+    // original bytes and core's identical `<img>` annotation keeps the two laying out the
+    // same. `rel_dir` is this page's directory under `out`, which is how a derivative gets
+    // its two names at once — page-relative for the `srcset`, output-relative for `keep`.
+    let rel_dir = Path::new(&page.url).parent().unwrap_or(Path::new(""));
+    let (html, image_stats) = crate::image_opt::optimize(
+        &html,
+        base,
+        out,
+        rel_dir,
+        Some(&freeze_dir.join(crate::image_opt::CACHE_SUBDIR)),
+    );
     // Which conditional blobs this page linked, read off the finished HTML (item 137). Taken
     // BEFORE the write, which moves `html`.
     let used = bundle.used_by(&html);
@@ -1280,6 +1324,7 @@ async fn build_one_page(
         kernel_failure,
         written,
         used,
+        images: image_stats,
     }
 }
 
@@ -1837,6 +1882,7 @@ async fn build_site_async(
     // Item 137: the union of what the pages linked. `merge` is order-independent, so this
     // reaches the same set whichever order the concurrent builds completed in.
     let mut used = AssetUse::default();
+    let mut images = crate::image_opt::Stats::default();
     for outcome in outcomes.into_iter().flatten() {
         for w in &outcome.warnings {
             log::warn(w);
@@ -1845,6 +1891,7 @@ async fn build_site_async(
         problems += outcome.problems;
         kernel_failure = kernel_failure.or(outcome.kernel_failure);
         used.merge(outcome.used);
+        images.merge(outcome.images);
         if outcome.written {
             pages += 1;
         }
@@ -2222,11 +2269,33 @@ async fn build_site_async(
     }
     keep.extend(seo_written.iter().cloned());
     keep.extend(manifest_written.iter().cloned());
+    // Load-bearing, not bookkeeping: an AVIF derivative is written by `build_one_page` and is
+    // absent from every other source of `keep`, so leaving it out here deletes the whole
+    // feature's output on the same build that produced it — silently, and with the entire
+    // `image_opt` unit suite still green, because no unit test runs the sweep.
+    keep.extend(images.written.iter().cloned());
     let swept = sweep_stale(&out, &keep);
     if swept > 0 {
         log::info(&format!(
             "swept {swept} stale file{} no longer produced",
             if swept == 1 { "" } else { "s" }
+        ));
+    }
+    if images.images > 0 {
+        // Reported rather than silent: the saving is the whole point of the feature, and the
+        // cached count is what tells an author why the second build was fast.
+        log::info(&format!(
+            "optimized {} image{} -> {} AVIF file{} ({} saved{})",
+            images.images,
+            if images.images == 1 { "" } else { "s" },
+            images.files(),
+            if images.files() == 1 { "" } else { "s" },
+            crate::image_opt::human_bytes(images.saved),
+            if images.cached > 0 {
+                format!(", {} from cache", images.cached)
+            } else {
+                String::new()
+            }
         ));
     }
 

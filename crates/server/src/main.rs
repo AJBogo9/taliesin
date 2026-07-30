@@ -14,6 +14,7 @@ mod doctor;
 mod exec;
 mod freeze;
 mod headless_js;
+mod image_opt;
 mod interactive;
 mod interpreter;
 mod kernel;
