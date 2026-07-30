@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as http from "node:http";
 import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
@@ -59,6 +60,10 @@ suite("Taliesin companion (integration)", () => {
       "taliesin.doctor",
       "taliesin.insertMathSymbol",
       "taliesin.revealInPreview",
+      "taliesin.moveSectionUp",
+      "taliesin.moveSectionDown",
+      "taliesin.promoteHeading",
+      "taliesin.demoteHeading",
     ]) {
       assert.ok(cmds.includes(id), `${id} should be registered after activation`);
     }
@@ -605,6 +610,150 @@ suite("Taliesin companion (integration)", () => {
       .flatMap((g) => g.tabs)
       .filter((t) => t.input instanceof vscode.TabInputWebview && t.label === "Preview: demo-book");
     await vscode.window.tabGroups.close(mine);
+  });
+
+  // --- Structural commands (backlog item 165) -----------------------------------------
+  //
+  // `lsp_edits.rs` owns the transforms and proves them on text. What only a real Extension
+  // Host can prove is the half that lives here: that VS Code applied the server's edits to
+  // the buffer and then put the caret where the section went. A wrong caret is not a
+  // cosmetic bug for these commands — the next keypress acts on whatever section the caret
+  // is in, so an off-by-one turns "move this down twice" into moving two different sections.
+
+  test("moves a section, with its subtree, and takes the caret with it", async () => {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "taliesin",
+      content: "## Alpha\n\nalpha body\n\n### Child\n\nchild body\n\n## Beta\n\nbeta body\n",
+    });
+    const editor = await vscode.window.showTextDocument(doc);
+    // Caret on "alpha body", inside the section but not on its heading.
+    editor.selection = new vscode.Selection(2, 3, 2, 3);
+
+    await vscode.commands.executeCommand("taliesin.moveSectionDown");
+
+    assert.strictEqual(
+      doc.getText(),
+      "## Beta\n\nbeta body\n\n## Alpha\n\nalpha body\n\n### Child\n\nchild body\n",
+      "Alpha and its `### Child` should have moved below Beta as one block"
+    );
+    // Alpha's heading is now line 4, so the caret's line-2 offset into the section lands on
+    // line 6 — still on "alpha body", the line the author was editing.
+    assert.strictEqual(editor.selection.active.line, 6);
+    assert.strictEqual(
+      doc.lineAt(editor.selection.active.line).text,
+      "alpha body",
+      "the caret should still be on the line it started on"
+    );
+    assert.strictEqual(editor.selection.active.character, 3, "the column should survive");
+
+    // One undo step, not one per edit: the whole move goes back at once.
+    await vscode.commands.executeCommand("undo");
+    assert.match(doc.getText(), /^## Alpha/, `undo should restore the original order`);
+  });
+
+  test("promotes a heading with its descendants and leaves every other line alone", async () => {
+    // No section after Alpha's subtree, so promote/demote is a true round trip here. With a
+    // `## Beta` following, promoting Alpha to `#` would adopt Beta as a child and demoting
+    // would take it down too — see `promoting_adopts_a_following_sibling…` in lsp_edits.rs.
+    const content = "## Alpha\n\n### Child\n\nbody\n";
+    const doc = await vscode.workspace.openTextDocument({ language: "taliesin", content });
+    const editor = await vscode.window.showTextDocument(doc);
+    editor.selection = new vscode.Selection(0, 4, 0, 4);
+
+    await vscode.commands.executeCommand("taliesin.promoteHeading");
+    assert.strictEqual(doc.getText(), "# Alpha\n\n## Child\n\nbody\n");
+    // The caret stays on the heading it acted on, so the keys can be pressed repeatedly.
+    assert.strictEqual(editor.selection.active.line, 0);
+
+    await vscode.commands.executeCommand("taliesin.demoteHeading");
+    assert.strictEqual(doc.getText(), content, "demote should undo the promote");
+  });
+
+  test("a refusal is reported, not applied", async () => {
+    // "## Beta" is the last section at its level: moving it down would have to invent a
+    // sibling. The buffer must come back untouched rather than half-transformed.
+    const content = "## Alpha\n\na\n\n## Beta\n\nb\n";
+    const doc = await vscode.workspace.openTextDocument({ language: "taliesin", content });
+    const editor = await vscode.window.showTextDocument(doc);
+    editor.selection = new vscode.Selection(4, 0, 4, 0);
+
+    await vscode.commands.executeCommand("taliesin.moveSectionDown");
+    assert.strictEqual(doc.getText(), content, "a refused move must not edit the buffer");
+  });
+
+  // The keybindings are a promise about keys the platform also uses. VS Code resolves a
+  // conflict in the extension's favour when the `when` clause matches, so a clash does not
+  // fail loudly — it silently takes a key the author has used for years everywhere else and
+  // breaks it in `.tmd` files only. Nothing but the running editor knows the real default
+  // table, so this reads it: `Preferences: Open Default Keyboard Shortcuts (JSON)` is that
+  // table, generated from what is actually registered in this build.
+  test("no new keybinding shadows a VS Code default", async () => {
+    await vscode.commands.executeCommand("workbench.action.openDefaultKeybindingsFile");
+    const defaults = await waitForValue(async () => {
+      const doc = vscode.workspace.textDocuments.find(
+        (d) => d.uri.path.endsWith("keybindings.json") && d.getText().includes('"key"')
+      );
+      return doc?.getText();
+    }, 15000);
+    assert.ok(defaults, "could not read the default keybindings");
+
+    // The default table spells a punctuation key by its scan code (`ctrl+alt+[BracketLeft]`)
+    // while a contribution may spell it by character (`ctrl+alt+[`). Comparing the raw
+    // strings would call every punctuation binding free however taken it was.
+    const SCAN_CODES: Record<string, string> = {
+      "[BracketLeft]": "[",
+      "[BracketRight]": "]",
+      "[Period]": ".",
+      "[Comma]": ",",
+      "[Semicolon]": ";",
+      "[Quote]": "'",
+      "[Slash]": "/",
+      "[Backslash]": "\\",
+      "[Backquote]": "`",
+      "[Minus]": "-",
+      "[Equal]": "=",
+    };
+    const normalize = (key: string) =>
+      Object.entries(SCAN_CODES).reduce((k, [code, ch]) => k.split(code).join(ch), key);
+
+    const entries = [
+      ...defaults!.matchAll(
+        /\{\s*"key":\s*"([^"]+)",\s*"command":\s*"([^"]+)"(?:,\s*"when":\s*"([^"]*)")?/g
+      ),
+    ].map((m) => ({ key: normalize(m[1]), command: m[2] }));
+    // A regex that stopped matching the file's shape would make this test pass while
+    // asserting nothing at all.
+    assert.ok(
+      entries.length > 200,
+      `parsed only ${entries.length} default keybindings; the scan no longer matches the file`
+    );
+
+    // Overrides that predate item 165 and are deliberate: Open Preview claims the key the
+    // Markdown preview trained everyone to reach for, at the cost of delete-line inside a
+    // `.tmd` buffer. Listed rather than exempted wholesale, so a NEW clash still fails.
+    const deliberate = new Set(["ctrl+shift+k"]);
+    const contributed: { command: string; key: string }[] = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, "editor/vscode/package.json"), "utf8")
+    ).contributes.keybindings;
+
+    // Our own contributions are IN this table — it is the merged default table, not just
+    // VS Code's built-ins — so without this filter every binding clashes with itself and the
+    // test reports a conflict for a key nothing else uses.
+    const theirs = entries.filter((e) => !e.command.startsWith("taliesin."));
+    const clashes = contributed
+      .filter((c) => !deliberate.has(c.key))
+      .flatMap((c) =>
+        theirs
+          .filter((e) => e.key === normalize(c.key))
+          .map((e) => `${c.command} binds ${c.key}, which VS Code already uses for ${e.command}`)
+      );
+    // What the excluded keys actually cost, so "deliberate" stays a decision and not a
+    // forgotten exemption.
+    for (const key of deliberate) {
+      const shadowed = theirs.filter((e) => e.key === key).map((e) => e.command);
+      console.log(`deliberate override ${key} shadows: ${shadowed.join(", ") || "nothing"}`);
+    }
+    assert.deepStrictEqual(clashes, [], "keybinding clash");
   });
 });
 

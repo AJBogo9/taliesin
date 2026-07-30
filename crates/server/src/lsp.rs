@@ -559,6 +559,44 @@ fn handle_request(
             result: Some(serde_json::to_value(regions)?),
             error: None,
         }
+    } else if req.method == SECTION_EDIT_METHOD {
+        // Also a Taliesin extension rather than an LSP method, for the same reason
+        // rust-analyzer's "move item up/down" is one: the operation needs the *cursor*, and
+        // the two standard homes for an editor-triggered edit cannot carry it. A code action
+        // would put a lightbulb on every section (the author asks for this by keystroke, not
+        // by browsing a menu), and `workspace/executeCommand`'s client-side forwarder is
+        // invoked by a keybinding with no arguments at all.
+        let params: crate::lsp_edits::SectionEditParams = serde_json::from_value(req.params)?;
+        match docs.get(&params.text_document.uri) {
+            Some(text) => match crate::lsp_edits::section_edit(text, params.position, params.op) {
+                Ok(edit) => lsp_server::Response {
+                    id: req.id,
+                    result: Some(serde_json::to_value(edit)?),
+                    error: None,
+                },
+                // A refusal is a first-class answer here — "this is the last section under
+                // its parent" is information, not a failure — and the companion shows
+                // `message` to the author. `null` would read as "nothing happened".
+                Err(message) => lsp_server::Response {
+                    id: req.id,
+                    result: None,
+                    error: Some(lsp_server::ResponseError {
+                        code: -32803, // JSON-RPC RequestFailed
+                        message,
+                        data: None,
+                    }),
+                },
+            },
+            None => lsp_server::Response {
+                id: req.id,
+                result: None,
+                error: Some(lsp_server::ResponseError {
+                    code: -32803,
+                    message: format!("{} is not open on the server", params.text_document.uri),
+                    data: None,
+                }),
+            },
+        }
     } else if req.method == PrepareRenameRequest::METHOD {
         let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
@@ -775,6 +813,11 @@ fn resolve_definition(
 /// route completion inside one to whoever owns that language. Namespaced, because it is not
 /// an LSP method and must never collide with one.
 pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
+
+/// The custom request behind the companion's four structural commands (move a section up or
+/// down, promote or demote a heading). Namespaced for the same reason as
+/// [`CELL_REGIONS_METHOD`]: it is not an LSP method.
+pub(crate) const SECTION_EDIT_METHOD: &str = "taliesin/sectionEdit";
 
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
@@ -4019,6 +4062,127 @@ mod tests {
                  the same change that adds the capability."
             );
         }
+    }
+
+    /// The same gate for the requests that are *not* LSP capabilities. A `taliesin/…` method
+    /// advertises nothing — there is no `*Provider` key to notice it is missing — so it is
+    /// the one part of this surface that can grow with no documentation at all. Reads the
+    /// method names out of this module's own source, so adding a fourth one and forgetting
+    /// the book is a failing test rather than a silent gap.
+    #[test]
+    fn the_internals_book_documents_every_taliesin_namespaced_method() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = std::fs::read_to_string(root.join("src/lsp.rs")).unwrap();
+        let text =
+            std::fs::read_to_string(root.join("../../docs/internals/extending.tmd")).unwrap();
+
+        // Every `"taliesin/…"` string literal in this file: the method constants, and only
+        // those (nothing else in the module spells one). The trailing-name check is not
+        // decoration — the needle above appears in this test's own source, so without it the
+        // scan "finds" a method called `taliesin/` and the gate fails on itself.
+        let methods: std::collections::BTreeSet<&str> = source
+            .match_indices("\"taliesin/")
+            .filter_map(|(i, _)| {
+                let rest = &source[i + 1..];
+                rest.find('"').map(|end| &rest[..end])
+            })
+            .filter(|m| {
+                m.strip_prefix("taliesin/")
+                    .is_some_and(|name| !name.is_empty() && name.chars().all(char::is_alphanumeric))
+            })
+            // `PANIC_PROBE_METHOD` is `#[cfg(test)]` and is not in the shipped binary at all,
+            // so documenting it would describe a method no editor can call.
+            .filter(|m| *m != PANIC_PROBE_METHOD)
+            .collect();
+        assert!(
+            methods.len() >= 3,
+            "found only {methods:?}; the scan stopped matching, so this test proves nothing"
+        );
+        for method in methods {
+            assert!(
+                text.contains(&format!("`{method}`")),
+                "`{method}` is served but docs/internals/extending.tmd never mentions it"
+            );
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // `taliesin/sectionEdit` (backlog item 165): the wire half of the companion's four
+    // structural commands. `lsp_edits`'s own tests own the transforms; these own the three
+    // things only the dispatch can get wrong — that the method is answered at all, that a
+    // refusal arrives as an error the companion can show rather than as a null, and that an
+    // unopened buffer is not silently treated as an empty one.
+    // ---------------------------------------------------------------------------
+
+    fn section_edit_request(
+        client: &Connection,
+        uri: &Url,
+        id: i32,
+        line: u32,
+        op: &str,
+    ) -> Response {
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: SECTION_EDIT_METHOD.to_owned(),
+                params: serde_json::json!({
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": 0 },
+                    "op": op,
+                }),
+            }))
+            .unwrap();
+        recv_response(client, RequestId::from(id))
+    }
+
+    #[test]
+    fn section_edit_answers_with_an_edit_and_the_cursor_to_follow_it() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::parse("file:///tmp/sections.tmd").unwrap();
+        did_open(&client, &uri, "## Alpha\n\na\n\n## Beta\n\nb\n".to_owned());
+
+        let resp = section_edit_request(&client, &uri, 5, 0, "moveDown");
+        assert!(resp.error.is_none(), "{:?}", resp.error);
+        let result = resp.result.expect("an edit");
+        assert_eq!(result["edits"].as_array().map(Vec::len), Some(1));
+        assert!(
+            result["edits"][0]["newText"]
+                .as_str()
+                .unwrap()
+                .starts_with("## Beta"),
+            "{result}"
+        );
+        // The camelCase spelling is the wire contract the companion reads; a Rust-side
+        // rename to `snake_case` would leave it reading `undefined` and silently skip the
+        // cursor fix-up.
+        assert_eq!(result["cursor"]["line"], 4, "{result}");
+
+        // A refusal is an error with a message, not a null result: the companion shows it.
+        let refused = section_edit_request(&client, &uri, 6, 4, "moveDown");
+        assert!(refused.result.is_none());
+        let error = refused.error.expect("a refusal");
+        assert_eq!(error.code, -32803);
+        assert!(error.message.contains("Beta"), "{}", error.message);
+
+        // An unopened buffer: an error too. Answering "no edits" would look like a document
+        // the transform declined to change.
+        let unopened = Url::parse("file:///tmp/never-opened.tmd").unwrap();
+        let missing = section_edit_request(&client, &unopened, 7, 0, "promote");
+        assert!(missing.result.is_none());
+        assert!(
+            missing
+                .error
+                .expect("an error")
+                .message
+                .contains("not open"),
+            "an unopened document should say so"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
     }
 
     // ---------------------------------------------------------------------------

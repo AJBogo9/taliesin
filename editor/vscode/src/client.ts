@@ -24,6 +24,17 @@ import { disposeShadowsFor, embeddedCompletions } from "./embedded";
 
 let client: LanguageClient | undefined;
 
+/**
+ * The running language server, or `undefined` before it starts (and after a failed start).
+ *
+ * Exported for the editor commands that are not language *intelligence* but still need the
+ * server's answer: the structural transforms ask `taliesin/sectionEdit` for the edits rather
+ * than deriving them from a heading scan in TypeScript.
+ */
+export function languageClient(): LanguageClient | undefined {
+  return client;
+}
+
 function binaryPath(): string {
   return vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 }

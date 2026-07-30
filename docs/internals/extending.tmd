@@ -134,6 +134,23 @@ in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either sign
 `taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
 other editor's filetype produces), so the server is never silently inert.
 
+Three requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
+method. Each exists because the protocol has no way to express what it does, and each is
+answered by the same server:
+
+| method | what it is for |
+|---|---|
+| `taliesin/cellRegions` | where the code cells are and what language each one is, so a client can route completion inside one to whoever owns that language. LSP cannot say "this range is Python, go ask Pylance" |
+| `taliesin/sectionEdit` | the four structural transforms — move a section up or down, promote or demote a heading — as `TextEdit`s over the buffer (`lsp_edits.rs`). It takes a **cursor**, which is why it is not a code action (that would put a lightbulb on every section, for an operation the author asks for by keystroke) and not `workspace/executeCommand` (whose client-side forwarder is invoked by a keybinding with no arguments at all). rust-analyzer's "move item up/down" is a custom request for the same reason |
+| `taliesin/colorScheme` | a notification, not a request: the editor's light/dark scheme, because the rasterized math hover is a picture and cannot inherit the popup's text colour |
+
+`taliesin/sectionEdit` refuses rather than guesses. Moving past a shallower heading would
+re-parent the section, so it answers a JSON-RPC `RequestFailed` whose message names both
+sections; the companion shows that message and leaves the buffer alone. The segmentation is
+`lsp_outline::sections`, shared with `documentSymbol` — a transform that cut sections even
+slightly differently from the outline the author is looking at would cut where they cannot
+see.
+
 Two properties are load-bearing. It is **parse-only**: no kernel is started, so answering a
 completion cannot execute a cell. And **stdout is the JSON-RPC wire**, so nothing in that
 module may print to it; all human output goes to `crate::log` on stderr.

@@ -84,6 +84,33 @@ completion cannot suggest something the validator would reject.
   extension installed. Outside VS Code, `taliesin schema --out <dir>` writes the schema and
   tells you the one comment line to add.
 
+### Restructuring without retyping
+
+Four commands move whole sections around, as edits to the `.tmd` **buffer**. Put the cursor
+anywhere in a section and:
+
+| Command | Key | What it does |
+|---|---|---|
+| Move Section Up | `Ctrl+Alt+U` | swaps the section with the one before it |
+| Move Section Down | `Ctrl+Alt+D` | swaps it with the one after it |
+| Promote Heading | `Ctrl+Alt+[` | `###` becomes `##`, and everything nested under it rises too |
+| Demote Heading | `Ctrl+Alt+]` | `##` becomes `###`, with its subtree |
+
+A "section" is the heading your cursor is in plus everything down to the next heading of the
+same or shallower level, so a move takes the subsections with it. The cursor rides along, on
+the same line of the same section, which is what lets you press the key twice to move
+something two places.
+
+They move **siblings only**. A `###` that is the last subsection of its `##` will not step
+down past that boundary, because doing so would quietly change which chapter it belongs to;
+you get a message naming the two sections instead. Promote refuses at `#` and demote refuses
+at `######` for the same reason: those are Markdown's ends, not ours.
+
+**In a deck this is slide reordering.** A slide *is* a `##` section, so Move Section Down
+moves the slide later in the deck, with its content. That is deliberate: the drag-to-reorder
+gesture the preview once had was removed for making the preview a second editing surface,
+and this is the same operation done in the place that owns the file.
+
 ### What a reference resolves to, without leaving the line
 
 Four of these answer a question you would otherwise have to scroll to answer. None of

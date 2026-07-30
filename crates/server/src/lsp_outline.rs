@@ -113,22 +113,52 @@ fn headings(text: &str) -> Vec<Flat> {
     out
 }
 
-/// Build the nested outline tree from the flat heading list.
-pub(crate) fn outline(text: &str) -> Vec<OutlineNode> {
+/// One heading with the inclusive line extent of its section, in reading order.
+///
+/// The flat view of the same segmentation [`outline`] nests. `lsp_edits` moves and re-levels
+/// sections against this, which is the point of sharing it: a "move section down" that
+/// segmented the document even slightly differently from the outline the author is looking
+/// at would cut in a place the editor never showed them.
+pub(crate) struct Section {
+    pub title: String,
+    pub level: u8,
+    /// 0-based line of the heading.
+    pub start_line: usize,
+    /// 0-based last line of the section body (inclusive). Sections **tile**: the next
+    /// section starts on the line after this one, so a run of them is contiguous text.
+    pub end_line: usize,
+}
+
+/// Every heading with its section's extent, in reading order.
+pub(crate) fn sections(text: &str) -> Vec<Section> {
     let flat = headings(text);
     let line_count = text.split('\n').count().max(1);
-    let n = flat.len();
-
+    let mut out: Vec<Section> = flat
+        .into_iter()
+        .map(|f| Section {
+            title: f.title,
+            level: f.level,
+            start_line: f.line,
+            // The last heading of its branch runs to EOF until proven otherwise below.
+            end_line: line_count - 1,
+        })
+        .collect();
     // Each heading's section end: the line before the next same-or-higher-level heading.
-    let mut ends = vec![line_count - 1; n];
-    for i in 0..n {
-        for j in (i + 1)..n {
-            if flat[j].level <= flat[i].level {
-                ends[i] = flat[j].line.saturating_sub(1);
+    for i in 0..out.len() {
+        for j in (i + 1)..out.len() {
+            if out[j].level <= out[i].level {
+                out[i].end_line = out[j].start_line.saturating_sub(1);
                 break;
             }
         }
     }
+    out
+}
+
+/// Build the nested outline tree from the flat heading list.
+pub(crate) fn outline(text: &str) -> Vec<OutlineNode> {
+    let flat = sections(text);
+    let n = flat.len();
 
     // Parent = nearest preceding heading of strictly smaller level (stack, mirrors outline.ts).
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -148,22 +178,19 @@ pub(crate) fn outline(text: &str) -> Vec<OutlineNode> {
         stack.push(i);
     }
 
-    fn build(i: usize, flat: &[Flat], ends: &[usize], children: &[Vec<usize>]) -> OutlineNode {
+    fn build(i: usize, flat: &[Section], children: &[Vec<usize>]) -> OutlineNode {
         OutlineNode {
             title: flat[i].title.clone(),
             level: flat[i].level,
-            start_line: flat[i].line,
-            end_line: ends[i],
+            start_line: flat[i].start_line,
+            end_line: flat[i].end_line,
             children: children[i]
                 .iter()
-                .map(|&c| build(c, flat, ends, children))
+                .map(|&c| build(c, flat, children))
                 .collect(),
         }
     }
-    roots
-        .iter()
-        .map(|&r| build(r, &flat, &ends, &children))
-        .collect()
+    roots.iter().map(|&r| build(r, &flat, &children)).collect()
 }
 
 #[cfg(test)]
