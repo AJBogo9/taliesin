@@ -847,8 +847,25 @@ it is "tried or costed, and the answer was no." Each names the commit that settl
 > forward; the fields are the same: value, size, where it lives, fit.
 >
 > **Ideas 68-71 shipped 2026-07-30** (backlog items 178 + 177); **67 and 72 stay parked** with
-> their reasons intact. Everything in Clusters B-F is still deliberately parked here so it is not
+> their reasons intact. **Ideas 73, 84 and 82 also shipped 2026-07-30** (the authoring-gesture
+> batch, spec + plan under `docs/superpowers/`), which empties Cluster B and takes two entries out
+> of Clusters D and F. The rest of Clusters C-F is still deliberately parked here so it is not
 > lost. Nothing below is a commitment.
+>
+> **Three cost estimates below were wrong, and the corrections are the reusable part:**
+>
+> - **Idea 84 is not gated on idea 74** (the project index) and is M, not L. This file prices
+>   whole-book correctness as needing a live index, while its own corrected Fact 1 says
+>   `site::anchors_defined_elsewhere_in_project` already walks every page. A rename is a ONE-SHOT
+>   event, so it needs a walk, not an index. Anything else in Cluster C that fires once per
+>   gesture rather than once per keystroke should be re-costed the same way before being priced
+>   against 74.
+> - **Idea 84's "native refactor preview" does not exist.** That belongs to rename-SYMBOL
+>   providers; `onWillRenameFiles` edits apply with the rename, in one undo, with no preview step.
+> - **Idea 82's `page.tmd:12:3` has no column.** `check.rs` prints `file:line: severity[CODE]:`
+>   and `build.rs` prints `file:line:`, so a pattern requiring `:col` matches nothing. The comment
+>   above the formatter already called this "the shape a problem-matcher keys off", so the format
+>   was designed for and then mis-transcribed here.
 
 ### Ground truth established this session (verified in source; do not re-derive)
 
@@ -992,7 +1009,7 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
 
 ### Cluster B — Authoring gestures (TS-side, the most *felt* per day)
 
-73. **The paste/drop cluster (`DocumentPasteEditProvider` + `DocumentDropEditProvider`).** One
+73. **SHIPPED 2026-07-30. The paste/drop cluster (`DocumentPasteEditProvider` + `DocumentDropEditProvider`).** One
     provider pair, six gestures. Almost nobody implements these well, and they **prevent a bug
     class the build currently only warns about**: `copy_local_assets` warns and skips assets
     outside the doc tree (`build.rs:769`), so the editor can stop that at authoring time.
@@ -1054,14 +1071,14 @@ pricing the index.
     second reading models **cell execution** as tests, which buys cancellation, run profiles and
     output panes for free. (Value: **medium**, **high** if the cell reading works. Size: **M-L**.
     Where: TS. Fit: **needs-care**, it is an unusual use of the API.)
-82. **Terminal link provider.** Make `page.tmd:12:3` in the dev-server log clickable. (Value:
+82. **SHIPPED 2026-07-30. Terminal link provider.** Make `page.tmd:12:3` in the dev-server log clickable. (Value:
     **low-medium**. Size: **XS**. Where: TS. Fit: **fits**.)
 83. **URI handler (`registerUriHandler`).** `vscode://taliesin.taliesin-companion/open?file=…&line=…`
     closes click-to-source for the **standalone browser preview**, which today only bridges back
     inside the webview relay. (Value: **medium**. Size: **S**. Where: TS + `web-client`. Fit:
     **fits**.) *Weigh against the standing note that click-to-source has no automated end-to-end
     coverage: the harness stops at the relay, so this needs a manual check.*
-84. **`onWillRenameFiles`.** Rename `intro.tmd` and every `{{< include >}}`, relative link and
+84. **SHIPPED 2026-07-30. `onWillRenameFiles`.** Rename `intro.tmd` and every `{{< include >}}`, relative link and
     `_site.yml` reference updates via a `WorkspaceEdit`, with VS Code's native refactor preview.
     **Table stakes in TypeScript-land and absent from every Markdown tool I am aware of.** (Value:
     **high**. Size: **M**, and **L** if it must be correct across a whole book, which needs 74.

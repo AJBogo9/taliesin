@@ -25,6 +25,30 @@ enough to start.**
   git branch -vv                        # what branches still exist
   ```
 
+- **The editor authoring-gesture batch shipped 2026-07-30** (`FEATURE-IDEAS.md` Session 3 ideas
+  **73**, **84**, **82**, promoted by owner ruling; spec and plan under `docs/superpowers/`). Six
+  paste/drop gestures, rename-repairs-references in both directions, and clickable `file:line:`
+  in the terminal. Four things a later session should carry:
+  - **Three of the ideas file's own cost estimates were wrong**, and the corrections are written
+    back into it rather than only here. The reusable one: **idea 84 was priced as needing the
+    parked project index (74) and does not**, because a rename fires ONCE and needs a *walk*,
+    which `site::anchors_defined_elsewhere_in_project` already does. **Re-cost anything else in
+    Cluster C that fires per gesture rather than per keystroke before pricing it against 74.**
+  - **`engines.vscode` was a promise the compiler never checked.** It declared `^1.91.0` while
+    `@types/vscode` resolved to 1.125.0, so `tsc` blessed calls that are `undefined` on the
+    minimum editor. The floor is now `^1.97.0` (measured: the paste API is absent from stable
+    types 1.96.0, present in 1.97.0) and **the types are pinned EXACTLY, with no caret**, because
+    `^1.97.0` also resolves to 1.125.0 and leaves the same gap. A test pins both fields.
+  - **The mutation step found four defects that review and a green suite did not**, which is the
+    fourth consecutive batch where that happened. Two were vacuous tests (a first-vs-last fixture
+    with only one cell to order; two guards each masked by a later check), one was provably
+    unreachable code, and one was a branch I had added with no test at all. **A surviving mutant
+    is a finding about the test, not a nuisance.**
+  - **A new DETECTION-DEBT row (D=8) names what cannot be closed:** `vscode.env.clipboard` is
+    text-only, so no test can put `image/png` or `text/html` on the clipboard, and there is no
+    `vscode.execute*` command for paste or drop (measured by listing every command matching
+    `/drop|paste/` in a real host). Those two routes are unobserved by construction.
+
 - **Items 165, 166, 162 and 161 shipped 2026-07-30**, and three of them carry something a
   later session needs.
   - **166's recorded blocker was already solved.** The item said a prose formatter cannot
@@ -672,6 +696,29 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-07-30 editor authoring gestures** (`FEATURE-IDEAS.md` Session 3 ideas 73, 84, 82), branch
+  `editor-authoring-gestures-2026-07-30`, against
+  [2026-07-30-editor-authoring-gestures-design.md](../docs/superpowers/specs/2026-07-30-editor-authoring-gestures-design.md).
+  Two new custom requests (`taliesin/insertEdit`, `taliesin/renameFileEdits`) hold every piece of
+  `.tmd` knowledge; the TypeScript owns only the clipboard, the file write and the undo grouping.
+  **The seam is forced, not chosen:** only the client has the clipboard bytes, only the server
+  knows what a figure looks like. **Do not re-file the ideas** and do not re-derive the four
+  corrections recorded in the ideas file itself.
+  - **`images/<slug>-01.png` was the minority convention** (24 image refs beside the doc against 7
+    in a subdirectory, measured across `corpus/` + `docs/`), so a pasted image lands beside the
+    document.
+  - **A dragged asset's verdict calls `build::inside_repo`**, now `pub(crate)`, rather than a
+    second containment rule; the build's TWO warnings are kept distinct and the ORDER matters,
+    since a symlink out of the repository is lexically *inside* the folder.
+  - **Rename handles both link spellings** (`.tmd` and the `.html` a cross-page link is authored
+    as); handling one leaves a dead link and reports success. `_site.yml` is edited as **text**, so
+    comments survive. No `_site.yml` means no inbound walk, per item 70.
+  - **Ranges are UTF-16.** A non-ASCII character earlier on the same line shifts every byte offset
+    after it and the edit lands in the wrong column.
+  - **The one piece of knowledge left in TypeScript is the terminal-link pattern**, because a
+    terminal line is not a document, so it carries a two-way drift gate: the pattern is tested
+    against the printed shapes AND the Rust format literals are pinned. Testing only the pattern
+    would stay green while the format moved underneath it.
 - **2026-07-30 LSP editor ergonomics** (178, 177): all 8 tasks of
   [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
   one commit each, `./tools/gates.sh` green with all five interpreter canaries named and passing.

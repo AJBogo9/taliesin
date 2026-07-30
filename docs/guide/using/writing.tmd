@@ -231,3 +231,59 @@ grammar doesn't cover (custom widgets, embeds, audio players):
         inline styles use the page's theme variables, so it tracks light/dark too.</span>
 </div>
 ```
+
+## Editor gestures: paste, drop, and rename
+
+The VS Code companion turns the fiddly parts of authoring into gestures. None of them is a
+new syntax to learn: each one writes the same Markdown you would have typed, and the
+companion asks the language server what to write, so a pasted table and a table you format
+by hand come out byte-identical.
+
+**Paste an image** from the clipboard and the file lands beside the document as
+`<document>-01.png`, with a figure block inserted and the cursor waiting in the caption.
+Tab moves to the `#fig-` label, so the two things only you can write are the two things
+you are asked for:
+
+```
+![▮caption▮](bayes-01.png){#fig-▮label▮}
+```
+
+**Drag an image in from the Explorer** to get a path relative to the document. If the file
+sits outside the document's folder, the companion says so before inserting it and offers to
+copy it in, because the build cannot bundle an asset it cannot reach: that is the same rule,
+from the same code, that makes `build` warn about a stray asset.
+
+**Paste a spreadsheet** (or any HTML table, from a browser or a spreadsheet app) and it
+becomes an aligned pipe table. Tab-separated plain text can become one too, but it is
+offered in the paste-as menu rather than done automatically: text with tabs in it is
+usually just text, and silently turning it into a table is worse than one extra keystroke.
+
+**Paste a URL over a selection** to wrap it: select `manual`, paste
+`https://taliesin.dev/guide`, get `[manual](https://taliesin.dev/guide)`.
+
+**Paste a BibTeX entry** and it is appended to the bibliography your front matter names,
+with `[@key]` inserted at the cursor. Both edits are one undo. If the key is already in the
+`.bib` you get the citation and no duplicate entry, since a duplicate key is something
+`check` would report.
+
+**Drop a `.csv`** to get a `{{< dataset >}}` provenance card plus a loader cell in the
+language your document already uses, skipping an import you already have.
+
+**Rename or move a `.tmd`** and every reference is repaired: the includes, embeds, links
+and `_site.yml` entries that point *at* it, and, when it changes folder, its own images and
+includes that point *out*. It is one undo, so if the result is not what you wanted, Ctrl+Z
+puts the rename and the repair back together. Renaming an image repairs the figures that
+show it, the same way.
+
+Two limits worth knowing, so they do not read as bugs:
+
+- **A document in a folder with no `_site.yml` gets no inbound repair.** Without a project
+  file there is no declared boundary, and guessing one (walking up to the nearest `.git`,
+  say) would rewrite files in a tree you never said was yours. Its own outgoing references
+  are still rebased.
+- **Pasting a BibTeX entry into a document with no bibliography** inserts the citation and
+  stops. It does not create a `.bib` and edit your front matter to point at it; the
+  existing "citations but no bibliography" diagnostic tells you what is missing.
+
+Finally, a `page.tmd:12:` location in the preview or `check` output is **clickable**, so a
+diagnostic in the terminal takes you to the line.
