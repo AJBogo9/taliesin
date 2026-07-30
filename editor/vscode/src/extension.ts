@@ -18,6 +18,7 @@ import { registerInsertProviders } from "./insert";
 import { registerRenameRepair } from "./rename";
 import { registerTerminalLinks } from "./termlinks";
 import { registerSidebar } from "./sidebar";
+import { registerTasks } from "./tasks";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -87,6 +88,9 @@ export function activate(context: vscode.ExtensionContext) {
   // has no concept of, but every row in it is a projection of what the server replied, and
   // every row navigates: nothing here writes to a document.
   registerSidebar(context);
+  // `check` and `build` as tasks, so project-wide findings reach the Problems panel for files
+  // that are not open. The language server only ever diagnoses buffers it has been sent.
+  registerTasks(context);
 }
 
 /**

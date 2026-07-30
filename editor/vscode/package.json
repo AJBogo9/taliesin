@@ -336,7 +336,63 @@
           "contextualTitle": "Taliesin: numbered float index"
         }
       ]
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "taliesin",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": [
+              "check",
+              "build",
+              "build --out"
+            ],
+            "description": "Which Taliesin command this task runs against the project root."
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "taliesin",
+        "owner": "taliesin",
+        "source": "taliesin",
+        "severity": "info",
+        "fileLocation": [
+          "autoDetected",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^([^\\s:][^:]*):(\\d+): (error|warning|suggestion)\\[([^\\]]+)\\]: (.*)$",
+          "file": 1,
+          "line": 2,
+          "severity": 3,
+          "code": 4,
+          "message": 5
+        }
+      },
+      {
+        "name": "taliesin-unlocated",
+        "owner": "taliesin",
+        "source": "taliesin",
+        "severity": "info",
+        "fileLocation": [
+          "autoDetected",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^([^\\s:][^:]*): (error|warning|suggestion)\\[([^\\]]+)\\]: (.*)$",
+          "file": 1,
+          "severity": 2,
+          "code": 3,
+          "message": 4
+        }
+      }
+    ]
   },
   "capabilities": {
     "untrustedWorkspaces": {
