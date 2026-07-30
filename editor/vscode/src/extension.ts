@@ -14,6 +14,7 @@ import {
 import { readSiteMap } from "./map";
 import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
+import { registerInsertProviders } from "./insert";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -70,6 +71,10 @@ export function activate(context: vscode.ExtensionContext) {
   );
   registerLanguageClient(context);
   registerCommands(context);
+  // The third half, and it is neither of the two above: paste and drop are edits the AUTHOR makes
+  // in the editing surface, so they are not preview write-back, and they are not language features
+  // either. The gesture is VS Code's; every string they insert comes from the server.
+  registerInsertProviders(context);
 }
 
 /**
