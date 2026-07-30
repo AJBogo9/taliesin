@@ -134,8 +134,97 @@ pub(crate) fn insert_edit(
         InsertKind::Image => image_paste(doc, payload),
         InsertKind::HtmlTable | InsertKind::TsvTable => table_paste(kind, payload),
         InsertKind::Bibtex => bibtex_paste(doc, text, payload),
-        _ => todo!("later tasks"),
+        InsertKind::Dataset => dataset_drop(doc, text, Path::new(payload)),
     }
+}
+
+/// A path expressed relative to `dir`, or `None` when that would need to climb out of it.
+///
+/// A `../` dataset or asset path is one the build cannot ship (`copy_local_assets` warns and
+/// skips it), so the editor must not emit one.
+fn relative_to(dir: &Path, target: &Path) -> Option<String> {
+    let dir = dir.canonicalize().ok()?;
+    let target = target.canonicalize().ok()?;
+    let rel = target.strip_prefix(&dir).ok()?;
+    // Always forward slashes: this string goes into a document, not into a syscall.
+    Some(
+        rel.components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
+}
+
+/// The language of the document's FIRST kernel cell.
+///
+/// First rather than nearest, so the same document always yields the same answer no matter where
+/// the drop lands. Only `python` and `r` count: they are the two kernel languages, and a client
+/// language like `{js}` has no CSV loader to write (see [`dataset_drop`]).
+fn first_kernel_language(text: &str) -> Option<&'static str> {
+    crate::lsp_cells::cell_regions(text)
+        .iter()
+        .find_map(|r| match r.language.as_str() {
+            "python" => Some("python"),
+            "r" => Some("r"),
+            _ => None,
+        })
+}
+
+/// A dropped `.csv`: the provenance card, plus a loader cell when the document has a kernel.
+///
+/// There is deliberately no `datasets:` front-matter scaffold. `corpus/datasets.tmd` documents
+/// that block as optional, because the size and checksum are read off the file itself, so the
+/// only keys it would add (licence, source, description) are facts the author has and the editor
+/// does not. Emitting them empty is noise a lint may flag.
+fn dataset_drop(doc: &Path, text: &str, csv: &Path) -> Result<InsertEditResult, String> {
+    let dir = doc.parent().ok_or("the document has no directory")?;
+    let rel = relative_to(dir, csv).ok_or_else(|| {
+        format!(
+            "{} is outside the document's folder, so the build could not ship it",
+            csv.display()
+        )
+    })?;
+
+    let card = format!("{{{{< dataset {rel} >}}}}");
+    // A client-language document ({js}, {glsl}) gets the card and no loader: there is no CSV
+    // reader in `tali-js.js` to call, and inventing one would emit a call to a function that
+    // does not exist. `python` is the default only for a document with no kernel cell yet.
+    let language = match first_kernel_language(text) {
+        Some(lang) => Some(lang),
+        // No kernel cell. A document with no cells at all is starting fresh, so `python` is the
+        // default; a document whose only cells are a client language has deliberately chosen the
+        // browser, and a Python cell would silently require a kernel it does not use.
+        None if crate::lsp_cells::cell_regions(text).is_empty() => Some("python"),
+        None => None,
+    };
+    let cell = language.map(|lang| match lang {
+        "r" => {
+            let import = if text.contains("library(readr)") {
+                ""
+            } else {
+                "library(readr)\n"
+            };
+            format!("```{{r}}\n{import}df <- read_csv(\"{rel}\")\n```")
+        }
+        _ => {
+            let import = if text.contains("import pandas") {
+                ""
+            } else {
+                "import pandas as pd\n"
+            };
+            format!("```{{python}}\n{import}df = pd.read_csv(\"{rel}\")\n```")
+        }
+    });
+
+    Ok(InsertEditResult {
+        text: match cell {
+            Some(cell) => format!("{card}\n\n{cell}"),
+            None => card,
+        },
+        is_snippet: false,
+        write_file: None,
+        append: None,
+    })
 }
 
 /// The citation key of a pasted BibTeX entry: the identifier between `@type{` and the first
@@ -602,6 +691,108 @@ mod tests {
         // least common case. `citations_without_bibliography` already reports the gap.
         assert_eq!(r.text, "[@ab2020]");
         assert_eq!(r.append, None);
+    }
+
+    #[test]
+    fn a_dropped_csv_gets_a_dataset_card_and_a_loader_cell() {
+        let tmp = TmpDir::new("csv");
+        let doc = tmp.path().join("bayes.tmd");
+        let text = "# Bayes\n";
+        std::fs::write(&doc, text).unwrap();
+        std::fs::create_dir_all(tmp.path().join("data")).unwrap();
+        let csv = tmp.path().join("data/measurements.csv");
+        std::fs::write(&csv, "a,b\n1,2\n").unwrap();
+
+        let r = insert_edit(&doc, text, InsertKind::Dataset, csv.to_str().unwrap()).unwrap();
+
+        assert!(
+            r.text.contains("{{< dataset data/measurements.csv >}}"),
+            "the card, with a doc-relative path: {}",
+            r.text
+        );
+        // No cells at all, so the loader defaults to python.
+        assert!(r.text.contains("```{python}"), "{}", r.text);
+        assert!(r.text.contains("import pandas as pd"), "{}", r.text);
+        assert!(
+            r.text.contains("pd.read_csv(\"data/measurements.csv\")"),
+            "{}",
+            r.text
+        );
+    }
+
+    #[test]
+    fn the_loader_follows_the_documents_first_kernel_cell_language() {
+        let tmp = TmpDir::new("csvr");
+        let doc = tmp.path().join("bayes.tmd");
+        // Two kernel languages, r before python, so "first" and "last" give DIFFERENT answers.
+        // A fixture with one kernel cell cannot tell the two apart, and the mutation that
+        // swapped `find_map` for `last()` survived against exactly that weaker fixture.
+        // The leading bash fence is not a kernel language and must not decide the loader.
+        let text = "```bash\nls\n```\n\n```{r}\nsummary(x)\n```\n\n```{python}\nx = 1\n```\n";
+        std::fs::write(&doc, text).unwrap();
+        let csv = tmp.path().join("m.csv");
+        std::fs::write(&csv, "a\n1\n").unwrap();
+
+        let r = insert_edit(&doc, text, InsertKind::Dataset, csv.to_str().unwrap()).unwrap();
+
+        assert!(r.text.contains("```{r}"), "{}", r.text);
+        assert!(r.text.contains("library(readr)"), "{}", r.text);
+        assert!(r.text.contains("read_csv(\"m.csv\")"), "{}", r.text);
+        assert!(
+            !r.text.contains("pandas"),
+            "not the python loader: {}",
+            r.text
+        );
+    }
+
+    #[test]
+    fn an_import_the_document_already_has_is_not_repeated() {
+        let tmp = TmpDir::new("csvimp");
+        let doc = tmp.path().join("bayes.tmd");
+        let text = "```{python}\nimport pandas as pd\n```\n";
+        std::fs::write(&doc, text).unwrap();
+        let csv = tmp.path().join("m.csv");
+        std::fs::write(&csv, "a\n1\n").unwrap();
+
+        let r = insert_edit(&doc, text, InsertKind::Dataset, csv.to_str().unwrap()).unwrap();
+
+        assert!(
+            !r.text.contains("import pandas"),
+            "already imported: {}",
+            r.text
+        );
+        assert!(r.text.contains("pd.read_csv(\"m.csv\")"), "{}", r.text);
+    }
+
+    #[test]
+    fn a_client_language_document_gets_the_card_with_no_loader() {
+        let tmp = TmpDir::new("csvjs");
+        let doc = tmp.path().join("bayes.tmd");
+        // `{js}` runs in the browser and `tali-js.js` has no CSV reader, so a loader cell would
+        // be a call to a function that does not exist. A python cell would be worse: it would
+        // silently require a kernel this document deliberately does not use.
+        let text = "```{js}\nconst x = 1;\n```\n";
+        std::fs::write(&doc, text).unwrap();
+        let csv = tmp.path().join("m.csv");
+        std::fs::write(&csv, "a\n1\n").unwrap();
+
+        let r = insert_edit(&doc, text, InsertKind::Dataset, csv.to_str().unwrap()).unwrap();
+
+        assert_eq!(r.text, "{{< dataset m.csv >}}", "the card alone");
+    }
+
+    #[test]
+    fn a_csv_outside_the_document_folder_is_refused() {
+        let tmp = TmpDir::new("csvout");
+        std::fs::create_dir_all(tmp.path().join("proj")).unwrap();
+        let doc = tmp.path().join("proj/bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+        let csv = tmp.path().join("elsewhere.csv");
+        std::fs::write(&csv, "a\n1\n").unwrap();
+
+        // A `../` dataset path is one the build cannot ship, so the editor must not emit it.
+        let err = insert_edit(&doc, "", InsertKind::Dataset, csv.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("outside"), "{err}");
     }
 
     #[test]
