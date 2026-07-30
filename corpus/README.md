@@ -62,6 +62,14 @@ homepage's `hero:` block renders the Marginalia header (see `todo.md` §4).
 `{{< include ../../_includes/three-scene.tmd >}}`; the `posts/` + `_includes/`
 layout is mirrored from the source project so that path resolves verbatim.
 
+`transclude.tmd` is the **block-level** counterpart: it pulls single anchored
+sections out of `_includes/shared-derivation.tmd` with
+`{{< include …#sec-id >}}`, and deliberately pulls a later section *before* an
+earlier one, so the source map has to carry each section's real line numbers
+rather than the order they land in. The shared file keeps a `{#sec-unused}`
+section nobody names, as the control that proves the slicing happens at all.
+Pinned by `crates/core/tests/transclusion.rs`.
+
 `diagnostics/` holds docs that deliberately trip Taliesin's schema validators
 (`typos.tmd`: a misspelled key in each surface, front-matter top-level + nested,
 callout kind, cell option). It is pinned by `crates/core/tests/nested_validation.rs`,

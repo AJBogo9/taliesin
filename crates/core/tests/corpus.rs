@@ -361,9 +361,30 @@ fn every_corpus_doc_renders_with_invariants() {
         assert!(!doc.blocks.is_empty(), "{label}: produced no blocks");
 
         let mut ids = HashSet::new();
-        // Document order holds *within* a single source file; included files
-        // reset to their own line numbering, so track order per file.
+        // Document order holds within one contiguous RUN of blocks from a single source
+        // file. Included files reset to their own line numbering, so the run is the unit.
+        //
+        // It used to be tracked per file for the whole document, which is the same thing
+        // as long as every include is a whole file: those splice in one unbroken run, so
+        // a file's blocks can only ever be seen in ascending order. **Block-level
+        // transclusion (item 160) breaks that**, legitimately — a document may pull
+        // `#sec-b` before `#sec-a`, and `corpus/transclude.tmd` does exactly that, so the
+        // second run starts at an earlier line than the first ended.
+        //
+        // Nothing downstream needs the stronger version: `highlightAtLine` in
+        // `web-client/client.js` scans every `[data-sourcepos]` and takes the smallest
+        // covering range (falling back to the latest-starting preceding one), which is a
+        // min/max over the whole set and assumes no ordering at all. What the check is
+        // still worth keeping for is what `render/tests.rs` names: a gathered block
+        // claiming a span it did not come from would show up as a line going backwards
+        // *inside* a run.
+        //
+        // Residual, stated rather than hidden: two transclusions of the SAME file with no
+        // block between them, later section first, would read as one run and trip this.
+        // No corpus document does that today. If one ever does, the fix is here — the
+        // renderer would need to mark run boundaries — not in the document.
         let mut prev_start: std::collections::HashMap<Option<String>, usize> = HashMap::new();
+        let mut prev_file: Option<Option<String>> = None;
         for b in &doc.blocks {
             assert!(!b.html.is_empty(), "{label}: empty html for block {}", b.id);
             assert!(ids.insert(&b.id), "{label}: duplicate block id {}", b.id);
@@ -389,10 +410,15 @@ fn every_corpus_doc_renders_with_invariants() {
                 b.sourcepos
             );
             assert!(sl <= el, "{label}: start line after end in {}", b.sourcepos);
+            // A change of source file ends the run, so the next one starts fresh.
+            if prev_file.as_ref() != Some(&b.source_file) {
+                prev_start.insert(b.source_file.clone(), 0);
+                prev_file = Some(b.source_file.clone());
+            }
             let prev = prev_start.entry(b.source_file.clone()).or_insert(0);
             assert!(
                 sl >= *prev,
-                "{label}: blocks out of order within {:?} ({sl} after {prev})",
+                "{label}: blocks out of order within one run of {:?} ({sl} after {prev})",
                 b.source_file
             );
             *prev = sl;

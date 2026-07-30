@@ -83,9 +83,21 @@ fn surname_of(name: &str) -> String {
 /// `"3 lines"` for an include that resolves, `None` for one that does not. A path that
 /// resolves to nothing has no size to report, and `check` already reports the broken
 /// include.
-fn include_size(dir: &std::path::Path, rel: &str) -> Option<String> {
+///
+/// For `part.tmd#sec-x` the number is the **section's** length, not the file's. The hint
+/// answers "how much text is about to appear here", so reporting the whole file for a
+/// fragment include would be a wrong answer rather than a coarse one — and a fragment
+/// naming no section gets no hint at all, the same silence a missing file gets.
+fn include_size(dir: &std::path::Path, target: &str) -> Option<String> {
+    let (rel, fragment) = taliesin_core::includes::split_target(target);
     let body = std::fs::read_to_string(dir.join(rel)).ok()?;
-    let n = body.lines().count();
+    let n = match fragment {
+        None => body.lines().count(),
+        Some(id) => {
+            let (start, end) = taliesin_core::includes::section_lines(&body, id)?;
+            end - start
+        }
+    };
     Some(match n {
         1 => "1 line".to_owned(),
         n => format!("{n} lines"),
@@ -436,6 +448,44 @@ See @fig-results and @sec-results and @fig-nowhere.
         );
         let text = "---\nbibliography: refs.bib\n---\n\n[@k]\n";
         assert_eq!(labels_of(hints_in(text, &dir)), vec![" ⟨Didion 2005⟩"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Item 160. The hint answers "how much text lands here", so a fragment include must
+    /// report its SECTION's length. Reporting the whole file would be a wrong answer, and
+    /// leaving the `#sec-…` on the path would make the file unreadable and produce no
+    /// hint at all — the two failure modes this pins apart with a known-positive control.
+    #[test]
+    fn a_fragment_include_counts_the_section_not_the_file() {
+        let dir = scratch("fragment-hint");
+        //  1 `# All {#sec-all}`   3 `## One {#sec-one}`   5 `body`
+        //  7 `## Two {#sec-two}`  9 `t1`  10 `t2`
+        std::fs::write(
+            dir.join("part.tmd"),
+            "# All {#sec-all}\n\n## One {#sec-one}\n\nbody\n\n## Two {#sec-two}\n\nt1\nt2\n",
+        )
+        .unwrap();
+        // Control: the whole file is 10 lines.
+        assert_eq!(
+            labels_of(hints_in("{{< include part.tmd >}}\n", &dir)),
+            vec![" ⟨10 lines⟩"]
+        );
+        // `sec-one` is lines 3..6 (heading, blank, body, blank) = 4.
+        assert_eq!(
+            labels_of(hints_in("{{< include part.tmd#sec-one >}}\n", &dir)),
+            vec![" ⟨4 lines⟩"],
+            "the section's length, not the file's"
+        );
+        // `sec-all` owns everything under it, so it is the file minus nothing.
+        assert_eq!(
+            labels_of(hints_in("{{< include part.tmd#sec-all >}}\n", &dir)),
+            vec![" ⟨10 lines⟩"]
+        );
+        // A fragment naming no section gets the same silence a missing file gets.
+        assert!(
+            labels_of(hints_in("{{< include part.tmd#sec-nope >}}\n", &dir)).is_empty(),
+            "an unresolvable fragment must not claim a size"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

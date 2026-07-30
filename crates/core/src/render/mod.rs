@@ -2131,7 +2131,7 @@ fn heading_attr_line(block_src: &str) -> &str {
 
 /// A trailing Pandoc attribute on a heading line (`## Title {#id .class}`).
 /// Returns `(text_without_attr, explicit_id)`, or `None` when there is no attr.
-fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
+pub(crate) fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
     let line = heading_attr_line(block_src);
     let open = line.rfind('{')?;
     if !line.ends_with('}') {

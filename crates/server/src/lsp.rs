@@ -720,13 +720,23 @@ fn resolve_definition(
 
     let location = match crate::lsp_nav::classify_target(text, pos.line as usize, cursor_char) {
         // `{{< include x.tmd >}}` → the file (position 0:0), when it exists on disk.
+        // `{{< include x.tmd#sec-y >}}` → the anchored **section's heading line**, which
+        // is the whole point of naming one: landing at 0:0 of a shared parts file and
+        // hunting for the section is the navigation this feature exists to remove.
         Target::Include { path, .. } => {
+            let (rel, fragment) = taliesin_core::includes::split_target(&path);
             let dir = uri.to_file_path().ok()?;
-            let abs = dir.parent()?.join(&path);
+            let abs = dir.parent()?.join(rel);
             if !abs.exists() {
                 return None;
             }
-            Location::new(Url::from_file_path(&abs).ok()?, point("", 0, 0, 0))
+            let line = fragment
+                .and_then(|id| {
+                    let body = std::fs::read_to_string(&abs).ok()?;
+                    taliesin_core::includes::section_lines(&body, id).map(|(start, _)| start)
+                })
+                .unwrap_or(0) as u32;
+            Location::new(Url::from_file_path(&abs).ok()?, point("", line, 0, 0))
         }
         // `@fig-x` → its definition in this document (cross-file refs get nothing).
         Target::Xref { id, .. } => {
@@ -844,8 +854,9 @@ fn resolve_hover(
         // resolved it, so the one cue that a spliced-in file is navigable was missing from
         // the place an author looks first.
         Target::Include { path, start, end } => {
+            let (rel, _fragment) = taliesin_core::includes::split_target(&path);
             let dir = uri.to_file_path().ok()?.parent()?.to_path_buf();
-            let target = dir.join(&path);
+            let target = dir.join(rel);
             if target.exists() {
                 let href = lsp_types::Url::from_file_path(&target).ok()?;
                 markup(
@@ -1636,7 +1647,11 @@ fn document_links(
     let links = crate::lsp_links::path_links(text)
         .into_iter()
         .filter_map(|l| {
-            let target = dir.join(&l.path);
+            // A `#fragment` names a section inside the file, so the FILE is what the link
+            // opens; leaving it on the path resolves nothing and the link disappears,
+            // which is the affordance `documentLink` exists to provide.
+            let (rel, _fragment) = taliesin_core::includes::split_target(&l.path);
+            let target = dir.join(rel);
             if !target.exists() {
                 return None;
             }
@@ -2687,6 +2702,99 @@ mod tests {
             None,
             "an include of a file that is not on disk must resolve to nothing, not to a \
              location the editor then fails to open"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Item 160. A fragment include names a section, so go-to-definition lands on that
+    /// section's heading line. Landing at 0:0 of a shared parts file and making the author
+    /// hunt for the section is exactly the navigation the feature exists to remove — and
+    /// it is the *silent* failure here, because 0:0 is a real location the editor opens
+    /// happily. The `documentLink` half is checked with it: leaving the `#sec-…` on the
+    /// path makes the file unresolvable and the link simply vanishes.
+    #[test]
+    fn goto_definition_on_a_fragment_include_lands_on_the_section() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-frag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = dir.join("part.tmd");
+        // `## Two` is line index 6 (0-based), which is the number under test: a naive
+        // implementation reports 0 and an off-by-one reports 5 or 7.
+        std::fs::write(
+            &part,
+            "# All {#sec-all}\n\n## One {#sec-one}\n\nbody\n\n## Two {#sec-two}\n\nmore\n",
+        )
+        .unwrap();
+        let doc = dir.join("book.tmd");
+        let text = "{{< include part.tmd#sec-two >}}\n\n{{< include part.tmd#sec-gone >}}\n\
+                    \n{{< include part.tmd >}}\n"
+            .to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        match definition_at(&client, &uri, 61, 0, 14) {
+            Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                assert_eq!(loc.uri, Url::from_file_path(&part).unwrap());
+                assert_eq!(
+                    loc.range.start,
+                    lsp_types::Position::new(6, 0),
+                    "`## Two {{#sec-two}}` is line 6 of part.tmd; line 0 means the fragment \
+                     was ignored, which opens the right file at the wrong place"
+                );
+            }
+            other => panic!("expected a location into part.tmd, got {other:?}"),
+        }
+        // A fragment that names no section still opens the file — the file is real, only
+        // the section is not, and `check` reports the bad anchor separately.
+        match definition_at(&client, &uri, 62, 2, 14) {
+            Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                assert_eq!(loc.range.start, lsp_types::Position::new(0, 0));
+            }
+            other => panic!("expected the file itself, got {other:?}"),
+        }
+        // The control: no fragment at all is unchanged by any of this.
+        match definition_at(&client, &uri, 63, 4, 14) {
+            Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                assert_eq!(loc.range.start, lsp_types::Position::new(0, 0));
+            }
+            other => panic!("expected the file itself, got {other:?}"),
+        }
+
+        // `documentLink` must still offer the file, with the fragment stripped only for
+        // resolution. Three includes are written, and only the `#sec-gone` one is still a
+        // real file, so all three must produce a link: a filter that kept the fragment on
+        // the path would resolve none of them and the affordance would silently vanish.
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(64),
+                method: lsp_types::request::DocumentLinkRequest::METHOD.to_owned(),
+                params: serde_json::json!({ "textDocument": { "uri": uri } }),
+            }))
+            .unwrap();
+        let resp = recv_response(&client, RequestId::from(64));
+        let links: Vec<lsp_types::DocumentLink> =
+            serde_json::from_value(resp.result.expect("a documentLink result")).unwrap();
+        assert_eq!(
+            links.len(),
+            3,
+            "every include here points at a file that exists: {links:?}"
+        );
+        assert!(
+            links.iter().all(|l| l
+                .target
+                .as_ref()
+                .is_some_and(|t| t.as_str().ends_with("part.tmd"))),
+            "each link opens the FILE, fragment stripped: {links:?}"
         );
 
         shutdown(&client);

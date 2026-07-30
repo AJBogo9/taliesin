@@ -183,13 +183,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      (`textDocument/documentSymbol`, `lsp_outline.rs`), so the unique value left is the
      **annotation layer**. Scope it as an annotation layer on the dev panel or it grows to L.
 
-160. **Block-level transclusion** `{{< include file.tmd#sec-id >}}`. (M, needs-care.
-     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #28.) Pull one anchored section instead of a whole
-     file, so a shared derivation lives in one place across a post series without copy-paste
-     drift. **Must ride on top of the `includes.rs` source-map pass** (resolve the fragment to a
-     block range, hand the existing machinery a sub-slice), never rewrite it: `includes.rs` is on
-     the do-not-rewrite list. **Hard merge gate: the source map must not perturb.**
-
 165. **Companion Phase 2: editor commands.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #31/#33.)
      Insert block, reorder slide, move/promote/demote a heading section, strictly as `.tmd`-buffer
      text transforms in the **editor**, never preview gestures. This is the *legal* replacement

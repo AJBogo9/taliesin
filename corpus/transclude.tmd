@@ -1,0 +1,40 @@
+---
+title: "Block-level transclusion"
+description: "Pulling one anchored section out of a shared file instead of the whole file."
+---
+
+`{{< include file.tmd >}}` splices a whole file in. Adding a `#fragment` narrows it
+to **one anchored section** of that file:
+
+```
+{{< include _includes/shared-derivation.tmd#sec-bias-variance >}}
+```
+
+The section runs from the heading carrying the anchor to the next heading of equal
+or shallower level, exactly as folding bounds it in the editor. Everything else in
+the shared file stays where it is.
+
+## One section, pulled in below
+
+{{< include _includes/shared-derivation.tmd#sec-bias-variance >}}
+
+## A second section from the same file
+
+Two fragments of one file are not a cycle, so a document can assemble several
+sections from one shared source. This one carries a subsection, which comes along
+because it sits *inside* the named section:
+
+{{< include _includes/shared-derivation.tmd#sec-normal-equations >}}
+
+## What it does not do
+
+A fragment that names no section in the file is left literal and reported, rather
+than silently expanding to the whole file or to nothing:
+
+```
+{{< include _includes/shared-derivation.tmd#sec-no-such-thing >}}
+```
+
+Click-to-source on any transcluded block opens the *shared* file at the line the
+block really occupies there, not at the top of the file and not at the line it
+happens to land on in this document.
