@@ -21,6 +21,7 @@ import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
 import { registerDecorations } from "./decorations";
 import { registerStatusBar } from "./statusbar";
+import { registerLmTools } from "./lmtools";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -104,6 +105,10 @@ export function activate(context: vscode.ExtensionContext) {
   registerStatusBar(context, previews, (listener) => {
     reportCount = listener;
   });
+  // The read-only half of `taliesin mcp`, offered to VS Code's own language-model surface so a
+  // model in this editor can check and read documents rather than guess about them. Nothing
+  // that writes or executes is offered here; see `lmspecs.ts`.
+  registerLmTools(context);
 }
 
 /**

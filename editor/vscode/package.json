@@ -397,6 +397,100 @@
           "message": 4
         }
       }
+    ],
+    "languageModelTools": [
+      {
+        "name": "taliesin_check",
+        "displayName": "Check a Taliesin document",
+        "toolReferenceName": "tali-check",
+        "modelDescription": "Validate a .tmd file or project directory. Runs no code and touches no network. Returns each diagnostic with a stable code, severity, file and line, and a suggested replacement for a typo. Use this to verify a document is correct before claiming it is.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a .tmd file or a project directory containing _site.yml."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_read",
+        "displayName": "Read a rendered Taliesin document",
+        "toolReferenceName": "tali-read",
+        "modelDescription": "Project a rendered .tmd document to plain text: headings, resolved figure and cross-reference numbers, callouts, fenced code, and math as TeX. This is what the document actually says once built, as opposed to its source.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a .tmd file."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_symbols",
+        "displayName": "List a document's cross-reference targets",
+        "toolReferenceName": "tali-symbols",
+        "modelDescription": "List every cross-reference anchor a .tmd document defines, with its resolved number. Use this to find the correct @-name before writing a reference, instead of guessing one.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a .tmd file."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_map",
+        "displayName": "Outline a Taliesin project",
+        "toolReferenceName": "tali-map",
+        "modelDescription": "Outline a whole project directory: its pages in nav or chapter order, the nav itself, any mounts, and the cross-reference graph between pages. Use this to understand a book or site before editing part of it.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a project directory containing _site.yml."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_vocab",
+        "displayName": "List the vocabulary Taliesin accepts",
+        "toolReferenceName": "tali-vocab",
+        "modelDescription": "The closed-set vocabulary Taliesin accepts: front-matter keys, cell options, callout and theorem kinds, div classes, and cross-reference prefixes. Use this instead of guessing whether a key or class exists.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
     ]
   },
   "capabilities": {
