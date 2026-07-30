@@ -62,6 +62,20 @@ through its wrappers. What was actually missing was a fixture *shape*.
   out as two broken cells. Escape it `\|`. Same family: a `# ` heading on top of a front-matter
   `title:` prints a book chapter's name twice. Neither is a diagnostic, both are obvious in a
   browser, and neither is visible to any emission test — **render the page you just wrote.**
+- **A self-consistency invariant cannot pin the rule it is consistent about.** (2026-07-30, item
+  175b.) `the_live_stream_and_the_final_render_agree` compares the streamed view against the batch
+  collapse, which is exactly the property worth guarding — but both sides call the same function,
+  so changing the rule moves them **together** and the assertion never fires. A mutant survived it
+  untouched and was killed only by a written-out expectation of what the rule produces. **An
+  invariant test guards drift between two callers; only a literal expected value guards
+  semantics.** Write both, and never let the invariant stand in for the expectation.
+- **Assert on timing when the claim IS timing; order will lie to you.** (2026-07-30, item 175b.)
+  "Output reaches the client while the cell runs" looks like an ordering property, so the first
+  test asserted an append precedes the terminal `done`. It cannot fail: `done` is emitted after the
+  execute call returns, so a single flush at the very end still precedes it. The discriminator is
+  that appends are **spread out in time**, matching the gaps the cell sleeps — measured at 202 µs
+  under a batching mutant versus seconds when streaming. **Before writing the assertion, ask what
+  the behavior being replaced would score on it.**
 - **An existing test can be the thing holding the bug in place.** (2026-07-29, item 144b.)
   `strict_single_doc_build_fails_on_a_missing_image` asserted `doc:5:` — the bare `file_stem()`
   label that no editor resolves — so fixing the label broke it. A red test after a fix is not
