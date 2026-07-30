@@ -949,10 +949,20 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
 >   Extension Host. So the math-visibility half of 67 is **done and gone**; whatever case 67 has
 >   left does not include it.
 
-67. **Semantic tokens provider (`registerDocumentSemanticTokensProvider`).** **Rewritten after Fact
+67. **CUT 2026-07-30: idea 75 removed its last justification.** Fact 7 had already reduced this
+    to one case, distinguishing *locally defined* from *defined on another page*, expressly
+    because "only one is reachable by go-to-definition". Cross-file go-to-definition shipped, so
+    **both** are reachable and which side of a file boundary a target sits on is no longer
+    information the author needs painted into the buffer. What was left after that (kinds where
+    TextMate is approximate) does not carry an M-sized provider, and would have required first
+    answering the unresolved theme-versus-scopes question below. The math-delimiter parenthetical
+    was already obsolete: that shipped as one `contributes.configurationDefaults` rule.
+    **Do not re-file this.** The entry below is kept only as the record of what was weighed.
+
+    ~~**Semantic tokens provider (`registerDocumentSemanticTokensProvider`).** Rewritten after Fact
     7 killed its original justification. The first draft of this entry claimed the value was
     "a dangling ref goes red as you type"; diagnostics already do exactly that. Do not restore
-    that framing.** What actually remains, and it is a weaker case:
+    that framing.~~ What actually remained, and it was a weaker case:
     - **Distinguish states that are all VALID and therefore have no diagnostic.** The real one is
       *locally defined* vs *defined on another page*: both are correct, neither warns, and only
       one is reachable by go-to-definition (Fact 2). Seeing which is which at a glance is
@@ -1000,9 +1010,21 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
     almost never implemented in Markdown tooling. (Value: **medium**. Size: **S**. Where: `lsp`.
     Fit: **fits**.)
 
-72. **Document colour provider (`registerColorProvider`)** for `--tali-*` values in `_site.yml` and
-    front matter: native swatches and picker. (Value: **low**. Size: **S**. Where: `lsp`. Fit:
-    **fits**.) *Lowest-value item in the cluster; listed for completeness.*
+72. **CUT 2026-07-30: the premise is false and the capability already exists.** The entry proposed
+    swatches for `--tali-*` values "in `_site.yml` and front matter". **Measured: no `--tali-*`
+    token is authored in any `_site.yml` or front matter anywhere in the repository.** They are
+    authored in a **theme CSS file** (`theme: brand.css`, resolved by `render/theme.rs`; the one
+    real example is `corpus/theme-css/brand.css`), and everywhere else they appear only as
+    `var(--tali-…)` *uses* inside `{js}` cells. At the real authoring site VS Code's bundled
+    `css-language-features` server already provides `findDocumentColors` / `getColorPresentations`,
+    including `oklch()`. So building this would either target YAML where no token exists, and
+    therefore render nothing ever, or duplicate VS Code's own provider on the same document.
+    **Same shape as idea 83: a parked entry whose stated premise had rotted.** Check where a value
+    is actually authored before building a provider for where you assume it is.
+
+    ~~**Document colour provider (`registerColorProvider`)** for `--tali-*` values in `_site.yml`
+    and front matter: native swatches and picker. (Value: **low**. Size: **S**. Where: `lsp`.
+    Fit: **fits**.) Lowest-value item in the cluster; listed for completeness.~~
 
 > **Already got, verify rather than build:** sticky scroll for headings derives from
 > `documentSymbol`, which the LSP already provides. Confirm it works before speccing anything.
@@ -1028,43 +1050,63 @@ Cluster C index. This is the slice chosen for the 2026-07-29 spec.
     - **Drop a `.csv`** → insert the dataset card plus a loader cell. **Blocked on backlog item
       176** (dataset provenance); build that first or this gesture has nothing to emit.
 
-### Cluster C — Project-level surfaces (all gated on a book index)
+### Cluster C — Project-level surfaces (~~all gated on a book index~~ SHIPPED 2026-07-30)
 
-**Every item here requires closing fact 1 and fact 2 first.** That substrate is the cost driver,
-not the surfaces, and it introduces indexing, invalidation and file watching into a component whose
-current statelessness is why it is reliable. Do not cherry-pick a surface from this cluster without
-pricing the index.
+~~**Every item here requires closing fact 1 and fact 2 first.**~~ **That preamble was wrong, and
+the correction is the reusable part of this cluster.** Not one of these surfaces needed the index:
+75-79 all shipped on a **stat-validated walk** (`crates/server/src/lsp_project.rs`), with no file
+watcher, no invalidation protocol and no architecture change. See 74 below for why.
 
-74. **A project index in `taliesin lsp`** (workspace folders, `_site.yml`, a cross-page xref
-    table). Substrate, no user-visible feature of its own. (Value: **enabling**. Size: **L**.
-    Where: `lsp`. Fit: **needs-care** — it is the one item in this session that meaningfully
-    changes the LSP's architecture.)
-75. **Cross-file xref resolution**, closing the `lsp.rs:434` gap. (Value: **high**. Size: **M**
-    after 74. Where: `lsp`. Fit: **fits**.)
-76. **Workspace symbols (`workspaceSymbolProvider`).** Ctrl+T to any heading, figure or section
-    **across the whole book**. Today `documentSymbol` is per-file only, so for a 60-page book this
-    is a real daily cost. (Value: **high**. Size: **S** after 74. Where: `lsp`. Fit: **fits**.)
-77. **A Taliesin sidebar (`viewsContainers` + `views` + `TreeView`).** Whole-book outline; a "what
-    links here" cross-reference view with dangling refs grouped; a figure/table/equation index; a
-    bibliography view splitting cited from uncited; a kernel panel (which kernels are warm, what is
-    cached, clear-freeze-for-this-page). (Value: **medium-high**. Size: **L**. Where:
-    `editor/vscode` TS + 74. Fit: **fits**, read-only navigation only.)
+74. **CUT 2026-07-30, not deferred: a project index was never needed.** Every surface it was
+    supposed to enable fires on a **user gesture** (F12, Ctrl+T, opening a view, the Explorer
+    asking for a decoration), never per keystroke, so all of them want a *walk*, not an index.
+    What shipped instead is `lsp_project.rs`: one project walk behind a single-entry memo
+    validated by `stat`ing every page and comparing `(mtime, len)`. A stat is orders of magnitude
+    below the read-plus-parse it guards, and the failure mode is "re-walked when it need not have"
+    rather than "served stale data", so the statelessness that made this item **needs-care** is
+    intact. **This is the second time the "re-cost against 74" rule paid out**, after idea 84;
+    treat "gated on the index" as a claim to disprove, not a cost to accept.
+75. **SHIPPED 2026-07-30. Cross-file xref resolution**, closing the `lsp.rs` "cross-file refs get
+    nothing" gap for both go-to-definition and hover. The open buffer still wins over the walk: it
+    is ahead of the on-disk copy, and jumping to yesterday's file is worse than not jumping.
+    Cross-page hover names the defining page, because the *number* belongs to that page's render
+    and this path is deliberately kernel-free.
+76. **SHIPPED 2026-07-30. Workspace symbols (`workspaceSymbolProvider`).** Ctrl+T to any heading
+    or anchor across the whole book. No ranking of our own: VS Code fuzzy-sorts whatever comes
+    back, and a second ranking would fight it.
+77. **SHIPPED 2026-07-30. A Taliesin sidebar**, **three** views not five: whole-book Outline,
+    References (uses grouped by target, dangling grouped separately), and a Figure/Table index,
+    over two new custom requests (`taliesin/projectOutline`, `taliesin/projectRefs`).
+    **Cut from the idea:** the bibliography view (`check` already reports unresolved citations, and
+    cited-vs-uncited is a report rather than a navigation surface) and the kernel panel (it belongs
+    to 79, and 79 could not build it either, see below).
     *Explicitly NOT drag-to-reorder chapters. That is the removed slide-reorder mistake in a new
     costume; see "Decided against" above.*
-78. **File decorations (`registerFileDecorationProvider`).** Badge `.tmd` files in the Explorer: a
-    warning dot for pages failing `check`, `⚡` for fully cached, a dot for pages with
-    never-executed cells. Project health at a glance with zero interaction. (Value: **medium**.
-    Size: **M**. Where: TS + 74. Fit: **fits**.)
-79. **Status bar item** for kernel state, last build time, cache hit ratio; click to open the
-    preview or restart the kernel. (Value: **low-medium**. Size: **S**. Where: TS. Fit: **fits**.)
-    *This, not idea 68, is where live cell state belongs, because it can talk to a running preview.*
+78. **SHIPPED 2026-07-30, scoped to the check dot.** `.tmd` files carry their worst `check`
+    severity in the Explorer, from a background `check --format json` (measured: 369 ms for the
+    25-page guide) refreshed on save, behind `taliesin.explorerBadges`.
+    **The `⚡ fully cached` and never-executed-cell badges are NOT built**: both need freeze-key
+    machinery from the execution layer, and neither the extension nor `taliesin lsp` may start a
+    kernel. Filed in [DETECTION-DEBT.md](DETECTION-DEBT.md) rather than half-built.
+79. **SHIPPED 2026-07-30, and the idea's own claim about it was wrong.** It said this, not idea
+    68, is "where live cell state belongs, because it can talk to a running preview". **It cannot.**
+    The webview relay carries exactly four message types on purpose (`tali-goto`/`tali-page` up,
+    `tali-cursor`/`tali-navigate` down) and none reports kernel liveness. What shipped is preview
+    state (running, and on which port) plus the project problem count, sharing the ONE `check` run
+    idea 78 already pays for. Widening the relay is a protocol decision to make on its own merits,
+    not a side effect of a status bar; filed in [DETECTION-DEBT.md](DETECTION-DEBT.md).
 
 ### Cluster D — Toolchain integration (removes a trip to the shell)
 
-80. **Task provider + `contributes.problemMatchers`.** Auto-discovered `taliesin build` / `check` /
-    `build --out` tasks, with `check` diagnostics landing in the **Problems panel for files that
-    are not open**. Today project-wide health requires a terminal. (Value: **medium-high**. Size:
-    **S-M**. Where: TS + `package.json`. Fit: **fits**.)
+80. **SHIPPED 2026-07-30. Task provider + `contributes.problemMatchers`.** `check`, `build` and
+    `build --out` for the active project, with `check` diagnostics landing in the Problems panel
+    for files that are not open. **The format in this file was wrong twice over and was re-derived
+    from a real run**: the severity word is *lowercase* (`error`/`warning`/`suggestion`) and codes
+    are `TAL-XREF-UNDEF`-shaped, not `WARNING[TAL0042]`. Two matchers ship, because `check` also
+    emits an *unlocated* `file: severity[CODE]: message` form with no line, and a single located
+    pattern silently drops every one of those. `suggestion` is not a VS Code severity, so the
+    matcher defaults to `info` rather than painting advice as a defect. The earlier correction
+    about `:col` held: there is no column, and a pattern requiring one matches nothing.
 81. **Testing API (`tests.createTestController`).** The speculative-but-interesting one. Model each
     page's `check` rules as test items, so a 60-page book gives a green/red tree of which chapters
     still render clean, with gutter icons and per-item re-run, instead of a flat diagnostic list. A
@@ -1073,11 +1115,14 @@ pricing the index.
     Where: TS. Fit: **needs-care**, it is an unusual use of the API.)
 82. **SHIPPED 2026-07-30. Terminal link provider.** Make `page.tmd:12:3` in the dev-server log clickable. (Value:
     **low-medium**. Size: **XS**. Where: TS. Fit: **fits**.)
-83. **URI handler (`registerUriHandler`).** `vscode://taliesin.taliesin-companion/open?file=…&line=…`
-    closes click-to-source for the **standalone browser preview**, which today only bridges back
-    inside the webview relay. (Value: **medium**. Size: **S**. Where: TS + `web-client`. Fit:
-    **fits**.) *Weigh against the standing note that click-to-source has no automated end-to-end
-    coverage: the harness stops at the relay, so this needs a manual check.*
+83. **CUT 2026-07-30: the premise had rotted; this already ships by another mechanism.** The
+    entry claims a custom handler "closes click-to-source for the standalone browser preview,
+    which today only bridges back inside the webview relay". **Measured false:** `client.js`
+    already navigates a plain browser to `vscode://file<abs>:<line>:<col>` (two call sites, one
+    for a located diagnostic and one for a clicked block), using VS Code's own built-in file
+    handler. The feature exists; only the mechanism differs from the one this entry imagined.
+    A custom handler would add extension-specific routing over a path that already works.
+    **Do not re-file it without first checking `client.js` for `vscode://`.**
 84. **SHIPPED 2026-07-30. `onWillRenameFiles`.** Rename `intro.tmd` and every `{{< include >}}`, relative link and
     `_site.yml` reference updates via a `WorkspaceEdit`, with VS Code's native refactor preview.
     **Table stakes in TypeScript-land and absent from every Markdown tool I am aware of.** (Value:
@@ -1086,11 +1131,16 @@ pricing the index.
 
 ### Cluster E — AI-native editor surface
 
-85. **`lm.registerMcpServerDefinitionProvider` + `contributes.languageModelTools`.** `taliesin mcp`
-    **already exists**; this lets the extension *advertise* it to VS Code automatically instead of
-    the user hand-editing config, and register render/check/resolve-xref/vocab as native LM tools.
-    Very cheap given the server is built. (Value: **medium-high**. Size: **S**. Where: TS +
-    `package.json`. Fit: **fits**.)
+85. **SHIPPED 2026-07-30, in two halves with different version floors.**
+    `contributes.languageModelTools` registers the **read-only** five (`check`, `read`, `symbols`,
+    `map`, `vocab`) and shipped at the existing floor. **`build` is deliberately withheld** even
+    though `taliesin mcp` offers it: it writes `_site/` and executes code cells, and a model
+    reaching for that unprompted is a surprise write plus a surprise kernel run. Pointing an agent
+    at the MCP server is an explicit act; an always-on editor tool is not, so the two surfaces
+    differ on purpose and a test pins the asymmetry.
+    `lm.registerMcpServerDefinitionProvider` needed **`engines.vscode: ^1.101.0` with
+    `@types/vscode` re-pinned exactly to `1.101.0`**, measured the same way the 1.97 floor was:
+    the API is absent from packed `@types/vscode@1.100.0` and present in `1.101.0`.
     *This does **not** contradict the reverted Ask-AI hand-off. That was rejected because AI
     belongs in the browser extension rather than in the published document. This is AI in the
     **editor**, via the platform's own surface, which is the same principle applied consistently.*

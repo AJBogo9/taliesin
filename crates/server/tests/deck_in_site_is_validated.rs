@@ -94,11 +94,14 @@ fn site_check_reports_an_embedded_decks_defects() {
         problem_count(&stderr) >= 4,
         "the fixture must really be defective (4 shapes): {stderr}"
     );
-    // Located, and named by the deck's site-relative path like every page is — an
-    // unlocated "somewhere in your site" line is not actionable.
+    // Located, and named by the deck's path within the project like every page is — an
+    // unlocated "somewhere in your site" line is not actionable. The prefix is the target as
+    // typed: `check` re-roots every human path onto it so the printed path opens from the
+    // directory the command ran in, and a deck (which reaches the formatter down its own
+    // `strip_prefix(root)` branch, not the page walk) has to follow that rule too.
     assert!(
-        stderr.contains("talk.tmd:") && !stderr.contains(site),
-        "deck diagnostics are located and site-relative: {stderr}"
+        stderr.contains(&format!("{site}/talk.tmd:")),
+        "deck diagnostics are located and rooted on the target as typed: {stderr}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

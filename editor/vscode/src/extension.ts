@@ -17,6 +17,11 @@ import { registerCommands } from "./commands";
 import { registerInsertProviders } from "./insert";
 import { registerRenameRepair } from "./rename";
 import { registerTerminalLinks } from "./termlinks";
+import { registerSidebar } from "./sidebar";
+import { registerTasks } from "./tasks";
+import { registerDecorations } from "./decorations";
+import { registerStatusBar } from "./statusbar";
+import { registerLmTools, registerMcpProvider } from "./lmtools";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -82,6 +87,31 @@ export function activate(context: vscode.ExtensionContext) {
   registerRenameRepair(context);
   // And the smallest of the three: a diagnostic location in the terminal becomes clickable.
   registerTerminalLinks(context);
+  // Three read-only views over the whole project. A `TreeView` is one of the few surfaces LSP
+  // has no concept of, but every row in it is a projection of what the server replied, and
+  // every row navigates: nothing here writes to a document.
+  registerSidebar(context);
+  // `check` and `build` as tasks, so project-wide findings reach the Problems panel for files
+  // that are not open. The language server only ever diagnoses buffers it has been sent.
+  registerTasks(context);
+  // Project health with zero interaction: each `.tmd` wears its worst check severity. The
+  // language server only sees buffers it has been sent, so a page never opened is invisible
+  // to it; `check` sees the whole project.
+  //
+  // The badges and the status bar share ONE `check` run: the decoration provider already pays
+  // for it, so the status bar subscribes to the count rather than shelling out a second time.
+  let reportCount: (count: number | null) => void = () => {};
+  registerDecorations(context, (count) => reportCount(count));
+  registerStatusBar(context, previews, (listener) => {
+    reportCount = listener;
+  });
+  // The read-only half of `taliesin mcp`, offered to VS Code's own language-model surface so a
+  // model in this editor can check and read documents rather than guess about them. Nothing
+  // that writes or executes is offered here; see `lmspecs.ts`.
+  registerLmTools(context);
+  // And the MCP server itself, advertised rather than hand-registered. Wider than the tool
+  // surface above on purpose: pointing an agent at an MCP server is an explicit act.
+  registerMcpProvider(context);
 }
 
 /**

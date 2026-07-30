@@ -125,7 +125,10 @@ pub(super) fn discover_decks(
 /// The walk reads directories directly rather than resolving paths through
 /// [`crate::includes::safe_join`], so it applies that function's symlink boundary by
 /// hand: a link is followed only while it stays inside the repository.
-pub(super) fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
+/// Public so the editor's project walk enumerates pages exactly the way discovery does,
+/// symlink boundary included. A second walk would let the sidebar list a page the build does
+/// not publish, or miss one it does.
+pub fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
     let boundary = crate::includes::repo_boundary(dir);
     let mut walked = HashSet::new();
     // Seed with the root itself, so a link pointing back at it is a repeat, not a

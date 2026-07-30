@@ -33,6 +33,12 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         )),
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        // Ctrl+T across the whole book. `documentSymbol` is per-file, which for a 25-chapter
+        // project means the author has to already know which file holds the heading they
+        // want. Answered by a project walk, not an index: the request fires on a gesture, not
+        // on every keystroke, so re-validating with one `stat` per page is cheaper than the
+        // file watching an index would need.
+        workspace_symbol_provider: Some(OneOf::Left(true)),
         // Range-scoped, so only the visible lines are scanned and there is no full-document
         // tokenizer behind this.
         inlay_hint_provider: Some(OneOf::Left(true)),
@@ -221,6 +227,11 @@ fn main_loop(
     // number, inlay hints). Keyed on the buffer text, so it is a hit for as long as the
     // author is reading rather than typing — which is exactly when these fire in bursts.
     let mut memo = crate::lsp_memo::RenderMemo::default();
+    // Shared by every request that reaches past the open buffer (cross-file definition and
+    // hover, workspace symbols, the sidebar's two views). A stat-validated walk, not an index:
+    // all of those fire on a user gesture, so re-validating with one `stat` per page is
+    // cheaper than the file watching an index would need. See `lsp_project`.
+    let mut project = crate::lsp_project::ProjectCache::new();
     loop {
         // Block outright when nothing is owed, so an idle server costs nothing; wait only as
         // long as the open window when a publish is pending.
@@ -284,7 +295,7 @@ fn main_loop(
                 // it should.
                 let (id, method) = (req.id.clone(), req.method.clone());
                 let failure = match crate::serve::guarded(|| {
-                    handle_request(connection, &docs, &mut memo, req)
+                    handle_request(connection, &docs, &mut memo, &mut project, req)
                 }) {
                     Ok(Ok(())) => None,
                     // JSON-RPC InvalidParams.
@@ -426,12 +437,14 @@ fn handle_request(
     connection: &Connection,
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     memo: &mut crate::lsp_memo::RenderMemo,
+    project: &mut crate::lsp_project::ProjectCache,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
         CodeActionRequest, Completion, DocumentHighlightRequest, DocumentLinkRequest,
         DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
         InlayHintRequest, PrepareRenameRequest, Rename, Request as _, SelectionRangeRequest,
+        WorkspaceSymbolRequest,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -490,7 +503,9 @@ fn handle_request(
         let params: lsp_types::GotoDefinitionParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_definition(docs, &params))?),
+            result: Some(serde_json::to_value(resolve_definition(
+                docs, project, &params,
+            ))?),
             error: None,
         }
     } else if req.method == Completion::METHOD {
@@ -511,7 +526,7 @@ fn handle_request(
         let params: lsp_types::HoverParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_hover(docs, &params))?),
+            result: Some(serde_json::to_value(resolve_hover(docs, project, &params))?),
             error: None,
         }
     } else if req.method == DocumentLinkRequest::METHOD {
@@ -542,6 +557,52 @@ fn handle_request(
                 docs,
                 &params.text_document.uri,
             ))?),
+            error: None,
+        }
+    } else if req.method == WorkspaceSymbolRequest::METHOD {
+        let params: lsp_types::WorkspaceSymbolParams = serde_json::from_value(req.params)?;
+        // The request names no file, so the projects are discovered from the open documents.
+        // **Every** distinct project, not one of them: an editor routinely holds files from
+        // two projects at once, and picking whichever document came first out of a hash map
+        // makes Ctrl+T search an arbitrary one of them. An empty editor answers an empty
+        // list, which is correct rather than an error.
+        let open: Vec<std::path::PathBuf> =
+            docs.keys().filter_map(|u| u.to_file_path().ok()).collect();
+        let mut found = Vec::new();
+        for root in crate::lsp_project::ProjectCache::roots_of(open.iter().map(|p| p.as_path())) {
+            // Any page under the root locates it; the scan is keyed on the root itself.
+            found.extend(workspace_symbols(
+                project,
+                &root.join("_site.yml"),
+                &params.query,
+            ));
+        }
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(found)?),
+            error: None,
+        }
+    } else if req.method == PROJECT_OUTLINE_METHOD || req.method == PROJECT_REFS_METHOD {
+        // The sidebar's two views. Both take a document uri and answer about its enclosing
+        // project, so they share one arm rather than duplicating the parse and the fallback.
+        #[derive(serde::Deserialize)]
+        struct ProjectParams {
+            uri: lsp_types::Url,
+        }
+        let outline = req.method == PROJECT_OUTLINE_METHOD;
+        let params: ProjectParams = serde_json::from_value(req.params)?;
+        let answer = params.uri.to_file_path().ok().and_then(|p| {
+            if outline {
+                project_outline(project, &p)
+            } else {
+                project_refs(project, &p)
+            }
+        });
+        lsp_server::Response {
+            id: req.id,
+            // `null` rather than an error for a document outside any project: the sidebar
+            // renders an empty view, which is the honest answer for a standalone document.
+            result: Some(answer.unwrap_or(serde_json::Value::Null)),
             error: None,
         }
     } else if req.method == CELL_REGIONS_METHOD {
@@ -784,6 +845,7 @@ fn resolve_document_highlight(
 
 fn resolve_definition(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
+    project: &mut crate::lsp_project::ProjectCache,
     params: &lsp_types::GotoDefinitionParams,
 ) -> Option<lsp_types::GotoDefinitionResponse> {
     use crate::lsp_nav::Target;
@@ -826,14 +888,25 @@ fn resolve_definition(
                 .unwrap_or(0) as u32;
             Location::new(Url::from_file_path(&abs).ok()?, point("", line, 0, 0))
         }
-        // `@fig-x` → its definition in this document (cross-file refs get nothing).
-        Target::Xref { id, .. } => {
-            let (line, col) = crate::lsp_nav::definition_site(text, &id)?;
-            Location::new(
+        // `@fig-x` → its definition. The open buffer wins: it is ahead of the on-disk copy,
+        // and an unsaved anchor must not send the author to yesterday's file. Only when the
+        // buffer does not define it does the project walk answer, which is what closes the
+        // cross-file half of the gap this function's doc comment names.
+        Target::Xref { id, .. } => match crate::lsp_nav::definition_site(text, &id) {
+            Some((line, col)) => Location::new(
                 uri.clone(),
                 point(text, line, col, col + id.chars().count() as u32),
-            )
-        }
+            ),
+            None => {
+                let here = uri.to_file_path().ok()?;
+                let anchor = project.get(&here)?.anchors.iter().find(|a| a.id == id)?;
+                // The target's own text, so the outgoing range is built against the file the
+                // author lands in rather than the one they came from.
+                let body = std::fs::read_to_string(&anchor.path).ok()?;
+                let target = Url::from_file_path(&anchor.path).ok()?;
+                Location::new(target, point(&body, anchor.line, 0, 0))
+            }
+        },
         // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
         Target::Cite { key, .. } => {
             let dir = uri.to_file_path().ok()?;
@@ -859,6 +932,77 @@ fn resolve_definition(
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
 
+/// Every heading and cross-reference anchor in `page`'s project whose name contains `query`,
+/// case-insensitively. An empty query returns everything, because that is the state Ctrl+T
+/// opens in and an empty list there reads as "this project has no symbols".
+///
+/// Ranking is deliberately absent: VS Code applies its own fuzzy sort to whatever comes back,
+/// and a second ranking here would fight it. Outside a project the answer is an empty list,
+/// not an error, which is the honest answer for a standalone document.
+fn workspace_symbols(
+    project: &mut crate::lsp_project::ProjectCache,
+    page: &std::path::Path,
+    query: &str,
+) -> Vec<lsp_types::SymbolInformation> {
+    use lsp_types::{Location, Position, Range, SymbolKind, Url};
+    let needle = query.to_lowercase();
+    let Some(scan) = project.get(page) else {
+        return Vec::new();
+    };
+    // No empty-query special case is needed: `contains("")` is true for every string, so an
+    // empty Ctrl+T query already returns everything. An explicit `needle.is_empty() ||` here
+    // was redundant, and a mutation run proved it by surviving its own deletion.
+    let matches = |name: &str| name.to_lowercase().contains(&needle);
+    let at = |path: &std::path::Path, line: u32| {
+        Url::from_file_path(path).ok().map(|uri| {
+            Location::new(
+                uri,
+                Range::new(Position::new(line, 0), Position::new(line, 0)),
+            )
+        })
+    };
+
+    let mut out = Vec::new();
+    for h in &scan.headings {
+        if matches(&h.text)
+            && let Some(location) = at(&h.path, h.line)
+        {
+            out.push(symbol(h.text.clone(), SymbolKind::MODULE, location, None));
+        }
+    }
+    for a in &scan.anchors {
+        if matches(&a.id)
+            && let Some(location) = at(&a.path, a.line)
+        {
+            // The heading an anchor sits on, when it has one: `fig-scree` alone says nothing
+            // about which section it belongs to.
+            let container = (!a.title.is_empty()).then(|| a.title.clone());
+            out.push(symbol(a.id.clone(), SymbolKind::KEY, location, container));
+        }
+    }
+    out
+}
+
+/// `SymbolInformation` is deprecated in `lsp-types` in favour of `WorkspaceSymbol`, but the
+/// struct literal still has to be spelled out and its deprecated field set. Kept in one helper
+/// so the `#[allow]` sits in exactly one place instead of at every construction site.
+#[allow(deprecated)]
+fn symbol(
+    name: String,
+    kind: lsp_types::SymbolKind,
+    location: lsp_types::Location,
+    container_name: Option<String>,
+) -> lsp_types::SymbolInformation {
+    lsp_types::SymbolInformation {
+        name,
+        kind,
+        tags: None,
+        deprecated: None,
+        location,
+        container_name,
+    }
+}
+
 /// The custom request a client calls to learn where a document's code cells are, so it can
 /// route completion inside one to whoever owns that language. Namespaced, because it is not
 /// an LSP method and must never collide with one.
@@ -882,6 +1026,101 @@ pub(crate) const INSERT_EDIT_METHOD: &str = "taliesin/insertEdit";
 /// sits) is this crate's either way.
 pub(crate) const RENAME_FILE_EDITS_METHOD: &str = "taliesin/renameFileEdits";
 
+/// The custom request behind the sidebar's whole-book Outline and Figures views. Namespaced
+/// for the same reason as [`CELL_REGIONS_METHOD`]: it is not an LSP method. `workspace/symbol`
+/// is the closest standard method and deliberately answers a *flat, queried* list, which is
+/// the wrong shape for a tree the author browses.
+pub(crate) const PROJECT_OUTLINE_METHOD: &str = "taliesin/projectOutline";
+
+/// The custom request behind the sidebar's References view: every cross-reference target with
+/// the uses pointing at it, dangling ones included. Namespaced for the same reason.
+pub(crate) const PROJECT_REFS_METHOD: &str = "taliesin/projectRefs";
+
+/// The whole-book outline plus the numbered-float index, as the sidebar's TreeViews want it:
+/// grouped by page and in reading order, not flattened. `None` outside a project, which the
+/// client renders as an empty view.
+fn project_outline(
+    project: &mut crate::lsp_project::ProjectCache,
+    page: &std::path::Path,
+) -> Option<serde_json::Value> {
+    let scan = project.get(page)?;
+    let mut pages: Vec<serde_json::Value> = Vec::new();
+    for h in &scan.headings {
+        let path = h.path.to_string_lossy().into_owned();
+        let row = serde_json::json!({ "line": h.line, "level": h.level, "text": h.text });
+        match pages
+            .iter_mut()
+            .find(|p| p["path"].as_str() == Some(path.as_str()))
+        {
+            Some(p) => p["headings"].as_array_mut()?.push(row),
+            None => pages.push(serde_json::json!({ "path": path, "headings": [row] })),
+        }
+    }
+    let floats: Vec<serde_json::Value> = scan
+        .anchors
+        .iter()
+        .map(|a| {
+            serde_json::json!({
+                "id": a.id,
+                "path": a.path.to_string_lossy(),
+                "line": a.line,
+                "title": a.title,
+                "number": a.number,
+            })
+        })
+        .collect();
+    Some(serde_json::json!({
+        "root": scan.root.to_string_lossy(),
+        "pages": pages,
+        "floats": floats,
+    }))
+}
+
+/// Every cross-reference target with the uses pointing at it. A target with no definition is
+/// reported with `resolved: false` rather than omitted: grouping dangling references is the
+/// reason [`crate::lsp_nav::xref_occurrences`] exists at all. A target that is defined and
+/// never referenced is `resolved: true` with an empty `uses`, which is normal rather than a
+/// problem and must not be filed as dangling.
+fn project_refs(
+    project: &mut crate::lsp_project::ProjectCache,
+    page: &std::path::Path,
+) -> Option<serde_json::Value> {
+    let scan = project.get(page)?;
+    let mut ids: Vec<&str> = scan.anchors.iter().map(|a| a.id.as_str()).collect();
+    for u in &scan.uses {
+        ids.push(&u.id);
+    }
+    ids.sort_unstable();
+    ids.dedup();
+
+    let targets: Vec<serde_json::Value> = ids
+        .iter()
+        .map(|id| {
+            let defined = scan.anchors.iter().find(|a| a.id == *id);
+            let uses: Vec<serde_json::Value> = scan
+                .uses
+                .iter()
+                .filter(|u| u.id == *id)
+                .map(|u| {
+                    serde_json::json!({
+                        "path": u.path.to_string_lossy(),
+                        "line": u.line,
+                        "col": u.col,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "id": id,
+                "resolved": defined.is_some(),
+                "definedIn": defined.map(|d| d.path.to_string_lossy().into_owned()),
+                "definedLine": defined.map(|d| d.line),
+                "uses": uses,
+            })
+        })
+        .collect();
+    Some(serde_json::json!({ "root": scan.root.to_string_lossy(), "targets": targets }))
+}
+
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
 /// resolves to nothing (an unknown xref, an undocumented key, a missing/absent `.bib` entry)
@@ -889,6 +1128,7 @@ pub(crate) const RENAME_FILE_EDITS_METHOD: &str = "taliesin/renameFileEdits";
 /// companion). Markdown content, ranged to the token so the editor highlights it.
 fn resolve_hover(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
+    project: &mut crate::lsp_project::ProjectCache,
     params: &lsp_types::HoverParams,
 ) -> Option<lsp_types::Hover> {
     use crate::lsp_nav::Target;
@@ -924,9 +1164,29 @@ fn resolve_hover(
         // `@fig-2` → the rendered label + number ("Figure 2"). The label lookup gates it: an
         // anchor whose prefix names no cross-reference kind gets no hover.
         Target::Xref { id, start, end } => {
-            let number = xref_number(uri, text, &id)?;
             let label = xref_label(&id)?;
-            markup(format!("**{label} {number}** — `@{id}`"), start, end)
+            match xref_number(uri, text, &id) {
+                Some(number) => markup(format!("**{label} {number}** — `@{id}`"), start, end),
+                // Defined on another page. The *number* belongs to that page's render, which
+                // this kernel-free path does not have, so name the page instead of answering
+                // nothing: "which chapter is this in" is the question a cross-page hover is
+                // actually asked.
+                None => {
+                    let here = uri.to_file_path().ok()?;
+                    let anchor = project.get(&here)?.anchors.iter().find(|a| a.id == id)?;
+                    let page = anchor
+                        .path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let head = if anchor.number.is_empty() {
+                        format!("**{label}** `@{id}`")
+                    } else {
+                        format!("**{label} {}** `@{id}`", anchor.number)
+                    };
+                    markup(format!("{head}\n\nDefined in `{page}`"), start, end)
+                }
+            }
         }
         // A front-matter key → its one-line docs, scoped to a nested parent when there is one.
         Target::FrontmatterKey {
@@ -2077,6 +2337,346 @@ mod tests {
             .unwrap();
         let resp = recv_response(client, RequestId::from(id));
         serde_json::from_value(resp.result.expect("a definition result")).unwrap()
+    }
+
+    /// A two-page project on disk plus the open-buffer map the resolvers read, for the
+    /// cross-file tests below. `here_text` is what the editor holds for `one.tmd`, which is
+    /// deliberately allowed to differ from what is written to disk: an unsaved buffer being
+    /// ahead of its file is the case `a_local_definition_still_wins_over_the_project_walk`
+    /// exists for.
+    fn cross_page_fixture(
+        name: &str,
+        other: &str,
+        here_text: &str,
+    ) -> (
+        std::path::PathBuf,
+        Url,
+        std::collections::HashMap<Url, String>,
+    ) {
+        let root =
+            std::env::temp_dir().join(format!("tali-lsp-xpage-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(root.join("two.tmd"), other).unwrap();
+        let here = root.join("one.tmd");
+        std::fs::write(&here, here_text).unwrap();
+        let uri = Url::from_file_path(&here).unwrap();
+        let mut docs = std::collections::HashMap::new();
+        docs.insert(uri.clone(), here_text.to_string());
+        (root, uri, docs)
+    }
+
+    /// A project root with the given `(relative path, source)` pages, for the workspace-symbol
+    /// tests. Returns the root.
+    fn symbol_fixture(name: &str, pages: &[(&str, &str)]) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("tali-lsp-wsym-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        for (rel, src) in pages {
+            let p = root.join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(p, src).unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn project_outline_lists_every_page_with_its_headings_and_floats() {
+        let root = symbol_fixture(
+            "outline",
+            &[("index.tmd", "# One\n\n## Deeper\n\n![p](i.png){#fig-a}\n")],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("index.tmd")).unwrap();
+
+        assert_eq!(out["pages"].as_array().unwrap().len(), 1);
+        let headings = out["pages"][0]["headings"].as_array().unwrap();
+        assert_eq!(headings.len(), 2);
+        assert_eq!(headings[1]["text"], "Deeper");
+        assert_eq!(headings[1]["level"], 2);
+        assert_eq!(out["floats"][0]["id"], "fig-a");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_outline_keeps_each_pages_headings_under_that_page() {
+        // Two pages, so a flattening bug (every heading landing under the first page) cannot
+        // pass. A single-page fixture would not notice.
+        let root = symbol_fixture(
+            "outline2",
+            &[("a.tmd", "# A\n"), ("b.tmd", "# B\n\n## B2\n")],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("a.tmd")).unwrap();
+        let pages = out["pages"].as_array().unwrap();
+        assert_eq!(pages.len(), 2, "one row per page: {pages:?}");
+        for p in pages {
+            let n = p["headings"].as_array().unwrap().len();
+            let expected = if p["path"].as_str().unwrap().ends_with("a.tmd") {
+                1
+            } else {
+                2
+            };
+            assert_eq!(n, expected, "wrong heading count for {}", p["path"]);
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_refs_groups_uses_by_target_and_flags_the_dangling_one() {
+        let root = symbol_fixture(
+            "refs",
+            &[
+                ("a.tmd", "# A {#sec-a}\n"),
+                ("b.tmd", "See @sec-a and @sec-gone.\n"),
+            ],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let refs = project_refs(&mut project, &root.join("b.tmd")).unwrap();
+
+        let targets = refs["targets"].as_array().unwrap();
+        let resolved = targets.iter().find(|t| t["id"] == "sec-a").unwrap();
+        assert_eq!(resolved["resolved"], true);
+        assert_eq!(resolved["uses"].as_array().unwrap().len(), 1);
+
+        let dangling = targets.iter().find(|t| t["id"] == "sec-gone").unwrap();
+        assert_eq!(dangling["resolved"], false);
+        assert!(dangling["definedIn"].is_null());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_refs_lists_a_defined_but_unreferenced_anchor_as_resolved_with_no_uses() {
+        // Defined and never used is normal, not an error, and must not be filed as dangling.
+        let root = symbol_fixture("refs2", &[("a.tmd", "# A {#sec-unused}\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let refs = project_refs(&mut project, &root.join("a.tmd")).unwrap();
+        let t = &refs["targets"][0];
+        assert_eq!(t["id"], "sec-unused");
+        assert_eq!(t["resolved"], true);
+        assert_eq!(t["uses"].as_array().unwrap().len(), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn both_project_requests_answer_none_outside_a_project() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-proj-solo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let solo = dir.join("solo.tmd");
+        std::fs::write(&solo, "# Solo\n\nSee @sec-x.\n").unwrap();
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert!(project_outline(&mut project, &solo).is_none());
+        assert!(project_refs(&mut project, &solo).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_two_new_project_methods_are_namespaced() {
+        // The `"taliesin/…"` census below enforces the shape across the whole file; these two
+        // are pinned by name so a rename cannot quietly drop the prefix.
+        assert!(PROJECT_OUTLINE_METHOD.starts_with("taliesin/"));
+        assert!(PROJECT_REFS_METHOD.starts_with("taliesin/"));
+    }
+
+    #[test]
+    fn workspace_symbols_reach_headings_and_anchors_on_every_page() {
+        let root = symbol_fixture(
+            "reach",
+            &[
+                ("index.tmd", "# Introduction\n"),
+                ("two.tmd", "# Scree Plots\n\n![p](i.png){#fig-scree}\n"),
+            ],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let hits = workspace_symbols(&mut project, &root.join("index.tmd"), "scree");
+        let names: Vec<&str> = hits.iter().map(|s| s.name.as_str()).collect();
+        assert!(
+            names.contains(&"Scree Plots"),
+            "heading on another page: {names:?}"
+        );
+        assert!(
+            names.contains(&"fig-scree"),
+            "anchor on another page: {names:?}"
+        );
+        assert!(
+            !names.contains(&"Introduction"),
+            "non-matching symbol leaked in: {names:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_symbols_search_every_open_project_not_an_arbitrary_one() {
+        // Found by the e2e suite, which runs with documents from earlier tests still open: the
+        // handler picked `docs.keys().find_map(...)`, the FIRST key of a hash map, to stand for
+        // "the project". With two projects open that is a coin flip, and Ctrl+T searched
+        // whichever one the hasher happened to yield. An author cannot predict that.
+        let a = symbol_fixture("multi-a", &[("index.tmd", "# Alpha Heading\n")]);
+        let b = symbol_fixture("multi-b", &[("index.tmd", "# Alpha Sibling\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let roots = crate::lsp_project::ProjectCache::roots_of(
+            [a.join("index.tmd"), b.join("index.tmd")]
+                .iter()
+                .map(|p| p.as_path()),
+        );
+        assert_eq!(roots.len(), 2, "two distinct projects: {roots:?}");
+
+        let mut names: Vec<String> = Vec::new();
+        for root in roots {
+            names.extend(
+                workspace_symbols(&mut project, &root.join("_site.yml"), "Alpha")
+                    .into_iter()
+                    .map(|s| s.name),
+            );
+        }
+        names.sort();
+        assert_eq!(
+            names,
+            vec!["Alpha Heading".to_string(), "Alpha Sibling".to_string()],
+            "both projects must be searched"
+        );
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn a_root_locates_its_own_project_so_the_handler_need_not_pick_a_page() {
+        // The handler passes `<root>/_site.yml` as the probe path. That file need not be a
+        // page, but it must resolve to the project, or workspace symbols answers nothing.
+        let root = symbol_fixture("byroot", &[("index.tmd", "# Findable\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert_eq!(
+            workspace_symbols(&mut project, &root.join("_site.yml"), "Findable").len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_symbol_matching_ignores_case() {
+        let root = symbol_fixture("case", &[("index.tmd", "# Introduction\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert_eq!(
+            workspace_symbols(&mut project, &root.join("index.tmd"), "INTRO").len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_empty_query_returns_every_symbol_rather_than_none() {
+        // VS Code opens Ctrl+T with an empty query and expects a browsable list, not silence.
+        let root = symbol_fixture("empty", &[("index.tmd", "# A\n\n## B\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert_eq!(
+            workspace_symbols(&mut project, &root.join("index.tmd"), "").len(),
+            2
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_workspace_symbol_points_at_the_line_that_defines_it() {
+        // A location every row shares would make the list navigable-looking and useless.
+        let root = symbol_fixture("locate", &[("index.tmd", "# A\n\n## Target\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let hits = workspace_symbols(&mut project, &root.join("index.tmd"), "Target");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].location.range.start.line, 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_symbols_outside_a_project_are_empty_rather_than_an_error() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-wsym-solo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let solo = dir.join("solo.tmd");
+        std::fs::write(&solo, "# Solo\n").unwrap();
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert!(workspace_symbols(&mut project, &solo, "solo").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_capabilities_advertise_workspace_symbols() {
+        let caps = serde_json::to_value(server_capabilities()).unwrap();
+        assert_eq!(caps["workspaceSymbolProvider"], true);
+    }
+
+    #[test]
+    fn go_to_definition_resolves_an_xref_defined_on_another_page() {
+        // The gap `resolve_definition` documented for a year: "cross-file refs get nothing".
+        let (root, uri, docs) =
+            cross_page_fixture("goto", "# Two {#sec-two}\n", "# One\n\nSee @sec-two.\n");
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let found = resolve_definition(&docs, &mut project, &goto_params(&uri, 2, 6))
+            .expect("a cross-page xref must resolve");
+        let lsp_types::GotoDefinitionResponse::Scalar(loc) = found else {
+            panic!("expected a single location");
+        };
+        assert!(loc.uri.to_file_path().unwrap().ends_with("two.tmd"));
+        assert_eq!(loc.range.start.line, 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_local_definition_still_wins_over_the_project_walk() {
+        // The project scan reads DISK; the buffer is ahead of it. Jumping to the on-disk copy
+        // of the page you are typing in is worse than useless, so the buffer must win. The
+        // fixture makes the two disagree on purpose: `one.tmd` on disk has no anchor at all,
+        // while the open buffer defines `sec-x`, and `two.tmd` also defines it.
+        let (root, uri, docs) = cross_page_fixture(
+            "local",
+            "# Other {#sec-x}\n",
+            "# Local {#sec-x}\n\nSee @sec-x.\n",
+        );
+        std::fs::write(root.join("one.tmd"), "# Local\n\nSee @sec-x.\n").unwrap();
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let lsp_types::GotoDefinitionResponse::Scalar(loc) =
+            resolve_definition(&docs, &mut project, &goto_params(&uri, 2, 6)).unwrap()
+        else {
+            panic!("expected a single location");
+        };
+        assert_eq!(loc.uri, uri, "the buffer's own definition must win");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_xref_defined_nowhere_still_resolves_to_nothing() {
+        let (root, uri, docs) = cross_page_fixture("nowhere", "# Two\n", "See @sec-nowhere.\n");
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert!(resolve_definition(&docs, &mut project, &goto_params(&uri, 0, 6)).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hover_on_a_cross_page_xref_names_the_page_that_defines_it() {
+        let (root, uri, docs) =
+            cross_page_fixture("hover", "# Two {#sec-two}\n", "See @sec-two.\n");
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let hover = resolve_hover(&docs, &mut project, &hover_params(&uri, 0, 6))
+            .expect("a cross-page xref must hover");
+        let lsp_types::HoverContents::Markup(m) = hover.contents else {
+            panic!("expected markup");
+        };
+        assert!(
+            m.value.contains("two.tmd"),
+            "the hover must name the page, since the number lives in that page's render: {:?}",
+            m.value
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn hover_params(uri: &Url, line: u32, character: u32) -> lsp_types::HoverParams {

@@ -230,7 +230,9 @@ pub mod skim;
 mod xref;
 pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
 use xref::scan_xref_targets;
-pub use xref::{XrefTarget, anchors_defined_elsewhere_in_project};
+pub use xref::{
+    ScannedAnchor, XrefTarget, anchors_defined_elsewhere_in_project, scan_page_anchors,
+};
 mod config;
 mod frontmatter;
 pub use config::*;
@@ -242,7 +244,8 @@ mod discovery;
 // `collect_pages` is not called here: `xref.rs` reaches it through this binding (a
 // private `use` is still visible to a descendant module), so the project-wide anchor
 // scan walks exactly the page set discovery does.
-use discovery::{collect_pages, discover_decks, website_pages};
+pub use discovery::collect_pages;
+use discovery::{discover_decks, website_pages};
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
@@ -259,12 +262,39 @@ use links::{
 /// belongs to. Returns the directory holding the `_site.yml`, if any. The `.git` stop keeps
 /// the walk from climbing out of the project the file lives in.
 pub fn enclosing_site_root(start: &Path) -> Option<PathBuf> {
+    walk_up_for_site_yml(start, true)
+}
+
+/// The same walk, but climbing **past** a `.git` boundary.
+///
+/// This exists because the two behaviours were separately implemented and silently differed
+/// for a year: `xref.rs` carried its own copy with no `.git` stop. Measured on a fixture with
+/// an `_site.yml` above a `.git`, one answered the project and the other answered `None`. The
+/// bodies are now one function and the difference is this parameter, so it is a choice a
+/// reader can see rather than a divergence nobody knew about.
+///
+/// The unbounded form is what [`xref::anchors_defined_elsewhere_in_project`] wants: it runs on
+/// the editor's every-keystroke diagnostic path, where wrongly deciding a page has no project
+/// turns every legitimate cross-page reference into a broken-reference squiggle, which is the
+/// exact harm that function was written to stop.
+///
+/// Public for the same reason: the editor's project walk (`lsp_project`) has to answer "what
+/// project is this page in" the *same* way the diagnostics do. Two answers inside one editor
+/// session means a reference that resolves in the squiggle and not under F12.
+pub fn enclosing_site_root_across_git(start: &Path) -> Option<PathBuf> {
+    walk_up_for_site_yml(start, false)
+}
+
+/// The one walk both spellings share. `stop_at_git` chooses whether a `.git` directory ends
+/// the climb (guarding against an unrelated ancestor `_site.yml` adopting the document) or is
+/// walked through.
+fn walk_up_for_site_yml(start: &Path, stop_at_git: bool) -> Option<PathBuf> {
     let mut dir = start.canonicalize().ok()?;
     loop {
         if dir.join("_site.yml").is_file() {
             return Some(dir);
         }
-        if dir.join(".git").exists() {
+        if stop_at_git && dir.join(".git").exists() {
             return None;
         }
         dir = dir.parent()?.to_path_buf();

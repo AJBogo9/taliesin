@@ -12,7 +12,7 @@
     "directory": "editor/vscode"
   },
   "engines": {
-    "vscode": "^1.97.0",
+    "vscode": "^1.101.0",
     "node": ">=18"
   },
   "categories": [
@@ -58,29 +58,45 @@
             "id": "taliesin.setup",
             "title": "Check your setup",
             "description": "The companion answers nothing on its own: it is a client over `taliesin lsp`. Confirm the binary is there.\n[Diagnose Setup](command:taliesin.doctor)",
-            "media": { "markdown": "walkthroughs/setup.md" },
-            "completionEvents": ["onCommand:taliesin.doctor"]
+            "media": {
+              "markdown": "walkthroughs/setup.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.doctor"
+            ]
           },
           {
             "id": "taliesin.preview",
             "title": "Open a live preview",
             "description": "Block-level updates as you type, and Ctrl+click to jump from the preview back to the source line.\n[Open Preview](command:taliesin.openPreview)",
-            "media": { "markdown": "walkthroughs/preview.md" },
-            "completionEvents": ["onCommand:taliesin.openPreview"]
+            "media": {
+              "markdown": "walkthroughs/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.openPreview"
+            ]
           },
           {
             "id": "taliesin.write",
             "title": "Let the editor help you write",
             "description": "Completion for classes, attributes, paths, cell options and math — plus a symbol picker for what you cannot spell.\n[Insert Math Symbol](command:taliesin.insertMathSymbol)",
-            "media": { "markdown": "walkthroughs/write.md" },
-            "completionEvents": ["onCommand:taliesin.insertMathSymbol"]
+            "media": {
+              "markdown": "walkthroughs/write.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.insertMathSymbol"
+            ]
           },
           {
             "id": "taliesin.check",
             "title": "Check before you publish",
             "description": "Cross-references, citations, links and front-matter keys, validated the way the build validates them.\n[Check This Document](command:taliesin.check)",
-            "media": { "markdown": "walkthroughs/check.md" },
-            "completionEvents": ["onCommand:taliesin.check"]
+            "media": {
+              "markdown": "walkthroughs/check.md"
+            },
+            "completionEvents": [
+              "onCommand:taliesin.check"
+            ]
           }
         ]
       }
@@ -290,9 +306,198 @@
           ],
           "default": "off",
           "description": "Log the traffic between the editor and `taliesin lsp` to the Taliesin Language Server output channel."
+        },
+        "taliesin.explorerBadges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Badge .tmd files in the Explorer with their worst `taliesin check` severity. Runs `check` on save."
         }
       }
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "taliesin",
+          "title": "Taliesin",
+          "icon": "icons/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "taliesin": [
+        {
+          "id": "taliesin.outline",
+          "name": "Outline",
+          "contextualTitle": "Taliesin: whole-book outline"
+        },
+        {
+          "id": "taliesin.references",
+          "name": "References",
+          "contextualTitle": "Taliesin: cross-references, dangling grouped"
+        },
+        {
+          "id": "taliesin.floats",
+          "name": "Figures & Tables",
+          "contextualTitle": "Taliesin: numbered float index"
+        }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "taliesin",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": [
+              "check",
+              "build",
+              "build --out"
+            ],
+            "description": "Which Taliesin command this task runs against the project root."
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "taliesin",
+        "owner": "taliesin",
+        "source": "taliesin",
+        "severity": "info",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^([^\\s:][^:]*):(\\d+): (error|warning|suggestion)\\[([^\\]]+)\\]: (.*)$",
+          "file": 1,
+          "line": 2,
+          "severity": 3,
+          "code": 4,
+          "message": 5
+        }
+      },
+      {
+        "name": "taliesin-unlocated",
+        "owner": "taliesin",
+        "source": "taliesin",
+        "severity": "info",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^([^\\s:][^:]*): (error|warning|suggestion)\\[([^\\]]+)\\]: (.*)$",
+          "file": 1,
+          "severity": 2,
+          "code": 3,
+          "message": 4
+        }
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "taliesin_check",
+        "displayName": "Check a Taliesin document",
+        "toolReferenceName": "tali-check",
+        "modelDescription": "Validate a .tmd file or project directory. Runs no code and touches no network. Returns each diagnostic with a stable code, severity, file and line, and a suggested replacement for a typo. Use this to verify a document is correct before claiming it is.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a .tmd file or a project directory containing _site.yml."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_read",
+        "displayName": "Read a rendered Taliesin document",
+        "toolReferenceName": "tali-read",
+        "modelDescription": "Project a rendered .tmd document to plain text: headings, resolved figure and cross-reference numbers, callouts, fenced code, and math as TeX. This is what the document actually says once built, as opposed to its source.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a .tmd file."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_symbols",
+        "displayName": "List a document's cross-reference targets",
+        "toolReferenceName": "tali-symbols",
+        "modelDescription": "List every cross-reference anchor a .tmd document defines, with its resolved number. Use this to find the correct @-name before writing a reference, instead of guessing one.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a .tmd file."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_map",
+        "displayName": "Outline a Taliesin project",
+        "toolReferenceName": "tali-map",
+        "modelDescription": "Outline a whole project directory: its pages in nav or chapter order, the nav itself, any mounts, and the cross-reference graph between pages. Use this to understand a book or site before editing part of it.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Absolute path to a project directory containing _site.yml."
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "taliesin_vocab",
+        "displayName": "List the vocabulary Taliesin accepts",
+        "toolReferenceName": "tali-vocab",
+        "modelDescription": "The closed-set vocabulary Taliesin accepts: front-matter keys, cell options, callout and theorem kinds, div classes, and cross-reference prefixes. Use this instead of guessing whether a key or class exists.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(book)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "taliesin",
+        "label": "Taliesin"
+      }
+    ]
   },
   "capabilities": {
     "untrustedWorkspaces": {
@@ -317,7 +522,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.0",
     "@types/node": "^20.0.0",
-    "@types/vscode": "1.97.0",
+    "@types/vscode": "1.101.0",
     "@vscode/test-electron": "^2.4.0",
     "esbuild": "^0.21.0",
     "glob": "^10.3.0",

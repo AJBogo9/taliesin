@@ -301,6 +301,23 @@ fn claimable_paths() -> BTreeSet<String> {
     out
 }
 
+/// The file a `path:line:` or `path:line:col` citation names.
+///
+/// That is the shape every diagnostic in this tool prints, so it is the natural way for a doc
+/// to point at a line — and without this the trailing `:12:` was part of the token, so citing
+/// a location was indistinguishable from naming a file that does not exist. Stripping it makes
+/// the gate check the real path instead of rejecting the citation, which can only find more:
+/// a cited path that is stale still fails, it just fails for the right reason.
+fn without_location_suffix(tok: &str) -> &str {
+    let head = tok.trim_end_matches(':');
+    match head.rsplit_once(':') {
+        Some((path, tail)) if !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit()) => {
+            without_location_suffix(path)
+        }
+        _ => head,
+    }
+}
+
 /// A token that is a claim about a file in THIS repo, as opposed to an illustrative name
 /// (a reader's `custom.css`, an example `_extensions/mytheme/theme.css`) or a pattern.
 fn is_repo_path_claim(tok: &str) -> bool {
@@ -359,6 +376,29 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
         !known.contains("serve.rs"),
         "the resolver is too permissive"
     );
+    // The location strip is part of the resolution, so it is part of the vacuity control: a
+    // strip that took too much would silently turn every cited path into a shorter one that
+    // still resolves, and a strip that took nothing would fail every citation.
+    for (cited, file) in [
+        (
+            "crates/core/src/render/emit.rs:12:",
+            "crates/core/src/render/emit.rs",
+        ),
+        (
+            "crates/core/src/render/emit.rs:12:5",
+            "crates/core/src/render/emit.rs",
+        ),
+        (
+            "crates/core/src/render/emit.rs",
+            "crates/core/src/render/emit.rs",
+        ),
+    ] {
+        assert_eq!(
+            without_location_suffix(cited),
+            file,
+            "location strip: {cited}"
+        );
+    }
 
     // A doc may name a dead path when the dead path IS the subject of the sentence.
     // Every exemption must still be present where it claims to be — a rewritten sentence
@@ -381,7 +421,7 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
     let mut stale = Vec::new();
     for (rel, text) in shipped_docs() {
         for tok in backticked(&text) {
-            let tok = tok.trim_end_matches('/');
+            let tok = without_location_suffix(tok.trim_end_matches('/'));
             if !is_repo_path_claim(tok) {
                 continue;
             }

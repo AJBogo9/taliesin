@@ -1,0 +1,395 @@
+//! What the enclosing `_site.yml` project contains, for the editor surfaces that reach past
+//! the open buffer: cross-file go-to-definition, workspace symbols, and the sidebar's outline
+//! and references views.
+//!
+//! **Why a walk behind a memo, and not an index.** Every consumer fires on a *user gesture*
+//! (F12, Ctrl+T, opening a view, the Explorer asking for a decoration), never per keystroke,
+//! so none of them needs a live index. An index would put file watching, invalidation and
+//! background state into a component whose statelessness is why it is reliable. Instead the
+//! walk is cached and validated by `stat`ing every page and comparing `(mtime, len)`: a stat
+//! is orders of magnitude cheaper than the read-plus-parse it guards, and the failure mode is
+//! "re-walked when it need not have", never "served stale data".
+//!
+//! The per-keystroke diagnostic path does NOT use this. It keeps calling
+//! `site::anchors_defined_elsewhere_in_project` behind the existing coalescing window.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// A cross-reference target defined somewhere in the project.
+pub(crate) struct ProjectAnchor {
+    pub id: String,
+    pub path: PathBuf,
+    /// 0-based line of the defining site.
+    pub line: u32,
+    /// The heading's text when the anchor sits on one; empty otherwise.
+    pub title: String,
+    /// The rendered section number for a numbered chapter heading; empty otherwise.
+    pub number: String,
+}
+
+/// One heading on one page, for workspace symbols and the whole-book outline.
+pub(crate) struct ProjectHeading {
+    pub path: PathBuf,
+    /// 0-based line of the heading.
+    pub line: u32,
+    pub level: u8,
+    pub text: String,
+}
+
+/// One `@`-sigil reference, resolved or not. A use whose `id` matches no [`ProjectAnchor`] is
+/// dangling, which is exactly what the References view groups.
+pub(crate) struct ProjectUse {
+    pub id: String,
+    pub path: PathBuf,
+    /// 0-based line and scalar column.
+    pub line: u32,
+    pub col: u32,
+}
+
+/// One walk's result.
+pub(crate) struct ProjectScan {
+    pub root: PathBuf,
+    pub anchors: Vec<ProjectAnchor>,
+    pub headings: Vec<ProjectHeading>,
+    pub uses: Vec<ProjectUse>,
+}
+
+/// What a page looked like when it was last walked: enough to notice an edit without
+/// watching the filesystem.
+type Stamp = (PathBuf, Option<std::time::SystemTime>, u64);
+
+/// The stat-validated memo described in the module docs, keyed by project root.
+///
+/// Keyed rather than single-entry because an editor routinely has files from more than one
+/// project open at once (a chapter of the guide beside a corpus document), and workspace
+/// symbols searches **every** open project. A single entry would re-walk both on every
+/// keystroke of a Ctrl+T query, turning the memo into pure overhead exactly when it matters.
+pub(crate) struct ProjectCache {
+    entries: HashMap<PathBuf, (ProjectScan, Vec<Stamp>)>,
+    /// How many real walks have happened. Test-visible so the memo cannot be decoration.
+    walks: usize,
+}
+
+impl ProjectCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            walks: 0,
+        }
+    }
+
+    /// Walks completed. The `an_unchanged_project_is_not_re_walked` pin reads this; without
+    /// it a memo that always missed would still pass every correctness test.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn walks(&self) -> usize {
+        self.walks
+    }
+
+    /// The scan for `page`'s enclosing project, or `None` when it has no `_site.yml` above it.
+    ///
+    /// Uses the `.git`-crossing walk, matching `anchors_defined_elsewhere_in_project`: these
+    /// two answer the same question for the same editor, and a page whose project one of them
+    /// finds and the other does not would resolve a reference in the squiggle and not in F12.
+    pub(crate) fn get(&mut self, page: &Path) -> Option<&ProjectScan> {
+        let root = taliesin_core::site::enclosing_site_root_across_git(page.parent()?)?;
+        let stamps = stamps_for(&root);
+        let fresh = self
+            .entries
+            .get(&root)
+            .is_some_and(|(_, seen)| *seen == stamps);
+        if !fresh {
+            self.entries.insert(root.clone(), (walk(&root), stamps));
+            self.walks += 1;
+        }
+        self.entries.get(&root).map(|(scan, _)| scan)
+    }
+
+    /// The distinct project roots among `pages`, in a stable order.
+    ///
+    /// Workspace symbols needs this because the `workspace/symbol` request names **no file**:
+    /// picking one open document to stand for "the project" silently searches whichever
+    /// document happened to be first, which with two projects open is a coin flip. Answering
+    /// for every open project is the only behaviour an author can predict.
+    pub(crate) fn roots_of<'a>(pages: impl Iterator<Item = &'a Path>) -> Vec<PathBuf> {
+        let mut roots: Vec<PathBuf> = pages
+            .filter_map(|p| {
+                p.parent()
+                    .and_then(taliesin_core::site::enclosing_site_root_across_git)
+            })
+            .collect();
+        roots.sort();
+        roots.dedup();
+        roots
+    }
+}
+
+/// `(path, mtime, len)` for every page, in `collect_pages` order so two runs compare equal.
+fn stamps_for(root: &Path) -> Vec<Stamp> {
+    let mut inputs = Vec::new();
+    taliesin_core::site::collect_pages(root, &mut inputs);
+    inputs
+        .into_iter()
+        .map(|p| {
+            let meta = std::fs::metadata(&p).ok();
+            let mtime = meta.as_ref().and_then(|m| m.modified().ok());
+            let len = meta.map(|m| m.len()).unwrap_or(0);
+            (p, mtime, len)
+        })
+        .collect()
+}
+
+/// Read every page once and collect all three views of it. Includes are resolved first, so
+/// an anchor authored in an `_includes/` partial belongs to whichever page includes it,
+/// exactly as the render pipeline and `anchors_defined_elsewhere_in_project` both do.
+fn walk(root: &Path) -> ProjectScan {
+    let mut inputs = Vec::new();
+    taliesin_core::site::collect_pages(root, &mut inputs);
+    let mut anchors = Vec::new();
+    let mut headings = Vec::new();
+    let mut uses = Vec::new();
+    let mut seen: HashMap<String, ()> = HashMap::new();
+
+    for input in inputs {
+        let Ok(raw) = std::fs::read_to_string(&input) else {
+            continue;
+        };
+        let base = input.parent().unwrap_or_else(|| Path::new("."));
+        let (src, _) = taliesin_core::includes::resolve(&raw, base);
+
+        for a in taliesin_core::site::scan_page_anchors(&src, None) {
+            // First definition wins project-wide, matching `scan_xref_targets`. Two owners of
+            // "which page defines `fig-x`" that disagreed would send F12 somewhere the built
+            // page does not link to.
+            if seen.insert(a.id.clone(), ()).is_none() {
+                anchors.push(ProjectAnchor {
+                    id: a.id,
+                    path: input.clone(),
+                    // `scan_page_anchors` reports a 1-based line; everything on the LSP wire
+                    // is 0-based.
+                    line: a.line.saturating_sub(1) as u32,
+                    title: a.title,
+                    number: a.number,
+                });
+            }
+        }
+        for s in crate::lsp_outline::sections(&src) {
+            headings.push(ProjectHeading {
+                path: input.clone(),
+                line: s.start_line as u32,
+                level: s.level,
+                text: s.title,
+            });
+        }
+        for (id, line, col) in crate::lsp_nav::xref_occurrences(&src) {
+            uses.push(ProjectUse {
+                id,
+                path: input.clone(),
+                line,
+                col,
+            });
+        }
+    }
+    ProjectScan {
+        root: root.to_path_buf(),
+        anchors,
+        headings,
+        uses,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scratch directory following the house idiom (no `tempfile` dependency in this crate).
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tali-lspproj-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A two-page project: `index.tmd` defines `fig-one` and references `sec-two`;
+    /// `ch/two.tmd` defines `sec-two` and references `fig-one` and a dangling `fig-gone`.
+    fn fixture(name: &str) -> PathBuf {
+        let root = scratch(name);
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::create_dir_all(root.join("ch")).unwrap();
+        std::fs::write(
+            root.join("index.tmd"),
+            "# Index\n\n![p](i.png){#fig-one}\n\nSee @sec-two.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("ch/two.tmd"),
+            "# Two {#sec-two}\n\n## Deeper\n\nSee @fig-one and @fig-gone.\n",
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn a_document_outside_any_site_project_scans_to_nothing() {
+        let dir = scratch("solo");
+        let solo = dir.join("solo.tmd");
+        std::fs::write(&solo, "# Solo\n").unwrap();
+        let mut cache = ProjectCache::new();
+        assert!(
+            cache.get(&solo).is_none(),
+            "a standalone document has no project; every consumer must fall back silently"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_walk_finds_the_same_project_the_diagnostics_do() {
+        // Both this walk and `anchors_defined_elsewhere_in_project` answer "what project is
+        // this page in", for the same editor, and they must answer it identically: a page
+        // whose project one finds and the other does not resolves a cross-page reference in
+        // the squiggle but not under F12. The difference that made this possible is a `.git`
+        // between the page and its `_site.yml`, so that is the fixture.
+        let base = scratch("gitboundary");
+        let inner = base.join("repo");
+        std::fs::create_dir_all(inner.join(".git")).unwrap();
+        std::fs::write(base.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(base.join("other.tmd"), "# Other {#sec-other}\n").unwrap();
+        let page = inner.join("page.tmd");
+        std::fs::write(&page, "See @sec-other.\n").unwrap();
+
+        let by_diagnostics = taliesin_core::site::anchors_defined_elsewhere_in_project(&page);
+        assert!(
+            by_diagnostics.contains("sec-other"),
+            "precondition: the diagnostic path sees across the `.git` boundary"
+        );
+
+        let mut cache = ProjectCache::new();
+        let scan = cache
+            .get(&page)
+            .expect("the project walk must find the same project the diagnostics did");
+        assert!(scan.anchors.iter().any(|a| a.id == "sec-other"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_walk_collects_anchors_headings_and_uses_across_every_page() {
+        let root = fixture("collect");
+        let mut cache = ProjectCache::new();
+        let scan = cache.get(&root.join("index.tmd")).unwrap();
+
+        let mut ids: Vec<&str> = scan.anchors.iter().map(|a| a.id.as_str()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec!["fig-one", "sec-two"], "anchors from BOTH pages");
+
+        assert!(
+            scan.headings
+                .iter()
+                .any(|h| h.text == "Deeper" && h.level == 2),
+            "headings come from every page, not just the one asked about"
+        );
+
+        let mut used: Vec<&str> = scan.uses.iter().map(|u| u.id.as_str()).collect();
+        used.sort_unstable();
+        assert_eq!(used, vec!["fig-gone", "fig-one", "sec-two"]);
+        assert!(
+            scan.uses.iter().any(|u| u.id == "fig-gone"),
+            "a dangling use is collected, not dropped: the References view groups them"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_anchor_carries_the_page_and_line_that_define_it() {
+        let root = fixture("locate");
+        let mut cache = ProjectCache::new();
+        let scan = cache.get(&root.join("index.tmd")).unwrap();
+        let a = scan.anchors.iter().find(|a| a.id == "sec-two").unwrap();
+        assert!(a.path.ends_with("ch/two.tmd"));
+        assert_eq!(a.line, 0, "0-based line of the defining heading");
+        assert_eq!(a.title, "Two");
+
+        // A definition that is NOT on line 1, so an off-by-one cannot pass by coincidence.
+        let f = scan.anchors.iter().find(|a| a.id == "fig-one").unwrap();
+        assert_eq!(
+            f.line, 2,
+            "`{{#fig-one}}` sits on the third line of index.tmd"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_memo_re_walks_when_a_page_changes_on_disk() {
+        // The one test that must not be vacuous: this memo is what the design chose INSTEAD
+        // of a file watcher, so its invalidation is the whole risk.
+        let root = fixture("invalidate");
+        let probe = root.join("index.tmd");
+        let mut cache = ProjectCache::new();
+        assert!(
+            !cache
+                .get(&probe)
+                .unwrap()
+                .anchors
+                .iter()
+                .any(|a| a.id == "fig-late")
+        );
+
+        // Rewrite a page with a longer body, so both mtime and length differ.
+        std::fs::write(
+            root.join("ch/two.tmd"),
+            "# Two {#sec-two}\n\n## Deeper\n\nSee @fig-one.\n\n![q](q.png){#fig-late}\n",
+        )
+        .unwrap();
+
+        assert!(
+            cache
+                .get(&probe)
+                .unwrap()
+                .anchors
+                .iter()
+                .any(|a| a.id == "fig-late"),
+            "the memo served a stale scan after a page changed on disk"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_new_page_appearing_invalidates_the_memo() {
+        // Length and mtime of the EXISTING pages are unchanged here, so a memo keyed only on
+        // the pages it already knew would miss this entirely.
+        let root = fixture("newpage");
+        let probe = root.join("index.tmd");
+        let mut cache = ProjectCache::new();
+        cache.get(&probe).unwrap();
+
+        std::fs::write(root.join("three.tmd"), "# Three {#sec-three}\n").unwrap();
+        assert!(
+            cache
+                .get(&probe)
+                .unwrap()
+                .anchors
+                .iter()
+                .any(|a| a.id == "sec-three"),
+            "a page added to the project must invalidate the memo"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unchanged_project_is_not_re_walked() {
+        // The other half: if this never hits, the memo is decoration and every gesture pays
+        // a full walk.
+        let root = fixture("memo");
+        let probe = root.join("index.tmd");
+        let mut cache = ProjectCache::new();
+        cache.get(&probe).unwrap();
+        let first = cache.walks();
+        cache.get(&probe).unwrap();
+        assert_eq!(
+            cache.walks(),
+            first,
+            "a second get on an unchanged project re-walked"
+        );
+        assert_eq!(first, 1, "the first get must actually have walked");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
