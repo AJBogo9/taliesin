@@ -31,10 +31,6 @@ mod lsp_memo;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
-// TEMPORARY, removed by the commit that adds `taliesin/projectRefs`: cross-file definition
-// reads `ProjectScan::anchors`, but `headings` and `uses` have no non-test consumer until
-// workspace symbols and the sidebar's two requests land.
-#[allow(dead_code)]
 mod lsp_project;
 mod lsp_rename_file;
 mod math_image;

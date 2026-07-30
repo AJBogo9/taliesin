@@ -574,6 +574,29 @@ fn handle_request(
             result: Some(serde_json::to_value(found)?),
             error: None,
         }
+    } else if req.method == PROJECT_OUTLINE_METHOD || req.method == PROJECT_REFS_METHOD {
+        // The sidebar's two views. Both take a document uri and answer about its enclosing
+        // project, so they share one arm rather than duplicating the parse and the fallback.
+        #[derive(serde::Deserialize)]
+        struct ProjectParams {
+            uri: lsp_types::Url,
+        }
+        let outline = req.method == PROJECT_OUTLINE_METHOD;
+        let params: ProjectParams = serde_json::from_value(req.params)?;
+        let answer = params.uri.to_file_path().ok().and_then(|p| {
+            if outline {
+                project_outline(project, &p)
+            } else {
+                project_refs(project, &p)
+            }
+        });
+        lsp_server::Response {
+            id: req.id,
+            // `null` rather than an error for a document outside any project: the sidebar
+            // renders an empty view, which is the honest answer for a standalone document.
+            result: Some(answer.unwrap_or(serde_json::Value::Null)),
+            error: None,
+        }
     } else if req.method == CELL_REGIONS_METHOD {
         // A Taliesin extension, not an LSP method: the protocol has no concept of "this
         // range is another language, go ask whoever owns it". A client that wants embedded
@@ -994,6 +1017,101 @@ pub(crate) const INSERT_EDIT_METHOD: &str = "taliesin/insertEdit";
 /// transaction, and the *knowledge* (which reference spellings exist, where a `_site.yml` scalar
 /// sits) is this crate's either way.
 pub(crate) const RENAME_FILE_EDITS_METHOD: &str = "taliesin/renameFileEdits";
+
+/// The custom request behind the sidebar's whole-book Outline and Figures views. Namespaced
+/// for the same reason as [`CELL_REGIONS_METHOD`]: it is not an LSP method. `workspace/symbol`
+/// is the closest standard method and deliberately answers a *flat, queried* list, which is
+/// the wrong shape for a tree the author browses.
+pub(crate) const PROJECT_OUTLINE_METHOD: &str = "taliesin/projectOutline";
+
+/// The custom request behind the sidebar's References view: every cross-reference target with
+/// the uses pointing at it, dangling ones included. Namespaced for the same reason.
+pub(crate) const PROJECT_REFS_METHOD: &str = "taliesin/projectRefs";
+
+/// The whole-book outline plus the numbered-float index, as the sidebar's TreeViews want it:
+/// grouped by page and in reading order, not flattened. `None` outside a project, which the
+/// client renders as an empty view.
+fn project_outline(
+    project: &mut crate::lsp_project::ProjectCache,
+    page: &std::path::Path,
+) -> Option<serde_json::Value> {
+    let scan = project.get(page)?;
+    let mut pages: Vec<serde_json::Value> = Vec::new();
+    for h in &scan.headings {
+        let path = h.path.to_string_lossy().into_owned();
+        let row = serde_json::json!({ "line": h.line, "level": h.level, "text": h.text });
+        match pages
+            .iter_mut()
+            .find(|p| p["path"].as_str() == Some(path.as_str()))
+        {
+            Some(p) => p["headings"].as_array_mut()?.push(row),
+            None => pages.push(serde_json::json!({ "path": path, "headings": [row] })),
+        }
+    }
+    let floats: Vec<serde_json::Value> = scan
+        .anchors
+        .iter()
+        .map(|a| {
+            serde_json::json!({
+                "id": a.id,
+                "path": a.path.to_string_lossy(),
+                "line": a.line,
+                "title": a.title,
+                "number": a.number,
+            })
+        })
+        .collect();
+    Some(serde_json::json!({
+        "root": scan.root.to_string_lossy(),
+        "pages": pages,
+        "floats": floats,
+    }))
+}
+
+/// Every cross-reference target with the uses pointing at it. A target with no definition is
+/// reported with `resolved: false` rather than omitted: grouping dangling references is the
+/// reason [`crate::lsp_nav::xref_occurrences`] exists at all. A target that is defined and
+/// never referenced is `resolved: true` with an empty `uses`, which is normal rather than a
+/// problem and must not be filed as dangling.
+fn project_refs(
+    project: &mut crate::lsp_project::ProjectCache,
+    page: &std::path::Path,
+) -> Option<serde_json::Value> {
+    let scan = project.get(page)?;
+    let mut ids: Vec<&str> = scan.anchors.iter().map(|a| a.id.as_str()).collect();
+    for u in &scan.uses {
+        ids.push(&u.id);
+    }
+    ids.sort_unstable();
+    ids.dedup();
+
+    let targets: Vec<serde_json::Value> = ids
+        .iter()
+        .map(|id| {
+            let defined = scan.anchors.iter().find(|a| a.id == *id);
+            let uses: Vec<serde_json::Value> = scan
+                .uses
+                .iter()
+                .filter(|u| u.id == *id)
+                .map(|u| {
+                    serde_json::json!({
+                        "path": u.path.to_string_lossy(),
+                        "line": u.line,
+                        "col": u.col,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "id": id,
+                "resolved": defined.is_some(),
+                "definedIn": defined.map(|d| d.path.to_string_lossy().into_owned()),
+                "definedLine": defined.map(|d| d.line),
+                "uses": uses,
+            })
+        })
+        .collect();
+    Some(serde_json::json!({ "root": scan.root.to_string_lossy(), "targets": targets }))
+}
 
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
@@ -2257,6 +2375,105 @@ mod tests {
             std::fs::write(p, src).unwrap();
         }
         root
+    }
+
+    #[test]
+    fn project_outline_lists_every_page_with_its_headings_and_floats() {
+        let root = symbol_fixture(
+            "outline",
+            &[("index.tmd", "# One\n\n## Deeper\n\n![p](i.png){#fig-a}\n")],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("index.tmd")).unwrap();
+
+        assert_eq!(out["pages"].as_array().unwrap().len(), 1);
+        let headings = out["pages"][0]["headings"].as_array().unwrap();
+        assert_eq!(headings.len(), 2);
+        assert_eq!(headings[1]["text"], "Deeper");
+        assert_eq!(headings[1]["level"], 2);
+        assert_eq!(out["floats"][0]["id"], "fig-a");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_outline_keeps_each_pages_headings_under_that_page() {
+        // Two pages, so a flattening bug (every heading landing under the first page) cannot
+        // pass. A single-page fixture would not notice.
+        let root = symbol_fixture(
+            "outline2",
+            &[("a.tmd", "# A\n"), ("b.tmd", "# B\n\n## B2\n")],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("a.tmd")).unwrap();
+        let pages = out["pages"].as_array().unwrap();
+        assert_eq!(pages.len(), 2, "one row per page: {pages:?}");
+        for p in pages {
+            let n = p["headings"].as_array().unwrap().len();
+            let expected = if p["path"].as_str().unwrap().ends_with("a.tmd") {
+                1
+            } else {
+                2
+            };
+            assert_eq!(n, expected, "wrong heading count for {}", p["path"]);
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_refs_groups_uses_by_target_and_flags_the_dangling_one() {
+        let root = symbol_fixture(
+            "refs",
+            &[
+                ("a.tmd", "# A {#sec-a}\n"),
+                ("b.tmd", "See @sec-a and @sec-gone.\n"),
+            ],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let refs = project_refs(&mut project, &root.join("b.tmd")).unwrap();
+
+        let targets = refs["targets"].as_array().unwrap();
+        let resolved = targets.iter().find(|t| t["id"] == "sec-a").unwrap();
+        assert_eq!(resolved["resolved"], true);
+        assert_eq!(resolved["uses"].as_array().unwrap().len(), 1);
+
+        let dangling = targets.iter().find(|t| t["id"] == "sec-gone").unwrap();
+        assert_eq!(dangling["resolved"], false);
+        assert!(dangling["definedIn"].is_null());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_refs_lists_a_defined_but_unreferenced_anchor_as_resolved_with_no_uses() {
+        // Defined and never used is normal, not an error, and must not be filed as dangling.
+        let root = symbol_fixture("refs2", &[("a.tmd", "# A {#sec-unused}\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let refs = project_refs(&mut project, &root.join("a.tmd")).unwrap();
+        let t = &refs["targets"][0];
+        assert_eq!(t["id"], "sec-unused");
+        assert_eq!(t["resolved"], true);
+        assert_eq!(t["uses"].as_array().unwrap().len(), 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn both_project_requests_answer_none_outside_a_project() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-proj-solo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let solo = dir.join("solo.tmd");
+        std::fs::write(&solo, "# Solo\n\nSee @sec-x.\n").unwrap();
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert!(project_outline(&mut project, &solo).is_none());
+        assert!(project_refs(&mut project, &solo).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_two_new_project_methods_are_namespaced() {
+        // The `"taliesin/…"` census below enforces the shape across the whole file; these two
+        // are pinned by name so a rename cannot quietly drop the prefix.
+        assert!(PROJECT_OUTLINE_METHOD.starts_with("taliesin/"));
+        assert!(PROJECT_REFS_METHOD.starts_with("taliesin/"));
     }
 
     #[test]
