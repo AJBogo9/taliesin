@@ -851,7 +851,10 @@ fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
 /// (no absolute path, no `..` segment) constrains what the *page text* may ask for and
 /// says nothing about what an in-tree path resolves *to*: `<img src="fig.png">` where
 /// `fig.png` is a symlink is contained by that rule and can still leave the checkout.
-fn inside_repo(from: &Path, boundary: &Path) -> bool {
+/// `pub(crate)` so `lsp_insert` can give a dragged asset the same verdict the build will.
+/// Two copies of this rule would let the editor bless a path the build then warns on, which is
+/// the whole bug class the drop gesture exists to prevent.
+pub(crate) fn inside_repo(from: &Path, boundary: &Path) -> bool {
     from.canonicalize().is_ok_and(|c| c.starts_with(boundary))
 }
 

@@ -32,6 +32,9 @@ pub(crate) enum InsertKind {
     TsvTable,
     Bibtex,
     Dataset,
+    /// A file dragged in from the Explorer: a figure reference, plus a verdict on whether the
+    /// build will be able to ship it.
+    Asset,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq, Default)]
@@ -50,6 +53,14 @@ pub(crate) struct InsertEditResult {
     /// the paste rather than writing behind the editor's back.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) append: Option<AppendEdit>,
+    /// Why the build will not be able to ship this reference, when it will not.
+    ///
+    /// Set only by [`InsertKind::Asset`], and the *text* is still filled in, so the client can
+    /// offer to copy the file in or insert the path anyway. The verdict mirrors
+    /// [`crate::build::inside_repo`] and the two cases `copy_local_assets` warns about
+    /// separately, so the editor never blesses a path the build then refuses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) outside: Option<String>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -57,6 +68,13 @@ pub(crate) struct InsertEditResult {
 pub(crate) struct AppendEdit {
     pub(crate) path: String,
     pub(crate) text: String,
+}
+
+/// The figure shape a pasted or dragged image inserts: the canonical corpus form
+/// `![caption](path){#fig-label}`, with the caption and the label as tab stops because they are
+/// the two things only the author can write. `path` must be snippet-safe (see [`slug`]).
+fn figure_snippet(path: &str) -> String {
+    format!("![${{1:caption}}]({path}){{#fig-${{2:label}}}}")
 }
 
 /// The extension a clipboard image is saved under.
@@ -135,17 +153,74 @@ pub(crate) fn insert_edit(
         InsertKind::HtmlTable | InsertKind::TsvTable => table_paste(kind, payload),
         InsertKind::Bibtex => bibtex_paste(doc, text, payload),
         InsertKind::Dataset => dataset_drop(doc, text, Path::new(payload)),
+        InsertKind::Asset => asset_drop(doc, Path::new(payload)),
     }
 }
 
-/// A path expressed relative to `dir`, or `None` when that would need to climb out of it.
+/// A file dragged in from the Explorer: the same figure snippet an image paste produces, plus a
+/// verdict on whether the build can ship it.
 ///
-/// A `../` dataset or asset path is one the build cannot ship (`copy_local_assets` warns and
-/// skips it), so the editor must not emit one.
+/// The verdict distinguishes the same two failures `copy_local_assets` warns about separately,
+/// and the repository half calls [`crate::build::inside_repo`] against
+/// [`taliesin_core::includes::repo_boundary`], the pair the build itself uses. The text is filled
+/// in either way: the client offers to copy the file in, and the author may still insist.
+fn asset_drop(doc: &Path, target: &Path) -> Result<InsertEditResult, String> {
+    let dir = doc.parent().ok_or("the document has no directory")?;
+    let (rel, outside) = match relative_to(dir, target) {
+        // Lexically inside the folder. It can still resolve out of the repository via a symlink,
+        // which is the second case the build warns about, so ask for the verdict either way.
+        Some(rel) => {
+            let verdict = resolves_outside_repository(dir, &rel).then_some(OUTSIDE_REPO);
+            (rel, verdict)
+        }
+        // Not under the document's folder at all. The author asked for it, so still offer the
+        // filename rather than nothing, and say why the build will not ship it.
+        None => (
+            target
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            Some(OUTSIDE_FOLDER),
+        ),
+    };
+    let outside = outside.map(str::to_owned);
+    Ok(InsertEditResult {
+        // The same helper the image paste uses, so a dragged figure and a pasted one really do
+        // differ only in the filename.
+        text: figure_snippet(&rel),
+        is_snippet: true,
+        write_file: None,
+        append: None,
+        outside,
+    })
+}
+
+/// The build's two reasons for dropping a local reference, as `copy_local_assets` words them.
+///
+/// Kept as constants because both the dragged-asset warning and the dataset refusal must say the
+/// same thing the build will.
+const OUTSIDE_FOLDER: &str =
+    "this file is outside the document's folder, so the build will not bundle it";
+const OUTSIDE_REPO: &str =
+    "this file resolves outside the repository, so the build will not bundle it";
+
+/// Whether `rel`, resolved against `dir`, lands outside the enclosing repository.
+///
+/// This is the SECOND of the build's two checks and the one a lexical test cannot make: a symlink
+/// pointing out of the repository sits lexically inside the folder. The first check is
+/// [`relative_to`] returning `None`, so there is deliberately no lexical branch here; an earlier
+/// draft had one and a mutation proved it unreachable, because `strip_prefix` succeeding already
+/// rules out a leading `/` or a `..` segment.
+fn resolves_outside_repository(dir: &Path, rel: &str) -> bool {
+    let boundary = taliesin_core::includes::repo_boundary(dir);
+    !crate::build::inside_repo(&dir.join(rel), &boundary)
+}
+
+/// A path expressed relative to `dir`, LEXICALLY: symlinks are left unresolved, so the caller
+/// can distinguish "climbs out of the folder" from "resolves out of the repository" the way the
+/// build does. `None` when the target is not under `dir` at all.
 fn relative_to(dir: &Path, target: &Path) -> Option<String> {
-    let dir = dir.canonicalize().ok()?;
-    let target = target.canonicalize().ok()?;
-    let rel = target.strip_prefix(&dir).ok()?;
+    let rel = target.strip_prefix(dir).ok()?;
     // Always forward slashes: this string goes into a document, not into a syscall.
     Some(
         rel.components()
@@ -178,12 +253,18 @@ fn first_kernel_language(text: &str) -> Option<&'static str> {
 /// does not. Emitting them empty is noise a lint may flag.
 fn dataset_drop(doc: &Path, text: &str, csv: &Path) -> Result<InsertEditResult, String> {
     let dir = doc.parent().ok_or("the document has no directory")?;
+    // Unlike a dragged image, a dataset is REFUSED rather than offered with a warning: the card
+    // is a provenance claim, and one pointing at a file the build drops is worse than no card.
+    // The verdict is the build's own, so a symlink out of the repository is refused too.
     let rel = relative_to(dir, csv).ok_or_else(|| {
         format!(
             "{} is outside the document's folder, so the build could not ship it",
             csv.display()
         )
     })?;
+    if resolves_outside_repository(dir, &rel) {
+        return Err(format!("{}: {OUTSIDE_REPO}", csv.display()));
+    }
 
     let card = format!("{{{{< dataset {rel} >}}}}");
     // A client-language document ({js}, {glsl}) gets the card and no loader: there is no CSV
@@ -224,6 +305,7 @@ fn dataset_drop(doc: &Path, text: &str, csv: &Path) -> Result<InsertEditResult, 
         is_snippet: false,
         write_file: None,
         append: None,
+        outside: None,
     })
 }
 
@@ -261,6 +343,7 @@ fn bibtex_paste(doc: &Path, text: &str, entry: &str) -> Result<InsertEditResult,
         is_snippet: false,
         write_file: None,
         append: None,
+        outside: None,
     };
 
     // The document's own `bibliography:`, read by the same scanner go-to-definition uses on a
@@ -408,6 +491,7 @@ fn table_paste(kind: InsertKind, payload: &str) -> Result<InsertEditResult, Stri
         is_snippet: false,
         write_file: None,
         append: None,
+        outside: None,
     })
 }
 
@@ -418,13 +502,13 @@ fn image_paste(doc: &Path, mime: &str) -> Result<InsertEditResult, String> {
     let slug = slug(stem);
     let name = format!("{slug}-{:02}.{ext}", next_index(dir, &slug));
     Ok(InsertEditResult {
-        // The caption and the label are the two things only the author can write, so both are
-        // tab stops. `name` came out of `slug`, so it cannot contain a `$` or `}` that the
-        // client would read as snippet syntax.
-        text: format!("![${{1:caption}}]({name}){{#fig-${{2:label}}}}"),
+        // `name` came out of `slug`, so it cannot contain a `$` or `}` the client would read
+        // as snippet syntax.
+        text: figure_snippet(&name),
         is_snippet: true,
         write_file: Some(name),
         append: None,
+        outside: None,
     })
 }
 
@@ -779,6 +863,113 @@ mod tests {
         let r = insert_edit(&doc, text, InsertKind::Dataset, csv.to_str().unwrap()).unwrap();
 
         assert_eq!(r.text, "{{< dataset m.csv >}}", "the card alone");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_csv_out_of_the_repository_is_refused() {
+        let tmp = TmpDir::new("csvsym");
+        std::fs::create_dir_all(tmp.path().join("repo/.git")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("elsewhere")).unwrap();
+        let doc = tmp.path().join("repo/bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+        std::fs::write(tmp.path().join("elsewhere/big.csv"), "a\n1\n").unwrap();
+        // Lexically inside the folder, resolving outside the repository. A card pointing at a
+        // file the build drops is worse than no card, so a dataset is refused where a dragged
+        // image is merely warned about.
+        std::os::unix::fs::symlink(
+            tmp.path().join("elsewhere/big.csv"),
+            tmp.path().join("repo/big.csv"),
+        )
+        .unwrap();
+
+        let err = insert_edit(
+            &doc,
+            "",
+            InsertKind::Dataset,
+            tmp.path().join("repo/big.csv").to_str().unwrap(),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("outside the repository"), "{err}");
+    }
+
+    #[test]
+    fn a_dragged_image_inside_the_tree_inserts_a_relative_figure() {
+        let tmp = TmpDir::new("drag");
+        std::fs::create_dir_all(tmp.path().join("proj/media")).unwrap();
+        let doc = tmp.path().join("proj/bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+        std::fs::write(tmp.path().join("proj/_site.yml"), "title: P\n").unwrap();
+        let img = tmp.path().join("proj/media/fit.png");
+        std::fs::write(&img, "").unwrap();
+
+        let r = insert_edit(&doc, "", InsertKind::Asset, img.to_str().unwrap()).unwrap();
+
+        assert_eq!(r.outside, None, "inside the project, nothing to warn about");
+        assert!(r.is_snippet, "the caption and label are still the author's");
+        assert_eq!(r.text, "![${1:caption}](media/fit.png){#fig-${2:label}}");
+    }
+
+    #[test]
+    fn a_dragged_image_outside_the_document_folder_says_so_and_still_offers_a_path() {
+        let tmp = TmpDir::new("dragout");
+        std::fs::create_dir_all(tmp.path().join("proj")).unwrap();
+        let doc = tmp.path().join("proj/bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+        std::fs::write(tmp.path().join("proj/_site.yml"), "title: P\n").unwrap();
+        let outside_dir = tmp.path().join("outside");
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        let img = outside_dir.join("fit.png");
+        std::fs::write(&img, "").unwrap();
+
+        let r = insert_edit(&doc, "", InsertKind::Asset, img.to_str().unwrap()).unwrap();
+
+        // The verdict must come from the same rule `copy_local_assets` uses, or the editor
+        // blesses a path the build then warns on, which is the bug class this gesture prevents.
+        let verdict = r.outside.expect("an out-of-folder drag is reported");
+        assert!(
+            verdict.contains("outside the document's folder"),
+            "the first of the build's two cases: {verdict}"
+        );
+        assert!(
+            !r.text.is_empty(),
+            "the client still has something to insert if the author insists"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dragged_image_that_symlinks_out_of_the_repository_says_so() {
+        let tmp = TmpDir::new("dragsym");
+        std::fs::create_dir_all(tmp.path().join("repo/.git")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("secrets")).unwrap();
+        let doc = tmp.path().join("repo/bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+        std::fs::write(tmp.path().join("secrets/private.png"), "").unwrap();
+        // Lexically inside the folder, but it resolves out of the repository. This is the
+        // SECOND case `copy_local_assets` warns about, and a purely lexical check misses it.
+        std::os::unix::fs::symlink(
+            tmp.path().join("secrets/private.png"),
+            tmp.path().join("repo/leak.png"),
+        )
+        .unwrap();
+
+        let r = insert_edit(
+            &doc,
+            "",
+            InsertKind::Asset,
+            tmp.path().join("repo/leak.png").to_str().unwrap(),
+        )
+        .unwrap();
+
+        let verdict = r
+            .outside
+            .expect("a symlink out of the repository is reported");
+        assert!(
+            verdict.contains("outside the repository"),
+            "the second of the build's two cases: {verdict}"
+        );
     }
 
     #[test]
