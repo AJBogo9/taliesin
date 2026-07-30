@@ -195,13 +195,15 @@ Preview & build
                              --no-exec renders code cells as source,
                              kernel and {js} alike, but does not strip raw
                              HTML: see `Documents you did not write`)
-  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]
+  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]
                              render a self-contained HTML file (a dir builds the
                              whole SITE to _site/); default <name>.html beside
                              the source; --out <dir> writes a portable folder;
                              --strict exits non-zero on a cell error or located
                              warning; --bare emits zero-JS, CSS-only single-doc
-                             HTML; --jobs <N> caps parallel page renders (site build)
+                             HTML; --jobs <N> caps parallel page renders (site
+                             build); --no-exec renders code cells as source
+                             (executable cells with no kernel otherwise FAIL)
   publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--format json]
                              build a site/book + deploy it to Cloudflare Pages
                              behind a shared passcode (strict by default);
@@ -281,7 +283,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin preview . --port 4400\n"
         }
         "build" => {
-            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]\n\
+            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -292,6 +294,9 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
              \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
+             \x20 --no-exec    render code cells as source instead of running them. A build\n\
+             \x20              whose document HAS executable cells but no usable kernel fails;\n\
+             \x20              this is how to ask for source-only output on purpose\n\
              \x20 --format json  emit {diagnostics:[…]} to stdout (agent/CI) instead of only the log\n\
              \n\
              Example:\n\

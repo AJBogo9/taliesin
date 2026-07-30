@@ -134,10 +134,18 @@ fn tech_blog_shares_one_hashed_css_across_pages() {
         .arg(&out)
         .output()
         .expect("build tech-blog");
+    let stderr = String::from_utf8_lossy(&ok.stderr);
+    // tech-blog has `{python}` cells, so on a machine with no ipykernel the build now
+    // fails by design ("executable cells but no kernel"). That failure is not this test's
+    // subject: the site is still fully written first (same shape as `--strict`), so every
+    // asset assertion below holds either way. Tolerated *narrowly* — any other failure is
+    // still a failure, and with a kernel present (`tools/gates.sh`) this is a plain
+    // success assertion. `--no-exec` is deliberately NOT used here: it would also stop the
+    // `{js}` cells this corpus contains from running, changing which conditional `_assets`
+    // blobs get linked — i.e. changing the very thing under test.
     assert!(
-        ok.status.success(),
-        "{}",
-        String::from_utf8_lossy(&ok.stderr)
+        ok.status.success() || stderr.contains("no python kernel available"),
+        "{stderr}"
     );
 
     let assets = std::fs::read_dir(out.join("_assets"))

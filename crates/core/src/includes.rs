@@ -592,7 +592,12 @@ pub(crate) fn try_join_in(
 /// Returning `p` unchanged there left the base relative and the containment root empty,
 /// which no longer names a directory that can be canonicalized. Resolve against the cwd
 /// instead, so every caller gets a real absolute boundary.
-pub(crate) fn absolutize(p: &Path) -> PathBuf {
+/// `pub` because interpreter resolution (`taliesin-server`) needs the identical
+/// treatment for the same reason: its upward `.venv` walk must start from an absolute
+/// path, and a relative `python:` field has to be normalized against the project dir.
+/// A second copy of this in the server crate is exactly the kind of near-duplicate that
+/// drifts.
+pub fn absolutize(p: &Path) -> PathBuf {
     let abs = std::path::absolute(p)
         .or_else(|_| std::path::absolute(Path::new(".")).map(|cwd| cwd.join(p)))
         .unwrap_or_else(|_| p.to_path_buf());

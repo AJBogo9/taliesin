@@ -551,6 +551,12 @@ struct EnvEntry {
     /// Absent when it was probed.
     #[serde(skip_serializing_if = "Option::is_none")]
     not_probed: Option<String>,
+    /// What the upward `.venv` walk examined and where it stopped, e.g.
+    /// `searched /a/b, /a; stopped at /a (.git)`. Python only (R performs no walk), and
+    /// present whether or not the walk won — a *successful-looking* wrong pick is exactly
+    /// the case where "which venv did you consider?" needs answering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    venv_search: Option<String>,
 }
 
 impl EnvEntry {
@@ -636,6 +642,7 @@ fn env_entry(
         version: None,
         error: None,
         not_probed: None,
+        venv_search: resolved.trail.ancestor.as_ref().map(|v| v.summary()),
     };
     if policy == ProbePolicy::Never {
         return EnvEntry {
@@ -1097,6 +1104,12 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                 eprintln!("\nEnvironment (not probed):");
                 for e in &environment {
                     eprintln!("  {}: {} ({})", e.lang, e.path, e.provenance);
+                    // Where the upward `.venv` walk looked and stopped. Without it, a
+                    // resolution that skipped the venv the author can see is named but
+                    // not explained.
+                    if let Some(v) = &e.venv_search {
+                        eprintln!("    .venv search: {v}");
+                    }
                 }
                 eprintln!("run `taliesin doctor` to check these kernels are ready");
             }
@@ -1117,6 +1130,9 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                         format!("{} MISSING", e.kernel_pkg)
                     };
                     eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
+                    if let Some(v) = &e.venv_search {
+                        eprintln!("    .venv search: {v}");
+                    }
                 }
                 eprintln!("run `taliesin doctor` for the full environment audit");
             }
@@ -2510,6 +2526,7 @@ mod tests {
             version: None,
             error: None,
             not_probed: None,
+            venv_search: None,
         }
     }
 

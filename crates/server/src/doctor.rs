@@ -52,6 +52,11 @@ struct Check {
     status: Status,
     detail: String,
     fix: Option<String>,
+    /// For an interpreter line: whether cells in that language will actually execute.
+    /// Deliberately independent of `status` — a bare `PATH` interpreter that works is
+    /// usable (cells execute) yet still earns a ⚠, because nothing in the project chose
+    /// it. `None` on the non-interpreter lines, which say nothing about execution.
+    executes: Option<bool>,
 }
 
 /// The `pip install` / `install.packages` line that installs the missing kernel package into
@@ -71,6 +76,18 @@ fn absent_default_fix(lang: Lang) -> &'static str {
     }
 }
 
+/// The fix when the interpreter *works* but nothing in the project chose it. Names the
+/// in-repo, committable options first — the upward `.venv` walk and a project-dir-relative
+/// `python:` exist precisely so neither of these needs a per-machine symlink or wrapper.
+fn project_env_fix(lang: Lang) -> String {
+    match lang {
+        Lang::Python => "create a .venv at the project or repository root, or set \
+                         `python:` in _site.yml (a relative path resolves against it)"
+            .to_string(),
+        Lang::R => "set `r:` in _site.yml (a relative path resolves against it)".to_string(),
+    }
+}
+
 /// Map a resolved interpreter + its probe to one audit line (pure; the severity model).
 fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
     let name = match lang {
@@ -82,25 +99,51 @@ fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
         Lang::R => "IRkernel",
     };
     let where_ = format!("{} ({})", r.path.display(), r.provenance.label(lang));
+    // Where the upward `.venv` walk looked and where it stopped. Python only (R performs
+    // no walk), and shown on every python line — including the ones that resolved fine —
+    // because "why did it pick that one?" is exactly the question a *successful-looking*
+    // wrong pick raises.
+    let searched = r
+        .trail
+        .ancestor
+        .as_ref()
+        .map(|s| format!("\n.venv search: {}", s.summary()))
+        .unwrap_or_default();
     let ver = p
         .version
         .clone()
         .map(|v| format!("{v}  ·  "))
         .unwrap_or_default();
     if p.runs && p.kernel_pkg_ok {
+        // It works — but if nothing in the project selected it, a green ✓ overstates the
+        // case. `python3 (python3)` is whatever is on `PATH`; it runs cells, it just does
+        // not have the project's packages, and reading it as "ready" is how a build gets
+        // as far as `ModuleNotFoundError` in every cell. Still exit-0 (`overall_ok` fails
+        // only on `Status::Error`) — an unconfigured environment is worth naming, not a
+        // broken one.
+        let chosen = !matches!(r.provenance, Provenance::Default);
         return Check {
             name,
-            status: Status::Ok,
-            detail: format!("{where_}\n{ver}{pkg} present"),
-            fix: None,
+            status: if chosen { Status::Ok } else { Status::Warn },
+            detail: if chosen {
+                format!("{where_}\n{ver}{pkg} present{searched}")
+            } else {
+                format!(
+                    "{where_}\n{ver}{pkg} present, but nothing in this project selected \
+                     this interpreter{searched}"
+                )
+            },
+            fix: (!chosen).then(|| project_env_fix(lang)),
+            executes: Some(true),
         };
     }
     if p.runs {
         return Check {
             name,
             status: Status::Warn,
-            detail: format!("{where_}\n{ver}{pkg} MISSING"),
+            detail: format!("{where_}\n{ver}{pkg} MISSING{searched}"),
             fix: Some(kernel_install_fix(lang, r)),
+            executes: Some(false),
         };
     }
     // Does not run at all.
@@ -113,19 +156,21 @@ fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
         Check {
             name,
             status: Status::Warn,
-            detail: format!("{where_}\n{err}  ·  {name} cells will render as source"),
+            detail: format!("{where_}\n{err}  ·  {name} cells will render as source{searched}"),
             fix: Some(absent_default_fix(lang).to_string()),
+            executes: Some(false),
         }
     } else {
         // A pointed-at interpreter (env / field / .venv) that is broken: a real error.
         Check {
             name,
             status: Status::Error,
-            detail: format!("{where_}\n{err}"),
+            detail: format!("{where_}\n{err}{searched}"),
             fix: Some(format!(
                 "point {} at a real interpreter, or unset it",
                 r.provenance.label(lang)
             )),
+            executes: Some(false),
         }
     }
 }
@@ -159,6 +204,7 @@ fn active_env_check(
         status: Status::Ok,
         detail,
         fix: None,
+        executes: None,
     }
 }
 
@@ -183,11 +229,17 @@ fn paint(text: &str, code: &str) -> String {
 /// A one-line readiness summary derived from the interpreter checks (honest about what will
 /// execute vs render as source).
 fn summary(checks: &[Check]) -> String {
-    let say =
-        |name: &str, lang: &str| match checks.iter().find(|c| c.name == name).map(|c| c.status) {
-            Some(Status::Ok) => format!("{lang} cells will execute"),
-            _ => format!("{lang} cells will render as source"),
-        };
+    // Keyed on `executes`, not on `status`. A working-but-unselected interpreter is a ⚠
+    // yet still runs cells; reading the status here would have the summary contradict the
+    // line directly above it.
+    let say = |name: &str, lang: &str| match checks
+        .iter()
+        .find(|c| c.name == name)
+        .and_then(|c| c.executes)
+    {
+        Some(true) => format!("{lang} cells will execute"),
+        _ => format!("{lang} cells will render as source"),
+    };
     format!("{}; {}.", say("python", "python"), say("r", "R"))
 }
 
@@ -288,12 +340,14 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
                 status: Status::Ok,
                 detail: "_site.yml is valid".to_string(),
                 fix: None,
+                executes: None,
             },
             Some(w) => Check {
                 name: "config",
                 status: Status::Warn,
                 detail: format!("_site.yml: {w}"),
                 fix: Some("fix the YAML in _site.yml".to_string()),
+                executes: None,
             },
         });
     }
@@ -316,14 +370,17 @@ mod tests {
     use std::path::PathBuf;
 
     fn resolved(path: &str, provenance: Provenance) -> Resolved {
-        Resolved {
-            path: PathBuf::from(path),
-            provenance,
-        }
+        Resolved::fixed(PathBuf::from(path), provenance, Lang::Python)
     }
 
     #[test]
-    fn ready_interpreter_is_ok() {
+    fn a_working_bare_path_python_is_not_a_green_check() {
+        // `✓ python  python3 (python3)` was the misleading line: the interpreter runs and
+        // has ipykernel, so it reads as "you are ready" — but nothing in the project
+        // chose it, so it is whatever `PATH` happens to point at and it does not have the
+        // project's packages. A ⚠ says the true thing. It stays exit-0 (`overall_ok`
+        // fails only on `Status::Error`): not having a project venv is a fact worth
+        // naming, not a broken environment.
         let p = Probe {
             runs: true,
             version: Some("Python 3.11.4".into()),
@@ -331,9 +388,64 @@ mod tests {
             error: None,
         };
         let c = interpreter_check(Lang::Python, &resolved("python3", Provenance::Default), &p);
+        assert_eq!(c.status, Status::Warn);
+        assert!(
+            c.fix.is_some(),
+            "it must say how to point at a project environment"
+        );
+        // ...and the readiness summary must still tell the truth: these cells DO execute.
+        assert!(
+            summary(&[c]).contains("python cells will execute"),
+            "a usable interpreter still executes cells, warning or not"
+        );
+    }
+
+    #[test]
+    fn an_interpreter_line_says_where_the_upward_search_stopped() {
+        // Criterion: a wrong pick must be diagnosable without reading source.
+        let root = std::env::temp_dir().join(format!("tali-doctor-{}", std::process::id()));
+        let book = root.join("docs/book");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&book).unwrap();
+        std::fs::write(root.join(".git"), b"").unwrap();
+        let r = crate::interpreter::resolve_python(None, &book);
+        let p = Probe {
+            runs: true,
+            version: None,
+            kernel_pkg_ok: true,
+            error: None,
+        };
+        let c = interpreter_check(Lang::Python, &r, &p);
+        assert!(
+            c.detail.contains("stopped at") && c.detail.contains(&root.display().to_string()),
+            "the line must name where the upward .venv search stopped: {}",
+            c.detail
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Changed with the interpreter-resolution work: this used to assert that a bare
+    /// `python3` (`Provenance::Default`) with ipykernel is a green ✓. That green check is
+    /// the misleading one — see `a_working_bare_path_python_is_not_a_green_check` — so the
+    /// fixture moves to an interpreter the *project* actually selected, which is what
+    /// "ready" was always meant to mean. Everything else it asserts is untouched.
+    #[test]
+    fn a_project_selected_ready_interpreter_is_ok() {
+        let p = Probe {
+            runs: true,
+            version: Some("Python 3.11.4".into()),
+            kernel_pkg_ok: true,
+            error: None,
+        };
+        let c = interpreter_check(
+            Lang::Python,
+            &resolved("/proj/.venv/bin/python", Provenance::Venv),
+            &p,
+        );
         assert_eq!(c.status, Status::Ok);
         assert!(c.detail.contains("ipykernel present"), "{}", c.detail);
         assert!(c.fix.is_none());
+        assert_eq!(c.executes, Some(true));
     }
 
     #[test]
@@ -436,35 +548,42 @@ mod tests {
     /// is the one line most readers act on, and with two checks in the list a lookup that
     /// picks the wrong one still produces a plausible sentence — so the two must disagree
     /// for the assertion to mean anything.
+    ///
+    /// Changed with the interpreter-resolution work: the verdict is now read off
+    /// `executes`, not off `status`. A working-but-unselected interpreter is a ⚠ that
+    /// nonetheless runs cells, so keying on status would make this line contradict the
+    /// interpreter line printed directly above it. The property under test is unchanged
+    /// (each language read off its own check); only the field it reads moved.
     #[test]
     fn the_summary_reads_each_language_off_its_own_check() {
-        let check = |name, status| Check {
+        let check = |name, executes| Check {
             name,
-            status,
+            status: Status::Ok,
             detail: String::new(),
             fix: None,
+            executes,
         };
         assert_eq!(
             summary(&[
-                check("python", Status::Ok),
-                check("r", Status::Error),
-                check("env", Status::Ok),
+                check("python", Some(true)),
+                check("r", Some(false)),
+                check("env", None),
             ]),
             "python cells will execute; R cells will render as source."
         );
         // Swapped, so a summary reading the wrong check cannot pass both halves.
         assert_eq!(
             summary(&[
-                check("python", Status::Error),
-                check("r", Status::Ok),
-                check("env", Status::Ok),
+                check("python", Some(false)),
+                check("r", Some(true)),
+                check("env", None),
             ]),
             "python cells will render as source; R cells will execute."
         );
-        // A warning is not readiness: a present interpreter missing its kernel package
-        // renders as source, and saying otherwise promises execution that will not happen.
+        // An interpreter present but missing its kernel package renders as source, and
+        // saying otherwise promises execution that will not happen.
         assert_eq!(
-            summary(&[check("python", Status::Warn), check("r", Status::Warn)]),
+            summary(&[check("python", Some(false)), check("r", Some(false))]),
             "python cells will render as source; R cells will render as source."
         );
     }
@@ -476,12 +595,14 @@ mod tests {
             status: Status::Ok,
             detail: String::new(),
             fix: None,
+            executes: None,
         };
         let warn = Check {
             name: "r",
             status: Status::Warn,
             detail: String::new(),
             fix: None,
+            executes: None,
         };
         assert!(overall_ok(&[ok, warn]));
         let ok2 = Check {
@@ -489,12 +610,14 @@ mod tests {
             status: Status::Ok,
             detail: String::new(),
             fix: None,
+            executes: None,
         };
         let err = Check {
             name: "python",
             status: Status::Error,
             detail: String::new(),
             fix: None,
+            executes: None,
         };
         assert!(!overall_ok(&[ok2, err]));
     }

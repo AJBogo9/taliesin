@@ -54,6 +54,9 @@ struct BuildArgs<'a> {
     out_dir: Option<&'a str>,
     strict: bool,
     bare: bool,
+    /// `--no-exec`: render code cells as source on purpose. Also the opt-out from the
+    /// "executable cells but no kernel" build failure.
+    no_exec: bool,
     jobs: Option<usize>,
     /// `--format json` emits the build's static-lint diagnostics as `{diagnostics:[...]}`
     /// to stdout (for an agent/CI) instead of only the human log. Default `"human"`.
@@ -63,7 +66,13 @@ struct BuildArgs<'a> {
 /// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
 /// only short alias; it's not in this set (suggestions are between long flags).
 const BUILD_FLAGS: &[&str] = &[
-    "--out", "--jobs", "--strict", "--bare", "--format", "--json",
+    "--out",
+    "--jobs",
+    "--strict",
+    "--bare",
+    "--format",
+    "--json",
+    "--no-exec",
 ];
 
 /// Output-path extensions that name a format Taliesin does not produce (DX11). `build`
@@ -111,6 +120,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
     let mut bare = false;
+    let mut no_exec = false;
     let mut jobs_result: Result<Option<usize>, String> = Ok(None);
     let mut format: &str = "human";
     let mut it = args[2..].iter();
@@ -143,6 +153,11 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             "--strict" => strict = true,
             // `--bare`: zero-`<script>`, zero-CDN, CSS-only-theme single-doc output.
             "--bare" => bare = true,
+            // `--no-exec`: render code cells as source, deliberately. `serve` has accepted
+            // it all along (as sugar for `TALIESIN_NO_EXEC`); `build` had only the env var,
+            // which is a poor thing to make someone reach for now that a missing kernel
+            // *fails* the build. This is that failure's opt-out.
+            "--no-exec" => no_exec = true,
             // An unrecognized `--flag` is a hard error with a did-you-mean, not silently
             // dropped (a typo'd `--stict` would otherwise build without the intended flag).
             s if s.starts_with("--") => {
@@ -176,6 +191,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
         out_dir,
         strict,
         bare,
+        no_exec,
         jobs,
         format,
     })
@@ -195,6 +211,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         out_dir,
         strict,
         bare,
+        no_exec,
         jobs,
         format,
     } = match parse_build_args(args) {
@@ -204,6 +221,14 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`, exactly as on `serve`: one owner
+    // (`taliesin_core::render::no_exec_in_force`) read by both the executor and the
+    // render pass, so the flag and the env var can never mean different things.
+    if no_exec {
+        // SAFETY: set once at CLI startup, before the tokio runtime / kernel threads
+        // spawn, so no other thread is touching the environment.
+        unsafe { std::env::set_var("TALIESIN_NO_EXEC", "1") };
+    }
     let json = format == "json";
     // A directory is a multi-page site project (`_site.yml` + `.tmd` pages);
     // a single `.tmd` keeps the original self-contained-page behaviour.
@@ -239,12 +264,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // `path` as the user typed it is the diagnostic prefix: it round-trips back into their
     // shell and into an editor's "open at line". `stem` stays the freeze key + page title.
     let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode));
-    let (html, problems, diagnostics) = match executed {
+    let (html, problems, diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
             problems,
             diagnostics,
-        })) => (html, problems, diagnostics),
+            kernel_failure,
+        })) => (html, problems, diagnostics, kernel_failure),
         // `--bare` refused (e.g. a slide deck): the message is already user-facing.
         Ok(Ok(BuildResult::Refused(msg))) => {
             log::error(&msg);
@@ -281,7 +307,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
 
     if let Some(dir) = out_dir {
         let wrote = build_dir(&html, base, Path::new(dir), started);
-        return finalize_build(wrote, strict, problems);
+        return finalize_build(wrote, strict, problems, kernel_failure.as_deref());
     }
     let out: PathBuf = out_html
         .map(PathBuf::from)
@@ -299,7 +325,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             if let Some(d) = taliesin_core::script_summary(&html) {
                 log::deck_duration(d.total_secs, d.scripted, d.slides);
             }
-            finalize_build(true, strict, problems)
+            finalize_build(true, strict, problems, kernel_failure.as_deref())
         }
         Err(e) => {
             log::error(&format!("cannot write {}: {e}", out.display()));
@@ -336,8 +362,19 @@ fn elapsed_note(started: std::time::Instant) -> String {
 /// shipped with problems prints a closing tally so the silent degradation is visible
 /// (DX12). `wrote` is false only on a write/create error, which already failed and
 /// reported itself, so neither summary applies.
-fn finalize_build(wrote: bool, strict: bool, problems: usize) -> ExitCode {
+fn finalize_build(
+    wrote: bool,
+    strict: bool,
+    problems: usize,
+    kernel_failure: Option<&str>,
+) -> ExitCode {
     if !wrote {
+        return ExitCode::FAILURE;
+    }
+    // Before `--strict`, because this failure is the more specific one and its message is
+    // the actionable one. A document whose whole value is executed output, shipped with
+    // every cell stripped back to source, is not a build that succeeded.
+    if report_kernel_failure(kernel_failure) {
         return ExitCode::FAILURE;
     }
     if strict && problems > 0 {
@@ -346,6 +383,23 @@ fn finalize_build(wrote: bool, strict: bool, problems: usize) -> ExitCode {
     }
     warn_nonstrict_problems(problems);
     ExitCode::SUCCESS
+}
+
+/// Log the build-fatal "executable cells but no kernel" report, and say whether there was
+/// one. Shared by the single-doc and site build paths so they cannot drift on either the
+/// wording or the decision.
+///
+/// The output is still written before this runs — same shape as `--strict`. What changes
+/// is what gets *reported*: previously a warning and exit 0, which is the one outcome a CI
+/// pipeline reads as "the book built fine".
+fn report_kernel_failure(kernel_failure: Option<&str>) -> bool {
+    match kernel_failure {
+        Some(msg) => {
+            log::error(msg);
+            true
+        }
+        None => false,
+    }
 }
 
 /// Log the `--strict` failure summary (shared by the single-doc and site build paths).
@@ -517,6 +571,10 @@ enum BuildResult {
         /// The located diagnostics, structured, for `--format json`. Same set the human
         /// log emits, in the same order.
         diagnostics: Vec<crate::check::Diagnostic>,
+        /// Set when the document has executable cells whose kernel could not start: the
+        /// full "here is everything I searched" report. The page is still written (as
+        /// under `--strict`), then the build exits non-zero with this message.
+        kernel_failure: Option<String>,
     },
     Refused(String),
 }
@@ -661,6 +719,10 @@ fn build_page_executing(
             crate::interpreter::resolve_r(None, base),
         );
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
+        // Executable cells that could not execute: fatal, not a warning (see
+        // `kernel_failure_report`). Carried out rather than reported here so the page is
+        // still written first — same shape as `--strict`, which writes and then fails.
+        let kernel_failure = ex.kernel_failure_report();
         // No re-log of `ex.diagnostic()` here: the executor already announced this exact
         // message at the point of failure, so repeating it printed the same fact twice.
         // The dev-menu channel (`serve`/`serve_site`) still reads `diagnostic()`, which is
@@ -676,6 +738,7 @@ fn build_page_executing(
             html: taliesin_core::render_doc_to_page(&doc, stem, mode),
             problems,
             diagnostics,
+            kernel_failure,
         }
     }))
 }
@@ -1045,7 +1108,11 @@ struct PageOutcome {
     /// The same findings, structured, for `--format json` — in the same order as `warnings`.
     diagnostics: Vec<crate::check::Diagnostic>,
     problems: usize,
-    kernel_unavailable: bool,
+    /// Set when this page has executable cells whose kernel could not start: the full
+    /// "here is everything I searched" report. Folded across the build into one fatal
+    /// error (the interpreter cannot differ between pages of one build, so the first is
+    /// the whole story).
+    kernel_failure: Option<String>,
     written: bool,
     /// The conditional `_assets/` blobs this page's HTML links, folded across the build so
     /// only the linked ones are written (item 137).
@@ -1080,7 +1147,7 @@ async fn build_one_page(
             warnings,
             diagnostics,
             problems: 0,
-            kernel_unavailable: false,
+            kernel_failure: None,
             written: false,
             used: AssetUse::default(),
         };
@@ -1136,7 +1203,7 @@ async fn build_one_page(
         crate::interpreter::resolve_r(site.config.r.as_deref(), root),
     );
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
-    let kernel_unavailable = exec.diagnostic().is_some();
+    let kernel_failure = exec.kernel_failure_report();
     // A crashed cell bakes its traceback into the page; collect a located line + count it
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
     for b in &doc.blocks {
@@ -1210,7 +1277,7 @@ async fn build_one_page(
         warnings,
         diagnostics,
         problems,
-        kernel_unavailable,
+        kernel_failure,
         written,
         used,
     }
@@ -1696,7 +1763,10 @@ async fn build_site_async(
         format!("building with up to {build_cap} parallel page(s)")
     });
     let mut pages = 0usize;
-    let mut kernel_unavailable = false;
+    // The first page whose kernel could not start. One report for the whole run: the
+    // interpreter and its error cannot differ between pages of a single build, so
+    // repeating it per page would be noise.
+    let mut kernel_failure: Option<String> = None;
     // `--strict` problem tally across the whole site: a malformed `_site.yml`, per-page
     // located warnings, broken cross-refs, crashed cells, and page-task panics (each
     // already logged where it occurs).
@@ -1773,7 +1843,7 @@ async fn build_site_async(
         }
         diagnostics.extend(outcome.diagnostics);
         problems += outcome.problems;
-        kernel_unavailable |= outcome.kernel_unavailable;
+        kernel_failure = kernel_failure.or(outcome.kernel_failure);
         used.merge(outcome.used);
         if outcome.written {
             pages += 1;
@@ -1845,7 +1915,7 @@ async fn build_site_async(
         problems += crate::check::blocking(&doc.warnings)
             + crate::check::blocking(&deck_statics)
             + crate::check::blocking(&deck_xrefs);
-        kernel_unavailable |= ex.diagnostic().is_some();
+        kernel_failure = kernel_failure.or_else(|| ex.kernel_failure_report());
         problems += report_cell_errors(&doc.blocks, &deck.url);
         // Give a shared deck link the same rich social treatment a page gets (a deck is
         // built off-`Page` via the context-free template, so it emits no OG/Twitter meta
@@ -1930,12 +2000,6 @@ async fn build_site_async(
         }
     }
 
-    if kernel_unavailable {
-        log::warn(
-            "kernel unavailable; code cells were emitted as source \
-             (set TALIESIN_PYTHON to a python with ipykernel)",
-        );
-    }
     // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it via
     // window.TALIESIN_SEARCH_URL rather than inlining it). Written as a `search-index.js`
     // script that assigns window.TALIESIN_SEARCH_INDEX (not a raw `.json`): the client loads
@@ -2215,14 +2279,21 @@ async fn build_site_async(
     // fails the build after writing it, so CI catches a broken site. Without `--strict`
     // the site still ships, but a closing tally (DX12) makes the shipped problems visible
     // rather than a wordless green exit after pages of scrolled-past warnings.
+    // A site with executable cells and no usable kernel fails outright, ahead of the
+    // `--strict` tally and regardless of it: every cell stripped back to source is not a
+    // successful build of a book whose value is its executed output. `--no-exec` is the
+    // way to ask for source-only rendering on purpose.
+    let kernel_fail = report_kernel_failure(kernel_failure.as_deref());
     let strict_fail = strict && problems > 0;
-    if strict_fail {
+    if kernel_fail {
+        // The kernel error is the actionable one; don't bury it under a second tally.
+    } else if strict_fail {
         warn_strict(problems);
     } else {
         warn_nonstrict_problems(problems);
     }
     SiteBuildOutcome {
-        ok: !strict_fail,
+        ok: !strict_fail && !kernel_fail,
         diagnostics,
     }
 }
