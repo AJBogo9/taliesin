@@ -133,8 +133,80 @@ pub(crate) fn insert_edit(
     match kind {
         InsertKind::Image => image_paste(doc, payload),
         InsertKind::HtmlTable | InsertKind::TsvTable => table_paste(kind, payload),
+        InsertKind::Bibtex => bibtex_paste(doc, text, payload),
         _ => todo!("later tasks"),
     }
+}
+
+/// The citation key of a pasted BibTeX entry: the identifier between `@type{` and the first
+/// comma or newline.
+///
+/// Hand-scanned rather than parsed with [`taliesin_core::cite::parse_bib`], because that returns
+/// an empty bibliography for malformed input and this needs to tell "not a BibTeX entry" apart
+/// from "an entry with no fields".
+fn bibtex_key(entry: &str) -> Option<String> {
+    let at = entry.find('@')?;
+    let rest = &entry[at + 1..];
+    let brace = rest.find('{')?;
+    // The `@type` must be a bare word: `@ article{` and `@{` are not entries.
+    let kind = rest[..brace].trim();
+    if kind.is_empty() || !kind.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return None;
+    }
+    let key: String = rest[brace + 1..]
+        .chars()
+        .take_while(|c| *c != ',' && *c != '\n' && *c != '}')
+        .collect();
+    let key = key.trim();
+    if key.is_empty() || key.chars().any(char::is_whitespace) {
+        return None;
+    }
+    Some(key.to_owned())
+}
+
+/// A pasted BibTeX entry: cite it, and append it to the document's `.bib` when it is new.
+fn bibtex_paste(doc: &Path, text: &str, entry: &str) -> Result<InsertEditResult, String> {
+    let key = bibtex_key(entry).ok_or("that does not look like a BibTeX entry")?;
+    let cite = InsertEditResult {
+        text: format!("[@{key}]"),
+        is_snippet: false,
+        write_file: None,
+        append: None,
+    };
+
+    // The document's own `bibliography:`, read by the same scanner go-to-definition uses on a
+    // citation, so the paste lands in the file the author would be taken to.
+    let dir = doc.parent().ok_or("the document has no directory")?;
+    let Some(rel) = crate::lsp_nav::frontmatter_bib_paths(text)
+        .into_iter()
+        .next()
+    else {
+        // No bibliography at all. Cite it and stop: creating the `.bib`, editing the front
+        // matter and pasting is three coupled writes for the least common case, and
+        // `citations_without_bibliography` already reports the gap.
+        return Ok(cite);
+    };
+    let bib = dir.join(&rel);
+    let existing = std::fs::read_to_string(&bib).unwrap_or_default();
+    if taliesin_core::cite::parse_bib(&existing).contains(&key) {
+        // Appending a key the file already has would make this gesture trip the author's own
+        // duplicate-key lint (`parse_bib_warned`), so cite the entry that is already there.
+        return Ok(cite);
+    }
+    // A file not ending in a newline would otherwise glue two entries onto one line.
+    let lead = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let trimmed = entry.trim_end();
+    Ok(InsertEditResult {
+        append: Some(AppendEdit {
+            path: bib.to_string_lossy().into_owned(),
+            text: format!("{lead}{trimmed}\n"),
+        }),
+        ..cite
+    })
 }
 
 /// Rows of cells from tab-separated clipboard text.
@@ -442,6 +514,111 @@ mod tests {
             "the literal entity survives: {}",
             r.text
         );
+    }
+
+    #[test]
+    fn a_pasted_bibtex_entry_appends_to_the_bib_and_inserts_the_key() {
+        let tmp = TmpDir::new("bib");
+        let doc = tmp.path().join("bayes.tmd");
+        let text = "---\nbibliography: refs.bib\n---\n\nBody.\n";
+        std::fs::write(&doc, text).unwrap();
+        std::fs::write(
+            tmp.path().join("refs.bib"),
+            "@book{knuth1984,\n  title = {TeX},\n}\n",
+        )
+        .unwrap();
+
+        let entry = "@article{bishop2006,\n  title = {Pattern Recognition},\n  year = {2006},\n}";
+        let r = insert_edit(&doc, text, InsertKind::Bibtex, entry).unwrap();
+
+        assert_eq!(r.text, "[@bishop2006]");
+        assert!(!r.is_snippet);
+        let append = r.append.expect("a new entry is appended to the .bib");
+        assert!(append.path.ends_with("refs.bib"), "{}", append.path);
+        assert!(append.text.contains("bishop2006"), "{}", append.text);
+        assert!(append.text.ends_with('\n'), "the append ends in a newline");
+    }
+
+    #[test]
+    fn an_append_to_a_bib_with_no_trailing_newline_does_not_glue_two_entries() {
+        let tmp = TmpDir::new("bibglue");
+        let doc = tmp.path().join("bayes.tmd");
+        let text = "---\nbibliography: refs.bib\n---\n\nBody.\n";
+        std::fs::write(&doc, text).unwrap();
+        // No trailing newline, which is what an editor that trims final newlines leaves.
+        std::fs::write(
+            tmp.path().join("refs.bib"),
+            "@book{knuth1984, title = {TeX}}",
+        )
+        .unwrap();
+
+        let r = insert_edit(
+            &doc,
+            text,
+            InsertKind::Bibtex,
+            "@article{ab2020, title={X}}",
+        )
+        .unwrap();
+
+        let append = r.append.expect("appended");
+        assert!(
+            append.text.starts_with('\n'),
+            "a leading newline separates the entries: {:?}",
+            append.text
+        );
+    }
+
+    #[test]
+    fn an_entry_already_in_the_bib_is_cited_but_not_appended_twice() {
+        let tmp = TmpDir::new("bibdup");
+        let doc = tmp.path().join("bayes.tmd");
+        let text = "---\nbibliography: refs.bib\n---\n\nBody.\n";
+        std::fs::write(&doc, text).unwrap();
+        std::fs::write(
+            tmp.path().join("refs.bib"),
+            "@book{bishop2006,\n  title = {PR},\n}\n",
+        )
+        .unwrap();
+
+        let entry = "@article{bishop2006,\n  title = {Pattern Recognition},\n}";
+        let r = insert_edit(&doc, text, InsertKind::Bibtex, entry).unwrap();
+
+        // parse_bib_warned lints duplicate keys, so appending one would make this gesture trip
+        // the author's own diagnostic.
+        assert_eq!(r.text, "[@bishop2006]");
+        assert_eq!(r.append, None, "no second copy of the key");
+    }
+
+    #[test]
+    fn a_document_with_no_bibliography_still_gets_the_citation() {
+        let tmp = TmpDir::new("nobib");
+        let doc = tmp.path().join("bayes.tmd");
+        let text = "# Bayes\n\nBody.\n";
+        std::fs::write(&doc, text).unwrap();
+
+        let r = insert_edit(&doc, text, InsertKind::Bibtex, "@book{ab2020, title={X}}").unwrap();
+
+        // Creating the .bib, editing front matter and pasting is three coupled writes for the
+        // least common case. `citations_without_bibliography` already reports the gap.
+        assert_eq!(r.text, "[@ab2020]");
+        assert_eq!(r.append, None);
+    }
+
+    #[test]
+    fn text_that_is_not_a_bibtex_entry_is_refused() {
+        let tmp = TmpDir::new("notbib");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        for junk in [
+            "@ not an entry",     // a space where the type belongs
+            "just prose",         // no @ at all
+            "@article{}",         // no key
+            "@article{a b, x=1}", // a key with a space in it
+        ] {
+            let err = insert_edit(&doc, "", InsertKind::Bibtex, junk).unwrap_err();
+            assert!(err.contains("BibTeX"), "for {junk:?}: {err}");
+        }
     }
 
     #[test]

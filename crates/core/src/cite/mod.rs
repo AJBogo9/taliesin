@@ -80,6 +80,15 @@ impl Bibliography {
         self.entries.keys().map(String::as_str)
     }
 
+    /// Whether this bibliography already defines `key`.
+    ///
+    /// Public because `taliesin lsp` needs it when the author pastes a BibTeX entry: appending a
+    /// key the file already has would make the gesture trip [`parse_bib_warned`]'s own
+    /// duplicate-key lint, so the paste cites the existing entry instead.
+    pub fn contains(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+
     /// Lay a page's own bibliography over `self` (a project-wide layer read from
     /// `_site.yml`): a key defined in both resolves to the **page's** entry, so a post can
     /// correct or extend a shared reference without editing the shared file.
