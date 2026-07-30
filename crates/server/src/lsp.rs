@@ -33,6 +33,12 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         )),
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
+        // Ctrl+T across the whole book. `documentSymbol` is per-file, which for a 25-chapter
+        // project means the author has to already know which file holds the heading they
+        // want. Answered by a project walk, not an index: the request fires on a gesture, not
+        // on every keystroke, so re-validating with one `stat` per page is cheaper than the
+        // file watching an index would need.
+        workspace_symbol_provider: Some(OneOf::Left(true)),
         // Range-scoped, so only the visible lines are scanned and there is no full-document
         // tokenizer behind this.
         inlay_hint_provider: Some(OneOf::Left(true)),
@@ -438,6 +444,7 @@ fn handle_request(
         CodeActionRequest, Completion, DocumentHighlightRequest, DocumentLinkRequest,
         DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
         InlayHintRequest, PrepareRenameRequest, Rename, Request as _, SelectionRangeRequest,
+        WorkspaceSymbolRequest,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -550,6 +557,21 @@ fn handle_request(
                 docs,
                 &params.text_document.uri,
             ))?),
+            error: None,
+        }
+    } else if req.method == WorkspaceSymbolRequest::METHOD {
+        let params: lsp_types::WorkspaceSymbolParams = serde_json::from_value(req.params)?;
+        // The request names no file, so the project is discovered from any open document:
+        // every open `.tmd` in one window belongs to the same project in practice, and the
+        // scan is keyed on the project root either way. An empty editor answers an empty
+        // list, which is correct rather than an error.
+        let anchor = docs.keys().find_map(|u| u.to_file_path().ok());
+        let found = anchor
+            .map(|p| workspace_symbols(project, &p, &params.query))
+            .unwrap_or_default();
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(found)?),
             error: None,
         }
     } else if req.method == CELL_REGIONS_METHOD {
@@ -877,6 +899,77 @@ fn resolve_definition(
         Target::Math { .. } | Target::FrontmatterKey { .. } | Target::None => return None,
     };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
+}
+
+/// Every heading and cross-reference anchor in `page`'s project whose name contains `query`,
+/// case-insensitively. An empty query returns everything, because that is the state Ctrl+T
+/// opens in and an empty list there reads as "this project has no symbols".
+///
+/// Ranking is deliberately absent: VS Code applies its own fuzzy sort to whatever comes back,
+/// and a second ranking here would fight it. Outside a project the answer is an empty list,
+/// not an error, which is the honest answer for a standalone document.
+fn workspace_symbols(
+    project: &mut crate::lsp_project::ProjectCache,
+    page: &std::path::Path,
+    query: &str,
+) -> Vec<lsp_types::SymbolInformation> {
+    use lsp_types::{Location, Position, Range, SymbolKind, Url};
+    let needle = query.to_lowercase();
+    let Some(scan) = project.get(page) else {
+        return Vec::new();
+    };
+    // No empty-query special case is needed: `contains("")` is true for every string, so an
+    // empty Ctrl+T query already returns everything. An explicit `needle.is_empty() ||` here
+    // was redundant, and a mutation run proved it by surviving its own deletion.
+    let matches = |name: &str| name.to_lowercase().contains(&needle);
+    let at = |path: &std::path::Path, line: u32| {
+        Url::from_file_path(path).ok().map(|uri| {
+            Location::new(
+                uri,
+                Range::new(Position::new(line, 0), Position::new(line, 0)),
+            )
+        })
+    };
+
+    let mut out = Vec::new();
+    for h in &scan.headings {
+        if matches(&h.text)
+            && let Some(location) = at(&h.path, h.line)
+        {
+            out.push(symbol(h.text.clone(), SymbolKind::MODULE, location, None));
+        }
+    }
+    for a in &scan.anchors {
+        if matches(&a.id)
+            && let Some(location) = at(&a.path, a.line)
+        {
+            // The heading an anchor sits on, when it has one: `fig-scree` alone says nothing
+            // about which section it belongs to.
+            let container = (!a.title.is_empty()).then(|| a.title.clone());
+            out.push(symbol(a.id.clone(), SymbolKind::KEY, location, container));
+        }
+    }
+    out
+}
+
+/// `SymbolInformation` is deprecated in `lsp-types` in favour of `WorkspaceSymbol`, but the
+/// struct literal still has to be spelled out and its deprecated field set. Kept in one helper
+/// so the `#[allow]` sits in exactly one place instead of at every construction site.
+#[allow(deprecated)]
+fn symbol(
+    name: String,
+    kind: lsp_types::SymbolKind,
+    location: lsp_types::Location,
+    container_name: Option<String>,
+) -> lsp_types::SymbolInformation {
+    lsp_types::SymbolInformation {
+        name,
+        kind,
+        tags: None,
+        deprecated: None,
+        location,
+        container_name,
+    }
 }
 
 /// The custom request a client calls to learn where a document's code cells are, so it can
@@ -2146,6 +2239,104 @@ mod tests {
         let mut docs = std::collections::HashMap::new();
         docs.insert(uri.clone(), here_text.to_string());
         (root, uri, docs)
+    }
+
+    /// A project root with the given `(relative path, source)` pages, for the workspace-symbol
+    /// tests. Returns the root.
+    fn symbol_fixture(name: &str, pages: &[(&str, &str)]) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("tali-lsp-wsym-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        for (rel, src) in pages {
+            let p = root.join(rel);
+            if let Some(parent) = p.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(p, src).unwrap();
+        }
+        root
+    }
+
+    #[test]
+    fn workspace_symbols_reach_headings_and_anchors_on_every_page() {
+        let root = symbol_fixture(
+            "reach",
+            &[
+                ("index.tmd", "# Introduction\n"),
+                ("two.tmd", "# Scree Plots\n\n![p](i.png){#fig-scree}\n"),
+            ],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+
+        let hits = workspace_symbols(&mut project, &root.join("index.tmd"), "scree");
+        let names: Vec<&str> = hits.iter().map(|s| s.name.as_str()).collect();
+        assert!(
+            names.contains(&"Scree Plots"),
+            "heading on another page: {names:?}"
+        );
+        assert!(
+            names.contains(&"fig-scree"),
+            "anchor on another page: {names:?}"
+        );
+        assert!(
+            !names.contains(&"Introduction"),
+            "non-matching symbol leaked in: {names:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_symbol_matching_ignores_case() {
+        let root = symbol_fixture("case", &[("index.tmd", "# Introduction\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert_eq!(
+            workspace_symbols(&mut project, &root.join("index.tmd"), "INTRO").len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_empty_query_returns_every_symbol_rather_than_none() {
+        // VS Code opens Ctrl+T with an empty query and expects a browsable list, not silence.
+        let root = symbol_fixture("empty", &[("index.tmd", "# A\n\n## B\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert_eq!(
+            workspace_symbols(&mut project, &root.join("index.tmd"), "").len(),
+            2
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_workspace_symbol_points_at_the_line_that_defines_it() {
+        // A location every row shares would make the list navigable-looking and useless.
+        let root = symbol_fixture("locate", &[("index.tmd", "# A\n\n## Target\n")]);
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let hits = workspace_symbols(&mut project, &root.join("index.tmd"), "Target");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].location.range.start.line, 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn workspace_symbols_outside_a_project_are_empty_rather_than_an_error() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-wsym-solo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let solo = dir.join("solo.tmd");
+        std::fs::write(&solo, "# Solo\n").unwrap();
+        let mut project = crate::lsp_project::ProjectCache::new();
+        assert!(workspace_symbols(&mut project, &solo, "solo").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_capabilities_advertise_workspace_symbols() {
+        let caps = serde_json::to_value(server_capabilities()).unwrap();
+        assert_eq!(caps["workspaceSymbolProvider"], true);
     }
 
     #[test]
