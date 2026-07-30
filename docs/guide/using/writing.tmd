@@ -156,6 +156,36 @@ for spine in ("top", "right"):
 plt.show()
 ```
 
+### What an image gets without asking
+
+Point at a `.png`, `.jpg` or `.gif` and the rest is automatic. There is nothing to
+configure and nothing to pre-process.
+
+**Its box is reserved before it loads.** Every local raster image is emitted with the
+intrinsic `width` and `height` read from the file itself, so the prose below it never
+jumps as the image arrives. This happens in the preview too, which is the point: a
+preview that does not shift the way the built page shifts is not previewing it.
+
+**The build derives smaller copies.** `taliesin build` transcodes each image to AVIF at
+up to three widths and offers them through a `<picture>`, keeping your original file as
+the fallback for a browser that cannot read AVIF. On the images in this repository that
+runs about **7% of the original PNG** — a 294 KB screenshot ships as 22 KB. Nothing is
+generated above the source's own width, because upscaling invents pixels the codec then
+has to store: re-encoding a 637-pixel-wide file at an 800-pixel rung measured *larger*
+than the original.
+
+The encodes are cached in `_freeze/` under a hash of the source **bytes**, so only a
+genuinely changed image is re-encoded. A second build of the same page reuses all of
+them, which is the difference between a 47-second build and a 9-second one.
+
+**The first image stays eager.** Later images get `loading="lazy"`, but the first one on
+the page does not: it is the most likely largest-contentful-paint element, and deferring
+it would delay the very thing lazy-loading is meant to help.
+
+Two deliberate exclusions. An image you have already shipped as `.webp` or `.avif` is
+left exactly as you wrote it — that decision is yours and it has been made. An `.svg` is
+left alone too: it has no intrinsic pixel size to state and no raster to transcode.
+
 ## Callouts
 
 Fenced divs become callouts, layout grids, or generic containers.

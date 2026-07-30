@@ -165,8 +165,8 @@ enough to start.**
   **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
   deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
   take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
-  2026-07-29 and four more (165, 166, 162, 161) on 2026-07-30, so the top of the queue is now
-  **169 (image optimization)**, with 180 above it needing only the author's ruling.
+  2026-07-29 and five more (165, 166, 162, 161, 169) on 2026-07-30, so the top of the queue is
+  now **159 (print/PDF)**, with 180 above it needing only the author's ruling.
 - **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
   line in the demand-driven tail.
 - **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
@@ -269,11 +269,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      decide: keep as is, change the `⟨…⟩` delimiter, or narrow which of the three hint kinds are
      on by default. **This is a minimal-config question** (perfect the default rather than add a
      knob), so the answer is a better default, not a setting.
-
-169. **Image optimization.** (Large.) WebP/AVIF transcode + responsive `srcset` + lazy-load
-     behind a content-hashed asset cache. Parked as "deferred until posts get image-heavy";
-     **author flagged it publish-critical on 2026-07-29.** Split from `image-lightbox`, which
-     shipped. Watch the payload and the build-time cost.
 
 159. **Print/PDF track.** (Large. **The deferral is lifted: the author warmed to it 2026-07-29.**
      [ROADMAP.md](ROADMAP.md) Pillar IV / Wave 5 is the frame, and
@@ -747,6 +742,35 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-07-30 image optimization** (169), branch `image-optimization-2026-07-30`, against
+  [2026-07-30-image-optimization-design.md](../docs/superpowers/specs/2026-07-30-image-optimization-design.md).
+  Core annotates every local raster `<img>` with its intrinsic size + a loading policy; the
+  build derives AVIF rungs behind a `_freeze/img/` cache and wraps the byte-identical `<img>`
+  in a `<picture>`. Measured 7.3% of the original PNG; a warm rebuild is 47 s → 9 s.
+  **Do not re-file the WebP half.** Five things a later session should carry:
+  - **"WebP/AVIF" was not a choice of two.** `image-webp` encodes **lossless only** (its own
+    README), and lossy WebP means vendored C. AVIF is the only pure-Rust lossy encoder, and
+    it beat WebP q80 on three of four real corpus images. **The item's own title was the
+    least reliable thing in it.**
+  - **Never depend on `ravif` directly**: it enables rav1e's `asm` feature, which hard-fails
+    with "NASM build failed" and would break `cargo install` + the macOS release runners.
+    `image`'s own `avif` feature configures rav1e without asm — a cold release build of it is
+    **21.8 s at `-j4`**, not the minutes the "rav1e is enormous" assumption predicted. Two
+    cost assumptions were wrong in opposite directions here; measure both.
+  - **`sweep_stale` deletes every output file not in `keep`**, so the derivatives were
+    written and deleted by the same build, with the entire `image_opt` unit suite green
+    because none of it runs the sweep. The keep entries must also be **normalized**, since
+    `keep`'s own come from `strip_prefix` and a listing card's `src` really does carry `../`.
+    `image_derivatives_survive_the_sweep.rs` is the only test that fails when this breaks.
+  - **`base.css`'s bare `img { max-width: 100% }` had no `height: auto`**, so adding intrinsic
+    `width`/`height` attributes distorted every image narrower than its intrinsic size.
+    Browser-measured at a 500 px viewport: **15.4% aspect skew before, 0.05% after.** A CSS
+    prerequisite found by reading, and only *proved* by patching the inlined sheet in a built
+    page — `height: revert` does NOT reproduce it, because it rolls back to a UA `auto`.
+  - **A surviving mutant was a finding about the test, again** (fourth consecutive batch).
+    The `<img`-prefix guard was pinned with `<svg><image href=…>`, but SVG spells it `href`,
+    so the `src` lookup already declined and the test passed with the guard deleted. Re-pinned
+    with `<img-compare src=…>`, the case the guard exists for. 7/7 mutants killed after that.
 - **2026-07-30 editor authoring gestures** (`FEATURE-IDEAS.md` Session 3 ideas 73, 84, 82), branch
   `editor-authoring-gestures-2026-07-30`, against
   [2026-07-30-editor-authoring-gestures-design.md](../docs/superpowers/specs/2026-07-30-editor-authoring-gestures-design.md).
