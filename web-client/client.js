@@ -1511,7 +1511,15 @@
       if (m) { line = m[1]; col = m[2]; }
     }
     if (inWebview) {
-      window.parent.postMessage({ type: "tali-goto", source_file: src, sourcepos: line + ":" + col }, "*");
+      // `src` is SITE-ROOT-relative here (this branch is the `data-tali-src` one), so the
+      // anchor is `doc.root` and NOT the page's directory. Until item 150 the companion only
+      // ever previewed single files, where `root` is unset and this branch was unreachable;
+      // a site preview reaches it on every navbar, footer, sidebar and card Ctrl-click, and
+      // without the anchor the host resolved `_site.yml` inside whatever chapter was showing.
+      window.parent.postMessage(
+        { type: "tali-goto", source_file: src, sourcepos: line + ":" + col, base_dir: doc.root, doc_path: doc.path },
+        "*"
+      );
       return;
     }
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
@@ -1656,9 +1664,37 @@
     }
   };
 
+  // Item 150 §4. Tell the host which page this is — on load, and therefore after every
+  // cross-page navigation the reader makes inside the preview. The host cannot read this
+  // window's location across origins, and anchoring the cursor key on the document the
+  // preview was OPENED for is the mirror of the click-to-source staleness bug: once the
+  // preview has moved on, the key matches nothing on screen and the mark lands nowhere.
+  if (inWebview && window.TALIESIN_DOC) {
+    window.parent.postMessage(
+      {
+        type: "tali-page",
+        doc_path: window.TALIESIN_DOC.path,
+        base_dir: window.TALIESIN_DOC.baseDir,
+      },
+      "*"
+    );
+  }
+
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m && m.type === "tali-cursor") highlightAtLine(m.file, m.line, !!m.reveal);
+    if (!m) return;
+    if (m.type === "tali-cursor") highlightAtLine(m.file, m.line, !!m.reveal);
+    // Selecting a page has to be a message rather than the host setting our location: a
+    // webview panel and its iframe are different origins. Resolved against this origin and
+    // refused if it leaves it, so the preview can only ever navigate within itself.
+    if (m.type === "tali-navigate" && typeof m.url === "string") {
+      try {
+        const next = new URL(m.url, window.location.origin + "/");
+        if (next.origin === window.location.origin && next.href !== window.location.href) {
+          window.location.href = next.href;
+        }
+      } catch (err) {}
+    }
   });
 
   // `--host` puts the session token in the first URL (`?t=…`); the server has

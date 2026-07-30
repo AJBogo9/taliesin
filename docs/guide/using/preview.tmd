@@ -29,6 +29,15 @@ on Mac) any block to open its exact source line in your editor** (including acro
 add cursor sync without forking anything. The in-repo **VS Code companion**
 (`editor/vscode/`) is exactly that host.
 
+**A chapter of a book previews as the book.** Open the preview on any page that lives
+under a `_site.yml` and the companion serves the whole project and opens it at that
+page's URL, so you get the nav, the breadcrumb and working cross-page links instead of an
+orphan page. One server serves every chapter: opening a second one reveals the preview you
+already have, moved to that chapter. Moving your cursor into another chapter's file moves
+the preview to it too, and Ctrl-clicking a block resolves against the page you are looking
+at, not the one you opened. Nothing to configure — whether a document is in a project is a
+fact about the directory it sits in.
+
 The two directions have names, and they behave differently on purpose. **Inverse search**
 (preview → editor) is the Ctrl-click above. **Forward search** (editor → preview) is split:
 moving your cursor *marks* the matching block in the preview and deliberately does **not**

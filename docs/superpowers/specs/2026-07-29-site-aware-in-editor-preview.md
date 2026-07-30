@@ -1,9 +1,22 @@
 # Phase A2 — site-aware in-editor preview (backlog item 150)
 
-**Status: partly implemented 2026-07-29.** The staleness half — the part the backlog item
-named as "the risk" — is **built, tested and committed**. The wiring half (spawn the project,
-open the page's URL) is **specified here and not built**. Read "What is done" before writing
-code, so the settled parts are not re-derived.
+**Status: DONE 2026-07-30.** The staleness half landed 2026-07-29; the wiring half (§1-4
+below) landed 2026-07-30 and is kept here as the record of *why*. Three things came out
+differently from the plan and are worth carrying forward:
+
+- **§4's navigation is on the passive cursor path too**, not only on the explicit reveal.
+  That does not reopen the yank the reveal/mark split exists to prevent: a cursor in the page
+  already on screen is `cursorTarget`'s first branch and never navigates, so "scroll to
+  compare two figures, then type one character" still leaves the preview alone. Only a cursor
+  in a page the preview is *not showing* moves it.
+- **A fifth thing needed fixing, and it was not in the spec:** `data-tali-src` (nav, footer,
+  sidebar, listing cards) is **site-root-relative**, and the webview branch that handles it
+  sent no anchor at all. It was unreachable while the companion only previewed single files —
+  `doc.root` is unset there — and §1 makes it reachable on every chrome Ctrl-click. Verified
+  on a nested chapter, where the two anchors differ: with it, `docs/guide/_site.yml`; without
+  it, `docs/guide/using/_site.yml`, which does not exist.
+- **The panel is now titled for the project**, not the chapter it was opened at, because it
+  no longer stays on that chapter.
 
 ## The problem
 

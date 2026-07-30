@@ -10,6 +10,9 @@ import {
   previewTarget,
   ACCEPTED_SOURCE_EXTS,
   projectRootFor,
+  sitePages,
+  pageUrlFor,
+  cursorTarget,
 } from "../paths";
 
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
@@ -127,6 +130,57 @@ test("projectRootFor walks up to the nearest _site.yml and never to .git", () =>
   assert.strictEqual(projectRootFor("/post.tmd", exists), null);
 });
 
+// Item 150 §2. The `.tmd`→`.html` mapping is Rust's: book chapter numbering, `index`
+// handling and output-dir conventions all live there, and a second implementation in TS is
+// exactly what the LSP rewrite existed to delete. So the companion asks `taliesin map` and
+// looks its own document up in the answer.
+test("sitePages reads `rel`/`url` out of a map document", () => {
+  const pages = sitePages(
+    JSON.stringify({
+      title: "Guide",
+      is_book: true,
+      pages: [
+        { rel: "index.tmd", url: "index.html", words: 531 },
+        { rel: "using/preview.tmd", url: "using/preview.html" },
+      ],
+    })
+  );
+  assert.deepEqual(pages, [
+    { rel: "index.tmd", url: "index.html" },
+    { rel: "using/preview.tmd", url: "using/preview.html" },
+  ]);
+});
+
+test("sitePages is null for anything it cannot use, so the caller can fall back", () => {
+  // `map` can fail outright, print a diagnostic, or answer about something that is not a
+  // project. None of those may lose the preview — the fallback is today's single-file one.
+  assert.strictEqual(sitePages(""), null);
+  assert.strictEqual(sitePages("taliesin: not a project"), null);
+  assert.strictEqual(sitePages("{}"), null);
+  assert.strictEqual(sitePages(JSON.stringify({ pages: "nope" })), null);
+  // An entry without both halves is not a page this can open; it is dropped, not fatal.
+  assert.deepEqual(sitePages(JSON.stringify({ pages: [{ rel: "a.tmd" }] })), []);
+});
+
+test("pageUrlFor finds the URL of a document inside the project", () => {
+  const pages = [
+    { rel: "index.tmd", url: "index.html" },
+    { rel: "using/preview.tmd", url: "using/preview.html" },
+  ];
+  assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/guide/using/preview.tmd"), "using/preview.html");
+  assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/guide/index.tmd"), "index.html");
+});
+
+test("pageUrlFor is null for a document the project does not publish", () => {
+  // Three real shapes, one answer: a DRAFT, an `{{< embed >}}`-referenced deck (deliberately
+  // kept out of `site.pages`), and a file that is not under the root at all. A page with no
+  // URL has nothing to open, so the caller falls back to a single-file preview.
+  const pages = [{ rel: "index.tmd", url: "index.html" }];
+  assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/guide/drafts/wip.tmd"), null);
+  assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/guide/demo/tour.tmd"), null);
+  assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/other/loose.tmd"), null);
+});
+
 test("projectRootFor picks the NEAREST _site.yml, not the outermost", () => {
   // The docs books are siblings under a container precisely because a nested project must
   // win: `docs/guide` is its own project even if an ancestor ever gained a `_site.yml`.
@@ -134,4 +188,58 @@ test("projectRootFor picks the NEAREST _site.yml, not the outermost", () => {
   const exists = (p: string) => present.has(p);
   assert.strictEqual(projectRootFor("/repo/docs/guide/using/x.tmd", exists), "/repo/docs/guide");
   assert.strictEqual(projectRootFor("/repo/other/y.tmd", exists), "/repo");
+});
+
+// Item 150 §4, the mirror of the click-to-source staleness bug. The cursor key was computed
+// against the document the preview was OPENED for, so once the preview showed another page
+// the key could not match anything on it and the mark silently landed nowhere. The anchor is
+// the page now showing, and a cursor in a different PAGE of the same project is a request to
+// show that page — the reverse direction of the cross-page link the reader just followed.
+const GUIDE = [
+  { rel: "index.tmd", url: "index.html" },
+  { rel: "using/preview.tmd", url: "using/preview.html" },
+];
+
+test("cursorTarget: typing in the page on screen marks, and never navigates", () => {
+  // The invariant the reveal/mark split exists for: "scrolling the preview to compare two
+  // figures and then typing one character yanked the page back". Typing in the page already
+  // shown must stay a pure mark.
+  assert.deepEqual(
+    cursorTarget("/g/using/preview.tmd", GUIDE, "/g", "/g/using/preview.tmd"),
+    { navigateTo: null, file: null }
+  );
+});
+
+test("cursorTarget: an included file keys against the page showing it", () => {
+  assert.deepEqual(
+    cursorTarget("/g/using/preview.tmd", GUIDE, "/g", "/g/_includes/shared.tmd"),
+    { navigateTo: null, file: "../_includes/shared.tmd" }
+  );
+});
+
+test("cursorTarget: a cursor in another chapter selects that chapter first", () => {
+  assert.deepEqual(cursorTarget("/g/index.tmd", GUIDE, "/g", "/g/using/preview.tmd"), {
+    navigateTo: "using/preview.html",
+    file: null,
+  });
+});
+
+test("cursorTarget: a document the project does not publish is treated as an include", () => {
+  // A draft or an `{{< embed >}}`ed deck has no URL to select, so the old behaviour is the
+  // right one: key it against the page on screen and let the client find it or not.
+  assert.deepEqual(cursorTarget("/g/index.tmd", GUIDE, "/g", "/g/drafts/wip.tmd"), {
+    navigateTo: null,
+    file: "drafts/wip.tmd",
+  });
+});
+
+test("cursorTarget: a single-file preview behaves exactly as before", () => {
+  assert.deepEqual(cursorTarget("/w/post.tmd", null, null, "/w/post.tmd"), {
+    navigateTo: null,
+    file: null,
+  });
+  assert.deepEqual(cursorTarget("/w/post.tmd", null, null, "/w/_inc/x.tmd"), {
+    navigateTo: null,
+    file: "_inc/x.tmd",
+  });
 });

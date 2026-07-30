@@ -30,9 +30,21 @@ enough to start.**
   before the draw lands": the WebGL context is **lost** under CPU starvation (`isContextLost()`,
   `getError()` 37442) on both canvases before any read, so the prescribed "poll with a generous
   timeout" fix made it *worse* (23% → 33% failure). The mechanism and the general lesson are in
-  [LESSONS.md](LESSONS.md). Item **180** remains the top of P1: the **user-facing docs** for the
-  four capabilities that shipped, plus the one ruling the author owes on whether the new inlay
-  hints are pleasant to write with, since VS Code turns them on by default.
+  [LESSONS.md](LESSONS.md). Item **180**'s docs half shipped the same day; only the one ruling
+  the author owes on whether the new inlay hints are pleasant to write with is left, since VS
+  Code turns them on by default.
+
+- **Item 150 shipped 2026-07-30** (site-aware in-editor preview, both halves): a chapter under a
+  `_site.yml` now previews as its *project*, opened at that page's URL, one server per book. Two
+  things a later session should know. (1) **The companion e2e suite is load-sensitive**: the two
+  list-continuation tests fail with "the Enter keystroke was never delivered" at load ~6-7, on
+  `main` as well as on a branch — four alternating baseline/branch pairs at load ~3.5 were clean
+  on both sides. Do not chase it as a regression without alternating runs. (2) **It carries one
+  author judgment, not a task:** moving the cursor into another chapter now moves the *preview*
+  to that chapter, on the passive path, not only on the explicit reveal. That is deliberate — a
+  preview showing a chapter you are not editing is stale, and the yank the reveal/mark split
+  guards against is a cursor in the page *already* on screen, which still never navigates — but
+  it has not been lived with. As with 180, the answer is a better default, not a knob.
 
 - **Items 178 + 177 (LSP editor ergonomics) shipped on 2026-07-30** against
   [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
@@ -152,21 +164,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      decide: keep as is, change the `⟨…⟩` delimiter, or narrow which of the three hint kinds are
      on by default. **This is a minimal-config question** (perfect the default rather than add a
      knob), so the answer is a better default, not a setting.
-
-150. **Phase A2: site-aware in-editor preview — the WIRING half only; the risk half shipped
-     2026-07-29.** (MEDIUM.) **The spec is written and its facts are verified:**
-     [2026-07-29-site-aware-in-editor-preview.md](../docs/superpowers/specs/2026-07-29-site-aware-in-editor-preview.md).
-     Read it before writing code; do not re-derive.
-     - **Done:** the staleness bug this item called "the risk". `data-source-file` is relative to
-       the *currently loaded* page, and the host resolved it against the document the preview was
-       *opened for* — so after a cross-page navigation a click on chapter B opened chapter A's
-       same-named file (a real file, no error). The page now sends `base_dir`/`doc_path` with each
-       `tali-goto` and `resolveSourceFile` prefers it, back-compatible both directions.
-       `projectRootFor()` (nearest `_site.yml`, never `.git`) also landed with tests.
-     - **Left:** spawn `taliesin preview <root>` instead of the file and open the page's URL from
-       `map --format json`; key `PreviewRegistry` by project root so one server serves a whole
-       book; and `relativeKey`'s mirror problem — reverse sync must *select the page* (a new
-       `tali-navigate` host→iframe message) before marking the block. §1-4 of the spec.
 
 162. **Session revision digest.** (M. [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #36.) Surface the
      `BlockOp` stream the client already receives: a session word delta (`+340 / -180`) plus a

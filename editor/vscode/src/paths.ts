@@ -91,8 +91,88 @@ export function projectRootFor(
   }
 }
 
+/** One publishable page of a project, as `taliesin map <root> --format json` reports it. */
+export interface SitePage {
+  /** Source path relative to the project root, POSIX separators. */
+  rel: string;
+  /** Where the server serves it, relative to the project root. */
+  url: string;
+}
+
+/**
+ * The publishable pages in a `taliesin map … --format json` document.
+ *
+ * `null` means "unusable, fall back to a single-file preview": `map` failed, printed a
+ * diagnostic instead of JSON, or answered about something that is not a project. None of
+ * those may lose the preview, so every one of them is a `null` rather than a throw.
+ */
+export function sitePages(mapJson: string): SitePage[] | null {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(mapJson);
+  } catch {
+    return null;
+  }
+  const pages = (doc as { pages?: unknown } | null)?.pages;
+  if (!Array.isArray(pages)) return null;
+  return pages
+    .filter(
+      (p): p is SitePage =>
+        !!p && typeof p.rel === "string" && typeof p.url === "string"
+    )
+    .map((p) => ({ rel: p.rel, url: p.url }));
+}
+
+/**
+ * Where a document is served inside its project, or `null` when the project does not publish
+ * it — a draft, an `{{< embed >}}`-referenced deck (deliberately kept out of `site.pages`),
+ * or a file outside the root entirely.
+ *
+ * The lookup is deliberately a *lookup*: `.tmd`→`.html`, book chapter numbering and `index`
+ * handling all live in Rust, and deriving the URL here would be the second implementation the
+ * LSP rewrite existed to delete.
+ */
+export function pageUrlFor(pages: SitePage[], root: string, docPath: string): string | null {
+  const rel = path
+    .relative(path.resolve(root), path.resolve(docPath))
+    .split(path.sep)
+    .join("/"); // the map speaks POSIX; `path.relative` does not on Windows
+  // A file outside the root needs no guard of its own: its `rel` escapes with `../`, and no
+  // project-relative `rel` ever does, so the lookup below already answers `null`.
+  return pages.find((p) => p.rel === rel)?.url ?? null;
+}
+
 export function relativeKey(docPath: string, editorPath: string): string | null {
   if (path.resolve(editorPath) === path.resolve(docPath)) return null;
   const rel = path.relative(path.dirname(docPath), editorPath);
   return rel.split(path.sep).join("/"); // POSIX separators for the protocol
+}
+
+/**
+ * What the preview should do about the editor cursor: select another page first, mark a block
+ * on the page already showing, or both-in-order.
+ *
+ * `pageDoc` is the page the webview is **currently showing** (as that page reported itself),
+ * not the document the preview was opened for. Keying against the opened document is the
+ * mirror of the click-to-source staleness bug: once the preview has followed a cross-page
+ * link, a key computed against the opened chapter matches nothing on screen and the mark
+ * silently lands nowhere (item 150 §4).
+ *
+ * A cursor in a *different page* of the same project asks for that page — the reverse of the
+ * link the reader just followed. This does **not** reintroduce the yank the reveal/mark split
+ * exists to prevent: typing in the page already on screen is the first branch and never
+ * navigates, so scrolling the preview and then typing one character still leaves it alone.
+ */
+export function cursorTarget(
+  pageDoc: string,
+  pages: SitePage[] | null,
+  root: string | null,
+  editorPath: string
+): { navigateTo: string | null; file: string | null } {
+  const file = relativeKey(pageDoc, editorPath);
+  if (file === null) return { navigateTo: null, file: null };
+  const url = root && pages ? pageUrlFor(pages, root, editorPath) : null;
+  // No URL means the project does not publish it — a draft, an `{{< embed >}}`ed deck, a
+  // file outside the root — so there is no page to select and it is keyed as an include.
+  return url ? { navigateTo: url, file: null } : { navigateTo: null, file };
 }

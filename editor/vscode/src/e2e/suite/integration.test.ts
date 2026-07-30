@@ -1,6 +1,8 @@
 import * as assert from "node:assert";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import * as http from "node:http";
+import { execFileSync } from "node:child_process";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
@@ -11,6 +13,10 @@ const MATH_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/math.tmd"
 const PATHS_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/paths.tmd");
 const INCLUDE_DOC = path.join(REPO_ROOT, "corpus/bayesian-website/index.tmd");
 const TALIESIN_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
+// A real multi-chapter book from the corpus rather than a minted fixture: the corpus is the
+// regression net, and `demo-book` already carries the shape this needs (five chapters, one
+// `_site.yml`) while starting in a tenth of a second.
+const BOOK_ROOT = path.join(REPO_ROOT, "corpus/demo-book");
 
 // These tests exercise the companion in a real Extension Host, which is the only place the
 // claims are worth anything: the language features now come from `taliesin lsp` over stdio,
@@ -539,6 +545,67 @@ suite("Taliesin companion (integration)", () => {
     // read the note in language-configuration.json before accepting that trade.
     assert.equal(await pressEnterAfter("1. one"), "1. one\n");
   });
+
+  // Item 150. A book chapter previewed on its own is an orphan page: no nav, no breadcrumb,
+  // and every cross-page link dead. Opening one now serves the PROJECT at that chapter's URL,
+  // so one server serves the whole book — which is also why a second chapter must reveal that
+  // preview instead of spawning a second server on a second port.
+  //
+  // **Deliberately last in the suite, as a precaution.** This suite is load-sensitive: under a
+  // loaded machine the list-continuation tests fail with "the Enter keystroke was never
+  // delivered", on this branch and on `HEAD` alike (measured, four alternating pairs at
+  // comparable load: zero failures either side; the earlier failures were all at load ~6-7).
+  // This is the only test that leaves a SECOND preview panel in the window, and a webview
+  // holding keyboard focus is exactly what makes `type` a silent no-op — so it runs where it
+  // cannot contribute to that, and hands its resource to the command rather than relying on
+  // which editor is focused.
+  test("Open Preview on a book chapter serves the whole project, once", async () => {
+    const chapter = path.join(BOOK_ROOT, "intro.tmd");
+    const sibling = path.join(BOOK_ROOT, "methods.tmd");
+    // Named panels, not a count: previews opened by earlier tests come and go as VS Code
+    // reshuffles columns, so a count delta reads as "no preview opened" when one did.
+    const previewTabs = () =>
+      vscode.window.tabGroups.all.flatMap((g) =>
+        g.tabs.filter((t) => t.input instanceof vscode.TabInputWebview).map((t) => t.label)
+      );
+
+    // Naming the resource is the title-bar button's path, and it is the one that does not
+    // depend on which editor is focused — `activeTextEditor` is undefined whenever a webview
+    // holds focus, which is the state every earlier preview test leaves behind.
+    await vscode.commands.executeCommand("taliesin.openPreview", vscode.Uri.file(chapter));
+    assert.ok(
+      await waitFor(() => previewTabs().includes("Preview: demo-book"), 20000),
+      `the book preview should open, saw ${JSON.stringify(previewTabs())}`
+    );
+    const after1 = previewTabs().length;
+
+    // The claim is not "a server started" but "the server serves the BOOK". Its argv is where
+    // that is observable from the host, and its port is how the page itself can be read.
+    const port = await waitForValue(() => bookServerPort(), 20000);
+    assert.ok(port, `a \`taliesin preview ${BOOK_ROOT}\` server should be running`);
+
+    // The payoff, fetched from the real preview: the chapter renders with the book's sidebar,
+    // which is exactly what a single-file preview of the same chapter cannot have.
+    const html = await get(`http://127.0.0.1:${port}/intro.html`);
+    assert.match(html, /tali-book-sidebar/, "the previewed chapter should carry the book nav");
+
+    await vscode.commands.executeCommand("taliesin.openPreview", vscode.Uri.file(sibling));
+    // Give a would-be second panel time to appear; the assertion is that it never does.
+    await new Promise((r) => setTimeout(r, 2500));
+    assert.strictEqual(
+      previewTabs().length,
+      after1,
+      `a sibling chapter must reveal the book's preview, not add a second one; saw ${JSON.stringify(previewTabs())}`
+    );
+
+    // Close the panel this test opened. Nothing downstream depends on it (this test is last),
+    // but the harness fails the run on a `taliesin preview` server that outlives it, and
+    // disposing the panel is what reaps the child.
+    const mine = vscode.window.tabGroups.all
+      .flatMap((g) => g.tabs)
+      .filter((t) => t.input instanceof vscode.TabInputWebview && t.label === "Preview: demo-book");
+    await vscode.window.tabGroups.close(mine);
+  });
 });
 
 async function completionLabels(
@@ -586,4 +653,45 @@ async function waitForValue<T>(
 
 function labelText(label: string | vscode.CompletionItemLabel): string {
   return typeof label === "string" ? label : label.label;
+}
+
+/**
+ * The port of a live `taliesin preview <BOOK_ROOT>` started by THIS build, or `undefined`.
+ *
+ * Reading the argv is what makes the claim specific. "A preview server is running" is nearly
+ * always true on a developer's machine; "a server is serving the book root" is the thing item
+ * 150 changed, and the port it yields is how the test can then read the page itself.
+ */
+async function bookServerPort(): Promise<string | undefined> {
+  if (process.platform === "win32") return undefined;
+  let listing: string;
+  try {
+    listing = execFileSync("ps", ["-eo", "args="], { encoding: "utf8" });
+  } catch {
+    return undefined;
+  }
+  for (const line of listing.split("\n")) {
+    const m = new RegExp(`^${escapeRe(TALIESIN_BIN)} preview ${escapeRe(BOOK_ROOT)} (\\d+)\\s*$`).exec(
+      line.trim()
+    );
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function get(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    http
+      .get(url, (res) => {
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (body += c));
+        res.on("end", () => resolve(body));
+      })
+      .on("error", reject);
+  });
 }

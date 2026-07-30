@@ -1,5 +1,4 @@
 import { spawn, ChildProcess } from "node:child_process";
-import * as path from "node:path";
 import { freePort, waitForHttp } from "./ports";
 
 export class PreviewServer {
@@ -10,14 +9,22 @@ export class PreviewServer {
     private readonly child: ChildProcess
   ) {}
 
+  /**
+   * Spawn `taliesin preview <target>` on a free port.
+   *
+   * `target` and `cwd` are separate because a site preview serves a PROJECT while the author
+   * is editing a file inside it: the thing to serve is the project root, not the buffer, so
+   * the cwd is no longer `dirname(target)` (item 150 §1). The caller decides both.
+   */
   static async start(
     binary: string,
-    file: string,
+    target: string,
+    cwd: string,
     readyTimeoutMs = 8000
   ): Promise<PreviewServer> {
     const port = await freePort();
-    const child = spawn(binary, ["preview", file, String(port)], {
-      cwd: path.dirname(file),
+    const child = spawn(binary, ["preview", target, String(port)], {
+      cwd,
       stdio: "ignore",
     });
     const spawnError = new Promise<never>((_, reject) =>

@@ -51,7 +51,7 @@ test("a preview that spawns but never answers is killed, not abandoned", async (
   });
 
   await assert.rejects(
-    PreviewServer.start(script, path.join(os.tmpdir(), "doc.tmd"), 400),
+    PreviewServer.start(script, path.join(os.tmpdir(), "doc.tmd"), os.tmpdir(), 400),
     /did not answer/,
     "a server that never answers must reject"
   );
@@ -62,4 +62,43 @@ test("a preview that spawns but never answers is killed, not abandoned", async (
     alive = aliveMatching(tag);
   }
   assert.equal(alive, 0, "the spawned process must not outlive the failed start");
+});
+
+// Item 150 §1. A site preview serves a PROJECT while the author is editing a file inside it,
+// so the thing to serve and the directory to serve it from are no longer the same path with
+// `dirname` applied. `start` used to derive the cwd from the target, which is only right for
+// a single file; a book chapter must spawn `preview <root>` while the cwd stays the root too,
+// and a caller that gets those two confused would serve the wrong tree.
+test("start serves the target it is handed, from the cwd it is handed", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("POSIX shebang script");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tali-start-"));
+  const record = path.join(dir, "spawn.json");
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "tali-cwd-"));
+  const script = path.join(dir, "fake-taliesin.js");
+  // Records how it was invoked, then answers on the port it was given — a preview server
+  // reduced to exactly the two facts this test is about.
+  fs.writeFileSync(
+    script,
+    `#!/usr/bin/env node
+const fs = require("node:fs"), http = require("node:http");
+fs.writeFileSync(${JSON.stringify(record)},
+  JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() }));
+http.createServer((_, res) => res.end("ok")).listen(Number(process.argv[4]), "127.0.0.1");
+`,
+    { mode: 0o755 }
+  );
+
+  const server = await PreviewServer.start(script, dir, cwd, 5000);
+  t.after(() => {
+    server.dispose();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
+  const spawned = JSON.parse(fs.readFileSync(record, "utf8"));
+  assert.deepEqual(spawned.argv, ["preview", dir, String(server.port)]);
+  assert.equal(fs.realpathSync(spawned.cwd), fs.realpathSync(cwd), "cwd is the caller's, not dirname(target)");
 });

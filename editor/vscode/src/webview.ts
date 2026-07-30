@@ -11,11 +11,15 @@ export function relayHtml(iframeSrc: string, cspSource: string): string {
   const vscode = acquireVsCodeApi();
   const iframe = document.getElementById("tali-preview");
   // iframe (preview) -> host, and host -> iframe (the extension posts to THIS window).
+  // A whitelist in both directions: the iframe renders the author's own document, so an
+  // unrecognised message must never reach the extension host.
+  const UP = ["tali-goto", "tali-page"];      // preview reports: a click, and which page it is
+  const DOWN = ["tali-cursor", "tali-navigate"]; // host asks: mark a block, or select a page
   window.addEventListener("message", (e) => {
     const m = e.data;
     if (!m || typeof m !== "object") return;
-    if (m.type === "tali-goto") { vscode.postMessage(m); return; }
-    if (m.type === "tali-cursor" && iframe.contentWindow) {
+    if (UP.includes(m.type)) { vscode.postMessage(m); return; }
+    if (DOWN.includes(m.type) && iframe.contentWindow) {
       iframe.contentWindow.postMessage(m, "*");
     }
   });

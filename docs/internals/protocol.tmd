@@ -366,10 +366,27 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
   plain browser it navigates to a `vscode://file/<path>:<line>:<col>` deep link; in
   an editor webview it posts a `tali-goto` message up to the host. (It also sends a
   `click_block` over the websocket so the location logs to the console.) The message
-  is `tali-goto { type, source_file, sourcepos }`, where `source_file` is the
-  source path (`null` = the previewed doc) and `sourcepos` is the `line:col` to jump
-  to. The `data-block-id` click path additionally spreads `block_id` into the message;
-  the located-diagnostic path omits it.
+  is `tali-goto { type, source_file, sourcepos, base_dir, doc_path }`, where
+  `source_file` is the source path (`null` = the previewed doc) and `sourcepos` is the
+  `line:col` to jump to. The `data-block-id` click path additionally spreads `block_id`
+  into the message; the located-diagnostic path omits it.
+
+  **`base_dir` is the anchor `source_file` is relative to, and the page supplies it**
+  because a relative path alone is ambiguous once the preview can navigate. It is the
+  page's own directory for a block, and the **site root** for a `data-tali-src` target
+  (the navbar, footer, sidebar and listing cards, which name their source relative to
+  the project). A host that ignores it falls back to the document the preview was
+  opened for, which is correct only until the first cross-page link is followed.
+- **Page reports (preview → editor).** On load, and therefore after every cross-page
+  navigation, a preview inside a webview posts `tali-page { type, doc_path, base_dir }`.
+  The host cannot read the iframe's location across origins, so this is how it knows
+  which page is on screen — which is what anchors forward search.
+- **Page selection (editor → preview).** `tali-navigate { type, url }` asks the client
+  to load another page of the same project, `url` being root-relative exactly as
+  `taliesin map --format json` reports it. The client resolves it against its own
+  origin and refuses anything that leaves it, so this can only ever move the preview
+  within itself. It exists because a webview panel and its iframe are different
+  origins: the host cannot set `contentWindow.location` itself.
 - **Forward search (editor → preview).** The client listens for a
   `tali-cursor {file, line, reveal}` `postMessage` and calls `highlightAtLine`, which
   picks the **smallest** block whose `data-sourcepos` range covers the line in the same
@@ -381,8 +398,9 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
   the page is on request because it takes their scroll position away.
 
 The in-repo VS Code companion is the host that drives this; it is documented in
-[extending Taliesin](extending.tmd). Because the surface is just two `postMessage`
-shapes, any editor can host the preview and add cursor sync without forking the
+[extending Taliesin](extending.tmd). Because the surface is four `postMessage`
+shapes — and a host that implements only the first two still works, minus site
+awareness — any editor can host the preview and add cursor sync without forking the
 client.
 
 ::: {.callout-tip}

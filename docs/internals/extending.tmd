@@ -167,6 +167,18 @@ What is left in the extension is what the protocol has no concept of:
   extension host. Forward sync (`tali-goto`) calls `revealRange` to move the editor cursor;
   reverse sync turns a cursor move into a debounced `tali-cursor`, which the client resolves
   with `highlightAtLine` (and, in a deck, jumps `TaliesinDeck` to the containing slide).
+
+  **What it spawns is the project, not the buffer**, whenever the document sits under a
+  `_site.yml` (`projectRootFor`, nearest ancestor, never `.git`): one server serves the whole
+  book and the webview opens at that page's URL, so a chapter previews with its nav instead of
+  as an orphan. The URL comes from `taliesin map <root> --format json` — a *lookup*, never a
+  `.tmd`→`.html` rule reimplemented in TypeScript, which is the same discipline the LSP
+  rewrite enforced. The registry is keyed by project root so a second chapter reveals the
+  preview it already has; anything that leaves the document without a URL (an unusable map, a
+  draft, an `{{< embed >}}`ed deck) falls back to a single-file preview rather than to no
+  preview. Because one preview now spans many documents, forward sync anchors on the page the
+  client last reported via `tali-page`, and a cursor in another chapter sends `tali-navigate`
+  first, then the cursor.
 - **Editor commands:** *Open Preview*, *Check This Document*, *Diagnose Setup*, *Insert Math
   Symbol* (a picker over the same math vocabulary the completion uses, searchable by glyph),
   *Restart Language Server*, *Show Language Server Log*.

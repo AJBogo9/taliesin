@@ -130,17 +130,18 @@ from the same machine (`127.0.0.1`) never needs the token.
 
 ## The VS Code companion preview won't connect
 
-The companion spawns a plain `taliesin preview <file> <port>` and points its webview
-at `http://127.0.0.1:<port>/`. It binds **loopback only**: it does **not** pass
-`--host`, so there is no LAN token to fumble and no firewall hop to clear. If the
-panel stays blank:
+The companion spawns a plain `taliesin preview <target> <port>` and points its webview
+at `http://127.0.0.1:<port>/`. `<target>` is the **project root** when the document
+sits under a `_site.yml` (the webview then opens that page's URL) and the file itself
+otherwise. It binds **loopback only**: it does **not** pass `--host`, so there is no
+LAN token to fumble and no firewall hop to clear. If the panel stays blank:
 
 - Make sure `taliesin` is on the path the extension uses. It runs whatever the
   `taliesin.path` setting points at (default `taliesin`); set it to an absolute
   path if your `PATH` doesn't have one.
 - The extension waits up to a few seconds for the server to answer on its port. If
   you see *"taliesin preview did not answer"*, the binary failed to start: run the
-  same `taliesin preview <file>` in a terminal to read the real error.
+  same `taliesin preview <target>` in a terminal to read the real error.
 - Because it's a loopback URL, do **not** add `--host` or a token: that's for phones
   on your LAN, not for the local webview.
 
