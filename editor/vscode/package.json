@@ -12,7 +12,7 @@
     "directory": "editor/vscode"
   },
   "engines": {
-    "vscode": "^1.91.0",
+    "vscode": "^1.97.0",
     "node": ">=18"
   },
   "categories": [
@@ -317,7 +317,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.0",
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.91.0",
+    "@types/vscode": "1.97.0",
     "@vscode/test-electron": "^2.4.0",
     "esbuild": "^0.21.0",
     "glob": "^10.3.0",

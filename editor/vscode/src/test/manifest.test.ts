@@ -467,6 +467,30 @@ test("contributes a math-delimiter token colour scoped to .tmd only", () => {
   }
 });
 
+// The engine floor and the types have to agree, and the floor has to be new enough for the
+// APIs the source calls. `registerDocumentPasteEditProvider` and `DocumentDropOrPasteEditKind`
+// are absent from stable @types/vscode 1.96.0 and present in 1.97.0, so 1.97 is the real floor
+// once the paste gestures exist.
+//
+// The types are pinned EXACTLY to that floor, with no caret, and that is the load-bearing
+// half. The manifest previously declared `^1.91.0` while `@types/vscode: ^1.91.0` resolved to
+// 1.125.0, so `tsc` accepted calls to APIs that are `undefined` on the minimum VS Code the
+// manifest promises to support, and nothing failed until a user on an older editor ran it.
+// A caret here reintroduces exactly that gap: `^1.97.0` also resolves to 1.125.0. Pinning
+// makes the compiler itself enforce the floor, which is the only check that runs on every
+// build rather than on review.
+test("the declared engine is new enough for the APIs we call, and the types pin that floor", () => {
+  const engine = manifest.engines.vscode;
+  const types = manifest.devDependencies["@types/vscode"];
+  assert.strictEqual(engine, "^1.97.0", "engines.vscode must state the paste API floor");
+  assert.strictEqual(
+    types,
+    "1.97.0",
+    "@types/vscode must be pinned to the engine floor, with no caret: a range resolves to the " +
+      "latest types and lets tsc bless APIs the minimum engine does not have"
+  );
+});
+
 // The manifest names an icon; the .vsix has to contain it. A marketplace listing with a
 // missing icon is the kind of thing only noticed after publishing.
 test("the declared icon exists and is a PNG", () => {
