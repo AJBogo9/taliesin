@@ -334,7 +334,6 @@ fn outgoing_references(line: &str) -> Vec<(usize, &str)> {
 
     let mut at = 0usize;
     while let Some(open) = line[at..].find("](").map(|i| at + i + 2) {
-        at = open;
         let Some(close) = line[open..].find(')').map(|i| open + i) else {
             break;
         };
@@ -350,21 +349,20 @@ fn outgoing_references(line: &str) -> Vec<(usize, &str)> {
     // `{{< include path >}}`, `{{< embed path >}}`, `{{< dataset path >}}`: the first argument.
     let mut at = 0usize;
     while let Some(open) = line[at..].find("{{<").map(|i| at + i + 3) {
-        at = open;
         let Some(close) = line[open..].find(">}}").map(|i| open + i) else {
             break;
         };
         let inner = &line[open..close];
         let mut words = inner.split_whitespace();
         let name = words.next().unwrap_or("");
-        if matches!(name, "include" | "embed" | "dataset") {
-            if let Some(arg) = words.next() {
-                // The offset of the argument inside the line, found by searching from the name so
-                // an identical string earlier on the line cannot be picked instead.
-                let name_end = open + inner.find(name).unwrap_or(0) + name.len();
-                if let Some(rel_at) = line[name_end..close].find(arg) {
-                    out.push((name_end + rel_at, arg));
-                }
+        if matches!(name, "include" | "embed" | "dataset")
+            && let Some(arg) = words.next()
+        {
+            // The offset of the argument inside the line, found by searching from the name so an
+            // identical string earlier on the line cannot be picked instead.
+            let name_end = open + inner.find(name).unwrap_or(0) + name.len();
+            if let Some(rel_at) = line[name_end..close].find(arg) {
+                out.push((name_end + rel_at, arg));
             }
         }
         at = close;
