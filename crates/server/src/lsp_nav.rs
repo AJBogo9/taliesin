@@ -563,6 +563,51 @@ pub(crate) fn anchor_occurrences(text: &str, id: &str) -> Vec<(u32, u32, u32)> {
     out
 }
 
+/// Every `@`-sigil cross-reference **use** in the document, as `(id, line, col)` in scalar
+/// offsets.
+///
+/// The scan-all sibling of [`anchor_occurrences`], which searches for one *known* id and so
+/// structurally cannot see a **dangling** reference: a reference whose target is defined
+/// nowhere has an id no caller could have thought to ask for, and grouping those is the whole
+/// job of the sidebar's References view.
+///
+/// It shares [`is_anchor_site`] and [`is_xref_id_char`] with `anchor_occurrences` rather than
+/// re-deciding what a reference looks like. A second scanner free to disagree with rename
+/// about what an anchor is, is the trap document highlight avoided by reusing this one.
+/// Definitions (`{#id}`) and bare-fragment links (`](#id)`) are **not** uses and are excluded
+/// here even though `anchor_occurrences` matches them, so the relation between the two is
+/// containment, not equality.
+// TEMPORARY, remove with the `lsp_project::walk` commit that consumes this: until the project
+// walk lands, the only caller is the test module, and clippy rejects the non-test build.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn xref_occurrences(text: &str) -> Vec<(String, u32, u32)> {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut out = Vec::new();
+    let mut i = 1; // an id at offset 0 has no room for the `@` before it
+    while i < n {
+        // `is_anchor_site` accepts `@`, `#` and `label:` sigils; a *use* is the `@` one only.
+        if chars[i - 1] == '@' && is_anchor_site(&chars, i) {
+            let mut j = i;
+            while j < n && is_xref_id_char(chars[j]) {
+                j += 1;
+            }
+            if j > i {
+                let id: String = chars[i..j].iter().collect();
+                // An `@word` with no cross-reference kind prefix is prose, not a reference.
+                if taliesin_core::cite::is_xref_anchor(&id) {
+                    let (line, col) = offset_to_line_col(&chars, i);
+                    out.push((id, line, col));
+                }
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 /// The nesting chain at `(line, col)`, innermost first, as
 /// `(start_line, start_char, end_line, end_char)` in scalar offsets.
 ///
@@ -1034,6 +1079,57 @@ mod tests {
             vec![(0, 13, 22), (2, 5, 14), (2, 23, 32)],
             "expected the definition and both `@` references, never the `[@…]` citation"
         );
+    }
+
+    #[test]
+    fn xref_occurrences_finds_every_reference_and_skips_definitions_and_citations() {
+        // A definition, two references, a bare-fragment link, a citation, an email-like `@`
+        // that is not a reference site, and `@handle` — an `@` at a VALID site whose id has
+        // no cross-reference kind prefix. That last one is load-bearing and was missing on the
+        // first pass: `a@b-c.com` is already rejected by `is_anchor_site` (the `@` follows a
+        // word char), so without `@handle` the `is_xref_anchor` gate is never exercised and
+        // deleting it leaves every test green.
+        let text = "![p](i.png){#fig-scree}\n\nSee @fig-scree and @sec-intro.\n\n\
+                    [back](#fig-scree), cite [@knuth1984], mail a@b-c.com, ask @handle\n";
+        let hits = xref_occurrences(text);
+        assert_eq!(
+            hits,
+            vec![
+                ("fig-scree".to_string(), 2, 5),
+                ("sec-intro".to_string(), 2, 20),
+            ],
+            "only the two `@`-sigil references, not the `{{#fig-scree}}` definition, not the \
+             `](#fig-scree)` link, not the citation, not the address, not `@handle`"
+        );
+    }
+
+    #[test]
+    fn xref_occurrences_reports_a_dangling_reference_anchor_occurrences_cannot_find() {
+        // The whole reason this function exists: `fig-missing` is defined nowhere, so no
+        // caller could have known to ask `anchor_occurrences` for it.
+        let text = "See @fig-missing.\n";
+        assert_eq!(
+            xref_occurrences(text),
+            vec![("fig-missing".to_string(), 0, 5)]
+        );
+    }
+
+    #[test]
+    fn xref_occurrences_agrees_with_anchor_occurrences_on_every_id_it_reports() {
+        // Containment, NOT equality: `anchor_occurrences` also matches the `{#id}` definition
+        // and the `](#id)` bare fragment, neither of which is a *use*. Written as an equality
+        // this fails on the first document that references an anchor it also defines, and a
+        // test relaxed on first contact teaches nothing.
+        let text = "# Scree {#fig-scree}\n\nSee @fig-scree, again @fig-scree.\n\n\
+                    [x](#fig-scree) and [@fig-scree]\n";
+        for (id, line, col) in xref_occurrences(text) {
+            let known = anchor_occurrences(text, &id);
+            assert!(
+                known.iter().any(|&(l, c, _)| (l, c) == (line, col)),
+                "xref_occurrences reported {id} at {line}:{col}, which anchor_occurrences \
+                 does not see: the two scanners disagree about what a reference is"
+            );
+        }
     }
 
     #[test]
