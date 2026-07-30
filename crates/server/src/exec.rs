@@ -64,7 +64,8 @@ pub(crate) const NOT_RUN_DIED: &str = "kernel-died";
 /// The execute request itself failed (a ZMQ/protocol error, an interrupt), so the
 /// interpreter returned no result.
 pub(crate) const NOT_RUN_REQUEST: &str = "request-failed";
-/// The cell ran past `TALIESIN_CELL_TIMEOUT` and was interrupted, so it produced no result.
+/// The cell hit a liveness cap (silence, or an opt-in wall-clock one) and was
+/// interrupted, so it produced no result.
 /// Distinct from [`NOT_RUN_REQUEST`] because the fix is different and knowable: raise the
 /// cap or shorten the cell, not repair the transport.
 pub(crate) const NOT_RUN_TIMEOUT: &str = "timeout";

@@ -172,9 +172,12 @@ Executing code cells needs a matching Jupyter kernel: `{python}` cells need a
 Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`); `{r}` cells need an
 R with `IRkernel` (`TALIESIN_R`, default `R`). Each language runs against its own
 warm kernel. Without a kernel, cells render as source and the preview shows a
-"kernel unavailable" diagnostic. A cell that runs longer than `TALIESIN_CELL_TIMEOUT`
-seconds (default 120; `0` disables) is interrupted (SIGINT) so a runaway cell can't
-wedge the kernel; the warm kernel and prior cells survive.
+"kernel unavailable" diagnostic. A cell is capped on **silence, not runtime**: one
+that produces no output for `TALIESIN_CELL_SILENCE` seconds (default 600; `0`
+disables) is interrupted (SIGINT), while a long cell that prints progress resets that
+budget on every line and runs to completion. A streaming runaway is caught by the
+output caps instead. `TALIESIN_CELL_TIMEOUT` is an optional wall-clock cap, **off by
+default**. Either way the warm kernel and prior cells survive.
 
 Cell outputs persist in `_freeze/` (gitignored), keyed by a cumulative content hash
 (this cell's code + all upstream same-language code + interpreter id) — so a change

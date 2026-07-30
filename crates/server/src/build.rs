@@ -531,8 +531,10 @@ fn not_run_reason(html: &str) -> Option<&'static str> {
         Some("code cell did not complete: the execution request failed")
     } else if is(exec::NOT_RUN_TIMEOUT) {
         Some(
-            "code cell did not complete: it ran past the cell timeout and was interrupted \
-             (raise TALIESIN_CELL_TIMEOUT, or 0 to disable)",
+            "code cell did not complete: it hit a liveness cap and was interrupted \
+             (a cell producing no output for TALIESIN_CELL_SILENCE seconds, default 600; \
+             or TALIESIN_CELL_TIMEOUT if you set a wall-clock cap). Printing progress \
+             from a long cell keeps it alive; 0 disables either cap",
         )
     } else {
         None

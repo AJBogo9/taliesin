@@ -340,8 +340,8 @@ fn leading_container_depth(line: &str) -> usize {
 /// How long a single render may take before it is abandoned, in seconds. Override with
 /// `TALIESIN_RENDER_TIMEOUT`; `0` disables the watchdog.
 ///
-/// Rendering is not execution: a cell may legitimately run for minutes (hence
-/// `TALIESIN_CELL_TIMEOUT`'s 120 s default), but a render never does. The largest thing
+/// Rendering is not execution: a cell may legitimately run for hours (which is why
+/// execution is capped on silence, not wall-clock), but a render never does. The largest thing
 /// AP1 ever measured is an 8000-block document at 647 ms in release, so 30 s is ~50x the
 /// worst legitimate render and still turns AP2-2's multi-minute freeze into a bounded wait.
 const DEFAULT_RENDER_TIMEOUT_SECS: u64 = 30;

@@ -25,18 +25,109 @@ use taliesin_core::html_escape as esc;
 use tokio::process::{Child, Command};
 use tokio::time::{Instant, timeout};
 
-/// Wall-clock cap on a single cell execution, after which the kernel is sent
-/// SIGINT (`TALIESIN_CELL_TIMEOUT` seconds, default 120; `0` disables the cap and
-/// falls back to a per-output silent-hang backstop). Read once.
+/// The two liveness caps on a single cell execution, and their defaults.
+///
+/// **A cell is capped on SILENCE, not on wall-clock time** (item 175a). A cell
+/// printing an epoch line every 30 s is alive no matter how long it runs; a cell
+/// that has said nothing for ten minutes is the real runaway. The previous default
+/// (120 s of wall-clock) killed a 40-minute training cell at two minutes, which is
+/// a wall on first contact for anyone doing computationally heavy work.
+///
+/// The wall-clock cap is kept, but **off by default**: setting
+/// `TALIESIN_CELL_TIMEOUT=120` reproduces the pre-175a behavior exactly.
+struct Caps {
+    wall: Option<Duration>,
+    silence: Option<Duration>,
+}
+
+const DEFAULT_CAPS: Caps = Caps {
+    wall: None,
+    silence: Some(Duration::from_secs(600)),
+};
+
+/// Which cap owns the current budget. The payload is that cap's own length in
+/// seconds, so an expiry message names the budget the author would raise rather
+/// than reporting a silence kill as a wall-clock one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CapKind {
+    Wall(u64),
+    Silence(u64),
+    None,
+}
+
+/// Interpret a raw cap value. `0` disables the cap; an unset or unparseable value
+/// keeps `default`. One helper so the "`0` disables" rule cannot drift apart between
+/// the two variables.
+///
+/// It takes the *already-read* value rather than the variable's name on purpose:
+/// `env_help_lists_every_runtime_env_var` finds runtime knobs by scanning for a
+/// `var("TALIESIN_…")` literal, so passing the name into a helper would hide **both**
+/// caps from that gate and let the CLI's ENV block drift silently.
+fn env_cap(raw: Option<String>, default: Option<Duration>) -> Option<Duration> {
+    match raw.and_then(|s| s.parse::<u64>().ok()) {
+        Some(0) => None,
+        Some(secs) => Some(Duration::from_secs(secs)),
+        None => default,
+    }
+}
+
+/// Wall-clock cap (`TALIESIN_CELL_TIMEOUT` seconds, default **off**). Read once.
 fn cell_timeout() -> Option<Duration> {
     static T: OnceLock<Option<Duration>> = OnceLock::new();
     *T.get_or_init(|| {
-        let secs = std::env::var("TALIESIN_CELL_TIMEOUT")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(120);
-        (secs > 0).then(|| Duration::from_secs(secs))
+        env_cap(
+            std::env::var("TALIESIN_CELL_TIMEOUT").ok(),
+            DEFAULT_CAPS.wall,
+        )
     })
+}
+
+/// Silence cap (`TALIESIN_CELL_SILENCE` seconds, default 600; `0` disables).
+/// Resets on every iopub message, so it measures how long the cell has been
+/// *quiet*, not how long it has been running. Read once.
+fn silence_timeout() -> Option<Duration> {
+    static T: OnceLock<Option<Duration>> = OnceLock::new();
+    *T.get_or_init(|| {
+        env_cap(
+            std::env::var("TALIESIN_CELL_SILENCE").ok(),
+            DEFAULT_CAPS.silence,
+        )
+    })
+}
+
+/// How long to wait before the next liveness check, and which cap owns that
+/// budget. A zero budget means that cap has expired. `Duration::MAX` with
+/// [`CapKind::None`] means neither cap is armed, so the cell runs until it
+/// finishes or the kernel dies.
+///
+/// Pure on purpose: this is the whole cap decision, so it can be tested with
+/// synthetic durations instead of by waiting. The loop around it only polls.
+fn cell_budget(
+    elapsed: Duration,
+    since_last_msg: Duration,
+    wall: Option<Duration>,
+    silence: Option<Duration>,
+) -> (Duration, CapKind) {
+    let w = wall.map(|d| (d.saturating_sub(elapsed), CapKind::Wall(d.as_secs())));
+    let s = silence.map(|d| {
+        (
+            d.saturating_sub(since_last_msg),
+            CapKind::Silence(d.as_secs()),
+        )
+    });
+    match (w, s) {
+        // Whichever expires first owns both the budget and the message.
+        (Some(a), Some(b)) => {
+            if a.0 <= b.0 {
+                a
+            } else {
+                b
+            }
+        }
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => (Duration::MAX, CapKind::None),
+    }
 }
 
 /// The prefix of every notice this module appends when a cell's output hits a cap
@@ -563,6 +654,10 @@ pub struct Kernel {
     /// `kernel_executes_state_errors_and_interrupts_runaway_cell` "flaky under load": it
     /// was never about load, it was about who initialised the lock first.
     cell_cap: Option<Duration>,
+    /// Silence cap: how long a cell may produce *no output at all* before it is
+    /// interrupted. See [`silence_timeout`]. Held per kernel for the same reason as
+    /// [`Kernel::cell_cap`] above, so a test can set it without fighting a `OnceLock`.
+    silence_cap: Option<Duration>,
 }
 
 /// Whether a kernel-start failure is worth retrying with a fresh port allocation.
@@ -870,6 +965,7 @@ impl Kernel {
             iopub,
             conn_dir,
             cell_cap: cell_timeout(),
+            silence_cap: silence_timeout(),
         };
         // Language-specific startup (e.g. Python's `ojs_define` bridge + matplotlib
         // theme); each preamble runs once against the warm kernel.
@@ -905,26 +1001,33 @@ impl Kernel {
         let mut stream_bytes = 0usize;
         let mut rich_bytes = 0usize;
         let mut capped = false;
-        // Total wall-clock cap (not per-message, so a *streaming* runaway cell is
-        // still caught). On hitting it we SIGINT the kernel, then drain a short
-        // grace window so the resulting KeyboardInterrupt + Idle resync the
-        // channels and the *next* cell still works.
-        let cap = self.cell_cap;
-        let deadline = cap.map(|d| Instant::now() + d);
+        // The two liveness caps (item 175a). Silence is the primary one and is on by
+        // default; wall-clock is off unless `TALIESIN_CELL_TIMEOUT` is set. On hitting
+        // either we SIGINT the kernel, then drain a short grace window so the resulting
+        // KeyboardInterrupt + Idle resync the channels and the *next* cell still works.
+        //
+        // A streaming runaway (`while True: print(x)`) never goes silent, so it is NOT
+        // caught here: it is caught by the output caps below, which interrupt as soon as
+        // `capped` trips. That is why dropping the wall-clock default loses no protection.
+        let wall = self.cell_cap;
+        let silence = self.silence_cap;
+        let started = Instant::now();
         let mut grace_until: Option<Instant> = None;
-        // Last time any iopub message arrived; drives the uncapped "no output for 60s"
-        // budget so it resets on every output (matching the old per-`read` timeout).
+        // Last time any iopub message arrived: the silence cap measures from here, so it
+        // resets on every output and a chatty long cell is never capped.
         let mut last_msg = Instant::now();
         loop {
             let now = Instant::now();
             // Time left before this cell's REAL deadline: the post-interrupt grace window,
-            // the hard cap, or — when uncapped — 60s of silence since the last output.
-            let budget = match grace_until {
-                Some(g) => g.saturating_duration_since(now),
-                None => match deadline {
-                    Some(dl) => dl.saturating_duration_since(now),
-                    None => Duration::from_secs(60).saturating_sub(now.duration_since(last_msg)),
-                },
+            // or whichever liveness cap expires first.
+            let (budget, expired) = match grace_until {
+                Some(g) => (g.saturating_duration_since(now), CapKind::None),
+                None => cell_budget(
+                    now.duration_since(started),
+                    now.duration_since(last_msg),
+                    wall,
+                    silence,
+                ),
             };
             // Poll on a short interval (capped at the budget) so a kernel that EXITS
             // mid-cell is noticed within ~1s and reported as a distinct `KernelDied`,
@@ -953,25 +1056,25 @@ impl Kernel {
                         // escape hatch.
                         break;
                     }
-                    match cap {
-                        // Hit the hard cap: interrupt and switch to the grace window.
-                        Some(d) => {
-                            self.interrupt();
-                            outputs.push(Output::timeout(format!(
-                                "cell exceeded {}s; sent interrupt",
-                                d.as_secs()
-                            )));
-                            grace_until = Some(Instant::now() + Duration::from_secs(5));
-                            continue;
+                    // A cap expired. Both paths interrupt: a wedged cell must actually be
+                    // stopped, not just abandoned, or it keeps running in the warm kernel
+                    // and every later cell queues behind it. The message names the cap
+                    // that fired and its budget, so the author knows which to raise.
+                    let note = match expired {
+                        CapKind::Wall(secs) => {
+                            format!("cell exceeded {secs}s of wall-clock time; sent interrupt")
                         }
-                        // No cap (opt-out): a silent hang still times out per-output.
-                        None => {
-                            outputs.push(Output::timeout(
-                                "cell produced no output for 60s".to_string(),
-                            ));
-                            break;
+                        CapKind::Silence(secs) => {
+                            format!("cell produced no output for {secs}s; sent interrupt")
                         }
-                    }
+                        // Unreachable: an unarmed cap yields `Duration::MAX`, which is
+                        // never zero, so this arm cannot be entered via an expired budget.
+                        CapKind::None => break,
+                    };
+                    self.interrupt();
+                    outputs.push(Output::timeout(note));
+                    grace_until = Some(Instant::now() + Duration::from_secs(5));
+                    continue;
                 }
             };
             // Only messages parented by our request belong to this execution.
@@ -1379,6 +1482,76 @@ fn strip_ansi(s: &str) -> String {
 mod tests {
     use super::*;
 
+    // --- cell liveness caps (item 175a) ---------------------------------------
+    // `cell_budget` is the whole cap decision, extracted so it can be tested with
+    // synthetic durations instead of by waiting. The loop around it only polls.
+
+    const S: fn(u64) -> Duration = Duration::from_secs;
+
+    #[test]
+    fn the_default_cap_is_silence_not_wall_clock() {
+        // The item's premise: a 40-minute training cell that prints an epoch line
+        // every 30s must NOT be killed. Under the old wall-clock default it died at
+        // 120s no matter how much output it was producing.
+        let (budget, kind) =
+            cell_budget(S(40 * 60), S(30), DEFAULT_CAPS.wall, DEFAULT_CAPS.silence);
+        assert_eq!(
+            kind,
+            CapKind::Silence(600),
+            "a live, chatty cell must be governed by silence, not wall-clock"
+        );
+        assert_eq!(budget, S(570), "silence budget resets on every output");
+        assert!(
+            DEFAULT_CAPS.wall.is_none(),
+            "the wall-clock cap must be off by default; it is the wall the item is about"
+        );
+    }
+
+    #[test]
+    fn a_silent_cell_is_capped_and_names_the_silence_budget() {
+        // The real runaway: no output at all for the whole budget.
+        let (budget, kind) = cell_budget(S(10_000), S(600), None, Some(S(600)));
+        assert!(budget.is_zero(), "an expired cap must yield a zero budget");
+        assert_eq!(kind, CapKind::Silence(600));
+    }
+
+    #[test]
+    fn the_nearer_of_the_two_caps_owns_the_budget() {
+        // Both armed: whichever expires first must own the budget AND the message,
+        // or a wall-clock kill would be reported as a silence timeout.
+        let (budget, kind) = cell_budget(S(100), S(1), Some(S(120)), Some(S(600)));
+        assert_eq!(
+            (budget, kind),
+            (S(20), CapKind::Wall(120)),
+            "wall is nearer"
+        );
+
+        let (budget, kind) = cell_budget(S(100), S(599), Some(S(9_999)), Some(S(600)));
+        assert_eq!(
+            (budget, kind),
+            (S(1), CapKind::Silence(600)),
+            "silence is nearer"
+        );
+    }
+
+    #[test]
+    fn setting_the_wall_clock_cap_reproduces_the_old_default_exactly() {
+        // `TALIESIN_CELL_TIMEOUT=120` must still mean what it meant before this
+        // change, so the escape hatch has a home and the change stays bisectable.
+        let (budget, kind) = cell_budget(S(119), S(0), Some(S(120)), None);
+        assert_eq!((budget, kind), (S(1), CapKind::Wall(120)));
+    }
+
+    #[test]
+    fn both_caps_disabled_never_expires() {
+        let (budget, kind) = cell_budget(S(10_000), S(10_000), None, None);
+        assert_eq!(kind, CapKind::None);
+        assert!(
+            !budget.is_zero(),
+            "an unarmed cap must never expire the cell"
+        );
+    }
+
     #[test]
     fn transient_start_errors_retry_but_missing_interpreter_does_not() {
         // A port-allocation race / socket reuse under concurrent kernel starts is
@@ -1479,6 +1652,80 @@ mod tests {
             !out.contains("[31m") && !out.contains("[0m"),
             "ANSI SGR code leaked as visible text: {out}"
         );
+    }
+
+    // Item 175a, against a REAL kernel: the whole point of the change is that a cell
+    // which keeps talking survives past a budget that would have killed it, while a
+    // cell that goes quiet does not. Both halves run against tiny caps (2s) so the
+    // test costs seconds, not the 120s the shipped default would need. The pure
+    // `cell_budget` tests above prove the arithmetic; this proves the arithmetic is
+    // actually the thing governing a live execution.
+    #[test]
+    fn a_chatty_cell_outlives_the_silence_budget_and_a_quiet_one_does_not() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the cell caps.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            // Silence-only, as shipped: no wall-clock cap at all.
+            k.cell_cap = None;
+            k.silence_cap = Some(Duration::from_secs(2));
+
+            // Chatty: 4s of runtime, a line every 0.2s. Under the OLD wall-clock rule a
+            // 2s cap kills this at 2s; under the silence rule it must run to completion,
+            // because the budget resets on every print.
+            let t = std::time::Instant::now();
+            let chatty = render_outputs(
+                &k.execute("import time\nfor i in range(20):\n    print(i, flush=True); time.sleep(0.2)\nprint('finished')")
+                    .await
+                    .unwrap(),
+            );
+            assert!(
+                chatty.contains("finished"),
+                "a cell printing every 0.2s was killed by a 2s SILENCE cap, so the budget is \
+                 not resetting on output (this is the 175a regression): {chatty}"
+            );
+            assert!(
+                !chatty.contains("no output for"),
+                "chatty cell reported a silence timeout: {chatty}"
+            );
+            assert!(
+                t.elapsed() >= Duration::from_secs(3),
+                "the cell returned too fast to have actually run its 4s loop"
+            );
+
+            // Quiet: one long silent sleep. This is the real runaway, and it must be
+            // interrupted at the silence budget and NAME that budget.
+            let t = std::time::Instant::now();
+            let quiet = render_outputs(&k.execute("import time\ntime.sleep(60)").await.unwrap());
+            assert!(
+                quiet.contains("no output for 2s"),
+                "a silent cell was not capped, or the message did not name the silence \
+                 budget: {quiet}"
+            );
+            assert!(
+                t.elapsed() < Duration::from_secs(30),
+                "silent cell ran {:?}, far past its 2s budget",
+                t.elapsed()
+            );
+
+            // The warm kernel survives the interrupt: state from before is still there.
+            let after = render_outputs(&k.execute("print('alive', 6 * 7)").await.unwrap());
+            assert!(
+                after.contains("alive 42"),
+                "kernel did not recover after a silence interrupt: {after}"
+            );
+        });
     }
 
     // Regression (AP8-1): an executed cell's stderr warning (matplotlib's Agg

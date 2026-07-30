@@ -63,7 +63,8 @@ the defaults work, and the only ones most projects ever set are the kernel paths
 |---|---|---|
 | `TALIESIN_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
 | `TALIESIN_R` | `R` | R binary (with `IRkernel`) used for `{r}` cells |
-| `TALIESIN_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the cap |
+| `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). The budget resets on every line printed, so a long job that reports progress is never interrupted; `0` disables the cap |
+| `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell **wall-clock** cap in seconds, off by default; bounds total runtime regardless of output |
 | `TALIESIN_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
 | `TALIESIN_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
 | `TALIESIN_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
@@ -73,8 +74,8 @@ the defaults work, and the only ones most projects ever set are the kernel paths
 
 `TALIESIN_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
 are read on the same run; the flag and the variable mean the same thing, so use
-whichever fits (the variable is handy in CI). The kernel paths and
-`TALIESIN_CELL_TIMEOUT` come up most; the rest are situational.
+whichever fits (the variable is handy in CI). The kernel paths come up most; the
+rest are situational.
 
 ## Scaffold a project (the fast path)
 

@@ -117,7 +117,8 @@ language runs against its own warm kernel:
 | --- | --- | --- |
 | `TALIESIN_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
 | `TALIESIN_R` | `R` | Interpreter used for `{r}` cells. |
-| `TALIESIN_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the limit. |
+| `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). This is the default liveness cap: a cell that keeps printing is never interrupted, however long it runs. `0` disables it. |
+| `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell wall-clock cap in seconds, off by default. Set it to bound total runtime regardless of output; `0` disables it. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
 
 (See `taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,

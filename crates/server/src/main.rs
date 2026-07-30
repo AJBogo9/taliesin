@@ -157,7 +157,8 @@ const COMMANDS: &[&str] = &[
 /// user-facing but undocumented because nothing tied the two together.
 const ENV_HELP: &str = "\
 ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
-     TALIESIN_CELL_TIMEOUT (per-cell seconds; 0 disables),
+     TALIESIN_CELL_SILENCE (per-cell seconds with NO output; default 600, 0 disables),
+     TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
      TALIESIN_JS_TIMEOUT (read --run {js} headless-Chrome settle seconds; default 10),
      TALIESIN_MATH_IMAGE_TIMEOUT (lsp math-hover render seconds; default 10),

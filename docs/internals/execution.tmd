@@ -232,10 +232,18 @@ client connections. `start()`:
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
 `display_data`, and `error`, until the kernel returns to `idle`.
 
-A **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`, default 120s) guards a runaway
-cell. Crucially it is a cap on the whole cell, **not** on the gap between messages,
-which is what lets it catch a *streaming* runaway (a `while True: print(...)` that
-keeps the channel busy would defeat any per-message idle timeout). On hit, `execute`
+A **silence cap** (`TALIESIN_CELL_SILENCE`, default 600s) guards a wedged cell. It
+measures the gap since the last iopub message, not total runtime, so the budget
+resets on every line the cell prints: a forty-minute training run that logs an epoch
+line is alive, while a cell that has said nothing for ten minutes is the real
+runaway. An optional **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`) is available
+but **off by default**, since bounding total runtime is a cost decision, not a safety
+one.
+
+A *streaming* runaway (a `while True: print(...)` that keeps the channel busy, and so
+never trips the silence cap) is caught instead by the **output caps** below: once
+`MAX_OUTPUTS` or `MAX_STREAM_BYTES` trips, `execute` interrupts immediately. That is
+why removing the wall-clock default costs no protection. On hit, `execute`
 SIGINTs the kernel (the `interrupt_mode: signal` path, which surfaces as a
 `KeyboardInterrupt` inside the cell) and then drains a short **grace window** (5s) so
 the resulting interrupt error and the trailing `idle` arrive and the channels resync,

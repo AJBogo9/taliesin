@@ -43,11 +43,14 @@ fine too: cells just render as highlighted source, and the preview shows a quiet
 :::
 
 The kernel is resilient: if it crashes mid-session the server detects the dead
-process and respawns it on the next run, and a runaway cell is interrupted at a
-configurable timeout instead of wedging the kernel. That cap is
-`TALIESIN_CELL_TIMEOUT` (default 120 seconds): a cell that runs longer is sent
-SIGINT so a runaway loop can't lock up the kernel, and set it to `0` to disable
-the cap entirely. The dev menu's **Restart kernel** action drops the kernel,
+process and respawns it on the next run, and a wedged cell is interrupted instead
+of locking up the kernel. The cap is on **silence**, not on runtime:
+`TALIESIN_CELL_SILENCE` (default 600 seconds) is how long a cell may produce no
+output at all before it is sent SIGINT. The budget resets on every line a cell
+prints, so a long-running job that reports progress runs to completion however
+long it takes, with no configuration. (To bound total runtime regardless of
+output, set the optional `TALIESIN_CELL_TIMEOUT`.) The dev menu's **Restart
+kernel** action drops the kernel,
 re-runs every cell against a fresh one, and reloads so `define` values
 re-bind.
 

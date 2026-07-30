@@ -42,10 +42,19 @@ re-runs automatically, no restart needed.
 
 ## A cell hangs / runs forever
 
-A cell that exceeds `TALIESIN_CELL_TIMEOUT` seconds (default 120) is interrupted
-(SIGINT → `KeyboardInterrupt`); the warm kernel and prior cells survive. Lower it
-for tighter feedback, or set `0` to disable the cap. The dev menu's **Restart
-kernel** drops and respawns the kernel if it's truly wedged.
+A cell is capped on **silence**, not on how long it runs. A cell that produces no
+output for `TALIESIN_CELL_SILENCE` seconds (default 600) is interrupted
+(SIGINT → `KeyboardInterrupt`); the warm kernel and prior cells survive. A long job
+that prints progress as it goes resets that budget on every line, so it is never
+interrupted however long it takes.
+
+That means a genuinely long cell needs no configuration: print something
+occasionally and it will run to completion. If a cell is legitimately silent for
+longer than ten minutes, raise `TALIESIN_CELL_SILENCE` or set it to `0`.
+
+To bound a cell's *total* runtime regardless of output, set the optional
+`TALIESIN_CELL_TIMEOUT` (wall-clock seconds, off by default). The dev menu's
+**Restart kernel** drops and respawns the kernel if it's truly wedged.
 
 ## A cell ran, but I think the kernel crashed
 

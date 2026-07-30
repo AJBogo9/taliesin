@@ -185,7 +185,8 @@ exists:
 | Variable | Effect |
 |---|---|
 | `TALIESIN_PYTHON` / `TALIESIN_R` | The interpreter for `{python}` / `{r}` cells (defaults: `python3`, `R`). |
-| `TALIESIN_CELL_TIMEOUT` | Per-cell timeout in seconds (default `120`; `0` disables). |
+| `TALIESIN_CELL_SILENCE` | Seconds a cell may produce no output before interrupt (default `600`; `0` disables). The default liveness cap. |
+| `TALIESIN_CELL_TIMEOUT` | Optional per-cell wall-clock cap in seconds (**off** by default; `0` disables). |
 | `TALIESIN_NO_CACHE` | Ignore and skip the `_freeze/` execution cache. |
 | `TALIESIN_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them, `{python}`/`{r}` and `{js}` alike. Independent of `--host`, which does **not** turn it on (a `--host` preview without it only logs a warning). Not an HTML sanitizer. |
 | `TALIESIN_HOST` (`--host`) | Expose the preview on the LAN behind a per-session token. |
