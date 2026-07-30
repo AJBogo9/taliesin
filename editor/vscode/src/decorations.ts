@@ -22,6 +22,9 @@ class CheckDecorations implements vscode.FileDecorationProvider {
   /** Guards against piling up `check` runs when a burst of saves arrives. */
   private running = false;
 
+  /** Told the total problem count after every run, so the status bar need not re-run check. */
+  constructor(private readonly onCount: (count: number | null) => void) {}
+
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     if (uri.scheme !== "file") return undefined;
     const severity = this.worst.get(uri.fsPath);
@@ -45,8 +48,10 @@ class CheckDecorations implements vscode.FileDecorationProvider {
     try {
       const json = await runCheck(binary, root);
       // A run that could not produce JSON clears the badges rather than leaving stale ones:
-      // a badge that no longer reflects the project is worse than no badge.
+      // a badge that no longer reflects the project is worse than no badge, and reports an
+      // unknown count rather than claiming zero.
       this.apply(json ? worstByFile(json, root) : new Map());
+      this.onCount(json ? (json.diagnostics ?? []).length : null);
     } finally {
       this.running = false;
     }
@@ -81,8 +86,11 @@ function runCheck(binary: string, root: string): Promise<CheckJson | null> {
 }
 
 /** Badge `.tmd` files with their check status, refreshed on save. */
-export function registerDecorations(context: vscode.ExtensionContext): void {
-  const provider = new CheckDecorations();
+export function registerDecorations(
+  context: vscode.ExtensionContext,
+  onCount: (count: number | null) => void = () => {}
+): void {
+  const provider = new CheckDecorations(onCount);
   context.subscriptions.push(provider, vscode.window.registerFileDecorationProvider(provider));
 
   const enabled = () =>

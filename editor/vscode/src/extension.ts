@@ -20,6 +20,7 @@ import { registerTerminalLinks } from "./termlinks";
 import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
 import { registerDecorations } from "./decorations";
+import { registerStatusBar } from "./statusbar";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -95,7 +96,14 @@ export function activate(context: vscode.ExtensionContext) {
   // Project health with zero interaction: each `.tmd` wears its worst check severity. The
   // language server only sees buffers it has been sent, so a page never opened is invisible
   // to it; `check` sees the whole project.
-  registerDecorations(context);
+  //
+  // The badges and the status bar share ONE `check` run: the decoration provider already pays
+  // for it, so the status bar subscribes to the count rather than shelling out a second time.
+  let reportCount: (count: number | null) => void = () => {};
+  registerDecorations(context, (count) => reportCount(count));
+  registerStatusBar(context, previews, (listener) => {
+    reportCount = listener;
+  });
 }
 
 /**
