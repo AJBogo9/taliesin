@@ -262,9 +262,115 @@ fn utf16_position(line: &str, line_no: usize, byte: usize) -> lsp_types::Positio
 ///
 /// `None` when the directory is unchanged: an in-place rename breaks nothing inside the file, and
 /// rewriting it anyway would churn the diff and risk breaking a path that was already correct.
-fn outbound_edits(_old: &Path, _new: &Path) -> Option<FileEdits> {
-    // Task 10.
-    None
+fn outbound_edits(old: &Path, new: &Path) -> Option<FileEdits> {
+    let old_dir = old.parent()?;
+    let new_dir = new.parent()?;
+    if normalize(old_dir) == normalize(new_dir) {
+        return None;
+    }
+    let text = std::fs::read_to_string(old).ok()?;
+    let mut edits = Vec::new();
+    for (line_no, line) in text.split('\n').enumerate() {
+        for (start, reference) in outgoing_references(line) {
+            // Only a relative path can break, and only one that resolves to something real: a
+            // rebase computed from a target that does not exist would replace a path the author is
+            // still writing with a confidently wrong one.
+            if !is_relative_reference(reference) {
+                continue;
+            }
+            let target = normalize(&old_dir.join(reference));
+            if !target.exists() {
+                continue;
+            }
+            let Some(rebased) = rel(new_dir, &target) else {
+                continue;
+            };
+            if rebased == reference {
+                continue;
+            }
+            edits.push(lsp_types::TextEdit {
+                range: lsp_types::Range {
+                    start: utf16_position(line, line_no, start),
+                    end: utf16_position(line, line_no, start + reference.len()),
+                },
+                new_text: rebased,
+            });
+        }
+    }
+    if edits.is_empty() {
+        return None;
+    }
+    // The edits are emitted in document order already, but a client is entitled to assume it.
+    edits.sort_by_key(|e: &lsp_types::TextEdit| (e.range.start.line, e.range.start.character));
+    Some(FileEdits {
+        uri: lsp_types::Url::from_file_path(old).ok()?,
+        edits,
+    })
+}
+
+/// Whether a reference is a relative path this can rebase.
+///
+/// Everything excluded here would be actively damaged by a rebase: a URL is not ours, a
+/// root-absolute path is deliberately anchored to the site root, and a bare `#sec-x` is an anchor
+/// in the current page.
+fn is_relative_reference(reference: &str) -> bool {
+    !reference.is_empty()
+        && !reference.starts_with('/')
+        && !reference.starts_with('#')
+        // A scheme (`https:`, `mailto:`, `data:`). Checked before the first `/` so that a path
+        // containing a colon later on is not mistaken for one.
+        && !reference
+            .split_once(':')
+            .is_some_and(|(head, _)| !head.contains('/') && !head.is_empty())
+}
+
+/// The outgoing path references on one line, each with its byte offset.
+///
+/// Two shapes carry a path: a Markdown link or image target, `](…)`, and a shortcode argument,
+/// `{{< include … >}}`. A link's title (`](a.png "Caption")`) stops at the first space, which is
+/// also what keeps a `](…)` containing prose from being treated as a path.
+fn outgoing_references(line: &str) -> Vec<(usize, &str)> {
+    let mut out = Vec::new();
+
+    let mut at = 0usize;
+    while let Some(open) = line[at..].find("](").map(|i| at + i + 2) {
+        at = open;
+        let Some(close) = line[open..].find(')').map(|i| open + i) else {
+            break;
+        };
+        let inner = &line[open..close];
+        // A title after the target, and a trailing `{#fig-…}` attribute block, are not the path.
+        let target = inner.split_whitespace().next().unwrap_or("");
+        if !target.is_empty() {
+            out.push((open, target));
+        }
+        at = close;
+    }
+
+    // `{{< include path >}}`, `{{< embed path >}}`, `{{< dataset path >}}`: the first argument.
+    let mut at = 0usize;
+    while let Some(open) = line[at..].find("{{<").map(|i| at + i + 3) {
+        at = open;
+        let Some(close) = line[open..].find(">}}").map(|i| open + i) else {
+            break;
+        };
+        let inner = &line[open..close];
+        let mut words = inner.split_whitespace();
+        let name = words.next().unwrap_or("");
+        if matches!(name, "include" | "embed" | "dataset") {
+            if let Some(arg) = words.next() {
+                // The offset of the argument inside the line, found by searching from the name so
+                // an identical string earlier on the line cannot be picked instead.
+                let name_end = open + inner.find(name).unwrap_or(0) + name.len();
+                if let Some(rel_at) = line[name_end..close].find(arg) {
+                    out.push((name_end + rel_at, arg));
+                }
+            }
+        }
+        at = close;
+    }
+    out.sort_by_key(|(at, _)| *at);
+    out
 }
 
 /// Every `.tmd` in the project, plus its `_site.yml`.
@@ -399,6 +505,116 @@ mod tests {
                 std::fs::copy(&f, &t).unwrap();
             }
         }
+    }
+
+    #[test]
+    fn moving_a_file_rebases_its_own_relative_references() {
+        let tmp = TmpDir::new("outbound");
+        let root = tmp.path();
+        std::fs::write(root.join("_site.yml"), "title: P\n").unwrap();
+        std::fs::create_dir_all(root.join("chapters")).unwrap();
+        std::fs::create_dir_all(root.join("parts/one")).unwrap();
+        std::fs::create_dir_all(root.join("_includes")).unwrap();
+        std::fs::write(root.join("chapters/scree.png"), "").unwrap();
+        std::fs::write(root.join("_includes/x.tmd"), "X\n").unwrap();
+        let old = root.join("chapters/intro.tmd");
+        std::fs::write(
+            &old,
+            "![A scree plot](scree.png){#fig-scree}\n\n{{< include ../_includes/x.tmd >}}\n",
+        )
+        .unwrap();
+
+        let edits = rename(&old, &root.join("parts/one/intro.tmd"));
+        let (_, text) = applied(&edits)
+            .into_iter()
+            .find(|(p, _)| p.ends_with("intro.tmd"))
+            .expect("the moved file is edited");
+
+        // chapters/ -> parts/one/ is one level up then two down.
+        assert!(text.contains("](../../chapters/scree.png)"), "{text}");
+        assert!(text.contains("{{< include ../../_includes/x.tmd >}}"), "{text}");
+        // The caption and the label are prose and an anchor, not paths.
+        assert!(text.contains("[A scree plot]"), "{text}");
+        assert!(text.contains("{#fig-scree}"), "{text}");
+    }
+
+    #[test]
+    fn an_in_place_rename_leaves_the_files_own_references_alone() {
+        let tmp = TmpDir::new("inplace");
+        let root = tmp.path();
+        std::fs::write(root.join("_site.yml"), "title: P\n").unwrap();
+        std::fs::write(root.join("scree.png"), "").unwrap();
+        let old = root.join("intro.tmd");
+        // `./scree.png` is ALREADY correct, but `rel` would spell it `scree.png`, so without the
+        // same-directory guard an in-place rename emits a gratuitous normalizing edit to a path
+        // that was never broken. That is the difference between the guard and the
+        // already-equal check, and a plainly-spelled path cannot tell them apart.
+        std::fs::write(&old, "![S](./scree.png){#fig-s}\n![T](scree.png)\n").unwrap();
+
+        let edits = rename(&old, &root.join("overview.tmd"));
+
+        // The directory did not change, so nothing inside the file broke. Rewriting it anyway
+        // would churn the diff and risk breaking a path that was already correct.
+        assert!(
+            !edits
+                .iter()
+                .any(|f| f.uri.to_file_path().unwrap().ends_with("intro.tmd")),
+            "no outbound edits for a same-directory rename: {edits:?}"
+        );
+    }
+
+    #[test]
+    fn an_absolute_or_external_reference_is_never_rebased() {
+        let tmp = TmpDir::new("external");
+        let root = tmp.path();
+        std::fs::write(root.join("_site.yml"), "title: P\n").unwrap();
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        std::fs::create_dir_all(root.join("b")).unwrap();
+        let old = root.join("a/p.tmd");
+        // The last one is the load-bearing case: a root-absolute path that really EXISTS. The
+        // others are excluded by the relative-reference filter, but they would also be skipped
+        // for merely failing to resolve, so on their own they cannot prove the filter runs.
+        std::fs::write(root.join("real.png"), "").unwrap();
+        let abs = root.join("real.png").display().to_string();
+        std::fs::write(
+            &old,
+            format!(
+                "[x](https://example.org/x.png) [y](mailto:a@b.c) [z](#sec-here) [w]({abs})\n"
+            ),
+        )
+        .unwrap();
+
+        let edits = rename(&old, &root.join("b/p.tmd"));
+
+        let moved = edits
+            .iter()
+            .find(|f| f.uri.to_file_path().unwrap().ends_with("p.tmd"));
+        assert!(
+            moved.is_none(),
+            "a URL, a root-absolute path, a mailto: and a bare anchor are all left alone: {moved:?}"
+        );
+    }
+
+    #[test]
+    fn a_reference_that_does_not_resolve_is_left_for_the_author() {
+        let tmp = TmpDir::new("dangling");
+        let root = tmp.path();
+        std::fs::write(root.join("_site.yml"), "title: P\n").unwrap();
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        std::fs::create_dir_all(root.join("b")).unwrap();
+        let old = root.join("a/p.tmd");
+        // A path to a file that does not exist: the author is mid-sentence, or it is a typo the
+        // diagnostics already report. Rebasing it would replace one wrong path with another,
+        // confidently, and destroy the evidence of what they meant.
+        std::fs::write(&old, "![](not-yet-drawn.png)\n").unwrap();
+
+        let edits = rename(&old, &root.join("b/p.tmd"));
+        assert!(
+            !edits
+                .iter()
+                .any(|f| f.uri.to_file_path().unwrap().ends_with("p.tmd")),
+            "an unresolvable reference is not rebased: {edits:?}"
+        );
     }
 
     #[test]
