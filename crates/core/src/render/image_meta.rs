@@ -127,9 +127,7 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
         let at = i + pos;
         let lead_ok = at > 0 && bytes[at - 1].is_ascii_whitespace();
         let start = at + needle.len();
-        let Some(len) = tag[start..].find('"') else {
-            return None;
-        };
+        let len = tag[start..].find('"')?;
         if lead_ok {
             return Some(tag[start..start + len].to_string());
         }
