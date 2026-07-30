@@ -133,9 +133,13 @@ Add `lsp_nav::xref_occurrences(text) -> Vec<(id, line, col)>`, a full-document s
 `anchor_occurrences`'s existing character-level predicate rather than re-deciding what a reference
 looks like. Session 3's Fact 5 predicted a general `scan_all` and items 70/71 proved it unnecessary
 for them; this is the one consumer that genuinely needs it, scoped to xref occurrences and nothing
-else. **The two functions must be pinned against each other**: for any id present in the document,
-`xref_occurrences` filtered to that id must equal `anchor_occurrences` for it. A second scanner
-free to disagree with rename about what an anchor is, is the exact trap item 70 avoided.
+else. **The two functions must be pinned against each other**, and the relation is
+**containment, not equality**: `anchor_occurrences` deliberately also matches the `{#id}`
+definition and the `](#id)` bare-fragment link, neither of which is a *use*. So the pin is that
+every hit `xref_occurrences` reports for an id appears in `anchor_occurrences(text, id)`. Writing
+it as an equality would fail on the first document that defines an anchor it also references, and
+a test that has to be relaxed on first contact teaches nothing. A second scanner free to disagree
+with rename about what an anchor is, is the exact trap item 70 avoided.
 
 Include resolution mirrors what the existing walk does (`includes::resolve` before scanning), so an
 anchor authored in an `_includes/` partial belongs to whichever page includes it.
@@ -231,10 +235,10 @@ stable, so the compatibility cost is negligible, and `manifest.test.ts` pins the
   **the memo's invalidation** (walk, touch a file's mtime, walk again, assert the second walk saw
   the change). A memo whose invalidation is untested is the failure mode this design chose over
   74's file watcher, so it is the one thing that must not be vacuously pinned.
-- **The scanner-agreement pin from 3.1.2**: `xref_occurrences` filtered to a given id must equal
-  `anchor_occurrences` for that id, over a fixture carrying a definition, several references and a
-  citation (which must be excluded from both). `anchor_occurrences` already has such a fixture at
-  `lsp_nav.rs:1027`; extend it rather than mint a second one that could drift.
+- **The scanner-agreement pin from 3.1.2**: every hit `xref_occurrences` reports for a given id
+  must appear in `anchor_occurrences(text, id)`, over a fixture carrying a definition, several
+  references and a citation (which must be excluded from both). `anchor_occurrences` already has
+  such a fixture at `lsp_nav.rs:1027`; extend it rather than mint a second one that could drift.
 - **`node --test` / mocha unit tests** for the problem-matcher regex against real `check` output,
   and for the decoration provider's severity mapping.
 - **e2e (`npm run test:e2e`)** for the surfaces only a real Extension Host can confirm: that VS
