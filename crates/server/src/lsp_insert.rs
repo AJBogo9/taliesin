@@ -132,8 +132,122 @@ pub(crate) fn insert_edit(
     let _ = text;
     match kind {
         InsertKind::Image => image_paste(doc, payload),
+        InsertKind::HtmlTable | InsertKind::TsvTable => table_paste(kind, payload),
         _ => todo!("later tasks"),
     }
+}
+
+/// Rows of cells from tab-separated clipboard text.
+fn tsv_rows(text: &str) -> Vec<Vec<String>> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.split('\t').map(|c| c.trim().to_owned()).collect())
+        .collect()
+}
+
+/// Rows of cells from clipboard HTML.
+///
+/// A tolerant scanner rather than a parser, deliberately: the input is one `<table>` put on the
+/// clipboard by a spreadsheet or a browser, not an arbitrary document, and this project declines
+/// dependencies it can do without. The one shape it gets wrong is a `>` inside an attribute
+/// value, which no spreadsheet emits.
+fn html_rows(html: &str) -> Vec<Vec<String>> {
+    let lower = html.to_ascii_lowercase();
+    let mut rows = Vec::new();
+    let mut at = 0usize;
+    while let Some(tr) = lower[at..].find("<tr").map(|i| at + i) {
+        let end = lower[tr..]
+            .find("</tr")
+            .map(|i| tr + i)
+            .unwrap_or(lower.len());
+        let mut cells = Vec::new();
+        let mut cell_at = tr;
+        while let Some(open) = ["<td", "<th"]
+            .iter()
+            .filter_map(|t| lower[cell_at..end].find(t).map(|i| cell_at + i))
+            .min()
+        {
+            // Step past the tag's own attributes to the content.
+            let Some(gt) = lower[open..end].find('>').map(|i| open + i + 1) else {
+                break;
+            };
+            let close = ["</td", "</th"]
+                .iter()
+                .filter_map(|t| lower[gt..end].find(t).map(|i| gt + i))
+                .min()
+                .unwrap_or(end);
+            cells.push(strip_tags(&html[gt..close]));
+            cell_at = close + 1;
+        }
+        if !cells.is_empty() {
+            rows.push(cells);
+        }
+        at = end + 1;
+    }
+    rows
+}
+
+/// Cell text with inline markup removed and the entities a spreadsheet emits decoded.
+///
+/// `&amp;` is decoded LAST, or a literal `&amp;nbsp;` in the author's data would turn into a
+/// space instead of the text they copied.
+fn strip_tags(cell: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for ch in cell.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            c if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.replace("&nbsp;", " ")
+        .replace("&#160;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+        .trim()
+        .to_owned()
+}
+
+/// A pasted grid as a pipe table, aligned by the one aligner "Format Document" uses.
+///
+/// Alignment markers are all default (`---`). Reading `align=` out of clipboard HTML would be
+/// speculative work for a shape no corpus document has, and `format_tables` re-derives column
+/// widths from the delimiter row either way.
+fn table_paste(kind: InsertKind, payload: &str) -> Result<InsertEditResult, String> {
+    let rows = match kind {
+        InsertKind::HtmlTable => html_rows(payload),
+        _ => tsv_rows(payload),
+    };
+    let width = rows.first().map(Vec::len).unwrap_or(0);
+    // Two rows and two columns is the floor, and every row must agree on the column count.
+    // Padding a ragged grid to a rectangle would invent cells the author never wrote, and
+    // tab-separated prose is not a table at all.
+    if rows.len() < 2 || width < 2 || rows.iter().any(|r| r.len() != width) {
+        return Err("that does not look like a table (not a rectangular grid)".to_owned());
+    }
+    let mut out = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        // An unescaped pipe SPLITS the cell, silently turning an n-column row into n+1.
+        let cells: Vec<String> = row.iter().map(|c| c.replace('|', r"\|")).collect();
+        out.push_str(&format!("| {} |\n", cells.join(" | ")));
+        if i == 0 {
+            let delims: Vec<&str> = (0..width).map(|_| "---").collect();
+            out.push_str(&format!("| {} |\n", delims.join(" | ")));
+        }
+    }
+    let aligned =
+        crate::lsp_format::apply_line_edits(&out, &crate::lsp_format::format_tables(&out));
+    Ok(InsertEditResult {
+        text: aligned.trim_end().to_owned(),
+        is_snippet: false,
+        write_file: None,
+        append: None,
+    })
 }
 
 fn image_paste(doc: &Path, mime: &str) -> Result<InsertEditResult, String> {
@@ -239,6 +353,116 @@ mod tests {
 
         let r = insert_edit(&doc, "", InsertKind::Image, "image/png").unwrap();
         assert_eq!(r.write_file.as_deref(), Some("figure-01.png"));
+    }
+
+    #[test]
+    fn a_pasted_tsv_grid_becomes_an_aligned_pipe_table() {
+        let tmp = TmpDir::new("tsv");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        let tsv = "site\tdepth\ttemp\nnorth\t3\t7.1\nsouth\t12\t4.4\n";
+        let r = insert_edit(&doc, "", InsertKind::TsvTable, tsv).unwrap();
+
+        assert!(
+            !r.is_snippet,
+            "a table has nothing for the author to fill in"
+        );
+        assert_eq!(
+            r.text,
+            "| site  | depth | temp |\n\
+             | ----- | ----- | ---- |\n\
+             | north | 3     | 7.1  |\n\
+             | south | 12    | 4.4  |",
+            "columns padded by the one aligner Format Document uses"
+        );
+    }
+
+    #[test]
+    fn a_cell_containing_a_pipe_is_escaped() {
+        let tmp = TmpDir::new("pipe");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        // An unescaped pipe splits the cell, silently turning a 2-column row into 3. This is a
+        // trap already recorded in LESSONS.md, which is why it gets its own test.
+        let r = insert_edit(
+            &doc,
+            "",
+            InsertKind::TsvTable,
+            "expr\tmeaning\na|b\tunion\n",
+        )
+        .unwrap();
+
+        assert!(r.text.contains(r"a\|b"), "the pipe is escaped: {}", r.text);
+        for line in r.text.lines() {
+            let bars = line.replace(r"\|", "").matches('|').count();
+            assert_eq!(bars, 3, "every row still has 2 columns: {line}");
+        }
+    }
+
+    #[test]
+    fn a_pasted_html_table_reads_th_td_and_decodes_entities() {
+        let tmp = TmpDir::new("html");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        // The shape a spreadsheet actually puts on the clipboard: attributes on every tag,
+        // inline markup inside cells, and an entity for a blank cell.
+        let html = "<table><tr><th align=\"left\">site</th><th>n</th></tr>\
+                    <tr><td style=\"x\"><b>north</b></td><td>&nbsp;</td></tr></table>";
+        let r = insert_edit(&doc, "", InsertKind::HtmlTable, html).unwrap();
+
+        let lines: Vec<&str> = r.text.lines().collect();
+        assert_eq!(lines.len(), 3, "header, delimiter, one body row: {lines:?}");
+        assert!(lines[0].contains("site"), "{}", lines[0]);
+        assert!(
+            lines[2].contains("north"),
+            "cell markup stripped: {}",
+            lines[2]
+        );
+        assert!(!r.text.contains("&nbsp;"), "entities decoded: {}", r.text);
+        assert!(!r.text.contains("<b>"), "tags stripped: {}", r.text);
+    }
+
+    #[test]
+    fn a_literal_ampersand_entity_survives_the_decode_order() {
+        let tmp = TmpDir::new("amp");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        // `&amp;nbsp;` is the author's literal text "&nbsp;", not a blank. Decoding `&amp;`
+        // before `&nbsp;` would turn it into a space and lose what they copied.
+        let html =
+            "<table><tr><th>a</th><th>b</th></tr><tr><td>&amp;nbsp;</td><td>x</td></tr></table>";
+        let r = insert_edit(&doc, "", InsertKind::HtmlTable, html).unwrap();
+
+        assert!(
+            r.text.contains("&nbsp;"),
+            "the literal entity survives: {}",
+            r.text
+        );
+    }
+
+    #[test]
+    fn a_ragged_grid_is_refused_rather_than_silently_squared() {
+        let tmp = TmpDir::new("ragged");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        // Tab-separated prose is not a table. Padding it to a rectangle invents cells.
+        let err = insert_edit(&doc, "", InsertKind::TsvTable, "a\tb\nc\n").unwrap_err();
+        assert!(err.contains("does not look like a table"), "{err}");
+    }
+
+    #[test]
+    fn a_single_column_is_not_a_table() {
+        let tmp = TmpDir::new("onecol");
+        let doc = tmp.path().join("bayes.tmd");
+        std::fs::write(&doc, "").unwrap();
+
+        let err = insert_edit(&doc, "", InsertKind::TsvTable, "alpha\nbeta\n").unwrap_err();
+        assert!(err.contains("does not look like a table"), "{err}");
     }
 
     #[test]

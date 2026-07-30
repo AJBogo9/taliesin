@@ -45,6 +45,21 @@ pub(crate) struct LineEdit {
     pub(crate) new_text: String,
 }
 
+/// Apply a sorted, non-overlapping [`LineEdit`] list to `text`.
+///
+/// Applied back to front, so an edit that changes a line count cannot shift the lines a
+/// later-in-the-document edit names. Shared with `lsp_insert`, which builds a pipe table and
+/// then runs it through [`format_tables`] so a pasted table and a formatted one come out
+/// byte-identical.
+pub(crate) fn apply_line_edits(text: &str, edits: &[LineEdit]) -> String {
+    let mut lines: Vec<String> = text.split('\n').map(str::to_string).collect();
+    for edit in edits.iter().rev() {
+        let replacement: Vec<String> = edit.new_text.split('\n').map(str::to_string).collect();
+        lines.splice(edit.start_line..=edit.end_line, replacement);
+    }
+    lines.join("\n")
+}
+
 /// Everything "Format Document" does: tables, then whitespace, as one sorted,
 /// non-overlapping edit list.
 ///
@@ -459,12 +474,7 @@ mod tests {
     /// Apply every edit to `text`, so a test asserts on the DOCUMENT rather than on an edit
     /// list — which is what actually reaches the author's buffer.
     fn formatted(text: &str) -> String {
-        let mut lines: Vec<String> = text.split('\n').map(str::to_string).collect();
-        for edit in format_tables(text).into_iter().rev() {
-            let replacement: Vec<String> = edit.new_text.split('\n').map(str::to_string).collect();
-            lines.splice(edit.start_line..=edit.end_line, replacement);
-        }
-        lines.join("\n")
+        apply_line_edits(text, &format_tables(text))
     }
 
     #[test]
