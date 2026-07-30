@@ -1,0 +1,41 @@
+---
+title: "Image optimization"
+description: "What a local raster image gets for free: a reserved box, a loading policy, and AVIF rungs the build derives from it."
+---
+
+Every local raster image on this page is annotated at *render* time with its intrinsic
+size, so the reader's layout is reserved before a single byte of the image arrives. The
+build then derives AVIF rungs from the same files and offers them through a `<picture>`,
+leaving the author's original as the fallback.
+
+## A captioned figure
+
+The first image in a document is the one most likely to be the largest contentful paint,
+so it is deliberately **not** lazy: it is fetched eagerly at high priority. Lazy-loading an
+above-the-fold image delays the very metric the optimization exists to improve.
+
+![A model fit, at a size that earns two width rungs.](fit-a.png){#fig-opt-wide}
+
+## An inline image
+
+A bare image in a paragraph is not a figure, but it is still a raster file the reader has
+to download, so it gets the same treatment minus the numbering: ![a small
+fit](fit-small.png) sits in this sentence.
+
+## An image below the smallest rung
+
+`fit-small.png` is 320 pixels wide, narrower than the smallest candidate rung. It gets
+exactly one derivative, at its native width.
+
+![The same fit, already smaller than any rung.](fit-small.png){#fig-opt-narrow}
+
+That is not a rounding decision, it is the whole rule: a rung wider than the source would
+have to invent pixels, and the codec then has to store them. Re-encoding a 637-pixel-wide
+source at an 800-pixel rung was measured at 12,274 bytes against 4,798 at its native width
+— larger than the original file it was meant to shrink.
+
+## What is left alone
+
+An SVG has no intrinsic pixel size to state and no raster to transcode, and a `data:` URI
+already carries its own pixels, so neither is touched. An image the author has already
+shipped as `.webp` or `.avif` is left alone too: that decision has been made.

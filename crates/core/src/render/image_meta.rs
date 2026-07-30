@@ -247,11 +247,34 @@ mod tests {
     }
 
     #[test]
-    fn the_svg_image_element_is_not_mistaken_for_an_img_tag() {
-        let d = tmp("svgimage");
+    fn an_element_whose_name_merely_starts_with_img_is_not_an_img_tag() {
+        // The first version of this test used `<svg><image href="a.png"/></svg>` and was
+        // VACUOUS: SVG spells the attribute `href`, so the `src` lookup already returned None
+        // and the test passed with the delimiter guard deleted. It has to be an element that
+        // both starts with `img` AND carries a `src` — an image-comparison custom element is
+        // the realistic one, and annotating it would inject a raster's pixel dimensions into
+        // something that is not an <img>.
+        let d = tmp("prefix");
         fixture(&d, "a.png", 64, 64);
-        let html = r#"<svg><image href="a.png" /></svg>"#;
-        assert_eq!(ImageAnnotator::new().annotate(html, &d), html);
+        for html in [
+            r#"<img-compare src="a.png"></img-compare>"#,
+            r#"<imgset src="a.png">"#,
+            // SVG's own element, kept for the shape even though `href` alone would spare it.
+            r#"<svg><image src="a.png" /></svg>"#,
+        ] {
+            assert_eq!(
+                ImageAnnotator::new().annotate(html, &d),
+                html,
+                "annotated an element that is not an <img>: {html}"
+            );
+        }
+        // The guard must not go too far the other way: these ARE img tags.
+        for html in [r#"<img src="a.png">"#, r#"<img/>"#, "<img>"] {
+            let got = ImageAnnotator::new().annotate(html, &d);
+            if html.contains("src") {
+                assert_ne!(got, html, "a real <img> must still be annotated: {html}");
+            }
+        }
     }
 
     #[test]
