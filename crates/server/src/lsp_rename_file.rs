@@ -530,7 +530,10 @@ mod tests {
 
         // chapters/ -> parts/one/ is one level up then two down.
         assert!(text.contains("](../../chapters/scree.png)"), "{text}");
-        assert!(text.contains("{{< include ../../_includes/x.tmd >}}"), "{text}");
+        assert!(
+            text.contains("{{< include ../../_includes/x.tmd >}}"),
+            "{text}"
+        );
         // The caption and the label are prose and an anchor, not paths.
         assert!(text.contains("[A scree plot]"), "{text}");
         assert!(text.contains("{#fig-scree}"), "{text}");
@@ -576,9 +579,7 @@ mod tests {
         let abs = root.join("real.png").display().to_string();
         std::fs::write(
             &old,
-            format!(
-                "[x](https://example.org/x.png) [y](mailto:a@b.c) [z](#sec-here) [w]({abs})\n"
-            ),
+            format!("[x](https://example.org/x.png) [y](mailto:a@b.c) [z](#sec-here) [w]({abs})\n"),
         )
         .unwrap();
 
