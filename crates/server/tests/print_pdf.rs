@@ -110,3 +110,66 @@ fn pdf_paginates_a_real_document_into_more_than_one_page() {
          pagination was cut short"
     );
 }
+
+/// Running heads and folios are the two things a printed document is judged on, and BOTH
+/// come from paged.js: Chrome 150 renders `string-set` as nothing (measured, with a
+/// `counter(page)` positive control). So a running head here is direct evidence the polyfill
+/// is genuinely driving the margin boxes, not just that a PDF appeared.
+#[test]
+fn the_pdf_carries_running_heads_and_folios() {
+    if !require_chrome() {
+        eprintln!("skipped: set TALIESIN_REQUIRE_CHROME=1 to run the live print gate");
+        return;
+    }
+    let mut body = String::from("---\ntitle: Heads\n---\n\n## Chapter Alpha\n\n");
+    for i in 0..90 {
+        body.push_str(&format!(
+            "Alpha paragraph {i} with enough words to fill a line.\n\n"
+        ));
+    }
+    body.push_str("## Chapter Beta\n\n");
+    for i in 0..90 {
+        body.push_str(&format!(
+            "Beta paragraph {i} with enough words to fill a line.\n\n"
+        ));
+    }
+    let doc = TempDoc::new("pdfhead", &body);
+    run_pdf(&doc.src(), &doc.out());
+    let text = pdf_text(&doc.out());
+
+    // A running head repeats the section title on the pages that follow the one its heading
+    // opened, so the title must appear strictly more often than the single heading itself.
+    let alpha = text.matches("Chapter Alpha").count();
+    assert!(
+        alpha > 1,
+        "running head missing: 'Chapter Alpha' appears {alpha} time(s), so only the heading \
+         itself is in the PDF and the @page margin box is empty"
+    );
+    let beta = text.matches("Chapter Beta").count();
+    assert!(
+        beta > 1,
+        "running head missing for the second section: 'Chapter Beta' appears {beta} time(s)"
+    );
+
+    // Folios: every page after the first carries its number on its own line.
+    let folios: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.len() <= 3 && l.parse::<u32>().is_ok())
+        .collect();
+    assert!(
+        folios.len() >= 2,
+        "expected page numbers in the footer, found {folios:?}"
+    );
+    assert!(
+        folios.contains(&"2"),
+        "page 2 should be numbered; found {folios:?}"
+    );
+    // The opening page is a title page: numbering it "1" reads as a mistake in a typeset
+    // document, so `@page :first` suppresses it.
+    let first_page = text.split('\u{c}').next().unwrap_or("");
+    assert!(
+        !first_page.lines().map(str::trim).any(|l| l == "1"),
+        "the first page should carry no folio"
+    );
+}
