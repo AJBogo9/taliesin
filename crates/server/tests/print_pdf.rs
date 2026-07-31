@@ -173,3 +173,39 @@ fn the_pdf_carries_running_heads_and_folios() {
         "the first page should carry no folio"
     );
 }
+
+/// The headline of the whole track: a cross-reference that names its page. Chrome 150
+/// renders `target-counter()` as nothing, so a real page number here is direct proof the
+/// polyfill resolved it AFTER pagination settled.
+#[test]
+fn a_cross_reference_resolves_to_a_real_page_number() {
+    if !require_chrome() {
+        eprintln!("skipped: set TALIESIN_REQUIRE_CHROME=1 to run the live print gate");
+        return;
+    }
+    let mut body = String::from("---\ntitle: Refs\n---\n\nSee @fig-late for the result.\n\n");
+    for i in 0..130 {
+        body.push_str(&format!("Filler paragraph {i} with a reasonable number of words.\n\n"));
+    }
+    body.push_str("![The late figure](late.png){#fig-late}\n");
+    let doc = TempDoc::new("pdfxref", &body);
+    run_pdf(&doc.src(), &doc.out());
+    let text = pdf_text(&doc.out());
+
+    assert!(
+        text.contains("(p. "),
+        "no '(p. N)' suffix rendered on a cross-reference:\n{text}"
+    );
+    // "(p. 0)" is the signature of target-counter firing BEFORE pagination settled — a
+    // silent wrong answer, which is worse than no answer at all.
+    assert!(
+        !text.contains("(p. 0)"),
+        "a cross-reference resolved to page 0, so pagination had not settled:\n{text}"
+    );
+
+    // The list of figures must carry a real page number too, not just exist.
+    assert!(
+        text.contains("List of Figures"),
+        "the generated list of figures is missing from the PDF"
+    );
+}

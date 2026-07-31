@@ -115,3 +115,50 @@ fn the_polyfill_is_absent_from_the_normal_built_page() {
         "the print-only polyfill leaked onto the normal built page"
     );
 }
+
+#[test]
+fn a_document_with_figures_gets_a_generated_list_of_figures() {
+    let src = "---\ntitle: T\n---\n\n\
+               ![Alpha caption](a.png){#fig-alpha}\n\n\
+               ![Omega caption](b.png){#fig-omega}\n";
+    let html = print_page_from_doc(&doc(src), "f", Paper::A4);
+    assert!(
+        html.contains("<nav class=\"tali-lof\""),
+        "a document with figures must get a list-of-figures nav"
+    );
+    let a = html.find("href=\"#fig-alpha\"").expect("fig-alpha listed");
+    let b = html.find("href=\"#fig-omega\"").expect("fig-omega listed");
+    assert!(a < b, "the list must follow document order");
+    assert!(
+        html.contains("Alpha caption"),
+        "each entry carries its caption text"
+    );
+}
+
+/// An empty "List of Figures" heading on a document that has none is a defect, not a
+/// degenerate case.
+#[test]
+fn a_document_without_figures_gets_no_list_of_figures() {
+    let html = print_page_from_doc(&doc("# Hi\n\njust text\n"), "f", Paper::A4);
+    assert!(!html.contains("tali-lof"), "no figures means no list");
+}
+
+/// The LoF is a GENERATED block. The reader-affordances batch found one leaking into four
+/// text projections across three modules, so this pins that the print-only block cannot
+/// reach the normal page at all — it is excluded structurally, and this proves it.
+#[test]
+fn the_generated_list_of_figures_never_reaches_the_normal_page() {
+    let d = doc("---\ntitle: T\n---\n\n![Alpha caption](a.png){#fig-alpha}\n");
+    let normal =
+        taliesin_core::render_doc_to_page(&d, "fallback", taliesin_core::OutputMode::Build);
+    assert!(
+        !normal.contains("tali-lof"),
+        "the print-only list of figures leaked onto the normal built page"
+    );
+    // And the text projection `taliesin read`/`skim`, the search index and llms-full.txt
+    // all derive from — the four surfaces the reader-affordances batch found leaking.
+    assert!(
+        !d.body_text().contains("List of Figures"),
+        "the print-only list of figures leaked into the text projection"
+    );
+}

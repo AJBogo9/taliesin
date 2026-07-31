@@ -75,6 +75,68 @@ impl Paper {
     }
 }
 
+/// Build a list of figures from the assembled body, in document order.
+///
+/// Returns `""` when the document has no figures — an empty "List of Figures" heading is a
+/// defect, not a degenerate case.
+///
+/// **This is a GENERATED block.** It exists only in the transient print page, so it is
+/// structurally absent from `taliesin read`/`skim`, the search index and `llms-full.txt`.
+/// `crates/core/tests/print_page.rs` pins that rather than trusting it: the same assumption
+/// leaked four times in the reader-affordances batch.
+fn list_of_figures(body: &str) -> String {
+    let mut items = String::new();
+    let mut rest = body;
+    while let Some(start) = rest.find("<figure") {
+        let after = &rest[start..];
+        let Some(end) = after.find("</figure>") else {
+            break;
+        };
+        let block = &after[..end];
+        rest = &after[end..];
+
+        // The leading SPACE is load-bearing. A figure opens
+        // `<figure data-block-id="b-…" data-sourcepos="…" id="fig-x" …>`, and
+        // `data-block-id="` itself contains the substring `id="` — matching without the
+        // space would list every figure under its block hash instead of its anchor.
+        let Some(id) = attr_value(block, " id=\"") else {
+            continue;
+        };
+        if !id.starts_with("fig-") {
+            continue;
+        }
+        let caption = block
+            .find("<figcaption")
+            .and_then(|c| block[c..].find('>').map(|g| c + g + 1))
+            .and_then(|open| {
+                block[open..]
+                    .find("</figcaption>")
+                    .map(|close| super::strip_tags(&block[open..open + close]))
+            })
+            .unwrap_or_default();
+        let caption = caption.trim();
+        if caption.is_empty() {
+            continue;
+        }
+        items.push_str(&format!("<li><a href=\"#{id}\">{caption}</a></li>"));
+    }
+    if items.is_empty() {
+        return String::new();
+    }
+    // `role="doc-loft"` is the DPUB-ARIA role for a list of figures.
+    format!(
+        "<nav class=\"tali-lof\" role=\"doc-loft\" aria-label=\"List of figures\">\
+         <h2>List of Figures</h2><ol>{items}</ol></nav>"
+    )
+}
+
+/// The value of the attribute opening with `name` (quote included), or `None`.
+fn attr_value<'a>(block: &'a str, name: &str) -> Option<&'a str> {
+    let i = block.find(name)? + name.len();
+    let j = block[i..].find('"')? + i;
+    Some(&block[i..j])
+}
+
 /// Assemble the transient paginated page for `doc`.
 ///
 /// The caller is expected to have run the document's cells already (the `pdf` command
@@ -98,7 +160,9 @@ pub fn print_page_from_doc(doc: &RenderedDoc, fallback_title: &str, paper: Paper
     let mut escaped = String::new();
     super::escape_html(&title, &mut escaped);
 
-    let body = doc.body_html();
+    let content = doc.body_html();
+    // The LoF leads the document, ahead of the content it indexes.
+    let body = format!("{}{content}", list_of_figures(&content));
 
     assemble_html_page(&PageParts {
         mode: OutputMode::Build,
@@ -108,7 +172,7 @@ pub fn print_page_from_doc(doc: &RenderedDoc, fallback_title: &str, paper: Paper
         // whatever the reader last chose on screen.
         theme_default: "light",
         theme_css: &doc.theme_css,
-        ship_katex: body.contains("class=\"katex"),
+        ship_katex: content.contains("class=\"katex"),
         extra_head: &head,
         body: &body,
         ..PageParts::defaults()

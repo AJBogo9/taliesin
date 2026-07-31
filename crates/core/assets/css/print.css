@@ -100,3 +100,60 @@ details > *:not(summary) {
   margin: 0 !important;
   padding: 0 !important;
 }
+
+/* -----------------------------------------------------------------------------------------
+   Page-numbered cross-references and the list of figures.
+
+   Both rest on `target-counter()`, which Chrome 150 does NOT implement (it renders as
+   nothing) — paged.js supplies it. This is the feature people drop to LaTeX for, and it
+   costs zero Rust: cross-references already emit
+   `<a href="#fig-x" class="tali-xref">Figure&nbsp;1</a>` (cite/render.rs), so the page
+   number is one rule against a class that already exists.
+   ----------------------------------------------------------------------------------------- */
+
+a.tali-xref::after {
+  content: " (p. " target-counter(attr(href url), page) ")";
+  font-size: .9em;
+  color: #555;
+}
+
+/* A reference to a target on the SAME page is noise ("Figure 1 (p. 4)" read on page 4), but
+   suppressing it needs a same-page test paged.js does not expose. Left visible on purpose:
+   a redundant page number is a smaller defect than a missing one. */
+
+.tali-lof {
+  break-after: page;
+}
+.tali-lof > h2 {
+  break-before: avoid;
+}
+.tali-lof ol {
+  list-style: none;
+  padding: 0;
+}
+.tali-lof li {
+  margin: .3em 0;
+}
+.tali-lof li a::after {
+  /* Literal dots rather than `leader('.')`: the leader function was not verified against
+     paged.js 0.4.3, and an unsupported value here would silently drop the page number with
+     it. Revisit as polish once checked in a browser. */
+  content: " . . . . . " target-counter(attr(href url), page);
+  color: #555;
+}
+/* The LoF entries are internal navigation; the anchor styling would print them as links the
+   reader cannot follow. */
+.tali-lof li a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* An in-document reference is not a link on paper — the reader cannot follow it, and the
+   page number beside it is the whole point. base.css's print block already spells out
+   external URLs after `a[href^="http"]` and skips `#` anchors, so this only neutralises the
+   internal ones: colour and underline both imply an affordance that does not exist here. */
+a.tali-xref,
+a[href^="#"] {
+  color: inherit !important;
+  text-decoration: none !important;
+}
