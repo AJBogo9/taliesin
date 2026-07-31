@@ -589,7 +589,15 @@ fn html_page_inner(
     // `<script type="application/tali-js">` in the body, so strip those (the cell is
     // inert without its browser runtime; the build warns separately).
     let body = if mode == OutputMode::Bare {
-        strip_tali_js_scripts(&body)
+        // Degrade `{pyodide}` BEFORE stripping, or the source is deleted outright (item 158).
+        // A `{js}` cell's source is inert-but-expendable in bare output; a `{pyodide}` cell's
+        // Python lives INSIDE the `<script>` the strip removes, so stripping first left two
+        // empty `<div class="cell tali-pyodide-cell">` husks and the author's code appeared
+        // nowhere in the artifact — with no warning, because `warn_bare_exclusions` counts
+        // only `{js}`. Degrading first yields a visible highlighted listing, which is both
+        // the right answer for "no browser runtime ships" and still zero `<script>`, so the
+        // strip's contract below is untouched.
+        strip_tali_js_scripts(&degrade_pyodide_cells(&body))
     } else {
         body
     };

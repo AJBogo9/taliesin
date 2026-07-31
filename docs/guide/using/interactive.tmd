@@ -279,7 +279,9 @@ same reactive graph a `{js}` or `{glsl}` cell publishes into, so a `{js}` cell
 downstream reads it with `tali.get(...)`. The value is `null` until the runtime has
 finished its first run, so a consumer should guard on that. `#| input:` works the
 same way in reverse: the named values are injected into the Python namespace before
-the cell runs, so the source reads them directly by name. A name that is not a valid
+the cell runs, so the source reads them directly by name. A name is `None` until the
+value it refers to has actually arrived, so guard on that the same way a `{js}`
+consumer does. A name that is not a valid
 Python identifier (`my-slider`, say) still re-runs the cell but is *not* injected,
 because it cannot be spelled in Python source; the same rule `{glsl}` applies to a
 name that is not a valid uniform. `print` output is shown above the returned value,

@@ -102,6 +102,13 @@ fn alias(lang: &str) -> &str {
         "ts" => "typescript",
         "sh" | "shell" | "zsh" => "bash",
         "py" => "python",
+        // `{pyodide}` is Python, just executed in the reader's browser instead of a kernel
+        // (item 158). Without this the token is unknown to `known_language`, so `--no-exec`
+        // — which routes a client cell through the ordinary listing emitter — warns "unknown
+        // code language `pyodide`" once per cell and `build --no-exec --strict` FAILS on a
+        // correct document. It also makes that listing highlight as Python, which is what the
+        // single-file degradation already emits (`render/pyodide.rs` writes `language-python`).
+        "pyodide" => "python",
         "rs" => "rust",
         "yml" => "yaml",
         other => other,

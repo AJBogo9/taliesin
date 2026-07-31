@@ -42,5 +42,15 @@ print("shape:", a.shape)
 a.sum()
 ```
 
+The edge runs the other way too. `#| input:` names a value from the same graph and
+binds it in the Python namespace before the cell runs, so a `{pyodide}` cell can read
+what another cell published. It is `None` until that value arrives, and the cell
+re-runs when it does:
+
+```{pyodide}
+#| input: samples
+print("samples from the cell above:", 0 if samples is None else len(samples))
+```
+
 Only the standard library and numpy are available: installing anything else would
 need a network fetch, which Taliesin does not do.

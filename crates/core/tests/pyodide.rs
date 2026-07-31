@@ -7,7 +7,10 @@
 //! emitted tag, never a bare word. That trap has now fired in both directions on this repo.
 
 use taliesin_core::OutputMode;
-use taliesin_core::render::{code_scripts_for, degrade_pyodide_cells, has_client_cells_of};
+use taliesin_core::render::{
+    PREVIEW_PYODIDE_DIR, PYODIDE_DIR_NAME, code_scripts_for, degrade_pyodide_cells,
+    has_client_cells_of, pyodide_index_meta,
+};
 
 fn render(src: &str) -> taliesin_core::RenderedDoc {
     taliesin_core::render_document_with_includes(src, std::path::Path::new("."))
@@ -202,5 +205,72 @@ fn the_degradation_leaves_js_cells_running() {
     assert!(
         out.contains("<script type=\"application/tali-js\""),
         "a `{{js}}` cell must survive a single-file build untouched: {out}"
+    );
+}
+
+/// The index `<meta>` is the ONLY thing that tells the client enhancer where the 12.9 MB
+/// runtime lives, and it resolves three different ways. Nothing tested it: the branch shipped
+/// with no assertion on `pyodide_index_meta` at all, while `pyodide_browser.rs`'s header
+/// claimed a sibling test covered it. A wrong URL here is invisible to every server-side test
+/// and fails only in the reader's browser, as a module-load error with no obvious cause.
+///
+/// The empty Build+Inline arm is not an omission, it is the signal that the page must degrade
+/// (`degrade_pyodide_cells`), so it is asserted as a value rather than skipped.
+#[test]
+fn the_index_meta_resolves_per_mode_and_is_absent_without_pyodide_cells() {
+    let body = render(PY).body_html();
+
+    assert_eq!(
+        pyodide_index_meta(&body, OutputMode::Preview, None),
+        format!("<meta name=\"tali-pyodide-index\" content=\"{PREVIEW_PYODIDE_DIR}\">"),
+        "preview serves the runtime from its own same-origin route"
+    );
+    assert_eq!(
+        pyodide_index_meta(&body, OutputMode::Build, None),
+        "",
+        "a single self-contained file carries no runtime, and the empty string is what tells \
+         the build to degrade the cell instead of shipping a wrapper that cannot boot"
+    );
+    // External is the site build and the portable folder: the prefix is the page-relative one
+    // the assembler already computed for every other asset, so a nested chapter resolves too.
+    assert_eq!(
+        pyodide_index_meta(&body, OutputMode::Build, Some("../")),
+        format!("<meta name=\"tali-pyodide-index\" content=\"../_assets/{PYODIDE_DIR_NAME}/\">"),
+        "a nested page reaches _assets/ through its own relative prefix"
+    );
+
+    // The control: every arm above must be empty for a page with no `{pyodide}` cells, or the
+    // gate is not a gate. A `{js}` page is the near miss that matters.
+    let js = render(JS).body_html();
+    for (mode, base) in [
+        (OutputMode::Preview, None),
+        (OutputMode::Build, None),
+        (OutputMode::Build, Some("../")),
+    ] {
+        assert_eq!(
+            pyodide_index_meta(&js, mode, base),
+            "",
+            "a page with no `{{pyodide}}` cell must never stamp the index meta"
+        );
+    }
+}
+
+/// `--bare`'s contract is zero `<script>`, and a `{pyodide}` cell's Python source lives INSIDE
+/// its `<script>`. Stripping first therefore deleted the source outright: the artifact carried
+/// two empty `<div class="cell tali-pyodide-cell">` husks, the author's code appeared nowhere,
+/// and `warn_bare_exclusions` said nothing because it counts only `{js}` cells. Measured on
+/// `corpus/reactive/pyodide.tmd` before the fix: 2 husks, 0 listings, `arange` 0 times.
+#[test]
+fn bare_output_keeps_a_pyodide_cells_source_as_a_listing_not_an_empty_husk() {
+    let doc = render(PY);
+    let page = taliesin_core::render_doc_to_page(&doc, "t", OutputMode::Bare);
+
+    assert!(
+        page.contains("<code class=\"language-python\">") && page.contains("arange"),
+        "the author's Python must survive `--bare` as a visible listing: {page:.400}"
+    );
+    assert!(
+        !page.contains("<script type=\"application/tali-pyodide\""),
+        "and bare output still ships no client-cell script"
     );
 }

@@ -1,9 +1,10 @@
 //! The `{pyodide}` browser gate (backlog item 158).
 //!
 //! **Why this file exists at all.** Every other test of item 158 asserts what *Rust emitted*:
-//! that a `<script type="application/tali-pyodide">` reaches the page, that the
-//! `<meta name="tali-pyodide-index">` carries the right URL, that the payload is vendored
-//! complete. All of them stay green with the 12.9 MB runtime deleted and `pyodide.js` reduced
+//! that a `<script type="application/tali-pyodide">` reaches the page (`client_lang.rs`), that
+//! the `<meta name="tali-pyodide-index">` resolves per mode (`core/tests/pyodide.rs`), that a
+//! site build copies the payload and stamps a page-relative index (`asset_bundle.rs`), that the
+//! payload is vendored complete (`third_party.rs`). All of them stay green with the runtime
 //! to an empty file. Nothing below the emission layer — booting a WASM CPython, capturing its
 //! stdout, turning its last expression into a *published* reactive value, and re-running the
 //! downstream `{js}` consumer — is observable from Rust. This is the only test that looks.
@@ -356,6 +357,10 @@ async fn observe(browser: &Browser, dir: &Path, port: u16) -> Result<Run, String
 const BOOT_ROUNDS: usize = 240;
 const BOOT_INTERVAL: Duration = Duration::from_millis(500);
 
+/// The corpus page's `#| input:` cell prints this prefix followed by the number of samples it
+/// actually received. Its whole job is to make the js-scope -> Python direction observable.
+const INPUT_MARKER: &str = "samples from the cell above:";
+
 async fn read_corpus(browser: &Browser, port: u16) -> Result<Reading, String> {
     let url = format!("http://127.0.0.1:{port}/");
     let page = browser
@@ -370,10 +375,19 @@ async fn read_corpus(browser: &Browser, port: u16) -> Result<Reading, String> {
     for _ in 0..BOOT_ROUNDS {
         let r: Reading = read(&page, CORPUS_PROBE).await?;
         // Settled means "there is something real to assert on, or something went wrong":
-        // captured stdout AND a published value AND the consumer's redraw, or an error box.
-        // Returning the LAST reading either way is what keeps a timeout's failure message
-        // about the page rather than about the clock.
-        let settled = (!r.stdout.is_empty() && r.published_len >= 0 && r.cell_chart_marks > 0)
+        // captured stdout AND a published value AND the consumer's redraw AND the
+        // `#| input:` cell having run, or an error box. Returning the LAST reading either
+        // way is what keeps a timeout's failure message about the page rather than the clock.
+        //
+        // The `INPUT_MARKER` clause is load-bearing, not belt-and-braces: that cell re-runs
+        // when `samples` publishes, and so does the `{js}` consumer, with no ordering
+        // guarantee between them. Settling on the redraw alone could therefore take the
+        // reading while the input cell still showed its pre-publish `0`, which is exactly
+        // the failure the assertion below exists to catch — a flake that reports a real bug.
+        let settled = (!r.stdout.is_empty()
+            && r.published_len >= 0
+            && r.cell_chart_marks > 0
+            && r.stdout.join("\n").contains(INPUT_MARKER))
             || !r.errors.is_empty();
         last = Some(r);
         if settled {
@@ -563,18 +577,33 @@ fn a_pyodide_cell_boots_and_publishes_to_a_js_consumer() {
         o.chart_marks
     );
 
+    // The OTHER direction across the language boundary, and the one that was silently broken:
+    // a `{pyodide}` cell reading, through `#| input:`, a value another cell published into the
+    // reactive scope. The enhancer injected `api.value(name)`, which reads `r.inputs`/
+    // `r.defines` — controls and kernel defines — and is `undefined` for a `#| name:`
+    // publication, which lives in `r.scope` behind `api.get`. Python therefore received `None`
+    // while the graph re-ran the cell perfectly, so it looked wired and delivered nothing.
+    // `0` here is precisely that regression; the guard in the corpus cell means it reports the
+    // count instead of throwing.
+    assert!(
+        o.stdout.join("\n").contains(&format!("{INPUT_MARKER} 500")),
+        "the `#| input:` cell must receive all 500 published samples in its Python namespace. \
+         `{INPUT_MARKER} 0` means the injection read the wrong accessor and Python got `None`. \
+         Full reading: {o:?}"
+    );
+
     assert!(
         o.errors.is_empty(),
         "cells reported errors: {:?} (full reading: {o:?})",
         o.errors
     );
 
-    // Structural control, not a readiness signal (see the file header): three client-side
-    // cells mounted and all three returned from `run()`.
+    // Structural control, not a readiness signal (see the file header): four client-side
+    // cells mounted and all four returned from `run()`.
     assert_eq!(
         (o.cells, o.done),
-        (3, 3),
-        "the corpus page has two `{{pyodide}}` cells and one `{{js}}` consumer, and every \
+        (4, 4),
+        "the corpus page has three `{{pyodide}}` cells and one `{{js}}` consumer, and every \
          wrapper `run()` must have returned. Full reading: {o:?}"
     );
 }

@@ -136,7 +136,13 @@ fn run(src: &Path, out: Option<PathBuf>, paper: Paper, keep_html: bool) -> ExitC
         doc
     });
 
-    let html = print_page_from_doc(&doc, stem, paper, base);
+    // Build + Inline, exactly like `build <file> out.html`, so there is no Pyodide index for
+    // the enhancer to boot from (item 158). Degrade for the same reason `build.rs` and
+    // `query.rs` do: without it the PDF paginates a "Starting Python…" line or a
+    // `.tali-js-error` box, and the author's Python source — which lives inside the
+    // `<script>` — never appears in the printed record at all. A no-op on a page with no
+    // `{pyodide}` cells.
+    let html = taliesin_core::degrade_pyodide_cells(&print_page_from_doc(&doc, stem, paper, base));
 
     // The paginated page is transient: it is not an output of this tool, it is the thing the
     // browser reads. `_site/` and the source tree are untouched.

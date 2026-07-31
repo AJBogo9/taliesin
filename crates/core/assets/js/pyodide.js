@@ -201,7 +201,19 @@
             // glsl.js skips a non-GLSL-identifier input rather than emit an invalid uniform.
             // A skipped name still re-runs this cell (the dependency graph does not care),
             // it just is not visible inside the Python source under that name.
-            if (/^[A-Za-z_]\w*$/.test(n)) py.globals.set(n, api.value(n));
+            // `value` FIRST, then `get`, and both are needed. `api.value` reads
+            // `r.inputs`/`r.defines` — an `{{< input >}}` control or a kernel define — while a
+            // value published by another cell's `#| name:` lives in `r.scope`, which only
+            // `api.get` reaches (tali-js.js: `get` is `r.scope[n]`, `value` is
+            // `r.inputs[n] ? readValue(...) : r.defines[n]`). Reading only `value`, as
+            // glsl.js does, silently injected `undefined` for every cross-cell name: the
+            // graph re-ran this cell, Python received `None`, and the traceback blamed the
+            // author's arithmetic. glsl.js gets away with it because a shader uniform is
+            // always control-driven.
+            if (/^[A-Za-z_]\w*$/.test(n)) {
+              var iv = api.value(n);
+              py.globals.set(n, iv === undefined ? api.get(n) : iv);
+            }
           }
           result = await py.runPythonAsync(src);
           if (dead || gen !== generation) return;
