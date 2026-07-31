@@ -383,6 +383,20 @@
       get: function (n) { return r.scope[n]; },
       /** @param {string} n @param {any} v */
       set: function (n, v) { r.scope[n] = v; },
+      /**
+       * Publish a value that arrived AFTER this cell's `run()` resolved, and re-run the
+       * cells that consume it. `set` alone writes the scope and schedules nothing, which is
+       * correct for a synchronous cell — the wrapper publishes its return value and the
+       * scheduler orders everything. A language whose value is genuinely asynchronous
+       * (`{pyodide}`: boot the runtime, then execute) has no such moment.
+       *
+       * Deliberately NOT general mutable dataflow, and the limit is the design: this is
+       * reachable only from a LANGUAGE's `setup`, never from author cell source, so no
+       * `{js}` cell can start a cascade with it. The reactive-VM trap this project has
+       * refused three times stays refused.
+       * @param {string} n @param {any} v @returns {Promise<void>}
+       */
+      publish: function (n, v) { r.scope[n] = v; return scheduleFrom(r, n); },
       /** @param {string} n */
       value: function (n) {
         return r.inputs[n] ? readValue(r.inputs[n]) : r.defines[n];
