@@ -42,12 +42,25 @@ impl Drop for TempDoc {
     }
 }
 
+/// Run `taliesin pdf`, **capturing** the child's output rather than inheriting it.
+///
+/// `.status()` would let it inherit, and `taliesin pdf` logs to stderr — which lands in the
+/// middle of libtest's own line, producing
+/// `test pdf_paginates_… ...   info  wrote /tmp/…` instead of `... ok`. The test still
+/// passes; but `tools/gates.sh` proves a canary ran by grepping for `^test <name> ... ok$`,
+/// so a polluted line reads as "the gate did not run" and fails the whole suite. Capturing
+/// also means the child's diagnostics are available in the failure message, where they are
+/// actually useful.
 fn run_pdf(src: &Path, out: &Path) {
-    let status = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+    let res = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .args(["pdf", src.to_str().unwrap(), "-o", out.to_str().unwrap()])
-        .status()
+        .output()
         .expect("run taliesin pdf");
-    assert!(status.success(), "`taliesin pdf` exited non-zero");
+    assert!(
+        res.status.success(),
+        "`taliesin pdf` exited non-zero:\n{}",
+        String::from_utf8_lossy(&res.stderr)
+    );
 }
 
 /// Page count via `pdfinfo` (poppler-utils). Parsing the PDF ourselves would re-implement a
