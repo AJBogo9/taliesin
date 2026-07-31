@@ -40,10 +40,11 @@ const SHADER: &str = "```{glsl}\nvoid main() { gl_FragColor = vec4(1.0); }\n```\
 fn every_registered_mime_is_looked_up_by_the_client_runtime() {
     let runtime = include_str!("../assets/js/tali-js.js");
     let glsl = include_str!("../assets/js/glsl.js");
-    for lang in ["js", "glsl"] {
+    let pyodide = include_str!("../assets/js/pyodide.js");
+    for lang in ["js", "glsl", "pyodide"] {
         let spec = client_lang(lang).expect("registered");
         assert!(
-            runtime.contains(spec.mime) || glsl.contains(spec.mime),
+            runtime.contains(spec.mime) || glsl.contains(spec.mime) || pyodide.contains(spec.mime),
             "`{}` is registered server-side as `{}` but no client file registers that mime",
             spec.lang,
             spec.mime
@@ -56,7 +57,7 @@ fn every_registered_mime_is_looked_up_by_the_client_runtime() {
 /// `exec.rs` without `exec.rs` having to know it exists.
 #[test]
 fn client_langs_never_reach_a_kernel() {
-    for lang in ["js", "glsl"] {
+    for lang in ["js", "glsl", "pyodide"] {
         assert!(client_lang(lang).is_some(), "{lang} should be registered");
         assert!(
             !executes_to_kernel(lang),
@@ -231,6 +232,7 @@ fn bare_output_strips_every_client_language_not_just_js() {
             "js",
             "```{js}\nreturn document.createElement(\"p\");\n```\n",
         ),
+        ("pyodide", PY),
     ] {
         let out = page(src);
         assert!(
@@ -314,5 +316,54 @@ fn a_name_published_by_a_shader_satisfies_a_js_consumer() {
     assert!(
         msgs.is_empty(),
         "a cross-language edge should resolve: {msgs:?}"
+    );
+}
+
+const PY: &str = "```{pyodide}\n#| name: xs\nimport numpy as np\nnp.arange(3).tolist()\n```\n";
+
+/// The wrapper contract is language-agnostic, and `{pyodide}` is the first client language
+/// whose comment marker is `#` rather than `//`. `option_directive` already accepts all three
+/// markers (`#`, `//`, `%%`), so the reactive options parse with no parser change — this is
+/// the test that says so, because a silent failure here is a cell that mounts and publishes
+/// nothing.
+#[test]
+fn a_pyodide_cell_emits_the_shared_wrapper_with_hash_bar_options() {
+    let h = render(PY).body_html();
+    assert!(
+        h.contains("<script type=\"application/tali-pyodide\""),
+        "its own mime: {h}"
+    );
+    assert!(
+        h.contains("class=\"cell tali-pyodide-cell\"") && h.contains("class=\"tali-js-out\""),
+        "the SAME wrapper shape a `{{js}}` cell uses: {h}"
+    );
+    assert!(
+        h.contains("data-name=\"xs\""),
+        "`#| name:` parsed through the shared directive parser: {h}"
+    );
+    assert!(
+        h.contains("np.arange(3)"),
+        "author source rides verbatim: {h}"
+    );
+}
+
+/// The whole reason `{pyodide}` is a separate fence rather than a mode on `{python}`: the
+/// kernel-backed language must be completely unaffected. A `{python}` cell on the same page
+/// still goes to the executor, and a `{pyodide}` cell never does.
+#[test]
+fn pyodide_and_python_stay_disjoint_on_one_page() {
+    assert!(client_lang("pyodide").is_some());
+    assert!(!executes_to_kernel("pyodide"));
+    assert!(client_lang("python").is_none());
+    assert!(executes_to_kernel("python"));
+
+    let both = render(&format!("{PY}\n```{{python}}\nx = 1\n```\n")).body_html();
+    assert!(
+        both.contains("application/tali-pyodide"),
+        "the browser cell emits its wrapper: {both}"
+    );
+    assert!(
+        !both.contains("application/tali-python"),
+        "the kernel cell must NOT be wrapped as a client cell: {both}"
     );
 }

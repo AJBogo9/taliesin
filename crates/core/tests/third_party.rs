@@ -17,6 +17,10 @@ const OWN_JS: &[&str] = &[
     // it stays the curated set a document actually needs.
     "glsl.js",
     "numerics.js",
+    // `pyodide.js` is taliesin's own enhancer — a registration against tali-js.js. The
+    // VENDORED Pyodide runtime it loads lives in `assets/pyodide/` and is attributed by
+    // `the_vendored_pyodide_payload_is_complete_and_carries_its_licence`.
+    "pyodide.js",
 ];
 
 fn third_party_md() -> String {

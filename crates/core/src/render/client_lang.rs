@@ -35,7 +35,10 @@ pub struct ClientLang {
 /// **Deliberately short.** `{sql}`/DuckDB and `{ts}`/esbuild stay cut until a corpus
 /// document needs one (each is a multi-MB vendored payload and its own licence question);
 /// `{glsl}` earned its place by needing neither — WebGL is a browser API, so the whole
-/// language costs one small enhancer and no vendored bytes.
+/// language costs one small enhancer and no vendored bytes. `{pyodide}` is the one entry
+/// that DID pay the multi-MB price, which is why it is delivered as a served directory
+/// rather than inlined, and why it is a separate fence from the kernel-backed `{python}`
+/// rather than a mode on it: the two sets below must stay disjoint.
 pub(crate) const CLIENT_LANGS: &[ClientLang] = &[
     ClientLang {
         lang: "js",
@@ -46,6 +49,11 @@ pub(crate) const CLIENT_LANGS: &[ClientLang] = &[
         lang: "glsl",
         mime: "application/tali-glsl",
         class: "tali-glsl-cell",
+    },
+    ClientLang {
+        lang: "pyodide",
+        mime: "application/tali-pyodide",
+        class: "tali-pyodide-cell",
     },
 ];
 
