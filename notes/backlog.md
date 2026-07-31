@@ -16,7 +16,9 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 **Fresh session with no context: read this section, then "Standing constraints", then P1. That is
 enough to start.**
 
-- **Item 159, the print/PDF track, shipped 2026-07-31** (branch `print-pdf-track-2026-07-31`).
+- **Item 159, the print/PDF track, MERGED to `main` 2026-07-31** (`745b3774`, from branch
+  `print-pdf-track-2026-07-31`; `./tools/gates.sh` PASSED with all seven canaries verified
+  by name, and the pre-push hook green).
   `taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]` renders a
   typeset PDF *from the built HTML* via paged.js + CDP: running heads, folios,
   `@fig-` refs that print as "Figure 3 (p. 12)", an auto list of figures, widow/orphan
@@ -30,6 +32,15 @@ enough to start.**
     Chrome never requests a far-down image — `complete` stays false and neither `load` nor
     `error` ever fires. `PAGED_START` waited on exactly those events, so `preview()` was
     never called. Fixed by `eager_media()` in `render/print.rs`.
+    **All THREE "measured" claims in `render/print.rs` were wrong the same way**, each
+    downstream of that one unmeasured assumption about which component was failing: the
+    "figure crossing a page boundary" hang; the `max_float_height` hang, whose CSS rule was
+    never even in the stylesheet (`git log -S __TALI_MAX_FLOAT_H__` finds no commit, so the
+    substitution replaced nothing on every render); and "paginate-on-load never finishes
+    chunking", which re-measures byte-identical to the shipped path now that images load
+    eagerly. `auto: false` is kept for font ordering, relabelled as the conservative choice
+    it is. The height cap is now genuinely wired up — uncapped, a 600x3000 figure bleeds past
+    both margins, loses its caption and strands two near-blank pages.
     **The lesson is about the bisection, not the bug.** A whole session was spent ruling out
     `break-inside`, `max-height`, the LoF's `break-after`, image count and the settle
     budget — all *inside* paged.js, because the failing component had been assumed rather
@@ -42,7 +53,10 @@ enough to start.**
     script did. That misread happened twice in one session and nearly went into the notes as
     "gates.sh exits 0 having run nothing". It does not: measured directly, it exits **2**
     when it refuses to start and **1** when a gate fails. Redirect to a file and check `$?`,
-    or use `PIPESTATUS`. Separately: gates.sh needs
+    or use `PIPESTATUS`. **And run the workspace suite `-- --test-threads=1`**, as gates.sh
+    does: several tests own process-global state (`CHROME_PATH`), so at full parallelism a
+    browser test fails with a bare "a browser render" that reads exactly like a regression.
+    Separately: gates.sh needs
     `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python`, or it refuses to run at all
     (correctly — "a partial run would look green"), and verify the canaries by name.
   - **Every CSS experiment run before the `<base href>` fix measured broken images and
