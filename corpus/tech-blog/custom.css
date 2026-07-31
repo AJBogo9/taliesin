@@ -1,9 +1,0 @@
-/* Cross-document view transitions: a smooth crossfade on same-origin navigation.
-   This is the only rule the blog needs on top of Taliesin's base.css. Everything
-   this file used to hold either targeted Quarto/Bootstrap classes Taliesin never
-   emits (.quarto-*, .nav-footer, #TOC.toc-inline, .back-to-top, --bs-primary,
-   bootstrap-icons) or duplicated base.css (the old `.katex-display > .katex` rule
-   was in fact the regression base.css documents). `.sr-only` is aliased in base.css. */
-@view-transition {
-  navigation: auto;
-}

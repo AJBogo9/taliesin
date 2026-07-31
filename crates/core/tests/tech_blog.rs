@@ -433,15 +433,28 @@ fn home_page_renders_marginalia_hero() {
     );
 }
 
-/// The de-Quarto sweep stays swept and the site-level `css:` is still inlined. The blog
-/// dropped its Quarto nav-prefetch stack (CDN preconnects, a speculationrules prerender hint,
-/// the third-party instant.page module), all redundant with Taliesin's native hover-preview,
-/// so none may reappear; offline-first means zero external connections. The site `description:`
-/// is the single source of truth (exactly one `<meta description>`). The site
-/// head:/body-end:/css: INJECTION mechanism itself is covered synthetically in `config.rs`
-/// (this blog no longer declares head:/body-end:).
+/// The de-Quarto sweep stays swept. The blog dropped its Quarto nav-prefetch stack (CDN
+/// preconnects, a speculationrules prerender hint, the third-party instant.page module),
+/// all redundant with Taliesin's native hover-preview, so none may reappear; offline-first
+/// means zero external connections. The site `description:` is the single source of truth
+/// (exactly one `<meta description>`).
+///
+/// **This test used to end by asserting the page contains `@view-transition`, as proof
+/// that the site-level `css:` was still inlined.** That needle stopped proving anything
+/// the moment the rule moved into the bundled `base.css`, which every page inlines whole —
+/// it would have passed on a page with no `css:` at all, the standing inlined-asset trap.
+/// The blog's `custom.css` is gone with it (the 2026-07-11 audit's own prescription: its
+/// last live rule *belonged in* base.css), so there is no longer a `css:` claim to make
+/// here. The `css:` mechanism keeps its own coverage in
+/// `theme_css::a_custom_css_theme_file_is_read_from_disk_and_inlined` and in `config.rs`.
+///
+/// **If one of the negative assertions below fails, suspect the bundled assets before the
+/// site config.** The same whole-page inlining cuts the other way: a *comment* in
+/// `base.css` or the JS payload that merely names a forbidden token fails this test with
+/// no config change at all. Not hypothetical — it happened while promoting
+/// `@view-transition` into `base.css`, whose comment named the two dropped mechanisms.
 #[test]
-fn blog_nav_prefetch_stack_stays_dropped_and_css_is_injected() {
+fn blog_nav_prefetch_stack_stays_dropped() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
 
     let post = site
@@ -459,12 +472,6 @@ fn blog_nav_prefetch_stack_stays_dropped_and_css_is_injected() {
         !post.contains("instantpage"),
         "the third-party instant.page module was dropped"
     );
-    // css: custom.css is still inlined (now just the @view-transition rule).
-    assert!(
-        post.contains("@view-transition"),
-        "site css: (custom.css) should still be inlined"
-    );
-
     // The site-level `description:` is the single source of truth for the meta description.
     let home = site.render_page("index.tmd").expect("home renders");
     assert_eq!(

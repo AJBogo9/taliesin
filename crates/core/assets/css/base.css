@@ -995,6 +995,35 @@
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
       transition-duration: .001ms !important; scroll-behavior: auto !important; }
   }
+  /* Cross-document view transitions: a crossfade on same-origin navigation, so moving
+     between the pages of a site or the chapters of a book reads as one document instead
+     of a white flash between two.
+
+     Promoted here from the blog's own `custom.css` (2026-07-11 audit,
+     `#custom-css-mostly-dead`: "the live rules duplicate base.css or belong in it").
+     Every multi-page project wants this and none should have to author a stylesheet to
+     get it — and it is the ONE nav-polish mechanism that audit kept of three overlapping
+     ones; the other two are named, and forbidden from returning, by
+     `tech_blog::blog_nav_prefetch_stack_stays_dropped`. **Do not name them here**: that
+     test asserts on a whole rendered page, every page inlines this file whole, and prose
+     in this comment is enough to fail it (it did).
+
+     Zero JS, zero bytes fetched, no prefetch and no phone-home: the browser owns the
+     animation, and one that does not support the at-rule simply navigates as before.
+
+     The reduced-motion guard is a `no-preference` query rather than a `reduce` override,
+     because there is nothing to override — the at-rule opts navigation in, so the way to
+     honor the preference is to not opt in.
+
+     Measured in Chrome rather than assumed, because a nested at-rule a browser rejects is
+     dropped silently: the CSSOM carries a real `CSSViewTransitionRule` inside this query
+     (so the nesting parses), and a genuine link click between two pages of the blog fired
+     `pageswap` with `event.viewTransition` set (so it activates). The `reduce` side is not
+     separately measured — a non-matching `@media` contributing no rules is the definition
+     of the at-rule, not a behavior of this one. */
+  @media (prefers-reduced-motion: no-preference) {
+    @view-transition { navigation: auto; }
+  }
   /* High-contrast / forced-colors (Windows High Contrast, `prefers-contrast`). In
      forced-colors mode the UA replaces colors with the user's system palette and drops
      box-shadows, so borders/rings/icons that relied on subtle color or shadow can

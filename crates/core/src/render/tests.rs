@@ -5056,6 +5056,37 @@ fn base_css_aliases_the_conventional_sr_only_class() {
     );
 }
 
+/// Cross-document view transitions ship in the BUNDLE, so every multi-page project gets a
+/// crossfade between pages without authoring a stylesheet (C-NAV-1; promoted out of the
+/// blog's `custom.css`).
+///
+/// **The assertion is the NESTING, not the presence.** `@view-transition` opts navigation
+/// in, so the only way to honor `prefers-reduced-motion` is to not opt in — there is
+/// nothing a `reduce` override could override. A future edit that unnests the at-rule
+/// would still "contain @view-transition" while silently animating for a reader who asked
+/// for no motion, so this walks back from the at-rule to the query that must enclose it.
+#[test]
+fn cross_document_view_transitions_ship_bundled_and_respect_reduced_motion() {
+    // The RULE, not the token: the comment above it names `@view-transition` in prose, and
+    // a bare-token search finds that first and then walks back to the wrong media query.
+    let at = BASE_CSS
+        .find("@view-transition {")
+        .expect("base.css declares @view-transition");
+    let enclosing = BASE_CSS[..at]
+        .rfind("@media")
+        .expect("@view-transition sits inside a media query");
+    assert!(
+        BASE_CSS[enclosing..at].starts_with("@media (prefers-reduced-motion: no-preference)"),
+        "the nearest enclosing query must be the reduced-motion opt-in, got: {}",
+        &BASE_CSS[enclosing..at]
+    );
+    assert!(
+        BASE_CSS[at..].starts_with("@view-transition { navigation: auto; }"),
+        "same-origin navigation is what opts in: {}",
+        &BASE_CSS[at..(at + 60).min(BASE_CSS.len())]
+    );
+}
+
 /// The UI-boundary token must clear the WCAG 1.4.11 3:1 floor against BOTH surfaces a control
 /// can sit on: the page background and the code background (a `kbd` and the copy button sit on
 /// code-bg). The hairline `--tali-border` stays decorative and is deliberately not checked.
