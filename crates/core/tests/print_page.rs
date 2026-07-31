@@ -177,3 +177,32 @@ fn the_generated_list_of_figures_never_reaches_the_normal_page() {
         "the print-only list of figures leaked into the text projection"
     );
 }
+
+/// Paragraph-breaking and hyphenation policy. Asserted on the emitted sheet rather than the
+/// PDF because these are continuous properties with no discrete signal in extracted text —
+/// the live gate covers the things that DO show up there (heads, folios, page refs).
+#[test]
+fn the_print_sheet_sets_widow_orphan_and_hyphenation_policy() {
+    let html = print_page_from_doc(&doc("# Hi\n\ntext\n"), "f", Paper::A4);
+    for needle in ["orphans: 3", "widows: 3", "hyphens: auto"] {
+        assert!(
+            html.contains(needle),
+            "print.css must set `{needle}` — a paged document without it breaks paragraphs \
+             across pages badly"
+        );
+    }
+}
+
+/// A float split across a page boundary is the most visible paging defect there is.
+#[test]
+fn the_print_sheet_keeps_floats_off_page_boundaries() {
+    let html = print_page_from_doc(&doc("# Hi\n"), "f", Paper::A4);
+    assert!(
+        html.contains("break-inside: avoid"),
+        "figures, tables, code blocks and callouts must not split across pages"
+    );
+    assert!(
+        html.contains("break-after: avoid"),
+        "a heading stranded at the foot of a page must be pulled to the next"
+    );
+}

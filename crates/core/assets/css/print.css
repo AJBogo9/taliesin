@@ -157,3 +157,61 @@ a[href^="#"] {
   color: inherit !important;
   text-decoration: none !important;
 }
+
+/* -----------------------------------------------------------------------------------------
+   Paragraph breaking, hyphenation, and media degradation.
+   ----------------------------------------------------------------------------------------- */
+
+/* Three lines is the conventional floor; two still reads as a stray line. */
+p, li, blockquote, dd {
+  orphans: 3;
+  widows: 3;
+}
+
+/* Hyphenation needs `<html lang>` to choose a dictionary — print.rs threads the document's
+   front-matter `lang:` through, defaulting to `en`. Without the lang this rule is inert,
+   which is why `the_document_language_reaches_the_html_element` pins the plumbing. */
+body {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+/* Never split a float across a page boundary: the single most visible paging defect. */
+figure,
+table,
+pre,
+blockquote,
+.callout,
+.tali-eqn,
+.katex-display,
+.tali-theorem {
+  break-inside: avoid;
+}
+
+/* A heading stranded at the foot of a page with its section overleaf. */
+h1, h2, h3, h4, h5, h6 {
+  break-after: avoid;
+}
+/* …and a caption separated from the thing it captions. */
+figcaption {
+  break-before: avoid;
+}
+
+/* Media degradation. `{js}` cells print LIVE: the CDP driver genuinely executes the page, so
+   Plot/GLSL/numerics cells have painted real <svg>/<canvas> before the capture. That is
+   better than the "degrade to a poster frame" the item filed, and costs nothing. Only video
+   needs a fallback, and Chrome renders a <video>'s poster frame natively in print. */
+img, svg, canvas, video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* A control that cannot be operated on paper should not look operable. `{js}` INPUT widgets
+   render their current value into the output above them, so hiding the control itself loses
+   nothing a reader could have used. */
+button,
+input,
+select,
+.tali-js-input {
+  display: none !important;
+}
