@@ -355,6 +355,85 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      `window.taliJs.registerLanguage` (client) + `render/client_lang.rs` (server), and `{glsl}`
      is the worked example of using it.
 
+**Items 181-188 — the research-publishing cluster.** Filed 2026-07-31 from an author-raised
+survey of the academic-web ecosystem; full survey, per-item seams, traps and pins are in
+[2026-07-31-research-publishing-survey.md](2026-07-31-research-publishing-survey.md). **Read that
+file before starting any of them** — it records what Taliesin already leads on (do not rebuild
+`repro.rs`, `cite_this.rs`, the generated social card, or launch buttons) and what was
+deliberately rejected (carousels, multi-format export, Distill-as-a-stack). Ranked below by the
+same logic as the rest of P1 (small, independent, dependency-free first), but **the cross-cluster
+ranking against 158/164/167 is an owner call that has not been made** — the cluster sits here
+because 181-183 are the cheapest wins in the file, not because an owner ruled it.
+
+Two shapes, and the split matters: **181-183 improve documents Taliesin already renders** and
+need no new front-matter, so they land under "perfect the default". **184-188 are a new
+capability** (the project page) and share one front-matter vocabulary, so 184 is substrate for
+185/186/187 and must land first.
+
+181. **Layout escapes: `.column-page` / `.column-screen`.** (S. Survey §4A + §6.) A figure, wide
+     table, or multi-panel plot has **no way to be wider than the prose column** — only the
+     gutter end (`.column-margin`) exists. Distill's `l-page`/`l-screen` and Tufte's `.fullwidth`
+     are the same idea and both apply to `div`/`table`/`pre`, not just figures. **This is CSS +
+     two list entries, not a new render path** (`.column-margin` has no `divs.rs` arm). **The
+     trap is three container modes** — single-doc `body`, `.tali-site-main`, and
+     `.tali-site-main.has-toc`, which is a *grid*; browser-verify all three. Pin: extend
+     `corpus/layout/`.
+
+182. **Hover previews for `[@key]` citations and `@fig-`/`@sec-` cross-refs.** (M. Survey §4B +
+     §6.) Distill ships `d-hover-box`; MyST names it their headline feature. Taliesin has both
+     link shapes and **zero** hover machinery (grepped 2026-07-31). **Design fork, brainstorm
+     first:** a cross-page target cannot be read out of the DOM, and item 173 already proved a
+     client-side scrape is the wrong source for anything derived from the document — so emit the
+     preview text server-side from the block model. **Owes the four-projection sweep**
+     (`taliesin read`, `skim.rs`, search index, `llms-full.txt`) or caption text leaks into the
+     search index. Pin: `corpus/refs/` + a citation user.
+
+183. **Footnotes as margin sidenotes.** (S-M, **needs an owner ruling before code**. Survey §4C
+     + §6.) Footnotes exist (gathered at the bottom) and margin divs exist; a `[^note]` cannot
+     become a sidenote. Tufte's mechanism is **pure CSS** — a sidenote counter plus a
+     `label.margin-toggle` + `:checked` collapse below the breakpoint, no JS. **The ruling is
+     whether margin placement is the DEFAULT on a wide screen or a `footnotes:` knob**; minimal
+     config argues for the default and against the key. Traps: collision with an existing
+     `.column-margin` float, and the print track (item 159) must still print footnotes.
+
+184. **Structured authors + affiliations.** (M. **Substrate for 185/186/187 — land it first.**
+     Survey §4E + §6.) `author:` is a flat string list consumed only by `cite_this.rs`. One
+     structured form feeds **three** consumers: the visible byline, `citation_author` +
+     `citation_author_institution`, and JSON-LD `affiliation`. Scalars must stay valid or every
+     corpus doc breaks. Traps: **a new front-matter key trips five drift gates**, and
+     `cite_this.rs`'s render gate (page author → site author, never site title) must not
+     silently change which pages emit a cite box — pin it before touching the parser. Pin:
+     extend `corpus/cite-this/`.
+
+185. **Resource-links row + venue/award badges.** (S, after 184. Survey §6.) The one element
+     every fork of the project-page template keeps: Paper / arXiv / Code / Supplementary under
+     the byline. **Minimal-config shape is URL inference** (`arxiv.org` → arXiv, `github.com` →
+     Code, `*.pdf` → Paper), with `{text:, href:}` override. **Do not overload `hero:`** — it
+     replaces the title block and has no icon concept. Icons must be bundled SVG, never a CDN
+     font. `venue:` also feeds 186's `citation_conference_title`.
+
+186. **Complete the Scholar + social meta.** (S, `citation_author_institution` needs 184. Survey
+     §6.) Missing today: `citation_conference_title` (only `citation_journal_title` exists),
+     `citation_doi`, `citation_arxiv_id`, `citation_author_institution`,
+     `citation_abstract_html_url`, and `og:image:width`/`height` (known at build; LinkedIn needs
+     them for a large card). Add to the **shared** `emit_social`, not next door — page and
+     embedded-deck paths share it by construction. **The inlined-asset needle trap applies, in
+     both directions.**
+
+187. **The appendix block: author contributions / acknowledgments / DOI.** (M, after 184. Survey
+     §4D + §6.) Distill's `d-appendix` made author-contributions a first-class section rather
+     than prose. Follow `cite_this.rs`'s generated-block pattern **including its determinism
+     rule** (no accessed-date, no build timestamp, or the byte-identical build and the freeze
+     cache both break). Owes the four-projection sweep.
+
+188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey
+     §6.) Evidenced need, rejected mechanism: every project page shows N result figures and
+     reaches for a carousel, which hides n-1 of them behind a timer. Build `::: {.gallery}` over
+     `render/figure.rs` (so `@fig-` still resolves) and a drag-divider comparison slider, which
+     is what the carousel is a poor substitute for. Pairs with 181. Trap: scroll/drag browser
+     tests have a documented false-negative pattern (force `scroll-behavior: auto`, settle rAF,
+     floor `innerWidth` ~500px).
+
 164. **`docs-as-spec`.** (L. [ROADMAP.md](ROADMAP.md) Pillar V.) Promote the two dogfooded books
      to a versioned normative spec: an RFC-2119 `.tmd`-dialect reference plus a WebSocket
      protocol reference. Upstream says start only once the validation epic has settled, which it
@@ -731,6 +810,21 @@ item here: it has a number now, and the number is where its detail lives.
   2026-07-29** as unnecessary, and kept only because the *class* of defect it would surface is
   real (it is the same class the external-document audit found, see item 129). Revive on a
   concrete portability doubt, not on capacity.
+
+189. **`{{< pdf >}}` embed and a `license:` front-matter key.** (Both S; the research-publishing
+     cluster's tail, filed 2026-07-31 alongside items 181-188. Detail:
+     [2026-07-31-research-publishing-survey.md](2026-07-31-research-publishing-survey.md).) Every
+     project-page template embeds a poster PDF in an `<iframe>` (note the surveyed template loads
+     the Adobe DocumentCloud SDK for this and then never uses it — a plain iframe does the work),
+     and states reuse terms in the footer. **Both are knobs**, which is why they sit here and not
+     in P1: minimal config says perfect the default first, and neither has a demanded use yet.
+     `license:` would feed a footer badge plus JSON-LD `license` + `isAccessibleForFree`. Revive
+     when the author actually publishes a paper page that needs one.
+
+**Also deliberately NOT filed** (survey §5): the al-folio / academicpages **publications list**
+(a `.bib` rendered as a page with per-entry PDF/code/bibtex badges). It is the personal-homepage
+job, distinct from `cite_this.rs`'s outbound single-page citation, and filing it would widen scope
+on speculation. Revisit only if the author wants Taliesin to host their own academic homepage.
 
 ## Audit lenses — closed, do not open a new round
 
