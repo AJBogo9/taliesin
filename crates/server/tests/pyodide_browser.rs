@@ -233,6 +233,13 @@ struct Reading {
     /// the test asserts on.
     #[serde(rename = "cellChartMarks")]
     cell_chart_marks: usize,
+    /// Every distinct error box seen at ANY point during the poll, filled in from Rust rather
+    /// than the page. A `#| input:` cell runs once before its input has arrived and again when
+    /// it lands, so an error box that later clears is a normal intermediate state and must not
+    /// fail the test — but it is worth reporting when something else does fail, because a
+    /// transient traceback is usually the first clue to a real ordering bug.
+    #[serde(skip)]
+    transient_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -372,8 +379,15 @@ async fn read_corpus(browser: &Browser, port: u16) -> Result<Reading, String> {
         .map_err(|e| format!("navigate {url}: {e}"))?;
 
     let mut last: Option<Reading> = None;
+    let mut transient: Vec<String> = Vec::new();
     for _ in 0..BOOT_ROUNDS {
-        let r: Reading = read(&page, CORPUS_PROBE).await?;
+        let mut r: Reading = read(&page, CORPUS_PROBE).await?;
+        for e in &r.errors {
+            if !transient.contains(e) {
+                transient.push(e.clone());
+            }
+        }
+        r.transient_errors = transient.clone();
         // Settled means "there is something real to assert on, or something went wrong":
         // captured stdout AND a published value AND the consumer's redraw AND the
         // `#| input:` cell having run, or an error box. Returning the LAST reading either
@@ -384,11 +398,18 @@ async fn read_corpus(browser: &Browser, port: u16) -> Result<Reading, String> {
         // guarantee between them. Settling on the redraw alone could therefore take the
         // reading while the input cell still showed its pre-publish `0`, which is exactly
         // the failure the assertion below exists to catch — a flake that reports a real bug.
-        let settled = (!r.stdout.is_empty()
+        //
+        // **An error box does NOT settle this loop, and that is deliberate.** It used to, and
+        // that was a race of this test's own making: an `#| input:` cell runs once before its
+        // input exists and again when it lands, so a traceback on the way to a correct page is
+        // a normal intermediate state. Short-circuiting on it took the reading mid-flight and
+        // failed on `published_len: -1` under load — a red gate describing nothing real. A
+        // page that is genuinely broken still fails, just via the full budget and the
+        // known-positive assertion, with every error it ever showed attached.
+        let settled = !r.stdout.is_empty()
             && r.published_len >= 0
             && r.cell_chart_marks > 0
-            && r.stdout.join("\n").contains(INPUT_MARKER))
-            || !r.errors.is_empty();
+            && r.stdout.join("\n").contains(INPUT_MARKER);
         last = Some(r);
         if settled {
             break;
@@ -452,7 +473,7 @@ const CORPUS_PROBE: &str = r#"function () {
   scripts.forEach(function (s) { if (s.hasAttribute('data-tali-done')) done++; });
   var errors = [];
   document.querySelectorAll('.tali-js-error').forEach(function (e) {
-    errors.push((e.textContent || '').slice(0, 300));
+    errors.push((e.textContent || '').slice(0, 1600));
   });
   var stdout = [];
   document.querySelectorAll('.tali-pyodide-stdout').forEach(function (e) {
@@ -532,6 +553,17 @@ fn observed() -> Option<&'static Run> {
 fn a_pyodide_cell_boots_and_publishes_to_a_js_consumer() {
     let Some(r) = observed() else { return };
     let o = &r.corpus;
+
+    // Reported, never asserted on. An `#| input:` cell showing a traceback before its input
+    // arrives is legitimate, so this must not fail the run — but it is the first clue to an
+    // ordering bug, and it was invisible while the poll treated any error as terminal.
+    if !o.transient_errors.is_empty() {
+        eprintln!(
+            "note: {} error box(es) appeared and cleared while the page settled: {:?}",
+            o.transient_errors.len(),
+            o.transient_errors
+        );
+    }
 
     // KNOWN-POSITIVE FIRST. If the runtime never booted there is no `.tali-pyodide-stdout` on
     // the page at all, and every assertion below is a statement about an empty document
