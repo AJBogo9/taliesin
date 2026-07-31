@@ -185,7 +185,9 @@ fn a_cross_reference_resolves_to_a_real_page_number() {
     }
     let mut body = String::from("---\ntitle: Refs\n---\n\nSee @fig-late for the result.\n\n");
     for i in 0..130 {
-        body.push_str(&format!("Filler paragraph {i} with a reasonable number of words.\n\n"));
+        body.push_str(&format!(
+            "Filler paragraph {i} with a reasonable number of words.\n\n"
+        ));
     }
     body.push_str("![The late figure](late.png){#fig-late}\n");
     let doc = TempDoc::new("pdfxref", &body);

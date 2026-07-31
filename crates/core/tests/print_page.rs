@@ -137,10 +137,23 @@ fn a_document_with_figures_gets_a_generated_list_of_figures() {
 
 /// An empty "List of Figures" heading on a document that has none is a defect, not a
 /// degenerate case.
+///
+/// **Needles the full emitted tag, and this one is not pedantry:** the bare string
+/// `tali-lof` now appears in `print.css`, which every print page inlines whole, so
+/// `!contains("tali-lof")` asserts something about the stylesheet rather than the document
+/// and fails on a page that correctly renders no list. That is the inlined-asset trap firing
+/// in its NEGATIVE direction — the same way it bit the reader-affordances batch.
 #[test]
 fn a_document_without_figures_gets_no_list_of_figures() {
     let html = print_page_from_doc(&doc("# Hi\n\njust text\n"), "f", Paper::A4);
-    assert!(!html.contains("tali-lof"), "no figures means no list");
+    assert!(
+        !html.contains("<nav class=\"tali-lof\""),
+        "no figures means no list"
+    );
+    assert!(
+        !html.contains("<h2>List of Figures</h2>"),
+        "no figures means no heading"
+    );
 }
 
 /// The LoF is a GENERATED block. The reader-affordances batch found one leaking into four
@@ -151,8 +164,10 @@ fn the_generated_list_of_figures_never_reaches_the_normal_page() {
     let d = doc("---\ntitle: T\n---\n\n![Alpha caption](a.png){#fig-alpha}\n");
     let normal =
         taliesin_core::render_doc_to_page(&d, "fallback", taliesin_core::OutputMode::Build);
+    // The full tag, not the bare class: a stylesheet rule named `.tali-lof` landing in
+    // base.css someday must not turn this pin red, and must not mask a real leak either.
     assert!(
-        !normal.contains("tali-lof"),
+        !normal.contains("<nav class=\"tali-lof\""),
         "the print-only list of figures leaked onto the normal built page"
     );
     // And the text projection `taliesin read`/`skim`, the search index and llms-full.txt
