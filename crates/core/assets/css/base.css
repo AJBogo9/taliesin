@@ -525,6 +525,31 @@
      diagram narrower than the column keeps its natural size, centred. */
   pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow-x: auto; }
   pre.mermaid svg { max-width: none; height: auto; }
+  /* ...but on a wide screen, scrolling was the WRONG half of that trade, and it was the
+     common case rather than the exception: dagre lays a `flowchart LR` chain out as one long
+     row, so a 7-node chain measures ~1590px against a ~704px column. The reader saw three
+     nodes, a fourth sliced mid-word, and a scrollbar. Four of the five diagrams on
+     docs/internals/architecture.tmd overflowed, one by 882px.
+     The column is centred in the viewport and the margins either side are genuinely empty
+     (the chapter nav is a `position: fixed` drawer, not an in-flow sidebar), so an oversized
+     diagram borrows that space: `width: max-content` takes its natural width, the `left`/
+     `translateX` pair re-centres it on the viewport, and `max-width` caps it at the glass.
+     Only then does `svg { max-width: 100% }` scale, so at 1440px the worst case fits at ~88%
+     instead of losing half of itself. A diagram narrower than the column is untouched:
+     max-content is its natural width and the same centring is a no-op.
+     Gated on 64rem because below that there is no spare margin to borrow, and scaling into a
+     phone-width column is exactly the few-px-label failure the rule above avoids: narrow
+     screens keep the scroll-inside-the-box behavior. */
+  @media (min-width: 64rem) {
+    pre.mermaid {
+      width: max-content;
+      max-width: calc(100vw - 3rem);
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    pre.mermaid svg { max-width: 100%; }
+  }
   blockquote { border-left: 3px solid var(--tali-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--tali-muted); }
   /* `height: auto` is load-bearing, not tidiness. Every local raster <img> now carries its
      intrinsic `width`/`height` attributes (render/image_meta.rs) so the browser can reserve
