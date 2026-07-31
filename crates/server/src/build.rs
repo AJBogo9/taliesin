@@ -2161,21 +2161,21 @@ async fn build_site_async(
     // `render/pyodide.rs`'s module doc), and only when something actually links it. Same
     // "write only if used" discipline as the three blobs above, just not a `put` because
     // there is nothing to minify or rename.
-    if used.pyodide {
-        if let Err(e) = write_pyodide_payload(&out) {
-            let msg = format!(
-                "cannot write {}/_assets/{}: {e}",
-                out.display(),
-                taliesin_core::PYODIDE_DIR_NAME
-            );
-            log::error(&msg);
-            diagnostics.push(crate::check::Diagnostic::new(
-                root.display().to_string(),
-                None,
-                msg,
-            ));
-            problems += 1;
-        }
+    if used.pyodide
+        && let Err(e) = write_pyodide_payload(&out)
+    {
+        let msg = format!(
+            "cannot write {}/_assets/{}: {e}",
+            out.display(),
+            taliesin_core::PYODIDE_DIR_NAME
+        );
+        log::error(&msg);
+        diagnostics.push(crate::check::Diagnostic::new(
+            root.display().to_string(),
+            None,
+            msg,
+        ));
+        problems += 1;
     }
 
     // Installable-app packaging: `manifest.webmanifest` + the app icons at the output root,
