@@ -35,16 +35,20 @@ pub const PAGED_DONE_ATTR: &str = "data-tali-paged";
 /// Declared BEFORE the polyfill loads, because paged.js reads `window.PagedConfig` as it
 /// loads: declared after, it is never seen. `crates/core/tests/print_page.rs` pins the order.
 ///
-/// **`auto: false` is load-bearing, not a style choice.** Under paged.js's own
-/// paginate-on-load, a document containing an image that actually LOADS never finishes
-/// chunking — measured 2026-07-31, identically at a 10 s and a 60 s budget. Images resolve
-/// their intrinsic size asynchronously, so chunking that begins at script time is measuring
-/// boxes whose height it does not yet know. Pagination is therefore started by hand, once,
-/// from [`PAGED_START`], after layout has settled.
+/// **`auto: false` is a deliberate choice, but NOT the load-bearing one this once claimed.**
+/// It was documented as necessary because paginate-on-load "never finishes chunking a
+/// document containing an image that actually loads", measured at a 10 s and a 60 s budget.
+/// That was the `loading="lazy"` deadlock (see [`eager_media`]) wearing a different hat:
+/// paged.js's own chunker also awaits image load, so a lazy image that is never requested
+/// wedges it exactly as it wedged [`PAGED_START`]. Re-measured once images load eagerly,
+/// `auto: true` with an `after:` stamp paginates `corpus/print/paged.tmd` to output
+/// byte-identical to this path — same page count, same resolved `(p. N)` on every reference.
 ///
-/// This was very nearly missed: the first live gates referenced an image file that did not
-/// exist, so nothing ever loaded and paginate-on-load looked fine. The corpus pin, whose
-/// images are real, is what exposed it.
+/// What the explicit start still buys is ordering that `auto: true` does not offer: chunking
+/// begins only after `document.fonts.ready`, so page breaks are never computed against
+/// fallback metrics and then shifted by a font swap. That is a conservative choice, not a
+/// measured necessity — the corpus pin's fonts are bundled, so it would not detect the
+/// difference either way. Keep it, but do not cite a hang for it.
 ///
 /// **No `after:` hook here, deliberately.** paged.js runs
 /// `if (config.auto !== false) { done = await previewer.preview(…) } if (config.after) {
@@ -61,6 +65,12 @@ const PAGED_CONFIG: &str = "window.PagedConfig = { auto: false };";
 ///
 /// `i.onerror` is wired beside `i.onload` on purpose: a missing image must not wedge the
 /// run, which is the same failure mode inverted.
+///
+/// **Neither event covers an image the browser never REQUESTS**, and that is the hole this
+/// wait fell through for a whole session. A `loading="lazy"` image far from the viewport is
+/// never fetched, so it stays `complete === false` and fires nothing at all — the wait
+/// deadlocks before the chunker starts. [`eager_media`] closes it at the source; do not
+/// weaken that and assume `onerror` is a backstop here, because it is not.
 const PAGED_START: &str = "window.addEventListener('load', function () { \
      var pending = Array.prototype.slice.call(document.images) \
        .filter(function (i) { return !i.complete; }) \
