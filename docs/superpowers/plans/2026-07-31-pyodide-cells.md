@@ -459,6 +459,15 @@ git commit -m "feat(pyodide): register {pyodide} as a client-side cell language 
 
 ## Task 3: `api.publish` on the shared wrapper
 
+> **AS BUILT (two review rounds): this landed as `hooks.publish`, NOT `api.publish`.**
+> A review found that anything on `api` is author-reachable, because the `{js}`
+> language passes `api` verbatim into the author `AsyncFunction` as `tali` — so a
+> cell could publish to a name it also declares as an `//| input:` and create a
+> feedback edge `buildGraph` never cycle-checked. A masking shield was tried and
+> leaked via `Object.getPrototypeOf(tali).publish`. The capability is now a FOURTH
+> argument to `setup(src, api, opts, hooks)` and is never on `api` at all.
+> Read the section below with that substitution applied.
+
 **Files:**
 - Modify: `crates/core/assets/js/tali-js.js:385` (add beside `set`)
 - Test: `crates/server/tests/reactive_browser.rs` (a new case on the existing harness)
@@ -905,7 +914,9 @@ git commit -m "feat(pyodide): serve and copy the runtime; degrade the single-fil
 - Modify: `crates/core/assets/js/pyodide.js` (replace the Task 2 skeleton)
 
 **Interfaces:**
-- Consumes: `api.publish` (Task 3), `<meta name="tali-pyodide-index">` (Task 4),
+- Consumes: `hooks.publish` (Task 3 — the FOURTH argument to `setup`, not a method on
+  `api`; the review loop moved it off the api object so author cell source cannot reach it),
+  `<meta name="tali-pyodide-index">` (Task 4),
   `window.taliJs.registerLanguage` (existing).
 - Produces: a working `{pyodide}` cell. Task 7 asserts against it in a real browser.
 
@@ -927,7 +938,10 @@ Replace the whole of `crates/core/assets/js/pyodide.js`:
 //    sequential `await` loop, so a cell that blocked on a scroll-triggered download would
 //    stall every cell below it on the page — a `{js}` chart further down would stay blank
 //    until the reader scrolled here. `run()` therefore returns a placeholder at once and the
-//    real value is published later through `api.publish`, which re-runs the consumers.
+//    real value is published later through `hooks.publish`, which re-runs the consumers.
+//    `hooks` is `setup`'s FOURTH argument and is language-only: it is deliberately NOT on
+//    `api`, because `api` is handed verbatim to `{js}` author source as `tali`. Do not copy
+//    it onto `api`, `out`, or anything else author source can reach.
 //
 // 2. The output node carries the value on `.value`. `tali-js.js` publishes
 //    `node.value` when a returned Node has one, so ONE returned node both mounts the display
@@ -1025,11 +1039,15 @@ Replace the whole of `crates/core/assets/js/pyodide.js`:
   /**
    * @param {string} src @param {any} api
    * @param {{name: string|null, viewof: string|null, inputs: string[], kind: string}} opts
+   * @param {{publish: (n: string, v: any) => Promise<void>}} hooks
    */
-  function setupPyodide(src, api, opts) {
+  function setupPyodide(src, api, opts, hooks) {
     var out = document.createElement("div");
     out.className = "tali-pyodide-out";
-    out.value = null; // see note 2 in the header
+    // `.value` is an own-property assignment on a plain <div>, not a native property; the
+    // codebase's idiom for that under `tsc --strict` is an inline `/** @type {any} */` cast
+    // (precedent: tali-js.js and deck.js). See note 2 in the header.
+    /** @type {any} */ (out).value = null;
     var stop = null;
     var dead = false;
     var started = false;
@@ -1077,8 +1095,8 @@ Replace the whole of `crates/core/assets/js/pyodide.js`:
           var js = result && typeof result.toJs === "function"
             ? result.toJs({ dict_converter: Object.fromEntries })
             : result;
-          out.value = js;
-          await api.publish(opts.name, js);
+          /** @type {any} */ (out).value = js;
+          await hooks.publish(opts.name, js);
         }
       } catch (e) {
         if (dead) return;
@@ -1106,7 +1124,7 @@ Replace the whole of `crates/core/assets/js/pyodide.js`:
         } else {
           // A re-run: an input this cell consumes changed. Fire and FORGET — awaiting here
           // would reintroduce the stall note 1 exists to prevent. Downstream consumers see
-          // the previous value on this tick and the fresh one when `api.publish` lands.
+          // the previous value on this tick and the fresh one when `hooks.publish` lands.
           execute();
         }
         return out;
@@ -1306,7 +1324,7 @@ shape from `preview_single_instance.rs:110-135`.
 //! **Why one test and not five.** Everything Rust emits is already asserted in
 //! `crates/core/tests/pyodide.rs`. What no Rust test can see is whether the runtime actually
 //! booted, whether the last expression became the published value, and whether the downstream
-//! `{js}` cell re-ran when `api.publish` landed. That chain is one claim, so it is one test.
+//! `{js}` cell re-ran when `hooks.publish` landed. That chain is one claim, so it is one test.
 
 /// The canary. Pinned by name in `tools/gates.sh`; renaming it without updating that file
 /// silently removes the only proof this feature is exercised at all.
@@ -1340,7 +1358,7 @@ fn a_pyodide_cell_boots_and_publishes_to_a_js_consumer() {
     assert!(
         observed.published_len == 500,
         "the first cell's last expression must become the PUBLISHED value: the downstream \
-         `{{js}}` cell saw {} samples, not 500. A 0 here means `api.publish` never re-ran the \
+         `{{js}}` cell saw {} samples, not 500. A 0 here means `hooks.publish` never re-ran the \
          consumer; a null means the wrapper published the placeholder instead of the value.",
         observed.published_len
     );
