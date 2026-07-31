@@ -73,9 +73,18 @@ rng.normal(size=500).tolist()
 
 ```{js}
 //| input: samples
-return Plot.rectY(samples, Plot.binX({y: "count"})).plot();
+const data = tali.get("samples");
+if (!data) return document.createTextNode("waiting for Python…");
+return Plot.rectY(data, Plot.binX({y: "count"})).plot();
 ```
 ````
+
+**Corrected during implementation:** an earlier draft of this example read `samples` as a
+bare binding. There is no such binding. A `{js}` cell body is compiled as
+`new AsyncFunction("tali", "Plot", "d3", "num", "container", "invalidation", src)`, so a
+published name is reached through `tali.get(name)` (or `tali.value(name)` for an input
+control), exactly as `corpus/reactive/numerics.tmd` already does. The `null` guard is
+required too: the value is `null` until the runtime finishes booting.
 
 Compute in Python, draw with Plot. Vendoring matplotlib would duplicate plotting
 Taliesin already does well and would need its own canvas backend wired into the mount
