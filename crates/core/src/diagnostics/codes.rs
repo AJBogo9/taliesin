@@ -72,6 +72,16 @@ const TABLE: &[(&str, &str, &str)] = &[
         "TAL-MOUNT-PREVIEW",
         SUGGESTION,
     ),
+    // A `{pyodide}` cell whose source contains a literal `<\/script`: the escape a
+    // single-file `build` reverses to recover the source cannot tell that literal apart
+    // from a real `</script`, so it silently drops the author's backslash. Same shape as
+    // TAL-MOUNT-PREVIEW just above — it bites only in one output mode (single-file
+    // `build`; preview and every other build ship the real runtime and never reverse the
+    // escape) — so it sits right beside it, SUGGESTION for the same reason. Its needle
+    // (`<\/script`) is a symbol sequence no other diagnostic message could plausibly
+    // contain, so unlike the rows below it is not ordered against a collision risk; it
+    // sits here for kinship with TAL-MOUNT-PREVIEW, not because position is load-bearing.
+    ("<\\/script", "TAL-PYODIDE-ESCAPE", SUGGESTION),
     // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and ahead of every
     // catalogued family on purpose: the needles below include ones as generic as
     // `("math", …)`, and a weasel-word message naming a word that contains a generic needle
@@ -340,6 +350,25 @@ const EXPLANATIONS: &[Explanation] = &[
               it never fails `check` or `publish` unless you ask with `check --strict`; \
               `build --strict` does fail on it, because there the 404 is a fact about the \
               artifact just written.",
+    },
+    Explanation {
+        code: "TAL-PYODIDE-ESCAPE",
+        title: "a `{pyodide}` cell's source has an ambiguous `<\\/script`",
+        cause: "The wrapper escapes a literal `</script` inside a `{pyodide}` cell's source \
+                to `<\\/script`, so it survives untouched inside the wrapping `<script>` \
+                element. The one output mode that cannot ship the 12.9 MB Pyodide runtime \
+                — a single-file `build file.tmd out.html` — degrades the cell to visible \
+                highlighted source by reversing that escape, and the reversal cannot tell \
+                a real `</script` apart from an author who typed the literal `<\\/script` \
+                themselves: both produce the identical `<\\/script` in the rendered HTML, \
+                so in that one artifact the author's own backslash is silently dropped.",
+        fix: "Nothing to change unless you ship this exact page as a single self-contained \
+              file: preview and every other build mode ship the real Pyodide runtime and \
+              never reverse the escape, so the source stays exact there. This is advice, \
+              severity `suggestion`, so it never fails `check`, `build --strict` or \
+              `publish` unless you ask with `check --strict`. If a single-file build of \
+              this page matters, avoid writing the literal sequence `<\\/script` verbatim \
+              in the cell's source.",
     },
     Explanation {
         code: "TAL-PROSE-WEASEL",
@@ -907,6 +936,34 @@ mod tests {
         // No replacement exists, so no structured suggestion may be lifted: an agent must
         // not be handed a fix to apply.
         assert_eq!(extract_suggestion(&csl[0].message), None);
+    }
+
+    #[test]
+    fn a_pyodide_escape_ambiguity_classifies_as_a_suggestion_not_the_generic_error() {
+        // Task-4 fix round 2. This warning previously matched no TABLE needle, so it fell
+        // through to `(GENERIC, ERROR)`: a literal `<\/script` inside a `{pyodide}` cell's
+        // Python string failed `build --strict` and `publish` for a cosmetic limitation of
+        // one output mode (single-file `build`; preview and every other build are
+        // unaffected). Pins BOTH the code and the severity — a test that only checked a
+        // diagnostic fired would pass even with the severity wrong, which is the exact
+        // defect this closes. Produced by the real render path (not a copied literal), so
+        // this can't drift from the shipped message.
+        let doc = crate::render::render_document_with_includes(
+            "```{pyodide}\nx = \"literal <\\/script> marker\"\n```\n",
+            std::path::Path::new("."),
+        );
+        let warning = doc
+            .warnings
+            .iter()
+            .find(|w| w.message.contains("<\\/script"))
+            .expect("the pyodide-escape warning fired");
+        assert_eq!(
+            classify(&warning.message),
+            ("TAL-PYODIDE-ESCAPE", SUGGESTION),
+            "must classify as the named family at SUGGESTION, not fall through to \
+             (GENERIC, ERROR): {}",
+            warning.message
+        );
     }
 
     #[test]

@@ -290,6 +290,14 @@ The opt-in prose lint (`prose-lint:` in front matter) found one of a small close
 
 To fix: Cut the word and read the sentence again; it almost always survives unchanged. This is advice, not a defect: it is severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
 
+## TAL-PYODIDE-ESCAPE
+
+**a `{pyodide}` cell's source has an ambiguous `<\/script`**
+
+The wrapper escapes a literal `</script` inside a `{pyodide}` cell's source to `<\/script`, so it survives untouched inside the wrapping `<script>` element. The one output mode that cannot ship the 12.9 MB Pyodide runtime — a single-file `build file.tmd out.html` — degrades the cell to visible highlighted source by reversing that escape, and the reversal cannot tell a real `</script` apart from an author who typed the literal `<\/script` themselves: both produce the identical `<\/script` in the rendered HTML, so in that one artifact the author's own backslash is silently dropped.
+
+To fix: Nothing to change unless you ship this exact page as a single self-contained file: preview and every other build mode ship the real Pyodide runtime and never reverse the escape, so the source stays exact there. This is advice, severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`. If a single-file build of this page matters, avoid writing the literal sequence `<\/script` verbatim in the cell's source.
+
 ## TAL-REACTIVE
 
 **a broken reactive graph**
