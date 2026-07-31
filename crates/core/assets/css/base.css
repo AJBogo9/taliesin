@@ -197,12 +197,18 @@
      runtime finishes — only vertical rhythm is needed between them, since each child brings
      its own surface. The stdout/value panes get the same left-rule treatment as a `{python}`
      kernel cell's `.tali-output > pre` (border-left on the code-bg surface), so a `{pyodide}`
-     cell reads like the kernel cell beside it rather than like a plain code block. */
+     cell reads like the kernel cell beside it rather than like a plain code block.
+     `.tali-pyodide-stdout` reuses `--tali-output-max` (the same runaway-output bound
+     `.tali-output > pre` uses, base.css above) for a stronger reason than the kernel case:
+     a `{pyodide}` cell has no server-side silence cap to interrupt a runaway print loop, so
+     nothing else stops it from pushing the whole page around. Lifted in the print block
+     alongside `.tali-output > pre`, for the same reason: paper has no scrollbar. */
   .tali-pyodide-out { margin: 0 0 1rem; }
   .tali-pyodide-out > * + * { margin-top: .5rem; }
   .tali-pyodide-status { margin: 0; color: var(--tali-muted); font-size: .9em; }
   .tali-pyodide-stdout, .tali-pyodide-value {
     border-left: 3px solid var(--tali-border); font-size: .85em; }
+  .tali-pyodide-stdout { max-height: var(--tali-output-max); }
   .tali-pyodide-value { color: var(--tali-muted); }
 
   /* Screen-reader-only utility (used by anchor-links / focus-mode / toc-spy live regions).
@@ -811,8 +817,9 @@
     max-height: var(--tali-output-max); object-fit: contain; }
   @media print {
     /* Paper has no scrollbar: every bound lifts, or the tail of a traceback simply does not
-       exist in the printed record. */
-    .tali-output > pre, .tali-output > table, .tali-output img {
+       exist in the printed record. `.tali-pyodide-stdout` carries the same bound as
+       `.tali-output > pre` (base.css above) and lifts here for the identical reason. */
+    .tali-output > pre, .tali-output > table, .tali-output img, .tali-pyodide-stdout {
       max-height: none; overflow: visible; }
   }
   /* Theme-matched matplotlib figures: the kernel emits a light (near-black) and a
