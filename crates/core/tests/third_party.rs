@@ -190,24 +190,52 @@ fn removed_deps_are_not_listed() {
 /// Pyodide is vendored for `{pyodide}` cells (backlog 158): a CPython + NumPy stack compiled
 /// to WebAssembly, so client-side Python runs with no kernel and no network.
 ///
-/// The version is read from the bundle's OWN source, not asserted as a literal, so
-/// re-vendoring without updating THIRD_PARTY.md goes red. Same shape as the paged.js gate
-/// above, and for the same reason: a literal on both sides is one edit away from agreeing
-/// with itself and nothing else.
+/// **The version and the licence are both READ from upstream's own `package.json`**, never
+/// asserted as literals, so re-vendoring a new Pyodide without updating THIRD_PARTY.md goes
+/// red. The minified `pyodide.mjs` is deliberately not the source: its only version
+/// occurrence is `var Y="…"`, and `Y` is a build artifact that changes between releases, so
+/// a test anchored there would break on a re-vendor that was otherwise correct.
+///
+/// `package.json` is vendored for exactly this reason and is NOT part of the browser
+/// payload — `pyodide_payload()` does not serve it.
 #[test]
-fn the_pyodide_version_claim_matches_the_vendored_runtime() {
+fn the_pyodide_version_and_licence_claims_match_the_vendored_runtime() {
     let core = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let loader = std::fs::read_to_string(core.join("assets/pyodide/pyodide.mjs"))
-        .expect("the vendored pyodide loader should exist");
-    let version = loader
-        .split("314.0.3")
-        .nth(1)
-        .map(|_| "314.0.3")
-        .expect("expected the vendored pyodide.mjs to carry its own version string");
+    let meta = std::fs::read_to_string(core.join("assets/pyodide/package.json"))
+        .expect("the vendored pyodide package.json should exist");
+
+    /// Pull a string value out of upstream's package.json by key.
+    fn field<'a>(meta: &'a str, key: &str) -> &'a str {
+        let anchor = format!("\"{key}\"");
+        let at = meta
+            .find(&anchor)
+            .unwrap_or_else(|| panic!("pyodide package.json should carry a `{key}` field"));
+        let rest = &meta[at + anchor.len()..];
+        let open = rest
+            .find('"')
+            .expect("a quoted value should follow the key");
+        let rest = &rest[open + 1..];
+        let close = rest.find('"').expect("the value should be terminated");
+        &rest[..close]
+    }
+
+    let version = field(&meta, "version");
+    let licence = field(&meta, "license");
     assert!(
-        third_party_md().contains(version),
+        version.split('.').count() == 3 && version.starts_with(char::is_numeric),
+        "expected an x.y.z pyodide version from package.json, got `{version}`"
+    );
+
+    let doc = third_party_md();
+    assert!(
+        doc.contains(version),
         "THIRD_PARTY.md claims a different Pyodide version than the vendored runtime \
-         (runtime says `{version}`)"
+         (package.json says `{version}`)"
+    );
+    assert!(
+        doc.contains(licence),
+        "THIRD_PARTY.md claims a different Pyodide licence than upstream declares \
+         (package.json says `{licence}`)"
     );
 }
 
@@ -230,6 +258,8 @@ fn the_vendored_pyodide_payload_is_complete_and_carries_its_licence() {
         "pyodide-lock.json",
         "numpy-2.4.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
         "LICENSE",
+        // Provenance only: upstream's package.json, not part of the served browser payload.
+        "package.json",
     ] {
         assert!(
             dir.join(required).is_file(),
