@@ -1,0 +1,16 @@
+/* Paged-media sheet for the `taliesin pdf` print track (backlog 159).
+   Inlined ONLY into the transient page `render/print.rs` assembles — never onto a built
+   page. `crates/core/tests/print_page.rs` pins that it does not leak.
+
+   Measured against Chrome 150 (2026-07-31): Chrome implements `@page` margin boxes and
+   `counter(page)`, but renders `string-set` and `target-counter()` as nothing. Everything
+   here that depends on those two is supplied by the vendored paged.js polyfill, which is
+   why the polyfill is load-bearing rather than a fallback.
+
+   `__TALI_PAPER__` is substituted by `print.rs` — `size:` cannot read a CSS custom
+   property, so the literal has to be baked in per render. */
+
+@page {
+  size: __TALI_PAPER__;
+  margin: 22mm 20mm;
+}

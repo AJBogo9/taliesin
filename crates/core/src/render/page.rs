@@ -492,7 +492,10 @@ pub fn html_page_from_doc_in_site_external(
 /// title, so it beats the heading. Before step 3 existed, a front-matter-less document
 /// rendered `<title>the-file-stem</title>` standalone and `<title></title>` in a site,
 /// where `og:title` then quietly borrowed the site's own name.
-fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bool) -> String {
+/// `pub(super)` only so the print assembler (`render/print.rs`) resolves a `<title>` through
+/// the SAME policy rather than growing a fourth copy of it — the drift this module's
+/// `site_page_title` doc comment warns about. Visibility only; no behaviour change.
+pub(super) fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bool) -> String {
     let fallback = (!fallback_title.is_empty()).then_some(fallback_title);
     let h1 = leading_h1_text(&doc.blocks);
     let ranked = if in_site {

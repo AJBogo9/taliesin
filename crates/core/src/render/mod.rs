@@ -83,6 +83,9 @@ use deck::deck_theme_head;
 pub(crate) mod extension;
 pub use extension::embed_targets;
 mod divs;
+/// The print/PDF track's page assembler (backlog 159): a SIBLING of `page`, so a normal
+/// page's bytes never move. Public because `taliesin pdf` in the server crate drives it.
+pub mod print;
 mod validate;
 pub(crate) use divs::parse_attrs;
 pub use divs::tokenize_attrs;
