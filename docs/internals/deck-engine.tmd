@@ -160,7 +160,9 @@ deck's built `.html` plus a fullscreen button; the iframe is the isolation bound
 that keeps the deck's full-viewport CSS, global keyboard handler, and URL hash from
 fighting the host page. The build and preview discover embed targets
 (`embed_targets`) and render each referenced deck to its own self-contained page, so
-the iframe resolves without the deck also becoming a navigable site page.
+the iframe resolves without the deck also becoming a navigable site page. That
+discovery pass, and the reason an embedded deck is deliberately kept out of nav and
+search while still being built, is @sec-deck-discovery.
 
 The iframe is not a convenience, it is the only honest way to host a deck inside a
 page. A deck is built to *own the viewport*: it scales a fixed 960×540 stage to fill

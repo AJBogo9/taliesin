@@ -9,6 +9,10 @@ Taliesin is licensed under the **GNU Affero General Public License v3.0**. That 
 *the program*. It makes no claim on the blog posts, lecture notes, papers, decks and books
 you write with it.
 
+The licence answers "who owns what I write". The other half of that question — what happens
+to your documents if the *program* stops being maintained — is answered separately, with
+numbers, in @sec-continuity.
+
 That distinction needs saying out loud, because of how Taliesin builds a page.
 
 ## Why the question comes up at all

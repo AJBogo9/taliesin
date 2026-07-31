@@ -7,6 +7,10 @@ The reason Taliesin exists is the edit loop: change the source, and the preview
 reflects it *immediately*, without reloading the page, losing your scroll, or
 resetting any live content already on screen.
 
+"Immediately" is the one word in this chapter worth checking rather than believing.
+@sec-speed gives it in absolute milliseconds on one machine, with no comparison ratio
+attached.
+
 ## Incremental updates
 
 On every save the server re-parses the document, diffs the new block list against

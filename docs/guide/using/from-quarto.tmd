@@ -18,6 +18,11 @@ taliesin check .
 a line, so a migration is a loop of "run check, fix what it points at" rather than
 a reading exercise. This chapter is the map of what it will find.
 
+That "unchanged" is a measured claim rather than a reassurance, and the measurement is in
+@sec-portability: across the whole corpus, 7.3% of lines carry any construct beyond plain
+CommonMark. It is also the number to read before migrating *away* again — the same 92.7% is
+what any other Markdown tool would get back.
+
 ## Step 1: rename the files
 
 The one thing no tool can do for you.
