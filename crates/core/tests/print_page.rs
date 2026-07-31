@@ -311,3 +311,25 @@ fn the_print_page_loads_every_image_eagerly() {
         "both figures must survive into the print page"
     );
 }
+
+/// The running head must name the section in effect when the page BEGINS.
+///
+/// A drift pin, deliberately: the semantics are proved live in
+/// `crates/server/tests/print_pdf.rs`, which renders real running heads and would catch the
+/// keyword being unsupported (paged.js renders an unknown one as an empty margin box rather
+/// than failing). What that gate cannot see is the difference between `start` and the
+/// `first` default, because both produce a head on the pages it inspects. Dropping the
+/// keyword would silently go back to naming a section that opens on the page's last line.
+#[test]
+fn the_running_head_names_the_section_in_effect_at_the_page_start() {
+    let html = print_page_from_doc(
+        &doc("# T\n\n## S\n\ntext\n"),
+        "fallback",
+        Paper::A4,
+        Path::new("."),
+    );
+    assert!(
+        html.contains("content: string(tali-section, start);"),
+        "the @top-center rule must ask for the section in effect at the page start"
+    );
+}

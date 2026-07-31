@@ -15,7 +15,15 @@
   margin: 22mm 20mm;
 
   @top-center {
-    content: string(tali-section);
+    /* `, start` — the section in effect when the page BEGINS, not the first one to start on
+       it. Without the keyword the default is `first`, which names whichever section opens
+       on the page even if that is its very last line: measured on corpus/print/paged.tmd,
+       the head of a page whose top two thirds belonged to the previous section already
+       announced the next one, and the page of pure front matter announced a section that
+       had not started. `start` is what a book does. Verified live against paged.js 0.4.3 —
+       an unsupported keyword here renders the margin box EMPTY rather than erroring, which
+       is what `the_pdf_carries_running_heads_and_folios` catches. */
+    content: string(tali-section, start);
     font-size: 9pt;
     font-style: italic;
     color: #555;
