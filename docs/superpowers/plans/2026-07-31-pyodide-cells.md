@@ -632,13 +632,18 @@ fn a_single_file_build_degrades_a_pyodide_cell_to_visible_source() {
         !out.contains("<script type=\"application/tali-pyodide\""),
         "the runnable wrapper must be gone: {out}"
     );
+    // `arange`, NOT `np.arange(3)`. Server-side highlighting splits the source into
+    // `<span>`-wrapped tokens, so the multi-token literal never appears contiguously in
+    // correct output — asserting it would fail on a correctly-degraded page rather than on
+    // the regression this row exists to catch. Measured: `contains("np.arange(3)")` is
+    // false and `contains("arange")` is true for this exact source.
     assert!(
-        out.contains("np.arange(3)"),
+        out.contains("arange"),
         "the author's source must remain VISIBLE, not just deleted: {out}"
     );
     assert!(
-        out.contains("<pre") || out.contains("<code"),
-        "and it must be marked up as code, not loose text: {out}"
+        out.contains("<pre><code class=\"language-python\">"),
+        "and it must be marked up as a python listing, the same shape emit.rs uses: {out}"
     );
 }
 
@@ -750,7 +755,13 @@ pub fn degrade_pyodide_cells(body: &str) -> String {
             return out;
         };
         let src = after_open[..end].replace("<\\/script", "</script");
-        out.push_str(&crate::highlight::highlight_block(&src, "python"));
+        // The same shape `emit.rs` produces for a listing, so the degraded cell is
+        // indistinguishable from an ordinary ```python block: `highlight` returns the
+        // token spans only, and the caller supplies the `<pre><code class=…>` frame.
+        out.push_str(&format!(
+            "<pre><code class=\"language-python\">{}</code></pre>",
+            crate::highlight::highlight(&src, Some("python"))
+        ));
         rest = &after_open[end + "</script>".len()..];
     }
     out.push_str(rest);
@@ -758,12 +769,10 @@ pub fn degrade_pyodide_cells(body: &str) -> String {
 }
 ```
 
-**Note for the implementer:** check `crates/core/src/highlight.rs` for the actual public
-function name and signature before writing `highlight_block` — the call above is the intent
-(render `src` as a highlighted `python` code block), not a verified signature. If no such
-public helper exists, emit
-`format!("<pre><code class=\"language-python\">{}</code></pre>", escape_html(&src))` and note
-in a comment that the degraded listing is unhighlighted.
+**Signature verified 2026-07-31:** `crates/core/src/highlight.rs:129` is
+`pub fn highlight(code: &str, lang: Option<&str>) -> String` and returns the token spans
+only; `emit.rs:59-60,103` supplies the `<pre><code class="language-{lang}">` frame around
+it. The code above matches that split exactly. Do not invent a `highlight_block` helper.
 
 - [ ] **Step 4: Wire the module and the asset gate**
 
