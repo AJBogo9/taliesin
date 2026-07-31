@@ -253,6 +253,41 @@ numbered, cross-referenceable figure. It participates in the same reactive graph
 `//| name:` and `//| input:` mean exactly what they mean for `{js}`, and `check` reports a
 dangling input in a shader the same way.
 
+## Python in the browser: `{pyodide}`
+
+A `{pyodide}` cell runs Python in the reader's browser: no Jupyter kernel, nothing
+executed at build time. It is a separate fence from `{python}`, not a mode on it:
+`{python}` runs against a warm kernel at build time, and the two never share state,
+even side by side on the same page.
+
+The runtime (Pyodide plus NumPy) is vendored and loads lazily, on first scroll into
+view, so a reader who never reaches a `{pyodide}` cell downloads none of it.
+
+````markdown
+```{pyodide}
+#| name: samples
+import numpy as np
+rng = np.random.default_rng(0)
+rng.normal(size=500).tolist()
+```
+````
+
+A cell's last expression is its published value; `#| name:` puts that value into the
+same reactive graph a `{js}` or `{glsl}` cell publishes into, so a `{js}` cell
+downstream reads it with `tali.get(...)`. The value is `null` until the runtime has
+finished its first run, so a consumer should guard on that. `#| input:` works the
+same way in reverse: the named values are injected into the Python namespace before
+the cell runs, so the source reads them directly by name. `print` output is shown
+above the returned value, exactly as it is in a `{python}` cell.
+
+Only the Python standard library and NumPy are available. Installing anything else
+would need a network fetch, which Taliesin does not do; `import scipy` gets a
+message saying so, not a raw traceback.
+
+A single-file `taliesin build file.tmd out.html` cannot carry the 12.9 MB runtime, so
+in that one output mode a `{pyodide}` cell degrades to a visible, highlighted source
+listing instead of running. Build with `--out <dir>` for a page where it actually runs.
+
 ## Scrollytelling: `::: {.scrolly}`
 
 A `.scrolly` container pins a visual stage while a column of `.step` scenes scrolls

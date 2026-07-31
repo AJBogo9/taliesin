@@ -1,0 +1,43 @@
+---
+title: "Python in the browser"
+---
+
+A `{pyodide}` cell runs Python in the reader's browser. It is a *client-side cell
+language*, the same kind of thing a `{js}` or `{glsl}` cell is: the browser is its
+kernel, so nothing runs at build time and no Jupyter kernel is involved. It is a
+different language from `{python}`, which runs against a warm kernel at build time
+and does not share state with anything here.
+
+The runtime is vendored and loads on first scroll into view, so a reader who never
+reaches this section downloads none of it.
+
+```{pyodide}
+#| name: samples
+import numpy as np
+rng = np.random.default_rng(0)
+rng.normal(size=500).tolist()
+```
+
+The cell's last expression is its published value. A `{js}` cell consumes it through
+the same reactive graph a slider or a `{glsl}` shader publishes into, one graph, not
+one per language. Its value is `null` until the runtime has finished the first run,
+so a consumer guards on that:
+
+```{js}
+//| input: samples
+const data = tali.get("samples");
+if (!data) return document.createTextNode("waiting for Python");
+return Plot.rectY(data, Plot.binX({ y: "count" }, { x: (d) => d })).plot({ height: 200 });
+```
+
+`print` output is shown above the value, exactly as it is in a `{python}` cell:
+
+```{pyodide}
+import numpy as np
+a = np.arange(6).reshape(2, 3)
+print("shape:", a.shape)
+a.sum()
+```
+
+Only the standard library and numpy are available: installing anything else would
+need a network fetch, which Taliesin does not do.
