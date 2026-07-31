@@ -192,6 +192,19 @@
   .tali-glsl-canvas { display: block; width: 100%; aspect-ratio: 16 / 9;
     border-radius: var(--tali-radius-sm); }
 
+  /* `{pyodide}` cells: Python running in the reader's browser. `.tali-pyodide-out` mounts
+     the boot/scroll status line, then swaps in captured stdout and/or a repr value once the
+     runtime finishes — only vertical rhythm is needed between them, since each child brings
+     its own surface. The stdout/value panes get the same left-rule treatment as a `{python}`
+     kernel cell's `.tali-output > pre` (border-left on the code-bg surface), so a `{pyodide}`
+     cell reads like the kernel cell beside it rather than like a plain code block. */
+  .tali-pyodide-out { margin: 0 0 1rem; }
+  .tali-pyodide-out > * + * { margin-top: .5rem; }
+  .tali-pyodide-status { margin: 0; color: var(--tali-muted); font-size: .9em; }
+  .tali-pyodide-stdout, .tali-pyodide-value {
+    border-left: 3px solid var(--tali-border); font-size: .85em; }
+  .tali-pyodide-value { color: var(--tali-muted); }
+
   /* Screen-reader-only utility (used by anchor-links / focus-mode / toc-spy live regions).
      `.sr-only` is aliased so a site that hand-writes the conventional class (e.g. a footer
      `<span class='sr-only'>` label) hides it without needing a per-site custom.css. */
