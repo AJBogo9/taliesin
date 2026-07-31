@@ -362,8 +362,25 @@ fn pyodide_and_python_stay_disjoint_on_one_page() {
         both.contains("application/tali-pyodide"),
         "the browser cell emits its wrapper: {both}"
     );
+    // The real claim, asserted positively: the page carries exactly ONE client-cell
+    // wrapper — the `{pyodide}` one. Counting rather than probing for an absent literal is
+    // what makes this fail for the regression it names: if `{python}` were ever added to
+    // CLIENT_LANGS this becomes 2, whatever mime spelling that change happened to pick.
+    assert_eq!(
+        both.matches("<script type=\"application/tali-").count(),
+        1,
+        "exactly one client-cell wrapper (the `{{pyodide}}` one) should be emitted: {both}"
+    );
+    // The known-positive half: the `{python}` cell is still on the page as an ordinary
+    // kernel cell, source visible. Without this row the count above could pass because the
+    // Python cell vanished entirely, which is a different bug wearing the same green.
+    // `data-tali-cell="python"` rather than the literal source `"x = 1"`: server-side
+    // syntax highlighting splits the source into `<span>`-wrapped tokens
+    // (`<span ...>x</span> <span ...>=</span> <span ...>1</span>`), so the literal
+    // substring never appears in the rendered HTML — asserting it would fail on a
+    // correctly-rendering page, not on the regression this row exists to catch.
     assert!(
-        !both.contains("application/tali-python"),
-        "the kernel cell must NOT be wrapped as a client cell: {both}"
+        both.contains("data-tali-cell=\"python\""),
+        "the `{{python}}` cell must still render as an ordinary kernel cell: {both}"
     );
 }
