@@ -14,4 +14,5 @@ if (reg) {
   reg.register(taliInitCategoryFilter);
   reg.register(taliInitCiteBox);
   reg.register(function () { taliInitBookOutline(); });
+  reg.register(function () { taliInitCodeVisibility(); });
 }

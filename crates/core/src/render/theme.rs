@@ -198,6 +198,34 @@ pub fn theme_head(default_mode: &str) -> String {
   }};
   window.taliGetThemePref = function(){{ return pref(); }};
   window.taliGetThemeChoice = function(){{ return choice(); }};
+  // ---- The reader's OTHER pre-paint preference: hiding executed-cell source. ----
+  // It rides in the theme bootstrap rather than getting its own head script because the
+  // requirement is identical and the reason is the same one stated above for the canvas
+  // colour: applied after paint, every listing renders and is then removed, which is a
+  // CONTENT-sized layout shift on every navigation — worse than the colour flash this
+  // script already exists to prevent. One pre-paint script, two preferences.
+  //
+  // Same storage convention as the theme: absent means the default (code shown), so
+  // clearing the key returns a reader to it, and only the non-default is ever stored.
+  // Only `[data-tali-cell]` listings are affected — a reader hiding "code" means the
+  // computation behind an output, the reader-owned counterpart of per-cell `echo:`, not
+  // every fenced sample in a tutorial.
+  function codeHidden(){{
+    try {{ return localStorage.getItem("tali-code") === "hide"; }} catch(e) {{ return false; }}
+  }}
+  function applyCode(){{
+    try {{ document.documentElement.classList.toggle("tali-code-hidden", codeHidden()); }} catch(e) {{}}
+  }}
+  applyCode();
+  window.taliSetCodeHidden = function(v){{
+    try {{
+      if (v) localStorage.setItem("tali-code", "hide");
+      else localStorage.removeItem("tali-code");
+    }} catch(e) {{}}
+    applyCode();
+    try {{ window.dispatchEvent(new CustomEvent("tali:codevisibility", {{ detail: {{ hidden: codeHidden() }} }})); }} catch(e) {{}}
+  }};
+  window.taliGetCodeHidden = codeHidden;
   // Paper is white. dark.css recolours the syntax scopes with untokenised literals (a
   // dark-mode string is #a5d6ff: 1.6:1 on paper), so the print stylesheet's token reset
   // cannot reach them. (The diagnostic boxes are now token-derived, so the reset DOES reach

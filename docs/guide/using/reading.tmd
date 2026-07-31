@@ -23,8 +23,9 @@ Two principles hold for everything on this page:
 
 The **Settings** gear opens a light-dismiss popover (not a modal: it never covers or
 inerts the page). On a website it lives in the navbar; on a book, in the topbar; on a
-standalone page it floats in the top-right corner. It hosts two sections, Theme and
-Keyboard shortcuts. Close it with Esc, a click outside, or the gear again.
+standalone page it floats in the top-right corner. It hosts Theme, Keyboard shortcuts,
+and, on a document that has code cells, Code. Close it with Esc, a click outside, or the
+gear again.
 
 ## Theme
 
@@ -48,6 +49,26 @@ There is deliberately no text-size, width, or spacing knob. Taliesin tunes those
 once, for every reader, rather than shipping a comfort panel of sliders: the browser
 already offers page zoom for the rare reader who needs larger type, and one well-set
 measure beats a pile of controls nobody opens.
+
+## Code
+
+On a document with code cells, the Settings menu gains a **Code** section: a segmented
+control with Show and Hide. Hide collapses every executed cell's source, leaving the
+outputs, figures and tables exactly where they were, so the document reads as prose with
+results. Like the theme, the choice is the reader's, persists in their `localStorage`,
+and is applied *before the page paints* — a returning reader never watches the code
+render and then disappear.
+
+It is the reader's half of a control the author already has. `#| echo: false` is the
+author deciding a particular cell's source is not part of the document; this is a reader
+deciding, for themselves and for every page they visit, that they want the results and
+not the workings. Neither overrides the other in a surprising way: a cell the author
+already hid stays hidden, and Show never reveals it.
+
+The section appears **only where it governs something**, and it targets only code *cells*.
+A plain ` ```python ` fence is prose you wrote to be read, and a captioned, numbered
+listing is a float a reader may have arrived at through an `@lst-` reference; neither is
+hidden. A document with no cells never shows the control at all.
 
 ## Reading progress and resume
 

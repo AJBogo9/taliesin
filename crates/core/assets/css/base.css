@@ -989,6 +989,13 @@
     .tali-title-block .title { font-size: 1.7rem; }
     .tali-title-block .subtitle { font-size: 1.05rem; }
   }
+  /* Reader "show/hide code": the class is set by the pre-paint bootstrap in theme.rs, so a
+     reader who hid code never sees it render and vanish. Targets only `[data-tali-cell]`,
+     an EXECUTED cell's source — a plain fence is prose, and a captioned `.tali-listing`
+     float is content the author numbered and may reference with `@lst-`, so neither hides.
+     Outputs, figures and tables are untouched: hiding the code is not hiding the results. */
+  html.tali-code-hidden [data-tali-cell] { display: none; }
+
   /* honor reduced-motion: collapse transitions/animations (the TOC sheet slide,
      the handle hint bounce, fades) to near-instant, and drop smooth scrolling */
   @media (prefers-reduced-motion: reduce) {

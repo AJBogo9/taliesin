@@ -5056,6 +5056,77 @@ fn base_css_aliases_the_conventional_sr_only_class() {
     );
 }
 
+/// `data-tali-cell` marks an EXECUTED cell's source listing, and only that: it is what the
+/// reader's show/hide-code control targets, so what it does *not* match is as load-bearing
+/// as what it does.
+///
+/// The distinction had no representation in the built HTML before this — `is_cell` was
+/// computed in `emit.rs` and discarded, and the preview's `data-tali-cell-state` is added at
+/// runtime by `client.js`, so a built page carried nothing. Byte-level snapshots do not
+/// cover it either: `body_html_snapshots` is deliberately `{js}`-only, and a `{js}` cell
+/// emits a script shell rather than a `<pre>`, so this path has no snapshot to drift.
+#[test]
+fn only_a_cells_source_listing_is_marked_for_the_reader_code_toggle() {
+    let doc = render_document(
+        "```{python}\n#| label: probe\nprint(1)\n```\n\n```python\nnot_a_cell = 1\n```\n",
+    );
+    let cell = &doc.blocks[0].html;
+    let fence = &doc.blocks[1].html;
+    assert!(
+        cell.contains("data-tali-cell=\"python\""),
+        "a cell's listing is marked, and carries its language: {cell}"
+    );
+    assert!(
+        !fence.contains("data-tali-cell"),
+        "a plain fence is prose the author wrote to be read, not a cell: {fence}"
+    );
+}
+
+/// The reader's code preference is applied by a script that runs BEFORE the body parses.
+///
+/// This ordering is the whole reason the state lives in `theme_head` instead of in the
+/// enhancer fragment that draws its UI. Applied after paint, a reader who chose "hide"
+/// would watch every listing render and then be removed on each navigation — a
+/// content-sized layout shift, strictly worse than the colour flash that script already
+/// exists to prevent. Nothing about a passing enhancer test would notice the move, so the
+/// position is asserted here: the toggle must precede `<body>` in the emitted bytes.
+#[test]
+fn the_reader_code_preference_is_applied_before_the_body_parses() {
+    let doc = render_document("```{python}\nprint(1)\n```\n");
+    let html = render_doc_to_page(&doc, "t", OutputMode::Build);
+    let toggle = html
+        .find("tali-code-hidden")
+        .expect("the page applies the code-visibility class");
+    let body = html.find("<body").expect("the page has a body");
+    assert!(
+        toggle < body,
+        "the code-visibility bootstrap must run in <head>, before any listing exists \
+         (toggle at {toggle}, <body> at {body})"
+    );
+    assert!(
+        toggle < html.find("data-tali-cell=").expect("the page has a cell"),
+        "the class must be set before the first cell is parsed"
+    );
+}
+
+/// A folded cell keeps the marker, and keeps it on the `<details>` — the element that
+/// actually wraps the listing. On the `<pre>` inside it, hiding would collapse the code and
+/// leave a bare disclosure triangle behind.
+#[test]
+fn a_folded_cell_carries_the_marker_on_the_element_that_wraps_the_listing() {
+    let doc = render_document("```{python}\n#| code-fold: true\nprint(1)\n```\n");
+    let html = &doc.blocks[0].html;
+    let at = html
+        .find("data-tali-cell=")
+        .expect("a folded cell is still a cell");
+    let open = html[..at].rfind('<').expect("an enclosing tag");
+    assert!(
+        html[open..].starts_with("<details"),
+        "the marker belongs on the <details> that wraps the listing, not the inner <pre>: {}",
+        &html[open..(open + 60).min(html.len())]
+    );
+}
+
 /// Cross-document view transitions ship in the BUNDLE, so every multi-page project gets a
 /// crossfade between pages without authoring a stylesheet (C-NAV-1; promoted out of the
 /// blog's `custom.css`).

@@ -16,12 +16,26 @@ interface Window {
   /** Reader menu controller (code-enhance/13-reader-menu.js): opens/closes the
    *  reading-tools sheet and lets other fragments dock a section into it. */
   taliReaderMenu?: {
-    /** Dock a section (title, its content node, an onOpen sync hook) into the sheet. */
-    addSection: (title: string, node: Element, onOpen?: () => void) => void;
+    /** Dock a section (title, its content node, an onOpen sync hook) into the sheet.
+     *  Returns a handle for showing/hiding that section, so a feature can offer its
+     *  row only on documents it governs. */
+    addSection: (
+      title: string,
+      node: Element,
+      onOpen?: () => void,
+    ) => { setVisible: (v: boolean) => void };
     open: () => void;
     close: () => void;
     toggle: () => void;
   };
+
+  // --- reader show/hide code (code-enhance/20-code-visibility.js) --------------
+  /** Guard: the code-visibility UI is built once per document. */
+  __taliCodeVis?: boolean;
+  /** Set by the pre-paint bootstrap (render/theme.rs), NOT by the fragment: the
+   *  class has to land before the first frame or every listing renders and vanishes. */
+  taliSetCodeHidden?: (hidden: boolean) => void;
+  taliGetCodeHidden?: () => boolean;
 
   // --- {js} reactive runtime (tali-js.js) -------------------------------------
   /** Internal per-page state bag for the `{js}` runtime (cell registry, teardown
