@@ -122,6 +122,60 @@ fn the_mermaid_version_claim_matches_the_vendored_library() {
     );
 }
 
+/// paged.js is vendored for the print track (backlog 159): it supplies the CSS Paged Media
+/// Level 3 features Chrome does not implement natively — `string-set` running heads and
+/// `target-counter()` page references (measured against Chrome 150, 2026-07-31).
+///
+/// Unlike every other bundle in `assets/js/`, this one is **not** copied into every built
+/// page: it is inlined only into the transient page `render/print.rs` assembles. It is still
+/// redistributed in this repository, so it owes the same attribution + verbatim notice.
+///
+/// The version is read from the bundle's own `@license` banner rather than asserted as a
+/// literal, so re-vendoring without updating the docs goes red instead of silently lying.
+#[test]
+fn the_pagedjs_version_claim_matches_the_vendored_library() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lib = std::fs::read_to_string(core.join("assets/js/paged.polyfill.min.js"))
+        .expect("the vendored paged.js polyfill should exist");
+    // `/** @license Paged.js v0.4.3 | MIT | https://… */`
+    let anchor = lib
+        .find("Paged.js v")
+        .expect("the paged.js bundle should carry its @license banner");
+    let rest = &lib[anchor + "Paged.js v".len()..];
+    let end = rest
+        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .expect("the banner version should be delimited");
+    let version = &rest[..end];
+    assert!(
+        version.split('.').count() == 3,
+        "expected an x.y.z paged.js version, got `{version}`"
+    );
+
+    let doc = third_party_md();
+    assert!(
+        doc.contains(&format!("v{version}")),
+        "THIRD_PARTY.md claims a different paged.js version than the vendored bundle, \
+         which reports {version}. Update the attribution when you re-vendor it."
+    );
+    assert!(
+        lib.contains("MIT"),
+        "the paged.js banner should name its MIT licence"
+    );
+    // MIT requires the permission notice to travel, not just the copyright line, and the
+    // minified bundle carries only the one-line banner — so the verbatim text must ship
+    // beside it like d3's and Plot's do.
+    let notices = std::fs::read_to_string(core.join("assets/js/LICENSES.md"))
+        .expect("assets/js/LICENSES.md should exist");
+    assert!(
+        notices.contains("paged.js") || notices.contains("Paged.js"),
+        "assets/js/LICENSES.md must carry paged.js's verbatim MIT permission notice"
+    );
+    assert!(
+        notices.contains("Adam Hyde"),
+        "paged.js's MIT notice names Adam Hyde as the copyright holder"
+    );
+}
+
 #[test]
 fn removed_deps_are_not_listed() {
     let doc = third_party_md();

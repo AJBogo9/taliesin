@@ -33,6 +33,13 @@ Fonts and syntax definitions already carried theirs
   that has a diagram so it renders fully offline (content-gated); the live preview
   lazy-loads this same vendored copy from a same-origin route. License:
   <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>.
+- **paged.js** (`crates/core/assets/js/paged.polyfill.min.js`, MIT, v0.4.3, Copyright
+  (c) 2018 Adam Hyde). The CSS Paged Media polyfill behind `taliesin pdf`: it supplies
+  the Level 3 features Chrome does not implement natively — `string-set` running heads
+  and `target-counter()` page references (measured against Chrome 150, 2026-07-31).
+  **Unlike the other bundles here it is not shipped on built pages**; it is inlined only
+  into the transient paginated page the print track assembles. License:
+  <https://gitlab.coko.foundation/pagedjs/pagedjs/-/blob/main/LICENSE.md>.
 - **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
   glyph paths are embedded directly in source — the copy/check button in
   `code-enhance.js` and the callout-kind icons in `crates/core/src/render/divs.rs`.
