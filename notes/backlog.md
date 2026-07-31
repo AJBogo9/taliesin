@@ -16,6 +16,37 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 **Fresh session with no context: read this section, then "Standing constraints", then P1. That is
 enough to start.**
 
+- **Items 171, 172, 173 and 56's backlinks half shipped 2026-07-31** (branch
+  `reader-affordances-2026-07-31`), `./tools/gates.sh` green with all four interpreter gates
+  armed. The top of the P1 queue is therefore **159 (print/PDF)**, with 180 still needing only
+  the author's ruling. Five things a later session should carry:
+  - **Two of the four items' recorded blockers were rot, in the same direction: the thing
+    said to be missing already existed.** 171 was filed as needing a `reqwest`/`TcpListener`
+    harness; `preview_single_instance.rs` had hand-rolled one all along, so the test cost no
+    dependency. 173's C-READ-2 was filed as "code *and data* download" while the data half had
+    already shipped as `{{< dataset >}}` (item 176). **Grep for the capability before pricing
+    the work**, which is now the third batch where that rule paid out.
+  - **The inlined-asset needle trap fired TWICE in one batch, in both directions, and the
+    second direction is not in `LESSONS.md` yet.** Positive: a test proved the site `css:` was
+    inlined by finding `@view-transition` on the page, which the move into `base.css` made
+    vacuous. **Negative: a new COMMENT in `base.css` naming `speculationrules` shipped that
+    literal into every page and failed the test that forbids it.** Every page inlines the CSS
+    and JS payload whole, so a whole-page `contains` — asserted either way — is a claim about
+    the bundle as much as the document. Both tests now say so in their doc comments.
+  - **A reader affordance must be excluded from every text projection, and there are FOUR of
+    them in three modules** (`taliesin read`/`skim`, the search index, `llms-full.txt`). Two of
+    those leaks were found only by building a real site and grepping the artefacts; no test had
+    them. The id is now one constant (`REPRO_BLOCK_ID`) with one test covering the projections
+    together. **Any future generated block owes the same sweep.**
+  - **A client-side scrape of the rendered page is the wrong source for anything about cells.**
+    A `#| echo: false` cell runs and emits no listing, so the DOM is missing exactly the setup
+    cells. Measured on the PCA post: **1 visible listing, 168 lines in the block model.** Read
+    the block model.
+  - **Browser-measure a new interactive element's tap target.** The code-download link was
+    15px at a 390px viewport (WCAG 2.5.8 floor is 24) because inline text inherits the line
+    box. Surfaced and NOT fixed, because it is pre-existing and shared: the Settings segmented
+    buttons are 26px, and the Theme picker measures the same.
+
 - **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded
   here on purpose: the author and parallel sessions both push, and a recorded SHA is the line that
   rots first.
@@ -303,30 +334,14 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      note:** the *citation/DOI-existence* half of this was separately **declined 2026-07-16** and
      is not revived by the 2026-07-29 promotion; if it is ever wanted it needs its own ruling.
 
-172. **`taliesin publish` follow-up: an optional `--init` wrapper** for the one-time `wrangler`
-     setup. (S.)
-
-171. **An end-to-end live-HTTP test for `mounts:` serving.** (S, test debt.) The F-04 work
-     unit-pins the pure `match_mount`/`resolve_project`/`classify_change` helpers and live mount
-     serving is browser-verified; what is missing is only the bin-crate gap of a real
-     `reqwest`/`TcpListener` harness. Mounts are preview-only.
-
-173. **PMF reader tail** ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md), Tier C): a
-     document-level reader show/hide-code toggle, a reader code+data download affordance, and
-     instant client-side navigation polish. Three small reader affordances, promoted together.
-
-56. **L5-1 residual: the manual's cross-page references.** (The `description:` half shipped
-    2026-07-26: 0 of 36 tracked pages → 36 of 36.) What is left is not the authoring pass the item
-    assumed, and splits two ways:
-    - **Glossary, term index and float digest have no surface to feed.** `glossary`, `term-index` and
-      `float-digest` grep to **zero** across `crates/core/src` + `crates/server/src`, so "they render
-      empty until an authoring pass happens" describes a *feature proposal*, not authoring work.
-      Writing `{.definition}` blocks today feeds only `skim.rs`, which reads them as statement heads.
-    - **Backlinks ship and render nothing, and authoring genuinely could fix that.**
-      `site/backlinks.rs` builds its reverse index from **cross-page** xref markers; the books' 33
-      xrefs (17 guide + 16 internals) are all intra-page, so **0** "Referenced by" lines are emitted
-      in either book. Real cross-chapter references would light it up, but they have to be references
-      someone means — a writing judgment, not a sweep.
+56. **L5-1 residual — what is left is a FEATURE PROPOSAL, not authoring.** (The `description:`
+    half shipped 2026-07-26; the backlinks half shipped 2026-07-31.) `glossary`, `term-index`
+    and `float-digest` still grep to **zero** across `crates/core/src` + `crates/server/src`,
+    re-measured 2026-07-31, so "they render empty until an authoring pass happens" has never
+    described authoring work: there is no surface to feed. Writing `{.definition}` blocks
+    today feeds only `skim.rs`, which reads them as statement heads. **Decide whether any of
+    the three is wanted before writing a line of prose for them** — and if so it is a build,
+    with its own spec.
 
 174. **`serde_yaml` fallback swap.** (Conditional: **this one has no trigger yet**, and is ranked
      last-but-one for that reason.) The `Cargo.toml` workspace comment names `serde_yml`, which
@@ -731,6 +746,25 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-07-31 reader affordances** (171, 172, 173, 56's backlinks half), branch
+  `reader-affordances-2026-07-31`. `./tools/gates.sh` green, all four interpreter gates armed.
+  Live-HTTP mounts coverage; `publish --init`; the three C-READ/C-NAV affordances; and the
+  first cross-chapter references either dogfooded book has ever carried. **Do not re-file
+  C-READ-2's data half** (it is `{{< dataset >}}`, item 176) and **do not re-file 173** — what
+  is left of the PMF Tier C list was never in it. The reusable lessons are in "Now" above;
+  three more that belong to their own areas:
+  - **`@view-transition` is now bundled in `base.css` and `corpus/tech-blog/custom.css` is
+    deleted**, which finishes the 2026-07-11 audit's `#custom-css-mostly-dead` prescription.
+    The blog no longer declares `css:` at all; that mechanism keeps its coverage in
+    `theme_css.rs` + `config.rs`. **Do not re-add the two dropped prefetch mechanisms** — the
+    test that forbids them is named in the CSS comment rather than the tokens themselves.
+  - **Two invented `--tali-*` tokens were written and caught before landing** (`--tali-radius`,
+    `--tali-fg-muted`; the real ones are `--tali-radius-md` and `--tali-muted`). The standing
+    lesson holds: an invented token renders nothing.
+  - **A pin on authored content must pin the invariant, not the authorship.**
+    `backlinks_are_exercised.rs` asserts each book renders *at least one* backlink and
+    deliberately does not say which chapter references which, so a reorganisation stays free
+    while a silent return to zero does not.
 - **2026-07-30 long-running cells** (175a + 175b), branch `long-running-cells-2026-07-30`,
   against
   [2026-07-30-long-running-cells-design.md](../docs/superpowers/specs/2026-07-30-long-running-cells-design.md).

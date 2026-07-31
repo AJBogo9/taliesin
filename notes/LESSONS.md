@@ -218,6 +218,19 @@ through its wrappers. What was actually missing was a fixture *shape*.
   user-facing string is present in the HTML of every page whether or not that page renders the
   feature.** A whole-page `contains("…")` is satisfied by a page rendering none of it. **Needle the
   full emitted tag, or slice the block out first.**
+  - **It cuts BOTH ways, and the negative direction is the one that surprises** (2026-07-31). A
+    whole-page `!contains("…")` — the shape that forbids a token from ever shipping — is broken by
+    a **comment in a bundled asset**. Promoting `@view-transition` into `base.css` came with a
+    comment naming the two prefetch mechanisms that must not return; the word `speculationrules`
+    was then in the payload of every page, and the test forbidding it went red with no config
+    change at all. A bundled comment is shipped bytes. **Name a forbidden token in the test, not
+    in the asset**, and when a negative whole-page assertion fails, suspect the bundle before the
+    config.
+  - **The same trap in miniature, inside one file:** a test located a CSS rule with
+    `BASE_CSS.find("@view-transition")` and walked back to the enclosing `@media`. The
+    explanatory comment above the rule names `@view-transition` in prose, so `find` hit the
+    comment and the walk landed on the wrong media query. **Search for the rule's syntax
+    (`"@view-transition {"`), not its name.**
 - **A runtime-injected DOM node is invisible to a static grep.** Deck `theme-color` is created by
   `deck.rs:240` (`createElement` + `setAttribute`), so grepping built HTML reports it missing on all
   four deck paths — a false regression of shipped work. When the mechanism is runtime construction,
