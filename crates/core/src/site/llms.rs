@@ -182,6 +182,9 @@ impl Site {
             if b.cell.is_some() {
                 continue; // executable code cell → not prose
             }
+            if b.id == crate::render::REPRO_BLOCK_ID {
+                continue; // reader affordance (the code-download box), not prose
+            }
             let html = strip_katex(&b.html);
             if html.trim_start().starts_with("<pre") {
                 continue; // a plain (non-cell) code block

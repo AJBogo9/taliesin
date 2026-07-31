@@ -989,6 +989,19 @@
     .tali-title-block .title { font-size: 1.7rem; }
     .tali-title-block .subtitle { font-size: 1.05rem; }
   }
+  /* The reader's code download (`repro.rs`): a quiet aside after the References/footnotes,
+     styled like a note rather than a call to action — it is an offer, not the point of the
+     page. Deliberately NOT hidden by the code toggle above: a reader who hid the listings is
+     the one most likely to want the file. */
+  .tali-repro { margin: 2.5rem 0 0; padding: .9rem 1.1rem; border: 1px solid var(--tali-border);
+    border-radius: var(--tali-radius-md); background: var(--tali-code-bg);
+    font-size: .92rem; }
+  .tali-repro-lead { margin: 0 0 .5rem; color: var(--tali-muted); }
+  .tali-repro-list { margin: 0; padding-left: 1.1rem; }
+  .tali-repro-list li + li { margin-top: .25rem; }
+  /* Print: a paper copy cannot be clicked, so the offer is noise on it. */
+  @media print { .tali-repro { display: none; } }
+
   /* Reader "show/hide code": the class is set by the pre-paint bootstrap in theme.rs, so a
      reader who hid code never sees it render and vanish. Targets only `[data-tali-cell]`,
      an EXECUTED cell's source — a plain fence is prose, and a captioned `.tali-listing`

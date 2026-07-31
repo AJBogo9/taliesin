@@ -34,6 +34,13 @@ pub(crate) fn project_with_js(
 ) -> String {
     let mut out = String::new();
     for b in blocks {
+        // Reader affordances are not document content. The code-download box (`tali-repro`)
+        // is generated chrome offering the reader a file — an agent reading this document
+        // wants the cells themselves, which the projection already fences above, not a
+        // sentence about downloading them.
+        if b.id == super::repro::REPRO_BLOCK_ID {
+            continue;
+        }
         let mut piece = project_block(b).trim_end_matches('\n').to_string();
         if piece.trim().is_empty() {
             continue;

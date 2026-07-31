@@ -107,6 +107,12 @@ use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // can reach a `base_dir`.
 mod image_meta;
 use image_meta::ImageAnnotator;
+// The reader's code download (C-READ-2): every cell's source, in the order it ran, as one
+// `data:` URL per language. Reads the BLOCK MODEL rather than the emitted HTML, because a
+// `#| echo: false` cell renders no listing and must still be in the script.
+mod repro;
+// The id four consumers must agree to skip when turning a page into text.
+pub(crate) use repro::REPRO_BLOCK_ID;
 // Text projection (`taliesin read`): a plain-text VIEW of the block model, not an output
 // format. Crate-internal; reached via `RenderedDoc::body_text()`.
 mod text;
@@ -1260,6 +1266,15 @@ fn render_internal_impl(
                 cell: None,
             },
         );
+    }
+    // The reader's code download (C-READ-2), appended last of the generated blocks so it
+    // sits after the References/footnotes a reader scrolls past. Reading view only: a deck
+    // has no place to put a download list, and `mark_section_extents` below must still see
+    // the final block list.
+    if format == DocFormat::Html
+        && let Some(b) = repro::repro_block(&blocks)
+    {
+        blocks.push(b);
     }
     // LAST over the block list: every block that will ever be in the document is in it
     // by now (References, footnotes, the title block), so a section's end is final.

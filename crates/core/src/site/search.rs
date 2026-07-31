@@ -98,7 +98,16 @@ pub(super) fn page_fragment(
         ));
     };
 
-    let body: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    // Reader affordances are excluded, for the same reason the text projection drops them:
+    // the code-download box is chrome offering a file, not something the page says. Indexed,
+    // every computational page in the project answers a Cmd-K search for "download" with
+    // identical boilerplate, burying the pages that actually discuss one.
+    let body: String = doc
+        .blocks
+        .iter()
+        .filter(|b| b.id != render::REPRO_BLOCK_ID)
+        .map(|b| b.html.as_str())
+        .collect();
     let hs = headings_with_pos(&body);
     // A page that emits no title block and opens at `# H1` has that heading as its OWN
     // title, not a section — the same rule `ChapterNumbering` uses to decide the H1 takes

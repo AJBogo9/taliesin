@@ -70,6 +70,30 @@ A plain ` ```python ` fence is prose you wrote to be read, and a captioned, numb
 listing is a float a reader may have arrived at through an `@lst-` reference; neither is
 hidden. A document with no cells never shows the control at all.
 
+## Running it yourself
+
+A page with code cells ends with a quiet box offering **every cell's source as one
+script**, one download per language, in the order the cells ran. It needs no server: the
+file is carried in the page itself, so a single built `.html` you emailed to someone still
+hands them the code.
+
+The part that matters is what it includes. A cell marked `#| echo: false` runs and shows
+no listing, and those are usually the imports, the data loading and the plot styling — so a
+reader who copied the visible listings by hand would get a script missing its first third
+and only find out when it failed. The download is assembled from the document's block
+model rather than from the rendered page, so hidden cells are in it.
+
+`{js}` cells are deliberately not offered. A `{js}` document is a reactive graph, not a
+script: the runtime orders cells by dependency, not by position, and a cell that reads a
+`{{< input >}}` or the page's DOM means nothing outside the page hosting it. Offering that
+as a file would be handing the reader something that is not the program that ran. Re-running
+a `{js}` document is reloading it.
+
+For the **data** the code reads, see the `{{< dataset >}}` shortcode in
+[Writing](writing.tmd): a provenance card stating what a file is, its size, its SHA-256 and
+where it came from. A multi-GB parquet does not belong in a folder of HTML, so the
+web-native answer to "can I get the data" is a citation you can verify, not a copy.
+
 ## Reading progress and resume
 
 For long reads, an unobtrusive trio answers "where was I?", with no control to open:
