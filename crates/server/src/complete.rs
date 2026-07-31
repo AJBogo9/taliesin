@@ -396,6 +396,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--public", false, "deploy un-gated (no passcode)"),
             ("--no-strict", false, "do not fail on located warnings"),
             ("--dry-run", false, "build but skip the deploy"),
+            (
+                "--init",
+                false,
+                "run the one-time Cloudflare setup, then stop",
+            ),
             ("--format", true, "machine output format (json)"),
             ("--json", false, "shorthand for --format json"),
         ],

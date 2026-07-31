@@ -7,10 +7,9 @@
 //!
 //! **How to use:** `main()` dispatches `publish` to [`cmd_publish`].
 //!
-//! **One-time setup (per repo, documented, not automated here):**
-//! `wrangler pages project create <name> --production-branch production` and
-//! `wrangler pages secret put PASSWORD --project-name <name>`, with `CLOUDFLARE_API_TOKEN`
-//! (and `CLOUDFLARE_ACCOUNT_ID`) in the environment.
+//! **One-time setup (per repo):** `publish <dir> --init` runs it — see [`init_commands`].
+//! It needs `CLOUDFLARE_API_TOKEN` (and `CLOUDFLARE_ACCOUNT_ID`) in the environment, the
+//! same as a deploy.
 
 use crate::log;
 use std::path::{Path, PathBuf};
@@ -25,6 +24,12 @@ const MIDDLEWARE_JS: &str = include_str!("assets/_middleware.js");
 /// source repo's current git branch.
 const PRODUCTION_BRANCH: &str = "production";
 
+/// The Cloudflare Pages environment variable the passcode gate reads. Named once here
+/// because `--init` puts it in place and [`MIDDLEWARE_JS`] consumes it, and a rename in
+/// one of those without the other yields a site nobody can open with a secret nothing
+/// reads. `the_gate_secret_is_the_one_the_middleware_reads` pins the pair.
+const GATE_SECRET: &str = "PASSWORD";
+
 /// Long flags `publish` accepts (drives the unknown-flag did-you-mean).
 const PUBLISH_FLAGS: &[&str] = &[
     "--project-name",
@@ -33,6 +38,7 @@ const PUBLISH_FLAGS: &[&str] = &[
     "--no-strict",
     "--public",
     "--dry-run",
+    "--init",
     "--format",
     "--json",
 ];
@@ -46,6 +52,8 @@ struct PublishArgs<'a> {
     strict: bool,
     dry_run: bool,
     public: bool,
+    /// `--init`: run the one-time Cloudflare setup instead of building + deploying.
+    init: bool,
     /// `--format json` emits the build's structured diagnostics to stdout. Default `human`.
     format: &'a str,
 }
@@ -58,6 +66,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
     let mut strict = true; // publish is strict by default; --no-strict opts out
     let mut dry_run = false;
     let mut public = false;
+    let mut init = false;
     let mut format: &str = "human";
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -91,6 +100,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
             "--no-strict" => strict = false,
             "--public" => public = true,
             "--dry-run" => dry_run = true,
+            "--init" => init = true,
             s if s.starts_with("--") => {
                 return Err(format!(
                     "error: {}",
@@ -111,6 +121,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         strict,
         dry_run,
         public,
+        init,
         format,
     })
 }
@@ -187,6 +198,99 @@ fn preflight_summary(p: &Preflight) -> Vec<String> {
     ]
 }
 
+/// The one-time Cloudflare Pages setup as `wrangler` argv, in run order: create the Pages
+/// project, then — only for a **gated** site — put the shared passcode in place.
+///
+/// Pure, so the command set is unit-testable with no wrangler and no network. The
+/// `project` it is given is resolved by [`cmd_publish`]'s ordinary rules, which is the
+/// whole point of the flag: the setup and the deploy that follows it must name one
+/// project, and a hand-typed setup line is exactly where that drifts.
+///
+/// **The gated case is a real branch, not a formality.** A `--public` site has no
+/// passcode, so offering `secret put` there would teach the author to set a secret
+/// nothing reads.
+fn init_commands(project: &str, gated: bool) -> Vec<Vec<String>> {
+    let s = str::to_string;
+    let mut cmds = vec![vec![
+        s("pages"),
+        s("project"),
+        s("create"),
+        s(project),
+        s("--production-branch"),
+        s(PRODUCTION_BRANCH),
+    ]];
+    if gated {
+        cmds.push(vec![
+            s("pages"),
+            s("secret"),
+            s("put"),
+            s(GATE_SECRET),
+            s("--project-name"),
+            s(project),
+        ]);
+    }
+    cmds
+}
+
+/// `publish <dir> --init`: run [`init_commands`] and stop.
+///
+/// **It deliberately neither builds nor deploys.** Setup and deploy are separate one-way
+/// steps, and folding them together would make a first `publish` do two irreversible
+/// things on one command.
+fn cmd_init(project: &str, gated: bool, dry_run: bool, json: bool) -> ExitCode {
+    let cmds = init_commands(project, gated);
+    if dry_run {
+        for c in &cmds {
+            let line = format!("would run: wrangler {}", c.join(" "));
+            // `--format json` owns stdout for a build's diagnostics; `--init` has none to
+            // emit, so keep stdout empty rather than non-JSON in that mode.
+            if json {
+                log::info(&line);
+            } else {
+                println!("{line}");
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
+    for c in &cmds {
+        log::info(&format!("running: wrangler {}", c.join(" ")));
+        // stdio is INHERITED, not captured: `secret put` prompts for the passcode on the
+        // terminal, so capturing its output would hang on an invisible prompt.
+        match std::process::Command::new("wrangler").args(c).status() {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                log::error(&format!(
+                    "`wrangler {}` exited with status {s}",
+                    c.join(" ")
+                ));
+                // Re-running setup is the common case (rotating the passcode), and
+                // `project create` refuses an existing project — so name that reading
+                // rather than leaving the author to guess which step to skip.
+                if c.get(2).is_some_and(|v| v == "create") {
+                    log::info(&format!(
+                        "if the project already exists this is expected; the remaining step is \
+                         `wrangler pages secret put {GATE_SECRET} --project-name {project}`"
+                    ));
+                }
+                return ExitCode::FAILURE;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::error(
+                    "wrangler was not found on PATH. Install it (npm install -g wrangler), \
+                     then re-run this command.",
+                );
+                return ExitCode::FAILURE;
+            }
+            Err(e) => {
+                log::error(&format!("cannot run wrangler: {e}"));
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    log::info("setup complete — deploy with `taliesin publish <dir>`");
+    ExitCode::SUCCESS
+}
+
 /// Write the passcode gate into `<out>/functions/_middleware.js`. Called AFTER the build
 /// (the build's stale-sweep would otherwise delete the `functions/` dir, which is neither
 /// dot- nor underscore-prefixed); re-injected on every publish.
@@ -205,6 +309,7 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         strict,
         dry_run,
         public,
+        init,
         format,
     } = match parse_publish_args(args) {
         Ok(p) => p,
@@ -273,13 +378,21 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // `--init` is the one-time setup, and it stops here: BEFORE the output dir is resolved
+    // and before anything is built. Placed after the project/gate resolution above so it
+    // creates exactly the project a later deploy will target, under exactly that deploy's
+    // access model.
+    let json = format == "json";
+    if init {
+        return cmd_init(&project, gated, dry_run, json);
+    }
+
     // Resolve the output dir the same way the build does, so we can inject + deploy from it.
     let out: PathBuf = out_dir
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join(site.output_dir()));
 
     // Build (reuses the full site build, including its own discover + strict handling).
-    let json = format == "json";
     let outcome = crate::build::run_site_build(root, out.to_str(), strict, None);
     if json {
         // Structured diagnostics to stdout (human log stays on stderr).
@@ -470,6 +583,82 @@ mod tests {
         let p = parse_publish_args(&a).expect("parse");
         assert!(p.strict, "publish must be strict by default");
         assert!(!p.public);
+        assert!(
+            !p.init,
+            "publish builds + deploys unless --init asks for setup"
+        );
+    }
+
+    #[test]
+    fn init_is_opt_in() {
+        let a = argv(&["book", "--init"]);
+        assert!(parse_publish_args(&a).expect("parse").init);
+    }
+
+    /// Order matters as much as membership: `project create` has to precede
+    /// `secret put`, since the secret is put *on* the project.
+    #[test]
+    fn init_creates_the_project_then_sets_the_passcode() {
+        let cmds = init_commands("my-book", true);
+        assert_eq!(
+            cmds,
+            vec![
+                vec![
+                    "pages",
+                    "project",
+                    "create",
+                    "my-book",
+                    "--production-branch",
+                    "production"
+                ],
+                vec![
+                    "pages",
+                    "secret",
+                    "put",
+                    "PASSWORD",
+                    "--project-name",
+                    "my-book"
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn init_for_a_public_project_creates_it_and_sets_no_secret() {
+        let cmds = init_commands("my-book", false);
+        assert_eq!(
+            cmds.len(),
+            1,
+            "no passcode step for an ungated site: {cmds:?}"
+        );
+        assert!(cmds[0].contains(&"create".to_string()));
+    }
+
+    /// The deploy's `--branch` and the setup's `--production-branch` must be one label, or
+    /// every deploy lands on a preview branch of a project whose production branch is
+    /// something else — a live site that never updates.
+    #[test]
+    fn init_creates_the_branch_the_deploy_pushes_to() {
+        let create = &init_commands("b", false)[0];
+        let at = create
+            .iter()
+            .position(|a| a == "--production-branch")
+            .unwrap();
+        assert_eq!(create[at + 1], PRODUCTION_BRANCH);
+    }
+
+    /// A two-way pin on the secret's name: `--init` puts it in place and the bundled
+    /// middleware reads it, so renaming either alone yields a gate nobody can open.
+    #[test]
+    fn the_gate_secret_is_the_one_the_middleware_reads() {
+        assert!(
+            MIDDLEWARE_JS.contains(&format!("env.{GATE_SECRET}")),
+            "the middleware reads a different env var than `--init` sets"
+        );
+        assert!(
+            init_commands("b", true)[1].contains(&GATE_SECRET.to_string()),
+            "the setup sets a different secret than the middleware reads"
+        );
     }
 
     #[test]

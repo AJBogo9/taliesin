@@ -13,7 +13,7 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
-| `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload |
+| `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run] [--init]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload. `--init` runs the one-time Cloudflare setup instead of deploying |
 | `render <file.tmd>` | Render a one-shot full HTML page to stdout (static; does **not** execute code cells) |
 | `read <file.tmd> [--run]` | Project the document to plain text (agent-readable). Static by default; `--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is available, observes each `{js}` chart (`[js: produced, <svg W×H>]`), reporting what every cell produced (`--format json` for structured per-cell results) |
 | `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
@@ -296,13 +296,20 @@ strict by default, so a broken cross-reference or a failed code cell fails the d
 instead of shipping; pass `--no-strict` to deploy anyway.
 
 One-time setup per project (needs [Wrangler](https://developers.cloudflare.com/workers/wrangler/),
-Cloudflare's CLI, and a Cloudflare API token with the Pages:Edit permission):
+Cloudflare's CLI, and a Cloudflare API token with the Pages:Edit permission). `--init` runs
+it for you, against the same project name the deploy will use:
 
 ```sh
 export CLOUDFLARE_API_TOKEN=...      # also CLOUDFLARE_ACCOUNT_ID
-wrangler pages project create my-book --production-branch production
-wrangler pages secret put PASSWORD --project-name my-book   # type the passcode once
+taliesin publish . --init --dry-run  # see the two wrangler commands first
+taliesin publish . --init            # create the project, then type the passcode once
 ```
+
+`--init` neither builds nor deploys: it creates the Cloudflare Pages project and prompts
+for the passcode, and that is all. Re-running it after the project exists will report that
+`project create` was refused, which is expected; the passcode step is the one you re-run to
+rotate the secret. With `--public` there is no passcode, so `--init` only creates the
+project.
 
 Then, every time you want to update the live copy:
 

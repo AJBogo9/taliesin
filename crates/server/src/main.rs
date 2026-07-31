@@ -207,10 +207,11 @@ Preview & build
                              HTML; --jobs <N> caps parallel page renders (site
                              build); --no-exec renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
-  publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--format json]
+  publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--init] [--format json]
                              build a site/book + deploy it to Cloudflare Pages
                              behind a shared passcode (strict by default);
-                             --public deploys un-gated; --dry-run skips the deploy
+                             --public deploys un-gated; --dry-run skips the deploy;
+                             --init runs the one-time Cloudflare setup instead
 
 Inspect
   check <file|dir> [--format human|json] [--errors-only|--strict] [--require-kernel] [--explain <CODE>]
@@ -527,7 +528,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin init my-book --template book\n"
         }
         "publish" => {
-            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--format json]\n\
+            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--init] [--format json]\n\
              \n\
              Build a site or book and deploy it to Cloudflare Pages (Wrangler direct\n\
              upload). Strict by default (a cell error or broken ref fails the deploy) and\n\
@@ -543,12 +544,14 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --strict               ask for the default explicitly (with --no-strict, the\n\
              \x20                        last one given wins)\n\
              \x20 --dry-run              build + gate, print the deploy command, do not deploy\n\
+             \x20 --init                 run the one-time Cloudflare setup for this project and\n\
+             \x20                        stop (creates the Pages project, then prompts for the\n\
+             \x20                        passcode unless --public); neither builds nor deploys\n\
              \x20 --format json         emit {diagnostics:[…]} from the build to stdout (agent/CI)\n\
              \n\
              One-time setup (per repo):\n\
              \x20 export CLOUDFLARE_API_TOKEN=...   (also CLOUDFLARE_ACCOUNT_ID)\n\
-             \x20 wrangler pages project create <name> --production-branch production\n\
-             \x20 wrangler pages secret put PASSWORD --project-name <name>\n\
+             \x20 taliesin publish <dir> --init     (--dry-run first to see the wrangler commands)\n\
              \n\
              Example:\n\
              \x20 taliesin publish . --dry-run\n"
