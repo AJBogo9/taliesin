@@ -20,7 +20,12 @@ fn doc(src: &str) -> RenderedDoc {
 
 #[test]
 fn the_print_page_inlines_the_pagedjs_polyfill() {
-    let html = print_page_from_doc(&doc("# Hi\n\ntext\n"), "fallback", Paper::A4);
+    let html = print_page_from_doc(
+        &doc("# Hi\n\ntext\n"),
+        "fallback",
+        Paper::A4,
+        Path::new("."),
+    );
     // The bundle's own @license banner: distinctive, and present only if the real library
     // was inlined rather than a stub or a link.
     assert!(
@@ -35,7 +40,7 @@ fn the_print_page_inlines_the_pagedjs_polyfill() {
 
 #[test]
 fn the_print_page_stamps_a_completion_attribute_via_pagedconfig() {
-    let html = print_page_from_doc(&doc("# Hi\n"), "fallback", Paper::A4);
+    let html = print_page_from_doc(&doc("# Hi\n"), "fallback", Paper::A4, Path::new("."));
     assert!(
         html.contains("window.PagedConfig"),
         "must declare PagedConfig so paged.js calls back when pagination finishes"
@@ -52,7 +57,7 @@ fn the_print_page_stamps_a_completion_attribute_via_pagedconfig() {
 /// declared *after* the library is never seen and the driver waits forever.
 #[test]
 fn the_pagedconfig_hook_precedes_the_polyfill() {
-    let html = print_page_from_doc(&doc("# Hi\n"), "fallback", Paper::A4);
+    let html = print_page_from_doc(&doc("# Hi\n"), "fallback", Paper::A4, Path::new("."));
     let config = html.find("window.PagedConfig").expect("config present");
     let lib = html.find("@license Paged.js").expect("polyfill present");
     assert!(
@@ -63,10 +68,10 @@ fn the_pagedconfig_hook_precedes_the_polyfill() {
 
 #[test]
 fn the_paper_size_reaches_the_at_page_rule() {
-    let a4 = print_page_from_doc(&doc("# Hi\n"), "f", Paper::A4);
+    let a4 = print_page_from_doc(&doc("# Hi\n"), "f", Paper::A4, Path::new("."));
     assert!(a4.contains("size: 210mm 297mm"), "A4 size must reach @page");
 
-    let letter = print_page_from_doc(&doc("# Hi\n"), "f", Paper::Letter);
+    let letter = print_page_from_doc(&doc("# Hi\n"), "f", Paper::Letter, Path::new("."));
     assert!(
         letter.contains("size: 8.5in 11in"),
         "Letter size must reach @page"
@@ -96,6 +101,7 @@ fn the_document_language_reaches_the_html_element() {
         &doc("---\ntitle: T\nlang: fi\n---\n\ntext\n"),
         "f",
         Paper::A4,
+        Path::new("."),
     );
     assert!(
         html.contains("lang=\"fi\""),
@@ -121,7 +127,7 @@ fn a_document_with_figures_gets_a_generated_list_of_figures() {
     let src = "---\ntitle: T\n---\n\n\
                ![Alpha caption](a.png){#fig-alpha}\n\n\
                ![Omega caption](b.png){#fig-omega}\n";
-    let html = print_page_from_doc(&doc(src), "f", Paper::A4);
+    let html = print_page_from_doc(&doc(src), "f", Paper::A4, Path::new("."));
     assert!(
         html.contains("<nav class=\"tali-lof\""),
         "a document with figures must get a list-of-figures nav"
@@ -145,7 +151,7 @@ fn a_document_with_figures_gets_a_generated_list_of_figures() {
 /// in its NEGATIVE direction — the same way it bit the reader-affordances batch.
 #[test]
 fn a_document_without_figures_gets_no_list_of_figures() {
-    let html = print_page_from_doc(&doc("# Hi\n\njust text\n"), "f", Paper::A4);
+    let html = print_page_from_doc(&doc("# Hi\n\njust text\n"), "f", Paper::A4, Path::new("."));
     assert!(
         !html.contains("<nav class=\"tali-lof\""),
         "no figures means no list"
@@ -183,7 +189,7 @@ fn the_generated_list_of_figures_never_reaches_the_normal_page() {
 /// the live gate covers the things that DO show up there (heads, folios, page refs).
 #[test]
 fn the_print_sheet_sets_widow_orphan_and_hyphenation_policy() {
-    let html = print_page_from_doc(&doc("# Hi\n\ntext\n"), "f", Paper::A4);
+    let html = print_page_from_doc(&doc("# Hi\n\ntext\n"), "f", Paper::A4, Path::new("."));
     for needle in ["orphans: 3", "widows: 3", "hyphens: auto"] {
         assert!(
             html.contains(needle),
@@ -196,7 +202,7 @@ fn the_print_sheet_sets_widow_orphan_and_hyphenation_policy() {
 /// A float split across a page boundary is the most visible paging defect there is.
 #[test]
 fn the_print_sheet_keeps_floats_off_page_boundaries() {
-    let html = print_page_from_doc(&doc("# Hi\n"), "f", Paper::A4);
+    let html = print_page_from_doc(&doc("# Hi\n"), "f", Paper::A4, Path::new("."));
     assert!(
         html.contains("break-inside: avoid"),
         "figures, tables, code blocks and callouts must not split across pages"
@@ -205,4 +211,29 @@ fn the_print_sheet_keeps_floats_off_page_boundaries() {
         html.contains("break-after: avoid"),
         "a heading stranded at the foot of a page must be pulled to the next"
     );
+}
+
+/// The print page is written to a TEMP directory, so every relative URL in the document
+/// resolves against the wrong root unless a `<base href>` says otherwise.
+///
+/// **This shipped broken and was caught only by looking at a PDF**, not by a test: the
+/// figures rendered their ALT TEXT where the image should have been. Every live gate written
+/// before this one referenced an image file that did not exist, so nothing ever loaded and
+/// nothing ever 404'd visibly.
+#[test]
+fn relative_urls_resolve_against_the_documents_own_directory() {
+    let html = print_page_from_doc(
+        &doc("---\ntitle: T\n---\n\n![Cap](pic.png){#fig-a}\n"),
+        "f",
+        Paper::A4,
+        Path::new("/tmp"),
+    );
+    assert!(
+        html.contains("<base href=\"file:///tmp/\">"),
+        "the print page must carry a <base href> at the document's own directory"
+    );
+    // `<base>` only affects URLs that FOLLOW it, so it has to precede the content.
+    let base = html.find("<base href=").expect("base present");
+    let img = html.find("pic.png").expect("image present");
+    assert!(base < img, "<base> must precede the URLs it governs");
 }

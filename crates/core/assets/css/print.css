@@ -36,8 +36,12 @@
 }
 
 /* The running-head source. `content(text)` takes the heading's text WITHOUT its markup, so
-   a numbered-section span or an anchor link does not leak tags into the margin box. */
-h2 {
+   a numbered-section span or an anchor link does not leak tags into the margin box.
+
+   `:not(.tali-lof > *)` excludes the generated list-of-figures heading: it is front matter,
+   not a section, and letting it set the string left "List of Figures" running across the
+   page after it. */
+h2:not(.tali-lof h2) {
   string-set: tali-section content(text);
 }
 

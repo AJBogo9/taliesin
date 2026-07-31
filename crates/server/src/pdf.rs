@@ -136,7 +136,7 @@ fn run(src: &Path, out: Option<PathBuf>, paper: Paper, keep_html: bool) -> ExitC
         doc
     });
 
-    let html = print_page_from_doc(&doc, stem, paper);
+    let html = print_page_from_doc(&doc, stem, paper, base);
 
     // The paginated page is transient: it is not an output of this tool, it is the thing the
     // browser reads. `_site/` and the source tree are untouched.

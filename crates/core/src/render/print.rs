@@ -32,6 +32,44 @@ const PRINT_CSS: &str = include_str!("../../assets/css/print.css");
 /// and is the reason this track needs CDP at all.
 pub const PAGED_DONE_ATTR: &str = "data-tali-paged";
 
+/// Declared BEFORE the polyfill loads, because paged.js reads `window.PagedConfig` as it
+/// loads: declared after, it is never seen. `crates/core/tests/print_page.rs` pins the order.
+///
+/// **`auto: false` is load-bearing, not a style choice.** Under paged.js's own
+/// paginate-on-load, a document containing an image that actually LOADS never finishes
+/// chunking — measured 2026-07-31, identically at a 10 s and a 60 s budget. Images resolve
+/// their intrinsic size asynchronously, so chunking that begins at script time is measuring
+/// boxes whose height it does not yet know. Pagination is therefore started by hand, once,
+/// from [`PAGED_START`], after layout has settled.
+///
+/// This was very nearly missed: the first live gates referenced an image file that did not
+/// exist, so nothing ever loaded and paginate-on-load looked fine. The corpus pin, whose
+/// images are real, is what exposed it.
+///
+/// **No `after:` hook here, deliberately.** paged.js runs
+/// `if (config.auto !== false) { done = await previewer.preview(…) } if (config.after) {
+/// await config.after(done) }` — so with `auto: false` an `after` hook fires *immediately*,
+/// before any pagination. Stamping completion from it produced a page that captured
+/// half-rendered: content present, but every `target-counter()` unresolved, so cross-refs
+/// lost their page numbers and the margin boxes came out empty. The stamp must come from
+/// the `preview()` promise, which is the only signal that actually means "paginated".
+const PAGED_CONFIG: &str = "window.PagedConfig = { auto: false };";
+
+/// Start pagination once the things that determine layout have settled — web fonts (a font
+/// swap re-flows every line) and every image (see [`PAGED_CONFIG`]) — then stamp completion
+/// from `preview()`'s own promise.
+///
+/// `i.onerror` is wired beside `i.onload` on purpose: a missing image must not wedge the
+/// run, which is the same failure mode inverted.
+const PAGED_START: &str = "window.addEventListener('load', function () { \
+     var pending = Array.prototype.slice.call(document.images) \
+       .filter(function (i) { return !i.complete; }) \
+       .map(function (i) { return new Promise(function (r) { i.onload = i.onerror = r; }); }); \
+     Promise.all([document.fonts ? document.fonts.ready : Promise.resolve()].concat(pending)) \
+       .then(function () { return window.PagedPolyfill.preview(); }) \
+       .then(function () { document.documentElement.dataset.taliPaged = 'done'; }); \
+   });";
+
 /// Paper size for a print render.
 ///
 /// An **invocation** choice (a CLI flag), never document config — so this adds no
@@ -71,6 +109,30 @@ impl Paper {
             Paper::A4 => "a4",
             Paper::Letter => "letter",
             Paper::A5 => "a5",
+        }
+    }
+
+    /// The tallest a figure/image is allowed to render.
+    ///
+    /// **This is a hang fix, not a style preference.** paged.js 0.4.3 never finishes chunking
+    /// a document containing an image that can exceed the space left on a page: it cannot
+    /// resolve where to break, and loops silently — no error, no completion, at any budget
+    /// (measured 2026-07-31 at 10 s and 60 s). Bisected against the vendored polyfill: an
+    /// image with no height constraint hangs, an image with explicit `width`/`height`
+    /// attributes still hangs, and an image with a `max-height` completes. Constraining it to
+    /// comfortably less than one page's content box is what breaks the loop.
+    ///
+    /// Values are the page height minus the 44 mm of vertical margin `print.css` sets, minus
+    /// roughly a quarter for the caption and surrounding text, so a figure and its caption
+    /// always fit together on one page.
+    pub fn max_float_height(self) -> &'static str {
+        match self {
+            // 297 − 44 = 253 mm of content box.
+            Paper::A4 => "190mm",
+            // 279.4 − 44 = 235 mm.
+            Paper::Letter => "175mm",
+            // 210 − 44 = 166 mm.
+            Paper::A5 => "125mm",
         }
     }
 }
@@ -141,18 +203,33 @@ fn attr_value<'a>(block: &'a str, name: &str) -> Option<&'a str> {
 ///
 /// The caller is expected to have run the document's cells already (the `pdf` command
 /// mirrors `build`'s sequence, so python/r figures are present rather than empty).
-pub fn print_page_from_doc(doc: &RenderedDoc, fallback_title: &str, paper: Paper) -> String {
-    let css = PRINT_CSS.replace("__TALI_PAPER__", paper.css_size());
-    // Ordering is load-bearing: paged.js reads `window.PagedConfig` as it loads, so the
-    // config must be declared FIRST. Declared after, it is never seen and the driver waits
-    // for a stamp that never lands — a hang rather than an error.
-    // `auto: true` keeps paged.js's own "paginate on load" behaviour; `after` is its
-    // sanctioned completion hook.
+pub fn print_page_from_doc(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    paper: Paper,
+    base_dir: &std::path::Path,
+) -> String {
+    let css = PRINT_CSS
+        .replace("__TALI_PAPER__", paper.css_size())
+        .replace("__TALI_MAX_FLOAT_H__", paper.max_float_height());
+    // The print page is written to a TEMP directory, so every relative URL in the document
+    // — images above all — would resolve against the wrong root and silently 404, leaving
+    // alt text where a figure should be. A `<base href>` at the document's own directory
+    // fixes them all at once, without copying assets around.
+    //
+    // It must come FIRST in the head: `<base>` only affects URLs that follow it.
+    let base = format!(
+        "<base href=\"file://{}/\">\n",
+        base_dir
+            .canonicalize()
+            .unwrap_or_else(|_| base_dir.to_path_buf())
+            .display()
+    );
     let head = format!(
-        "<style>{css}</style>\n\
-         <script>window.PagedConfig = {{ auto: true, after: function () {{ \
-         document.documentElement.dataset.taliPaged = 'done'; }} }};</script>\n\
-         <script>{PAGED_JS}</script>\n"
+        "{base}<style>{css}</style>\n\
+         <script>{PAGED_CONFIG}</script>\n\
+         <script>{PAGED_JS}</script>\n\
+         <script>{PAGED_START}</script>\n"
     );
 
     // Through page.rs's own policy, not a fourth copy of it (see `resolve_title`).
