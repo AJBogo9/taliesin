@@ -77,6 +77,11 @@ CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
 # Rust EMITTED into the stylesheet — all of which stays green with pagination entirely
 # broken, including the failure mode that produces a plausible but truncated PDF.
 CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
+# A fifth browser-backed capability, independent of the other four: `{pyodide}` cells. It is
+# the only thing that boots the vendored Pyodide runtime at all — every other test of item 158
+# asserts what Rust EMITTED (the script tag, the index `<meta>`, the vendored file list) and
+# would stay green with the whole 12.9 MB runtime payload deleted.
+CANARY_PYODIDE="a_pyodide_cell_boots_and_publishes_to_a_js_consumer"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -228,7 +233,8 @@ run_gate "cargo clippy -D warnings" clippy.log \
 #
 # `--features taliesin-server/headless-js` because the browser driver is OFF by
 # default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
-# `read_run_js` / `deck_browser` / `reactive_browser` declare it in `required-features` — so without this
+# `read_run_js` / `print_pdf` / `deck_browser` / `reactive_browser` / `pyodide_browser`
+# declare it in `required-features` — so without this
 # flag cargo would quietly skip building them and the chrome canary below would go
 # missing. That pairing is deliberate: forgetting the feature turns this gate RED
 # rather than shrinking the suite silently.
@@ -280,7 +286,8 @@ else
             "chrome:$CANARY_CHROME" \
             "chrome (math hover):$CANARY_MATH_HOVER" \
             "chrome (reactive client):$CANARY_REACTIVE" \
-            "chrome (print track):$CANARY_PRINT"; do
+            "chrome (print track):$CANARY_PRINT" \
+            "chrome (pyodide):$CANARY_PYODIDE"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

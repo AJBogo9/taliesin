@@ -23,8 +23,8 @@ path = "src/main.rs"
 default = []
 headless-js = ["dep:chromiumoxide"]
 
-# Both need the driver to compile at all, so Cargo skips them unless the feature is on.
-# `tools/gates.sh` passes `--features headless-js` and then asserts these two tests
+# All five need the driver to compile at all, so Cargo skips them unless the feature is on.
+# `tools/gates.sh` passes `--features headless-js` and then asserts these tests
 # printed `... ok` BY NAME, so silently dropping the feature turns the gate red.
 [[test]]
 name = "read_run_js"
@@ -40,6 +40,10 @@ required-features = ["headless-js"]
 
 [[test]]
 name = "reactive_browser"
+required-features = ["headless-js"]
+
+[[test]]
+name = "pyodide_browser"
 required-features = ["headless-js"]
 
 [dependencies]
