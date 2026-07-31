@@ -268,6 +268,18 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 String::new()
             };
             let framework_scripts = code_scripts_for(p.body, p.mode);
+            // Inline + Preview: the same-origin route. Inline + Build: `""` — the single-file
+            // build cannot carry a 12.9 MB directory, so `degrade_pyodide_cells` is the build
+            // CLI's job, not this assembler's (it runs over the finished page HTML). Folded
+            // onto `js_head_html` (like `katex_block` folds onto `style_block`) rather than
+            // earning its own always-present template line, so a page with neither stays
+            // byte-identical to before this existed.
+            let pyodide_meta = pyodide_index_meta(p.body, p.mode, None);
+            let js_head_html = if pyodide_meta.is_empty() {
+                js_head_html
+            } else {
+                format!("{js_head_html}\n{pyodide_meta}")
+            };
             (style_block, katex_block, js_head_html, framework_scripts)
         }
         AssetMode::External(a) => {
@@ -325,7 +337,12 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 } else {
                     String::new()
                 };
-                format!("\n<script>{TALIESIN_JS}</script>{glsl}")
+                let pyodide = if has_client_cells_of(p.body, "pyodide") {
+                    format!("\n<script>{PYODIDE_JS}</script>")
+                } else {
+                    String::new()
+                };
+                format!("\n<script>{TALIESIN_JS}</script>{glsl}{pyodide}")
             } else {
                 String::new()
             };
@@ -348,6 +365,20 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}",
                 a.app_js
             );
+            // External: link the shared `_assets/<PYODIDE_DIR_NAME>/` directory the build
+            // copies verbatim. `base` is the same page-relative `../` climb `a.app_js` was
+            // built from (`asset_href`'s depth prefix) — recovered here by trimming the
+            // `_assets/...` suffix off it, rather than threading a second depth parameter
+            // through `ExternalAssets` for one caller. Folded onto `js_head_html` (see the
+            // Inline arm) rather than a dedicated template line, for the same byte-identity
+            // reason.
+            let base = a.app_js.split_once("_assets/").map_or("", |(rel, _)| rel);
+            let pyodide_meta = pyodide_index_meta(p.body, p.mode, Some(base));
+            let js_head_html = if pyodide_meta.is_empty() {
+                js_head_html
+            } else {
+                format!("{js_head_html}\n{pyodide_meta}")
+            };
             (style_block, katex_block, js_head_html, framework_scripts)
         }
     };

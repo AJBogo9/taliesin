@@ -285,6 +285,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // A single-doc build (`out.html` or `--out <dir>`) always inlines (`AssetMode::Inline`),
+    // and Build-mode Inline ships no Pyodide runtime (`pyodide_index_meta` returns `""` — see
+    // `render/pyodide.rs`): this is the one output path that cannot carry a 12.9 MB directory.
+    // Degrade any `{pyodide}` cell to visible highlighted source rather than shipping a dead,
+    // invisible `<script>` with no runtime to run it. A no-op (byte-identical) when the page
+    // has no `{pyodide}` cells.
+    let html = taliesin_core::degrade_pyodide_cells(&html);
 
     // Offline-guarantee nudge: a built page keeps any external reference the author wrote
     // (a remote image, an external stylesheet, a remote/bare `{js}` import) verbatim, so a
@@ -1371,6 +1378,10 @@ struct AssetUse {
     katex: bool,
     mermaid: bool,
     jslibs: bool,
+    /// Whether any emitted page links the vendored Pyodide runtime (a `<meta
+    /// name="tali-pyodide-index">`). Unlike the three above, this is not a hashed blob — see
+    /// `render/pyodide.rs`'s module doc — so it is a whole directory copy, not a `put`.
+    pyodide: bool,
 }
 
 impl AssetUse {
@@ -1380,6 +1391,7 @@ impl AssetUse {
         self.katex |= other.katex;
         self.mermaid |= other.mermaid;
         self.jslibs |= other.jslibs;
+        self.pyodide |= other.pyodide;
     }
 }
 
@@ -1400,6 +1412,10 @@ impl AssetBundle {
             katex: links(&self.katex_css),
             mermaid: links(&self.mermaid_js),
             jslibs: links(&self.jslibs_js),
+            // Not hashed (see `AssetUse::pyodide`'s doc), so there is no filename to match —
+            // the fixed directory name is the needle, exactly as it appears inside the
+            // `<meta name="tali-pyodide-index">` tag `pyodide_index_meta` emits.
+            pyodide: html.contains(taliesin_core::PYODIDE_DIR_NAME),
         }
     }
 
@@ -1521,6 +1537,24 @@ fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundl
         deck_js,
         font_preload,
     })
+}
+
+/// Copy the vendored Pyodide payload into `<out>/_assets/<PYODIDE_DIR_NAME>/`, verbatim and
+/// unhashed. Called once per build, only when some page actually links it (`AssetUse::pyodide`).
+///
+/// **Not content-hashed, unlike every other blob `write_asset_bundle` writes.**
+/// `pyodide.mjs` resolves `pyodide.asm.mjs` / `pyodide.asm.wasm` / `python_stdlib.zip` by
+/// FIXED name relative to its `indexURL`, and `pyodide-lock.json` names the wheel by fixed
+/// name too — renaming any of them breaks the runtime at load. The directory name
+/// (`PYODIDE_DIR_NAME`) carries the version instead, which is what busts a reader's cache
+/// across a Pyodide bump.
+fn write_pyodide_payload(out: &Path) -> std::io::Result<()> {
+    let dir = out.join("_assets").join(taliesin_core::PYODIDE_DIR_NAME);
+    std::fs::create_dir_all(&dir)?;
+    for (name, bytes) in taliesin_core::pyodide_payload() {
+        std::fs::write(dir.join(name), bytes)?;
+    }
+    Ok(())
 }
 
 /// Rebase a root-relative `_assets/...` href for a page at `page_url` (e.g. `sub/p.html`
@@ -2122,6 +2156,26 @@ async fn build_site_async(
             msg,
         ));
         problems += 1;
+    }
+    // The vendored Pyodide runtime: a whole directory, copied verbatim (never hashed — see
+    // `render/pyodide.rs`'s module doc), and only when something actually links it. Same
+    // "write only if used" discipline as the three blobs above, just not a `put` because
+    // there is nothing to minify or rename.
+    if used.pyodide {
+        if let Err(e) = write_pyodide_payload(&out) {
+            let msg = format!(
+                "cannot write {}/_assets/{}: {e}",
+                out.display(),
+                taliesin_core::PYODIDE_DIR_NAME
+            );
+            log::error(&msg);
+            diagnostics.push(crate::check::Diagnostic::new(
+                root.display().to_string(),
+                None,
+                msg,
+            ));
+            problems += 1;
+        }
     }
 
     // Installable-app packaging: `manifest.webmanifest` + the app icons at the output root,
@@ -3641,6 +3695,7 @@ mod asset_bundle_tests {
                     katex: true,
                     mermaid: true,
                     jslibs: true,
+                    pyodide: false,
                 },
             )
             .expect("write conditional");

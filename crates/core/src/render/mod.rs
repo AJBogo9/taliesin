@@ -138,6 +138,11 @@ pub use page::{
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
 use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
+mod pyodide;
+pub use pyodide::{
+    PREVIEW_PYODIDE_DIR, PYODIDE_DIR_NAME, degrade_pyodide_cells, pyodide_index_meta,
+    pyodide_payload,
+};
 
 /// Render a `.tmd` source string into the `RenderedDoc` block model: the parse
 /// step only (no code execution, no page chrome). The dev server diffs these
@@ -1773,7 +1778,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{pyodide_s}{walk_s}{tabset_s}{scrolly_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
@@ -1781,6 +1786,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         },
         talijs_s = gate(has_client_cells(body), TALIESIN_JS),
         glsl_s = gate(has_client_cells_of(body, "glsl"), GLSL_JS),
+        pyodide_s = gate(has_client_cells_of(body, "pyodide"), PYODIDE_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
@@ -1833,6 +1839,10 @@ const NUMERICS_JS: &str = include_str!("../../assets/js/numerics.js");
 /// from the same reactive graph. Registers into `tali-js.js`'s language registry, so it is
 /// gated on `{glsl}` cells being present rather than shipping with every `{js}` page.
 const GLSL_JS: &str = include_str!("../../assets/js/glsl.js");
+/// `{pyodide}` cells: boots the vendored Pyodide runtime lazily and runs Python in the
+/// reader's browser. Registers into `tali-js.js`'s language registry, so it is gated on
+/// `{pyodide}` cells being present rather than shipping with every `{js}` page.
+const PYODIDE_JS: &str = include_str!("../../assets/js/pyodide.js");
 
 /// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot + the
 /// first-party numerics global. Emit only when a page actually has `{js}` cells (gated on

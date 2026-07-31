@@ -237,6 +237,13 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         // Registered before the static fallback, which would otherwise look for a file of
         // this name beside the document.
         .route(taliesin_core::PREVIEW_MERMAID_PATH, get(mermaid_lib_js))
+        // The vendored Pyodide runtime (12.9 MB): served as individual files rather than
+        // inlined, same reasoning as mermaid above but more so. Registered before the
+        // static fallback for the same reason.
+        .route(
+            &format!("{}{{file}}", taliesin_core::PREVIEW_PYODIDE_DIR),
+            get(pyodide_asset),
+        )
         // Anything else is a static asset (images, etc.) resolved relative to the
         // document's directory, so figures display in the live preview.
         .fallback(static_asset)
@@ -675,6 +682,37 @@ async fn mermaid_lib_js() -> impl IntoResponse {
         ],
         taliesin_core::mermaid_min_js(),
     )
+}
+
+/// Serve one file of the vendored Pyodide payload. Immutable caching is safe because the
+/// version is in the PATH: a Pyodide bump changes the directory name, so a reader never sees
+/// a stale mix of old wasm and new loader.
+async fn pyodide_asset(
+    axum::extract::Path(file): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let Some((_, bytes)) = taliesin_core::pyodide_payload()
+        .iter()
+        .find(|(name, _)| *name == file)
+    else {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    };
+    let ct = match () {
+        _ if file.ends_with(".wasm") => "application/wasm",
+        _ if file.ends_with(".mjs") => "text/javascript; charset=utf-8",
+        _ if file.ends_with(".json") => "application/json; charset=utf-8",
+        _ => "application/octet-stream",
+    };
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, ct),
+            (
+                axum::http::header::CACHE_CONTROL,
+                "public, max-age=31536000, immutable",
+            ),
+        ],
+        bytes.to_vec(),
+    )
+        .into_response()
 }
 
 async fn favicon() -> impl IntoResponse {
