@@ -22,17 +22,26 @@ enough to start.**
   `@fig-` refs that print as "Figure 3 (p. 12)", an auto list of figures, widow/orphan
   control and hyphenation. Spec + plan under `docs/superpowers/`. The top of P1 is therefore
   now **158 (opt-in Pyodide)**, with 180 still needing only the author's ruling.
-  **Four things a later session must carry:**
-  - **ONE OPEN DEFECT, deliberately shipped visible rather than hidden.** A document whose
-    figure must move across a page boundary can hang paged.js: it never completes, at any
-    budget. It fails LOUDLY (named error, non-zero exit, never a truncated PDF), and
-    `corpus/print/paged.tmd` still renders as HTML so the corpus walker is unaffected —
-    but that pin does **not** currently produce a PDF. Reproducer: two figures with ~2
-    paragraphs between them works, ~6+ hangs. **Ruled out by bisection** (do not re-test
-    these): Taliesin's enhancer scripts, `break-inside`/`break-before` on figure and
-    figcaption, `max-height` on the image or the wrapper, the LoF's `break-after`, image
-    count, and the settle budget. Not yet tried: capturing the browser console from the
-    print page, and paged.js's own `Handler` hooks.
+  **Five things a later session must carry:**
+  - **The one open defect is CLOSED (2026-07-31), and its recorded cause was wrong on both
+    counts.** It was filed as "a figure crossing a page boundary hangs paged.js". It was
+    neither paged.js nor page boundaries: the screen renderer marks every image after the
+    first `loading="lazy"` (`render/image_meta.rs`), a paginated render never scrolls, so
+    Chrome never requests a far-down image — `complete` stays false and neither `load` nor
+    `error` ever fires. `PAGED_START` waited on exactly those events, so `preview()` was
+    never called. Fixed by `eager_media()` in `render/print.rs`.
+    **The lesson is about the bisection, not the bug.** A whole session was spent ruling out
+    `break-inside`, `max-height`, the LoF's `break-after`, image count and the settle
+    budget — all *inside* paged.js, because the failing component had been assumed rather
+    than measured. One probe of the live page (`.pagedjs_page` count `0`, polyfill loaded,
+    fonts settled) named the component in a single run and showed pagination had never
+    started. **Instrument the failing environment to name the component before bisecting
+    inside it.**
+  - **`tools/gates.sh` can exit 0 having run NOTHING.** With no `TALIESIN_PYTHON` that has
+    ipykernel it prints "Refusing to run: a partial run would look green" and returns 0. The
+    by-name canary check is what catches it — this is the second time the script's own
+    result has needed verifying by name. Use
+    `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python ./tools/gates.sh`.
   - **Every CSS experiment run before the `<base href>` fix measured broken images and
     proved nothing.** The print page is written to a temp dir, so relative URLs 404'd and
     figures rendered ALT TEXT. No test caught it because every live gate written first

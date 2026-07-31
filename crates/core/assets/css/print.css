@@ -218,6 +218,19 @@ img, svg, canvas, video {
   height: auto;
 }
 
+/* No figure may be taller than the page it has to fit on.
+   `figure` above sets `break-inside: avoid`, so a figure taller than one page's content box
+   cannot be broken AND cannot fit: measured on a 600x3000 image, it bled past both page
+   margins with its caption lost, and stranded two near-blank pages ahead of it. Capping the
+   media rather than the figure keeps the caption's height out of the budget — hence a value
+   comfortably under the full content box. `__TALI_MAX_FLOAT_H__` is substituted per paper
+   size by `print.rs` (`Paper::max_float_height`), because a fixed length cannot follow the
+   `size:` the render chose. */
+figure :is(img, svg, canvas, video) {
+  max-height: __TALI_MAX_FLOAT_H__;
+  object-fit: contain;
+}
+
 /* A control that cannot be operated on paper should not look operable. `{js}` INPUT widgets
    render their current value into the output above them, so hiding the control itself loses
    nothing a reader could have used. */

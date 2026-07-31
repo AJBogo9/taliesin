@@ -133,15 +133,19 @@ impl Paper {
         }
     }
 
-    /// The tallest a figure/image is allowed to render.
+    /// The tallest a figure's media is allowed to render.
     ///
-    /// **This is a hang fix, not a style preference.** paged.js 0.4.3 never finishes chunking
-    /// a document containing an image that can exceed the space left on a page: it cannot
-    /// resolve where to break, and loops silently — no error, no completion, at any budget
-    /// (measured 2026-07-31 at 10 s and 60 s). Bisected against the vendored polyfill: an
-    /// image with no height constraint hangs, an image with explicit `width`/`height`
-    /// attributes still hangs, and an image with a `max-height` completes. Constraining it to
-    /// comfortably less than one page's content box is what breaks the loop.
+    /// **This was once documented as a paged.js hang fix. That was wrong** — and the rule it
+    /// feeds was never actually in `print.css`, so the claim was never even in effect
+    /// (`git log -S __TALI_MAX_FLOAT_H__` on the stylesheet finds nothing). The hang it
+    /// described was the `loading="lazy"` deadlock that [`eager_media`] now fixes; capping
+    /// image height only ever *appeared* to cure it, by shrinking the document enough to pull
+    /// the lazy image inside Chrome's load threshold.
+    ///
+    /// What the cap is really for is plainer. `print.css` sets `break-inside: avoid` on
+    /// `figure`, so a figure taller than one page's content box can neither be broken nor
+    /// fit: measured on a 600x3000 image, it bled past both page margins, lost its caption,
+    /// and stranded two near-blank pages ahead of it.
     ///
     /// Values are the page height minus the 44 mm of vertical margin `print.css` sets, minus
     /// roughly a quarter for the caption and surrounding text, so a figure and its caption

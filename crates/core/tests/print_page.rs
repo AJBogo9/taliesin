@@ -333,3 +333,45 @@ fn the_running_head_names_the_section_in_effect_at_the_page_start() {
         "the @top-center rule must ask for the section in effect at the page start"
     );
 }
+
+/// Every `__TALI_*` placeholder in `print.css` must be substituted.
+///
+/// **This is the pin that was missing.** `__TALI_MAX_FLOAT_H__` was computed by
+/// `Paper::max_float_height`, threaded through `print_page_from_doc`, and documented at
+/// length as a load-bearing hang fix — while the rule that consumes it was not in the
+/// stylesheet at all. The substitution silently replaced nothing, for every render, and no
+/// test noticed because each one asserted on a value it expected rather than on the absence
+/// of an unsubstituted token.
+#[test]
+fn no_unsubstituted_placeholder_survives_into_the_print_page() {
+    for paper in [Paper::A4, Paper::Letter, Paper::A5] {
+        let html = print_page_from_doc(&doc("# Hi\n\ntext\n"), "f", paper, Path::new("."));
+        assert!(
+            !html.contains("__TALI_"),
+            "an unsubstituted placeholder reached the {} print page — either the CSS rule \
+             that consumes it was removed, or a new one was added without a substitution",
+            paper.name()
+        );
+    }
+}
+
+/// The per-paper figure cap must actually reach the stylesheet, at the right value.
+/// `break-inside: avoid` on `figure` means an uncapped oversized figure can neither break nor
+/// fit: measured, it bleeds past both page margins and strands blank pages ahead of it.
+#[test]
+fn the_figure_height_cap_reaches_the_stylesheet_per_paper() {
+    let a4 = print_page_from_doc(&doc("# Hi\n"), "f", Paper::A4, Path::new("."));
+    assert!(
+        a4.contains("max-height: 190mm"),
+        "the A4 figure cap must reach the print stylesheet"
+    );
+    let letter = print_page_from_doc(&doc("# Hi\n"), "f", Paper::Letter, Path::new("."));
+    assert!(
+        letter.contains("max-height: 175mm"),
+        "the Letter figure cap must reach the print stylesheet"
+    );
+    assert!(
+        !letter.contains("max-height: 190mm"),
+        "a Letter render must not also carry the A4 cap"
+    );
+}

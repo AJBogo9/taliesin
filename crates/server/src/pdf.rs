@@ -227,8 +227,20 @@ async fn capture_pdf(
         .into_value()
         .map_err(|e| format!("decode: {e}"))?;
         if !done {
+            // Say what the page looked like when we gave up. "did not finish" on its own
+            // sent a previous session bisecting print CSS for hours, when one look at the
+            // live page would have shown pagination had never *started* — a stuck image,
+            // not a layout problem. The probe is best-effort: a browser too wedged to answer
+            // must still produce the timeout error rather than replace it.
+            let stall = tokio::time::timeout(phase, page.evaluate_function(STALL_PROBE))
+                .await
+                .ok()
+                .and_then(|r| r.ok())
+                .and_then(|v| v.into_value::<PrintStall>().ok())
+                .map(|s| format!("; {}", stall_summary(&s)))
+                .unwrap_or_default();
             return Err(format!(
-                "paged.js did not finish within {} s (TALIESIN_JS_TIMEOUT raises it)",
+                "paged.js did not finish within {} s{stall} (TALIESIN_JS_TIMEOUT raises it)",
                 budget.as_secs()
             ));
         }
@@ -247,6 +259,51 @@ async fn capture_pdf(
             .map_err(|_| "printToPDF timed out".to_string())?
             .map_err(|e| format!("printToPDF: {e}"))
     }
+}
+
+/// What the print page looked like at the moment the wait gave up.
+#[derive(serde::Deserialize)]
+pub(crate) struct PrintStall {
+    /// How many page boxes paged.js had produced. `0` means pagination never began.
+    pub pages: usize,
+    /// Whether the polyfill itself is present.
+    pub polyfill: bool,
+    /// `src` of every image still incomplete — the one that wedged it, if any.
+    pub stuck: Vec<String>,
+}
+
+/// Collect [`PrintStall`] from the live page. Runs only on the failure path.
+#[cfg(feature = "headless-js")]
+const STALL_PROBE: &str = "function () { return { \
+     pages: document.querySelectorAll('.pagedjs_page').length, \
+     polyfill: typeof window.PagedPolyfill === 'object', \
+     stuck: Array.prototype.filter.call(document.images, function (i) { return !i.complete; }) \
+              .map(function (i) { return i.getAttribute('src') || '(no src)'; }) }; }";
+
+/// Turn the observed state into the sentence a reader can act on.
+///
+/// Pure, so the mapping is unit-tested without a browser — the classifier pattern
+/// `headless_js::classify_js_node` already uses.
+pub(crate) fn stall_summary(s: &PrintStall) -> String {
+    if !s.polyfill {
+        return "the paged.js polyfill never loaded".to_string();
+    }
+    if !s.stuck.is_empty() {
+        // The failure that actually happened: an image that is never requested never fires
+        // `load` or `error`, so the wait before pagination never settles.
+        return format!(
+            "pagination never started — still waiting on {} image(s) that never loaded: {}",
+            s.stuck.len(),
+            s.stuck.join(", ")
+        );
+    }
+    if s.pages == 0 {
+        return "pagination never started, though every image and font had settled".to_string();
+    }
+    format!(
+        "paged.js laid out {} page(s) but never signalled completion",
+        s.pages
+    )
 }
 
 /// The in-page wait: resolve `true` once `<html>` carries the completion stamp, `false` on
@@ -272,6 +329,47 @@ fn wait_script(budget_ms: u64) -> String {
 #[cfg(all(test, feature = "headless-js"))]
 mod tests {
     use super::*;
+
+    fn stall(pages: usize, polyfill: bool, stuck: &[&str]) -> PrintStall {
+        PrintStall {
+            pages,
+            polyfill,
+            stuck: stuck.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// The stall this actually shipped with: a lazy image far down the page is never
+    /// requested, so it never fires `load` or `error` and the pre-pagination wait never
+    /// settles. The message must NAME the image — "did not finish" on its own is what sent a
+    /// previous session bisecting print CSS for hours.
+    #[test]
+    fn an_image_that_never_loaded_is_named_in_the_stall_message() {
+        let msg = stall_summary(&stall(0, true, &["recon.png"]));
+        assert!(
+            msg.contains("recon.png"),
+            "the stuck image must be named: {msg}"
+        );
+        assert!(
+            msg.contains("never started"),
+            "the reader must learn pagination had not begun, not just that it stalled: {msg}"
+        );
+    }
+
+    /// Distinct causes must read differently, or the diagnostic is decoration.
+    #[test]
+    fn each_stall_cause_reads_differently() {
+        let no_lib = stall_summary(&stall(0, false, &[]));
+        let no_start = stall_summary(&stall(0, true, &[]));
+        let midway = stall_summary(&stall(12, true, &[]));
+        assert!(no_lib.contains("polyfill"), "{no_lib}");
+        assert!(
+            no_start.contains("never started") && !no_start.contains("waiting on"),
+            "a clean page that never chunked must not blame an image: {no_start}"
+        );
+        assert!(midway.contains("12 page(s)"), "{midway}");
+        assert_ne!(no_lib, no_start);
+        assert_ne!(no_start, midway);
+    }
 
     /// The wait must key on the SAME attribute the assembler stamps. Hard-coding the string
     /// in either place would let them drift into a driver that waits forever for a stamp

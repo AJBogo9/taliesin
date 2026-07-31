@@ -279,8 +279,7 @@ It needs a local Chrome for the page layout — the same one `read --run` uses. 
 it says so and exits non-zero.
 
 **Not yet supported:** whole-book output (point it at one `.tmd`, not a directory) and an
-index. A document whose figure has to move across a page boundary can currently fail to
-paginate; it reports that plainly rather than writing a truncated file.
+index.
 
 ## Publishing & sharing
 
