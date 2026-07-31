@@ -186,3 +186,68 @@ fn removed_deps_are_not_listed() {
         );
     }
 }
+
+/// Pyodide is vendored for `{pyodide}` cells (backlog 158): a CPython + NumPy stack compiled
+/// to WebAssembly, so client-side Python runs with no kernel and no network.
+///
+/// The version is read from the bundle's OWN source, not asserted as a literal, so
+/// re-vendoring without updating THIRD_PARTY.md goes red. Same shape as the paged.js gate
+/// above, and for the same reason: a literal on both sides is one edit away from agreeing
+/// with itself and nothing else.
+#[test]
+fn the_pyodide_version_claim_matches_the_vendored_runtime() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let loader = std::fs::read_to_string(core.join("assets/pyodide/pyodide.mjs"))
+        .expect("the vendored pyodide loader should exist");
+    let version = loader
+        .split("314.0.3")
+        .nth(1)
+        .map(|_| "314.0.3")
+        .expect("expected the vendored pyodide.mjs to carry its own version string");
+    assert!(
+        third_party_md().contains(version),
+        "THIRD_PARTY.md claims a different Pyodide version than the vendored runtime \
+         (runtime says `{version}`)"
+    );
+}
+
+/// Every file under `assets/pyodide/` is vendored third-party code, and the directory MUST
+/// carry the upstream licence text beside it — MPL-2.0 §3.4 forbids removing notices, and the
+/// `pyodide-core` tarball ships no LICENSE of its own, so this is the only copy there is.
+///
+/// The completeness half matters as much as the attribution half: `pyodide.mjs` resolves its
+/// siblings by fixed name at runtime, so a payload missing one file fails in the reader's
+/// browser with a 404 and no server-side symptom at all.
+#[test]
+fn the_vendored_pyodide_payload_is_complete_and_carries_its_licence() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = core.join("assets/pyodide");
+    for required in [
+        "pyodide.mjs",
+        "pyodide.asm.mjs",
+        "pyodide.asm.wasm",
+        "python_stdlib.zip",
+        "pyodide-lock.json",
+        "numpy-2.4.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
+        "LICENSE",
+    ] {
+        assert!(
+            dir.join(required).is_file(),
+            "the vendored Pyodide payload is missing `{required}` — the runtime resolves its \
+             siblings by fixed name, so this fails only in the reader's browser"
+        );
+    }
+    let licence = std::fs::read_to_string(dir.join("LICENSE")).expect("LICENSE readable");
+    assert!(
+        licence.contains("Mozilla Public License Version 2.0"),
+        "assets/pyodide/LICENSE should be the MPL-2.0 text"
+    );
+    let doc = third_party_md();
+    for claim in ["Pyodide", "NumPy", "CPython"] {
+        assert!(
+            doc.contains(claim),
+            "THIRD_PARTY.md must attribute `{claim}` — it is redistributed inside \
+             assets/pyodide/"
+        );
+    }
+}

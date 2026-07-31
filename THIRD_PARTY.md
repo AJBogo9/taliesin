@@ -28,6 +28,20 @@ Fonts and syntax definitions already carried theirs
   Copyright 2020-2023 Observable, Inc.). The high-level chart library for `{js}`
   cells; depends on the vendored D3 above. License:
   <https://github.com/observablehq/plot/blob/main/LICENSE>.
+- **Pyodide** (`crates/core/assets/pyodide/`, MPL-2.0, v314.0.3, Copyright (c) 2018-2024
+  Michael Droettboom, Dexter Chua and contributors). CPython compiled to WebAssembly; the
+  runtime behind `{pyodide}` cells. MPL-2.0 §1.12 names the GNU Affero General Public
+  License v3.0 as a *Secondary License*, and §3.3 permits distributing Covered Software
+  under one as part of a Larger Work provided it is not marked "Incompatible With Secondary
+  Licenses" — Pyodide does not apply that notice to any source file (checked 2026-07-31).
+  The licence text ships beside the payload at `crates/core/assets/pyodide/LICENSE`, as
+  §3.4 requires. License: <https://github.com/pyodide/pyodide/blob/main/LICENSE>.
+- **CPython** (PSF-2.0, v3.14.0), compiled into `pyodide.asm.wasm` and
+  `python_stdlib.zip` above. License: <https://docs.python.org/3/license.html>.
+- **NumPy** (`crates/core/assets/pyodide/numpy-2.4.3-*.whl`, BSD-3-Clause, v2.4.3,
+  Copyright (c) 2005-2025 NumPy Developers). The one package vendored beside the Pyodide
+  core; the wheel carries its own licence and every bundled component's licence inside it.
+  License: <https://github.com/numpy/numpy/blob/main/LICENSE.txt>.
 - **Mermaid** (`crates/core/assets/js/mermaid.min.js`, MIT, v11.16.0, Copyright (c)
   2014-2024 Knut Sveidqvist). The diagram engine. Inlined into a static build page
   that has a diagram so it renders fully offline (content-gated); the live preview
