@@ -1246,18 +1246,16 @@ Then drive the chrome-devtools MCP: screenshot the page, scroll to the cell, con
 histogram renders and the console is clean. **This is the first moment anything proves the
 feature works** — every test before now asserted what Rust emitted.
 
-- [ ] **Step 6: Close the backlog item**
-
-Delete item 158 from `notes/backlog.md`'s P1 list (never leave a `[x]`), and update the "Now"
-section's pointer to the new top of P1.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add corpus/reactive/pyodide.tmd corpus/README.md docs/guide/using/interactive.tmd \
-        notes/backlog.md
-git commit -m "docs(pyodide): corpus pin, user guide, close backlog 158 (158)"
+git add corpus/reactive/pyodide.tmd corpus/README.md docs/guide/using/interactive.tmd
+git commit -m "docs(pyodide): corpus pin and user guide (158)"
 ```
+
+**The backlog item is NOT closed here.** Task 7's browser gate is the only end-to-end proof
+the feature works; closing 158 before it is green would record "done" on the strength of
+tests that only assert what Rust emitted. The deletion is Task 7 Step 9.
 
 ---
 
@@ -1419,6 +1417,16 @@ Expected: `exit=0`, and all **eight** canaries reporting ok by name in `/tmp/gat
 ```bash
 git add crates/server/tests/pyodide_browser.rs crates/server/Cargo.toml tools/gates.sh
 git commit -m "test(pyodide): headless-Chrome gate over boot, publish and re-run (158)"
+```
+
+- [ ] **Step 9: Close the backlog item**
+
+Only now, with the end-to-end gate green, delete item 158 from `notes/backlog.md`'s P1 list
+(never leave a `[x]`) and update the "Now" section's pointer to the new top of P1.
+
+```bash
+git add notes/backlog.md
+git commit -m "docs(notes): close item 158 — {pyodide} cells shipped and gated (158)"
 ```
 
 ---
