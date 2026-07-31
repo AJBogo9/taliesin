@@ -220,7 +220,7 @@ fn which_on_path(name: &str) -> Option<PathBuf> {
 /// Per-page settle budget for `{js}` observation. `TALIESIN_JS_TIMEOUT` (seconds; `0`/unset
 /// → default 10) is its own knob so a long `TALIESIN_CELL_TIMEOUT` python budget doesn't
 /// bloat the browser wait.
-fn settle_timeout() -> Duration {
+pub(crate) fn settle_timeout() -> Duration {
     let secs = std::env::var("TALIESIN_JS_TIMEOUT")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -248,7 +248,7 @@ fn phase_timeout() -> Duration {
 /// answers. So this bound exists only for a page that never answers at all (a crashed
 /// renderer), and it **must outlast the budget it wraps** — at or below it, it fires first and
 /// reports `timed out` for a page that was about to return its results.
-fn eval_timeout(budget: Duration) -> Duration {
+pub(crate) fn eval_timeout(budget: Duration) -> Duration {
     budget + Duration::from_secs(5)
 }
 
@@ -280,13 +280,22 @@ pub(crate) async fn observe_js_cells(
 }
 
 /// Launch a throwaway headless Chrome (its own temp profile, so it never collides with a
-/// dev/MCP Chrome), observe, then always tear the browser + profile down.
+/// dev/MCP Chrome), run `f` against it, then always tear the browser + profile down.
 ///
 /// **Every phase is bounded** ([`phase_timeout`]) and every exit removes the profile, so a
-/// browser that starts and then stops answering degrades to `Skipped(reason)` like any other
-/// failure instead of hanging `read --run-js` with no diagnostic (L3-1).
+/// browser that starts and then stops answering degrades to an `Err(reason)` like any other
+/// failure instead of hanging the command with no diagnostic (L3-1).
+///
+/// Extracted from `observe_inner` so the print driver (`pdf.rs`, backlog 159) reuses this
+/// exact launch/teardown policy rather than growing a second copy that drifts. `f` borrows
+/// the browser and is *not* separately bounded: bounding it here would drop its future
+/// mid-flight and skip the profile removal below, which is the leak L3-1 closed. Every
+/// phase inside `f` is expected to carry its own bound, which
+/// `every_browser_await_is_bounded` enforces for both callers.
 #[cfg(feature = "headless-js")]
-async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, String> {
+pub(crate) async fn with_browser<T>(
+    f: impl AsyncFnOnce(&chromiumoxide::Browser, Duration) -> Result<T, String>,
+) -> Result<T, String> {
     use chromiumoxide::{Browser, BrowserConfig};
     use futures::StreamExt;
 
@@ -341,7 +350,7 @@ async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, S
     };
     let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
-    let result = observe_page(&browser, page_path, phase).await;
+    let result = f(&browser, phase).await;
 
     // Tear down regardless of the observation result, and never wait forever for a browser
     // that has decided not to leave: ask politely, then kill. `close()` can hang when the
@@ -355,6 +364,12 @@ async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, S
     handler_task.abort();
     let _ = std::fs::remove_dir_all(&profile);
     result
+}
+
+/// `read --run-js`'s use of [`with_browser`]: observe every `{js}` cell on the built page.
+#[cfg(feature = "headless-js")]
+async fn observe_inner(page_path: &Path) -> Result<HashMap<String, JsOutcome>, String> {
+    with_browser(async |browser, phase| observe_page(browser, page_path, phase).await).await
 }
 
 /// Open the built page over `file://`, wait for every `{js}` cell to settle, and classify.
@@ -930,18 +945,19 @@ mod tests {
     /// trade `tests/kernel_start_is_retried.rs` makes, and for the same reason: a behavioural
     /// test for it would be less reliable than the property it is checking.
     ///
-    /// The property: every `.await` in this module's browser orchestration is inside a
+    /// The property: every `.await` in the browser orchestration is inside a
     /// `tokio::time::timeout`, with the exemptions named below.
+    ///
+    /// **Both drivers are scanned.** `pdf.rs` (backlog 159) shares `with_browser`, so a
+    /// wedged Chrome could hang `taliesin pdf` in exactly the way L3-1 stopped it hanging
+    /// `read --run-js`. Scanning only this file would have left the newer command
+    /// unguarded while the test's name implied otherwise.
     #[test]
     fn every_browser_await_is_bounded() {
-        const FULL: &str = include_str!("headless_js.rs");
-        // Only the module body; the tests below await on purpose.
-        let src = &FULL[..FULL.find("\n#[cfg(test)]").unwrap_or(FULL.len())];
-        // Statement boundaries are found by scanning back for `;`/`{`/`}`, so string literals
-        // must be neutralised first: the injected `"window.taliOpenPageSource = function ()
-        // {};"` contains all three, and cutting a statement inside it made this scan report a
-        // bounded await as unbounded.
-        let code = blank_string_literals(src);
+        const SOURCES: &[(&str, &str)] = &[
+            ("headless_js.rs", include_str!("headless_js.rs")),
+            ("pdf.rs", include_str!("pdf.rs")),
+        ];
 
         // Deliberate exemptions, each bounded by something other than a wrapper:
         //   * the CDP event pump — bounding it would tear down the connection mid-observation,
@@ -949,43 +965,79 @@ mod tests {
         //   * `observe_inner` / `observe_page` — bounded by construction, since every phase
         //     inside them is. Wrapping either *again* would drop the future mid-flight and
         //     skip the profile-directory removal, which is the leak this item warned against.
-        const EXEMPT: &[&str] = &["handler.next()", "observe_inner(", "observe_page("];
+        //   * `f(&browser, phase)` — `with_browser`'s caller-supplied body, for exactly the
+        //     same reason as `observe_page`: it IS the observation, and bounding it here
+        //     would drop it mid-flight and skip the teardown below it. Its own phases carry
+        //     their own bounds, which this scan checks at their definition site — for
+        //     `observe_page` here, and for the print driver via `pdf.rs`'s inclusion below.
+        //   * `with_browser(` — bounded by construction like `observe_inner`, and wrapping
+        //     it would drop the teardown ladder inside it;
+        //   * `ex.run(` — the KERNEL executor, not browser orchestration at all. Its bound
+        //     is the per-cell silence cap (`TALIESIN_CELL_SILENCE`), a different policy with
+        //     its own tests; a `tokio::time::timeout` here would cap a legitimately long
+        //     compute, which is exactly what item 175(a) removed.
+        const EXEMPT: &[&str] = &[
+            "handler.next()",
+            "observe_inner(",
+            "observe_page(",
+            "f(&browser, phase)",
+            "with_browser(",
+            "capture_pdf(",
+            "ex.run(",
+        ];
 
         let mut unbounded = Vec::new();
-        for (at, _) in code.match_indices(".await") {
-            let line_start = code[..at].rfind('\n').map(|p| p + 1).unwrap_or(0);
-            let line_end = code[at..].find('\n').map(|e| at + e).unwrap_or(code.len());
-            // A comment mentioning `.await` is not an await.
-            if code[line_start..at].contains("//") {
-                continue;
+        let mut awaits = 0usize;
+        let mut wrappers = 0usize;
+        for (file, full) in SOURCES {
+            // Only the module body; the tests below await on purpose.
+            let src = &full[..full.find("\n#[cfg(test)]").unwrap_or(full.len())];
+            // Statement boundaries are found by scanning back for `;`/`{`/`}`, so string
+            // literals must be neutralised first: the injected `"window.taliOpenPageSource =
+            // function () {};"` contains all three, and cutting a statement inside it made
+            // this scan report a bounded await as unbounded.
+            let code = blank_string_literals(src);
+            awaits += code.matches(".await").count();
+            wrappers += code.matches("tokio::time::timeout(").count();
+
+            for (at, _) in code.match_indices(".await") {
+                let line_start = code[..at].rfind('\n').map(|p| p + 1).unwrap_or(0);
+                let line_end = code[at..].find('\n').map(|e| at + e).unwrap_or(code.len());
+                // A comment mentioning `.await` is not an await.
+                if code[line_start..at].contains("//") {
+                    continue;
+                }
+                let stmt_start = code[..at]
+                    .rfind([';', '{', '}'])
+                    .map(|p| p + 1)
+                    .unwrap_or(0);
+                let stmt = &code[stmt_start..line_end];
+                if stmt.contains("tokio::time::timeout(") || EXEMPT.iter().any(|e| stmt.contains(e))
+                {
+                    continue;
+                }
+                unbounded.push(format!(
+                    "{file}:{}: {}",
+                    code[..at].matches('\n').count() + 1,
+                    src[line_start..line_end].trim()
+                ));
             }
-            let stmt_start = code[..at]
-                .rfind([';', '{', '}'])
-                .map(|p| p + 1)
-                .unwrap_or(0);
-            let stmt = &code[stmt_start..line_end];
-            if stmt.contains("tokio::time::timeout(") || EXEMPT.iter().any(|e| stmt.contains(e)) {
-                continue;
-            }
-            unbounded.push(format!(
-                "{}: {}",
-                code[..at].matches('\n').count() + 1,
-                src[line_start..line_end].trim()
-            ));
         }
         assert!(
             unbounded.is_empty(),
-            "these browser awaits are unbounded, so a wedged Chrome can hang `read --run-js`: {unbounded:#?}"
+            "these browser awaits are unbounded, so a wedged Chrome can hang \
+             `read --run-js` or `taliesin pdf`: {unbounded:#?}"
         );
         // Controls: the scan means nothing if it sees no awaits, or if it sees no wrappers —
-        // either way it would keep passing after every bound was deleted.
+        // either way it would keep passing after every bound was deleted. Raised from 6 to 8
+        // now that two files are scanned, so dropping one file entirely is also caught.
         assert!(
-            code.matches(".await").count() > 6,
-            "the scan found almost no awaits — it is passing vacuously"
+            awaits > 8,
+            "the scan found almost no awaits ({awaits}) — it is passing vacuously"
         );
         assert!(
-            code.matches("tokio::time::timeout(").count() >= 6,
-            "far fewer wrappers than there are phases to bound"
+            wrappers >= 8,
+            "far fewer wrappers ({wrappers}) than there are phases to bound"
         );
     }
 

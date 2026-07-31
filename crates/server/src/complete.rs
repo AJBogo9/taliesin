@@ -330,6 +330,7 @@ fn command_desc(cmd: &str) -> &'static str {
         "render" => "render a full HTML page to stdout",
         "read" => "project the document to plain text",
         "build" => "build self-contained HTML (a dir builds the site)",
+        "pdf" => "typeset, paginated PDF rendered from the built HTML",
         "blocks" => "list block ids + sourcepos (debug)",
         "schema" => "emit JSON Schemas for editor autocomplete",
         "vocab" => "emit editor autocomplete vocabulary as JSON",
@@ -377,6 +378,15 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 "render code cells as source, never run them",
             ),
             ("--port", true, "port to serve on"),
+        ],
+        "pdf" => &[
+            ("--out", true, "write the PDF here (default <name>.pdf)"),
+            ("--paper", true, "page size: a4 (default), letter, or a5"),
+            (
+                "--keep-html",
+                false,
+                "keep the intermediate paginated HTML for inspection",
+            ),
         ],
         "build" => &[
             ("--out", true, "write a portable folder to <dir>"),

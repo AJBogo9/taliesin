@@ -31,6 +31,10 @@ name = "read_run_js"
 required-features = ["headless-js"]
 
 [[test]]
+name = "print_pdf"
+required-features = ["headless-js"]
+
+[[test]]
 name = "deck_browser"
 required-features = ["headless-js"]
 

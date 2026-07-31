@@ -37,6 +37,7 @@ mod lsp_rename_file;
 mod math_image;
 mod mcp;
 mod minify;
+mod pdf;
 mod preview_diag;
 mod protocol;
 mod publish;
@@ -71,6 +72,7 @@ fn main() -> ExitCode {
             runtime_dirs::sweep_stale_runtime_dirs();
             build::cmd_build(&args)
         }
+        Some("pdf") => pdf::cmd_pdf(&args),
         Some("publish") => publish::cmd_publish(&args),
         Some("blocks") => query::cmd_blocks(args.get(2)),
         Some("schema") => query::cmd_schema(&args),
@@ -132,6 +134,7 @@ const COMMANDS: &[&str] = &[
     "render",
     "read",
     "build",
+    "pdf",
     "blocks",
     "schema",
     "vocab",
@@ -207,6 +210,12 @@ Preview & build
                              HTML; --jobs <N> caps parallel page renders (site
                              build); --no-exec renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
+  pdf    <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]
+                             a typeset, paginated PDF rendered FROM the built
+                             HTML: running heads, folios, cross-refs that name
+                             their page (\"Figure 3 (p. 12)\") and an automatic
+                             list of figures; default <name>.pdf beside the
+                             source; needs a local Chrome for page layout
   publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--init] [--format json]
                              build a site/book + deploy it to Cloudflare Pages
                              behind a shared passcode (strict by default);
@@ -306,6 +315,25 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example:\n\
              \x20 taliesin build post.tmd --strict\n\
              \x20 taliesin build . --jobs 4\n"
+        }
+        "pdf" => {
+            "taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]\n\
+             \n\
+             Render a typeset, paginated PDF *from the built HTML* — the same HTML the\n\
+             preview serves, laid out into pages. Running heads, folios, cross-references\n\
+             that name their page (\"Figure 3 (p. 12)\") and an automatic list of figures.\n\
+             Default output is <name>.pdf beside the source.\n\
+             \n\
+             Code cells run first (replaying from _freeze when unchanged), so figures are\n\
+             real rather than empty. A local Chrome does the page layout.\n\
+             \n\
+             Flags:\n\
+             \x20 -o, --out <path>  write the PDF here (default: <name>.pdf)\n\
+             \x20 --paper <size>    a4 (default), letter, or a5\n\
+             \x20 --keep-html       keep the intermediate paginated HTML for inspection\n\
+             \n\
+             Example:\n\
+             \x20 taliesin pdf paper.tmd --paper letter\n"
         }
         "check" => {
             "taliesin check <file.tmd | dir> [--format human|json] [--errors-only|--strict]\n\
