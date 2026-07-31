@@ -23,7 +23,7 @@ enough to start.**
   typeset PDF *from the built HTML* via paged.js + CDP: running heads, folios,
   `@fig-` refs that print as "Figure 3 (p. 12)", an auto list of figures, widow/orphan
   control and hyphenation. Spec + plan under `docs/superpowers/`. The top of P1 is therefore
-  now **158 (opt-in Pyodide)**, with 180 still needing only the author's ruling.
+  now **158 (opt-in Pyodide)**.
   **Five things a later session must carry:**
   - **The one open defect is CLOSED (2026-07-31), and its recorded cause was wrong on both
     counts.** It was filed as "a figure crossing a page boundary hangs paged.js". It was
@@ -222,9 +222,8 @@ enough to start.**
   before the draw lands": the WebGL context is **lost** under CPU starvation (`isContextLost()`,
   `getError()` 37442) on both canvases before any read, so the prescribed "poll with a generous
   timeout" fix made it *worse* (23% → 33% failure). The mechanism and the general lesson are in
-  [LESSONS.md](LESSONS.md). Item **180**'s docs half shipped the same day; only the one ruling
-  the author owes on whether the new inlay hints are pleasant to write with is left, since VS
-  Code turns them on by default.
+  [LESSONS.md](LESSONS.md). Item **180** is closed: the docs half shipped the same day, and the
+  author ruled on 2026-07-31 to keep all three inlay-hint kinds on by default, unchanged.
 
 - **Item 150 shipped 2026-07-30** (site-aware in-editor preview, both halves): a chapter under a
   `_site.yml` now previews as its *project*, opened at that page's URL, one server per book. Two
@@ -236,7 +235,8 @@ enough to start.**
   to that chapter, on the passive path, not only on the explicit reveal. That is deliberate — a
   preview showing a chapter you are not editing is stale, and the yank the reveal/mark split
   guards against is a cursor in the page *already* on screen, which still never navigates — but
-  it has not been lived with. As with 180, the answer is a better default, not a knob.
+  it has not been lived with. As with the inlay-hint ruling, the answer is a better default,
+  not a knob.
 
 - **Items 178 + 177 (LSP editor ergonomics) shipped on 2026-07-30** against
   [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
@@ -254,7 +254,7 @@ enough to start.**
   deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
   take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
   2026-07-29 and five more (165, 166, 162, 161, 169) on 2026-07-30, so the top of the queue is
-  now **158 (opt-in Pyodide)**, with 180 above it needing only the author's ruling.
+  now **158 (opt-in Pyodide)**.
 - **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
   line in the demand-driven tail.
 - **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
@@ -343,20 +343,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
 - **Promotion is not a design.** Several of these were parked with an open design question, not
   just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
   trap). Those say so; brainstorm before coding.
-
-180. **AUTHOR RULING ONLY — the docs half shipped 2026-07-30.** `docs/guide/using/preview.tmd`
-     now carries "What a reference resolves to, without leaving the line" (all four
-     capabilities, plus the `offUnlessPressed` escape hatch), and the drift gate landed as
-     `lsp::tests::the_internals_capability_table_names_every_capability_the_server_advertises`,
-     mutation-verified in both directions (delete a table row → red; add a provider with no row
-     → red). **What is left is the one thing only the author can do:**
-     `editor.inlayHints.enabled` defaults to **on** in VS Code, so every author sees `⟨1⟩` beside
-     every resolving `@fig-`, `⟨Bishop 2006⟩` beside every citation and `⟨42 lines⟩` beside every
-     include **without opting in**. That is the intended value, but it has only been verified in
-     tests and one screenshot, never lived with in a real writing session. Judge in use, then
-     decide: keep as is, change the `⟨…⟩` delimiter, or narrow which of the three hint kinds are
-     on by default. **This is a minimal-config question** (perfect the default rather than add a
-     knob), so the answer is a better default, not a setting.
 
 158. **Opt-in Pyodide `{python}` cells.** (L, needs-care. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
      #66. **Its dependency on 153 is discharged: the registry shipped 2026-07-29**, so this
