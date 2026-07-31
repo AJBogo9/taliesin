@@ -19,8 +19,8 @@
 // through the same taliEnhancers registry as mermaid; idempotent (a `data-tali-ran` guard)
 // so it is safe to re-run after every mount.
 //
-// `publish` is deliberately NOT in that list and is masked off for author source; it is a
-// language-level hook, see the `application/tali-js` registration.
+// `publish` is deliberately absent from that list: it is a language-only hook, passed to a
+// language's `setup` as a fourth argument and never placed on the author-facing scope.
 //
 // This file is also the CLIENT HALF of the cell-language registry (`render/client_lang.rs`
 // is the server half). `{js}` is one entry in `languages` below; `{glsl}` registers itself
@@ -33,12 +33,17 @@
   var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
   /**
-   * A client-side cell language: given the cell's source, its scope api and its parsed
-   * `//|` options, return the thing that runs it. `run` is called once on mount and again
-   * on every scheduled re-run; `dispose` (optional) is called when the cell is torn down.
-   * A language never mounts the returned value itself — the shared wrapper does.
+   * A client-side cell language: given the cell's source, its scope api, its parsed
+   * `//|` options and the language-only hooks, return the thing that runs it. `run` is
+   * called once on mount and again on every scheduled re-run; `dispose` (optional) is
+   * called when the cell is torn down. A language never mounts the returned value itself —
+   * the shared wrapper does.
+   *
+   * `hooks` carries what a LANGUAGE may do and author source may not. It is a separate
+   * argument precisely because `api` is passed through to author cell source verbatim.
    * @typedef {(src: string, api: any, opts: {name: string|null, viewof: string|null,
-   *   inputs: string[], kind: string}) => {run: () => any, dispose?: () => void}} TaliLangSetup
+   *   inputs: string[], kind: string}, hooks: {publish: (n: string, v: any) => Promise<void>})
+   *   => {run: () => any, dispose?: () => void}} TaliLangSetup
    */
   /** @type {Record<string, TaliLangSetup>} */
   var languages = {};
@@ -386,22 +391,6 @@
       get: function (n) { return r.scope[n]; },
       /** @param {string} n @param {any} v */
       set: function (n, v) { r.scope[n] = v; },
-      /**
-       * Publish a value that arrived AFTER this cell's `run()` resolved, and re-run the
-       * cells that consume it. `set` alone writes the scope and schedules nothing, which is
-       * correct for a synchronous cell — the wrapper publishes its return value and the
-       * scheduler orders everything. A language whose value is genuinely asynchronous
-       * (`{pyodide}`: boot the runtime, then execute) has no such moment.
-       *
-       * Deliberately NOT general mutable dataflow, and the limit is enforced rather than
-       * merely intended: the `{js}` language hands author source a shielded view of this
-       * scope with `publish` masked off (see the `application/tali-js` registration below),
-       * so no author cell can start a cascade. A language reaches it through its own
-       * `setup(src, api, opts)` argument. The reactive-VM trap this project has refused
-       * three times stays refused.
-       * @param {string} n @param {any} v @returns {Promise<void>}
-       */
-      publish: function (n, v) { r.scope[n] = v; return scheduleFrom(r, n); },
       /** @param {string} n */
       value: function (n) {
         return r.inputs[n] ? readValue(r.inputs[n]) : r.defines[n];
@@ -531,7 +520,25 @@
     /** @type {{run: () => any, dispose?: () => void}} */
     var impl;
     try {
-      impl = setup(src, api, { name: name, viewof: viewof, inputs: inputs, kind: kind });
+      impl = setup(src, api, { name: name, viewof: viewof, inputs: inputs, kind: kind }, {
+        // Publish a value that arrived AFTER this cell's `run()` resolved, and re-run the
+        // cells that consume it. The shared wrapper publishes a cell's RETURN value and the
+        // scheduler orders everything, which is correct for a synchronous language; a
+        // language whose value is genuinely asynchronous (`{pyodide}`: boot a runtime, then
+        // execute) has no such moment.
+        //
+        // A FOURTH ARGUMENT rather than a method on `api`, and that is the whole safety
+        // design: `api` is handed verbatim to author cell source as `tali` (see the
+        // `application/tali-js` registration below), so anything on it — or on its
+        // prototype — is author-reachable. A cell that could publish to a name it also
+        // declares as an `//| input:` would create a feedback edge `buildGraph` never saw
+        // and never cycle-checked, recursing without a guard: the reactive VM this project
+        // has refused three times. Passing the capability to the LANGUAGE instead means
+        // author source cannot reach it by any route, including a deliberate prototype
+        // walk. A masking shield on `api` was tried first and leaked through
+        // `Object.getPrototypeOf(tali).publish`.
+        publish: function (n, v) { r.scope[n] = v; return scheduleFrom(r, n); },
+      });
     } catch (e) {
       console.error("tali-js cell error:", e);
       showCellError(container, e);
@@ -647,27 +654,17 @@
   // `num` (the bundled numerics namespace, item 154) sits beside Plot/d3 as one more
   // drawing global — nothing about the graph or the scheduler knows it exists.
   //
-  // AUTHOR SOURCE GETS A SHIELDED VIEW, not `api` itself. Everything on the scope is
-  // author-facing except `publish`, which SCHEDULES a downstream pass: a cell body that
-  // could call it could publish to a name it also declares as an `//| input:`, creating a
-  // feedback edge `buildGraph` never saw and therefore never cycle-checked. That recurses
-  // without a guard — the reactive VM this project has refused three times. `publish`
-  // exists for a LANGUAGE whose value arrives after its `run()` resolves (`{pyodide}`),
-  // and a language reaches it through its own `setup(src, api, opts)` argument.
-  //
-  // `Object.create(api)` rather than a copy: the scope carries a `get invalidation()`
-  // accessor, and `Object.assign` would evaluate it ONCE at copy time and freeze that
-  // run's promise into every later run. Prototype delegation keeps the getter live.
+  // Author source receives `api` verbatim as `tali`. That is safe because the one
+  // capability author source must not have — `publish`, which SCHEDULES a downstream pass —
+  // is not on `api` at all; it is a language-only hook passed as `setup`'s fourth argument.
   languages["application/tali-js"] = function (src, api) {
-    var authorApi = Object.create(api);
-    Object.defineProperty(authorApi, "publish", { value: undefined, enumerable: false });
     var fn = new AsyncFunction(
       "tali", "Plot", "d3", "num", "container", "invalidation",
       src
     );
     return {
       run: function () {
-        return fn(authorApi, window.Plot, window.d3, window.taliNum, api.container, api.invalidation);
+        return fn(api, window.Plot, window.d3, window.taliNum, api.container, api.invalidation);
       },
     };
   };
