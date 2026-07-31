@@ -235,6 +235,9 @@ globals()["define"] = define
 ///     and text always match the surrounding page exactly (same mechanism as the
 ///     theme-matched `{{< video >}}`). The standalone `image/png` is suppressed so
 ///     only the dual-theme HTML is emitted.
+///   - a legend frame is a `Patch`, not a `Text`, so it needs its own pass: it takes
+///     the theme *background* (keeping the author's `framealpha`) rather than going
+///     transparent, because the box is what makes a legend readable over the data.
 ///
 /// This also powers `#| fig-export:`: the export writes the *pristine* figure to
 /// disk (print-clean) at display time, before any inline recolour. Data colours are
@@ -247,10 +250,14 @@ try:
         # Transparency for the inline image only (not global rcParams).
         _ip.run_line_magic('config', "InlineBackend.print_figure_kwargs = {'facecolor': 'none', 'edgecolor': 'none', 'bbox_inches': 'tight'}")
 
-        # (foreground, grid) per theme — kept in sync with --tali-fg / --tali-border
-        # in assets/css/{base,dark}.css.
-        _TALI_LIGHT = ('#1a1a1a', '#d0d0d0')
-        _TALI_DARK = ('#e6e6e6', '#363a44')
+        # (foreground, grid, background) per theme — kept in sync with --tali-fg /
+        # --tali-border / --tali-bg in assets/css/tokens{,-dark}.css.
+        #
+        # The background is only used for artists that paint their OWN backing and so
+        # cannot just be made transparent: a legend frame. Everything else is set to
+        # 'none' and lets the page show through.
+        _TALI_LIGHT = ('#1a1a1a', '#d0d0d0', '#ffffff')
+        _TALI_DARK = ('#e6e6e6', '#363a44', '#16181d')
         _tali_pending_export = []
         _tali_orig_png = [None]  # the real Figure->png formatter, captured once
 
@@ -336,11 +343,27 @@ try:
                             break
             return _on
 
-        def _tali_recolour(fig, fg, grid):
+        def _tali_legends(fig):
+            # Every Legend in the figure. They hang off three different places and a
+            # figure can hold all three at once: `fig.legends` (figure-level), the
+            # `ax.legends` list, and `ax.get_legend()` (the usual `ax.legend()` case,
+            # which on older matplotlib is NOT mirrored into `ax.legends`).
+            _out, _seen = [], set()
+            for _lg in list(getattr(fig, 'legends', ())):
+                if id(_lg) not in _seen:
+                    _seen.add(id(_lg)); _out.append(_lg)
+            for _ax in fig.axes:
+                for _lg in (*getattr(_ax, 'legends', ()), _ax.get_legend()):
+                    if _lg is not None and id(_lg) not in _seen:
+                        _seen.add(id(_lg)); _out.append(_lg)
+            return _out
+
+        def _tali_recolour(fig, fg, grid, bg):
             # Recolour foreground (text/spines/ticks) to `fg` and grid lines to
             # `grid`, and make axes backgrounds transparent. Returns the originals
             # so the figure can be restored exactly. Data colours are untouched, and
             # so is any text sitting ON a data colour (see _tali_texts_on_fill).
+            import matplotlib.colors as _mc
             import matplotlib.text as _t
             saved = []
             _on_fill = _tali_texts_on_fill(fig)
@@ -356,13 +379,29 @@ try:
                     saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(fg)
                 for _ln in (*_ax.get_xgridlines(), *_ax.get_ygridlines()):
                     saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(grid)
+            # A legend frame is a Patch, so the Text walk above recoloured the LABELS
+            # but left the box behind them alone. Its facecolor was resolved once in
+            # Legend.__init__ from rcParams['axes.facecolor'] (`legend.facecolor:
+            # inherit`) — white — so the dark render put near-white labels on a white
+            # box: measured 1.23:1, against WCAG AA's 4.5:1. Unlike `ax.patch` this
+            # cannot simply go transparent: the box is what makes a legend readable
+            # where it overlaps the data, so it takes the page background instead.
+            #
+            # The alpha is carried over rather than replaced. `framealpha` is the
+            # author's call about seeing data through the legend, and it is a
+            # transparency, not a colour, so theming the hue leaves it untouched.
+            for _lg in _tali_legends(fig):
+                _fr = _lg.get_frame()
+                _fc, _ec = _fr.get_facecolor(), _fr.get_edgecolor()
+                saved.append((_fr.set_facecolor, _fc)); _fr.set_facecolor(_mc.to_rgba(bg, _mc.to_rgba(_fc)[3]))
+                saved.append((_fr.set_edgecolor, _ec)); _fr.set_edgecolor(_mc.to_rgba(grid, _mc.to_rgba(_ec)[3]))
             return saved
 
-        def _tali_render(fig, fg, grid):
-            # Produce a base64 PNG (transparent bg) with `fg`/`grid` recolouring,
+        def _tali_render(fig, fg, grid, bg):
+            # Produce a base64 PNG (transparent bg) with `fg`/`grid`/`bg` recolouring,
             # restoring the live figure afterwards.
             _orig = _tali_orig_png[0]
-            _saved = _tali_recolour(fig, fg, grid)
+            _saved = _tali_recolour(fig, fg, grid, bg)
             try:
                 return _orig(fig)
             finally:

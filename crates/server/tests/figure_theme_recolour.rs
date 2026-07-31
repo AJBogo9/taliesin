@@ -111,7 +111,7 @@ ax.set_title("Covariance")
 ax.set_xlabel("feature")
 
 # Recolour for the LIGHT theme exactly as the inline formatter does, then read back.
-saved = _tali_recolour(fig, "#1a1a1a", "#d0d0d0")
+saved = _tali_recolour(fig, "#1a1a1a", "#d0d0d0", "#ffffff")
 print("ANNOTATION=%s" % (ann.get_color(),))
 print("TITLE=%s" % (ax.title.get_color(),))
 print("XLABEL=%s" % (ax.xaxis.label.get_color(),))
@@ -171,7 +171,7 @@ import matplotlib.pyplot as plt
 fig, ax = plt.subplots()
 ax.plot([0, 1, 2], [0, 1, 4])
 note = ax.text(1.0, 1.0, "inflection")
-saved = _tali_recolour(fig, "#1a1a1a", "#d0d0d0")
+saved = _tali_recolour(fig, "#1a1a1a", "#d0d0d0", "#ffffff")
 print("NOTE=%s" % (note.get_color(),))
 for _set, _val in reversed(saved):
     _set(_val)
@@ -193,13 +193,95 @@ fn a_data_space_annotation_with_no_fill_under_it_still_follows_the_theme() {
     );
 }
 
+/// A legend's frame is a `Patch`, not a `Text`, so the recolour walk never saw it. Its
+/// facecolor is resolved once in `Legend.__init__` from `rcParams["axes.facecolor"]` (via
+/// `legend.facecolor: inherit`), which is **white**, at `legend.framealpha: 0.8`. The labels
+/// inside it are `Text`, so they *were* recoloured. In the dark render that put near-white
+/// `#e6e6e6` text on a white-at-80% box: measured 1.23:1, against WCAG AA's 4.5:1.
+///
+/// Prints the frame colours after a dark recolour, then after restore.
+const LEGEND_PROBE: &str = r##"
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots()
+ax.plot([0, 1, 2], [0, 1, 4], label="series")
+lg = ax.legend()
+before = mcolors.to_hex(lg.get_frame().get_facecolor(), keep_alpha=True)
+
+saved = _tali_recolour(fig, "#e6e6e6", "#363a44", "#16181d")
+print("LEGENDFACE=%s" % mcolors.to_hex(lg.get_frame().get_facecolor()))
+print("LEGENDALPHA=%.2f" % lg.get_frame().get_facecolor()[3])
+print("LEGENDEDGE=%s" % mcolors.to_hex(lg.get_frame().get_edgecolor()))
+print("LABEL=%s" % (lg.get_texts()[0].get_color(),))
+for _set, _val in reversed(saved):
+    _set(_val)
+print("LEGENDRESTORED=%s" % (mcolors.to_hex(lg.get_frame().get_facecolor(), keep_alpha=True) == before,))
+plt.close(fig)
+"##;
+
+#[test]
+fn a_legend_frame_follows_the_page_theme() {
+    let Some(py) = python_or_skip() else { return };
+    if !matplotlib_or_skip(&py) {
+        return;
+    }
+    let html = run_probe("legend", LEGEND_PROBE, &py);
+
+    // The defect: this used to stay `#ffffff` while the labels on top of it went `#e6e6e6`.
+    assert!(
+        html.contains("LEGENDFACE=#16181d"),
+        "a legend frame sits on the page background and must follow the theme, or its \
+         already-recoloured labels end up light-on-light. Got:\n{}",
+        extract_probe_lines(&html)
+    );
+    // `framealpha` is the author's call about seeing data through the legend; theming the
+    // hue must not quietly make every legend opaque.
+    assert!(
+        html.contains("LEGENDALPHA=0.80"),
+        "the author's framealpha must survive the recolour. Got:\n{}",
+        extract_probe_lines(&html)
+    );
+    assert!(
+        html.contains("LEGENDEDGE=#363a44"),
+        "the legend border is chrome and must track the theme's border colour. Got:\n{}",
+        extract_probe_lines(&html)
+    );
+    // The labels were always recoloured; the fix must not stop that.
+    assert!(
+        html.contains("LABEL=#e6e6e6"),
+        "legend labels must still follow the theme. Got:\n{}",
+        extract_probe_lines(&html)
+    );
+    // Same restore contract as every other artist the recolour touches: the light render
+    // must not start from a figure the dark render mutated.
+    assert!(
+        html.contains("LEGENDRESTORED=True"),
+        "the legend frame is restored exactly after rendering. Got:\n{}",
+        extract_probe_lines(&html)
+    );
+}
+
 /// Pull the probe's `KEY=value` lines out of the built page for a readable failure message.
 fn extract_probe_lines(html: &str) -> String {
     html.lines()
         .filter(|l| {
-            ["ANNOTATION=", "TITLE=", "XLABEL=", "RESTORED=", "NOTE="]
-                .iter()
-                .any(|k| l.contains(k))
+            [
+                "ANNOTATION=",
+                "TITLE=",
+                "XLABEL=",
+                "RESTORED=",
+                "NOTE=",
+                "LEGENDFACE=",
+                "LEGENDALPHA=",
+                "LEGENDEDGE=",
+                "LABEL=",
+                "LEGENDRESTORED=",
+            ]
+            .iter()
+            .any(|k| l.contains(k))
         })
         .collect::<Vec<_>>()
         .join("\n")
