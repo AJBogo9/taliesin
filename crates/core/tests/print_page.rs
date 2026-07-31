@@ -237,3 +237,77 @@ fn relative_urls_resolve_against_the_documents_own_directory() {
     let img = html.find("pic.png").expect("image present");
     assert!(base < img, "<base> must precede the URLs it governs");
 }
+
+/// Scrape the `<img …>` tags that carry a `src=`, out of an assembled page.
+///
+/// The `src=` filter is not cosmetic. A Taliesin page inlines its whole CSS/JS payload, and
+/// that payload contains bare `<img>` literals of its own — so an unfiltered scrape returns
+/// 8 tags for a two-figure document and any count assertion becomes a claim about the
+/// bundle. This is the inlined-asset needle trap; it has fired on this file before.
+fn img_tags(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = html;
+    while let Some(i) = rest.find("<img") {
+        rest = &rest[i..];
+        let end = match rest.find('>') {
+            Some(e) => e,
+            None => break,
+        };
+        let tag = &rest[..=end];
+        if tag.contains(" src=\"") {
+            out.push(tag.to_string());
+        }
+        rest = &rest[end + 1..];
+    }
+    out
+}
+
+/// **The hang that cost a whole debugging session.** `loading="lazy"` is a *scrolling*
+/// optimization: Chrome only starts the fetch when the image nears the viewport. A
+/// paginated rendering never scrolls, so a lazy image far down the document is never
+/// requested — `img.complete` stays `false` forever and neither `onload` nor `onerror` ever
+/// fires. The assembler's start hook waits on exactly those events, so pagination never
+/// began: measured in the real headless driver, `.pagedjs_page` count `0` with the polyfill
+/// loaded and fonts settled.
+///
+/// It is also wrong even when it does not hang: an unloaded image has no intrinsic size, so
+/// the chunker would lay it out at zero height and paginate around a figure that is not
+/// there.
+#[test]
+fn the_print_page_loads_every_image_eagerly() {
+    // A base directory with REAL images: the annotator reads intrinsic size off disk and
+    // annotates nothing when it cannot, so a fixture of fake paths would make the negative
+    // assertion below vacuous.
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/print");
+    let src = "---\ntitle: T\n---\n\n![One](scree.png){#fig-a}\n\n![Two](recon.png){#fig-b}\n";
+    let rendered = taliesin_core::render_single_doc(src, &base);
+
+    // POSITIVE CONTROL: the rendered body really does carry a lazy image for this fixture.
+    // Without this the assertion below passes just as happily on a page with no images.
+    let screen = rendered.body_html();
+    assert!(
+        img_tags(&screen)
+            .iter()
+            .any(|t| t.contains(r#"loading="lazy""#)),
+        "fixture is inert: the rendered body emitted no lazy image, so the print-page \
+         assertion would prove nothing.\ntags: {:?}",
+        img_tags(&screen)
+    );
+
+    let html = print_page_from_doc(&rendered, "fallback", Paper::A4, &base);
+    let tags = img_tags(&html);
+    let lazy: Vec<&String> = tags
+        .iter()
+        .filter(|t| t.contains(r#"loading="lazy""#))
+        .collect();
+    assert!(
+        lazy.is_empty(),
+        "these images would never load in a paginated render, wedging pagination: {lazy:?}"
+    );
+    // And the images must still be there — stripping the tag entirely would also pass above.
+    assert_eq!(
+        tags.len(),
+        2,
+        "both figures must survive into the print page"
+    );
+}

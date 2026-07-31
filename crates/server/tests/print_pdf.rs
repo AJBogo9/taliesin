@@ -28,6 +28,13 @@ impl TempDoc {
         std::fs::write(dir.join("doc.tmd"), body).expect("write source");
         TempDoc { dir }
     }
+    /// Copy a real asset in beside the source. Real bytes matter: the image annotator reads
+    /// intrinsic size off disk and skips any image it cannot open, so a fabricated path
+    /// silently produces a document with no annotated images at all.
+    fn with_asset(self, name: &str, from: &Path) -> TempDoc {
+        std::fs::copy(from, self.dir.join(name)).expect("copy asset");
+        self
+    }
     fn src(&self) -> PathBuf {
         self.dir.join("doc.tmd")
     }
@@ -75,6 +82,21 @@ fn page_count(pdf: &Path) -> usize {
         .find_map(|l| l.strip_prefix("Pages:"))
         .and_then(|n| n.trim().parse().ok())
         .expect("pdfinfo reported no page count")
+}
+
+/// How many raster images the PDF actually embeds, via `pdfimages -list`.
+///
+/// `smask` rows are the alpha channels of the images above them, not separate figures, so
+/// they are excluded — counting them would make one figure look like two.
+fn embedded_image_count(pdf: &Path) -> usize {
+    let out = Command::new("pdfimages")
+        .args(["-list", pdf.to_str().unwrap()])
+        .output()
+        .expect("pdfimages (poppler-utils) is required for the print gate");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.split_whitespace().nth(2) == Some("image"))
+        .count()
 }
 
 fn pdf_text(pdf: &Path) -> String {
@@ -222,5 +244,71 @@ fn a_cross_reference_resolves_to_a_real_page_number() {
     assert!(
         text.contains("List of Figures"),
         "the generated list of figures is missing from the PDF"
+    );
+}
+
+/// **The regression pin for the pagination hang.** A second figure far enough down the
+/// document that Chrome never brings it near the viewport: the screen renderer marks every
+/// image after the first `loading="lazy"`, and a lazy image that is never scrolled to is
+/// never fetched — `complete` stays false and neither `onload` nor `onerror` fires, so the
+/// assembler's start hook waited forever and pagination never began (measured: zero
+/// `.pagedjs_page` boxes, polyfill loaded, fonts settled).
+///
+/// The existing gates all missed it: two of them have no images, and the third's image does
+/// not exist, so nothing ever had to load. This one uses REAL image bytes at a REAL
+/// distance, which is the only shape that reproduces.
+#[test]
+fn a_figure_far_down_the_document_still_paginates() {
+    if !require_chrome() {
+        eprintln!("skipped: set TALIESIN_REQUIRE_CHROME=1 to run the live print gate");
+        return;
+    }
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/print");
+    let mut body =
+        String::from("---\ntitle: Far Figure\n---\n\n![The first figure](a.png){#fig-a}\n\n");
+    for i in 0..40 {
+        body.push_str(&format!(
+            "Filler paragraph {i} with enough words to fill out a line of prose.\n\n"
+        ));
+    }
+    body.push_str("![The far figure](b.png){#fig-b}\n");
+
+    let doc = TempDoc::new("pdffar", &body)
+        .with_asset("a.png", &corpus.join("scree.png"))
+        .with_asset("b.png", &corpus.join("recon.png"));
+    run_pdf(&doc.src(), &doc.out());
+
+    let pages = page_count(&doc.out());
+    assert!(
+        pages > 1,
+        "expected a paginated document, got {pages} page(s)"
+    );
+
+    // The decisive check: BOTH images must be embedded as real raster data. A figure that
+    // never loaded still contributes its caption to the text layer, so asserting on text
+    // alone would pass on a document of alt text — and lays out at zero height, paginating
+    // the document around a figure that is not there.
+    let embedded = embedded_image_count(&doc.out());
+    assert!(
+        embedded >= 2,
+        "expected both figures embedded in the PDF, found {embedded} image(s) — the far \
+         figure never loaded"
+    );
+
+    // And the far figure's list-of-figures entry must resolve to a later page, which is only
+    // true if the chunker measured it at its real height.
+    let text = pdf_text(&doc.out());
+    let entry = text
+        .lines()
+        .find(|l| l.contains("The far figure"))
+        .unwrap_or_else(|| panic!("the far figure is missing from the PDF ({pages} pages)"));
+    let page_no: usize = entry
+        .rsplit(' ')
+        .next()
+        .and_then(|n| n.trim().parse().ok())
+        .unwrap_or_else(|| panic!("no page number on the list-of-figures entry: {entry:?}"));
+    assert!(
+        page_no > 1,
+        "the far figure resolved to page {page_no}; it sits well past the first page"
     );
 }

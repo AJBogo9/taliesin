@@ -70,6 +70,27 @@ const PAGED_START: &str = "window.addEventListener('load', function () { \
        .then(function () { document.documentElement.dataset.taliPaged = 'done'; }); \
    });";
 
+/// Make every deferred `<img>`/`<iframe>` load eagerly.
+///
+/// `loading="lazy"` is a **scrolling** optimization: the browser starts the fetch only when
+/// the element nears the viewport. A paginated rendering never scrolls, so anything far
+/// enough down the document is never requested at all — and that is fatal twice over.
+///
+/// It hangs: [`PAGED_START`] waits for every image before it lets the chunker run, and a
+/// lazy image that was never requested has `complete === false` with neither `load` nor
+/// `error` ever firing, so the wait never settles and pagination never begins. Measured in
+/// the headless driver: zero `.pagedjs_page` boxes, polyfill loaded, fonts settled.
+///
+/// And even if it did not hang, it would paginate wrongly: an unfetched image has no
+/// intrinsic size, so the chunker would flow the document around a figure of zero height.
+///
+/// The screen renderer is right to emit it (`render/image_meta.rs` — lazy is a real win
+/// below the fold), which is exactly why the correction belongs here, on the print page,
+/// rather than in the shared emitter.
+fn eager_media(html: &str) -> String {
+    html.replace(" loading=\"lazy\"", " loading=\"eager\"")
+}
+
 /// Paper size for a print render.
 ///
 /// An **invocation** choice (a CLI flag), never document config — so this adds no
@@ -237,7 +258,7 @@ pub fn print_page_from_doc(
     let mut escaped = String::new();
     super::escape_html(&title, &mut escaped);
 
-    let content = doc.body_html();
+    let content = eager_media(&doc.body_html());
     // The LoF leads the document, ahead of the content it indexes.
     let body = format!("{}{content}", list_of_figures(&content));
 
