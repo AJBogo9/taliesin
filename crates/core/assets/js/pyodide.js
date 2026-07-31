@@ -121,7 +121,10 @@
   /**
    * Turn a failure into the message the reader can act on. A bare ModuleNotFoundError is the
    * ONE predictable failure of vendoring numpy and nothing else, so it does not get to
-   * surface as a raw traceback.
+   * surface as a raw traceback. A bare ConversionError is the other predictable one:
+   * `toJs({create_pyproxies: false})` below raises rather than substitutes when a published
+   * value has a nested piece it cannot convert, so it does not get to surface as a raw
+   * traceback either.
    * @param {any} e
    */
   function explain(e) {
@@ -131,6 +134,14 @@
         msg +
         "\n\nOnly the Python standard library and numpy are vendored with this page. " +
         "Installing another package would need a network fetch, which Taliesin does not do."
+      );
+    }
+    if (msg.indexOf("ConversionError") >= 0) {
+      return (
+        msg +
+        "\n\nA `{pyodide}` cell published with `#| name:` must return something `toJs` can " +
+        "convert to JavaScript. A numpy array needs `.tolist()`; a custom object needs a " +
+        "plain dict/list shape first."
       );
     }
     return msg;
@@ -216,11 +227,16 @@
 
           if (opts.name) {
             // `create_pyproxies: false`: the default (`true`) wraps any nested value `toJs`
-            // cannot convert (e.g. a custom object inside a list) in its OWN PyProxy, and the
-            // `finally` below only destroys the outer `result` — so those nested proxies
-            // would leak the WASM heap exactly like the case that comment already guards
-            // against. With it `false`, an unconvertible nested value becomes `undefined` in
-            // the published value instead of a live, never-destroyed proxy.
+            // cannot convert (a numpy array, a custom object inside a list) in its OWN
+            // PyProxy, which the `finally` below never destroys — the same WASM-heap leak
+            // that comment already guards against. With it `false`, `toJs` RAISES instead of
+            // creating one, so an unconvertible value surfaces as this cell's error rather
+            // than as a leak or a silent hole in the published data.
+            //
+            // Deliberately NOT the `pyproxies: []` collect-and-destroy idiom: this value is
+            // PUBLISHED to downstream `{js}` cells, so destroying the collected proxies in
+            // `finally` would hand every consumer a dead proxy. For a published value,
+            // failing loudly is the only honest option.
             var js = result && typeof result.toJs === "function"
               ? result.toJs({ create_pyproxies: false, dict_converter: Object.fromEntries })
               : result;
