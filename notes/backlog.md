@@ -16,14 +16,50 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 **Fresh session with no context: read this section, then "Standing constraints", then P1. That is
 enough to start.**
 
+- **Item 158, opt-in Pyodide `{pyodide}` cells, DONE on branch `pyodide-cells-2026-07-31`
+  (NOT pushed; the author held the push deliberately until the work was finished).**
+  `./tools/gates.sh` PASSED with all **eight** canaries verified by name, the eighth being
+  the new `a_pyodide_cell_boots_and_publishes_to_a_js_consumer`. A `{pyodide}` fence runs
+  Python in the reader's browser off a vendored, offline Pyodide 314.0.3 + NumPy 2.4.3
+  (~8.8 MB packed), disjoint from the kernel-backed `{python}`: a third row in
+  `CLIENT_LANGS`, delivered as a served `/_taliesin/pyodide-314.0.3/` route in preview and
+  an `_assets/` copy in a site build. Spec + plan under `docs/superpowers/`; the SDD ledger
+  is `.superpowers/sdd/2026-07-31-pyodide-cells/progress.md` (gitignored). **The top of P1
+  is therefore now the 181-188 cluster**, whose cross-cluster ranking against 164/167 is
+  still an owner call.
+  **Four things a later session must carry:**
+  - **The output-mode matrix is the part that kept breaking, and it is worth re-reading
+    before touching delivery.** `{pyodide}` runs in `preview` and in a **site** build only.
+    Every single-document output (`build out.html`, `build --out <dir>`, `render`, `pdf`,
+    `--bare`) is `AssetMode::Inline`, carries no runtime, and must DEGRADE the cell to a
+    visible highlighted listing. Four of those five were shipping something broken until the
+    branch review: `render` and `pdf` emitted a live wrapper with no index (the reader got
+    an error box), and `--bare` deleted the author's Python outright, because the source
+    lives INSIDE the `<script>` the bare strip removes. `--out <dir>` could be made to work
+    by giving the single-doc builder External assets, which is what the plan's own delivery
+    table assumed; that is a **follow-up, deliberately not done here**.
+  - **Two gaps left open, both surfaced by the whole-branch review and both judged
+    out-of-scope rather than forgotten:** a `{pyodide}` cell in a **deck** never gets an
+    index `<meta>` (the deck assembler is a separate path), so it fails in live deck preview
+    even though the route is being served; and the vendored version is hardcoded twice in
+    `render/pyodide.rs` (`PYODIDE_DIR_NAME`, `PREVIEW_PYODIDE_DIR`) with nothing drift-locking
+    either to the payload, so a re-vendor can leave a stale directory name under
+    `Cache-Control: immutable`.
+  - **`publish` is deliberately NOT on the cell `api`.** It is `setup()`'s fourth argument,
+    because `api` is handed verbatim to `{js}` author source as `tali`; a masking shield was
+    tried first and leaked through `Object.getPrototypeOf(tali).publish`. Four access axes
+    are pinned by `author_cell_source_cannot_reach_the_publish_hook`. Do not "tidy" it back
+    onto `api`: that reopens the reactive-VM feedback edge this project has refused 3x.
+  - **All cells share ONE interpreter and `setStdout` is a global redirect on it**, so
+    execution is FIFO-serialized page-wide with a per-cell generation token. Two cells within
+    the 600 px `IntersectionObserver` margin is the ordinary case, not a rare race.
 - **Item 159, the print/PDF track, MERGED to `main` 2026-07-31** (`745b3774`, from branch
   `print-pdf-track-2026-07-31`; `./tools/gates.sh` PASSED with all seven canaries verified
   by name, and the pre-push hook green).
   `taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]` renders a
   typeset PDF *from the built HTML* via paged.js + CDP: running heads, folios,
   `@fig-` refs that print as "Figure 3 (p. 12)", an auto list of figures, widow/orphan
-  control and hyphenation. Spec + plan under `docs/superpowers/`. The top of P1 is therefore
-  now **158 (opt-in Pyodide)**.
+  control and hyphenation. Spec + plan under `docs/superpowers/`.
   **Five things a later session must carry:**
   - **The one open defect is CLOSED (2026-07-31), and its recorded cause was wrong on both
     counts.** It was filed as "a figure crossing a page boundary hangs paged.js". It was
@@ -253,8 +289,8 @@ enough to start.**
   **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
   deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
   take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
-  2026-07-29 and five more (165, 166, 162, 161, 169) on 2026-07-30, so the top of the queue is
-  now **158 (opt-in Pyodide)**.
+  2026-07-29, five more (165, 166, 162, 161, 169) on 2026-07-30, and 159 + 158 on 2026-07-31,
+  so the top of the queue is now the **181-188 research-publishing cluster**.
 - **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
   line in the demand-driven tail.
 - **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
@@ -344,17 +380,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
   just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
   trap). Those say so; brainstorm before coding.
 
-158. **Opt-in Pyodide `{python}` cells.** (L, needs-care. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
-     #66. **Its dependency on 153 is discharged: the registry shipped 2026-07-29**, so this
-     is now a `registerLanguage` call plus the bundle question.) Client-side `{python}`
-     backed by Pyodide, feeding the reactive
-     graph like any cell, so a published document stays interactive with numpy/scipy and no
-     kernel. This is what JupyterLite is. **Bundle guard is the whole risk:** Pyodide is 10 MB+,
-     so opt-in per page and vendored offline. Known caveats: **no torch**, and a real cold-start
-     cost. Registry graduate, so it must land as a *registration*, not as surgery — the seam is
-     `window.taliJs.registerLanguage` (client) + `render/client_lang.rs` (server), and `{glsl}`
-     is the worked example of using it.
-
 **Items 181-188 — the research-publishing cluster.** Filed 2026-07-31 from an author-raised
 survey of the academic-web ecosystem; full survey, per-item seams, traps and pins are in
 [2026-07-31-research-publishing-survey.md](2026-07-31-research-publishing-survey.md). **Read that
@@ -362,7 +387,7 @@ file before starting any of them** — it records what Taliesin already leads on
 `repro.rs`, `cite_this.rs`, the generated social card, or launch buttons) and what was
 deliberately rejected (carousels, multi-format export, Distill-as-a-stack). Ranked below by the
 same logic as the rest of P1 (small, independent, dependency-free first), but **the cross-cluster
-ranking against 158/164/167 is an owner call that has not been made** — the cluster sits here
+ranking against 164/167 is an owner call that has not been made** — the cluster sits here
 because 181-183 are the cheapest wins in the file, not because an owner ruled it.
 
 Two shapes, and the split matters: **181-183 improve documents Taliesin already renders** and
