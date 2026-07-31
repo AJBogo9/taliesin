@@ -72,6 +72,11 @@ CANARY_MATH_HOVER="a_real_browser_rasterizes_real_katex_into_a_data_uri"
 # and the numerics bundle at all — every other test of those five features asserts what Rust
 # EMITTED, and would stay green with the whole client runtime broken.
 CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
+# A fourth browser-backed capability, independent of the other three: the print track. It is
+# the only thing that drives paged.js through CDP, and every other print test asserts what
+# Rust EMITTED into the stylesheet — all of which stays green with pagination entirely
+# broken, including the failure mode that produces a plausible but truncated PDF.
+CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -274,7 +279,8 @@ else
             "node:$CANARY_NODE" \
             "chrome:$CANARY_CHROME" \
             "chrome (math hover):$CANARY_MATH_HOVER" \
-            "chrome (reactive client):$CANARY_REACTIVE"; do
+            "chrome (reactive client):$CANARY_REACTIVE" \
+            "chrome (print track):$CANARY_PRINT"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

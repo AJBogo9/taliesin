@@ -159,9 +159,10 @@ fn every_canary_the_gate_script_names_still_exists() {
 
     assert_eq!(
         canaries.len(),
-        6,
+        7,
         "expected one canary per interpreter gate (python, R, node, chrome), plus the math \
-         hover's own browser render and the reactive client's, got {canaries:?}"
+         hover's own browser render, the reactive client's and the print track's, got \
+         {canaries:?}"
     );
 
     let sources: Vec<String> = rust_sources()

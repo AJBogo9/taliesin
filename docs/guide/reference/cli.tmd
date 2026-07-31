@@ -252,6 +252,36 @@ contain a diagram. Nothing is fetched at view time. (The live preview serves the
 vendored copy from a same-origin route instead of inlining it, so the dev loop is offline
 without adding 2.5 MB to every page it re-serves.)
 
+## `taliesin pdf`: a typeset PDF, from the same HTML
+
+    taliesin pdf paper.tmd                    # → paper.pdf, A4
+    taliesin pdf paper.tmd --paper letter     # US Letter (or a5)
+    taliesin pdf paper.tmd -o out/final.pdf   # somewhere else
+    taliesin pdf paper.tmd --keep-html        # keep the paginated HTML to inspect
+
+This is a **paged rendering of the built HTML**, not a second output format. The same
+document the preview serves is laid out into pages by a local headless Chrome, so there is
+no `.tex` intermediate, no second compiler and nothing that can disagree with what you saw
+in the browser. What you get that a printed web page does not have:
+
+- **running heads and folios** — the current section at the top of each page, page numbers
+  at the foot, and neither on the title page;
+- **cross-references that name their page** — `@fig-scree` renders as
+  "Figure 3 (p. 12)" on paper and stays a link on screen;
+- **an automatic list of figures**, with true page numbers;
+- **widow and orphan control, hyphenation, and floats that never split** across a page.
+
+Code cells run first, replaying from `_freeze` when nothing has changed, so figures are
+real rather than empty. `{js}` cells print live: the browser genuinely executes them, so a
+Plot chart or a GLSL shader is captured as it painted. Video falls back to its poster frame.
+
+It needs a local Chrome for the page layout — the same one `read --run` uses. Without one
+it says so and exits non-zero.
+
+**Not yet supported:** whole-book output (point it at one `.tmd`, not a directory) and an
+index. A document whose figure has to move across a page boundary can currently fail to
+paginate; it reports that plainly rather than writing a truncated file.
+
 ## Publishing & sharing
 
 A `--out <dir>` folder (a single doc, a site, or a book) is **plain static HTML** — no

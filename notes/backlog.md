@@ -16,10 +16,41 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 **Fresh session with no context: read this section, then "Standing constraints", then P1. That is
 enough to start.**
 
+- **Item 159, the print/PDF track, shipped 2026-07-31** (branch `print-pdf-track-2026-07-31`).
+  `taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]` renders a
+  typeset PDF *from the built HTML* via paged.js + CDP: running heads, folios,
+  `@fig-` refs that print as "Figure 3 (p. 12)", an auto list of figures, widow/orphan
+  control and hyphenation. Spec + plan under `docs/superpowers/`. The top of P1 is therefore
+  now **158 (opt-in Pyodide)**, with 180 still needing only the author's ruling.
+  **Four things a later session must carry:**
+  - **ONE OPEN DEFECT, deliberately shipped visible rather than hidden.** A document whose
+    figure must move across a page boundary can hang paged.js: it never completes, at any
+    budget. It fails LOUDLY (named error, non-zero exit, never a truncated PDF), and
+    `corpus/print/paged.tmd` still renders as HTML so the corpus walker is unaffected —
+    but that pin does **not** currently produce a PDF. Reproducer: two figures with ~2
+    paragraphs between them works, ~6+ hangs. **Ruled out by bisection** (do not re-test
+    these): Taliesin's enhancer scripts, `break-inside`/`break-before` on figure and
+    figcaption, `max-height` on the image or the wrapper, the LoF's `break-after`, image
+    count, and the settle budget. Not yet tried: capturing the browser console from the
+    print page, and paged.js's own `Handler` hooks.
+  - **Every CSS experiment run before the `<base href>` fix measured broken images and
+    proved nothing.** The print page is written to a temp dir, so relative URLs 404'd and
+    figures rendered ALT TEXT. No test caught it because every live gate written first
+    referenced an image that did not exist — nothing loaded, so nothing visibly failed.
+    **A negative test whose fixture is also absent proves nothing.**
+  - **Chrome 150 implements `@page` margin boxes and `counter(page)` but NOT `string-set`
+    or `target-counter()`** (measured, three syntax variants each, with a positive control).
+    So paged.js is load-bearing, not a fallback — and it CANNOT be driven from the Chrome
+    CLI: `--print-to-pdf` truncates deterministically at 2 pages at every
+    `--virtual-time-budget` from 5 s to 120 s, `--dump-dom` captures it mid-init. CDP is
+    the only route.
+  - **paged.js `auto: false` fires `config.after` IMMEDIATELY, before any pagination.**
+    Stamping completion from it yields a page that captures half-rendered: content present,
+    every `target-counter()` unresolved. The stamp must come from the `preview()` promise.
+
 - **Items 171, 172, 173 and 56's backlinks half shipped 2026-07-31** (branch
   `reader-affordances-2026-07-31`), `./tools/gates.sh` green with all four interpreter gates
-  armed. The top of the P1 queue is therefore **159 (print/PDF)**, with 180 still needing only
-  the author's ruling. Five things a later session should carry:
+  armed. Five things a later session should carry:
   - **Two of the four items' recorded blockers were rot, in the same direction: the thing
     said to be missing already existed.** 171 was filed as needing a `reqwest`/`TcpListener`
     harness; `preview_single_instance.rs` had hand-rolled one all along, so the test cost no
@@ -197,7 +228,7 @@ enough to start.**
   deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
   take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
   2026-07-29 and five more (165, 166, 162, 161, 169) on 2026-07-30, so the top of the queue is
-  now **159 (print/PDF)**, with 180 above it needing only the author's ruling.
+  now **158 (opt-in Pyodide)**, with 180 above it needing only the author's ruling.
 - **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
   line in the demand-driven tail.
 - **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
@@ -300,18 +331,6 @@ that is the anti-bloat rule this file exists under. Two standing conditions appl
      decide: keep as is, change the `⟨…⟩` delimiter, or narrow which of the three hint kinds are
      on by default. **This is a minimal-config question** (perfect the default rather than add a
      knob), so the answer is a better default, not a setting.
-
-159. **Print/PDF track.** (Large. **The deferral is lifted: the author warmed to it 2026-07-29.**
-     [ROADMAP.md](ROADMAP.md) Pillar IV / Wave 5 is the frame, and
-     [FEATURE-IDEAS.md](FEATURE-IDEAS.md) #57 is the substance.) A paged-media rendering
-     **derived from the built HTML**, HTML staying the single source of truth: `@page` running
-     chapter and section heads (`string-set` + `running()`), real folios, `@fig-`/`@sec-` refs
-     that become "Figure 3 (p. 12)" via `target-counter()`, auto list-of-figures and index with
-     true page numbers, widow/orphan control and optical hyphenation; paged.js (vendored) where
-     native paged media is absent; `{js}` and video degrade to a poster frame. Pin:
-     `corpus/print/paged.tmd`. **The line, restated because this is the item most likely to
-     cross it:** the moment it forks into a separate Pandoc/Typst/LaTeX path it has violated
-     HTML-only. It is a *rendering of* the build artifact, not a second compiler target.
 
 158. **Opt-in Pyodide `{python}` cells.** (L, needs-care. [FEATURE-IDEAS.md](FEATURE-IDEAS.md)
      #66. **Its dependency on 153 is discharged: the registry shipped 2026-07-29**, so this
