@@ -262,6 +262,11 @@ async fn capture_pdf(
 }
 
 /// What the print page looked like at the moment the wait gave up.
+///
+/// Feature-gated like [`wait_script`] beside it: its only caller is the CDP loop, so without
+/// the driver this is dead code and `clippy -D warnings` — which runs on default features —
+/// says so.
+#[cfg(feature = "headless-js")]
 #[derive(serde::Deserialize)]
 pub(crate) struct PrintStall {
     /// How many page boxes paged.js had produced. `0` means pagination never began.
@@ -284,6 +289,7 @@ const STALL_PROBE: &str = "function () { return { \
 ///
 /// Pure, so the mapping is unit-tested without a browser — the classifier pattern
 /// `headless_js::classify_js_node` already uses.
+#[cfg(feature = "headless-js")]
 pub(crate) fn stall_summary(s: &PrintStall) -> String {
     if !s.polyfill {
         return "the paged.js polyfill never loaded".to_string();

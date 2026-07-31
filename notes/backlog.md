@@ -37,11 +37,14 @@ enough to start.**
     fonts settled) named the component in a single run and showed pagination had never
     started. **Instrument the failing environment to name the component before bisecting
     inside it.**
-  - **`tools/gates.sh` can exit 0 having run NOTHING.** With no `TALIESIN_PYTHON` that has
-    ipykernel it prints "Refusing to run: a partial run would look green" and returns 0. The
-    by-name canary check is what catches it — this is the second time the script's own
-    result has needed verifying by name. Use
-    `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python ./tools/gates.sh`.
+  - **`cmd | tail` throws away `cmd`'s exit code** — a pipeline reports the LAST stage's
+    status, so `./tools/gates.sh 2>&1 | tail -40` reports `tail`'s 0 no matter what the
+    script did. That misread happened twice in one session and nearly went into the notes as
+    "gates.sh exits 0 having run nothing". It does not: measured directly, it exits **2**
+    when it refuses to start and **1** when a gate fails. Redirect to a file and check `$?`,
+    or use `PIPESTATUS`. Separately: gates.sh needs
+    `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python`, or it refuses to run at all
+    (correctly — "a partial run would look green"), and verify the canaries by name.
   - **Every CSS experiment run before the `<base href>` fix measured broken images and
     proved nothing.** The print page is written to a temp dir, so relative URLs 404'd and
     figures rendered ALT TEXT. No test caught it because every live gate written first
