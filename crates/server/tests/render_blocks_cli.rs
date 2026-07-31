@@ -72,3 +72,57 @@ fn blocks_lists_block_ids_and_sourcepos() {
         "a body block carries its sourcepos: {text}"
     );
 }
+
+/// `render` is a single self-contained page in Build + Inline asset mode, the same shape
+/// `build <file> out.html` produces, so it must degrade a `{pyodide}` cell the same way
+/// (item 158). It did not: it printed a live wrapper with no `<meta name="tali-pyodide-index">`
+/// for the enhancer to boot from, so the only thing a reader could ever see there was an error
+/// box, and the author's Python source, which lives inside that `<script>`, was invisible.
+///
+/// **The needle is the full opening tag, deliberately.** Every Taliesin page inlines the whole
+/// JS bundle, and `pyodide.js` contains the bare string `application/tali-pyodide` in its
+/// `registerLanguage` call, so a `contains("application/tali-pyodide")` here is a claim about
+/// the bundle and is true on a correctly degraded page. Measured on this document:
+/// `<script type="application/tali-pyodide"` occurs 0 times after the fix and 2 times before it.
+#[test]
+fn render_degrades_a_pyodide_cell_to_visible_source_like_a_single_file_build() {
+    let dir = std::env::temp_dir().join(format!("tali-rbcli-{}-pyodide", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let doc = dir.join("doc.tmd");
+    fs::write(
+        &doc,
+        "---\ntitle: Browser Python\n---\n\n```{pyodide}\nimport numpy as np\nnp.arange(3).tolist()\n```\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .arg("render")
+        .arg(&doc)
+        .output()
+        .expect("run render");
+    let html = String::from_utf8_lossy(&out.stdout).into_owned();
+    let _ = fs::remove_dir_all(&dir);
+
+    assert!(out.status.success(), "render exited non-zero");
+    // Known-positive first: without it every assertion below is satisfied by an empty page.
+    assert!(
+        html.contains("<!DOCTYPE html>") && html.contains("Browser Python"),
+        "render produced a page at all: {html:.200}"
+    );
+    assert!(
+        !html.contains("<script type=\"application/tali-pyodide\""),
+        "a `render` page has no runtime to boot, so it must not ship a live `{{pyodide}}` \
+         wrapper: the reader would get an error box and the source would be invisible"
+    );
+    assert!(
+        html.contains("<code class=\"language-python\">"),
+        "the cell must degrade to a visible python listing, the same shape `build` produces"
+    );
+    // `arange`, not `np.arange(3)`: server-side highlighting splits the source into
+    // `<span>`-wrapped tokens, so the multi-token literal never appears contiguously.
+    assert!(
+        html.contains("arange"),
+        "the author's source must remain VISIBLE, not merely stripped"
+    );
+}

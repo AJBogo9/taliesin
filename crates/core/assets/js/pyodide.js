@@ -49,8 +49,11 @@
     if (!base) {
       booting = Promise.reject(
         new Error(
-          "pyodide: this page was built as a single self-contained file, which cannot " +
-            "carry the 12.9 MB runtime. Rebuild with `--out <dir>` for a working page."
+          "pyodide: this page carries no runtime index, so it was built as a single " +
+            "self-contained file, which cannot hold the 12.9 MB runtime. Use `taliesin " +
+            "preview`, or build the document as part of a site (`taliesin build <dir>`), " +
+            "which copies the runtime into `_assets/`. `--out <dir>` does NOT help: a " +
+            "single-document build inlines its assets in that mode too."
         )
       );
       return booting;

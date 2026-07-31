@@ -67,6 +67,14 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
             });
             match rendered {
                 Ok(html) => {
+                    // `render` is a single self-contained page in Build + Inline asset mode,
+                    // exactly like `build <file> out.html`, so it hits the one output path that
+                    // cannot carry the 12.9 MB Pyodide runtime: `pyodide_index_meta` returns
+                    // `""` here and the enhancer has no index URL to boot from. Degrade the same
+                    // way `build.rs` does, or the page ships a live `{pyodide}` wrapper whose
+                    // only possible outcome is an error box. A no-op (byte-identical) when the
+                    // document has no `{pyodide}` cells.
+                    let html = taliesin_core::degrade_pyodide_cells(&html);
                     print!("{html}");
                     ExitCode::SUCCESS
                 }

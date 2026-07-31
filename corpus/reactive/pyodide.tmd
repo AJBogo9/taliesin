@@ -8,8 +8,9 @@ kernel, so nothing runs at build time and no Jupyter kernel is involved. It is a
 different language from `{python}`, which runs against a warm kernel at build time
 and does not share state with anything here.
 
-The runtime is vendored and loads on first scroll into view, so a reader who never
-reaches this section downloads none of it.
+The runtime is vendored and loads lazily: a cell starts fetching it once the cell is
+within about a screen of the viewport, so a reader who stays well away from every
+`{pyodide}` cell downloads none of it.
 
 ```{pyodide}
 #| name: samples
@@ -18,7 +19,8 @@ rng = np.random.default_rng(0)
 rng.normal(size=500).tolist()
 ```
 
-The cell's last expression is its published value. A `{js}` cell consumes it through
+A cell marked `#| name:` publishes its last expression under that name. A `{js}` cell
+consumes it through
 the same reactive graph a slider or a `{glsl}` shader publishes into, one graph, not
 one per language. Its value is `null` until the runtime has finished the first run,
 so a consumer guards on that:
@@ -30,7 +32,8 @@ if (!data) return document.createTextNode("waiting for Python");
 return Plot.rectY(data, Plot.binX({ y: "count" }, { x: (d) => d })).plot({ height: 200 });
 ```
 
-`print` output is shown above the value, exactly as it is in a `{python}` cell:
+A cell without `#| name:` publishes nothing, and its `print` output is shown above
+the returned value, in the same order a `{python}` cell uses:
 
 ```{pyodide}
 import numpy as np
