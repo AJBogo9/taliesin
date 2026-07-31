@@ -80,9 +80,117 @@ fn a_single_file_build_degrades_a_pyodide_cell_to_visible_source() {
         "the author's source must remain VISIBLE, not just deleted: {out}"
     );
     assert!(
-        out.contains("<pre><code class=\"language-python\">"),
+        out.contains("<code class=\"language-python\">"),
         "and it must be marked up as a python listing, the same shape emit.rs uses: {out}"
     );
+}
+
+/// Finding 1 (task-4 review): the old degradation left the wrapper `<div class="cell
+/// tali-pyodide-cell">` and its now-dead `<div class="tali-js-out">` output target
+/// standing around the new `<pre>`, and dropped the wrapper's `data-block-id`/
+/// `data-sourcepos` on the floor instead of moving them — a real regression, since every
+/// emitted block must carry those two attrs (`corpus.rs`). This pins the fix: the WHOLE
+/// wrapper is gone, and its block attrs ride on the surviving `<pre>`.
+#[test]
+fn a_degraded_pyodide_cell_carries_its_block_attrs_and_sheds_the_dead_wrapper() {
+    let body = render(PY).body_html();
+    // Pull the wrapper `<div>`'s own attrs (a content-hash id + sourcepos span, so they
+    // can't be hardcoded) out of the PRE-degrade body, then require the exact same
+    // attribute strings to survive onto the degraded `<pre>` — not just "some
+    // data-block-id somewhere", but THIS block's id and span.
+    let block_id_attr = extract_attr(&body, "data-block-id");
+    let sourcepos_attr = extract_attr(&body, "data-sourcepos");
+
+    let out = degrade_pyodide_cells(&body);
+
+    assert!(
+        out.contains(&block_id_attr),
+        "the wrapper div's {block_id_attr} must move onto the surviving <pre>, not be \
+         dropped: {out}"
+    );
+    assert!(
+        out.contains(&sourcepos_attr),
+        "the wrapper div's {sourcepos_attr} must move onto the surviving <pre>, not be \
+         dropped: {out}"
+    );
+    assert!(
+        out.contains("data-tali-cell=\"pyodide\""),
+        "the reader's show/hide-code control needs something to target: {out}"
+    );
+    assert!(
+        !out.contains("tali-js-out"),
+        "the emptied output div must not survive degradation: {out}"
+    );
+    assert!(
+        !out.contains("tali-pyodide-cell"),
+        "the now-pointless wrapper div must not survive degradation: {out}"
+    );
+}
+
+/// Finding 2 (task-4 review): `degrade_pyodide_cells` reverses `emit_client_cell`'s
+/// `</script` -> `<\/script` escape by a blind string replace, which also un-escapes a
+/// `<\/script` the AUTHOR typed literally — silently eating their backslash. That can't be
+/// fixed after the fact (the HTML alone can't tell the two cases apart), so instead a
+/// render-time warning fires while the real source is still available. This pins the
+/// warning, on its message content, not merely on `warnings` being non-empty.
+#[test]
+fn a_pyodide_cell_with_a_literal_escaped_close_script_warns_at_render_time() {
+    let src = "```{pyodide}\nx = \"literal <\\/script> marker\"\n```\n";
+    let doc = render(src);
+
+    let msg = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("<\\/script"))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a warning naming the literal `<\\/script` sequence; got: {:?}",
+                doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+            )
+        });
+    assert!(
+        msg.message.contains("pyodide"),
+        "the warning should name the cell kind it's about: {}",
+        msg.message
+    );
+    assert!(
+        msg.message.contains("backslash") || msg.message.contains("silently"),
+        "the warning should say what goes wrong (the backslash is lost silently), not just \
+         that the sequence exists: {}",
+        msg.message
+    );
+
+    // A ```{js}``` cell (whose script content is never reversed) must not trip the same
+    // warning — it is specific to the `{pyodide}` degrade path.
+    let js_src = "```{js}\nx = \"literal <\\/script> marker\"\n```\n";
+    let js_doc = render(js_src);
+    assert!(
+        !js_doc
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("<\\/script")),
+        "a {{js}} cell is never round-tripped through degrade_pyodide_cells, so it must not \
+         warn: {:?}",
+        js_doc
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// Extract `name="value"` from `html` as the exact attribute string, so a caller can
+/// assert the SAME attribute (not merely the same attribute name) survived a transform.
+/// Panics on a missing attribute: that is a broken test fixture, not the behavior under
+/// test.
+fn extract_attr(html: &str, name: &str) -> String {
+    let needle = format!("{name}=\"");
+    let start = html
+        .find(&needle)
+        .unwrap_or_else(|| panic!("no {name} attr in {html}"))
+        + needle.len();
+    let end = start + html[start..].find('"').expect("unterminated attr value");
+    format!("{name}=\"{}\"", &html[start..end])
 }
 
 /// The degradation must leave every OTHER client language alone — it is keyed on one mime,

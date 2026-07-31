@@ -773,6 +773,31 @@ fn render_internal_impl(
                     file.clone(),
                 ));
             }
+            // `emit_client_cell` escapes a literal `</script` in the author's source to
+            // `<\/script` so it survives inside the `<script>` element. A single-file
+            // `build` later reverses that escape (`degrade_pyodide_cells`) to recover the
+            // source for a `{pyodide}` cell — the one output path that can't ship the
+            // Pyodide runtime — but the reversal can't tell a real `</script` from an
+            // author-typed literal `<\/script`: both produce the same `<\/script` in the
+            // HTML. Warn HERE, while the real source is still in hand (that call site only
+            // ever sees rendered HTML), rather than let the reversal silently eat the
+            // backslash.
+            if let Some(c) = cell.as_ref()
+                && c.lang == "pyodide"
+                && c.code.contains("<\\/script")
+            {
+                warnings.push(
+                    Warning::new(
+                        "this `{pyodide}` cell's source contains the literal sequence \
+                         `<\\/script`: a single-file `build` degrades `{pyodide}` cells to \
+                         visible source by reversing an escape it applies to a real \
+                         `</script`, and cannot distinguish this literal from one — the \
+                         backslash will be silently dropped in that output"
+                            .to_string(),
+                    )
+                    .at(file.clone(), start_line as u32),
+                );
+            }
             (
                 sp.start.line,
                 sourcepos,
