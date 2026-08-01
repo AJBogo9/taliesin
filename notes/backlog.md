@@ -18,7 +18,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 ## Start here
 
 - **P1 is a ranked build queue, not a menu.** Take from the top: the research-publishing cluster
-  (183-188), then the large swings. **Read
+  (185-188 — 183 and 184 shipped 2026-08-01), then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected. **The cross-cluster
   ranking of 181-188 against 164/167 is an owner call that has not been made.**
@@ -113,25 +113,6 @@ pinned by a target corpus document added in the same change) — but **do not gr
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
 
-183. **Footnotes as margin sidenotes.** (S-M, **needs an owner ruling before code**. Survey §4C+§6.)
-     Footnotes exist, gathered at the page end (`base.css:779`), and margin divs exist; a `[^note]`
-     cannot become a sidenote. Tufte's mechanism is **pure CSS** — a sidenote counter plus a
-     `label.margin-toggle` + `:checked` collapse below the breakpoint, no JS. **The ruling is whether
-     margin placement is the DEFAULT on a wide screen or a `footnotes:` knob**; minimal config argues
-     for the default and against the key. Traps: **the names `.sidenote` and `.marginnote` are
-     already taken** as aliases of `::: {.column-margin}` (`vocab.rs:207-229`), so reuse that
-     container rather than minting a class; collision with an existing `.column-margin` float; and
-     the print track (159) must still print footnotes.
-
-184. **Structured authors + affiliations.** (M. **Substrate for 185/186/187 — land it first.**
-     Survey §4E + §6.) `author:` is a flat string list (`frontmatter.rs:25`) consumed only by
-     `cite_this.rs`. One structured form feeds **three** consumers: the visible byline,
-     `citation_author` + `citation_author_institution`, and JSON-LD `affiliation`. Scalars must stay
-     valid or every corpus doc breaks. Traps: **a new front-matter key trips five drift gates**, and
-     `cite_this.rs`'s render gate (page author → site author, never site title) must not silently
-     change which pages emit a cite box — pin it before touching the parser. Pin: extend
-     `corpus/cite-this/`.
-
 185. **Resource-links row + venue/award badges.** (S, after 184. Survey §6.) The one element every
      fork of the project-page template keeps: Paper / arXiv / Code / Supplementary under the byline.
      **Minimal-config shape is URL inference** (`arxiv.org` → arXiv, `github.com` → Code, `*.pdf` →
@@ -139,7 +120,8 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      block and has no icon concept. Icons must be bundled SVG, never a CDN font. `venue:` also feeds
      186's `citation_conference_title`.
 
-186. **Complete the Scholar + social meta.** (S, `citation_author_institution` needs 184. Survey §6.)
+186. **Complete the Scholar + social meta.** (S, `citation_author_institution` **unblocked** — 184
+     shipped 2026-08-01, so `Author.affiliations` is on the page. Survey §6.)
      `site/meta.rs:148-161` emits `citation_title`, `citation_author`, `citation_publication_date`,
      `citation_journal_title` and `citation_public_url` (re-measured 2026-08-01). Missing:
      `citation_conference_title`, `citation_doi`, `citation_arxiv_id`,
@@ -487,6 +469,34 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-08-01 margin sidenotes + structured authors** (183, 184). **183 was NOT pure CSS**, contra
+  the item: no selector relocates an end-of-document element next to an arbitrary earlier one, so
+  the note is spliced in after its own reference at render time, and there is **no gathered endnote
+  section** (one copy, or all four text projections report every note twice). Two traps that the
+  item did not name and that a re-implementation will hit again: comrak moves every definition to
+  the document end, so the walk meets a reference *before* its definition (hence a pre-pass); and
+  **a block id is hashed from SOURCE lines, not emitted HTML**, so the definitions a block displays
+  must be folded into its hash or editing a note emits no diff op and the preview silently keeps the
+  old text. It also fixed a **pre-existing** collision that 183 would have made constant: on the two
+  TOC grid modes the sticky rail owns the right gutter, so `.column-margin` already drew on top of
+  the rail's rows (measured at 1440px, no footnote involved). **Do not re-file the print
+  fragmentation**: an in-flow printed note splits its paragraph at the marker, the fix is
+  `float: footnote` in the print track (159), and it is recorded in `base.css` beside the rule.
+  **184 diverges from the survey's recorded shape on purpose** — affiliations are written as NAMES
+  and the superscripts derived from first appearance, so there is no author-written index, no
+  `affiliations:` key, and the five-drift-gate trap never applies. **Do not "restore" the indexed
+  form.** Three of the item's claims were false: `authors` is read by `meta.rs`, `feed.rs`,
+  `discovery.rs` and `book.rs` as well as `cite_this.rs`; the byline is a **second parse path** the
+  item never mentions; and that path is `extract_field`, a line scan that skips indented lines and
+  so silently blanks a structured byline. Measured while pinning the cite gate:
+  **`author: ""` suppresses the cite box** rather than falling through to the site author (a
+  one-element list never takes the empty branch). JSON-LD also read the *site* config's authors for
+  a page naming its own, so `citation_author` and the JSON-LD disagreed about who wrote the page;
+  now the same page-then-site chain. Browser-verified at 1440px and 390px, which is what caught the
+  one defect no test would have: **an inline `<li>` has no list marker**, so laying the affiliations
+  out on one line silently dropped every number while the `1,2` superscripts beside the names went
+  on referring to them. The numbers are emitted as content now — **do not "simplify" them back to a
+  list marker.**
 - **2026-08-01 pyodide residuals + layout escapes** (190, 191, 181): a `{pyodide}` cell now runs in
   **every** delivery mode with room for the runtime — verified in a browser running real NumPy, not
   just asserted: `--out <dir>`, a site root page, live deck preview, and a deck inside a site build.

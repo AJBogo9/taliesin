@@ -187,8 +187,11 @@ fn a_structured_author_list_renders_a_byline_with_numbered_affiliations() {
         "Charles shares institution 1 and adds 2: {h}"
     );
     assert!(
-        h.contains("<li>Analytical Engine Institute</li><li>Somewhere Else</li>"),
-        "the list is ordered by first appearance: {h}"
+        h.contains(
+            "<li><sup class=\"tali-affiliation-num\">1</sup>Analytical Engine Institute</li>\
+             <li><sup class=\"tali-affiliation-num\">2</sup>Somewhere Else</li>"
+        ),
+        "the numbers are emitted as content, in first-appearance order: {h}"
     );
     assert!(h.contains("* Equal contribution"), "equal note: {h}");
     // One entry for an institution two authors share — the reason the strings are the

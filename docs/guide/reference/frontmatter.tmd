@@ -38,7 +38,7 @@ or `{ file: … }` map, or a list of those.
 |---|---|---|
 | `title` | string | The document title. Drives `<title>`, the title block, OpenGraph/social meta, and the nav/listing label |
 | `subtitle` | string | A secondary line shown under the title in the title block |
-| `author` | string | Author name (shown in the title block, used in social meta) |
+| `author` | string, list, or list of maps | Author name(s). A string or list of strings is a plain byline; the [structured form](#sec-authors) adds affiliations, ORCIDs and links |
 | `date` | string | Publication date (shown in the title block; sorts a `listing:`) |
 | `description` | string | Summary used for the `<meta name="description">` and social cards |
 | `lang` | string | BCP-47 language tag for `<html lang>` (default `en`) |
@@ -119,6 +119,51 @@ in their own sections below.
 | Key | Type | Meaning |
 |---|---|---|
 | `datasets` | list of maps | Annotations for the data files [`{{< dataset >}}`](shortcodes.tmd) cites. Each entry is addressed by `path:` (a file in the project) or `url:` (one hosted elsewhere), and carries only what the file cannot say about itself: `title:`, `licence:` (or `license:`), `source:`, `description:`, `sha256:`, `bytes:`. See [`datasets:`](#datasets-where-the-data-came-from) |
+
+## `author:` (who wrote it) {#sec-authors}
+
+The short spellings are what most pages want, and neither is going anywhere:
+
+```yaml
+author: "Ada Lovelace"                      # one author
+author: ["Ada Lovelace", "Grace Hopper"]    # several
+```
+
+For a paper or project page, an author is more than a name. The **structured** form
+takes a list of maps:
+
+```yaml
+author:
+  - name: "Ada Lovelace"
+    affiliation: "Analytical Engine Institute"
+    orcid: "0000-0002-1825-0097"
+    url: "https://example.org/ada"
+    equal: true
+  - name: "Charles Babbage"
+    affiliation: ["Analytical Engine Institute", "Analytical Society"]
+    equal: true
+```
+
+| Sub-key | Type | Meaning |
+|---|---|---|
+| `name` | string | The name, as it should read in the byline. The only required part |
+| `affiliation` | string or list | Institution(s). Written as **names**, not as index numbers |
+| `orcid` | string | An ORCID; published as a resolvable `https://orcid.org/…` identifier |
+| `url` | string | A personal page; makes the name a link in the byline |
+| `email` | string | Reaches the metadata only. Deliberately *not* rendered as a `mailto:` link, since a published address is what harvesters read |
+| `equal` | boolean | Marks an equal-contribution author (`*` in the byline, with a note under it) |
+
+**You never write an affiliation number.** Every other tool in this space asks you to
+keep a list of institutions and put `affiliation: 1` against each author. Taliesin reads
+the institution's *name* and derives the superscripts from the order they first appear,
+so two authors who name the same institution share a number automatically, there is no
+second list to keep in sync, and reordering authors cannot silently re-attribute anyone.
+In the example above both authors show `1`, and Babbage adds `2`.
+
+One declaration feeds everything downstream that has to name a person: the byline, the
+Google Scholar `citation_author` tags, the JSON-LD `Person` and its `affiliation`, the
+Atom feed, and all three formats in the "Cite this" box. A typo in a sub-key is a
+warning, not a silent drop.
 
 ## `datasets:` (where the data came from) {#datasets-where-the-data-came-from}
 

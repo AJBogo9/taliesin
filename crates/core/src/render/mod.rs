@@ -1598,9 +1598,12 @@ fn byline_html(authors: &[crate::author::Author]) -> Option<String> {
 /// any author claims one. Empty when no author declared either, so a page with a plain
 /// `author: Name` emits exactly the title block it always did.
 ///
-/// An `<ol>` because the numbers ARE the content here — they are what the superscripts
-/// beside the names refer to — so they must survive with the text rather than being drawn
-/// by CSS a copy-paste would drop.
+/// An `<ol>` for the semantics, but the number is written into the markup rather than
+/// left to the list marker. Measured in a browser: laying the entries out inline (so two
+/// institutions read as one quiet line instead of a stacked block) needs `display: inline`
+/// on the `<li>`, and an inline list item **has no marker at all** — the numbers simply
+/// vanished, leaving the `1,2` superscripts beside the names pointing at nothing. The
+/// numbers are the content here, not decoration, so they are emitted as content.
 fn affiliations_html(authors: &[crate::author::Author]) -> String {
     let index = crate::author::affiliation_index(authors);
     let any_equal = authors.iter().any(|a| a.equal);
@@ -1610,8 +1613,12 @@ fn affiliations_html(authors: &[crate::author::Author]) -> String {
     let mut out = String::from("<div class=\"tali-affiliations\">");
     if !index.is_empty() {
         out.push_str("<ol class=\"tali-affiliation-list\">");
-        for aff in &index {
-            out.push_str(&format!("<li>{}</li>", html_escape(aff)));
+        for (i, aff) in index.iter().enumerate() {
+            out.push_str(&format!(
+                "<li><sup class=\"tali-affiliation-num\">{}</sup>{}</li>",
+                i + 1,
+                html_escape(aff)
+            ));
         }
         out.push_str("</ol>");
     }

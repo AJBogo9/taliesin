@@ -476,8 +476,13 @@
      would out-weigh the title it sits under. */
   .tali-affiliations { margin: .35rem 0 0; font: 13px/1.5 var(--tali-font-head);
     color: var(--tali-muted); }
-  .tali-affiliation-list { margin: 0; padding: 0; list-style-position: inside; }
+  /* `list-style: none` because the number is emitted as CONTENT, not drawn by the
+     marker: an inline `<li>` has no marker at all, so relying on it silently dropped
+     every number while the superscripts beside the names kept referring to them. */
+  .tali-affiliation-list { margin: 0; padding: 0; list-style: none; }
   .tali-affiliation-list li { display: inline; margin-right: .9rem; }
+  .tali-affiliation-num { font-size: .75em; line-height: 0; vertical-align: super;
+    margin-right: .2em; color: var(--tali-accent); }
   .tali-equal-note { margin: .2rem 0 0; }
   pre { position: relative; padding: 1rem; border-radius: var(--tali-radius-md); overflow: auto; font-size: .9em;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
