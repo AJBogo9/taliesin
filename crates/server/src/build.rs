@@ -285,13 +285,25 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // A single-doc build (`out.html` or `--out <dir>`) always inlines (`AssetMode::Inline`),
-    // and Build-mode Inline ships no Pyodide runtime (`pyodide_index_meta` returns `""` — see
-    // `render/pyodide.rs`): this is the one output path that cannot carry a 12.9 MB directory.
-    // Degrade any `{pyodide}` cell to visible highlighted source rather than shipping a dead,
-    // invisible `<script>` with no runtime to run it. A no-op (byte-identical) when the page
-    // has no `{pyodide}` cells.
-    let html = taliesin_core::degrade_pyodide_cells(&html);
+    // A single-doc build always inlines (`AssetMode::Inline`), so Build-mode Inline ships no
+    // Pyodide runtime (`pyodide_index_meta` returns `""` — see `render/pyodide.rs`). What
+    // happens next depends on whether the output has room for a 12.9 MB directory, which only
+    // this caller knows:
+    //
+    //   * `build doc.tmd out.html` — one self-contained file, nowhere to put the runtime.
+    //     Degrade every `{pyodide}` cell to visible highlighted source rather than ship a
+    //     dead, invisible `<script>` with no runtime to run it.
+    //   * `build doc.tmd --out <dir>` — a portable FOLDER, which already carries copied local
+    //     assets beside `index.html`. It can hold `_assets/<PYODIDE_DIR_NAME>/` just as a site
+    //     build does, so the cell stays live and the page gets the index `<meta>` instead.
+    //     The page sits at the folder root, so its prefix to `_assets/` is empty.
+    //
+    // Both are no-ops (byte-identical) when the page has no `{pyodide}` cells.
+    let html = if out_dir.is_some() {
+        taliesin_core::attach_pyodide_index(&html, "")
+    } else {
+        taliesin_core::degrade_pyodide_cells(&html)
+    };
 
     // Offline-guarantee nudge: a built page keeps any external reference the author wrote
     // (a remote image, an external stylesheet, a remote/bare `{js}` import) verbatim, so a
@@ -775,6 +787,21 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
         Path::new(""),
         Some(&base.join("_freeze").join(crate::image_opt::CACHE_SUBDIR)),
     );
+    // The vendored Pyodide runtime, on the same "write only if something links it" rule the
+    // site build uses: the needle is the un-hashed directory name, exactly as it appears
+    // inside the `<meta>` `attach_pyodide_index` just stamped. Without this the meta would
+    // point at a directory that was never written — a 404 at boot, which is strictly worse
+    // than the degraded listing this path used to emit.
+    if optimized.contains(taliesin_core::PYODIDE_DIR_NAME)
+        && let Err(e) = write_pyodide_payload(dir)
+    {
+        log::error(&format!(
+            "cannot write {}/_assets/{}: {e}",
+            dir.display(),
+            taliesin_core::PYODIDE_DIR_NAME
+        ));
+        return false;
+    }
     let index = dir.join("index.html");
     if let Err(e) = std::fs::write(&index, &optimized) {
         log::error(&format!("cannot write {}: {e}", index.display()));

@@ -1087,6 +1087,9 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         boot = protocol::boot_id(),
     );
     taliesin_core::assemble_deck_page(&taliesin_core::DeckParts {
+        // A live deck resolves `{pyodide}` against the same `/_taliesin/pyodide-<v>/` route
+        // this server already serves (`serve/mod.rs`'s payload route).
+        mode: taliesin_core::OutputMode::Preview,
         // No social meta for a live preview: nothing scrapes a localhost deck, and the
         // built deck is where a shared link actually comes from.
         social: "",

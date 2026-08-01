@@ -292,12 +292,15 @@ would need a network fetch, which Taliesin does not do, so `import scipy` fails 
 Python's own traceback plus a note explaining that only the stdlib and NumPy ship
 with the page.
 
-A single self-contained HTML file cannot carry the 12.9 MB runtime, so
-`taliesin build file.tmd out.html` (and `--out <dir>`, which also inlines its assets)
-degrades a `{pyodide}` cell to a visible, highlighted source listing instead of
-running it. The output modes where a `{pyodide}` cell actually runs are `taliesin
-preview` and a multi-page **site** build (`taliesin build <dir>`), which copies the
-runtime into `_assets/` beside the pages.
+A `{pyodide}` cell runs everywhere the output has room for the 12.9 MB runtime beside
+the page: `taliesin preview`, a portable folder (`taliesin build file.tmd --out
+<dir>`), a multi-page **site** build (`taliesin build <dir>`), and a slide deck in any
+of them. Each copies the runtime into `_assets/` next to what it built.
+
+The one exception is a **single self-contained `.html` file**, which by definition has
+no beside: `taliesin build file.tmd out.html` and `taliesin render` degrade a
+`{pyodide}` cell to a visible, highlighted source listing rather than ship a cell that
+could only ever show an error.
 
 ## Scrollytelling: `::: {.scrolly}`
 

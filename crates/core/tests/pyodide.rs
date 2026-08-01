@@ -274,3 +274,161 @@ fn bare_output_keeps_a_pyodide_cells_source_as_a_listing_not_an_empty_husk() {
         "and bare output still ships no client-cell script"
     );
 }
+
+/// Item 190c: the vendored version was typed as a literal TWICE — in `PYODIDE_DIR_NAME` and
+/// again inside `PREVIEW_PYODIDE_DIR` — with nothing tying either to the bytes they name.
+///
+/// Both failure modes are silent. Bumping the payload without bumping the constants leaves a
+/// *stale directory name* on a payload that changed, and the build serves that directory with
+/// `Cache-Control: immutable`, so a reader who visited before the bump keeps the old runtime
+/// forever. Bumping one constant and not the other splits the preview route from the build's
+/// `_assets/` path. Nothing else in the suite reads upstream's version, so a wrong name here
+/// reaches the reader's browser as a 404 at boot and nowhere earlier.
+///
+/// Upstream's own `package.json` is the source of truth (it is vendored for exactly this and
+/// is not part of the served payload), the same anchor
+/// `third_party.rs::the_pyodide_version_and_licence_claims_match_the_vendored_runtime` uses
+/// for THIRD_PARTY.md.
+#[test]
+fn the_vendored_pyodide_version_is_locked_to_the_payload() {
+    let core = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let meta = std::fs::read_to_string(core.join("assets/pyodide/package.json"))
+        .expect("the vendored pyodide package.json should exist");
+    let anchor = "\"version\"";
+    let rest = &meta[meta.find(anchor).expect("a `version` field") + anchor.len()..];
+    let rest = &rest[rest.find('"').expect("a quoted value") + 1..];
+    let version = &rest[..rest.find('"').expect("a terminated value")];
+
+    assert_eq!(
+        PYODIDE_DIR_NAME,
+        format!("pyodide-{version}"),
+        "the version-stamped directory name must name the payload actually vendored under \
+         `assets/pyodide/` (package.json says `{version}`) — a stale name is served immutable"
+    );
+    // The derived form, pinned as a value rather than by construction: both constants are
+    // public API that the build (`_assets/<dir>/`) and both dev servers (the route) resolve
+    // independently, and a reader only ever sees the mismatch as a failed module import.
+    assert_eq!(
+        PREVIEW_PYODIDE_DIR,
+        format!("/_taliesin/{PYODIDE_DIR_NAME}/"),
+        "the preview route and the build's `_assets/` directory must name the same version"
+    );
+}
+
+/// Item 190a: a deck assembles its own page, and that shell never stamped the runtime index.
+///
+/// The consequence was narrow and total: a `{pyodide}` cell on a slide rendered, its enhancer
+/// loaded, and `boot()` then rejected with "this page carries no runtime index" — in live
+/// preview, where the route serving that runtime was already up and answering. No server-side
+/// test saw it, because every existing assertion went through the *page* assembler.
+#[test]
+fn a_deck_stamps_the_pyodide_runtime_index_in_every_mode_that_can_carry_it() {
+    let deck = render(&format!(
+        "---\ntitle: D\nformat: deck\n---\n\n## Slide\n\n{PY}"
+    ));
+    assert_eq!(
+        deck.format,
+        taliesin_core::DocFormat::Reveal,
+        "the fixture must actually be a deck, or this asserts nothing about the deck shell"
+    );
+
+    let preview = taliesin_core::render_doc_to_page(&deck, "d", OutputMode::Preview);
+    assert!(
+        preview.contains(&format!(
+            "<meta name=\"tali-pyodide-index\" content=\"{PREVIEW_PYODIDE_DIR}\">"
+        )),
+        "a live deck must resolve the runtime against the route the server already serves"
+    );
+
+    // A deck in a SITE build links the shared `_assets/`. The base is recovered from
+    // `deck_js`, not `app_js`: a deck deliberately links no page bundle, so `app_js` is `""`
+    // here and the page assembler's trick would yield a root-relative path that 404s for any
+    // deck below the site root. `sub/talk.html` is exactly that case.
+    let external = taliesin_core::render_deck_to_page_external(
+        &deck,
+        "d",
+        taliesin_core::ExternalAssets {
+            app_css: "",
+            app_js: "",
+            katex_css: "../_assets/katex.css",
+            mermaid_js: "../_assets/mermaid.js",
+            jslibs_js: "../_assets/jslibs.js",
+            deck_css: "../_assets/deck.abc.css",
+            deck_js: "../_assets/deck.abc.js",
+            font_preload: "",
+        },
+    );
+    assert!(
+        external.contains(&format!(
+            "<meta name=\"tali-pyodide-index\" content=\"../_assets/{PYODIDE_DIR_NAME}/\">"
+        )),
+        "a nested site deck must climb to `_assets/` with the same prefix its deck.js used: \
+         {external:.600}"
+    );
+    // The meta alone is not enough: the External arm gated the shared client-cell runtime on
+    // `has_js_cells` (i.e. `{js}` only), so a deck whose only cells were `{pyodide}` shipped
+    // an index pointing at a runtime nothing would ever load.
+    assert!(
+        external.contains("window.taliJs.registerLanguage(\"application/tali-pyodide\""),
+        "a site deck with a `{{pyodide}}` cell must ship the pyodide enhancer"
+    );
+
+    // The control: a deck with no `{pyodide}` cell must stay clean in both modes, or the gate
+    // is not a gate.
+    let plain = render("---\ntitle: D\nformat: deck\n---\n\n## Slide\n\nProse only.\n");
+    for mode in [OutputMode::Preview, OutputMode::Build] {
+        assert!(
+            !taliesin_core::render_doc_to_page(&plain, "d", mode)
+                .contains("<meta name=\"tali-pyodide-index\""),
+            "a deck with no `{{pyodide}}` cell must never stamp the index meta"
+        );
+    }
+}
+
+/// Item 190b: `build doc.tmd --out <dir>` produces a portable FOLDER, which has room for the
+/// runtime beside `index.html` exactly as a site build does — but it inlines its assets, so it
+/// took the single-file path and degraded a cell that could have run.
+///
+/// The needle here is why this is not `has_client_cells_of`: `assets/js/pyodide.js` contains
+/// the bare mime string (it calls `registerLanguage` with it) and every page inlines its whole
+/// JS payload, so on a finished page the bare needle is true whenever the enhancer shipped.
+#[test]
+fn attaching_the_runtime_index_is_precise_about_what_counts_as_a_cell() {
+    let page = taliesin_core::render_doc_to_page(&render(PY), "t", OutputMode::Build);
+    assert!(
+        !page.contains("<meta name=\"tali-pyodide-index\""),
+        "the inline assembler must still emit no index — the folder path adds it afterwards"
+    );
+
+    let attached = taliesin_core::attach_pyodide_index(&page, "");
+    assert!(
+        attached.contains(&format!(
+            "<meta name=\"tali-pyodide-index\" content=\"_assets/{PYODIDE_DIR_NAME}/\">"
+        )),
+        "a page at a folder's root reaches `_assets/` with no climb"
+    );
+    assert!(
+        attached.contains("</head>")
+            && attached.find("tali-pyodide-index") < attached.find("</head>"),
+        "the meta must land inside <head>, where the enhancer's querySelector looks"
+    );
+    assert!(
+        attached.contains("<script type=\"application/tali-pyodide\""),
+        "and the cell must NOT be degraded on this path — carrying the runtime is the point"
+    );
+
+    // The control that the mime-string trap would fail: a `{js}` page still inlines
+    // `pyodide.js` in Preview mode (every gate is open there), so a bare-mime needle would
+    // call this a pyodide page and stamp an index for a runtime it will never load.
+    let js_preview = taliesin_core::render_doc_to_page(&render(JS), "t", OutputMode::Preview);
+    assert!(
+        js_preview.contains("\"application/tali-pyodide\""),
+        "precondition: the preview page does inline the enhancer's mime string, which is the \
+         whole reason this test exists"
+    );
+    assert_eq!(
+        taliesin_core::attach_pyodide_index(&js_preview, ""),
+        js_preview,
+        "a page with no `{{pyodide}}` CELL must come back byte-identical"
+    );
+}

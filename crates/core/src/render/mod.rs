@@ -140,8 +140,8 @@ pub(crate) use page::site_page_title;
 use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 mod pyodide;
 pub use pyodide::{
-    PREVIEW_PYODIDE_DIR, PYODIDE_DIR_NAME, degrade_pyodide_cells, pyodide_index_meta,
-    pyodide_payload,
+    PREVIEW_PYODIDE_DIR, PYODIDE_DIR_NAME, attach_pyodide_index, degrade_pyodide_cells,
+    pyodide_index_meta, pyodide_payload,
 };
 
 /// Render a `.tmd` source string into the `RenderedDoc` block model: the parse

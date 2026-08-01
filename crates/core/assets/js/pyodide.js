@@ -37,7 +37,22 @@
   /** The build/serve-time index URL, stamped into the head by render/pyodide.rs. */
   function indexUrl() {
     var m = document.querySelector('meta[name="tali-pyodide-index"]');
-    return (m && m.getAttribute("content")) || "";
+    var raw = (m && m.getAttribute("content")) || "";
+    if (!raw) return "";
+    // Resolve to an ABSOLUTE url before it reaches `import()`. The stamped value is
+    // page-relative, and for a page at the root of its output tree that is `_assets/…` with
+    // no leading `./` — which `import()` reads as a BARE module specifier (a package name)
+    // and rejects with "Failed to resolve module specifier", never attempting a fetch.
+    //
+    // This bit only the ROOT page of a build, which is why it survived: a nested chapter's
+    // `../_assets/…` is a valid relative specifier and works, and the preview's
+    // `/_taliesin/…` is absolute. Measured on a two-page site: `sub/nested.html` ran and
+    // `index.html` failed at boot with no server-side symptom.
+    //
+    // `document.baseURI` (not the script's own url) keeps the page-relative anchoring that
+    // render/page.rs relies on when it explains why this runtime stays inline in External
+    // asset mode.
+    return new URL(raw, document.baseURI).href;
   }
 
   /** One boot per page, shared by every cell. @type {Promise<any> | null} */
@@ -50,10 +65,10 @@
       booting = Promise.reject(
         new Error(
           "pyodide: this page carries no runtime index, so it was built as a single " +
-            "self-contained file, which cannot hold the 12.9 MB runtime. Use `taliesin " +
-            "preview`, or build the document as part of a site (`taliesin build <dir>`), " +
-            "which copies the runtime into `_assets/`. `--out <dir>` does NOT help: a " +
-            "single-document build inlines its assets in that mode too."
+            "self-contained .html file, which cannot hold the 12.9 MB runtime. Every " +
+            "other path can: use `taliesin preview`, build the document into a folder " +
+            "(`taliesin build doc.tmd --out <dir>`), or build it as part of a site " +
+            "(`taliesin build <dir>`). All three copy the runtime beside the page."
         )
       );
       return booting;

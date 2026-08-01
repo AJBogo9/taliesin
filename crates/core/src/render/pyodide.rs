@@ -9,14 +9,31 @@
 
 use crate::OutputMode;
 
+/// The vendored Pyodide version, as ONE literal.
+///
+/// A macro rather than a `const` because both public paths below are `const` and there is no
+/// stable const string concatenation: `concat!` takes literals, so the macro is what lets the
+/// version be written once and expanded into each. Before this, the version was typed twice
+/// and a re-vendor that updated only one left the preview route serving
+/// `/_taliesin/pyodide-<old>/` while the build wrote `_assets/pyodide-<new>/` — under
+/// `Cache-Control: immutable`, which is the part that makes it expensive rather than merely
+/// wrong. `the_vendored_pyodide_version_is_locked_to_the_payload` ties this literal to
+/// upstream's own `package.json`, so bumping the payload without bumping this goes red.
+macro_rules! pyodide_version {
+    () => {
+        "314.0.3"
+    };
+}
+
 /// The version-stamped directory name, shared by the preview route and the build's
-/// `_assets/`. Bumping Pyodide means bumping this, which busts every reader's cache.
-pub const PYODIDE_DIR_NAME: &str = "pyodide-314.0.3";
+/// `_assets/`. Bumping Pyodide means bumping [`pyodide_version!`], which busts every
+/// reader's cache.
+pub const PYODIDE_DIR_NAME: &str = concat!("pyodide-", pyodide_version!());
 
 /// Same-origin path both dev servers serve the vendored runtime from. A route rather than an
 /// inline blob for the same reason `PREVIEW_MERMAID_PATH` is one, only more so: the page
 /// shell is re-served on every navigation, and this payload is 12.9 MB.
-pub const PREVIEW_PYODIDE_DIR: &str = "/_taliesin/pyodide-314.0.3/";
+pub const PREVIEW_PYODIDE_DIR: &str = concat!("/_taliesin/pyodide-", pyodide_version!(), "/");
 
 macro_rules! payload_file {
     ($name:literal) => {
@@ -59,6 +76,52 @@ pub fn pyodide_index_meta(body: &str, mode: OutputMode, base: Option<&str>) -> S
         None => return String::new(),
     };
     format!("<meta name=\"tali-pyodide-index\" content=\"{url}\">")
+}
+
+/// True if `html` carries a live `{pyodide}` **cell**, as opposed to merely mentioning the
+/// mime type.
+///
+/// **Why not [`crate::render::has_client_cells_of`] here.** That helper needles the bare mime
+/// string, which is correct against a rendered *body* but wrong against a finished *page*:
+/// `assets/js/pyodide.js` calls `registerLanguage("application/tali-pyodide", …)`, and every
+/// Taliesin page inlines its whole JS payload — so on a full page the bare needle is true
+/// whenever the enhancer shipped, which in `Preview` is unconditional. The `<script type=`
+/// prefix appears only in an emitted cell wrapper, so it distinguishes the two.
+fn has_pyodide_cell_markup(html: &str) -> bool {
+    html.contains("<script type=\"application/tali-pyodide\"")
+}
+
+/// Stamp the runtime index `<meta>` into an already-assembled page, for the one build path
+/// that renders inline but still has somewhere to put a 12.9 MB directory: `build
+/// <file.tmd> --out <dir>`.
+///
+/// **Why this is a post-pass and not an asset mode.** A portable folder inlines its CSS/JS on
+/// purpose — being one directory you can move is the point of it — so it is `AssetMode::Inline`
+/// like every other single-document output, and the inline assembler correctly emits no index
+/// (a single `.html` file cannot carry the runtime). Only the *caller* knows a directory came
+/// with it. Rather than thread a fourth asset mode through the whole page assembler for one
+/// output path, this mirrors [`degrade_pyodide_cells`] — the other post-pass that runs over
+/// finished page HTML at exactly the same point in `build.rs` — and the build picks one of the
+/// two.
+///
+/// `base` is the page-relative prefix to `_assets/`; `""` for the folder's root `index.html`.
+/// A no-op (byte-identical) when the page has no `{pyodide}` cell, so every other build is
+/// unaffected. Inserts before the first `</head>`, which both the page shell and the deck
+/// shell emit.
+pub fn attach_pyodide_index(html: &str, base: &str) -> String {
+    if !has_pyodide_cell_markup(html) {
+        return html.to_string();
+    }
+    let meta = format!(
+        "<meta name=\"tali-pyodide-index\" content=\"{base}_assets/{PYODIDE_DIR_NAME}/\">\n"
+    );
+    match html.find("</head>") {
+        Some(i) => format!("{}{meta}{}", &html[..i], &html[i..]),
+        // No `</head>` to anchor to: the shape has drifted from both assemblers. Leave the
+        // page alone rather than guess at a position — a meta in the wrong place is worse
+        // than the degraded listing the caller would otherwise have produced.
+        None => html.to_string(),
+    }
 }
 
 /// Rewrite every `{pyodide}` wrapper into a single highlighted `<pre>` of its source, for

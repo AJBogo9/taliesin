@@ -17,6 +17,11 @@ pub(super) const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 /// live-deck server fills `extra_head`/`slides_attr`/`after_deck` and composes
 /// its own client-driven `tail`. The shared `<head>` lives once in the builder.
 pub struct DeckParts<'a> {
+    /// How the deck is emitted: live `Preview` or static `Build`. Read only to resolve the
+    /// `{pyodide}` runtime index (a preview serves it from its own route, a build from
+    /// `_assets/`), the one head payload that cannot be derived from [`DeckParts::assets`]
+    /// alone. `Bare` never reaches here — `--bare` on a deck is refused at the CLI.
+    pub mode: OutputMode,
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
     /// Pre-built `description`/OpenGraph/Twitter `<meta>` block, or `""`. A standalone
@@ -116,6 +121,27 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
             (style, katex, js_head_html)
         }
     };
+    // The `{pyodide}` runtime index. A deck assembles its own page, so before this it was
+    // the ONE shell that never emitted the tag: a `{pyodide}` cell on a slide rendered, its
+    // enhancer loaded, and then failed at boot with "this page carries no runtime index" —
+    // in live preview, where the route serving that runtime was already up.
+    //
+    // The External base is recovered from `deck_js`, NOT `app_js` as the page assembler
+    // does: a deck deliberately links no page bundle (`app_js` is `""` for a deck in a site
+    // build), so reusing the page's trick would silently yield a root-relative `_assets/`
+    // and 404 for any deck below the site root.
+    let pyodide_meta = match &p.assets {
+        AssetMode::Inline => pyodide_index_meta(p.slides, p.mode, None),
+        AssetMode::External(a) => {
+            let base = a.deck_js.split_once("_assets/").map_or("", |(rel, _)| rel);
+            pyodide_index_meta(p.slides, p.mode, Some(base))
+        }
+    };
+    let js_head_html = if pyodide_meta.is_empty() {
+        js_head_html
+    } else {
+        format!("{js_head_html}\n{pyodide_meta}")
+    };
     // `theme` comes after the deck's own stylesheet so it overrides it; the css
     // folded into `include-in-header` follows last.
     format!(
@@ -203,8 +229,25 @@ pub(super) fn deck_page_from_doc(
             } else {
                 String::new()
             };
-            let tali_js = if has_js_cells(&slides) {
-                format!("\n<script>{TALIESIN_JS}</script>")
+            // Gated on `has_client_cells`, NOT `has_js_cells`: every registered client-side
+            // language runs through this one runtime, and each language's own enhancer
+            // registers into the object this script defines. Gating on `{js}` alone meant a
+            // deck whose only cells were `{pyodide}` or `{glsl}` shipped neither the runtime
+            // nor the enhancer in a site build, so the cells were inert markup. The Inline
+            // arm never had this gap (`code_scripts_for` gates each language separately);
+            // this arm is the hand-rolled copy that drifted from it.
+            let tali_js = if has_client_cells(&slides) {
+                let glsl = if has_client_cells_of(&slides, "glsl") {
+                    format!("\n<script>{GLSL_JS}</script>")
+                } else {
+                    String::new()
+                };
+                let pyodide = if has_client_cells_of(&slides, "pyodide") {
+                    format!("\n<script>{PYODIDE_JS}</script>")
+                } else {
+                    String::new()
+                };
+                format!("\n<script>{TALIESIN_JS}</script>{glsl}{pyodide}")
             } else {
                 String::new()
             };
@@ -243,6 +286,7 @@ pub(super) fn deck_page_from_doc(
         social_meta_head(Some(title), doc.description.as_deref(), false)
     };
     assemble_deck_page(&DeckParts {
+        mode,
         title: &t,
         social: &social,
         lang: doc.lang.as_deref().unwrap_or("en"),
