@@ -77,6 +77,10 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("toc", "Show a table of contents."),
         ("bibliography", "Path(s) to `.bib` file(s) for citations."),
+        (
+            "doi",
+            "The published record's DOI, written bare or as a `doi.org` URL.",
+        ),
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("hero", "Landing-page hero block configuration."),

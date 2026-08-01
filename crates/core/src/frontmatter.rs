@@ -54,6 +54,9 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Citations. `csl` is recognized but NOT honored; see UNSUPPORTED_KEYS.
     "bibliography",
     "csl",
+    // The published record's own identifier. Normalized to its bare form at parse
+    // (`site::frontmatter::normalize_doi`), so every consumer reads one spelling.
+    "doi",
     // Execution
     "execute",
     // Listings / project pages

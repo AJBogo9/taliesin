@@ -365,6 +365,10 @@
         "name": "bibliography"
       },
       {
+        "description": "The published record's DOI, written bare or as a `doi.org` URL.",
+        "name": "doi"
+      },
+      {
         "description": "Document-level code-cell execution defaults.",
         "name": "execute"
       },

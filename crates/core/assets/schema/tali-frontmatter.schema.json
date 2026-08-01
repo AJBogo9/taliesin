@@ -10,6 +10,7 @@
     "datasets": {},
     "date": {},
     "description": {},
+    "doi": {},
     "draft": {},
     "execute": {
       "additionalProperties": false,

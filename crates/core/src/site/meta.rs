@@ -47,6 +47,21 @@ fn emit_social(
     }
     if let Some(img) = image {
         h.push_str(&meta("property", "og:image", img));
+        // Both dimensions are known without measuring anything: `image` is ALWAYS the
+        // build-generated card (see this module's header), which is `CARD_W`x`CARD_H` by
+        // construction on both the page and the deck path. LinkedIn in particular renders a
+        // thumbnail rather than a large card when they are missing, so a card page silently
+        // degrades to the shape the card exists to avoid.
+        h.push_str(&meta(
+            "property",
+            "og:image:width",
+            &card::CARD_W.to_string(),
+        ));
+        h.push_str(&meta(
+            "property",
+            "og:image:height",
+            &card::CARD_H.to_string(),
+        ));
     }
     h.push_str(&meta(
         "name",
@@ -147,8 +162,15 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         if !title.is_empty() {
             h.push_str(&meta("name", "citation_title", title));
         }
+        // Scholar reads `citation_author_institution` POSITIONALLY: it belongs to the
+        // `citation_author` immediately above it. Emitting every author and then every
+        // institution parses as "the last author holds all of them", so the interleaving
+        // here is the semantics, not the formatting.
         for author in &page.authors {
             h.push_str(&meta("name", "citation_author", &author.name));
+            for aff in &author.affiliations {
+                h.push_str(&meta("name", "citation_author_institution", aff));
+            }
         }
         if let Some(d) = page.date.as_deref() {
             h.push_str(&meta("name", "citation_publication_date", d));
@@ -157,8 +179,15 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         if let Some(journal) = cfg.title.as_deref() {
             h.push_str(&meta("name", "citation_journal_title", journal));
         }
+        if let Some(doi) = page.doi.as_deref() {
+            h.push_str(&meta("name", "citation_doi", doi));
+        }
         if let Some(u) = &page_url {
             h.push_str(&meta("name", "citation_public_url", u));
+            // The landing page carrying the abstract IS this page. Scholar uses this to
+            // resolve a record back to readable full text; without it an indexed record can
+            // be a dead end.
+            h.push_str(&meta("name", "citation_abstract_html_url", u));
         }
     }
     h
@@ -361,6 +390,187 @@ fn footer_social_links(site: &Site) -> Vec<String> {
         .filter_map(|it| it.href.clone())
         .filter(|h| h.starts_with("http"))
         .collect()
+}
+
+#[cfg(test)]
+mod scholar_tests {
+    use crate::site::{Site, tests::write_site};
+
+    /// A paper page: two authors, three affiliations between them (one shared), a `doi:`,
+    /// a `date:` and a site `url:` so the whole scholar block is live.
+    fn paper_site(name: &str, doi_line: &str) -> std::path::PathBuf {
+        write_site(
+            name,
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal of Examples\nurl: https://ex.com\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    &format!(
+                        concat!(
+                            "---\n",
+                            "title: On Gradients\n",
+                            "date: 2026-05-15\n",
+                            "{}",
+                            "author:\n",
+                            "  - name: Ada Lovelace\n",
+                            "    affiliation: [Analytical Engine Institute, Somewhere Else]\n",
+                            "  - name: Grace Hopper\n",
+                            "    affiliation: Analytical Engine Institute\n",
+                            "  - name: Anon Nobody\n",
+                            "---\n\nx\n",
+                        ),
+                        doi_line
+                    ),
+                ),
+            ],
+        )
+    }
+
+    /// Google Scholar reads `citation_author_institution` **positionally**: it belongs to
+    /// the `citation_author` immediately above it. Emitting all the authors and then all
+    /// the institutions parses as "the last author has every affiliation", so the ordering
+    /// is the whole feature, not presentation. An author with no affiliation contributes no
+    /// tag rather than an empty one.
+    #[test]
+    fn each_author_institution_directly_follows_its_own_author() {
+        let root = paper_site("scholarinst", "");
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+
+        // Slice the head's citation_* tags into source order, so the assertion is about
+        // sequence rather than mere presence.
+        let seq: Vec<&str> = html
+            .match_indices("<meta name=\"citation_")
+            .map(|(i, _)| {
+                let rest = &html[i..];
+                &rest[..rest.find('>').expect("closing angle")]
+            })
+            .filter(|t| t.contains("citation_author"))
+            .collect();
+        assert_eq!(
+            seq,
+            vec![
+                r#"<meta name="citation_author" content="Ada Lovelace""#,
+                r#"<meta name="citation_author_institution" content="Analytical Engine Institute""#,
+                r#"<meta name="citation_author_institution" content="Somewhere Else""#,
+                r#"<meta name="citation_author" content="Grace Hopper""#,
+                r#"<meta name="citation_author_institution" content="Analytical Engine Institute""#,
+                r#"<meta name="citation_author" content="Anon Nobody""#,
+            ],
+            "each institution must directly follow the author it belongs to"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `citation_abstract_html_url` points a crawler at the full-text landing page — the
+    /// same canonical URL, which is what makes the record resolvable when the index shows
+    /// only the tags.
+    #[test]
+    fn abstract_html_url_is_the_canonical_page_url() {
+        let root = paper_site("scholarabs", "");
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert!(
+            html.contains(
+                r#"<meta name="citation_abstract_html_url" content="https://ex.com/posts/a/">"#
+            ),
+            "citation_abstract_html_url = the clean canonical URL: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A DOI is written however the author copied it, and Scholar wants the bare form.
+    /// Normalising at parse means every consumer (this tag, and the appendix block) reads
+    /// one canonical spelling instead of each re-deriving it.
+    #[test]
+    fn doi_is_emitted_bare_whichever_spelling_the_author_used() {
+        for spelling in [
+            "10.5281/zenodo.1234",
+            "https://doi.org/10.5281/zenodo.1234",
+            "http://dx.doi.org/10.5281/zenodo.1234",
+            "doi:10.5281/zenodo.1234",
+        ] {
+            let root = paper_site("scholardoi", &format!("doi: \"{spelling}\"\n"));
+            let site = Site::discover(&root);
+            let html = site.render_page("posts/a/index.tmd").unwrap();
+            assert!(
+                html.contains(r#"<meta name="citation_doi" content="10.5281/zenodo.1234">"#),
+                "`doi: {spelling}` must normalise to the bare DOI: {html}"
+            );
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// No `doi:` invents no DOI, and the tag is scoped to the scholar block like the rest
+    /// (an undated page is not an article, so it carries none of them).
+    #[test]
+    fn no_doi_key_emits_no_doi_tag() {
+        let root = paper_site("scholarnodoi", "");
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert!(
+            !html.contains("citation_doi"),
+            "an absent doi: must not be invented: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// LinkedIn needs `og:image:width`/`height` to render a large card at all; without
+    /// them it falls back to a thumbnail. Both are known at build time because the og:image
+    /// is ALWAYS the generated card, never an arbitrary page image.
+    #[test]
+    fn og_image_carries_the_cards_known_dimensions() {
+        let root = paper_site("scholardims", "");
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert!(
+            html.contains(r#"<meta property="og:image:width" content="1200">"#)
+                && html.contains(r#"<meta property="og:image:height" content="630">"#),
+            "og:image:width/height must accompany the card: {html}"
+        );
+
+        // ...and only alongside an image. A site with no `url:` emits no card, so the
+        // dimensions would describe an image that is not there.
+        let bare = write_site(
+            "scholardimsno",
+            &[
+                ("_site.yml", "title: Journal\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site2 = Site::discover(&bare);
+        let html2 = site2.render_page("index.tmd").unwrap();
+        assert!(
+            !html2.contains("og:image:width") && !html2.contains("og:image:height"),
+            "no card -> no dimensions: {html2}"
+        );
+        let _ = std::fs::remove_dir_all(&bare);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The dimensions live in the SHARED `emit_social`, so the embedded-deck path gets them
+    /// by construction rather than by a second copy that can drift.
+    #[test]
+    fn a_deck_card_carries_the_dimensions_too() {
+        let root = write_site(
+            "scholardeckdims",
+            &[
+                ("_site.yml", "title: Talks\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let h = super::deck_social_head(&site, "talk.html", Some("A Talk"), Some("Lead."));
+        assert!(
+            h.contains(r#"<meta property="og:image:width" content="1200">"#)
+                && h.contains(r#"<meta property="og:image:height" content="630">"#),
+            "the deck path shares emit_social, so it must get the dimensions too: {h}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[cfg(test)]

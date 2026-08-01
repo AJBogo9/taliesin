@@ -42,7 +42,7 @@ Taliesin's Markdown is Pandoc-flavored. The closed sets below come straight from
 - **Cross-references:** cite a labelled target with `@`-prefixes (`fig`, `tbl`, `sec`, `eq`, `lst`, `thm`, `lem`, `cor`, `prp`, `def`, `exm`, `rem`); e.g. `@fig-scree` renders as "Figure 3".
 - **Citations:** `[@key]` cites a `.bib` entry declared in the `bibliography:` front matter.
 - **Structural divs:** `::: {.class} ... :::` blocks. Classes: `panel-tabset`, `code-walkthrough`, `scrolly`, `magic-move`, `step`, `column-margin`, `column-page`, `column-screen`, `aside`, `sidenote`, `marginnote`.
-- **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `footer`, `logo`, `format`, `theme`, `css`, `page-layout`, `draft`, `title-block-style`, `include-in-header`, `include-before-body`, `include-after-body`, `toc`, `bibliography`, `execute`, `listing`, `hero`, `prose-lint`, `theorems`, `datasets`.
+- **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `footer`, `logo`, `format`, `theme`, `css`, `page-layout`, `draft`, `title-block-style`, `include-in-header`, `include-before-body`, `include-after-body`, `toc`, `bibliography`, `doi`, `execute`, `listing`, `hero`, `prose-lint`, `theorems`, `datasets`.
 
 ## Recipes
 

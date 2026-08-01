@@ -73,6 +73,9 @@ pub struct Page {
     /// Whether the page declares a `bibliography:` (a cited/scholarly document). Drives the
     /// `ScholarlyArticle` vs `BlogPosting` JSON-LD choice.
     pub has_bibliography: bool,
+    /// Front-matter `doi:`, held **bare** (`10.5281/zenodo.1234`) whatever spelling the
+    /// author used, for Scholar's `citation_doi`.
+    pub doi: Option<String>,
     /// `draft: true` in front matter. `false` for every published page; `true` only for a
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.

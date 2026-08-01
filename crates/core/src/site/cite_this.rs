@@ -404,6 +404,7 @@ mod tests {
             hero: None,
             page_layout: None,
             has_bibliography: false,
+            doi: None,
             draft: false,
         }
     }
