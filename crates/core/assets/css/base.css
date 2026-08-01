@@ -776,16 +776,56 @@
   .tali-xref { text-decoration: underline; text-underline-offset: .12em;
     text-decoration-thickness: from-font; }
   .tali-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
-  /* Footnotes: `[^1]` superscript refs + the gathered footnote section at page end. */
+  /* Footnotes: `[^1]` emits a superscript reference, and the note itself sits in the
+     right margin beside it (owner ruling 2026-08-01 — margin placement is the DEFAULT on
+     a wide screen, not a `footnotes:` knob). There is NO gathered endnote list: the note
+     in the margin is its only copy, so a reader never has to leave the line they are on,
+     and no text is duplicated for Ctrl-F or the text projections to report twice. */
   .tali-fnref { font-size: .75em; line-height: 0; white-space: nowrap; }
   .tali-fnref a { text-decoration: none; padding: 0 .1em; }
-  .footnotes { margin-top: 2.5rem; font-size: .9rem; color: var(--tali-muted); }
-  .footnotes hr { border: 0; border-top: 1px solid var(--tali-border); margin: 0 0 1rem; }
-  .footnotes ol { padding-left: 1.3rem; }
-  .footnotes li { margin: .4rem 0; }
-  .footnotes li > :first-child { display: inline; } /* keep the backlink on the text's line */
-  .footnotes li:target, [id^="fnref-"]:target { background: var(--tali-flash); border-radius: var(--tali-radius-sm); }
-  .tali-fn-back { text-decoration: none; margin-left: .4em; }
+  /* Deliberately the SAME geometry as `.column-margin` below, so a footnote and an
+     explicit margin div share one column instead of two overlapping ones. `float` rather
+     than absolute positioning is what makes that work: several notes hanging off one
+     paragraph push each other down the margin in document order, where absolutely
+     positioned notes would stack on top of one another. A floated `<span>` blockifies
+     per CSS, so no `display` declaration is needed to make the box work. */
+  .tali-sidenote {
+    float: right; clear: right; width: 12rem;
+    margin: .3rem -13.5rem 1rem 1.5rem;
+    font: 400 .82rem/1.5 var(--tali-font-head); color: var(--tali-muted); text-align: left; }
+  .tali-sidenote-num {
+    font-size: .75em; vertical-align: super; line-height: 0; margin-right: .35em;
+    color: var(--tali-accent); }
+  .tali-sidenote:target { background: var(--tali-flash); border-radius: var(--tali-radius-sm); }
+  /* Below the margin breakpoint there is no margin to put a note in. Collapse it and let
+     the reference reveal it in place: the `<sup>` is already an `<a href="#fn-x">` and the
+     note already carries `id="fn-x"`, so `:target` is the whole mechanism — no checkbox,
+     no label, no hidden form control in the middle of the prose, and no JS. Tapping a
+     second note collapses the first, which is the reading flow anyway.
+     Same breakpoint as `.column-margin`: they compete for the same absent space. */
+  @media (max-width: 73rem) {
+    .tali-sidenote { display: none; }
+    .tali-sidenote:target {
+      display: block; float: none; width: auto; margin: .6rem 0;
+      padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
+  }
+  /* Paper has no viewport and `taliesin pdf` lays out to a fixed page box whose side
+     margins (~90pt, measured on A4) are narrower than the note column, so the `-13.5rem`
+     pull would carry the note off the page. Print every note in the flow instead: a
+     printed note must be *present* above all, and this is the one output where the reader
+     cannot tap to reveal it. Verified by rendering: both notes appear in full in the PDF.
+
+     The known cost, and it is a real one: an in-flow note splits its paragraph at the
+     word the marker sits on, so a printed paragraph carrying two notes reads in three
+     pieces. The fix is not a CSS one — it is `float: footnote` (CSS Generated Content for
+     Paged Media, which paged.js implements) putting notes at the foot of the printed
+     page. That belongs to the print track (item 159), not here, because it needs the page
+     box to reserve the space. Losing a note would be a defect; this is a cosmetic debt. */
+  @media print {
+    .tali-sidenote, .tali-sidenote:target {
+      display: block; float: none; width: auto; margin: .6rem 0;
+      padding-left: .9rem; border-left: 2px solid var(--tali-border); background: none; }
+  }
   /* Margin notes (Tufte/Distill): `::: {.column-margin}` (canonical; aliases `.sidenote`,
      `.marginnote`, `.aside`) floats into the right margin on a wide screen — marginalia
      that don't interrupt the body, impossible to do in a PDF. Below ~73rem (no margin
@@ -1012,6 +1052,29 @@
     --tali-escape-room: calc(50vw + 50% - 8.25rem);
     margin-left: calc(100% - var(--tali-escape-w));
     margin-right: 0; }
+  /* Margin notes inside a TOC grid — the same collision as the escapes above, at the
+     narrow end of the axis instead of the wide one. The sticky rail OWNS the right
+     gutter, so a note that floats into it lands inside the rail's box; the rail is text
+     with no background of its own, so both sets of text draw on top of each other.
+     Measured at 1440px against a 12-row rail: the note spanned x=973-1165 while the rail
+     began at x=989. (This predates footnote sidenotes — an explicit `::: {.column-margin}`
+     collided the same way — but a note per reference makes it constant rather than rare.)
+     There is no offset that fixes it: the grid's tracks total 62.5rem with no spare
+     column, so the fix is to stop floating, exactly as below the width breakpoint and for
+     exactly the same reason. Collision-free by construction beats a clever offset that
+     only holds at some widths — the rule item 181 settled on for the other end. */
+  body.has-toc > main :is(.sidenote, .marginnote, .column-margin, .aside) {
+    float: none; width: auto; margin: 1rem 0;
+    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
+  /* A footnote takes the *collapsed* fallback rather than the in-flow one, because there
+     is one per reference rather than one or two per page: dropping every note into the
+     flow would split the paragraph that cites it at the exact word the marker sits on.
+     Collapsed, the reference still reveals its own note in place — the same mechanism and
+     the same gesture as a narrow screen. */
+  body.has-toc > main .tali-sidenote { display: none; }
+  body.has-toc > main .tali-sidenote:target {
+    display: block; float: none; width: auto; margin: .6rem 0;
+    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }

@@ -3006,7 +3006,7 @@ fn theme_list_takes_first_entry() {
 }
 
 #[test]
-fn footnotes_emit_ref_and_gathered_section() {
+fn footnotes_emit_ref_and_a_margin_sidenote_at_the_reference() {
     let page = render_html_page(
         "---\ntitle: T\n---\n\nA claim.[^1] More text.\n\n[^1]: The supporting note.\n",
         "fb",
@@ -3022,76 +3022,171 @@ fn footnotes_emit_ref_and_gathered_section() {
         page.contains("role=\"doc-noteref\" href=\"#fn-1\""),
         "footnote ref carries doc-noteref role: {page}"
     );
-    // Definitions are gathered into one footnotes section with an accessible name (PA-M7).
-    assert!(page.contains("class=\"footnotes\""), "footnotes section");
+    // Owner ruling 2026-08-01: margin placement is the DEFAULT on a wide screen, not a
+    // `footnotes:` knob. The note's content therefore sits inline *immediately after its
+    // own reference*, which is the only place CSS can float it into the margin from —
+    // there is no selector that relocates an end-of-document `<li>` next to an arbitrary
+    // earlier reference, so the move has to happen at render time.
     assert!(
-        page.contains("aria-label=\"Footnotes\""),
-        "footnotes region needs an accessible name: {page}"
+        page.contains("</sup><span class=\"tali-sidenote\" id=\"fn-1\""),
+        "the note must follow its own reference immediately: {page}"
     );
-    assert!(page.contains("id=\"fn-1\""), "footnote def id");
+    assert!(
+        page.contains("role=\"doc-footnote\""),
+        "the note is a doc-footnote for AT: {page}"
+    );
     assert!(page.contains("The supporting note"), "footnote body");
-    assert!(page.contains("tali-fn-back"), "backlink to the reference");
+    // The number the reader sees in the margin, so a note is identifiable when several
+    // stack up beside one paragraph.
+    assert!(
+        page.contains("<span class=\"tali-sidenote-num\">1</span>"),
+        "the sidenote shows its number: {page}"
+    );
+    // One copy, in one place. A gathered endnote list in addition to the margin note
+    // would put every note's text in the DOM twice, which Ctrl-F and all four text
+    // projections (`taliesin read`, skim, the search index, llms-full.txt) would each
+    // report twice.
+    //
+    // These two run against the BODY, not the page: every page inlines the whole CSS/JS
+    // payload, so a `.footnotes` or `.tali-fn-back` rule left behind in `base.css` is
+    // shipped bytes and would satisfy a whole-page `contains()` — the inlined-asset
+    // needle trap, which bites a NEGATIVE assertion just as hard as a positive one.
+    let body =
+        render_document("A claim.[^1] More text.\n\n[^1]: The supporting note.\n").body_html();
+    assert!(
+        !body.contains("class=\"footnotes\""),
+        "no gathered endnote section survives the margin placement: {body}"
+    );
+    assert!(
+        !body.contains("tali-fn-back"),
+        "a note beside its reference needs no backlink: {body}"
+    );
 }
 
 #[test]
-fn footnote_li_is_the_locatable_unit_for_click_to_source() {
-    // A gathered footnotes section collects notes from MANY, non-contiguous source
-    // lines, so no single block-level sourcepos can point at "the" note. The locatable
-    // unit is therefore each `<li>`: it carries its own definition's `data-sourcepos`
-    // plus a `data-block-id`, because client.js `locatable()` resolves a Ctrl-click via
-    // `closest("[data-tali-src], [data-block-id]")` — a `data-sourcepos` alone would be
-    // walked past, landing on the section (and, with no sourcepos there, on line 1).
-    // Definitions sit on lines 7 and 11, scattered between prose rather than bunched
-    // at the end, so a first-note-wins block sourcepos could not serve both.
+fn a_repeat_reference_to_one_note_renders_the_note_once() {
+    // comrak numbers repeat references `fnref-a-1`, `fnref-a-2`, … while the visible
+    // index stays the note's own. Only the FIRST reference carries the content, or the
+    // margin would show the same note twice and the `id="fn-a"` would be duplicated in
+    // the DOM (silently breaking the `href="#fn-a"` anchor the other references use).
+    let page = render_html_page(
+        "---\ntitle: T\n---\n\nOne[^a] and again[^a].\n\n[^a]: Note A.\n",
+        "fb",
+    );
+    assert_eq!(
+        page.matches("class=\"tali-sidenote\"").count(),
+        1,
+        "exactly one sidenote for two references: {page}"
+    );
+    assert!(page.contains("id=\"fnref-a-2\""), "second ref still emits");
+}
+
+#[test]
+fn a_sidenote_is_the_locatable_unit_for_click_to_source() {
+    // Same contract the gathered `<li>` used to carry, moved to the element that now
+    // holds the note. client.js `locatable()` matches
+    // `closest("[data-tali-src], [data-block-id]")`, so without `data-block-id` a
+    // Ctrl-click on a note walks up to the enclosing paragraph and lands on the
+    // paragraph's line — silently the wrong line, not a no-op. The sourcepos is the
+    // DEFINITION's line (where the author wrote `[^a]: …`), not the reference's.
+    let doc = render_document("Claim.[^a]\n\nFiller.\n\n[^a]: Note A.\n");
+    let html = doc.body_html();
+    assert!(
+        html.contains(
+            "<span class=\"tali-sidenote\" id=\"fn-a\" role=\"doc-footnote\" \
+             data-block-id=\"fn-a\" data-sourcepos=\"5:1-5:13\""
+        ),
+        "sidenote must carry its definition's block-id + sourcepos: {html}"
+    );
+}
+
+#[test]
+fn editing_a_footnote_definition_changes_its_referencing_block_id() {
+    // The load-bearing one, and the reason this is not a pure-CSS change. A block id is
+    // hashed from the block's SOURCE LINES (`make_id`), and the note now renders inside
+    // the referencing block rather than as a block of its own. So unless the definition's
+    // source feeds that hash, editing a note leaves every block id identical, the diff
+    // emits no op, and the preview silently keeps showing the old note.
+    let before = render_document("Claim.[^a]\n\n[^a]: Note A.\n");
+    let after = render_document("Claim.[^a]\n\n[^a]: Note A, revised.\n");
+    let id_before = &before.blocks[0].id;
+    let id_after = &after.blocks[0].id;
+    assert_ne!(
+        id_before, id_after,
+        "editing the note must re-key the block that displays it, or the live \
+         preview never updates"
+    );
+    // And an edit to an UNRELATED note must not churn this block's id (which would
+    // replace, and so reset the live state of, a paragraph nothing changed in).
+    let unrelated = render_document("Claim.[^a]\n\nOther.[^b]\n\n[^a]: Note A.\n\n[^b]: B2.\n");
+    let unrelated2 = render_document("Claim.[^a]\n\nOther.[^b]\n\n[^a]: Note A.\n\n[^b]: B3.\n");
+    assert_eq!(
+        unrelated.blocks[0].id, unrelated2.blocks[0].id,
+        "an edit to note b must not re-key the block that only references note a"
+    );
+}
+
+#[test]
+fn each_sidenote_resolves_to_its_own_definition_line() {
+    // Definitions sit on lines 7 and 11, scattered between prose rather than bunched at
+    // the end, so this is the case a single first-note-wins sourcepos could not serve.
+    // Each note must land on the line the author wrote IT on.
     let src = "---\ntitle: T\n---\n\nFirst claim.[^a]\n\n[^a]: Note A.\n\nSecond claim.[^b]\n\n[^b]: Note B.\n";
-    let doc = render_document(src);
-    let fns = doc
-        .blocks
-        .iter()
-        .find(|b| b.id == "tali-footnotes")
-        .expect("gathered footnotes block");
-
-    // Each note resolves to the line its OWN definition sits on (7 and 11), not to
-    // the first note's line and not to line 1.
+    let html = render_document(src).body_html();
     assert!(
-        fns.html
-            .contains("<li id=\"fn-a\" data-block-id=\"fn-a\" data-sourcepos=\"7:1-7:13\""),
-        "note A must carry its own block-id + sourcepos: {}",
-        fns.html
+        html.contains(
+            "id=\"fn-a\" role=\"doc-footnote\" data-block-id=\"fn-a\" data-sourcepos=\"7:1-7:13\""
+        ),
+        "note A must carry its own block-id + sourcepos: {html}"
     );
     assert!(
-        fns.html
-            .contains("<li id=\"fn-b\" data-block-id=\"fn-b\" data-sourcepos=\"11:1-11:13\""),
-        "note B must carry its own block-id + sourcepos: {}",
-        fns.html
+        html.contains(
+            "id=\"fn-b\" role=\"doc-footnote\" data-block-id=\"fn-b\" data-sourcepos=\"11:1-11:13\""
+        ),
+        "note B must carry its own block-id + sourcepos: {html}"
     );
 }
 
 #[test]
-fn gathered_footnotes_block_keeps_an_empty_block_level_sourcepos() {
-    // The section is a GATHERED container: comrak moves every definition to the
-    // document end, so the block sits last while its content comes from wherever the
-    // author wrote it. A block-level sourcepos would be doubly wrong:
-    //   1. it would break the monotonic source-order invariant that tests/corpus.rs
-    //      asserts ("blocks out of order"), since a note defined mid-document would
-    //      give the last block an earlier line than the block before it; and
-    //   2. a span from the first to the last note would swallow blank lines across
-    //      the whole document, so reverse cursor-sync (`highlightAtLine` picks the
-    //      SMALLEST covering range) would yank the cursor to the endnotes.
-    // The real positions live on the `<li>`s instead; see the test above.
-    let doc = render_document("Claim.[^a]\n\n[^a]: Note A.\n");
-    let fns = doc
-        .blocks
-        .iter()
-        .find(|b| b.id == "tali-footnotes")
-        .expect("gathered footnotes block");
+fn a_sidenote_lives_inside_the_block_that_references_it() {
+    // The consequence that makes the whole design work, and the one a refactor is most
+    // likely to break: the note is not a block of its own any more. It must sit INSIDE
+    // the referencing block's html — a sibling block placed after the paragraph would
+    // float into the margin beside whatever follows, one paragraph off from the
+    // reference it belongs to.
+    let doc = render_document("Claim.[^a]\n\nA second paragraph.\n\n[^a]: Note A.\n");
     assert!(
-        fns.sourcepos.is_empty(),
-        "gathered block must not claim one source range, got {:?}",
-        fns.sourcepos
+        doc.blocks[0].html.contains("Note A."),
+        "the note belongs to the referencing block: {}",
+        doc.blocks[0].html
     );
-    // It still carries data-block-id: the diff addresses it by id (client.js `blockEl`).
-    assert!(fns.html.contains("data-block-id=\"tali-footnotes\""));
+    assert!(
+        !doc.blocks.iter().any(|b| b.id == "tali-footnotes"),
+        "no gathered footnotes block survives"
+    );
+    // Monotonic source order still holds with no gathered trailing block in the way.
+    assert_eq!(doc.blocks.len(), 2, "one paragraph each, no note block");
+}
+
+#[test]
+fn a_footnote_definition_with_block_content_is_flattened_and_warns() {
+    // The note now renders as phrasing content inside its referencing block, so a
+    // definition carrying a list / code block / quote cannot keep its structure: an
+    // `<ul>` inside a `<span>` inside a `<p>` makes the HTML parser close the `<p>`
+    // early, which would split the block into two root elements and break the
+    // one-root-element invariant every block carries. Flatten to the paragraphs' inline
+    // content and SAY SO, rather than emitting a DOM the block model cannot address.
+    let doc = render_document("Claim.[^a]\n\n[^a]: Lead in.\n\n    - a list item\n");
+    let html = doc.body_html();
+    assert!(
+        !html.contains("<ul>") && !html.contains("<li>"),
+        "block content inside a sidenote must not survive as block markup: {html}"
+    );
+    assert!(
+        doc.warnings.iter().any(|w| w.message.contains("footnote")),
+        "a flattened note must warn: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]

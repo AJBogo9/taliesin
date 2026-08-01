@@ -12,6 +12,19 @@ This margin note is the narrow end of the same axis the two escapes below widen 
 It shares a page with them on purpose: a document usually wants both.
 :::
 
+A footnote reaches the same gutter without an explicit container: `[^label]` puts its
+note in the margin[^margin] beside the line that cites it, so the reader never leaves
+the sentence they are on. Two notes on one paragraph[^second] stack in the margin in
+document order rather than overlapping, because they float rather than being positioned
+— and they share that column with the `.column-margin` div above, so the two cannot
+collide. Citing the same note twice[^margin] adds a second marker and no second copy.
+
+[^margin]: Notes are for asides that would break the sentence, so they stay short: the
+margin column is narrow on purpose.
+
+[^second]: The second note on this paragraph, here to pin that two of them stack instead
+of landing on top of each other.
+
 ## `.column-page`, past the text column {#sec-page}
 
 `::: {.column-page}` widens a block up to the page width. The prose around it stays at

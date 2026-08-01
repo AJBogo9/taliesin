@@ -114,6 +114,17 @@
     --tali-escape-room: calc(50vw + 50% - 8.25rem);
     margin-left: calc(100% - var(--tali-escape-w));
     margin-right: 0; }
+  /* And the same for the narrow end of that axis: the rail owns the right gutter, so a
+     margin note floated into it draws on top of the rail's rows. Rationale and the
+     measurement are in base.css beside the single-document copy of these two rules — a
+     site page and a single document share the rail, so they must share the answer. */
+  .tali-site-main.has-toc > main :is(.sidenote, .marginnote, .column-margin, .aside) {
+    float: none; width: auto; margin: 1rem 0;
+    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
+  .tali-site-main.has-toc > main .tali-sidenote { display: none; }
+  .tali-site-main.has-toc > main .tali-sidenote:target {
+    display: block; float: none; width: auto; margin: .6rem 0;
+    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   /* At the sheet breakpoint `#TOC` turns `position: fixed` and leaves the grid flow, so the
      14rem track would stand empty and auto-placement would drop the next sibling (the
      back-to-listing nav) into that vacant top-right cell. Collapse to the single reading

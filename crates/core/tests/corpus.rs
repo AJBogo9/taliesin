@@ -893,17 +893,18 @@ fn reverse_sync_sourcepos_is_total() {
 }
 
 #[test]
-fn footnote_lis_are_locatable() {
-    // The gathered footnotes section carries no block-level sourcepos (it collects
-    // notes from scattered lines), so the per-`<li>` attributes are the ONLY thing
-    // making a footnote click-to-source-able. The block-level checks above skip the
-    // section on its empty sourcepos, which is exactly how this hole went unnoticed:
-    // pin the nested units directly.
+fn footnote_sidenotes_are_locatable() {
+    // A note renders beside its own reference, INSIDE the referencing block (owner
+    // ruling 2026-08-01: margin placement is the default). So the note's own attributes
+    // are the only thing making it click-to-source-able, and the block-level checks
+    // above cannot see it — they inspect the referencing block's leading tag, which
+    // carries the *paragraph's* sourcepos. Pin the nested unit directly.
     //
     // `data-block-id` is load-bearing and not decorative here: client.js `locatable()`
     // matches `closest("[data-tali-src], [data-block-id]")`, so without it a Ctrl-click
-    // walks past the note up to the section, which has no sourcepos, and `openSource`
-    // falls back to line 1 of the document — silently the wrong line, not a no-op.
+    // on a note walks up to the enclosing paragraph and lands on the paragraph's first
+    // line instead of the line the note was written on — silently the wrong line, which
+    // is worse than a no-op because it reads as if it worked.
     let mut files = Vec::new();
     collect_tmd(&corpus_dir(), &mut files);
     let mut seen = 0;
@@ -912,11 +913,8 @@ fn footnote_lis_are_locatable() {
         let src = fs::read_to_string(f).unwrap();
         let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
         let html = doc.body_html();
-        for (i, _) in html.match_indices("<li ") {
+        for (i, _) in html.match_indices("<span class=\"tali-sidenote\"") {
             let tag = &html[i..i + html[i..].find('>').unwrap_or(0)];
-            if !tag.contains("class=\"tali-fn\"") {
-                continue;
-            }
             seen += 1;
             if !tag.contains("data-block-id=\"") || !tag.contains("data-sourcepos=\"") {
                 let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
@@ -926,12 +924,12 @@ fn footnote_lis_are_locatable() {
     }
     assert!(
         offenders.is_empty(),
-        "footnote <li> missing data-block-id/data-sourcepos (Ctrl-click would land on \
-         line 1):\n{}",
+        "footnote sidenote missing data-block-id/data-sourcepos (Ctrl-click would land \
+         on the enclosing paragraph's line):\n{}",
         offenders.join("\n")
     );
     // Guard against the assert above passing vacuously if footnotes leave the corpus.
-    assert!(seen > 0, "no footnote <li> in the corpus to check");
+    assert!(seen > 0, "no footnote sidenote in the corpus to check");
 }
 
 #[test]

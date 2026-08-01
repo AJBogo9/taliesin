@@ -3,15 +3,19 @@ title: "Cards on hover"
 ---
 
 A long document is full of references that point elsewhere: "see @fig-flow", "as
-@sec-why explains", a footnote[^aside]. Following one means jumping away and losing your
-place. Hovering a reference here pops a small card that renders the *target itself*, drawn
-straight from the page by its content-hash id, so you can glance without leaving.
+@sec-why explains". Following one means jumping away and losing your place. Hovering a
+reference here pops a small card that renders the *target itself*, drawn straight from
+the page by its content-hash id, so you can glance without leaving.
 
 ## Why it works {#sec-why}
 
 Every block carries a stable id, so the card shows the actual target, not a guessed
-snippet. A heading shows itself plus its first lines; a figure shows the figure; a
-footnote shows the note.
+snippet. A heading shows itself plus its first lines; a figure shows the figure.
+
+A footnote[^aside] is the exception, and for the reason the whole feature exists: its
+note is already in the margin beside the line that cites it, so there is no jump to
+save the reader from. Previewing it would cover the page to show text a few centimetres
+to the right.
 
 See @sec-why above, or the diagram in @fig-flow below.
 
@@ -26,4 +30,5 @@ flowchart LR
 The card is read-only and reuses what the renderer already computed, so it costs nothing
 extra at build time.
 
-[^aside]: This footnote is itself a hover target: hovering its reference shows this text.
+[^aside]: This note is deliberately *not* a hover target: it is already visible beside
+the paragraph that cites it.

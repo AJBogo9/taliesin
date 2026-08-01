@@ -224,18 +224,29 @@ by every page; a page's own `bibliography:` is then merged over it. See
 ## Footnotes and sidenotes
 
 Footnotes use the standard `[^label]` syntax. A reference renders as a superscript
-link, and the definitions (which can span paragraphs) are gathered into a numbered
-footnotes section at the end of the page, in reference order, each with a backlink.[^demo]
+number, and the note itself renders **in the right margin, beside the line that cites
+it**.[^demo] There is no list of endnotes at the bottom of the page: a note sits where
+you need it, so reading one costs a glance instead of a jump to the end and back.
 
 [^demo]: Like this one. Write `[^label]` where you want the marker, and `[^label]: …`
-    anywhere for the body; Taliesin does the numbering and the return arrow.
+    anywhere for the body; Taliesin does the numbering and the placement.
 
-For an aside that belongs *beside* the text rather than at the bottom, a
-`::: {.column-margin}` block floats into the right margin on a wide screen and folds
-into the flow on a narrow one: web-native marginalia a PDF can't do. `.column-margin`
-is the canonical name; `.sidenote`, `.marginnote`, and `.aside` are accepted aliases
-for the identical block (Tufte/Distill/Quarto muscle memory), so reach for whichever
-you already know.
+Narrow the window past the point where there is a margin to put a note in and the notes
+fold away; tapping a number reveals that one in place. Print does the same, since paper
+has no reader to tap. This is the default, not a setting: it is the placement a screen
+makes possible and paper never did, and reaching for a `footnotes:` knob to get it would
+be a worse default hiding behind a configuration key.
+
+Notes are for asides short enough to sit in a narrow column, and a definition carrying
+block content (a list, a quote, a code block) is flattened to its text with a warning,
+because a margin note can only hold inline content.
+
+For an aside with no reference to hang it off, a `::: {.column-margin}` block floats
+into the same margin column on a wide screen and folds into the flow on a narrow one:
+web-native marginalia a PDF can't do. `.column-margin` is the canonical name;
+`.sidenote`, `.marginnote`, and `.aside` are accepted aliases for the identical block
+(Tufte/Distill/Quarto muscle memory), so reach for whichever you already know. Footnotes
+and margin blocks share one column, so the two never collide.
 
 ::: {.column-margin}
 This is a margin note. On a wide screen it sits in the margin, aligned to where it was

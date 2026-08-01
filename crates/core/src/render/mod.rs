@@ -588,9 +588,40 @@ fn render_internal_impl(
     let emits_title_block_here =
         emits_title_block(crate::frontmatter::front_matter_block(src).unwrap_or(""));
     let mut flat: Vec<FlatBlock> = Vec::new();
-    // Footnote definitions, rendered as `<li>`s and gathered into a section at the
-    // end (comrak moves them here in reference order); see below the loop.
-    let mut footnote_items: Vec<String> = Vec::new();
+    // Footnote definitions, resolved BEFORE the walk. comrak moves every definition to
+    // the document end, so by the time the walk reaches a `[^a]` reference in an early
+    // paragraph the definition node has not been visited yet — and the note has to be
+    // spliced in at that reference, because that is the only place CSS can float it into
+    // the margin from (owner ruling 2026-08-01: margin placement is the default). A
+    // pre-pass over the same node set the walk covers is the cheapest way to have both.
+    let footnote_defs: HashMap<String, FootnoteDef> = root
+        .children()
+        .filter_map(|node| {
+            let data = node.data.borrow();
+            let NodeValue::FootnoteDefinition(fd) = &data.value else {
+                return None;
+            };
+            // Keep the definition's OWN source range: comrak has moved the node to the
+            // document end, but its sourcepos still points at where the author wrote it,
+            // which is the line click-to-source must land on.
+            let sp = data.sourcepos;
+            let (file, start_line) = map_origin(origins, sp.start.line);
+            let (_, end_line) = map_origin(origins, sp.end.line);
+            Some((
+                fd.name.clone(),
+                FootnoteDef {
+                    node,
+                    sourcepos: format!(
+                        "{}:{}-{}:{}",
+                        start_line, sp.start.column, end_line, sp.end.column
+                    ),
+                    source_file: file,
+                    src: slice_lines(&lines, sp.start.line, sp.end.line),
+                    line: start_line as u32,
+                },
+            ))
+        })
+        .collect();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
     // Heading anchor slugs (deduped) and the cross-reference number registry
     // (figures + equations), both used for `@sec-x`/`@fig-x`/`@eq-x` and the TOC.
@@ -629,39 +660,23 @@ fn render_internal_impl(
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
-        // Footnote definitions are gathered into a section at the end (comrak has
-        // already moved them here, in reference order) — not rendered in place.
-        let fn_def = {
-            let data = node.data.borrow();
-            match &data.value {
-                // Keep the definition's OWN source range: comrak has moved the node to
-                // the document end, but its sourcepos still points at where the author
-                // wrote it, which is the line click-to-source must land on.
-                NodeValue::FootnoteDefinition(fd) => {
-                    let sp = data.sourcepos;
-                    let (file, start_line) = map_origin(origins, sp.start.line);
-                    let (_, end_line) = map_origin(origins, sp.end.line);
-                    Some((
-                        fd.name.clone(),
-                        format!(
-                            "{}:{}-{}:{}",
-                            start_line, sp.start.column, end_line, sp.end.column
-                        ),
-                        file,
-                    ))
-                }
-                _ => None,
-            }
-        };
-        if let Some((name, sourcepos, file)) = fn_def {
-            footnote_items.push(emit::footnote_def_li(
-                node,
-                &name,
-                &sourcepos,
-                file.as_deref(),
-            ));
+        // A definition renders at its reference, never in place (the pre-pass above
+        // already holds it). comrak has moved them all to the document end.
+        if matches!(node.data.borrow().value, NodeValue::FootnoteDefinition(_)) {
             continue;
         }
+        // Which notes this block displays: every `[^a]` reference under it whose
+        // `ref_num` is 1. A repeat reference to the same note keeps its `<sup>` but
+        // carries no content — two copies would duplicate `id="fn-a"` in the DOM and
+        // silently break the anchor every other reference points at.
+        let notes: Vec<(String, u32)> = node
+            .descendants()
+            .filter_map(|d| match &d.data.borrow().value {
+                NodeValue::FootnoteReference(r) if r.ref_num == 1 => Some((r.name.clone(), r.ix)),
+                _ => None,
+            })
+            .filter(|(name, _)| footnote_defs.contains_key(name))
+            .collect();
         let (
             buf_start,
             sourcepos,
@@ -810,7 +825,23 @@ fn render_internal_impl(
             )
         };
 
-        let id = make_id(&block_src, &mut id_counts);
+        // A block id is hashed from the block's SOURCE, and a note's source lives
+        // somewhere else entirely (`[^a]: …`, anywhere in the document) while its text
+        // renders inside THIS block. Fold the definitions this block displays into the
+        // hash input, or editing a note leaves every id identical, the diff emits no op,
+        // and the live preview keeps showing the old note. Only the notes this block
+        // actually displays are folded in, so an edit to some other note does not churn
+        // this block's id and reset the live state of a paragraph nothing changed in.
+        let id = if notes.is_empty() {
+            make_id(&block_src, &mut id_counts)
+        } else {
+            let mut keyed = block_src.clone();
+            for (name, _) in &notes {
+                keyed.push('\u{0}');
+                keyed.push_str(&footnote_defs[name].src);
+            }
+            make_id(&keyed, &mut id_counts)
+        };
         let file_attr = source_file_attr(source_file.as_deref());
         // A heading gets a stable, deduped anchor id (HTML docs only — reveal
         // decks put the slug on the wrapping `<section>` instead, so adding it
@@ -1188,6 +1219,32 @@ fn render_internal_impl(
         if let Some(base) = base_dir {
             html = image_annotator.annotate(&html, base);
         }
+        // Splice each note in immediately after its own `<sup>`. Last, so the note's
+        // markup is not itself rewritten by any of the passes above (the annotator would
+        // otherwise size an image inside a note against the wrong base, and the heading
+        // shift would walk into it).
+        for (name, ix) in &notes {
+            let def = &footnote_defs[name];
+            let (sidenote, flattened) = emit::footnote_sidenote(
+                def.node,
+                name,
+                *ix,
+                &def.sourcepos,
+                def.source_file.as_deref(),
+            );
+            if flattened {
+                warnings.push(
+                    Warning::new(format!(
+                        "footnote `[^{name}]` contains block content (a list, quote or code \
+                         block); a note renders beside its reference as a margin sidenote, \
+                         which can only hold inline content, so it was flattened to its text"
+                    ))
+                    .at(def.source_file.clone(), def.line),
+                );
+            }
+            let anchor = emit::footnote_ref_markup(name, 1, *ix);
+            html = html.replacen(&anchor, &format!("{anchor}{sidenote}"), 1);
+        }
         flat.push(FlatBlock {
             buf_start,
             block: Block {
@@ -1228,20 +1285,10 @@ fn render_internal_impl(
         &xref_registry,
         bib_line,
     ));
-    // Gather the footnote definitions (collected above, in comrak's reference order)
-    // into one footnotes section, appended after any References.
-    if !footnote_items.is_empty() {
-        let inner = footnote_items.join("");
-        blocks.push(Block {
-            id: "tali-footnotes".to_string(),
-            sourcepos: String::new(),
-            source_file: None,
-            html: format!(
-                "<section class=\"footnotes\" role=\"doc-endnotes\" aria-label=\"Footnotes\" data-block-id=\"tali-footnotes\"><hr><ol>{inner}</ol></section>"
-            ),
-            cell: None,
-        });
-    }
+    // No gathered endnote section: each note renders beside its own reference (see the
+    // splice in the walk above). Keeping a trailing list as well would put every note's
+    // text in the DOM twice, which Ctrl-F and all four text projections (`taliesin read`,
+    // `skim.rs`, the search index, `llms-full.txt`) would each report twice.
     // A visible title block (HTML only; reveal builds its own title slide). It is
     // a generated block (no sourcepos), so it rides the block model + diff like
     // the References section.
@@ -1564,6 +1611,24 @@ fn load_bibliography(
 struct FlatBlock {
     buf_start: usize,
     block: Block,
+}
+
+/// One `[^name]: …` definition, resolved before the walk so a reference met earlier in
+/// the document can carry its note. comrak moves every definition to the document end,
+/// so without this pre-pass the walk would reach a reference before its definition.
+struct FootnoteDef<'a> {
+    /// The definition's AST node; rendered at the reference, which is what supplies the
+    /// visible number (`ix` lives on the reference, not here).
+    node: &'a AstNode<'a>,
+    /// The definition's OWN source range — where the author wrote it, not where comrak
+    /// moved it — so a Ctrl-click on the note lands on the right line.
+    sourcepos: String,
+    source_file: Option<String>,
+    /// The definition's source lines, folded into the hash of every block that displays
+    /// it so editing a note re-keys that block. Without this the diff sees no change.
+    src: String,
+    /// Start line, for the flattening warning.
+    line: u32,
 }
 
 /// The ` data-source-file="…"` attribute for a block from an included file (empty

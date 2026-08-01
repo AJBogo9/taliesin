@@ -44,6 +44,12 @@ function taliInitLinkPreview() {
     // page root, which is never useful. It only matters on the focus path: the link is
     // offscreen until focused, so a pointer can't reach it, but it IS the first Tab stop.
     if (a.classList.contains('tali-skip')) return false;
+    // A footnote reference. Its note is a margin sidenote a few centimetres to the right
+    // of the marker (item 183), so a card would cover the page to show text already on
+    // it. The card earns its place when following a link means losing your place, and a
+    // note beside the line never did. Below the margin breakpoint the note is collapsed,
+    // but that is a touch viewport where there is no hover to preview from either.
+    if (a.closest('.tali-fnref')) return false;
     return !a.closest('#TOC') && !a.closest('#tali-link-preview');
   }
   // Cross-page target: a resolved cross-reference to another page — a `.tali-xref` whose

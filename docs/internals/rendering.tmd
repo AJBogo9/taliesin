@@ -115,21 +115,39 @@ a full CSL engine**. Cross-*page* references (a `@fig-` that lives in another
 chapter) are resolved a layer up, in the site subsystem (see [The multi-page
 subsystem](sites.tmd)).
 
-Markdown footnotes (`[^name]`) split across **two separate emit paths**, and it is worth
-being precise about which is which:
+Markdown footnotes (`[^name]`) are the one construct whose **content is written in one
+place and rendered in another**, and the mechanism is worth being precise about:
 
 - A footnote **reference** (`[^name]` in the prose) is rendered *in place*, inline, as a
   superscript link (`<sup class="tali-fnref"><a href="#fn-name">N</a></sup>`) by the
   per-node emitter (`emit.rs`). It stays inside its surrounding block.
-- A footnote **definition** (`[^name]: the note text`) is *not* rendered where it
-  appears. The walk recognises comrak's footnote-definition nodes, collects them as
-  `<li>`s in comrak's reference order, and after the citation pass appends them as one
-  trailing `<section class="footnotes" role="doc-endnotes">` block (fixed id
-  `tali-footnotes`, empty `data-sourcepos`) after any References block.
+- A footnote **definition** (`[^name]: the note text`) is *not* rendered where the author
+  wrote it. It renders as a margin sidenote spliced in immediately after its own
+  reference, which is the only position CSS can float it into the margin from: no
+  selector can relocate an end-of-document element to sit beside an arbitrary earlier
+  one, so the move happens at render time. There is no gathered endnote section.
 
-That trailing section flows through the block model and the diff exactly like the
-References block: a generated, source-less block that the client treats no differently
-from any other.
+Two consequences fall out of that, and both are load-bearing.
+
+comrak moves every definition to the end of the document, so a walk that met a reference
+first would not yet have seen its definition. `render_internal_impl` therefore runs a
+**pre-pass** over the root's children collecting definitions into a map before the main
+walk begins — the same shape as the heading-level pre-scan just above it.
+
+More subtly: **a block id is hashed from the block's source lines, not from its emitted
+HTML**. A note's source lives somewhere else entirely while its text renders inside the
+referencing block, so the definitions a block displays are folded into that block's hash
+input. Without that fold, editing a note would leave every block id identical, the diff
+would emit no operation, and the live preview would silently keep showing the old note —
+a failure with no error and no visible symptom except staleness. Only the notes a block
+actually displays are folded in, so editing one note does not churn the ids of blocks
+that reference a different one.
+
+Because the note renders as phrasing content inside another block, a definition carrying
+block content (a list, a quote, a code block) is flattened to its text with a warning: an
+`<ul>` inside a `<span>` inside a `<p>` makes the HTML parser close the paragraph early,
+which would leave the block with two root elements and break the one-root-element
+invariant the block swap depends on.
 
 ## Incremental updates
 

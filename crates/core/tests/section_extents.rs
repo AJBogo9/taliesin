@@ -134,19 +134,24 @@ fn a_section_extent_covers_its_subsections() {
 }
 
 /// A section ending at end-of-document does not swallow the generated furniture that is
-/// appended after the body. `structure.tmd` carries a footnote, so its block list ends
-/// with the footnotes section; the last authored section must stop before it.
+/// appended after the body. `structure.tmd` cites a source, so its block list ends with
+/// the References section; the last authored section must stop before it.
+///
+/// It used to be a *footnote* that supplied the trailing block. That stopped being true
+/// on 2026-08-01, when a note moved to the margin beside its own reference and so became
+/// part of the referencing block rather than a gathered section appended after the body
+/// (item 183). References is the furniture the same page's prose already named.
 #[test]
-fn the_last_section_stops_before_the_generated_footnotes_block() {
+fn the_last_section_stops_before_the_generated_references_block() {
     let blocks = structure_blocks();
-    let footnotes = blocks
+    let refs = blocks
         .iter()
-        .position(|b| b.id == "tali-footnotes")
-        .expect("fixture precondition: structure.tmd's footnote should emit a footnotes block");
+        .position(|b| b.id == "tali-references")
+        .expect("fixture precondition: structure.tmd's citation should emit a References block");
     assert_eq!(
-        footnotes,
+        refs,
         blocks.len() - 1,
-        "fixture precondition: the footnotes block should be last"
+        "fixture precondition: the References block should be last"
     );
     let last = blocks
         .iter()
@@ -154,16 +159,16 @@ fn the_last_section_stops_before_the_generated_footnotes_block() {
         .expect("structure.tmd defines #sec-last");
     let end_id = section_end(&last.html).expect("the final heading carries an extent");
     assert_ne!(
-        end_id, "tali-footnotes",
-        "the last section must not claim the footnotes block as its content"
+        end_id, "tali-references",
+        "the last section must not claim the References block as its content"
     );
     let end = blocks
         .iter()
         .position(|b| b.id == end_id)
         .expect("extent names a real block");
     assert!(
-        end < footnotes,
-        "the last section ends at block {end}, at or past the footnotes block {footnotes}"
+        end < refs,
+        "the last section ends at block {end}, at or past the References block {refs}"
     );
 }
 

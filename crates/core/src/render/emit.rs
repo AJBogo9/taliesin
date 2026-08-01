@@ -111,14 +111,14 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
         NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
-        // `[^name]` reference → a superscript link to the gathered footnote section. The link
-        // is a `doc-noteref` (PA-M8) so AT announces it as a note reference, not a bare number.
-        NodeValue::FootnoteReference(r) => out.push_str(&format!(
-            "<sup class=\"tali-fnref\" id=\"fnref-{name}-{rn}\"><a role=\"doc-noteref\" href=\"#fn-{name}\">{ix}</a></sup>",
-            name = escape_attr(&r.name),
-            rn = r.ref_num,
-            ix = r.ix,
-        )),
+        // `[^name]` reference → a superscript link to the note. The link is a `doc-noteref`
+        // (PA-M8) so AT announces it as a note reference, not a bare number. The note's own
+        // text is spliced in right after this `<sup>` by the render loop (see
+        // `footnote_sidenote`), which reconstructs this markup to find the splice point —
+        // so the two must stay one format string.
+        NodeValue::FootnoteReference(r) => {
+            out.push_str(&footnote_ref_markup(&r.name, r.ref_num, r.ix))
+        }
         NodeValue::List(nl) => emit_list(node, nl, attrs, out),
         NodeValue::Item(_) => emit_item(node, false, out),
         NodeValue::BlockQuote => {
@@ -128,7 +128,10 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         }
         NodeValue::ThematicBreak => out.push_str(&format!("<hr{attrs} />")),
         NodeValue::Link(l) => {
-            out.push_str(&format!("<a href=\"{}\"", escape_attr(safe_url(&l.url, false))));
+            out.push_str(&format!(
+                "<a href=\"{}\"",
+                escape_attr(safe_url(&l.url, false))
+            ));
             if !l.title.is_empty() {
                 out.push_str(&format!(" title=\"{}\"", escape_attr(&l.title)));
             }
@@ -226,30 +229,71 @@ fn is_safe_data_image(url: &str) -> bool {
     RASTER.iter().any(|p| norm.starts_with(p))
 }
 
-/// A footnote definition as an `<li>` for the gathered footnotes `<ol>` (the render
-/// loop collects these so they don't render in place; the `<ol>` auto-numbers them
-/// in comrak's reference order). Carries a backlink to the first reference.
+/// A footnote definition as the margin sidenote spliced in right after its own
+/// reference (owner ruling 2026-08-01: margin placement is the DEFAULT on a wide
+/// screen, not a `footnotes:` knob). Returns the markup and whether anything had to be
+/// flattened to produce it.
 ///
-/// The `<li>` is the locatable unit, not the gathered section around it: the section
-/// collects notes from many scattered lines, so only the individual definition has a
-/// real source range. It therefore carries its own `data-sourcepos` (+ `data-source-file`
-/// when the definition came from an `{{< include >}}`d file) AND a `data-block-id` —
-/// client.js `locatable()` resolves a Ctrl-click with
-/// `closest("[data-tali-src], [data-block-id]")`, so a `data-sourcepos` alone would be
-/// walked straight past. The id is namespaced `fn-…`, which cannot collide with a
+/// **Phrasing content only, and that is a hard constraint rather than a style choice.**
+/// The note is spliced immediately after the `<sup>`, and a reference can sit anywhere
+/// inline — in a paragraph, a heading, a table cell, a list item. A `<p>`, `<ul>` or
+/// `<pre>` in that position makes the HTML parser close the enclosing element early,
+/// which leaves the block with *two* root elements: that breaks the one-root-element
+/// invariant every block carries, and with it the block swap that addresses a block by
+/// id. So each paragraph child contributes its INLINE content (joined with `<br>`), and
+/// any other child is flattened to its text with `flattened = true` so the caller can
+/// warn rather than silently reshaping the author's note.
+///
+/// The sidenote is the locatable unit: it carries the definition's own `data-sourcepos`
+/// (+ `data-source-file` when the definition came from an `{{< include >}}`d file) AND a
+/// `data-block-id`, because client.js `locatable()` resolves a Ctrl-click with
+/// `closest("[data-tali-src], [data-block-id]")`. Without the id the click walks up to
+/// the *referencing* block and lands on that block's line — silently the wrong line,
+/// which is worse than no-op. The id is namespaced `fn-…`, which cannot collide with a
 /// content-hashed block id (`make_id` emits `b-…`).
-pub(crate) fn footnote_def_li<'a>(
+pub(crate) fn footnote_sidenote<'a>(
     node: &'a AstNode<'a>,
     name: &str,
+    ix: u32,
     sourcepos: &str,
     source_file: Option<&str>,
-) -> String {
+) -> (String, bool) {
     let mut inner = String::new();
-    emit_children(node, &mut inner);
+    let mut flattened = false;
+    for child in node.children() {
+        let is_paragraph = matches!(child.data.borrow().value, NodeValue::Paragraph);
+        if !inner.is_empty() {
+            inner.push_str("<br>");
+        }
+        if is_paragraph {
+            emit_children(child, &mut inner);
+        } else {
+            flattened = true;
+            let mut text = String::new();
+            collect_text(child, &mut text);
+            escape_html(text.trim(), &mut inner);
+        }
+    }
     let n = escape_attr(name);
     let file_attr = source_file_attr(source_file);
+    (
+        format!(
+            "<span class=\"tali-sidenote\" id=\"fn-{n}\" role=\"doc-footnote\" \
+             data-block-id=\"fn-{n}\" data-sourcepos=\"{sourcepos}\"{file_attr}>\
+             <span class=\"tali-sidenote-num\">{ix}</span>{inner}</span>"
+        ),
+        flattened,
+    )
+}
+
+/// The exact `<sup>` markup [`emit_node`] produces for one footnote reference. The
+/// splice that puts a note beside its reference matches on this string rather than
+/// parsing the emitted HTML: both ends are generated here, so an exact reconstruction
+/// cannot mis-target the way a substring search for `fnref-` could.
+pub(crate) fn footnote_ref_markup(name: &str, ref_num: u32, ix: u32) -> String {
     format!(
-        "<li id=\"fn-{n}\" data-block-id=\"fn-{n}\" data-sourcepos=\"{sourcepos}\"{file_attr} class=\"tali-fn\">{inner}<a class=\"tali-fn-back\" href=\"#fnref-{n}-1\" aria-label=\"Back to content\">\u{21a9}\u{fe0e}</a></li>"
+        "<sup class=\"tali-fnref\" id=\"fnref-{name}-{ref_num}\"><a role=\"doc-noteref\" href=\"#fn-{name}\">{ix}</a></sup>",
+        name = escape_attr(name),
     )
 }
 

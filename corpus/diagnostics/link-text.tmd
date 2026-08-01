@@ -29,9 +29,10 @@ repetition, not ambiguity: both go to one page, so the text is not lying to anyo
 
 ## Not a finding: generated link text
 
-Footnote references and their back-references[^one] repeat by construction[^two] — the
-author does not write "1" or "↩", and every page with two footnotes carries the same two
-phrases pointing at different anchors. Generated links are exempt for that reason.
+Footnote references[^one] are generated links[^two] — the author does not write the "1"
+or the "2", and cannot reword them. Two references to the *same* note read alike and
+point at one anchor, which is repetition rather than ambiguity, so nothing is reported.
+Generated links are exempt for that reason.
 
-[^one]: The back-arrow at the end of this note is a generated link.
-[^two]: So is this one, pointing back to a different place.
+[^one]: The superscript marker in front of this note is a generated link.
+[^two]: So is this one, pointing at a different anchor.

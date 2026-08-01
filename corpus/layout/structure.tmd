@@ -1,5 +1,6 @@
 ---
 title: "Layout: where a section begins and ends"
+bibliography: references.bib
 ---
 
 Blocks are flat siblings of one root. Nothing wraps a heading and the content beneath
@@ -50,10 +51,13 @@ headings before filling the first one in.
 ## A section that runs to the end of the document {#sec-last}
 
 The last section has no following heading to stop at, so it ends at the last block of
-the *body*. Generated document furniture is appended after that: this page carries a
-footnote[^extent], and the footnotes block it produces is not part of any section. Nor
-would a References section be. They are structures the document grew, not content the
-author filed under a heading.
+the *body*. Generated document furniture is appended after that: this page cites a
+source [@tufte1983], and the References section it produces is not part of any section.
+It is a structure the document grew, not content the author filed under a heading.
 
-[^extent]: A footnote, so this page emits a trailing generated block and the "no section
-owns the furniture" rule is exercised rather than merely asserted.
+A footnote[^extent] does *not* produce furniture, which is the distinction worth having
+on this page: its note renders beside its own reference, inside this very paragraph, so
+it is part of the last section rather than appended after it.
+
+[^extent]: This note is inside the block that references it, not in a list at the end of
+the page, so it moves nothing about where the section stops.

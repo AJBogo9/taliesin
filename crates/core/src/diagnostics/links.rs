@@ -133,12 +133,16 @@ fn link_name(open: &str, inner: &str) -> String {
 ///
 /// Compared **modulo fragment**: two `#`-deep links into the same document are one
 /// destination for this purpose. That is the whole difference between this rule and a
-/// false-positive factory, and it is the reason the audit gave for trimming it. It is
-/// also what silences footnote back-references, measured rather than assumed: every one
-/// on a page reads "Back to content" (an `aria-label`) and points at a *bare* fragment,
-/// so they all share one destination here. (The audit's proposed `data-footnote-ref` /
-/// `data-footnote-backref` exemption would have been dead code — this project emits
-/// `role="doc-noteref"` and `class="tali-fn-back"`, not comrak's attributes.)
+/// false-positive factory, and it is the reason the audit gave for trimming it.
+///
+/// Footnotes used to need that clause to stay silent, because every back-reference on a
+/// page read "Back to content" and pointed at a bare fragment. **There are no
+/// back-references any more** (item 183, 2026-08-01: a note renders beside its own
+/// reference, so there is nothing to go back from), and the forward references cannot
+/// collide either — two markers reading alike point at the same note by construction,
+/// which is one destination. (The audit's proposed `data-footnote-ref` /
+/// `data-footnote-backref` exemption would have been dead code either way — this project
+/// emits `role="doc-noteref"`, not comrak's attributes.)
 ///
 /// **Cross-references are exempt** because the author does not write their text: an
 /// *unnumbered* theorem renders every reference to it as a bare "Theorem", so two refs
