@@ -5,307 +5,42 @@ docs under `corpus/` render correctly; each new capability ships pinned by a tar
 Roadmap: [ROADMAP.md](ROADMAP.md).
 
 > **Only open tasks live here.** Completed work lives in git, [AUDITS.md](AUDITS.md) and
-> [ROADMAP.md](ROADMAP.md); **delete an item when it lands**, never leave a `[x]`. Method lessons
-> that outlive their item go to [LESSONS.md](LESSONS.md). "Do not re-add / re-scope" is a compact
-> anti-rot guard — **one line per entry**, not a changelog. This file was 1,767 lines on
-> 2026-07-29 because that rule was not enforced; if it is growing again, the fix is to move detail
-> out, not to add a summary at the top.
+> [ROADMAP.md](ROADMAP.md); **delete an item when it lands** — never a `[x]`, never a strikethrough.
+> Method lessons that outlive their item go to [LESSONS.md](LESSONS.md), detection gaps to
+> [DETECTION-DEBT.md](DETECTION-DEBT.md). "Do not re-add / re-scope" is a compact anti-rot guard —
+> **one line per entry**, not a changelog.
+>
+> **This file has now been cut back twice for the same reason** (1,767 lines on 2026-07-29; 1,298 on
+> 2026-08-01, when the "Now" section had become a changelog of *shipped* batches and a third of the
+> one-line "Shipped" guards had grown into 40-line reports). If it is growing again, move the detail
+> out; do not add a summary at the top.
 
-## Now
+## Start here
 
-**Fresh session with no context: read this section, then "Standing constraints", then P1. That is
-enough to start.**
-
-- **Item 158, opt-in Pyodide `{pyodide}` cells, DONE on branch `pyodide-cells-2026-07-31`
-  (NOT pushed; the author held the push deliberately until the work was finished).**
-  `./tools/gates.sh` PASSED with all **eight** canaries verified by name, the eighth being
-  the new `a_pyodide_cell_boots_and_publishes_to_a_js_consumer`. A `{pyodide}` fence runs
-  Python in the reader's browser off a vendored, offline Pyodide 314.0.3 + NumPy 2.4.3
-  (~8.8 MB packed), disjoint from the kernel-backed `{python}`: a third row in
-  `CLIENT_LANGS`, delivered as a served `/_taliesin/pyodide-314.0.3/` route in preview and
-  an `_assets/` copy in a site build. Spec + plan under `docs/superpowers/`; the SDD ledger
-  is `.superpowers/sdd/2026-07-31-pyodide-cells/progress.md` (gitignored). **The top of P1
-  is therefore now the 181-188 cluster**, whose cross-cluster ranking against 164/167 is
-  still an owner call.
-  **Four things a later session must carry:**
-  - **The output-mode matrix is the part that kept breaking, and it is worth re-reading
-    before touching delivery.** `{pyodide}` runs in `preview` and in a **site** build only.
-    Every single-document output (`build out.html`, `build --out <dir>`, `render`, `pdf`,
-    `--bare`) is `AssetMode::Inline`, carries no runtime, and must DEGRADE the cell to a
-    visible highlighted listing. Four of those five were shipping something broken until the
-    branch review: `render` and `pdf` emitted a live wrapper with no index (the reader got
-    an error box), and `--bare` deleted the author's Python outright, because the source
-    lives INSIDE the `<script>` the bare strip removes. `--out <dir>` could be made to work
-    by giving the single-doc builder External assets, which is what the plan's own delivery
-    table assumed; that is a **follow-up, deliberately not done here**.
-  - **Two gaps left open, both surfaced by the whole-branch review and both judged
-    out-of-scope rather than forgotten:** a `{pyodide}` cell in a **deck** never gets an
-    index `<meta>` (the deck assembler is a separate path), so it fails in live deck preview
-    even though the route is being served; and the vendored version is hardcoded twice in
-    `render/pyodide.rs` (`PYODIDE_DIR_NAME`, `PREVIEW_PYODIDE_DIR`) with nothing drift-locking
-    either to the payload, so a re-vendor can leave a stale directory name under
-    `Cache-Control: immutable`.
-  - **`publish` is deliberately NOT on the cell `api`.** It is `setup()`'s fourth argument,
-    because `api` is handed verbatim to `{js}` author source as `tali`; a masking shield was
-    tried first and leaked through `Object.getPrototypeOf(tali).publish`. Four access axes
-    are pinned by `author_cell_source_cannot_reach_the_publish_hook`. Do not "tidy" it back
-    onto `api`: that reopens the reactive-VM feedback edge this project has refused 3x.
-  - **All cells share ONE interpreter and `setStdout` is a global redirect on it**, so
-    execution is FIFO-serialized page-wide with a per-cell generation token. Two cells within
-    the 600 px `IntersectionObserver` margin is the ordinary case, not a rare race.
-- **Item 159, the print/PDF track, MERGED to `main` 2026-07-31** (`745b3774`, from branch
-  `print-pdf-track-2026-07-31`; `./tools/gates.sh` PASSED with all seven canaries verified
-  by name, and the pre-push hook green).
-  `taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]` renders a
-  typeset PDF *from the built HTML* via paged.js + CDP: running heads, folios,
-  `@fig-` refs that print as "Figure 3 (p. 12)", an auto list of figures, widow/orphan
-  control and hyphenation. Spec + plan under `docs/superpowers/`.
-  **Five things a later session must carry:**
-  - **The one open defect is CLOSED (2026-07-31), and its recorded cause was wrong on both
-    counts.** It was filed as "a figure crossing a page boundary hangs paged.js". It was
-    neither paged.js nor page boundaries: the screen renderer marks every image after the
-    first `loading="lazy"` (`render/image_meta.rs`), a paginated render never scrolls, so
-    Chrome never requests a far-down image — `complete` stays false and neither `load` nor
-    `error` ever fires. `PAGED_START` waited on exactly those events, so `preview()` was
-    never called. Fixed by `eager_media()` in `render/print.rs`.
-    **All THREE "measured" claims in `render/print.rs` were wrong the same way**, each
-    downstream of that one unmeasured assumption about which component was failing: the
-    "figure crossing a page boundary" hang; the `max_float_height` hang, whose CSS rule was
-    never even in the stylesheet (`git log -S __TALI_MAX_FLOAT_H__` finds no commit, so the
-    substitution replaced nothing on every render); and "paginate-on-load never finishes
-    chunking", which re-measures byte-identical to the shipped path now that images load
-    eagerly. `auto: false` is kept for font ordering, relabelled as the conservative choice
-    it is. The height cap is now genuinely wired up — uncapped, a 600x3000 figure bleeds past
-    both margins, loses its caption and strands two near-blank pages.
-    **The lesson is about the bisection, not the bug.** A whole session was spent ruling out
-    `break-inside`, `max-height`, the LoF's `break-after`, image count and the settle
-    budget — all *inside* paged.js, because the failing component had been assumed rather
-    than measured. One probe of the live page (`.pagedjs_page` count `0`, polyfill loaded,
-    fonts settled) named the component in a single run and showed pagination had never
-    started. **Instrument the failing environment to name the component before bisecting
-    inside it.**
-  - **`cmd | tail` throws away `cmd`'s exit code** — a pipeline reports the LAST stage's
-    status, so `./tools/gates.sh 2>&1 | tail -40` reports `tail`'s 0 no matter what the
-    script did. That misread happened twice in one session and nearly went into the notes as
-    "gates.sh exits 0 having run nothing". It does not: measured directly, it exits **2**
-    when it refuses to start and **1** when a gate fails. Redirect to a file and check `$?`,
-    or use `PIPESTATUS`. **And run the workspace suite `-- --test-threads=1`**, as gates.sh
-    does: several tests own process-global state (`CHROME_PATH`), so at full parallelism a
-    browser test fails with a bare "a browser render" that reads exactly like a regression.
-    Separately: gates.sh needs
-    `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python`, or it refuses to run at all
-    (correctly — "a partial run would look green"), and verify the canaries by name.
-  - **Every CSS experiment run before the `<base href>` fix measured broken images and
-    proved nothing.** The print page is written to a temp dir, so relative URLs 404'd and
-    figures rendered ALT TEXT. No test caught it because every live gate written first
-    referenced an image that did not exist — nothing loaded, so nothing visibly failed.
-    **A negative test whose fixture is also absent proves nothing.**
-  - **Chrome 150 implements `@page` margin boxes and `counter(page)` but NOT `string-set`
-    or `target-counter()`** (measured, three syntax variants each, with a positive control).
-    So paged.js is load-bearing, not a fallback — and it CANNOT be driven from the Chrome
-    CLI: `--print-to-pdf` truncates deterministically at 2 pages at every
-    `--virtual-time-budget` from 5 s to 120 s, `--dump-dom` captures it mid-init. CDP is
-    the only route.
-  - **paged.js `auto: false` fires `config.after` IMMEDIATELY, before any pagination.**
-    Stamping completion from it yields a page that captures half-rendered: content present,
-    every `target-counter()` unresolved. The stamp must come from the `preview()` promise.
-
-- **Items 171, 172, 173 and 56's backlinks half shipped 2026-07-31** (branch
-  `reader-affordances-2026-07-31`), `./tools/gates.sh` green with all four interpreter gates
-  armed. Five things a later session should carry:
-  - **Two of the four items' recorded blockers were rot, in the same direction: the thing
-    said to be missing already existed.** 171 was filed as needing a `reqwest`/`TcpListener`
-    harness; `preview_single_instance.rs` had hand-rolled one all along, so the test cost no
-    dependency. 173's C-READ-2 was filed as "code *and data* download" while the data half had
-    already shipped as `{{< dataset >}}` (item 176). **Grep for the capability before pricing
-    the work**, which is now the third batch where that rule paid out.
-  - **The inlined-asset needle trap fired TWICE in one batch, in both directions, and the
-    second direction is not in `LESSONS.md` yet.** Positive: a test proved the site `css:` was
-    inlined by finding `@view-transition` on the page, which the move into `base.css` made
-    vacuous. **Negative: a new COMMENT in `base.css` naming `speculationrules` shipped that
-    literal into every page and failed the test that forbids it.** Every page inlines the CSS
-    and JS payload whole, so a whole-page `contains` — asserted either way — is a claim about
-    the bundle as much as the document. Both tests now say so in their doc comments.
-  - **A reader affordance must be excluded from every text projection, and there are FOUR of
-    them in three modules** (`taliesin read`/`skim`, the search index, `llms-full.txt`). Two of
-    those leaks were found only by building a real site and grepping the artefacts; no test had
-    them. The id is now one constant (`REPRO_BLOCK_ID`) with one test covering the projections
-    together. **Any future generated block owes the same sweep.**
-  - **A client-side scrape of the rendered page is the wrong source for anything about cells.**
-    A `#| echo: false` cell runs and emits no listing, so the DOM is missing exactly the setup
-    cells. Measured on the PCA post: **1 visible listing, 168 lines in the block model.** Read
-    the block model.
-  - **Browser-measure a new interactive element's tap target.** The code-download link was
-    15px at a 390px viewport (WCAG 2.5.8 floor is 24) because inline text inherits the line
-    box. Surfaced and NOT fixed, because it is pre-existing and shared: the Settings segmented
-    buttons are 26px, and the Theme picker measures the same.
-
-- **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded
-  here on purpose: the author and parallel sessions both push, and a recorded SHA is the line that
-  rots first.
+- **P1 is a ranked build queue, not a menu.** Take from the top: 190 and 191 are defects in shipped
+  work, then the research-publishing cluster (181, 183-188), then the large swings. **Read
+  [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
+  it records what Taliesin already leads on and what was deliberately rejected. **The cross-cluster
+  ranking of 181-188 against 164/167 is an owner call that has not been made.**
+- **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded here
+  on purpose: the author and parallel sessions both push, and a recorded SHA is the line that rots
+  first.
 
   ```sh
   git log --oneline origin/main..HEAD   # what is unpushed
   git branch -vv                        # what branches still exist
   ```
 
-- **The editor scope is CLOSED as of 2026-07-30.** `FEATURE-IDEAS.md` Session 3 ideas **75, 76,
-  77, 78, 79, 80, 85** shipped against
-  [2026-07-30-editor-scope-completion-design.md](../docs/superpowers/specs/2026-07-30-editor-scope-completion-design.md);
-  **67, 72, 74 and 83 were CUT on measured evidence**; **81 was dropped by owner ruling**. The only
-  editor-surface idea still open anywhere is **86** (cell CodeLens), which stays filed as item
-  **175(d)** behind output streaming. Five things a later session should carry:
-  - **"Gated on the project index" was false for every surface it was claimed for.** Idea 74 (L,
-    needs-care) was cut, not built: F12, Ctrl+T, opening a view and an Explorer refresh all fire
-    on a *gesture*, so they need a walk. `crates/server/src/lsp_project.rs` is one walk behind a
-    memo validated by `stat`ing each page for `(mtime, len)`, with no watcher and no invalidation
-    protocol. **Second time the "re-cost against 74" rule paid out**, after idea 84. Treat a
-    "needs the index first" claim as something to disprove.
-  - **Three parked ideas died on contact with their own premises, and two of them were rot.**
-    67 lost its last justification the moment 75 shipped (it existed to distinguish states only
-    one of which F12 could reach). 83 claimed the browser preview cannot reach the editor, while
-    `client.js` has navigated to `vscode://file<abs>:<line>:<col>` all along. 72 proposed swatches
-    for `--tali-*` in `_site.yml` and front matter, where **no such token is authored anywhere in
-    the repo**; they live in a `theme:` CSS file, and VS Code's own `css-language-features`
-    already paints those. **Before building a provider, grep for where the value is actually
-    authored.**
-  - **A surviving mutant is a finding about the test, twice over here.** Deleting the
-    `is_xref_anchor` gate in `xref_occurrences` left the suite green, because the fixture's only
-    non-anchor `@` was an email address already rejected by the *site* predicate; the fixture
-    needed `@handle`, an `@` at a valid site with no kind prefix. Separately, deleting the
-    `needle.is_empty() ||` short-circuit in `workspace_symbols` also stayed green, and that one
-    was correct: `contains("")` is true for every string, so the guard was dead code and was
-    removed rather than re-pinned.
-  - **`taliesin check`'s human format was mis-transcribed in the ideas file and had to be
-    re-derived from a real run.** Severities are **lowercase** (`error`/`warning`/`suggestion`,
-    `crates/core/src/diagnostics/codes.rs`) and codes are `TAL-XREF-UNDEF`-shaped. There is also
-    an **unlocated** `file: severity[CODE]: message` form with no line, which needs its own
-    matcher or those findings never reach the Problems panel. The older `:col` correction held.
-  - **The engine floor moved to `^1.101.0` with `@types/vscode` pinned exactly to `1.101.0`**, for
-    `registerMcpServerDefinitionProvider`. Measured by packing both candidates: absent at 1.100.0,
-    present at 1.101.0. The pin was then proved load-bearing by passing the constructor one
-    argument and watching `tsc` answer `Expected 2-5 arguments`.
-  - **The e2e suite found a real bug that every unit test and a green `gates.sh` missed**, which is
-    the fifth consecutive batch where the last gate found what the earlier ones could not.
-    `workspace/symbol` names no file, and the handler picked `docs.keys().find_map(...)` (the first
-    key of a **hash map**) to stand for "the project", so with documents from two projects open
-    Ctrl+T searched an arbitrary one. It now searches every open project;
-    `workspace_symbols_search_every_open_project_not_an_arbitrary_one` pins it. **A second stale-
-    artifact trap sat on top of it:** the e2e runs `target/debug/taliesin`, which `cargo test`
-    does **not** rebuild, so the first fix appeared not to work. `cargo build --bin taliesin`
-    before believing any e2e result.
-  - **Two e2e list-continuation failures are PRE-EXISTING, verified against a worktree at
-    `origin/main`** (27 passing / 2 failing there; 33 / 2 on the branch). They also failed at
-    **load ~2-3.4**, not the "load ~6-7" this file previously recorded, so that threshold is
-    understated: treat the two `pressEnterAfter` tests as unreliable at any load until someone
-    fixes them, and always compare against a baseline run rather than the recorded number.
-
-- **The editor authoring-gesture batch shipped 2026-07-30** (`FEATURE-IDEAS.md` Session 3 ideas
-  **73**, **84**, **82**, promoted by owner ruling; spec and plan under `docs/superpowers/`). Six
-  paste/drop gestures, rename-repairs-references in both directions, and clickable `file:line:`
-  in the terminal. Four things a later session should carry:
-  - **Three of the ideas file's own cost estimates were wrong**, and the corrections are written
-    back into it rather than only here. The reusable one: **idea 84 was priced as needing the
-    parked project index (74) and does not**, because a rename fires ONCE and needs a *walk*,
-    which `site::anchors_defined_elsewhere_in_project` already does. **Re-cost anything else in
-    Cluster C that fires per gesture rather than per keystroke before pricing it against 74.**
-  - **`engines.vscode` was a promise the compiler never checked.** It declared `^1.91.0` while
-    `@types/vscode` resolved to 1.125.0, so `tsc` blessed calls that are `undefined` on the
-    minimum editor. The floor is now `^1.97.0` (measured: the paste API is absent from stable
-    types 1.96.0, present in 1.97.0) and **the types are pinned EXACTLY, with no caret**, because
-    `^1.97.0` also resolves to 1.125.0 and leaves the same gap. A test pins both fields.
-  - **The mutation step found four defects that review and a green suite did not**, which is the
-    fourth consecutive batch where that happened. Two were vacuous tests (a first-vs-last fixture
-    with only one cell to order; two guards each masked by a later check), one was provably
-    unreachable code, and one was a branch I had added with no test at all. **A surviving mutant
-    is a finding about the test, not a nuisance.**
-  - **A new DETECTION-DEBT row (D=8) names what cannot be closed:** `vscode.env.clipboard` is
-    text-only, so no test can put `image/png` or `text/html` on the clipboard, and there is no
-    `vscode.execute*` command for paste or drop (measured by listing every command matching
-    `/drop|paste/` in a real host). Those two routes are unobserved by construction.
-
-- **Items 165, 166, 162 and 161 shipped 2026-07-30**, and three of them carry something a
-  later session needs.
-  - **166's recorded blocker was already solved.** The item said a prose formatter cannot
-    ship because reflowing moves every `data-sourcepos` below it. `BlockOp::SetMeta` has
-    handled exactly that all along (shifted lines, unchanged content, live DOM state kept),
-    so the objection was rot. The *reflow* is still declined, but now on measured grounds:
-    86 of 174 corpus documents are hand-wrapped and 379 prose lines pass 100 columns, so
-    there is no house style to enforce. What shipped is the render-identical subset, gated by
-    `formatting_the_whole_corpus_renders_identical_html` — which immediately caught a case no
-    reasoning had produced (adding a final newline to a document ending in an HTML comment
-    puts the newline *inside* the passthrough). **A whole-corpus render-identity gate is the
-    reusable shape here**; reach for it before hand-reasoning about parser edge cases.
-  - **165's keybindings were chosen from the running editor, not from memory.** The first
-    choice (`ctrl+alt+pageup`/`pagedown`) is taken by quick-input paging and chat code-block
-    navigation. The e2e suite now reads VS Code's real default table
-    (`workbench.action.openDefaultKeybindingsFile`) and fails on a clash, with punctuation
-    keys normalized (the default table spells `[` as `[BracketLeft]`, so a raw string
-    compare calls every punctuation binding free). **Do not pick a keybinding by recall.**
-    One deliberate override is listed: `ctrl+shift+k` shadows `editor.action.deleteLines`.
-  - **162 and 161 are client-side and their arithmetic is browser-verified by hand**, not by
-    a test: `client.js` is deliberately one IIFE with no unit harness. The drift halves are
-    gated in `serve/mod.rs`, and the gap is now a DETECTION-DEBT row naming the harness
-    change it needs (a `tools/ui-audit` probe that edits a *copy* of a corpus doc under a
-    live preview). 161 also fixed three things found only by using it: a `0w` parent section,
-    the `#` anchor glyph in every title, and the title block counting as a five-word section.
-  - **A new `data-*` attribute in browser code trips `token_contract.rs`'s census.** Expected,
-    and the fix is one sorted line — but the census is also the prompt to namespace it
-    (`data-kind` became `data-tali-op`).
-
-- **Item 179 shipped 2026-07-30 and its filed cause was wrong**, which is worth one line here
-  because the item read as fully diagnosed. The load-flaky shader test was not "the probe samples
-  before the draw lands": the WebGL context is **lost** under CPU starvation (`isContextLost()`,
-  `getError()` 37442) on both canvases before any read, so the prescribed "poll with a generous
-  timeout" fix made it *worse* (23% → 33% failure). The mechanism and the general lesson are in
-  [LESSONS.md](LESSONS.md). Item **180** is closed: the docs half shipped the same day, and the
-  author ruled on 2026-07-31 to keep all three inlay-hint kinds on by default, unchanged.
-
-- **Item 150 shipped 2026-07-30** (site-aware in-editor preview, both halves): a chapter under a
-  `_site.yml` now previews as its *project*, opened at that page's URL, one server per book. Two
-  things a later session should know. (1) **The companion e2e suite is load-sensitive**: the two
-  list-continuation tests fail with "the Enter keystroke was never delivered" at load ~6-7, on
-  `main` as well as on a branch — four alternating baseline/branch pairs at load ~3.5 were clean
-  on both sides. Do not chase it as a regression without alternating runs. (2) **It carries one
-  author judgment, not a task:** moving the cursor into another chapter now moves the *preview*
-  to that chapter, on the passive path, not only on the explicit reveal. That is deliberate — a
-  preview showing a chapter you are not editing is stale, and the yank the reveal/mark split
-  guards against is a cursor in the page *already* on screen, which still never navigates — but
-  it has not been lived with. As with the inlay-hint ruling, the answer is a better default,
-  not a knob.
-
-- **Items 178 + 177 (LSP editor ergonomics) shipped on 2026-07-30** against
-  [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
-  all 8 tasks, `./tools/gates.sh` green. The plan and its spec stay in the repo as the record of
-  *why*; nothing on the board depends on them now. Four new LSP capabilities (inlay hints,
-  folding, document highlight, selection ranges) plus visible math delimiters, and item 178's open
-  question is **answered with a number**: one `publish` on the largest page of the 25-page guide is
-  33 ms in a debug build against a 120 ms debounce window, so debouncing alone was enough and the
-  anchor scan needs no memo. Ideas 67 and 72 remain parked in
-  [FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 3.
-
-- **The board was refilled on 2026-07-29 by an owner ruling.** Every feature parked in the old
-  "Tier 3, demand-driven" tail was reviewed with the author and **promoted**. That includes the
-  **print/PDF track**, which the author had been cool on and is now warm to, so its Wave 5
-  deferral no longer holds. P1 is therefore a **ranked build queue**, not a drained board;
-  take from the top. Five of the promoted items (153-157, the explorable cluster) shipped on
-  2026-07-29, five more (165, 166, 162, 161, 169) on 2026-07-30, and 159 + 158 on 2026-07-31,
-  so the top of the queue is now the **181-188 research-publishing cluster**.
-- **Exactly one thing was declined:** the FL-weather Quarto migration, which is now the sole
-  line in the demand-driven tail.
-- **Everything below P2 is still blocked** on an owner ruling, a device, or a real user. The
-  audit slate is complete except **R12** (real-device mobile, Android, needs the author's
-  phone), and **no new round should be opened**: an audit's value decays to zero if its findings
-  never ship, three waves of them have now shipped, and the P1 queue is now the work.
-- **Nothing is owed by the author** except R12 and the rulings in P3.
-- **Two measurement hazards, both of which have cost time.** (1) `target/release/taliesin` is
-  shared across sessions and may be built from another branch — check `taliesin --version` against
-  your own HEAD before trusting any CLI number. (2) A table-shaped probe whose every cell is
-  negative is a **broken probe** until proven otherwise; carry a known-positive row. The full trap
-  catalogue is [LESSONS.md](LESSONS.md), and it is worth reading before writing any probe or pin.
-- **Entries rot; the rule for reading one is in "Standing constraints" below.** It has now been
-  vindicated on three consecutive batches — most recently item 151, whose filed cause was flatly
-  false while its symptom was real.
+- **Entries rot: trust an item's *symptom*, never its cause, line number or cost.** Grep the named
+  symbol in source before pricing the work. Measured 2026-08-01: **item 182 was filed on 2026-07-31
+  as "Taliesin has both link shapes and zero hover machinery (grepped)", while `site/hover.rs` plus
+  `code-enhance/12-link-preview.js` had shipped exactly that feature on 2026-07-06** — it was
+  deleted, not built. Three filed causes were false in the three batches before it.
+- **Two measurement hazards, both of which have cost time.** (1) `target/release/taliesin` is shared
+  across sessions and may be built from another branch — check `taliesin --version` against your own
+  HEAD before trusting any CLI number. (2) A table-shaped probe whose every cell is negative is a
+  **broken probe** until proven otherwise; carry a known-positive row.
+- **Nothing is owed by the author** except R12 (real-device Android) and the P3 rulings.
 
 ## Standing constraints (read before working)
 
@@ -325,873 +60,594 @@ enough to start.**
   `origin/main` only when the author asks. **Review subagents get a git worktree or you commit
   first** (a "read-only" reviewer with `Bash` still writes scratch files to your CWD; one ran
   `cat > Cargo.toml` in the repo root and destroyed the workspace manifest).
-- **Tests: three gates, or the suite silently under-tests itself:** `TALIESIN_REQUIRE_NODE=1`,
-  `TALIESIN_R=R TALIESIN_REQUIRE_R=1`, `TALIESIN_PYTHON=… TALIESIN_REQUIRE_KERNEL=1` (a missing
-  interpreter must be a hard fail, not a skip). `cargo test` aborts the remaining binaries at the
-  first failure, so re-run before trusting a total. A **fourth** gate nothing else runs:
-  `TALIESIN_REQUIRE_CHROME=1 --test read_run_js`.
-- **A red `exec`/`kernel` probe is now real signal, not a coin flip.** The flake was fixed 2026-07-25
-  (a port race in `prepare_connection`; the re-roll now lives on `Kernel::start_with_retry`, and
+- **Tests: four gates, or the suite silently under-tests itself.** Run `./tools/gates.sh`, which arms
+  `TALIESIN_REQUIRE_KERNEL` / `_R` / `_NODE` / `_CHROME`, asserts each canary printed `... ok` and
+  refuses to be green when one skipped. It needs `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python`
+  or it declines to start (exit **2**; a failed gate is exit **1**). Run the workspace suite
+  `-- --test-threads=1` as it does: several tests own process-global state (`CHROME_PATH`), so at
+  full parallelism a browser test fails in a way that reads exactly like a regression. `cargo test`
+  aborts the remaining binaries at the first failure, so re-run before trusting a total.
+- **Any new generated block owes the four-projection sweep** — `taliesin read`, `skim.rs`, the search
+  index and `llms-full.txt` — or its text leaks into the search index. Four projections in three
+  modules; two of item 173's leaks were found only by building a real site and grepping the
+  artefacts.
+- **A new `data-*` attribute or `--tali-*` token in browser code trips a census test**
+  (`token_contract.rs`): expected, one sorted line to fix, and it is also the prompt to namespace the
+  attribute. An invented `--tali-*` name renders **nothing** (the browser drops the whole
+  declaration), which is why the census exists.
+- **LSP/editor ranges are UTF-16.** A non-ASCII character earlier on the same line shifts every byte
+  offset after it and the edit lands in the wrong column.
+- **A red `exec`/`kernel` probe is real signal, not a coin flip.** The flake was fixed 2026-07-25 (a
+  port race in `prepare_connection`; the re-roll lives on `Kernel::start_with_retry`, and
   `crates/server/tests/kernel_start_is_retried.rs` fails if any caller reaches the un-retried
   primitive). Verified 0 failures in 45 post-fix runs under the same load.
 - **`corpus/tarn` is the fixture for scale-sensitive work** (12 numbered chapters, 3 parts + a nested
   part) and deliberately carries the shapes the rest of the corpus lacks. **Use it instead of minting
   a fixture.** It is a *documentation* book, not a scale fixture: do NOT grow it toward 200 pages and
   do NOT mint `corpus/longbook` (the walker renders every corpus doc on every `cargo test`).
-- **Git:** `git reflog show origin/main` before believing any "not pushed" claim in any notes file.
-- **How this file lies to you:** entries rot. Before picking an item, **grep its named symbol/flag in
-  source** and prefer measuring the running product over reading this file. Trust an item's
-  *symptom*, never its cause, line number or stated cost. Verify a fix by **mutation** (restore the
-  bug, watch the named test fail), not by a green suite. **What would ship silently is tracked
-  per class in [DETECTION-DEBT.md](DETECTION-DEBT.md)** — a live register, updated in the same
-  change as the fix, not a dated findings doc. **The full trap catalogue — probes,
-  instruments, cargo-mutants scoping, the coverage illusions — is in [LESSONS.md](LESSONS.md); read
-  it before writing a probe or a pin.**
+- **Execution pins do not belong in `corpus/`.** The walker renders every corpus doc on every
+  `cargo test` but does **not** execute cells, so a corpus pin for execution behavior pays the render
+  cost and exercises nothing. Put them in `crates/server/tests/` against a temp-dir fixture, as
+  `executed_output_reproducible.rs` and `progress_bar_collapses.rs` do.
+- **Verify a fix by mutation** (restore the bug, watch the *named* test fail), not by a green suite.
+  **The full trap catalogue is [LESSONS.md](LESSONS.md); read it before writing a probe or a pin.**
 
 ## Open items
 
 **Ranked by what a session should pick up, not by theme.** P1 is buildable today; P2 is filed so it
-is not rediscovered as a defect; P3, P4 and P5 are blocked and are listed so they are not
-re-scoped. **Item numbers are stable** and are referenced from the findings docs and
-[AUDITS.md](AUDITS.md): they are never renumbered and a closed item's number is never reused.
+is not rediscovered as a defect; P3, P4 and P5 are blocked and are listed so they are not re-scoped.
+**Item numbers are stable**: never renumbered, and a closed item's number is never reused.
 
-**Standing rule for a batch:** branch per batch, verify each fix by *mutation* (restore the bug,
-watch the named test fail), browser-verify anything client-side, and **delete the item from this
-file when it lands**.
+**Standing rule for a batch:** branch per batch, verify each fix by *mutation*, browser-verify
+anything client-side, and **delete the item from this file when it lands**.
 
 ### P1 — build now
 
-**A ranked build queue, not a menu: the order below IS the priority order.** Take from the top.
-The ranking encodes three things: **dependencies**, **size** (cheap
-substrate and small wins first, then the two large swings), and the author's
-standing **feature-first policy** (170, the marketing site, is deliberately last).
+**The order below IS the priority order.** It encodes four things: **defects in shipped work first**,
+then **dependencies** (184 is substrate for 185/186/187), then **size** (cheap wins before the two
+large swings), then the author's standing **feature-first policy** (170, the marketing site, is
+deliberately last).
 
-**Items 153-174 were promoted on 2026-07-29 by owner ruling** from the demand-driven tail, where
-several had sat since 2026-06-24; **153-157 shipped the same day** and are gone from this
-list. Each keeps a **pointer** to its design detail in
-[ROADMAP.md](ROADMAP.md) or [FEATURE-IDEAS.md](FEATURE-IDEAS.md) instead of re-expanding it here;
-that is the anti-bloat rule this file exists under. Two standing conditions apply to all of them:
+Two conditions apply to every item here. **Each still owes a corpus pin doc** (a capability ships
+pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
+pin a feature needs**. And **promotion is not a design**: several were parked with an open design
+question, not just for lack of demand. Those say so; brainstorm before coding.
 
-- **Each still owes a corpus pin doc** (corpus-plus-roadmap: a capability ships pinned by a target
-  corpus document added in the same change). Where the pin is already named upstream it is
-  repeated below. **Do not grow `corpus/` past the pin a feature needs**, the walker renders every
-  corpus doc on every `cargo test`.
-- **Promotion is not a design.** Several of these were parked with an open design question, not
-  just for lack of demand (166's line-shift problem, 160's source-map gate, 155/156's reactive-VM
-  trap). Those say so; brainstorm before coding.
+190. **Pyodide delivery residuals.** (S, three defects left open when 158 shipped 2026-07-31 —
+     filed here rather than lost inside a completed item.)
+     - **A `{pyodide}` cell in a deck never gets an index `<meta>`**, because the deck assembler is a
+       separate path, so it fails in live deck preview even though the route is being served.
+     - **`build --out <dir>` degrades a cell that could work.** Every single-document output is
+       `AssetMode::Inline` and correctly degrades to a highlighted listing, but `--out <dir>` could
+       carry the runtime if the single-doc builder were given External assets — which is what the
+       plan's own delivery table assumed.
+     - **The vendored version is hardcoded twice** in `render/pyodide.rs` (`PYODIDE_DIR_NAME`,
+       `PREVIEW_PYODIDE_DIR`) with nothing drift-locking either to the payload, so a re-vendor can
+       leave a stale directory name under `Cache-Control: immutable`.
 
-**Items 181-188 — the research-publishing cluster.** Filed 2026-07-31 from an author-raised
-survey of the academic-web ecosystem; full survey, per-item seams, traps and pins are in
-[2026-07-31-research-publishing-survey.md](2026-07-31-research-publishing-survey.md). **Read that
-file before starting any of them** — it records what Taliesin already leads on (do not rebuild
-`repro.rs`, `cite_this.rs`, the generated social card, or launch buttons) and what was
-deliberately rejected (carousels, multi-format export, Distill-as-a-stack). Ranked below by the
-same logic as the rest of P1 (small, independent, dependency-free first), but **the cross-cluster
-ranking against 164/167 is an owner call that has not been made** — the cluster sits here
-because 181-183 are the cheapest wins in the file, not because an owner ruled it.
-
-Two shapes, and the split matters: **181-183 improve documents Taliesin already renders** and
-need no new front-matter, so they land under "perfect the default". **184-188 are a new
-capability** (the project page) and share one front-matter vocabulary, so 184 is substrate for
-185/186/187 and must land first.
+191. **An inline reader-affordance link is below the tap-target floor.** (S, measured 2026-07-31 and
+     surfaced without a fix.) The code-download link renders **15 px** at a 390 px viewport against
+     WCAG 2.5.8's 24 px floor, because inline text inherits the line box. Pre-existing and shared, so
+     fix the class rather than the one link; the Settings segmented buttons and the Theme picker
+     measure 26 px and pass. Browser-measure any new interactive element the same way.
 
 181. **Layout escapes: `.column-page` / `.column-screen`.** (S. Survey §4A + §6.) A figure, wide
-     table, or multi-panel plot has **no way to be wider than the prose column** — only the
-     gutter end (`.column-margin`) exists. Distill's `l-page`/`l-screen` and Tufte's `.fullwidth`
-     are the same idea and both apply to `div`/`table`/`pre`, not just figures. **This is CSS +
-     two list entries, not a new render path** (`.column-margin` has no `divs.rs` arm). **The
-     trap is three container modes** — single-doc `body`, `.tali-site-main`, and
-     `.tali-site-main.has-toc`, which is a *grid*; browser-verify all three. Pin: extend
-     `corpus/layout/`.
+     table, or multi-panel plot has **no way to be wider than the prose column** — only the gutter
+     end (`.column-margin`) exists, and re-measured 2026-08-01 no width-escape class of any spelling
+     is in the tree. Distill's `l-page`/`l-screen` and Tufte's `.fullwidth` are the same idea and
+     both apply to `div`/`table`/`pre`, not just figures. **This is CSS + two list entries, not a new
+     render path** (`.column-margin` has no `divs.rs` arm). **The trap is three container modes** —
+     single-doc `body`, `.tali-site-main`, and `.tali-site-main.has-toc`, which is a *grid*;
+     browser-verify all three. Pin: extend `corpus/layout/`.
 
-182. **Hover previews for `[@key]` citations and `@fig-`/`@sec-` cross-refs.** (M. Survey §4B +
-     §6.) Distill ships `d-hover-box`; MyST names it their headline feature. Taliesin has both
-     link shapes and **zero** hover machinery (grepped 2026-07-31). **Design fork, brainstorm
-     first:** a cross-page target cannot be read out of the DOM, and item 173 already proved a
-     client-side scrape is the wrong source for anything derived from the document — so emit the
-     preview text server-side from the block model. **Owes the four-projection sweep**
-     (`taliesin read`, `skim.rs`, search index, `llms-full.txt`) or caption text leaks into the
-     search index. Pin: `corpus/refs/` + a citation user.
-
-183. **Footnotes as margin sidenotes.** (S-M, **needs an owner ruling before code**. Survey §4C
-     + §6.) Footnotes exist (gathered at the bottom) and margin divs exist; a `[^note]` cannot
-     become a sidenote. Tufte's mechanism is **pure CSS** — a sidenote counter plus a
-     `label.margin-toggle` + `:checked` collapse below the breakpoint, no JS. **The ruling is
-     whether margin placement is the DEFAULT on a wide screen or a `footnotes:` knob**; minimal
-     config argues for the default and against the key. Traps: collision with an existing
-     `.column-margin` float, and the print track (item 159) must still print footnotes.
+183. **Footnotes as margin sidenotes.** (S-M, **needs an owner ruling before code**. Survey §4C+§6.)
+     Footnotes exist, gathered at the page end (`base.css:779`), and margin divs exist; a `[^note]`
+     cannot become a sidenote. Tufte's mechanism is **pure CSS** — a sidenote counter plus a
+     `label.margin-toggle` + `:checked` collapse below the breakpoint, no JS. **The ruling is whether
+     margin placement is the DEFAULT on a wide screen or a `footnotes:` knob**; minimal config argues
+     for the default and against the key. Traps: **the names `.sidenote` and `.marginnote` are
+     already taken** as aliases of `::: {.column-margin}` (`vocab.rs:207-229`), so reuse that
+     container rather than minting a class; collision with an existing `.column-margin` float; and
+     the print track (159) must still print footnotes.
 
 184. **Structured authors + affiliations.** (M. **Substrate for 185/186/187 — land it first.**
-     Survey §4E + §6.) `author:` is a flat string list consumed only by `cite_this.rs`. One
-     structured form feeds **three** consumers: the visible byline, `citation_author` +
-     `citation_author_institution`, and JSON-LD `affiliation`. Scalars must stay valid or every
-     corpus doc breaks. Traps: **a new front-matter key trips five drift gates**, and
-     `cite_this.rs`'s render gate (page author → site author, never site title) must not
-     silently change which pages emit a cite box — pin it before touching the parser. Pin:
-     extend `corpus/cite-this/`.
+     Survey §4E + §6.) `author:` is a flat string list (`frontmatter.rs:25`) consumed only by
+     `cite_this.rs`. One structured form feeds **three** consumers: the visible byline,
+     `citation_author` + `citation_author_institution`, and JSON-LD `affiliation`. Scalars must stay
+     valid or every corpus doc breaks. Traps: **a new front-matter key trips five drift gates**, and
+     `cite_this.rs`'s render gate (page author → site author, never site title) must not silently
+     change which pages emit a cite box — pin it before touching the parser. Pin: extend
+     `corpus/cite-this/`.
 
-185. **Resource-links row + venue/award badges.** (S, after 184. Survey §6.) The one element
-     every fork of the project-page template keeps: Paper / arXiv / Code / Supplementary under
-     the byline. **Minimal-config shape is URL inference** (`arxiv.org` → arXiv, `github.com` →
-     Code, `*.pdf` → Paper), with `{text:, href:}` override. **Do not overload `hero:`** — it
-     replaces the title block and has no icon concept. Icons must be bundled SVG, never a CDN
-     font. `venue:` also feeds 186's `citation_conference_title`.
+185. **Resource-links row + venue/award badges.** (S, after 184. Survey §6.) The one element every
+     fork of the project-page template keeps: Paper / arXiv / Code / Supplementary under the byline.
+     **Minimal-config shape is URL inference** (`arxiv.org` → arXiv, `github.com` → Code, `*.pdf` →
+     Paper), with a `{text:, href:}` override. **Do not overload `hero:`** — it replaces the title
+     block and has no icon concept. Icons must be bundled SVG, never a CDN font. `venue:` also feeds
+     186's `citation_conference_title`.
 
-186. **Complete the Scholar + social meta.** (S, `citation_author_institution` needs 184. Survey
-     §6.) Missing today: `citation_conference_title` (only `citation_journal_title` exists),
-     `citation_doi`, `citation_arxiv_id`, `citation_author_institution`,
-     `citation_abstract_html_url`, and `og:image:width`/`height` (known at build; LinkedIn needs
-     them for a large card). Add to the **shared** `emit_social`, not next door — page and
-     embedded-deck paths share it by construction. **The inlined-asset needle trap applies, in
-     both directions.**
+186. **Complete the Scholar + social meta.** (S, `citation_author_institution` needs 184. Survey §6.)
+     `site/meta.rs:148-161` emits `citation_title`, `citation_author`, `citation_publication_date`,
+     `citation_journal_title` and `citation_public_url` (re-measured 2026-08-01). Missing:
+     `citation_conference_title`, `citation_doi`, `citation_arxiv_id`,
+     `citation_author_institution`, `citation_abstract_html_url`, and `og:image:width`/`height`
+     (known at build; LinkedIn needs them for a large card). Add to the **shared** `emit_social`, not
+     next door — the page and embedded-deck paths share it by construction. **The inlined-asset
+     needle trap applies, in both directions.**
 
 187. **The appendix block: author contributions / acknowledgments / DOI.** (M, after 184. Survey
-     §4D + §6.) Distill's `d-appendix` made author-contributions a first-class section rather
-     than prose. Follow `cite_this.rs`'s generated-block pattern **including its determinism
-     rule** (no accessed-date, no build timestamp, or the byte-identical build and the freeze
-     cache both break). Owes the four-projection sweep.
+     §4D + §6.) Distill's `d-appendix` made author-contributions a first-class section rather than
+     prose. Follow `cite_this.rs`'s generated-block pattern **including its determinism rule** (no
+     accessed-date, no build timestamp, or the byte-identical build and the freeze cache both
+     break). Owes the four-projection sweep.
 
-188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey
-     §6.) Evidenced need, rejected mechanism: every project page shows N result figures and
-     reaches for a carousel, which hides n-1 of them behind a timer. Build `::: {.gallery}` over
-     `render/figure.rs` (so `@fig-` still resolves) and a drag-divider comparison slider, which
-     is what the carousel is a poor substitute for. Pairs with 181. Trap: scroll/drag browser
-     tests have a documented false-negative pattern (force `scroll-behavior: auto`, settle rAF,
-     floor `innerWidth` ~500px).
+188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey §6.)
+     Evidenced need, rejected mechanism: every project page shows N result figures and reaches for a
+     carousel, which hides n-1 of them behind a timer. Build `::: {.gallery}` over
+     `render/figure.rs` (so `@fig-` still resolves) and a drag-divider comparison slider, which is
+     what the carousel is a poor substitute for. **Substrate exists for half of it**: `11-lightbox.js`
+     already steps through a multi-image set (`.has-gallery`, prev/next); the slider does not exist.
+     Pairs with 181. Trap: scroll/drag browser tests have a documented false-negative pattern (force
+     `scroll-behavior: auto`, settle rAF, floor `innerWidth` ~500 px).
 
-164. **`docs-as-spec`.** (L. [ROADMAP.md](ROADMAP.md) Pillar V.) Promote the two dogfooded books
-     to a versioned normative spec: an RFC-2119 `.tmd`-dialect reference plus a WebSocket
-     protocol reference. Upstream says start only once the validation epic has settled, which it
-     has. Value is credibility and adoption, not capability.
+164. **`docs-as-spec`.** (L. [ROADMAP.md](ROADMAP.md) Pillar V.) Promote the two dogfooded books to a
+     versioned normative spec: an RFC-2119 `.tmd`-dialect reference plus a WebSocket protocol
+     reference. Neither exists today (measured 2026-08-01: RFC-2119 language appears only in
+     `docs/superpowers/` plans). Upstream said to start only once the validation epic had settled,
+     which it has. Value is credibility and adoption, not capability.
 
-167. **`check --online`.** (Opt-in.) Dead-link checking as the **single sanctioned network
-     call**; the default stays offline, deterministic, kernel-free and network-free. **Scope
-     note:** the *citation/DOI-existence* half of this was separately **declined 2026-07-16** and
-     is not revived by the 2026-07-29 promotion; if it is ever wanted it needs its own ruling.
+167. **`check --online`.** (Opt-in; no `online` flag exists today.) Dead-link checking as the
+     **single sanctioned network call**; the default stays offline, deterministic, kernel-free and
+     network-free. **Scope note:** the *citation/DOI-existence* half was separately **declined
+     2026-07-16** and is not revived by the 2026-07-29 promotion; if it is ever wanted it needs its
+     own ruling.
 
-56. **L5-1 residual — what is left is a FEATURE PROPOSAL, not authoring.** (The `description:`
-    half shipped 2026-07-26; the backlinks half shipped 2026-07-31.) `glossary`, `term-index`
-    and `float-digest` still grep to **zero** across `crates/core/src` + `crates/server/src`,
-    re-measured 2026-07-31, so "they render empty until an authoring pass happens" has never
-    described authoring work: there is no surface to feed. Writing `{.definition}` blocks
-    today feeds only `skim.rs`, which reads them as statement heads. **Decide whether any of
-    the three is wanted before writing a line of prose for them** — and if so it is a build,
-    with its own spec.
+56. **L5-1 residual — what is left is a FEATURE PROPOSAL, not authoring.** (The `description:` half
+    shipped 2026-07-26; the backlinks half shipped 2026-07-31.) `glossary`, `term-index` and
+    `float-digest` still grep to **zero** across `crates/core/src` + `crates/server/src`, re-measured
+    2026-08-01, so "they render empty until an authoring pass happens" has never described authoring
+    work: there is no surface to feed. Writing `{.definition}` blocks today feeds only `skim.rs`,
+    which reads them as statement heads. **Decide whether any of the three is wanted before writing a
+    line of prose for them** — and if so it is a build, with its own spec.
 
-174. **`serde_yaml` fallback swap.** (Conditional: **this one has no trigger yet**, and is ranked
-     last-but-one for that reason.) The `Cargo.toml` workspace comment names `serde_yml`, which
-     carries RUSTSEC-2025-0068 (unsound + unmaintained); `serde_norway` is over a year stale. The
-     maintained continuation is **`serde_yaml_ng`** (v0.10). No urgency: config is trusted and
-     local, and 0.9 still builds. **Act when** 0.9 breaks against a future serde or edition, and
-     gate the swap on a test that `Error::location().line()` still works (the front-matter
-     linter's located diagnostics depend on it). Fix the stale comment whenever this file is
-     touched for any other reason.
-
-175. **The long-running-cell workflow (computationally heavy / ML notebooks).** (**Parts (a) and
-     (b) SHIPPED 2026-07-30**; what is left is (c) and (d), and (d) is still blocked on nothing
-     now that (b) exists. Filed 2026-07-29 from an author-raised direction.) Jupyter's
-     daily-driver property for expensive work is "watch it run, then re-run only what you
-     choose". Taliesin now has the *watch it run* half. **Verified:**
+175. **The long-running-cell workflow.** (Parts (a) and (b) shipped 2026-07-30; (c) and (d) are
+     open and neither is blocked.) Jupyter's daily-driver property for expensive work is "watch it
+     run, then re-run only what you choose". Taliesin now has the *watch it run* half.
      - **(c) No escape hatch for an expensive cell.** Freeze keys on a cumulative hash (this cell +
        all upstream same-language code + interpreter id), so editing *any* upstream cell busts the
-       expensive one, and the full cell-option set (`validate.rs:18`) has `cache: false` to opt
-       *out* but nothing to opt *into* stickiness. Proposal: a `#| checkpoint:` cell whose freeze
-       entry survives an upstream edit **but renders a visible stale-relative-to-inputs marker**,
-       with `build` warning or refusing. This is the differentiator, not a copy: **Jupyter lets the
-       notebook lie silently; this would let you defer the re-run while showing the debt.**
+       expensive one, and the cell-option set (`validate.rs:18`) has `cache: false` to opt *out* but
+       nothing to opt *into* stickiness. Proposal: a `#| checkpoint:` cell whose freeze entry
+       survives an upstream edit **but renders a visible stale-relative-to-inputs marker**, with
+       `build` warning or refusing. **Jupyter lets the notebook lie silently; this would let you
+       defer the re-run while showing the debt.**
      - **(d) No per-cell run and no interrupt.** The preview can only `restart_kernel`
        (`serve/mod.rs:43`), which nukes all state. Per-cell run/interrupt belongs in the **editor**
-       (CodeLens), not the preview: it keeps single-editing-surface clean and avoids a second
-       control surface in the browser. **Its dependency on (b) is discharged** (2026-07-30), so
-       this is now buildable; it is the same work as `FEATURE-IDEAS.md` idea 86, do not build it
-       twice.
-     - **The pin problem is answered, do not re-derive it.** A corpus document is the *wrong*
-       instrument for anything execution-dependent: the walker renders every corpus doc on every
-       `cargo test` but does **not execute cells**, so a corpus pin pays the render cost and
-       exercises none of the behavior. Execution pins go in `crates/server/tests/` against a
-       temp-dir fixture, as `executed_output_reproducible.rs` and the new
-       `progress_bar_collapses.rs` do.
+       (CodeLens), not the preview: it keeps single-editing-surface clean and avoids a second control
+       surface in the browser. Same work as `FEATURE-IDEAS.md` idea 86 — do not build it twice.
 
-170. **Marketing site.** (Last by the author's own standing feature-first policy, which is why it
-     sits below everything above it even though parts are buildable today.) The
-     `live-edit-hero-demo` clip (= `ROADMAP.md` Wave 2's unshipped deliverable), swapping the
-     `site/_site.yml` placeholders, a demo-led hero rebuild, mobile embed refinement, and deploy.
-     **The deploy half is additionally flip-gated** and overlaps item 149's launch-presentation
-     group in P3; do not build the same thing twice from both entries.
+174. **`serde_yaml` fallback swap.** (Conditional: **no trigger yet**, which is why it ranks here.)
+     `Cargo.toml:20-24` names `serde_yml` as the fallback; that fork carries RUSTSEC-2025-0068
+     (unsound + unmaintained), and `serde_norway` is over a year stale. The maintained continuation
+     is **`serde_yaml_ng`** (v0.10). No urgency: config is trusted and local, and 0.9 still builds.
+     **Act when** 0.9 breaks against a future serde or edition, and gate the swap on a test that
+     `Error::location().line()` still works (the front-matter linter's located diagnostics depend on
+     it). Fix the stale comment whenever this file is touched for any other reason.
+
+170. **Marketing site.** (Last by the author's own feature-first policy.) The `live-edit-hero-demo`
+     clip (= `ROADMAP.md` Wave 2's unshipped deliverable), swapping the `site/_site.yml`
+     placeholders, a demo-led hero rebuild, mobile embed refinement, and deploy. **The deploy half is
+     additionally flip-gated** and overlaps 149's launch-presentation group in P3; do not build the
+     same thing twice from both entries.
 
 ### P2 — filed so it is not rediscovered as a defect
 
 Not worth a session on its own. Each is a record or a known cost, not a task.
 
-131. **The cold-build cliff: 3,981 ms vs 789 ms warm.** (LOW, and probably correct as-is.) Filed so
-     it is not rediscovered as a defect. Kernel *variable* state is never cached — the property that
-     makes the cache trustworthy — so a cold start genuinely cannot skip work unless the whole
-     document is unchanged. **The waste is inherent to a correctness guarantee worth keeping.**
+131. **The cold-build cliff: 3,981 ms vs 789 ms warm.** (LOW, and probably correct as-is.) Kernel
+     *variable* state is never cached — the property that makes the cache trustworthy — so a cold
+     start genuinely cannot skip work unless the whole document is unchanged. **The waste is inherent
+     to a correctness guarantee worth keeping.**
 
-129. **Shape inventory from two real external documents — the durable half of R11.** (MEDIUM, mostly
-     a record.) What real documents contain that `corpus/` has nowhere: `lang,attr` fences (734
-     occurrences → item 127), ` ```console ` (209), links with a non-`.tmd` extension (128 → item
-     128), a `SUMMARY.md`-driven chapter spine, **112 pages in one flat directory** (the largest
-     corpus project is 14), and chapter files with **no front matter at all**. **Do NOT grow
-     `corpus/` toward these** — the walker renders every corpus doc on every `cargo test`. **Pin
-     only the two that earned it** (127 and 128) — **both pinned and shipped 2026-07-28**: the
-     `lang,attr` fence is now a fixture in `corpus/highlight.tmd` with its own test, and the
-     link-extension shape has `crates/core/tests/migrated_link_extensions.rs`. The rest are
-     recorded so a later round does not re-derive them.
+129. **Shape inventory from two real external documents — the durable half of R11.** What real
+     documents contain that `corpus/` has nowhere: `lang,attr` fences (734 occurrences), ` ```console `
+     (209), links with a non-`.tmd` extension (128), a `SUMMARY.md`-driven chapter spine, **112 pages
+     in one flat directory** (the largest corpus project is 14), and chapter files with **no front
+     matter at all**. **Do NOT grow `corpus/` toward these.** Only the two that earned a pin got one
+     (127 and 128, both shipped 2026-07-28); the rest are recorded so a later round does not
+     re-derive them.
 
-152. **RESOLVED 2026-07-28: the companion e2e suite runs again.** It had been failing with
-     `EMFILE: too many open files` inside VS Code startup because `fs.inotify.max_user_instances`
-     was still the kernel default of 128 while the desktop session already held ~154 (dconf ~40,
-     code ~32, plus Electron apps). Raised to 512 via `/etc/sysctl.d/99-inotify.conf`. Kept here
-     as the diagnosis, because the same limit throttles `taliesin preview`'s own file watchers:
-     if previews ever stop hot-reloading, or VS Code refuses to start, check
+152. **The companion e2e's `EMFILE` failure was an inotify limit, not the code.** `fs.inotify.max_user_instances`
+     was still the kernel default of 128 while the desktop session already held ~154; raised to 512
+     via `/etc/sysctl.d/99-inotify.conf`. Kept because the same limit throttles `taliesin preview`'s
+     own watchers: if previews stop hot-reloading, or VS Code refuses to start, check
      `find /proc/*/fd -lname 'anon_inode:inotify' | wc -l` against
      `/proc/sys/fs/inotify/max_user_instances` before suspecting the code.
 
+192. **Two companion e2e list-continuation tests are pre-existing failures.** Verified against a
+     worktree at `origin/main` (27 pass / 2 fail there, 33 / 2 on a branch), and they fail at load
+     ~2-3.4, not the "load ~6-7" this file once recorded. Treat both `pressEnterAfter` tests as
+     unreliable at any load, and **always compare against an alternating baseline run** rather than
+     against a recorded number. Also: the e2e runs `target/debug/taliesin`, which `cargo test` does
+     **not** rebuild — `cargo build --bin taliesin` before believing any e2e result.
+
+193. **Moving the cursor into another chapter moves the preview to that chapter** (150, 2026-07-30),
+     on the passive path, not only on the explicit reveal. Deliberate — a preview showing a chapter
+     you are not editing is stale, and the yank the reveal/mark split guards against is a cursor in
+     the page *already* on screen, which still never navigates — but it has not been lived with. If
+     it turns out wrong, the answer is a better default, not a knob.
+
 ### P3 — blocked on an owner ruling (not a task until then)
 
-100. **RULED 2026-07-28 — the answer is "archive plus fresh public", and it is specced.** See
+100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** See
      [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md).
-     The ruling threads the needle both routes below missed: **the history IS published** (1,608
-     single-author commits are the evidence a grant applicant wants), and the private planning docs
-     leave *every* commit that ever held them. Mechanism: relocate the purged docs to
+     The ruling threads the needle both earlier routes missed: **the history IS published** (the
+     single-author commit record is the evidence a grant applicant wants), and `git rm` in a new
+     commit leaves a file in every commit that ever held it. Mechanism: relocate the purged docs to
      `~/Documents/personal/taliesin-private/`, rewrite history, rename this remote to
      `taliesin-private-archive` (stays private, complete backup), create a **new public**
      `AJBogo9/taliesin` and push the rewritten history there. No force-push, no destructive remote
      op, and the private blobs never reach the public repo at all. Zero forks and never having been
-     public is what makes it cheap. **Kept, not purged:** security audits, `.claude/`,
-     `docs/superpowers/`, `AGENTS.md`, `LESSONS.md` — for the stated goal those are the exhibit.
-     **Purged:** money and strategy documents only, plus ~11 commit subjects that name them.
-     **Execution status: NOT STARTED and not to be started without a separate instruction.**
-     Phase 1 is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
-     additionally gated on Phase 1's findings being signed off.
-     **What still lands on this item:** the spec's own D-checks (incl. the provenance check on
-     corpus documents), and its rule that any still-open finding reading as an **exploit recipe** is
-     reported for individual judgement, default keep — which is exactly items **79, 80, 81**, so
-     **fix those before Phase 2** rather than deciding whether to redact them. **All three are
-     FIXED (2026-07-28, `launch-blockers-2026-07-28`, unpushed)**, so this clause is discharged once
-     that branch is merged — verify, do not trust this line. **New input for Phase 2 from item
-     83:** five local tags ship an MIT `LICENSE` and none has been pushed, so whether tags travel
-     to the new public repo belongs to this spec.
-     *Original framing, kept because it records why the ruling was hard:*
-     `notes/STARTUP-PLAN.md:126` records a plan to publish as a **fresh repo with no history**
-     ("Keep this repo private forever; the public one is a separate repo"), *not* to flip this
-     repo's visibility. Those two routes resolve different findings, so the prune work cannot be
-     scoped until this is ruled. Two hard facts either way:
-     - **`notes/FUNDING-RESEARCH.md` and `notes/STARTUP-PLAN.md` are git-TRACKED while their own
-       text says they must not be** (`FUNDING-RESEARCH.md:4` "keep this file out of";
-       `STARTUP-PLAN.md:119` "remove anything private: `STARTUP-PLAN.md`"). They carry the ***REMOVED***
-       analysis, a table of named funders being skipped and why, a funder's contact address, and
-       "***REMOVED***". The 2026-07-17 round already filed this and
-       recorded the prune as **not done**.
-     - **A fresh `git init` fixes none of the tree-level findings** and discards the 1,573-commit
-       process record, which is the strongest evidence an individual grant applicant has. The
-       due-diligence doc's §6 proposes a third route (targeted `filter-repo`) with its honest cost.
-     Supersedes the "flip-day artefact checklist" framing; **extends item 25, does not replace it.**
+     public is what makes it cheap.
+     **Kept, not purged:** security audits, `.claude/`, `docs/superpowers/`, `AGENTS.md`,
+     `LESSONS.md` — for the stated goal those are the exhibit. **Purged:** money and strategy
+     documents only (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md` — both git-**tracked**
+     while their own headers say they must not be), plus ~11 commit subjects that name them.
+     **Execution status: NOT STARTED, and not to be started without a separate instruction.** Phase 1
+     is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
+     additionally gated on Phase 1's findings being signed off. What still lands on this item:
+     - The spec's own D-checks, including the provenance check on corpus documents.
+     - Its rule that a still-open finding reading as an **exploit recipe** is reported for individual
+       judgement, default keep — which meant items 79-81, and those are **fixed and on `main`**
+       (verified 2026-08-01, `a2d05657`), so that clause is discharged.
+     - **Whether tags travel to the new public repo** (five local MIT tags were deleted on
+       2026-07-28; none had ever been pushed).
+     - **Whether to prune `notes/` + `docs/superpowers/`.** Scale, measured: `git ls-files notes/` =
+       63, `docs/superpowers` = 69, and the largest is
+       `2026-07-03-quarto-design-decisions-catalog.md` at **1,129,387 bytes** of adversarial
+       self-critique sitting under `docs/`, which a visitor reads as "the manual".
+     - **A procedure collision to fix in the same change:** `***REMOVED***
+       (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
+       `oss-*` items to "whenever the repo actually flips public". Fix the losing document or the
+       next session follows it.
+     - **`git grep -Il "/home/bogo"` → 11 files** (measured 2026-07-28), against a former line in
+       this file claiming the tracked paths were scrubbed. The 2026-07-17 scrub was scoped to four
+       paths under `docs/superpowers/*`; low impact (the username is public via git author metadata)
+       but it is the failure mode `LESSONS.md` warns about. *(Item **25**, the pre-public flip
+       procedure, is folded into this item; its number is retired below. `oss-4` was ruled
+       2026-07-25: deferred, "I'll do it at the end of summer". All five of its code items shipped
+       2026-07-25.)*
 
-102. **Decide what to do about constructs that render elsewhere and silently do not here.**
-     (Ruling.) Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
+102. **Decide what to do about constructs that render elsewhere and silently do not here.** (Ruling.)
+     Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
 
 103. **Clear the name in software classes before the flip.** (Ruling, legal not code.) Trademark
      search in the relevant classes; the name is the retained optionality per the product stance.
 
-148. **Distribution: the binary channel now has a MECHANISM but still has no artifact; the package
-    managers are untouched.** **Amended 2026-07-28 by item 92** — read this before re-filing any of
-    it. What shipped: `.github/workflows/release.yml` builds Linux x86-64, macOS arm64 and macOS
-    x86-64 on a `v*` tag, attaches a tarball + `.sha256` with `LICENSE` + `THIRD_PARTY.md` inside,
-    and the README states the matrix (Windows explicitly unsupported). **What is still true:** no
-    tag has been cut and the workflow is guarded inert until the repo is public, so `gh release
-    list` is still empty and there is still nothing to download **today**; crates.io `taliesin` /
-    `taliesin-core` / `taliesin-server` are all still 404 (all three names free); no Homebrew, Nix,
-    or install script. The remaining work is therefore **cut a tag after the flip**, then decide
-    about crates.io / brew / nix separately.
-    - **Cold-build cost re-measured 2026-07-28: 2m11s, 268 crates, 2.6 GB peak RSS at `-j4`**, for
-      one ~38 MB binary; the README now states this. The filed **2m59s** was a different machine or
-      job count, not a regression. Either way the argument stands: the audience for a documentation
-      tool is not the population that will install a Rust toolchain and wait it out, which is
-      exactly why the release workflow exists.
-    - **Prerequisite the critic missed and the defender found:** `cargo publish` will *reject*
-      this workspace as-is. `Cargo.toml:14` declares `taliesin-core = { path = "crates/core" }`
-      with **no `version`**; add `version = "0.2.0"` first.
-    - Also blank on crates.io without it: no `keywords`, `categories`, `readme`, `homepage` or
-      `documentation` in any manifest, so the crate pages would carry one description line and
-      nothing else. Watch `crates/core` = 7.3 MiB tracked against the 10 MiB `.crate` cap.
+148. **Distribution: the binary channel has a mechanism but no artifact; the package managers are
+     untouched.** `.github/workflows/release.yml` builds Linux x86-64, macOS arm64 and macOS x86-64
+     on a `v*` tag and attaches a tarball + `.sha256` with `LICENSE` + `THIRD_PARTY.md` inside; the
+     README states the matrix (Windows explicitly unsupported). **Still true:** no tag has been cut,
+     the workflow is guarded inert until the repo is public, and crates.io `taliesin` /
+     `taliesin-core` / `taliesin-server` are all 404 (all three names free); no Homebrew, Nix, or
+     install script. Remaining work: **cut a tag after the flip**, then decide about crates.io / brew
+     / nix separately.
+     - **`cargo publish` will reject this workspace as-is:** `Cargo.toml:14` declares
+       `taliesin-core = { path = "crates/core" }` with **no `version`** (re-measured 2026-08-01).
+       Also blank: `keywords`, `categories`, `readme`, `homepage`, `documentation` in every manifest.
+       Watch `crates/core` = 7.3 MiB tracked against the 10 MiB `.crate` cap.
+     - **Cold build: 2m11s, 268 crates, 2.6 GB peak RSS at `-j4`** for one ~38 MB binary (measured
+       2026-07-28; the filed 2m59s was a different machine or job count, not a regression). The
+       audience for a documentation tool is not the population that will install a Rust toolchain and
+       wait it out, which is exactly why the release workflow exists.
 
 149. **Launch presentation, all gated on the flip.** Grouped because none is actionable until the
-    repo is public, and each is small once it is.
-    - **The README does not lead with the speed moat**, contradicting this file's own ruling at
-      `:577-579`. "Quarto" appears **zero** times in the README and in `site/*.tmd`, and
-      `tools/live-edit-bench/RESULTS.md` (cold 123,994.9 µs vs warm 28,425.1 µs, diff 685.6 µs,
-      83× smaller payload) is cited from nowhere. Note the ruling says *lead with the moat*; it
-      does not say *name Quarto* — that inference is the critic's.
-    - **The GitHub repo is a dead first impression**: description defines Taliesin in terms of
-      Taliesin, `homepageUrl` empty, one topic ("rust"), zero releases, and the README's only
-      image is the licence badge — while four screencasts demonstrating the moat sit committed
-      in `site/assets/` and appear on no page a visitor sees. (They are MP4; a GIF conversion or
-      an uploaded asset URL is needed, not a one-line embed.)
-    - ~~**No platform statement anywhere**~~ **DONE 2026-07-28 (item 92).** The README carries a
-      platform matrix naming the three built targets and stating Windows unsupported, and
-      `release_targets.rs` pins it against the release workflow in both directions. The underlying
-      fact is unchanged and still worth knowing: `/proc` is read directly in five places with
-      `#[cfg(not(unix))]` fallbacks that `LESSONS.md:88` records as never executed by any test.
-    - **CoC and issue templates only** — ~~CONTRIBUTING / CLA or DCO~~ **DONE 2026-07-28 (item
-      89).** `CONTRIBUTING.md` exists and its clause 3 is the inbound grant, explicitly including
-      relicensing, so `README.md:156-158` is no longer ended by the first merged outside PR;
-      `gate_script.rs` fails the suite if that grant disappears. Still absent: a code of conduct and
-      GitHub issue templates, both of which are only worth doing once the repo is public.
-    - **`taliesin.dev` resolves to nothing** (registered, NS + SPF + a google-site-verification
-      TXT, zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
-      `site/README.md:11-12` already flags it as a placeholder.
-    - ~~**`taliesin build site` 404s its own primary CTA**~~ **DONE 2026-07-29.** `build --strict`
-      counts each mount warning as a problem (site/: exit 0 → 1) and `check` reports
-      `TAL-MOUNT-PREVIEW` per mount at severity `suggestion`, so neither gate blesses the deploy
-      any more. `site/build.sh` builds all 8 projects into one tree (verified: `/`,
-      `/docs/guide/`, `/docs/internals/`, `/gallery/*` all serve 200 where a plain build 404s
-      three of them), pinned against `_site.yml` in both directions by `site_build_script.rs`.
-      **The ordering is load-bearing and the test pins it:** the parent build's `sweep_stale`
-      deletes anything under the output dir it did not write, so a mount built first is silently
-      swept away — and re-running `taliesin build site` alone afterwards puts you back to the
-      broken tree.
-    - **The name** (surfaced, not a task): TALIESIN is a live registered mark of the Frank Lloyd
-      Wright Foundation (Reg. 4150375). Software is outside the recited goods so legal risk is
-      low; the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are
-      both taken. Renaming twice is worse than a bad search name — if keeping it, always publish
-      as "Taliesin — the `.tmd` dev server" so the disambiguator travels.
-
-25. **Pre-public release: the flip procedure, and a contradiction to resolve first** (detail:
-    [2026-07-17-security-release-audit.md](2026-07-17-security-release-audit.md) and
-    [2026-07-28-launch-critique.md](2026-07-28-launch-critique.md)). All five code items shipped
-    2026-07-25. **oss-4 was ruled 2026-07-25: deferred** ("I'll do it at the end of summer").
-
-    **Author leaning, 2026-07-28 (a leaning, NOT a ruling — re-confirm before acting):** do a
-    **visibility flip** with the sensitive documents removed, deliberately keeping the commit
-    history public so readers can see how the work was done.
-
-    **The one fact that decides whether that plan works.** A visibility flip exposes **every past
-    commit**, and `git rm` in a new commit does not remove a file from history. Two documents are
-    tracked and both instruct otherwise in their own headers —
-    `notes/STARTUP-PLAN.md:3-5` ("keeping it out of any public release") and
-    `notes/FUNDING-RESEARCH.md:4` ("keep this file out of git") — and they contain the ***REMOVED***
-    ***REMOVED***, and "MIT
-    would let a competitor or a cloud provider close it against you. ***REMOVED***."
-    So **"flip + delete the files" leaves them fully readable in history**, which is the opposite
-    of the intent. Only three options actually work:
-    - **(a) Flip, and rewrite history first** (`git filter-repo` over those paths). Keeps the
-      visible history the author wants, at the cost of rewriting every SHA — and any SHA recorded
-      in `notes/` or in a findings doc stops resolving.
-    - **(b) Fresh public repo** per `notes/STARTUP-PLAN.md:111-127`, which is a *dated ruling*
-      ("decided 2026-06-18") prescribing exactly this: `rsync -a --exclude='.git'`, remove the
-      private docs, "Keep this repo private forever; the public one is a separate repo." Clean,
-      but **discards the commit history**, which is the thing the author said they wanted to keep.
-    - **(c) Flip as-is and accept the exposure.** Cheapest, and the least consistent with having
-      written "keep this out of git" twice.
-
-    **Note the procedure collision, because two committed documents currently disagree:**
-    `***REMOVED*** (fresh repo), while this file and
-    `2026-07-17-security-release-audit.md:217-218` both sequence the `oss-*` items to "whenever
-    the repo actually flips public". Whichever option is chosen, **fix the losing document in the
-    same change** or the next session will follow the wrong one.
-
-    Still open under whichever route: whether to prune `notes/` + `docs/superpowers/`. The
-    deferral's stated reason — "no secret is exposed … but it is a curated bug roadmap" —
-    describes the audit notes and **does not describe the two files above**, which is why they
-    were never named in it. Scale, measured: `git ls-files notes/` = 63, `docs/superpowers` = 69,
-    and the largest is `2026-07-03-quarto-design-decisions-catalog.md` at **1,129,387 bytes** of
-    adversarial self-critique sitting under `docs/`, which a visitor reads as "the manual".
-
-    **Correction to this item's own former text.** It claimed "**Verified NOT open, do not
-    re-scope:** … the tracked `/home/bogo` paths are scrubbed." Measured 2026-07-28:
-    `git grep -Il "/home/bogo"` → **11 files**. The 2026-07-17 scrub was scoped to the four paths
-    under `docs/superpowers/*` and did do that; the summary generalised it to "the tracked paths",
-    and one new occurrence has since accreted (`2026-07-18-shell-completion-dynamic-design.md:189`,
-    dated the day after). Eight of the remaining ten are `notes/*` prose covered by the prune
-    above, and two are self-references *documenting the scrub*. Low impact — the username is
-    already public via git author metadata — but **a "verified NOT open" line in this file was
-    measurably false**, which is the failure mode `LESSONS.md` warns about. Still correctly
-    closed: `SECURITY.md` exists, PT-1 / PT-2 / NET-1 / OUT-1 / DEP-01 / DEP-02 all shipped
-    2026-07-17, and `dos-yaml` + NET-3 were refuted.
+     repo is public, and each is small once it is.
+     - **The README does not lead with the speed moat.** Measured 2026-08-01: Quarto appears **once**
+       in the README (the earlier "zero times" is rot) and **none** of
+       `tools/live-edit-bench/RESULTS.md`'s numbers (cold 123,994.9 µs vs warm 28,425.1 µs, 83×
+       smaller payload) appear anywhere in it. The ruling says *lead with the moat*; it does not say
+       *name Quarto*.
+     - **The GitHub repo is a dead first impression:** the description defines Taliesin in terms of
+       Taliesin, `homepageUrl` empty, one topic ("rust"), zero releases, and the README's only image
+       is the licence badge — while four screencasts demonstrating the moat sit committed in
+       `site/assets/` and appear on no page a visitor sees. (They are MP4; a GIF conversion or an
+       uploaded asset URL is needed, not a one-line embed.)
+     - **Still absent: a code of conduct and GitHub issue templates**, both only worth doing once the
+       repo is public. (`CONTRIBUTING.md` with the inbound relicensing grant and the platform matrix
+       both shipped 2026-07-28.)
+     - **`taliesin.dev` resolves to nothing** (registered; NS + SPF + a google-site-verification TXT,
+       zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
+       `site/README.md:11-12` already flags it as a placeholder.
+     - **The name** (surfaced, not a task): TALIESIN is a live registered mark of the Frank Lloyd
+       Wright Foundation (Reg. 4150375). Software is outside the recited goods so legal risk is low;
+       the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are both
+       taken. Renaming twice is worse than a bad search name — if keeping it, always publish as
+       "Taliesin — the `.tmd` dev server" so the disambiguator travels.
 
 ### P4 — blocked on a device, a real user, or working-as-intended
 
 Kept visible so they are not re-scoped. Revive on a real signal, not on capacity.
 
-4. **Deck engine mobile polish** (P2): mobile pinch/pan + touch gestures (they matter for the
-   phone-feed deck mode); drop `fitSlide` from the resize path (needs a lazy fit-on-show refactor
-   first). *(The desktop trackpad half shipped 2026-07-24 — pinch / ctrl+wheel-down opens the overview
-   map, with a 250 ms hysteresis.)* **The device blocker is gone.** **Partly measured 2026-07-27**
-   (deck × touch round): with synthetic touch events, swipe navigation works (h 0→1→0), a two-finger
-   pinch-in opens the overview, and an overview one-finger pan neither navigates nor exits (B6-31
-   holds). **What is still unmeasured is the part emulation cannot reach**: a real finger, and
-   overview pan while zoomed *past* fit — at fit scale `clampOv` has nothing to pan, so the probe
-   proved only that pan does not misfire, not that panning works. Chromium touch emulation is still
-   not evidence for a pinch on glass.
+4. **Deck engine mobile polish:** mobile pinch/pan + touch gestures (they matter for the phone-feed
+   deck mode); drop `fitSlide` from the resize path (needs a lazy fit-on-show refactor first). *(The
+   desktop trackpad half shipped 2026-07-24.)* **Partly measured 2026-07-27** with synthetic touch
+   events: swipe navigation works, a two-finger pinch-in opens the overview, and an overview
+   one-finger pan neither navigates nor exits. **What is unmeasured is what emulation cannot reach**:
+   a real finger, and overview pan while zoomed *past* fit — at fit scale `clampOv` has nothing to
+   pan, so the probe proved only that pan does not misfire. Chromium touch emulation is not evidence
+   for a pinch on glass.
 
-41. **R graphics cannot follow the page theme; matplotlib figures can** (P3, M; detail:
+41. **R graphics cannot follow the page theme; matplotlib figures can** (M; detail:
     [2026-07-26-corpus-demand-probe-analyst.md](2026-07-26-corpus-demand-probe-analyst.md), AN-2b).
-    **The `alt="output"` half SHIPPED 2026-07-29** (every executed figure now emits `alt=""`,
-    pinned in `r_kernel.rs`). What is left is the theming, and an attempt on 2026-07-29 was
-    **built and then reverted**, so start from what it measured rather than from the framing above:
-    - **The interception point is NOT the value's repr, and NOT a global `print` override.**
-      ipykernel asks the returned figure for a representation; **IRkernel does not**. Printing a
-      ggplot DRAWS it, and IRkernel captures the graphics DEVICE and publishes that as `image/png`.
-      Measured: `repr::repr_html(p)` returned a correct themed light/dark pair while the built page
-      still carried a single un-themed `<img>`; a `print.ggplot` assigned into `globalenv()` never
-      fired for an auto-printed plot (file-marker probe), though it fired for an explicit `print(p)`
-      and produced two correct PNGs. Registering `repr_html`/`repr_png` for **both** S7 class names
-      (`ggplot2::ggplot` and `ggplot`, ggplot2 4.0.2) did not reach it either, and pushing the
-      method into base's S3 table **broke a passing test and hung the suite**.
-    - **So the remaining question is a narrow one:** which IRkernel seam publishes an
-      auto-displayed plot, and can it be given a `text/html` twin-PNG pair. `render_media` already
-      prefers `text/html` over `image/png`, so nothing needs suppressing once that seam is found.
-    - **The twin render itself is solved** and is not the hard part: a `ggplot2::theme()` override
-      of the colour slots plus `ggsave(bg="transparent")` at the reader's `repr.plot.*` size
-      produces two genuinely different PNGs (verified standalone). Emit the same
-      `tali-fig-light`/`tali-fig-dark` pair the Python side does, so `base.css` needs no new rule.
-    - **Trap, cost one debugging round:** every Taliesin page inlines `base.css`, which *contains*
-      the strings `tali-fig-light`/`tali-fig-dark`, so a whole-page `contains()` for them passes on
-      a page with no figure at all. Needle the full emitted `<img class="tali-fig tali-fig-light"
-      alt="" src="data:image/png;base64,` tag. **Do NOT confuse this with AN-2a, which is fixed.**
+    The `alt="output"` half shipped 2026-07-29. The theming half was **built and then reverted** on
+    2026-07-29, so start from what that measured:
+    - **The interception point is NOT the value's repr, and NOT a global `print` override.** ipykernel
+      asks the returned figure for a representation; **IRkernel does not**. Printing a ggplot DRAWS
+      it, and IRkernel captures the graphics DEVICE and publishes that as `image/png`. Measured:
+      `repr::repr_html(p)` returned a correct themed pair while the page still carried one un-themed
+      `<img>`; a `print.ggplot` in `globalenv()` never fired for an auto-printed plot; registering
+      `repr_html`/`repr_png` for both S7 class names did not reach it; pushing the method into base's
+      S3 table **broke a passing test and hung the suite**.
+    - **The remaining question is narrow:** which IRkernel seam publishes an auto-displayed plot, and
+      can it be given a `text/html` twin-PNG pair. `render_media` already prefers `text/html`.
+    - **The twin render is solved:** a `ggplot2::theme()` override of the colour slots plus
+      `ggsave(bg="transparent")` at the reader's `repr.plot.*` size produces two genuinely different
+      PNGs. Emit the same `tali-fig-light`/`tali-fig-dark` pair the Python side does. **Do NOT
+      confuse this with AN-2a, which is fixed.**
 
-18. **Demand-probe residual: the inline-SVG figure path.** (P3; detail:
+18. **Demand-probe residual: the inline-SVG figure path.** (Detail:
     [2026-07-22-corpus-demand-probe-interactive-explainer.md](2026-07-22-corpus-demand-probe-interactive-explainer.md).)
-    **F-03 and F-02's documented-convention half both SHIPPED 2026-07-29** — the `{js}` once-cell
-    attachment trap is in `using/interactive.tmd`, and the `<img>`-is-style-isolated rule plus the
-    palette-that-works-on-both convention are in `using/theming.tmd` (with `corpus/course/likelihood.svg`
-    as the worked example and `corpus/descent/landscape.svg` as the counter-example).
-    **Left: F-02's other candidate, an inline-SVG figure path** so `![](x.svg)` inherits `--tali-*`.
-    Deliberately not built, and the reason is the whole design problem: inlining an authored SVG
-    puts its `<style>` selectors and element ids into the page, where `.label` / `.ink` / `.axis`
-    from two figures collide with each other and with page CSS. So it needs a **selector-scoping
-    strategy**, not a change of emitter, and that wants its own spec before any code. Edits
-    `crates/core/src/render/figure.rs`.
+    So `![](x.svg)` inherits `--tali-*`. Deliberately not built, and the reason is the design problem
+    itself: inlining an authored SVG puts its `<style>` selectors and element ids into the page,
+    where `.label` / `.ink` / `.axis` from two figures collide with each other and with page CSS. It
+    needs a **selector-scoping strategy**, not a change of emitter, and that wants its own spec.
+    Edits `render/figure.rs`. *(F-03 and F-02's documented-convention half shipped 2026-07-29.)*
 
-70. **A project with no `_site.yml` declares no boundary** (P3, filed 2026-07-27 from the path-parity
-    batch's "surfaced, not fixed"). `build <dir>` accepts a bare directory, so a single-document render
-    of one of its pages roots at that page, and the site path's own inference can still widen to
-    `.git`. Nothing can infer an undeclared boundary; the fix is for the author to declare one. Live
-    instance: `corpus/posts/pca-geometry/` (the loose twin of the tech-blog page, byte-identical to it
-    and pinned so by `twinned_corpus_sources_stay_byte_identical`) sits under no project marker, so
-    `build` of it warns `include not resolved` — true since PT-2 shipped and **now uncovered by any
-    test**, since the corpus pin moved to the tech-blog copy. Decide whether that warning is correct
-    behaviour or wants a better message before writing code.
+70. **A project with no `_site.yml` declares no boundary.** `build <dir>` accepts a bare directory, so
+    a single-document render of one of its pages roots at that page, and the site path's own
+    inference can still widen to `.git`. Nothing can infer an undeclared boundary; the fix is for the
+    author to declare one. Live instance: `corpus/posts/pca-geometry/` sits under no project marker,
+    so `build` of it warns `include not resolved` — true since PT-2 shipped and **now uncovered by
+    any test**, since the corpus pin moved to the tech-blog copy. Decide whether that warning is
+    correct behaviour or wants a better message before writing code.
 
-104. **Three Wave 1 items whose own round could not verify them, filed with the measurement each
-     needs.** (Do not build until measured — each says so in its findings doc.)
-     - **The `.gitattributes` line that makes `.tmd` behave like `.md`** on GitHub. Needs GitHub
-       linguist-override behaviour confirmed; the round could not.
-     - **The Jupyter on-ramp that already exists outside the project.** Needs `nbconvert` output
-       confirmed to survive the rename.
-     - **The scale ceiling**, measured with a **runtime-generated fixture that never enters the
-       corpus walker** — deliberately shaped to respect the standing ban on growing `corpus/tarn`
-       and on minting `corpus/longbook`, whose stated reason is that the walker renders every
-       corpus doc on every `cargo test`.
+104. **Three Wave 1 items whose own round could not verify them.** (Do not build until measured.)
+     The `.gitattributes` line that makes `.tmd` behave like `.md` on GitHub (needs linguist-override
+     behaviour confirmed); the Jupyter on-ramp that already exists outside the project (needs
+     `nbconvert` output confirmed to survive the rename); and the scale ceiling, measured with a
+     **runtime-generated fixture that never enters the corpus walker**.
 
-105. **The headless `--no-sandbox` rationale rests on an assumption this round retired.** (LOW.)
-     The justification assumed only author-written documents reach the headless path; item 79's
-     family says otherwise. Re-derive the rationale before changing the flag.
+105. **The headless `--no-sandbox` rationale rests on an assumption this round retired.** (LOW.) The
+     justification assumed only author-written documents reach the headless path; item 79's family
+     says otherwise. Re-derive the rationale before changing the flag.
 
-10. **Two kernel limitations with no clean fix** (P3, dev-facing):
+10. **Two kernel limitations with no clean fix** (dev-facing):
     - **R cold kernels still orphan on ungraceful parent death.** IRkernel has no `ParentPollerUnix`
-      equivalent, so there is nothing to arm; PDEATHSIG is the only other lever and is hazardous. R is
-      rarely the cold single-doc path, and the warm-pool, cold-Python and `/tmp`-sweep halves all
+      equivalent, so there is nothing to arm; PDEATHSIG is the only other lever and is hazardous. R
+      is rarely the cold single-doc path, and the warm-pool, cold-Python and `/tmp`-sweep halves all
       landed. `kernel.rs`.
-    - **A tens-of-MB cell output blocks ZMQ receive before the cap fires.** `kernel.rs`. (Not
-      forbidden — the old "do-not-touch" note was the completed rewrite-scoping list, not a freeze.)
+    - **A tens-of-MB cell output blocks ZMQ receive before the cap fires.** `kernel.rs`.
 
 12. **i18n / Unicode: done bar a demand-driven residual.** The LSP UTF-16 fix shipped 2026-07-22
     (detail: [2026-07-22-i18n-unicode-sourcepos-audit.md](2026-07-22-i18n-unicode-sourcepos-audit.md)).
-    *Residual, do not spin up without a real ask: RTL layout, CJK line-breaking, non-ASCII heading-slug
-    collisions.*
+    *Residual, do not spin up without a real ask: RTL layout, CJK line-breaking, non-ASCII
+    heading-slug collisions.*
 
 ### P5 — frozen, do not spin up
 
 - **M6a `MAX_WARM_PAGES` / `exec_pool.rs` eviction:** the standing freeze; sign-off refused
   2026-07-17. Eviction drops the executor and kills its kernel child processes, so this is kernel
   lifecycle, not a constant. Do not tune without a new ruling.
-- **M2's hanging-interpreter sibling** *(needs its own exec/kernel ruling)*: a *hanging* (not missing)
-  interpreter costs ~161s recovery, downstream of the (bounded) `interp_id` probe in the warm-pool
-  forkserver READY wait + kernel-start retries.
+- **M2's hanging-interpreter sibling** *(needs its own exec/kernel ruling)*: a *hanging* (not
+  missing) interpreter costs ~161 s recovery, downstream of the bounded `interp_id` probe in the
+  warm-pool forkserver READY wait + kernel-start retries.
   `kernel::tests::transient_start_errors_retry_but_missing_interpreter_does_not` shows the *missing*
-  case is handled and the *hanging* one is not. `kernel.rs`/`warm_pool.rs`. *(Aside, pre-existing +
-  load-bearing: `crates/server/Cargo.toml` doesn't list tokio's `process` feature though
-  `kernel.rs`/`warm_pool.rs`/`exec.rs` use it; it compiles only via feature unification.)*
+  case is handled and the *hanging* one is not. *(Aside, pre-existing + load-bearing:
+  `crates/server/Cargo.toml` doesn't list tokio's `process` feature though `kernel.rs` /
+  `warm_pool.rs` / `exec.rs` use it; it compiles only via feature unification.)*
 - **M4 test stand-in flake:** the M4 test's `sleep 300` stand-in kernel survives ~2 of 8 full-suite
-  runs, only when the build is cold. Measured, unexplained, argued test-only (a real kernel has three
-  reclaim nets where the stand-in has one). Worth an hour only if a real kernel is ever seen outliving
-  its pool.
+  runs, only when the build is cold. Measured, unexplained, argued test-only. Worth an hour only if a
+  real kernel is ever seen outliving its pool.
 - **D72 bare `@key`:** declined for now (the diagnostic already ships, so nothing renders wrong
   silently, which makes it a feature question not a defect). Edits `crates/core/src/cite/`, needs
   sign-off if revived.
 
 ## Tier 3 — demand-driven (build only when a real user asks)
 
-**This tail held 17 lines until 2026-07-29, when the author reviewed all of them and promoted
-every one but the first below into the P1 queue as items 153-174.** Do not re-file a promoted
-item here: it has a number now, and the number is where its detail lives.
+**This tail held 17 lines until 2026-07-29, when the author promoted every one but the first into the
+P1 queue as items 153-174.** Do not re-file a promoted item here: it has a number now, and the number
+is where its detail lives.
 
-- **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto to Taliesin migration +
-  portability stress test (exercises `book.rs`, includes, the freeze cache, file-mode portability). If
-  it renders clean, consider pinning a reduced version under `corpus/`. **Explicitly declined
-  2026-07-29** as unnecessary, and kept only because the *class* of defect it would surface is
-  real (it is the same class the external-document audit found, see item 129). Revive on a
-  concrete portability doubt, not on capacity.
+- **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto-to-Taliesin migration +
+  portability stress test. **Explicitly declined 2026-07-29** as unnecessary, and kept only because
+  the *class* of defect it would surface is real (the same class the external-document audit found,
+  item 129). Revive on a concrete portability doubt, not on capacity.
 
 189. **`{{< pdf >}}` embed and a `license:` front-matter key.** (Both S; the research-publishing
-     cluster's tail, filed 2026-07-31 alongside items 181-188. Detail:
+     cluster's tail. Detail:
      [2026-07-31-research-publishing-survey.md](2026-07-31-research-publishing-survey.md).) Every
-     project-page template embeds a poster PDF in an `<iframe>` (note the surveyed template loads
-     the Adobe DocumentCloud SDK for this and then never uses it — a plain iframe does the work),
-     and states reuse terms in the footer. **Both are knobs**, which is why they sit here and not
-     in P1: minimal config says perfect the default first, and neither has a demanded use yet.
-     `license:` would feed a footer badge plus JSON-LD `license` + `isAccessibleForFree`. Revive
-     when the author actually publishes a paper page that needs one.
+     project-page template embeds a poster PDF in an `<iframe>` (the surveyed template loads the
+     Adobe DocumentCloud SDK for this and then never uses it — a plain iframe does the work), and
+     states reuse terms in the footer. **Both are knobs**, which is why they sit here: minimal config
+     says perfect the default first, and neither has a demanded use yet. `license:` would feed a
+     footer badge plus JSON-LD `license` + `isAccessibleForFree`.
 
-**Also deliberately NOT filed** (survey §5): the al-folio / academicpages **publications list**
-(a `.bib` rendered as a page with per-entry PDF/code/bibtex badges). It is the personal-homepage
-job, distinct from `cite_this.rs`'s outbound single-page citation, and filing it would widen scope
-on speculation. Revisit only if the author wants Taliesin to host their own academic homepage.
+**Also deliberately NOT filed** (survey §5): the al-folio / academicpages **publications list** (a
+`.bib` rendered as a page with per-entry PDF/code/bibtex badges). It is the personal-homepage job,
+distinct from `cite_this.rs`'s outbound single-page citation, and filing it would widen scope on
+speculation. Revisit only if the author wants Taliesin to host their own academic homepage.
 
 ## Audit lenses — closed, do not open a new round
 
 [AUDITS.md](AUDITS.md) is the round index and a *record*, not a menu. The 14-round slate
 ([spec](../docs/superpowers/specs/2026-07-27-audit-slate-design.md)) is **complete except R12**,
-real-device mobile on Android, which needs the author's phone. Its priority order is in the spec:
-the book drawer scroll lock first (item 76 made the drawer a book's only nav surface), then the
-`--host` QR flow, momentum scrolling and the dynamic viewport toolbar, tablet widths, TalkBack.
-**Record explicitly that an Android round does not cover WebKit/iOS**, or it will later read as
-full mobile coverage.
-
-The slate's own thesis is the part worth carrying: every earlier lens asked *is this correct?*,
-and asking instead whether the tool is **detectable**, **holds under stress**, would be **adopted**
-and can be **handed over** produced three HIGH security findings in one pass, none of them a
-correctness bug. Wave findings docs are linked from AUDITS.md. Durable artefacts, so a later round
-does not rebuild them: the deck exemption register (R14), the sensitivity/tradeoff register (R6),
-the D>=8 detection cluster (R7, now living in [DETECTION-DEBT.md](DETECTION-DEBT.md)), the draft
-ACR (R9, now published in the guide) and the external-document shape inventory (R11, item 129).
+real-device mobile on Android, which needs the author's phone. Its priority order is in the spec: the
+book drawer scroll lock first, then the `--host` QR flow, momentum scrolling and the dynamic viewport
+toolbar, tablet widths, TalkBack. **Record explicitly that an Android round does not cover
+WebKit/iOS**, or it will later read as full mobile coverage. **An audit's value decays to zero if its
+findings never ship** — three waves have shipped, and the P1 queue is now the work.
 
 **Two lenses remain un-run and both are blocked, not declined.** L3: `lsp.rs`, `complete.rs`,
 `skim.rs` and `manifest.rs` post-date every lens that would have owned them, though the mutation
-campaign has since pinned much of what one would look at. L6: a real external document, blocked on
-a repository that is not on this machine.
+campaign has since pinned much of what one would look at. L6: a real external document, blocked on a
+repository that is not on this machine.
 
-**Never scope a round from the exemptions that are written down.** R14's premise was too generous
-by an order of magnitude: the two documented `DocFormat::Reveal` exemptions turned out to be
-*correct*, while the real hole was that a deck in a site never reaches the code those exemptions
-live in. A dense do-not-touch cluster is not evidence of coverage; it is a reason to measure.
+Durable artefacts, so a later round does not rebuild them: the deck exemption register (R14), the
+sensitivity/tradeoff register (R6), the D≥8 detection cluster (R7, now
+[DETECTION-DEBT.md](DETECTION-DEBT.md)), the draft ACR (R9, now published in the guide) and the
+external-document shape inventory (R11, item 129).
 
 ## Quarto catalog (policy, not a task)
 
 **Owner ruling 2026-07-16: no sweep. Triage an area on demand, when you next work that area.** Before
 consulting it read the triage doc's "three layers" section
-([2026-07-16-quarto-catalog-triage.md](2026-07-16-quarto-catalog-triage.md)): the entries are the asset
-and were well-grounded on 2026-07-03, but the heading status is degenerate and the executive summary is
-misleading. A skeptic verdict is evidence, never a ruling (its "drop Atom feeds" verdict was overruled;
-Atom shipped with autodiscovery).
+([2026-07-16-quarto-catalog-triage.md](2026-07-16-quarto-catalog-triage.md)): the entries are the
+asset and were well-grounded on 2026-07-03, but the heading status is degenerate and the executive
+summary is misleading. A skeptic verdict is evidence, never a ruling (its "drop Atom feeds" verdict
+was overruled; Atom shipped with autodiscovery).
 
 ## Do not re-add / re-scope
 
-**One line per entry.** Detail lives in git, in [AUDITS.md](AUDITS.md), in the dated findings docs
-and in [LESSONS.md](LESSONS.md) — look there rather than re-expanding this list. A batch's date and
+**One line per entry.** Detail lives in git, in [AUDITS.md](AUDITS.md), in the dated findings docs and
+in [LESSONS.md](LESSONS.md) — look there rather than re-expanding this list. A batch's date and
 branch are enough to find its commits.
 
 ### Shipped
 
-- **2026-07-31 reader affordances** (171, 172, 173, 56's backlinks half), branch
-  `reader-affordances-2026-07-31`. `./tools/gates.sh` green, all four interpreter gates armed.
-  Live-HTTP mounts coverage; `publish --init`; the three C-READ/C-NAV affordances; and the
-  first cross-chapter references either dogfooded book has ever carried. **Do not re-file
-  C-READ-2's data half** (it is `{{< dataset >}}`, item 176) and **do not re-file 173** — what
-  is left of the PMF Tier C list was never in it. The reusable lessons are in "Now" above;
-  three more that belong to their own areas:
-  - **`@view-transition` is now bundled in `base.css` and `corpus/tech-blog/custom.css` is
-    deleted**, which finishes the 2026-07-11 audit's `#custom-css-mostly-dead` prescription.
-    The blog no longer declares `css:` at all; that mechanism keeps its coverage in
-    `theme_css.rs` + `config.rs`. **Do not re-add the two dropped prefetch mechanisms** — the
-    test that forbids them is named in the CSS comment rather than the tokens themselves.
-  - **Two invented `--tali-*` tokens were written and caught before landing** (`--tali-radius`,
-    `--tali-fg-muted`; the real ones are `--tali-radius-md` and `--tali-muted`). The standing
-    lesson holds: an invented token renders nothing.
-  - **A pin on authored content must pin the invariant, not the authorship.**
-    `backlinks_are_exercised.rs` asserts each book renders *at least one* backlink and
-    deliberately does not say which chapter references which, so a reorganisation stays free
-    while a silent return to zero does not.
-- **2026-07-30 long-running cells** (175a + 175b), branch `long-running-cells-2026-07-30`,
-  against
-  [2026-07-30-long-running-cells-design.md](../docs/superpowers/specs/2026-07-30-long-running-cells-design.md).
-  A cell is capped on **silence** (`TALIESIN_CELL_SILENCE`, default 600 s) instead of 120 s of
-  wall-clock, and a running cell **streams its output** as it arrives. `./tools/gates.sh` green,
-  all four interpreter gates armed. Five things a later session should carry:
-  - **The item's own "verify this before speccing" flag paid out, in the opposite direction.**
-    The silence tracker did not "only warn": it already pushed a terminal `Output::timeout`. Its
-    real limitation was **reachability** — the budget match consulted the wall-clock deadline
-    first and reached the silence branch only when the cap was disabled. So (a) was a *swap of
-    which cap is the default*, not new machinery.
-  - **Removing the wall-clock default loses no protection, but only because of a second
-    mechanism.** A streaming runaway (`while True: print(x)`) never goes silent and was never
-    caught by silence; it is caught by the existing output caps, which interrupt the moment
-    `MAX_OUTPUTS`/`MAX_STREAM_BYTES` trips. **Do not re-add a wall-clock default** on the theory
-    that runaways are unguarded.
-  - **A self-consistency invariant cannot pin the rule it is consistent about.** The live-vs-final
-    test compares the replayed stream against the batch collapse, but both sides call the same
-    code, so a rule change moves them together: a mutant survived it untouched. Only a
-    written-out expectation killed it. **Reach for an invariant test for drift, never for
-    semantics.**
-  - **Order was the wrong assertion for "is it streaming".** `done` is emitted after `exec_cell`
-    returns, so a single flush at the end of `execute` still lands before it and satisfies any
-    index comparison. The assertion that discriminates is **timing**: appends must be spread out
-    in time. Measured under the mutant, all appends arrived within **202 µs**; streaming spreads
-    them across the cell's sleeps.
-  - **`data-tali-cell-state` is on the CODE block, not the output block**, which the first client
-    version got wrong: it appended live output *inside the source listing*. The rule is to own
-    `{id}-out` — empty it when it exists, otherwise insert a stand-in carrying that
-    `data-block-id` so the authoritative `update` replaces it. Found only in a browser, and the
-    first attempt to measure it produced a **phantom duplicate**, because the rendered source
-    listing contains the cell's own `print` strings; scope any such assertion to
-    `[data-block-id$="-out"]`.
-  - **One rendering change rode along, deliberately:** consecutive chunks of the same stream now
-    merge into one output. Where a kernel cuts stdout into messages is an artefact of buffering,
-    so a `<pre>` per message made the emitted HTML depend on it and turned a printing loop into a
-    stack of boxes. **Measured before taking it: zero drift across the whole corpus and every
-    snapshot test** — the only failure was the anti-drift guard written minutes earlier.
-- **2026-07-30 image optimization** (169), branch `image-optimization-2026-07-30`, against
-  [2026-07-30-image-optimization-design.md](../docs/superpowers/specs/2026-07-30-image-optimization-design.md).
-  Core annotates every local raster `<img>` with its intrinsic size + a loading policy; the
-  build derives AVIF rungs behind a `_freeze/img/` cache and wraps the byte-identical `<img>`
-  in a `<picture>`. Measured 7.3% of the original PNG; a warm rebuild is 47 s → 9 s.
-  **Do not re-file the WebP half.** Five things a later session should carry:
-  - **"WebP/AVIF" was not a choice of two.** `image-webp` encodes **lossless only** (its own
-    README), and lossy WebP means vendored C. AVIF is the only pure-Rust lossy encoder, and
-    it beat WebP q80 on three of four real corpus images. **The item's own title was the
-    least reliable thing in it.**
-  - **Never depend on `ravif` directly**: it enables rav1e's `asm` feature, which hard-fails
-    with "NASM build failed" and would break `cargo install` + the macOS release runners.
-    `image`'s own `avif` feature configures rav1e without asm — a cold release build of it is
-    **21.8 s at `-j4`**, not the minutes the "rav1e is enormous" assumption predicted. Two
-    cost assumptions were wrong in opposite directions here; measure both.
-  - **`sweep_stale` deletes every output file not in `keep`**, so the derivatives were
-    written and deleted by the same build, with the entire `image_opt` unit suite green
-    because none of it runs the sweep. The keep entries must also be **normalized**, since
-    `keep`'s own come from `strip_prefix` and a listing card's `src` really does carry `../`.
-    `image_derivatives_survive_the_sweep.rs` is the only test that fails when this breaks.
-  - **`base.css`'s bare `img { max-width: 100% }` had no `height: auto`**, so adding intrinsic
-    `width`/`height` attributes distorted every image narrower than its intrinsic size.
-    Browser-measured at a 500 px viewport: **15.4% aspect skew before, 0.05% after.** A CSS
-    prerequisite found by reading, and only *proved* by patching the inlined sheet in a built
-    page — `height: revert` does NOT reproduce it, because it rolls back to a UA `auto`.
-  - **A surviving mutant was a finding about the test, again** (fourth consecutive batch).
-    The `<img`-prefix guard was pinned with `<svg><image href=…>`, but SVG spells it `href`,
-    so the `src` lookup already declined and the test passed with the guard deleted. Re-pinned
-    with `<img-compare src=…>`, the case the guard exists for. 7/7 mutants killed after that.
-- **2026-07-30 editor authoring gestures** (`FEATURE-IDEAS.md` Session 3 ideas 73, 84, 82), branch
-  `editor-authoring-gestures-2026-07-30`, against
-  [2026-07-30-editor-authoring-gestures-design.md](../docs/superpowers/specs/2026-07-30-editor-authoring-gestures-design.md).
-  Two new custom requests (`taliesin/insertEdit`, `taliesin/renameFileEdits`) hold every piece of
-  `.tmd` knowledge; the TypeScript owns only the clipboard, the file write and the undo grouping.
-  **The seam is forced, not chosen:** only the client has the clipboard bytes, only the server
-  knows what a figure looks like. **Do not re-file the ideas** and do not re-derive the four
-  corrections recorded in the ideas file itself.
-  - **`images/<slug>-01.png` was the minority convention** (24 image refs beside the doc against 7
-    in a subdirectory, measured across `corpus/` + `docs/`), so a pasted image lands beside the
-    document.
-  - **A dragged asset's verdict calls `build::inside_repo`**, now `pub(crate)`, rather than a
-    second containment rule; the build's TWO warnings are kept distinct and the ORDER matters,
-    since a symlink out of the repository is lexically *inside* the folder.
-  - **Rename handles both link spellings** (`.tmd` and the `.html` a cross-page link is authored
-    as); handling one leaves a dead link and reports success. `_site.yml` is edited as **text**, so
-    comments survive. No `_site.yml` means no inbound walk, per item 70.
-  - **Ranges are UTF-16.** A non-ASCII character earlier on the same line shifts every byte offset
-    after it and the edit lands in the wrong column.
-  - **The one piece of knowledge left in TypeScript is the terminal-link pattern**, because a
-    terminal line is not a document, so it carries a two-way drift gate: the pattern is tested
-    against the printed shapes AND the Rust format literals are pinned. Testing only the pattern
-    would stay green while the format moved underneath it.
-- **2026-07-30 LSP editor ergonomics** (178, 177): all 8 tasks of
-  [2026-07-29-lsp-editor-ergonomics.md](../docs/superpowers/plans/2026-07-29-lsp-editor-ergonomics.md),
-  one commit each, `./tools/gates.sh` green with all five interpreter canaries named and passing.
-  Zero new TypeScript: the four new capabilities reach Zed/Neovim/Helix too.
-  - **178, `didChange` is coalesced**, and the spec's open question is answered by measurement
-    rather than argument: `buffer_diagnostics` on the largest page of the 25-page guide is **33 ms
-    in a debug build** against a 120 ms window, so debouncing alone was enough and the anchor scan
-    got **no** memo. Two departures from a naive debounce, each with its own test: `pending` is a
-    **list**, because a single slot lets an edit to document B silently discard the diagnostics
-    owed to A; and the window's deadline is set by the **edit**, not refreshed by every message,
-    or a client that polls (hover as the pointer moves, inlay hints on scroll) starves the
-    publish. `render_buffer` is memoized on `(uri, text)`, and text as the key means there is no
-    invalidation logic and no staleness class.
-  - **177, inlay hints, folding, document highlight, selection ranges**, plus visible math
-    delimiters. **Three of the plan's steps were wrong in ways only the code showed.** (a) Folding
-    had to track code fences, which the plan omitted: a `# comment` on a `{python}` cell's first
-    line parses as an h1 and closes the enclosing section's fold at the cell. (b) Document
-    highlight needed **no new scanner**: `lsp_nav::anchor_occurrences` already had the exact
-    signature and semantics, and a second scanner could disagree with rename about what an anchor
-    is. (c) The plan's `bib_field` was a substring search, which finds "year" inside a title and
-    then reads the *next* field's value.
-  - **Three tests were vacuous as first written and were caught by mutation, not by review**: a
-    scope-name check that passed because `str::find` is case-sensitive; a heading-fold fixture that
-    only ever deepened, so nothing distinguished "close this level or shallower" from "close this
-    level"; and a containment check whose levels already grew, so deleting the filter changed
-    nothing. Each was rewritten until the mutation failed. **This is the third batch in which the
-    mutation step, not the test-writing step, found the real gap.**
-  - Math delimiters are pinned at three levels because the manifest alone proves nothing: the
-    manifest's shape, the **grammar** actually emitting those scope strings (a typo would be
-    silently inert), and a real Extension Host confirming VS Code *accepts* an
-    extension-contributed `editor.tokenColorCustomizations` default.
-
-- **2026-07-29/30 site bibliography + SEO board correction** (163, 168), branch
-  `batch-site-biblio-seo-2026-07-29`.
-  - **163 — `bibliography:` in `_site.yml`, merged UNDER each page's own** (`site/bibliography.rs`,
-    `render::SiteDefaults`), plus the two read-only lints. The **duplicate-key half already
-    shipped** (`parse_bib_warned`); only the unused-entry half was new. **Unused is site-wide by
-    necessity** — judged per page, every shared entry a page ignores would fire. Pin:
-    `corpus/shared-bib/`. Three traps, all measured: a second `let mut warnings` in `cite::process`
-    **shadowed** the lint so it only fired on pages citing *nothing* (every test that caught it
-    cited nothing, so all passed vacuously); `check <dir>` rendered pages with **no** site defaults,
-    so a project check disagreed with its own build; and `citations_without_bibliography` inferred
-    "no bibliography" from front-matter *shape*, which a shared `.bib` falsifies. `render_single_doc`
-    now reads the nearest `_site.yml`'s key too, so `preview post.tmd` and `preview <dir>` render one
-    document (the PP-3 rule).
-  - **168 — `build-seo-completeness` was ALREADY SHIPPED**; the entry was rot. `sitemap.xml`,
-    `robots.txt` and `BlogPosting`/`ScholarlyArticle`/`WebSite`+`Person` JSON-LD all emit,
-    url-gated, wired at `build.rs`, pinned in `tech_blog.rs` + `site/meta.rs` + `webmanifest.rs` —
-    verified by a real build of `corpus/cite-this`. Do not re-file: **grep `site/seo.rs` first.**
-- **2026-07-29 explorable cluster** (153, 154, 155, 156, 157): the whole `{js}`-side batch, on
-  branch `explorable-cluster-2026-07-29`.
-  - **153 — the cell-language registry, with `{glsl}` as the proof.** `render/client_lang.rs`
-    (server) + `window.taliJs.registerLanguage` (client) replace six spellings of
-    `lang == "js"`. **The refactor found a live bug**: `reactive.rs` read "any cell that is not
-    `js`" as "a cell that could publish names at runtime", so a second client language would
-    have silently switched the whole dangling-input check off for its page. `{glsl}` is one
-    file and zero vendored bytes (WebGL is a browser API). **Two gaps closed on the way**: the
-    External/site path gated the runtime on `{js}` alone (a `{glsl}`-only page shipped a dead
-    canvas), and a static shader blanked on any resize (`canvas.width =` clears the buffer).
-  - **154 — the `num` global**, first-party, on the existing `{js}` asset gate. Keep it
-    curated: it is what a *drawing* cell needs, not a numeric library.
-  - **155 — `animate` + `point`.** Both publish through the same hidden `[data-tali-input]`
-    element and the same `input` event as a slider, so the fragment sync, the readout and the
-    single scheduled pass are all reused. The one widening was `readValue` parsing
-    `data-tali-json`. **The tick is a `type="number"` field, not `type="hidden"`** — the latter
-    hands every downstream cell the *string* `"3"`.
-  - **156 — `tali.state`**, per cell, scheduling nothing, keyed by the container id so an edit
-    clears it for free.
-  - **157 — `tali.tex` / `tali.table`.** **Not KaTeX-the-parser** (only its CSS + fonts are
-    bundled, and a 280 KB parser on the `{js}` gate is not worth it): the grammar is closed, so
-    the glyphs come from KaTeX's faces and the bracket/grid layout is ours, with a serif
-    fallback for a page that ships no KaTeX sheet.
-  - **Coverage**: `crates/core/tests/client_lang.rs` + `crates/server/tests/reactive_browser.rs`
-    (the first browser test of the reactive client — 9 tests over all four new corpus pages,
-    reading pixels, published values and DOM back). 13 mutants killed.
-  - **Two illusions deleted rather than shipped**: both candidate assertions for 155's
-    "one pass per frame" trap stayed green with the pacing removed, so the property is recorded
-    in [DETECTION-DEBT.md](DETECTION-DEBT.md) instead of faked. See the note in
-    `reactive_browser.rs`.
-  - **A new gate came out of it**: `every_tali_custom_property_read_is_defined_somewhere`
-    (`token_contract.rs`). Three invented `--tali-*` names made the `point` pad render as a
-    floating dot with no box, and **only a browser screenshot caught it** — a `var()` naming a
-    property nothing defines makes the browser drop the whole declaration, silently.
-- **2026-07-29 ruled-and-built batch** (101, 122, 71, 78, 149's buildable half, 18's doc halves,
-  41's `alt` half, 150's risk half). Four owner rulings taken in one pass, then built:
-  - **101 — the licence position on what Taliesin *emits* is stated.**
-    `LICENSE-OUTPUT-EXCEPTION.md` is an **additional permission under AGPL §7** (the GCC
-    runtime-library pattern): output may be conveyed under any terms, no notice required in it,
-    publishing it does not by itself engage §13. The carve-out stays carved — conveying Taliesin
-    itself, or running a modified one as a service, is untouched. **Deliberately NO per-asset
-    licence headers**: those files are copied verbatim into every page, so a header would add
-    ~1 KB per page to assert a licence the exception exists to disclaim. `output_exception.rs`
-    pins the grant, its limits, the three places a user looks, and the premise (first-party
-    assets are still `include_str!`'d into pages).
-  - **122 — `check` names the interpreter it would use, and still spawns nothing.** PL14 was
-    right that it must not SPAWN and wrong to conclude it must therefore say NOTHING.
-    `ProbePolicy` splits the two decisions. **The filed +50% cost objection is GONE, not
-    accepted:** `CheckScope` carries the language list off the render the diagnostics walk
-    already did, so `collect_environment` renders nothing — measured identical to the
-    pre-change binary on all four projects. A site's decks now count toward the report too.
-  - **71 — both deck-on-touch behaviours.** The stepped-mode swipe has **no time bound** (only
-    the 50 px floor); the share panel leads with Copy and demotes the QR on `(hover: none) and
-    (pointer: coarse)`, changing DOM order so tab order follows reading order.
-  - **78 — figure text on a data fill keeps its own colour.** The discriminator is `ax.texts`
-    (the author's own `text()`/`annotate()` artists; the title and axis labels are never in it).
-  - **150's risk half** — the click-to-source anchor travels with the message.
-  **Two probe traps re-confirmed the hard way, both already in LESSONS.md:** a whole-page
-  `contains()` for a new class matches the *inlined CSS* (cost one wrong "it works"), and a
-  deck probe that compares only the `h` index reads every fragment step as "ignored".
-- **2026-07-29: the demand-driven tail's "LSP for the language intelligence" line was DELETED as
-  stale, not promoted.** It had survived in that tail describing work that already shipped:
-  `taliesin lsp` exists (`crates/server/src/lsp.rs` plus seven sibling modules), the VS Code
-  companion was rewritten as a thin client over it on 2026-07-28, and the specific gap the entry
-  cited as its own justification, the `#| label:` completion drift, is closed at
-  `lsp_complete.rs:281-284` and pinned by a test at `:1250`. **Do not re-file it.** It is also
-  why item 161 shrank: `textDocument/documentSymbol` now supplies the heading tree that the
-  structure panel was going to build.
+- **2026-07-31 Pyodide cells** (158): a `{pyodide}` fence runs Python in the reader's browser off a
+  vendored offline Pyodide + NumPy, in `preview` and a **site** build only; every single-document
+  output degrades it to a listing. **`publish` is deliberately NOT on the cell `api`** (it is
+  `setup()`'s fourth argument — a masking shield leaked through `Object.getPrototypeOf`), and
+  **all cells share ONE interpreter with a global `setStdout`**, so execution is FIFO-serialized
+  page-wide. Do not "tidy" either back. Residuals are item 190.
+- **2026-07-31 print/PDF track** (159): `taliesin pdf` renders a typeset PDF *from the built HTML*
+  via paged.js + CDP. **paged.js is load-bearing, not a fallback** (Chrome 150 implements `@page`
+  margin boxes and `counter(page)` but NOT `string-set` or `target-counter()`, measured), it
+  **cannot be driven from the Chrome CLI** (`--print-to-pdf` truncates at 2 pages at every
+  `--virtual-time-budget`), and `auto: false` fires `config.after` **before** any pagination — stamp
+  completion from the `preview()` promise. `eager_media()` exists because a paginated render never
+  scrolls, so `loading="lazy"` images never load.
+- **2026-07-31 reader affordances** (171, 172, 173, 56's backlinks half): live-HTTP mounts coverage,
+  `publish --init`, the three C-READ/C-NAV affordances, and the first cross-chapter references either
+  dogfooded book has carried. **Do not re-file C-READ-2's data half** (it is `{{< dataset >}}`, item
+  176) and **do not re-file 173**. `@view-transition` moved into `base.css` and
+  `corpus/tech-blog/custom.css` was deleted (finishing the 2026-07-11 audit's `#custom-css-mostly-dead`
+  prescription); **do not re-add the two dropped prefetch mechanisms.**
+- **2026-07-30 long-running cells** (175a + 175b): a cell is capped on **silence**
+  (`TALIESIN_CELL_SILENCE`, default 600 s) instead of wall-clock, and a running cell **streams its
+  output**. **Do not re-add a wall-clock default** on the theory that runaways are unguarded — a
+  streaming runaway never goes silent and is caught by the output caps. Consecutive chunks of one
+  stream now merge into a single output (measured: zero drift across the whole corpus).
+- **2026-07-30 image optimization** (169): the build derives AVIF rungs behind a `_freeze/img/` cache
+  and wraps the byte-identical `<img>` in a `<picture>`. **Do not re-file the WebP half** —
+  `image-webp` encodes lossless only, so AVIF is the only pure-Rust lossy encoder. **Never depend on
+  `ravif` directly** (it enables rav1e's `asm` feature, which hard-fails the release runners); use
+  `image`'s own `avif` feature. `sweep_stale` deletes every output not in `keep`, and keep entries
+  must be normalized — `image_derivatives_survive_the_sweep.rs` is the only test that catches it.
+- **2026-07-30 editor scope completion** (`FEATURE-IDEAS.md` Session 3 ideas 75-80, 85): the editor
+  scope is **CLOSED**. Ideas **67, 72, 74 and 83 were CUT on measured evidence** and **81 by owner
+  ruling**; the only editor-surface idea still open anywhere is **86**, filed as item 175(d). The
+  engine floor is `^1.101.0` with **`@types/vscode` pinned EXACTLY** (a caret resolves to latest and
+  reopens the gap a test now closes).
+- **2026-07-30 editor authoring gestures** (ideas 73, 84, 82): six paste/drop gestures,
+  rename-repairs-references in both directions, clickable `file:line:` in the terminal. Two custom
+  requests (`taliesin/insertEdit`, `taliesin/renameFileEdits`) hold every piece of `.tmd` knowledge;
+  the TypeScript owns only the clipboard, the file write and undo grouping. **Do not re-file the
+  ideas** or re-derive the four corrections written back into the ideas file. A pasted image lands
+  *beside* the document (measured: 24 image refs beside vs 7 in a subdirectory).
+- **2026-07-30 editor commands + dev panel** (165, 166, 162, 161): section move / heading promote,
+  Format Document, the dev menu's edit annotations and the draft's per-section pass. **166's recorded
+  blocker was rot** (`BlockOp::SetMeta` had always handled line shifts); the prose *reflow* is
+  declined on measured grounds instead — 86 of 174 corpus documents are hand-wrapped, so there is no
+  house style to enforce. `ctrl+shift+k` deliberately shadows `editor.action.deleteLines`.
+- **2026-07-30 LSP editor ergonomics** (178, 177): inlay hints, folding, document highlight, selection
+  ranges, plus visible math delimiters, with **zero new TypeScript** — the capabilities reach
+  Zed/Neovim/Helix too. `didChange` is coalesced in a 120 ms window (measured: one publish on the
+  largest guide page is 33 ms in a debug build, so debouncing alone sufficed and the anchor scan got
+  no memo); `pending` is a **list**, or an edit to B discards the diagnostics owed to A.
+- **2026-07-30 transclusion, datasets, site preview** (179, 180, 176, 160, 150): a chapter under a
+  `_site.yml` previews as its *project*. **180 is closed by ruling** — all three inlay-hint kinds
+  stay on by default.
+- **2026-07-29/30 site bibliography + SEO board correction** (163, 168): `bibliography:` in
+  `_site.yml`, merged UNDER each page's own, plus the unused-entry lint (site-wide by necessity).
+  **168 was already shipped and the entry was rot** — `sitemap.xml`, `robots.txt` and the JSON-LD all
+  emit; **grep `site/seo.rs` first.** `render_single_doc` now reads the nearest `_site.yml`'s key, so
+  `preview post.tmd` and `preview <dir>` render one document.
+- **2026-07-29 explorable cluster** (153-157): the cell-language registry with `{glsl}` as its proof,
+  the `num` global (**keep it curated** — what a *drawing* cell needs, not a numeric library),
+  `animate` + `point`, `tali.state`, and `tali.tex` / `tali.table` (**not** KaTeX-the-parser; only
+  its CSS + fonts are bundled). The `animate` tick is a `type="number"` field, not `type="hidden"` —
+  the latter hands every downstream cell the *string*. Two coverage illusions were deleted rather
+  than shipped and live in [DETECTION-DEBT.md](DETECTION-DEBT.md).
+- **2026-07-29 ruled-and-built batch** (101, 122, 71, 78, 149's buildable half, 18's doc halves, 41's
+  `alt` half, 150's risk half): `LICENSE-OUTPUT-EXCEPTION.md` is an **additional permission under
+  AGPL §7** covering what Taliesin *emits* (deliberately **no** per-asset licence headers); `check`
+  names the interpreter it would use and still spawns nothing; both deck-on-touch behaviours; figure
+  text on a data fill keeps its own colour.
+- **2026-07-29 the demand tail's "LSP for language intelligence" line was DELETED as stale, not
+  promoted** — `taliesin lsp` exists, the companion was rewritten as a thin client over it on
+  2026-07-28, and the `#| label:` completion drift it cited is closed and pinned. **Do not re-file
+  it.**
 - **2026-07-29 first-hour + positioning** (144, 151, 87, 88, 94, 95, 96, 135, 136): eight CLI /
-  diagnostic / LSP residuals, the two lying ui-audit probes (suite now 7/7), the first-run
-  execution notice, and `docs/guide/using/choosing.tmd`. **Three filed causes were false** — 151's
-  "`id="TOC"` is in no emitter" (it is; the probe targeted a *book*, which by ruling has no rail),
-  94's stale 8.59% (7.3% today), and 144c's scope (also an unfiled per-page repeat).
-- **2026-07-28 block model + docs gate** (138, 146, 143's path half): every block has exactly one
-  root element; prose is gated against the tree (dead source paths, retired front-matter keys,
-  undocumented CLI flags) rather than against a needle list. **`notes/` and `docs/superpowers/` are
-  excluded from that gate and must stay excluded** — they are dated records.
+  diagnostic / LSP residuals, the two lying ui-audit probes, the first-run execution notice, and
+  `docs/guide/using/choosing.tmd`. **Three filed causes were false.**
+- **2026-07-29 `taliesin build site` no longer 404s its own CTA:** `site/build.sh` builds all 8
+  projects into one tree, and **the ordering is load-bearing** — the parent build's `sweep_stale`
+  deletes anything under the output dir it did not write, so a mount built first is silently swept
+  away, and re-running `taliesin build site` alone afterwards puts you back to the broken tree.
+  Pinned by `site_build_script.rs`.
+- **2026-07-28 block model + docs gate** (138, 146, 143's path half): every block has exactly one root
+  element; prose is gated against the tree rather than a needle list. **`notes/` and
+  `docs/superpowers/` are excluded from that gate and must stay excluded** — they are dated records.
 - **2026-07-28 deck harness** (112, 125, 113, 111): `deck.js` has a browser test; deck content is
-  auditable at 0 violations across 100% of slides. It found **two shipped layout defects on its
-  first run** (code blocks clipped on 5 of 21 slides; a focus ring around every vertical-stack
-  slide), neither filed and neither visible to any emission test. The eleven deck shapes 113 listed
-  stay deliberately unbuilt — the walker renders every corpus doc on every `cargo test`.
-- **2026-07-28 honesty + build cost** (91, 110, 115, 119, 126, 134, 143): `chromiumoxide` is an
-  opt-in `headless-js` feature, off by default; not linting `draft:` pages is **ruled correct** and
-  the defect was the silence; `Block::sourcepos`'s empty-string contract is documented; the ACR is
-  published; [DETECTION-DEBT.md](DETECTION-DEBT.md) is the live register.
+  auditable at 0 violations across 100% of slides. It found **two shipped layout defects on its first
+  run**, neither visible to any emission test. The eleven deck shapes 113 listed stay deliberately
+  unbuilt.
+- **2026-07-28 honesty + build cost** (91, 110, 115, 119, 126, 134, 143): `chromiumoxide` is an opt-in
+  `headless-js` feature, off by default; not linting `draft:` pages is **ruled correct** and the
+  defect was the silence; the ACR is published; DETECTION-DEBT.md is the live register.
 - **2026-07-28 verified sweep** (85, 86, 97, 98, 99, 114, 123, 130): a `theme:` extension bundle is
-  contained (**item 80's absolute-`Path::join` footgun in a second place**); no built page fetches
-  off-origin; a shortcode source is a path, not a URL; both `jsconfig.json` include lists are
-  globbed. 130 was already fixed and 99 was a clean measurement — both closed with no code.
+  contained; no built page fetches off-origin; a shortcode source is a path, not a URL; both
+  `jsconfig.json` include lists are globbed.
 - **2026-07-28 critique-round client/LSP/manifest** (139, 140, 141, 142): rename validates the new
-  name and leaves an external URL's fragment alone; `toc_html` stopped double-escaping an explicit
-  heading id (a dead link in the published build); the Cmd-K palette locks the background scroller;
-  the web manifest stops shipping Taliesin's brand and stops pointing at a 404. **The splash colour
-  is deliberately still one light value** — a manifest cannot express an OS-conditional colour.
+  name; `toc_html` stopped double-escaping an explicit heading id; the Cmd-K palette locks the
+  background scroller; the web manifest stops shipping Taliesin's brand. **The splash colour is
+  deliberately one light value** — a manifest cannot express an OS-conditional colour.
 - **2026-07-28 reader cost** (150's Phase B half, 137, 124): the body typeface ships as
-  content-hashed files, not base64 in the render-blocking sheet (**125 KB gzipped off the critical
-  path of every page**); the three conditional blobs are written only when something links them
-  (94% cut on prose-only `corpus/tarn`); the Label-in-Name static rule.
-- **2026-07-28 publication readiness** (84, 89, 90, 92, 93): `tools/gates.sh` (the one script that
-  runs every gate and **refuses to be green when one skipped**), `CONTRIBUTING.md` with the inbound
-  relicensing grant, `ci.yml` + `release.yml` **guarded inert until the repo is public**, the
-  measured install expectation and platform matrix, and "Coming from Quarto".
+  content-hashed files, not base64 in the render-blocking sheet (**125 KB gzipped off every page's
+  critical path**); the three conditional blobs are written only when something links them.
+- **2026-07-28 publication readiness** (84, 89, 90, 92, 93): `tools/gates.sh`, `CONTRIBUTING.md` with
+  the inbound relicensing grant, `ci.yml` + `release.yml` **guarded inert until the repo is public**,
+  the measured install expectation and platform matrix, and "Coming from Quarto".
 - **2026-07-28 launch blockers** (79-82, 109, 117, 118, 120, 121, 127, 128): `mounts:` is contained;
   `check` does not spawn a project-supplied interpreter; `--no-exec` covers `{js}`; a deck in a site
   is validated; comma fences highlight; a migrated link gets a did-you-mean. **`--no-exec` is
-  deliberately NOT a sanitizer** (2026-07-03 CSP ruling) — do not re-scope as "strip the HTML too".
-- **2026-07-28 item 83 — the five pre-relicence MIT tags are deleted** (owner-approved; none had
-  ever been pushed). All five commits stay reachable from `main`, so only the labels went. **The
-  durable rule: never tag before the licence is settled**, and cut a release tag only from a tree
-  whose `LICENSE` matches `Cargo.toml`.
-- **2026-07-27 item 76 — a book has no right-rail TOC** (owner ruling, reversing 2026-07-06). The
-  gate is `Site::page_toc`, ahead of the page's own `toc:`. **Do not re-scope as "give books their
-  TOC back" or as "delete the rail everywhere"** — websites and single documents keep it. The
-  drawer marks which section of the open chapter you are in, computed on each open (the drawer
-  locks the root scroller, so a scrollspy would watch a dead event).
+  deliberately NOT a sanitizer** (2026-07-03 CSP ruling).
+- **2026-07-28 item 83 — the five pre-relicence MIT tags are deleted** (owner-approved; none had ever
+  been pushed). All five commits stay reachable from `main`. **Never tag before the licence is
+  settled**, and cut a release tag only from a tree whose `LICENSE` matches `Cargo.toml`.
+- **2026-07-27 item 76 — a book has no right-rail TOC** (owner ruling, reversing 2026-07-06). The gate
+  is `Site::page_toc`, ahead of the page's own `toc:`. **Do not re-scope as "give books their TOC
+  back" or as "delete the rail everywhere"** — websites and single documents keep it.
 - **2026-07-27 item 77** (the 72-75 residuals): shortcode arguments linted against a closed
   vocabulary; `TAL-SHORTCODE` is its own WARNING family; `favicon:` resolves like `logo:`. **A book
-  with neither title nor logo still emits no brand link, deliberately.** The fourth residual was
-  refuted by measurement.
+  with neither title nor logo still emits no brand link, deliberately.**
 - **2026-07-27 mutation campaign** (58-69): every measured survivor in `crates/core`'s five
   post-07-18 files, the ten `crates/server` files and `lsp_nav.rs` is triaged and pinned. **Do not
   re-run it against the same scope.** Method in [LESSONS.md](LESSONS.md).
 - **2026-07-27 item 66** (`404.html` links the shared `_assets/` bundle; its hrefs are root-absolute
-  on purpose) and **item 67** (the `~/.local/bin/taliesin` launcher exits early for `__complete`
-  only, 24.3 s -> 0.024 s per tab press; **`completions` is deliberately NOT exempt**).
-- **2026-07-26 deck weight + headless bounding** (52, 55): a site deck went 4.6 MB -> 7 KB via a
-  separate `deck.<hash>.{css,js}` pair. **A deck cannot link the page's `app.js`** — `search.js`
-  would steal Cmd-K. The standalone artifact stays 4.4 MB and self-contained on purpose.
-- **2026-07-26 path parity** (50, 51, 57): `render_single_doc` decides the single-document
-  containment root once (nearest `_site.yml`, **never `.git`**); `TOC_SHEET_MARKUP` is the one copy
-  all four assemblers emit. **Do not re-scope as "give the single-file build the inferred root"** —
-  that is a revert of `9359a2c`.
-- **2026-07-26, earlier**: migration UX (53, 54); the mobile batch (42-49 — the tree asks what
-  device it is on via `hover`/`pointer`, it had none); owner rulings 24 (`data-section-end` shipped
-  as option (b)), 17 (book breadcrumb ruled **no**) and 2 (deck presenter tools declined); reporting
-  surfaces 39, 40; demand probe #4 (`corpus/analyst`); AP1-R1 (the freeze cache is byte-bounded) and
-  DOCS-2/3/4/5.
+  on purpose) and **item 67** (the `~/.local/bin/taliesin` launcher exits early for `__complete` only,
+  24.3 s → 0.024 s per tab press; **`completions` is deliberately NOT exempt**).
+- **2026-07-26 deck weight + headless bounding** (52, 55): a site deck went 4.6 MB → 7 KB via a
+  separate `deck.<hash>.{css,js}` pair. **A deck cannot link the page's `app.js`** — `search.js` would
+  steal Cmd-K. The standalone artifact stays 4.4 MB and self-contained on purpose.
+- **2026-07-26 path parity** (50, 51, 57): `render_single_doc` decides the single-document containment
+  root once (nearest `_site.yml`, **never `.git`**); `TOC_SHEET_MARKUP` is the one copy all four
+  assemblers emit. **Do not re-scope as "give the single-file build the inferred root"** — that is a
+  revert of `9359a2c`.
+- **2026-07-26, earlier**: migration UX (53, 54); the mobile batch (42-49); owner rulings 24, 17 (book
+  breadcrumb ruled **no**) and 2 (deck presenter tools declined); reporting surfaces 39, 40; demand
+  probe #4 (`corpus/analyst`); AP1-R1 and DOCS-2/3/4/5.
 - **2026-07-25 and earlier, closed:** AP7-1..5 (a11y), AP3-1, AP11-1 (`TAL-KERNEL`), DIAG-1, DOCS-1,
   AP3-3, PA-M3, PA-M13, PA-H1's residuals, the backlink-context + resume batch, book wayfinding, the
   hardening batch, book-level `theorems:`, live-executor mounts (F-04), book-aware `read`, AP8-1's
@@ -1199,100 +655,95 @@ branch are enough to find its commits.
   audit batch, the PMF builds, corpus coverage, the machine-facing audit, AI-native packaging, the
   R/Python ANSI leak, ungraceful-death reaping, and the `assets/js` `tsc` gate.
 
-**Numbers retained, never reused** (each closed by a ruling or folded into another item, and kept
-here so a later round does not re-derive them): **116** — the positional cascade vs a Python DAG,
-CLOSED, do not build; reactivity is marimo's well-made claim while reproducibility is unclaimed by
-anyone, so tell the cascade story instead. **132** and **133** — R8's value-stream pricing of 109
-and of 127/128; a deck's defects are found by an *audience*, the latest and most expensive point in
-the stream, and 447 of the 457 diagnostics a real external book produces are the tool's vocabulary
-gap rather than the author's mistakes. **145** — retired into 137. **147** — retired into 101.
-**151** and **152** — see P2 and the 2026-07-29 batch.
+### Numbers retained, never reused
+
+Each closed by a ruling or folded into another item, kept so a later round does not re-derive them.
+**25** — the pre-public flip procedure, folded into **100** (its options (a)/(b)/(c) were settled by
+that ruling). **116** — the positional cascade vs a Python DAG, CLOSED, do not build; reactivity is
+marimo's well-made claim while reproducibility is unclaimed by anyone, so tell the cascade story
+instead. **132**/**133** — R8's value-stream pricing; a deck's defects are found by an *audience*,
+the latest and most expensive point in the stream. **145** — retired into 137. **147** — retired
+into 101. **151** — closed 2026-07-29. **182** — hover previews for citations and cross-refs; **filed
+2026-07-31 against a false measurement and deleted 2026-08-01 unbuilt**, because `site/hover.rs` +
+`code-enhance/12-link-preview.js` shipped it on 2026-07-06 (server-rendered, cross-page, with section
+headings deliberately excluded).
 
 ### Decided against
 
-- **"Adjacent slides bleed into the deck's letterbox" (DT-5, filed and RETRACTED 2026-07-27, same
-  day):** **false — the letterbox is empty.** `.tali-deck` is sized to the 16:9 stage
-  (`min(100%, 100vh*16/9)`) with `overflow: hidden`, and its comment already says "adjacent cells
-  fall outside and are clipped (no peek)". The probe intersected each neighbour with the
-  **viewport** instead of with its **clipping ancestor**, and `getBoundingClientRect` knows nothing
-  about `overflow: hidden` — re-measured, the neighbour contributes **0 px** inside the clip box and
-  `elementFromPoint` returns `BODY` there. **Do not re-file it from a rect measurement**; if it ever
-  looks true again, the only valid evidence is a rendered pixel, not a rectangle.
-- **Deck presenter tools** (one-command publish, laser/spotlight, auto-advance): declined 2026-07-22 and
-  **re-declined 2026-07-26** on the same grounds — no real speaker ask has appeared. Revive only when the
+- **"Adjacent slides bleed into the deck's letterbox" (DT-5, filed and RETRACTED 2026-07-27):**
+  **false — the letterbox is empty.** The probe intersected each neighbour with the **viewport**
+  instead of with its **clipping ancestor**. **Do not re-file it from a rect measurement**; the only
+  valid evidence is a rendered pixel.
+- **Deck presenter tools** (one-command publish, laser/spotlight, auto-advance): declined 2026-07-22
+  and **re-declined 2026-07-26** on the same grounds — no real speaker ask. Revive only when the
   author actually presents from Taliesin. (`footer:`/`logo:` from that item did ship.)
-- **WS op-message batching** (declined 2026-07-25 **on measurement, premise confirmed**): the worst case
-  is 55 ops in one frame, but a warm edit is 32.2 ms of which the diff is 0.94 ms, so batching saves
-  ~220 bytes on a 32,303-byte payload (0.7%), none on the critical path. Reopen only if render cost drops
-  far enough that framing is measurable.
+- **A prose reflow / hard-wrap formatter** (2026-07-30, item 166): 86 of 174 corpus documents are
+  hand-wrapped and 379 prose lines pass 100 columns, so there is no house style to enforce. The
+  render-identical subset shipped instead, gated by `formatting_the_whole_corpus_renders_identical_html`.
+- **WS op-message batching** (declined 2026-07-25 **on measurement, premise confirmed**): the worst
+  case is 55 ops in one frame, but a warm edit is 32.2 ms of which the diff is 0.94 ms, so batching
+  saves ~220 bytes on a 32,303-byte payload. Reopen only if render cost drops far enough that framing
+  is measurable.
 - **Item 29's reduction residuals R1 + T2** (closed 2026-07-25 without code): R1's `text_content` /
-  `indexable_text` fork is deliberate and equalizing them would leak raw entities into `llms.txt`; T2's
-  "three modules pre-scan" is partly rotted — the real duplication is a six-line idiom in two places, and
-  the divergence that looked like a latent bug is unreachable.
+  `indexable_text` fork is deliberate and equalizing them would leak raw entities into `llms.txt`;
+  T2's "three modules pre-scan" is partly rotted.
 - **Deck-motion, whole item** (detail: [2026-07-24-deck-motion-audit.md](2026-07-24-deck-motion-audit.md)):
-  Option A + residuals shipped; **(3) no-change** ruled; **(4) Option C (shared-element FLIP) declined —
-  do not re-cost it a third time**. A coverage-weighted refinement of (5) measured *worse* (15 of 25
-  slides vs 23 of 25); do not re-refine without measuring.
-- **A separate per-page outline artifact for the book drawer** (declined 2026-07-25 while building it):
-  the index it would duplicate is already lazy-loaded on every page, so a sidecar buys ~55 KB gzipped on
-  one cached subresource in exchange for a second copy of the render recipe, assembly, invalidation,
-  route and build write.
-- **`drawer-typeahead`** (declined 2026-07-25): Cmd-K plus the drawer's collapsible outline covers it, and
-  a second search-like box beside a Search button is a discoverability smell.
-- **A "~N min read" label on a book chapter** (2026-07-25): `prose::word_count` excludes fenced code and
-  math, so a code-heavy chapter is understated — and reading code is *slower* than prose, so the error
-  goes into a promise about the reader's time in the wrong direction, on exactly the chapters this tool
-  exists for. (The dated-post estimate in `render/mod.rs` is a different surface; `is_article` is
-  test-pinned, do not touch it.)
-- **Flipping a book chapter's label to prefer `title:` over its `# H1`** (resolved 2026-07-25): measured
-  across every book in the repo, only 3 of 48 chapters differ and in 2 the `# H1` is the *better* nav
-  label. Resolved as documentation, not code.
+  Option A + residuals shipped; **(3) no-change** ruled; **(4) Option C (shared-element FLIP)
+  declined — do not re-cost it a third time**. A coverage-weighted refinement of (5) measured *worse*.
+- **A separate per-page outline artifact for the book drawer** (declined 2026-07-25 while building
+  it): the index it would duplicate is already lazy-loaded on every page.
+- **`drawer-typeahead`** (declined 2026-07-25): Cmd-K plus the drawer's collapsible outline covers it,
+  and a second search-like box beside a Search button is a discoverability smell.
+- **A "~N min read" label on a book chapter** (2026-07-25): `prose::word_count` excludes fenced code
+  and math, so a code-heavy chapter is understated — and reading code is *slower* than prose, so the
+  error goes into a promise about the reader's time in the wrong direction. (`is_article` is
+  test-pinned; do not touch it.)
+- **Flipping a book chapter's label to prefer `title:` over its `# H1`** (resolved 2026-07-25):
+  measured across every book in the repo, only 3 of 48 chapters differ and in 2 the `# H1` is the
+  *better* nav label. Resolved as documentation, not code.
 - **CAD-as-code** (`{openscad}` / CadQuery cell → live 3-D preview; researched 2026-07-23, NOT built):
   technically feasible and legally green, killed on **demand**. **Do not bundle openscad-wasm (GPL).**
   Five named revisit triggers in [2026-07-23-cad-as-code-research.md](2026-07-23-cad-as-code-research.md).
-- **2026-07-22 rulings:** DX16 update-nudge = **skip** (a version check is network egress that undercuts
-  the offline-first identity); cross-ref label i18n = **defer** (no corpus doc demands it); item 9's
-  design questions documented as intentional (the deck serif/sans inversion, no `//| uses:` alias, the
-  callout-namespaced / theorem-bare asymmetry).
+- **2026-07-22 rulings:** DX16 update-nudge = **skip** (a version check is network egress that
+  undercuts the offline-first identity); cross-ref label i18n = **defer**; item 9's design questions
+  documented as intentional.
 - **2026-07-12 wishlist cut to `FEATURE-IDEAS.md`** (revive only when a corpus doc needs one):
-  cross-revision diff, repro manifest, List-of-Figures/Tables/Theorems, interactive tables, line-level
-  code xrefs, image `dark=`. Reader text-size/line-spacing controls declined (a11y-exempt substrate in
-  `14-reader-prefs.js`).
-- **TODO / FIXME surfacing** (owner ruled 2026-07-10): no `level` concept exists, so a TODO warning would
-  fail `check` on every draft. If revived, a preview-only `Diagnostic::info` beats re-plumbing a real
-  `level`, and the scan must NOT reuse `prose::strip_inline` (it blanks code, where TODOs live).
-- **AI-native leftovers declined 2026-07-16:** `check --online` citation resolution (the only proposed
-  network egress; check-only and off by default if ever revived), the numeric-claim-without-citation hint
-  (its own spec rates it FP-prone), and a per-page text/JSON sidecar (redundant).
-- **Refuted by measurement (do NOT re-scope):** heading demotion **already ships** (AP9's "12 `<h1>`"
-  measured a stale gitignored build artifact; the only multi-`<h1>` corpus docs are decks, exempt by
-  design); `build` does not leak forkserver subtrees; the warm pool booting Python on prose-only builds
-  is hygiene, not latency; dev attributes are 0.29% of page bytes (don't strip); a `--version -dirty`
-  marker is stale-by-construction; the `assets/css` stale-embed claim did not reproduce (re-verify for
-  `assets/js` before any touch-render workaround); the 390px `hero:` overflow + theme/video desync are
-  fixed; include symlink-loop SIGABRT does not exist (Linux caps at `MAXSYMLINKS=40`); **decks pass path
-  parity outright** and `mounts:` differs from direct serving by 4 bytes (boot nonce + ws path).
-- **`_redirects`/`_headers` preserved, never generated** (`build.rs` treats them as author-placed deploy
-  metadata; `stale_sweep.rs` pins it).
+  cross-revision diff, repro manifest, List-of-Figures/Tables/Theorems, interactive tables,
+  line-level code xrefs, image `dark=`. Reader text-size/line-spacing controls declined (a11y-exempt
+  substrate in `14-reader-prefs.js`).
+- **TODO / FIXME surfacing** (owner ruled 2026-07-10): no `level` concept exists, so a TODO warning
+  would fail `check` on every draft. If revived, a preview-only `Diagnostic::info` beats re-plumbing
+  a real `level`, and the scan must NOT reuse `prose::strip_inline`.
+- **AI-native leftovers declined 2026-07-16:** `check --online` citation resolution, the
+  numeric-claim-without-citation hint, and a per-page text/JSON sidecar.
+- **Refuted by measurement (do NOT re-scope):** heading demotion **already ships**; `build` does not
+  leak forkserver subtrees; the warm pool booting Python on prose-only builds is hygiene, not
+  latency; dev attributes are 0.29% of page bytes; a `--version -dirty` marker is
+  stale-by-construction; the `assets/css` stale-embed claim did not reproduce (re-verify for
+  `assets/js` before any touch-render workaround); include symlink-loop SIGABRT does not exist;
+  **decks pass path parity outright**, and `mounts:` differs from direct serving by 4 bytes.
+- **`_redirects`/`_headers` preserved, never generated** (`build.rs` treats them as author-placed
+  deploy metadata; `stale_sweep.rs` pins it).
 - **Gate the gate:** a drift test that cannot fail is worse than none. Any new drift gate must be
   mutation-checked against exactly the shape it guards.
-- **Library outsourcing decided against** (each verified vs the invariants): hayagriva/biblatex, schemars,
-  jsonschema, morphdom/idiomorph, similar/dissimilar, clap, owo-colors, slug, html-escape,
-  lightningcss/palette, IntersectionObserver/scrollspy libs, deck micro-helpers. Keep `two_face` extras
-  filling gaps only (the bundled syntect set is consulted first and must win).
+- **Library outsourcing decided against** (each verified vs the invariants): hayagriva/biblatex,
+  schemars, jsonschema, morphdom/idiomorph, similar/dissimilar, clap, owo-colors, slug, html-escape,
+  lightningcss/palette, IntersectionObserver/scrollspy libs, deck micro-helpers. Keep `two_face`
+  extras filling gaps only (the bundled syntect set is consulted first and must win).
 - **Reading-first defaults, research-validated keeps** (do NOT "fix"): serif body for long-form screen
-  reading; ~70ch measure `--tali-maxw: 46rem`; right-rail scrollspy + width-gated sidenotes; scroll (not
-  pagination) book reading; ship REAL bold/italic faces, never synthesized.
+  reading; ~70ch measure `--tali-maxw: 46rem`; right-rail scrollspy + width-gated sidenotes; scroll
+  (not pagination) book reading; ship REAL bold/italic faces, never synthesized.
 - **2026-07-06 decisions:** book pager stays bottom-only; book page-TOC fix-in-place, keep both nav
   surfaces; xref graph tool removed; focus mode stays ephemeral; deck overview keeps per-slide
   backgrounds; dev-menu + `#tali-progress` + reading-progress bar stay three separate signals.
-- **2026-07-18 PMF re-derivations:** the reader "Cite this" box (D70) was REVIVED and shipped as B1; the
-  deck desktop "async handout" reading view stays CUT (do not re-open without a fresh ruling).
+- **2026-07-18 PMF re-derivations:** the reader "Cite this" box (D70) was REVIVED and shipped as B1;
+  the deck desktop "async handout" reading view stays CUT (do not re-open without a fresh ruling).
 
 ## Product / distribution
 
 Resolved (2026-06-20): ship as **open source + personal tool**, no company for now (optionality kept:
 sole copyright + trademarkable name; `STARTUP-PLAN.md`). Per the PMF audit (2026-07-18) the tool is
 feature-complete for ~one real user, so the highest-leverage next move is **real users**, not more
-features. When publishing, lead the copy with the **speed moat** (warm server, block-level incremental,
-no per-edit rebuild), the single most-repeated Quarto grievance and the most under-marketed asset.
+features. When publishing, lead the copy with the **speed moat** (warm server, block-level
+incremental, no per-edit rebuild), the single most-repeated Quarto grievance and the most
+under-marketed asset.

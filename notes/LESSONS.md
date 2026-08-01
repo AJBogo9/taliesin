@@ -80,6 +80,21 @@ through its wrappers. What was actually missing was a fixture *shape*.
   `strict_single_doc_build_fails_on_a_missing_image` asserted `doc:5:` — the bare `file_stem()`
   label that no editor resolves — so fixing the label broke it. A red test after a fix is not
   automatically the fix's fault: **read what the test was pinning before you adjust either.**
+- **A negative test whose fixture is also absent proves nothing.** (2026-07-31, the print track.)
+  Every live gate written for the paginated renderer referenced an image that did not exist, so
+  nothing loaded and nothing visibly failed — while the real page was written to a temp dir where
+  relative URLs 404'd and every figure rendered ALT TEXT. Weeks of CSS experiments were run against
+  broken images and proved nothing. **When a test asserts something does not happen, prove its
+  fixture can make it happen.**
+- **A whole-corpus render-identity gate is the reusable shape for a "safe" transform.** (2026-07-30,
+  item 166.) `formatting_the_whole_corpus_renders_identical_html` runs the formatter over all 174
+  documents and asserts the HTML is byte-identical; it immediately caught a case no reasoning had
+  produced (adding a final newline to a document ending in an HTML comment puts the newline *inside*
+  the passthrough). **Reach for it before hand-reasoning about parser edge cases.**
+- **A pin on authored content must pin the invariant, not the authorship.** (2026-07-31, item 56.)
+  `backlinks_are_exercised.rs` asserts each book renders *at least one* backlink and deliberately
+  does not say which chapter references which, so a reorganisation stays free while a silent return
+  to zero does not.
 
 ## Running cargo-mutants
 
@@ -144,6 +159,30 @@ through its wrappers. What was actually missing was a fixture *shape*.
   appears in no emitter", which is false: it is emitted, just never on that page. **Before
   believing a probe's stated cause, check whether its target still has the feature.**
 
+- **Instrument the failing environment to name the COMPONENT before bisecting inside it.**
+  (2026-07-31, item 159.) A hang was filed as "a figure crossing a page boundary hangs paged.js", and
+  a whole session went into ruling out `break-inside`, `max-height`, the LoF's `break-after`, image
+  count and the settle budget — all *inside* paged.js, because the failing component had been assumed
+  rather than measured. One probe of the live page (`.pagedjs_page` count `0`, polyfill loaded, fonts
+  settled) named it in a single run: pagination had never started. The real cause was outside the
+  suspect entirely — the screen renderer marks every image after the first `loading="lazy"`, a
+  paginated render never scrolls, so Chrome never requests a far-down image, `complete` stays false
+  and neither `load` nor `error` ever fires, so the start hook waited forever. **Three separate
+  "measured" claims in that file were wrong the same way, each downstream of that one unmeasured
+  assumption** — including a CSS rule whose substitution token had never been in the stylesheet, so
+  it replaced nothing on every render (`git log -S` finds no commit that added it).
+- **A client-side scrape of the rendered page is the wrong source for anything about cells.**
+  (2026-07-31, item 173.) A `#| echo: false` cell runs and emits no listing, so the DOM is missing
+  exactly the setup cells. Measured on the PCA post: **1 visible listing against 168 lines in the
+  block model.** Read the block model.
+- **`cargo build --bin taliesin` before believing any e2e result.** The companion e2e runs
+  `target/debug/taliesin`, which `cargo test` does **not** rebuild, so a correct fix appears not to
+  work. Same family as the shared-`target/` trap below.
+- **Do not pick a keybinding by recall.** (2026-07-30, item 165.) The first choice
+  (`ctrl+alt+pageup`/`pagedown`) is taken by quick-input paging and chat code-block navigation. Read
+  VS Code's real default table (`workbench.action.openDefaultKeybindingsFile`) and fail on a clash —
+  **with punctuation normalized**, since the default table spells `[` as `[BracketLeft]` and a raw
+  string compare calls every punctuation binding free.
 - **`taliesin --version` before any CLI measurement: `target/` is shared with the parallel session.**
   (2026-07-28.) The release binary reported a SHA from the *other* branch, so a round's headline was
   measured against code this branch does not contain. It held on re-measurement after
@@ -356,6 +395,21 @@ which 2 are false positives.
   found three HIGH security defects in one pass. **None of them is a correctness bug** — they are
   defects only once a document arrives from someone else.
 
+- **Grep for the capability before pricing the work — the thing said to be missing already exists,
+  repeatedly.** (Four instances now, so it is a class.) Item 171 was filed as needing a
+  `reqwest`/`TcpListener` harness that `preview_single_instance.rs` had hand-rolled all along; item
+  173's C-READ-2 was filed as "code *and data* download" while the data half had shipped as
+  `{{< dataset >}}`; idea 72 proposed swatches for `--tali-*` tokens in `_site.yml` and front matter,
+  where **no such token is authored anywhere in the repo**. The worst case is item **182**, filed on
+  2026-07-31 as "Taliesin has both link shapes and **zero** hover machinery (grepped)" and deleted
+  unbuilt on 2026-08-01: `site/hover.rs` plus `code-enhance/12-link-preview.js` had shipped
+  server-rendered, cross-page hover previews for citations and cross-refs on **2026-07-06**. A survey
+  that reports a capability absent is a hypothesis; **the grep goes in the item, with its date.**
+- **Treat a "this needs the project index first" claim as something to disprove.** (2026-07-30, ideas
+  74 and 84.) Both were priced as blocked on a parked project-index item and neither was: a rename or
+  a paste fires **once, on a gesture**, and a one-shot *walk* already exists
+  (`site::anchors_defined_elsewhere_in_project`). An index is only load-bearing for something that
+  fires per *keystroke*. Two batches in a row paid out on this.
 - **Trust the symptom, never the stated cause, line number or cost** — all three have rotted, and a
   stale *cause* has sat under a real *symptom* (MOB-5: the dialog half was already fixed; the focus
   loss was `19-book-outline.js` re-parenting the focused link during hydration).
