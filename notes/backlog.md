@@ -276,9 +276,10 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
     which reads them as statement heads. **Decide whether any of the three is wanted before writing a
     line of prose for them** — and if so it is a build, with its own spec.
 
-175. **The long-running-cell workflow.** (Parts (a) and (b) shipped 2026-07-30; (c) and (d) are
-     open and neither is blocked.) Jupyter's daily-driver property for expensive work is "watch it
-     run, then re-run only what you choose". Taliesin now has the *watch it run* half.
+175. **The long-running-cell workflow.** (Parts (a) and (b) shipped 2026-07-30; **(d) shipped
+     2026-08-02**; (c) is open and not blocked.) Jupyter's daily-driver property for expensive
+     work is "watch it run, then re-run only what you choose". Taliesin now has the *watch it
+     run* half.
      - **(c) No escape hatch for an expensive cell.** Freeze keys on a cumulative hash (this cell +
        all upstream same-language code + interpreter id), so editing *any* upstream cell busts the
        expensive one, and the cell-option set (`validate.rs:18`) has `cache: false` to opt *out* but
@@ -286,10 +287,15 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
        survives an upstream edit **but renders a visible stale-relative-to-inputs marker**, with
        `build` warning or refusing. **Jupyter lets the notebook lie silently; this would let you
        defer the re-run while showing the debt.**
-     - **(d) No per-cell run and no interrupt.** The preview can only `restart_kernel`
-       (`serve/mod.rs:43`), which nukes all state. Per-cell run/interrupt belongs in the **editor**
-       (CodeLens), not the preview: it keeps single-editing-surface clean and avoids a second control
-       surface in the browser. Same work as `FEATURE-IDEAS.md` idea 86 — do not build it twice.
+     - **(d) DONE (`1b8b3756` + `eaf1c1d3`), kept only until (c) lands so the pair reads
+       whole.** Per-cell run shipped as CodeLens (`▶ Run Cell` / `Run Above` over every
+       executable fence, wired to `taliesin run --line`), pinned in a real Extension Host by
+       `integration.test.ts`. Interrupt shipped as **Ctrl-C** plus `run --interrupt`, keeping
+       the warm kernel. Two things worth not rediscovering: an interrupt must invalidate the
+       run, not just signal the cell (the signal alone stops cell 4 of 10 and executes the
+       rest), and the invalidation must be an **epoch** rather than a flag, because a session
+       does its own startup pass and the client's run queues behind it. `FEATURE-IDEAS.md`
+       idea 86 is annotated with what was deliberately NOT built.
 
 174. **`serde_yaml` fallback swap.** (Conditional: **no trigger yet**, which is why it ranks here.)
      `Cargo.toml:20-24` names `serde_yml` as the fallback; that fork carries RUSTSEC-2025-0068

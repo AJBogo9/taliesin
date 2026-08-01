@@ -1155,6 +1155,19 @@ watcher, no invalidation protocol and no architecture change. See 74 below for w
     **Filed as backlog item 175(d) and depends on 175(b), output streaming.** Do not build it from
     both entries.
 
+    **SHIPPED 2026-08-02, in a reduced form — read this before re-proposing any of it.**
+    - `▶ Run cell` shipped (`1b8b3756`), plus a `Run Above` this idea did not ask for.
+    - `⏹ Interrupt` shipped (`eaf1c1d3`) **as Ctrl-C in the run's own terminal, not as a
+      lens.** Ruled 2026-08-02: once Ctrl-C works, that terminal is already open and focused
+      whenever a cell is running, so a Stop lens is a second control surface for an act the
+      author can already perform with zero discovery — and the lens version additionally needs
+      a session→editor state channel built solely so the editor can know a run is in flight.
+    - **`⟲ Run below` was not built** and is not debt. It is a plausible cheap add (the lens
+      list is already built per cell); it simply was not asked for.
+    - **`⚡ cached (4.2s)` was not built.** It needs the same state channel the Stop lens was
+      rejected for, so it should be reconsidered only together with that channel, and only if
+      something else independently justifies one.
+
 ### Ruled out this session (with the reason, so it is not re-proposed)
 
 - **`registerNotebookSerializer` (open `.tmd` in VS Code's Notebook editor).** Tempting: a mature

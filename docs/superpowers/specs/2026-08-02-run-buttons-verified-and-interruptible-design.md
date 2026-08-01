@@ -60,6 +60,23 @@ supplies one for both owned and forkserver children.
    `run_handler` does. Answers `{ "interrupted": true, "lang": "python" }`, or
    `{ "interrupted": false }` when that page has nothing running.
 
+> **Corrections from implementation (2026-08-02).** Two things in this spec were wrong and are
+> left in place with this note rather than edited away, because both were found by running the
+> feature rather than by reasoning about it.
+>
+> 1. **`cancelled` had to become an epoch, not a boolean.** Runs *queue*: `taliesin run` starts
+>    a session, that session immediately does its own execution pass, and the client's run waits
+>    behind it. A boolean cleared at each run's start stopped the in-flight pass and then let the
+>    queued run begin clean and execute the remaining cells anyway. Verified end to end with a
+>    marker file. A run now carries the epoch it was **requested** at and stops as soon as the
+>    live epoch differs, which covers in-flight and queued runs alike. `begin_run`/`end_run`/
+>    `is_cancelled` do not exist; `RunControl::epoch()` and a `requested_at` parameter on
+>    `run_through` replace them.
+> 2. **"Non-loopback peer: 403, mirroring the run endpoint's own test" could not be done.** The
+>    run endpoint has no such test; nothing in the tree references `RUN_PATH`. Manufacturing a
+>    non-loopback peer needs real scaffolding, so this is filed in `notes/DETECTION-DEBT.md`
+>    (D=7) with the fix that would close it for both endpoints at once, rather than faked.
+
 **Interrupt stops the run, not just the cell.** This is the part that is easy to get wrong.
 Signalling the running cell's PID ends *that cell*; a multi-cell run would then carry on into
 cell 4 of 10, which is the opposite of what Ctrl-C means. So the endpoint does two things: it
