@@ -76,6 +76,11 @@ pub struct Page {
     /// Front-matter `doi:`, held **bare** (`10.5281/zenodo.1234`) whatever spelling the
     /// author used, for Scholar's `citation_doi`.
     pub doi: Option<String>,
+    /// Front-matter `venue:`, for Scholar's `citation_conference_title`.
+    pub venue: Option<String>,
+    /// Front-matter `links:` (the resource row). Held here because `citation_arxiv_id` is
+    /// derived from an `arxiv.org` entry rather than declared separately.
+    pub(crate) links: Vec<crate::resource::ResourceLink>,
     /// `draft: true` in front matter. `false` for every published page; `true` only for a
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.

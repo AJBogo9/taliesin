@@ -369,6 +369,18 @@
         "name": "doi"
       },
       {
+        "description": "Resource links under the byline; a bare URL infers its own label and icon.",
+        "name": "links"
+      },
+      {
+        "description": "Where the work appeared, as a badge and the Scholar venue tag.",
+        "name": "venue"
+      },
+      {
+        "description": "An award badge shown beside the venue.",
+        "name": "award"
+      },
+      {
         "description": "Document-level code-cell execution defaults.",
         "name": "execute"
       },

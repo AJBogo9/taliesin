@@ -87,6 +87,17 @@ Each of these injects trusted, verbatim markup. The value can be a path, a
 | `csl` | string | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so a `csl:` key is never mistaken for a typo'd `css:`; delete it |
 | `doi` | string | This page's own DOI, for the Google Scholar `citation_doi` tag. Write it however you copied it — `10.5281/zenodo.1234`, `https://doi.org/10.5281/…` and `doi:10.5281/…` all mean the same thing and are normalised to the bare form |
 
+### The resource row
+
+The Paper / arXiv / Code row a research page hands its reader, plus the badges beside
+it. See [`links:`](#links-the-resource-row).
+
+| Key | Type | Meaning |
+|---|---|---|
+| `links` | list | Resource links under the byline. A bare URL infers its own label and icon; a `{ text:, href:, icon: }` map overrides either half |
+| `venue` | string | Where the work appeared (`Proceedings of …`, `NeurIPS 2026`). Shown as a badge, and emitted as the Scholar `citation_conference_title` |
+| `award` | string | An award badge shown beside the venue (`Best Paper`) |
+
 ### Code execution
 
 | Key | Type | Meaning |
@@ -165,6 +176,52 @@ One declaration feeds everything downstream that has to name a person: the bylin
 Google Scholar `citation_author` and `citation_author_institution` tags, the JSON-LD
 `Person` and its `affiliation`, the Atom feed, and all three formats in the "Cite this"
 box. A typo in a sub-key is a warning, not a silent drop.
+
+## `links:` (the resource row) {#links-the-resource-row}
+
+The row of artefact buttons under the byline — the one element every research page
+keeps, because handing a reader the paper, the code and the data *is* the page's job.
+
+```yaml
+---
+title: "On the Analytical Engine"
+date: 2026-03-09
+venue: "Proceedings of the Analytical Society"
+award: "Best Paper"
+links:
+  - https://arxiv.org/abs/2503.01234
+  - https://github.com/example/analytical-engine
+  - { text: "Supplementary", href: "https://example.org/supplement.pdf" }
+---
+```
+
+**A bare URL is the whole spelling.** The label and the icon are read off the URL, so
+the three entries above render as **arXiv**, **Code** and **Supplementary** without
+your writing the first two labels at all:
+
+| The URL says | Label | |
+|---|---|---|
+| `arxiv.org` | arXiv | |
+| `github.com`, `gitlab.com`, `codeberg.org` | Code | |
+| `huggingface.co`, `zenodo.org`, `osf.io` | Data | |
+| `doi.org` | DOI | |
+| `youtube.com`, `youtu.be`, `vimeo.com` | Video | |
+| anything ending `.pdf` | Paper | |
+| anything else | the hostname | e.g. `mylab.ac.uk` |
+
+An unrecognised host labels itself rather than guessing, which is why the override is
+optional rather than required. When you do want one, a `{ text:, href:, icon: }` map
+replaces either half on its own — `{ text: Our repo, href: https://github.com/… }`
+keeps the inferred code icon. `icon:` takes one of `paper`, `code`, `data`, `video`
+or `link`; the glyphs are bundled SVG, so the row renders with no network at all.
+
+The row is also read by machines. A `venue:` becomes the Google Scholar
+`citation_conference_title`, and an `arxiv.org` link supplies `citation_arxiv_id` —
+derived from the link rather than declared again, since you already wrote the id.
+
+This lives in the title block on purpose, and it is *not* part of
+[`hero:`](#hero-a-landing-banner): a hero replaces the title block wholesale, so a
+paper page would have to choose between its byline and its links.
 
 ## `datasets:` (where the data came from) {#datasets-where-the-data-came-from}
 

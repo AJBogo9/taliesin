@@ -76,6 +76,8 @@ pub(super) fn website_pages(
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,
                 doi: fm.doi,
+                venue: fm.venue,
+                links: fm.links,
                 draft: fm.draft,
             })
         })

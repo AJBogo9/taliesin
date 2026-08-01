@@ -81,6 +81,15 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "doi",
             "The published record's DOI, written bare or as a `doi.org` URL.",
         ),
+        (
+            "links",
+            "Resource links under the byline; a bare URL infers its own label and icon.",
+        ),
+        (
+            "venue",
+            "Where the work appeared, as a badge and the Scholar venue tag.",
+        ),
+        ("award", "An award badge shown beside the venue."),
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("hero", "Landing-page hero block configuration."),

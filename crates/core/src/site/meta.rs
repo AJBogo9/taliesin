@@ -175,12 +175,29 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         if let Some(d) = page.date.as_deref() {
             h.push_str(&meta("name", "citation_publication_date", d));
         }
-        // The site title is the closest thing to a journal/venue name.
-        if let Some(journal) = cfg.title.as_deref() {
-            h.push_str(&meta("name", "citation_journal_title", journal));
+        // Where the work appeared. A declared `venue:` names the real one, so it REPLACES
+        // the site-title stand-in rather than joining it: emitting both would tell Scholar
+        // the paper was published in two places. Scholar splits journal from conference and
+        // nothing in a `venue:` string says which it is; conference is the better default
+        // for the page shape this row exists for (a paper/project page), and the site title
+        // stays the journal-ish fallback for an ordinary post.
+        match page.venue.as_deref().filter(|v| !v.trim().is_empty()) {
+            Some(venue) => h.push_str(&meta("name", "citation_conference_title", venue)),
+            None => {
+                if let Some(journal) = cfg.title.as_deref() {
+                    h.push_str(&meta("name", "citation_journal_title", journal));
+                }
+            }
         }
+        // The identifiers, canonical first: a DOI names the published record, an arXiv id
+        // names the preprint of it.
         if let Some(doi) = page.doi.as_deref() {
             h.push_str(&meta("name", "citation_doi", doi));
+        }
+        // Derived from the `arxiv.org` entry in `links:` — an author who links their
+        // preprint has already written the id, and a separate key would be a second copy.
+        if let Some(id) = crate::resource::arxiv_id(&page.links) {
+            h.push_str(&meta("name", "citation_arxiv_id", &id));
         }
         if let Some(u) = &page_url {
             h.push_str(&meta("name", "citation_public_url", u));

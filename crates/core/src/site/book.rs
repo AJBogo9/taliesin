@@ -305,6 +305,8 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,
                 doi: fm.doi,
+                venue: fm.venue,
+                links: fm.links,
                 draft: c.draft,
             }
         })

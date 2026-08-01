@@ -442,6 +442,8 @@ mod tests {
                 page_layout: None,
                 has_bibliography: false,
                 doi: None,
+                venue: None,
+                links: Vec::new(),
                 draft: false,
             }
         }

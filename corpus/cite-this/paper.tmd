@@ -13,6 +13,12 @@ author:
     equal: true
 date: 2026-03-09
 doi: "https://doi.org/10.5281/zenodo.1825009"
+venue: "Proceedings of the Analytical Society"
+award: "Best Paper"
+links:
+  - https://arxiv.org/abs/2503.01234
+  - https://github.com/example/analytical-engine
+  - { text: "Supplementary", href: "https://example.org/supplement.pdf" }
 bibliography: refs.bib
 ---
 

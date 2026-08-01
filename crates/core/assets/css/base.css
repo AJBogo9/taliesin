@@ -484,6 +484,28 @@
   .tali-affiliation-num { font-size: .75em; line-height: 0; vertical-align: super;
     margin-right: .2em; color: var(--tali-accent); }
   .tali-equal-note { margin: .2rem 0 0; }
+  /* The resource row: venue/award badges, then the artefact buttons. Wraps rather than
+     scrolls — a paper page can carry six of these, and a narrow screen should stack them
+     instead of hiding the last ones off an edge with no affordance. */
+  .tali-resources { margin: .9rem 0 0; display: flex; flex-direction: column;
+    align-items: flex-start; gap: .55rem; }
+  .tali-badges, .tali-resource-links { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .tali-badge { font: 600 11px/1 var(--tali-font-head); letter-spacing: .04em;
+    text-transform: uppercase; padding: .35em .6em; border-radius: var(--tali-radius-sm);
+    border: 1px solid var(--tali-border); color: var(--tali-muted); }
+  /* The award is the one thing on the page worth the accent; the venue stays quiet, or
+     two competing highlights sit next to each other and neither reads as emphasis. */
+  .tali-badge-award { border-color: var(--tali-accent); color: var(--tali-accent); }
+  .tali-resource-link { display: inline-flex; align-items: center; gap: .4em;
+    font: 500 14px/1 var(--tali-font-head); text-decoration: none;
+    color: var(--tali-fg); padding: .5em .8em; border-radius: var(--tali-radius-md);
+    border: 1px solid var(--tali-border);
+    transition: border-color var(--tali-dur), background-color var(--tali-dur); }
+  .tali-resource-link:hover, .tali-resource-link:focus-visible {
+    border-color: var(--tali-accent); background-color: var(--tali-code-bg); }
+  /* The glyph must not grow with the reader's text-size preference to the point of
+     out-weighing its own label. */
+  .tali-resource-link svg { flex: none; width: 15px; height: 15px; }
   pre { position: relative; padding: 1rem; border-radius: var(--tali-radius-md); overflow: auto; font-size: .9em;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride

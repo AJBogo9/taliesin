@@ -3,6 +3,7 @@
   "additionalProperties": false,
   "properties": {
     "author": {},
+    "award": {},
     "bibliography": {},
     "categories": {},
     "csl": {},
@@ -47,6 +48,7 @@
     "include-before-body": {},
     "include-in-header": {},
     "lang": {},
+    "links": {},
     "listing": {
       "oneOf": [
         {
@@ -138,7 +140,8 @@
     "title-block-style": {},
     "toc": {
       "type": "boolean"
-    }
+    },
+    "venue": {}
   },
   "title": "Taliesin document front matter",
   "type": "object"

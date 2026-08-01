@@ -29,6 +29,12 @@ pub(crate) struct FrontInfo {
     pub(crate) has_bibliography: bool,
     /// `doi:`, stored **bare** (`10.5281/zenodo.1234`); see [`normalize_doi`].
     pub(crate) doi: Option<String>,
+    /// `venue:` — where the work appeared. A badge in the title block, and Scholar's
+    /// `citation_conference_title`.
+    pub(crate) venue: Option<String>,
+    /// `links:` — the resource row. Parsed here as well as in `render` because the
+    /// `arxiv.org` entry is what `citation_arxiv_id` is derived from.
+    pub(crate) links: Vec<crate::resource::ResourceLink>,
 }
 
 /// A DOI reduced to its bare form, whatever the author pasted.
@@ -92,6 +98,12 @@ pub(crate) fn parse_front_matter(
         draft: bool_field(&val, "draft", false, label, warnings),
         has_bibliography: val.get("bibliography").is_some(),
         doi: scalar(val.get("doi")).and_then(|d| normalize_doi(&d)),
+        venue: scalar(val.get("venue")),
+        links: {
+            let (list, msgs) = crate::resource::parse(val.get("links"));
+            warnings.extend(msgs.into_iter().map(|m| format!("{label}: {m}")));
+            list
+        },
     }
 }
 

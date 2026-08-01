@@ -55,11 +55,16 @@ fn the_corpus_paper_emits_the_full_scholar_block_in_scholar_order() {
                 "Analytical Society".into()
             ),
             ("citation_publication_date".into(), "2026-03-09".into()),
+            // A declared `venue:` REPLACES the site-title stand-in
+            // (`citation_journal_title`): emitting both would tell Scholar the paper
+            // appeared in two places.
             (
-                "citation_journal_title".into(),
-                "Journal of Examples".into()
+                "citation_conference_title".into(),
+                "Proceedings of the Analytical Society".into()
             ),
             ("citation_doi".into(), "10.5281/zenodo.1825009".into()),
+            // Derived from the `arxiv.org` entry in `links:`, never declared separately.
+            ("citation_arxiv_id".into(), "2503.01234".into()),
             (
                 "citation_public_url".into(),
                 "https://example.org/paper.html".into()

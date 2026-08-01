@@ -57,6 +57,11 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // The published record's own identifier. Normalized to its bare form at parse
     // (`site::frontmatter::normalize_doi`), so every consumer reads one spelling.
     "doi",
+    // The resource row under the byline: artefact links (label + icon inferred from the
+    // URL) and the venue / award badges beside them. See `crate::resource`.
+    "links",
+    "venue",
+    "award",
     // Execution
     "execute",
     // Listings / project pages

@@ -526,6 +526,9 @@ fn render_internal_impl(
     let mut subtitle: Option<String> = None;
     let mut date: Option<String> = None;
     let mut authors: Vec<crate::author::Author> = Vec::new();
+    let mut links: Vec<crate::resource::ResourceLink> = Vec::new();
+    let mut venue: Option<String> = None;
+    let mut award: Option<String> = None;
     let mut description: Option<String> = None;
     let mut lang: Option<String> = None;
     // Deck chrome: a persistent per-slide footer text + corner logo image. Read on any
@@ -701,20 +704,30 @@ fn render_internal_impl(
                 // opens a SECOND YAML document that `from_str::<Value>` refuses outright.
                 // Parse the stripped block instead.
                 let block = crate::frontmatter::front_matter_block(src).unwrap_or(fm);
-                authors = match serde_yaml::from_str::<serde_yaml::Value>(block) {
+                match serde_yaml::from_str::<serde_yaml::Value>(block) {
                     Ok(v) => {
                         let (list, msgs) = crate::author::parse(v.get("author"));
                         // Front matter is the head of the primary document by
                         // definition, so line 1 is the right anchor and the only one in
                         // scope here (the per-block `file`/`start_line` are bound below).
                         warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
-                        list
+                        authors = list;
+                        // `links:` is YAML-shaped for the same reason `author:` is (a map
+                        // entry lives on indented sub-lines), so it reads the parsed value
+                        // rather than the line scan.
+                        let (list, msgs) = crate::resource::parse(v.get("links"));
+                        warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
+                        links = list;
                     }
-                    Err(_) => extract_field(fm, "author")
-                        .map(crate::author::Author::named)
-                        .into_iter()
-                        .collect(),
-                };
+                    Err(_) => {
+                        authors = extract_field(fm, "author")
+                            .map(crate::author::Author::named)
+                            .into_iter()
+                            .collect();
+                    }
+                }
+                venue = extract_field(fm, "venue");
+                award = extract_field(fm, "award");
                 description = extract_field(fm, "description");
                 footer = extract_field(fm, "footer");
                 logo = extract_field(fm, "logo");
@@ -1333,6 +1346,11 @@ fn render_internal_impl(
             date.as_deref(),
             description.as_deref(),
             read_time.as_deref(),
+            crate::resource::Resources {
+                links: &links,
+                venue: venue.as_deref(),
+                award: award.as_deref(),
+            },
         )
     {
         blocks.insert(
@@ -1504,6 +1522,7 @@ fn title_block_html(
     date: Option<&str>,
     description: Option<&str>,
     read_time: Option<&str>,
+    resources: crate::resource::Resources<'_>,
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
@@ -1538,6 +1557,9 @@ fn title_block_html(
         ));
     }
     h.push_str(&affiliations_html(authors));
+    // Last inside the title block: the artefacts a reader came for sit under the people
+    // who made them, which is also where every project-page template puts them.
+    h.push_str(&resource_links_html(resources));
     h.push_str("</header>");
     Some(h)
 }
@@ -1592,6 +1614,82 @@ fn byline_html(authors: &[crate::author::Author]) -> Option<String> {
     }
     out.push_str("</span>");
     Some(out)
+}
+
+/// The bundled glyph for a resource link's `icon` name (inline SVG on `currentColor`, the
+/// same shape `site::chrome::social_icon` uses). Bundled rather than fetched: an icon font
+/// or a CDN sprite would put a network request in a page that is otherwise fully offline,
+/// and the row would render as empty boxes when that request fails. An unknown name gets
+/// the generic link glyph, so a hand-written `icon:` can never blank the button.
+fn resource_icon(name: &str) -> &'static str {
+    match name {
+        // A document with a folded corner: paper / arXiv / DOI.
+        "paper" => {
+            "<path d=\"M4 1.5h5L13 5.5v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z\"/><path d=\"M9 1.5v4h4\"/>"
+        }
+        // Angle brackets: a code repository.
+        "code" => "<path d=\"M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5\"/>",
+        // A stack of discs: a dataset.
+        "data" => {
+            "<ellipse cx=\"8\" cy=\"4\" rx=\"5\" ry=\"2\"/><path d=\"M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2\"/>"
+        }
+        // A play triangle in a frame.
+        "video" => {
+            "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"m7 6.5 3.5 1.5L7 9.5z\"/>"
+        }
+        _ => {
+            "<path d=\"M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2.5-2.5a2.5 2.5 0 0 0-3.5-3.5l-.8.8\"/><path d=\"M9.5 6.5a2.5 2.5 0 0 0-3.5 0L3.5 9a2.5 2.5 0 0 0 3.5 3.5l.8-.8\"/>"
+        }
+    }
+}
+
+/// The resource row under the byline: the `venue:` / `award:` badges, then one button per
+/// `links:` entry. Empty string when the page declares none of the three, so an ordinary
+/// post's title block is byte-for-byte what it always was.
+///
+/// Badges lead and links follow, in one band, because they answer a reader's two questions
+/// in that order: *where did this appear*, then *where do I get it*.
+fn resource_links_html(resources: crate::resource::Resources<'_>) -> String {
+    if resources.is_empty() {
+        return String::new();
+    }
+    let crate::resource::Resources { links, .. } = resources;
+    let venue = resources.venue.filter(|s| !s.trim().is_empty());
+    let award = resources.award.filter(|s| !s.trim().is_empty());
+    let mut out = String::from("<div class=\"tali-resources\">");
+    if venue.is_some() || award.is_some() {
+        out.push_str("<div class=\"tali-badges\">");
+        if let Some(v) = venue {
+            out.push_str(&format!(
+                "<span class=\"tali-badge tali-badge-venue\">{}</span>",
+                html_escape(v)
+            ));
+        }
+        if let Some(a) = award {
+            out.push_str(&format!(
+                "<span class=\"tali-badge tali-badge-award\">{}</span>",
+                html_escape(a)
+            ));
+        }
+        out.push_str("</div>");
+    }
+    if !links.is_empty() {
+        out.push_str("<div class=\"tali-resource-links\">");
+        for l in links {
+            out.push_str(&format!(
+                "<a class=\"tali-resource-link\" href=\"{}\"><svg xmlns=\"http://www.w3.org/2000/svg\" \
+                 width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" \
+                 stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" \
+                 aria-hidden=\"true\">{}</svg><span>{}</span></a>",
+                escape_attr(safe_url(&l.href, false)),
+                resource_icon(&l.icon),
+                html_escape(&l.text)
+            ));
+        }
+        out.push_str("</div>");
+    }
+    out.push_str("</div>");
+    out
 }
 
 /// The numbered affiliation list under the byline, plus the equal-contribution note when

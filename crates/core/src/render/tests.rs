@@ -204,6 +204,75 @@ fn a_structured_author_list_renders_a_byline_with_numbered_affiliations() {
 }
 
 #[test]
+fn a_resource_row_infers_each_links_label_and_icon_from_its_url() {
+    // Item 185. The bare-URL spelling is the feature: the author writes three URLs and
+    // gets three correctly-labelled buttons, so there is nothing to keep in sync.
+    let doc = render_document(concat!(
+        "---\n",
+        "title: T\n",
+        "venue: NeurIPS 2026\n",
+        "award: Best Paper\n",
+        "links:\n",
+        "  - https://arxiv.org/abs/2501.01234\n",
+        "  - https://github.com/me/project\n",
+        "  - { text: Supplementary, href: https://example.org/extra.pdf }\n",
+        "---\n\nx\n",
+    ));
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("<span class=\"tali-badge tali-badge-venue\">NeurIPS 2026</span>")
+            && h.contains("<span class=\"tali-badge tali-badge-award\">Best Paper</span>"),
+        "both badges render, venue first: {h}"
+    );
+    // The labels are inferred, so none of these three strings appears in the source.
+    for (href, label) in [
+        ("https://arxiv.org/abs/2501.01234", "arXiv"),
+        ("https://github.com/me/project", "Code"),
+        ("https://example.org/extra.pdf", "Supplementary"),
+    ] {
+        assert!(
+            h.contains(&format!("href=\"{href}\"")) && h.contains(&format!("<span>{label}</span>")),
+            "{label} button missing: {h}"
+        );
+    }
+    // The row sits INSIDE the title block, after the byline — not as a sibling that a
+    // `title-block-style: none` page would keep on its own.
+    let block = h.find("tali-resources").expect("row present");
+    let close = h.find("</header>").expect("header closes");
+    assert!(
+        block < close,
+        "the row must live inside the title block: {h}"
+    );
+}
+
+#[test]
+fn a_page_with_no_links_venue_or_award_emits_no_resource_row() {
+    // The whole row is opt-in furniture: an ordinary post's title block must be exactly
+    // what it always was. Asserting on the container class is the honest check — the
+    // bundled CSS mentions every one of these class names on every page, so a bare
+    // `contains("tali-badge")` would pass for the wrong reason.
+    let doc = render_document("---\ntitle: T\nauthor: A\ndate: 2026-05-15\n---\n\nx\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        !h.contains("<div class=\"tali-resources\">"),
+        "no keys -> no row: {h}"
+    );
+}
+
+#[test]
+fn a_venue_alone_still_renders_its_badge_without_a_links_row() {
+    // The three keys are independent; a page can carry a venue and no artefacts yet.
+    let doc = render_document("---\ntitle: T\nvenue: JMLR\n---\n\nx\n");
+    let h = &doc.blocks[0].html;
+    assert!(h.contains("<div class=\"tali-resources\">"), "row: {h}");
+    assert!(h.contains(">JMLR</span>"), "venue badge: {h}");
+    assert!(
+        !h.contains("<div class=\"tali-resource-links\">"),
+        "no links -> no empty links container: {h}"
+    );
+}
+
+#[test]
 fn a_structured_author_still_reaches_the_byline_at_all() {
     // The regression this design is most exposed to. The byline used to be read by
     // `extract_field`, a LINE SCAN that skips indented lines — so a structured
