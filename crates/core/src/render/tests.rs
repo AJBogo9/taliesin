@@ -6820,6 +6820,33 @@ fn book_drawer_close_button_clears_the_wcag_tap_target_floor() {
     );
 }
 
+/// Backlog item 191. The code-download link is INLINE text inside a list item, so it
+/// inherits the line box and has no box of its own to grow: measured at a 390px viewport it
+/// was 15px tall against WCAG 2.5.8's 24px AA floor. `inline-block` plus vertical padding is
+/// what gives it one — the `min-height` alone would not apply to an inline box.
+///
+/// The fix shipped unpinned, which is the reason this test exists rather than the fix: a
+/// later tidy that drops `display: inline-block` puts the link straight back under the floor
+/// while `min-height: 24px` still sits in the rule, looking correct. Browser-measured after
+/// the fix: 34.6px.
+#[test]
+fn the_code_download_link_clears_the_wcag_tap_target_floor() {
+    let rule = BASE_CSS
+        .split(".tali-repro-dl {")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .expect("no .tali-repro-dl rule");
+    assert!(
+        rule.contains("min-height: 24px"),
+        "the code-download link is under the 24px AA floor:\n{rule}"
+    );
+    assert!(
+        rule.contains("inline-block"),
+        "`min-height` does nothing to an inline box — the link needs a box of its own, or \
+         it silently falls back to the 15px line box this rule was added to fix:\n{rule}"
+    );
+}
+
 #[test]
 fn touch_nav_tap_target_grows_without_growing_the_sticky_bar() {
     // MOB-7. The obvious fix is `min-height: 44px` on `.tali-nav-link`, and it is wrong:
