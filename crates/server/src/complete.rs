@@ -394,6 +394,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--line", true, "run through the cell at this source line"),
             ("--all", false, "run the whole document (the default)"),
             ("--quiet", false, "only errors and the summary"),
+            (
+                "--interrupt",
+                false,
+                "stop the run in flight, keeping the warm kernel",
+            ),
         ],
         "pdf" => &[
             ("--out", true, "write the PDF here (default <name>.pdf)"),

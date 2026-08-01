@@ -125,6 +125,10 @@ struct Project {
     dir: PathBuf,
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
+    /// Per-page handles for stopping a run in flight. Lives on the project (not the exec
+    /// pool) because the pool is owned by the build task, and the interrupt endpoint is a
+    /// request handler that must reach a run without waiting on that task's lock.
+    runs: crate::run_control::RunRegistry,
 }
 
 /// A mounted sub-project served under `prefix` (e.g. `gallery/course`).
@@ -217,6 +221,11 @@ enum BuildMsg {
         rel: String,
         scope: crate::runspec::RunScope,
         run_id: String,
+        /// The [`crate::run_control::RunControl`] epoch when this run was **requested**, not
+        /// when it starts. The build lane is serialized, so a run can wait behind the
+        /// session's own startup pass; a Ctrl-C during that pass must invalidate this
+        /// message too, and only an epoch taken at request time can say so.
+        epoch: u64,
     },
 }
 
@@ -236,6 +245,9 @@ struct RunRequest {
     /// `Some` only for an explicit run, i.e. exactly when a client is blocked waiting for
     /// a terminal `run-done`.
     run_id: Option<String>,
+    /// The run-control epoch this run was **requested** at; `None` for a rebuild nobody
+    /// asked for (a file save), which is never pre-emptively cancelled.
+    epoch: Option<u64>,
 }
 
 impl RunRequest {
@@ -244,6 +256,7 @@ impl RunRequest {
         Self {
             scope: crate::runspec::RunScope::All,
             run_id: None,
+            epoch: None,
         }
     }
 }
@@ -423,6 +436,7 @@ async fn serve(
                     dir: mroot,
                     site: Mutex::new(msite),
                     pages: Mutex::new(HashMap::new()),
+                    runs: Default::default(),
                 }),
             })
         })
@@ -445,6 +459,7 @@ async fn serve(
             dir: root.clone(),
             site: Mutex::new(site),
             pages: Mutex::new(HashMap::new()),
+            runs: Default::default(),
         }),
         mounts,
         build_tx,
@@ -477,6 +492,10 @@ async fn serve(
         .route("/hover-index.js", get(hover_index_js))
         .route("/ws", get(ws_handler))
         .route(crate::serve::RUN_PATH, axum::routing::post(run_handler))
+        .route(
+            crate::serve::INTERRUPT_PATH,
+            axum::routing::post(interrupt_handler),
+        )
         .route("/og/{name}", get(og_card))
         .route("/og-preview", get(og_card_preview))
         .fallback(page_or_asset)
@@ -1159,6 +1178,7 @@ async fn run_handler(
         rel: rel.clone(),
         scope,
         run_id: run_id.clone(),
+        epoch: project.runs.control(&rel).epoch(),
     });
 
     let body = axum::body::Body::from_stream(crate::runspec::event_stream(rx, Some(rel), run_id));
@@ -1167,6 +1187,41 @@ async fn run_handler(
         body,
     )
         .into_response()
+}
+
+/// `POST /__taliesin/interrupt`: stop the run in flight on a page, keeping its kernel.
+///
+/// Loopback only, matching the run endpoint: stopping someone's computation is no more a
+/// visitor's business than starting it. Deliberately **not** gated on `--no-exec` (such a
+/// session has nothing running, so "nothing to interrupt" is the honest answer, and a 409
+/// would read as a failure to stop something) and deliberately not an error when idle: the
+/// author who hits Ctrl-C a second after the last cell finished must see a quiet no-op.
+async fn interrupt_handler(
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>,
+    State(app): State<Arc<SiteApp>>,
+    axum::Json(req): axum::Json<crate::serve::InterruptReq>,
+) -> axum::response::Response {
+    if !peer.ip().is_loopback() {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "interrupts are accepted from loopback only",
+        )
+            .into_response();
+    }
+    let want = std::fs::canonicalize(&req.file).unwrap_or_else(|_| PathBuf::from(&req.file));
+    let Some((project, rel)) = page_for_input(&app, &want) else {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            format!("{} is not a page of this session's project", req.file),
+        )
+            .into_response();
+    };
+    let lang = project.runs.existing(&rel).and_then(|c| c.cancel());
+    axum::Json(serde_json::json!({
+        "interrupted": lang.is_some(),
+        "lang": lang,
+    }))
+    .into_response()
 }
 
 /// The project + page rel owning source file `input`, or `None` when no project serves it.
@@ -1373,6 +1428,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                     rel,
                     scope,
                     run_id,
+                    epoch,
                 } => {
                     let project = app.project(&key).cloned();
                     if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
@@ -1383,6 +1439,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                             RunRequest {
                                 scope,
                                 run_id: Some(run_id.clone()),
+                                epoch: Some(epoch),
                             },
                         )
                         .await;
@@ -1445,12 +1502,14 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
                     rel,
                     scope,
                     run_id,
+                    epoch,
                 } => (
                     key,
                     rel,
                     RunRequest {
                         scope,
                         run_id: Some(run_id),
+                        epoch: Some(epoch),
                     },
                 ),
             };
@@ -1466,6 +1525,10 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
                         rel,
                         scope: req.scope,
                         run_id,
+                        // Preserve the ORIGINAL request epoch across the re-queue: this is
+                        // the same run, bounced to the exec lane, and re-reading the epoch
+                        // here would launder away a cancel that arrived in between.
+                        epoch: req.epoch.unwrap_or_default(),
                     },
                     None => BuildMsg::Build(key, rel),
                 });
@@ -1619,6 +1682,10 @@ async fn build_page(
             }) as std::sync::Arc<dyn Fn(String) + Send + Sync>
         });
         exec.set_progress(sink, Some(rel.to_string()));
+        // Hand this page's executor the same control the interrupt endpoint looks up, so a
+        // cancel raised there is a cancel this run reads. Re-set every build because the
+        // pool may have evicted and rebuilt the executor since the last one.
+        exec.set_run_control(project.runs.control(rel));
         exec
     });
     // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
@@ -1647,7 +1714,7 @@ async fn build_page(
     let mut exec = exec;
     if let Some(exec) = exec.as_mut() {
         doc.blocks = exec
-            .run_through(std::mem::take(&mut doc.blocks), until_block)
+            .run_through(std::mem::take(&mut doc.blocks), until_block, req.epoch)
             .await;
     }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
@@ -2445,6 +2512,7 @@ mod project_tests {
             dir: dir.clone(),
             site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
             pages: parking_lot::Mutex::new(HashMap::new()),
+            runs: Default::default(),
         };
 
         // A real page resolves, by source rel and by output url alike.
@@ -2568,6 +2636,7 @@ mod project_tests {
             dir,
             site: parking_lot::Mutex::new(site),
             pages: parking_lot::Mutex::new(pages),
+            runs: Default::default(),
         });
         site_page_html(&project, &page)
     }

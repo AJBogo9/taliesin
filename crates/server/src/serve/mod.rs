@@ -53,6 +53,9 @@ struct AppState {
     /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
     /// loopback *origin* may open the control-channel ws (see [`security::origin_allowed`]).
     loopback_bound: bool,
+    /// Handle for stopping a run in flight (see [`crate::run_control`]). One page, filed
+    /// under [`SINGLE_DOC_PAGE`], so the same registry type serves both servers.
+    runs: crate::run_control::RunRegistry,
 }
 
 /// A queued `taliesin run` for the single-doc server: how far to execute, and the id the
@@ -61,6 +64,13 @@ struct AppState {
 struct PendingRun {
     scope: crate::runspec::RunScope,
     run_id: String,
+    /// The [`crate::run_control::RunControl`] epoch when this run was **requested**.
+    ///
+    /// Recorded here rather than read when the run finally starts, because the gap between
+    /// the two is exactly where an interrupt can land: a session does its own execution pass
+    /// on startup, so the first `taliesin run` waits behind it, and a Ctrl-C during that pass
+    /// has to invalidate this queued run too.
+    epoch: u64,
 }
 
 #[derive(Default)]
@@ -204,6 +214,7 @@ async fn serve(
         kick,
         pending_run: Mutex::new(None),
         loopback_bound: !expose,
+        runs: Default::default(),
     });
 
     // Initial render. Guard it like the rebuild loop (`rebuild_guarded`): a
@@ -262,6 +273,7 @@ async fn serve(
         .route("/favicon.ico", get(favicon))
         .route("/ws", get(ws_handler))
         .route(RUN_PATH, axum::routing::post(run_handler))
+        .route(INTERRUPT_PATH, axum::routing::post(interrupt_handler))
         // The vendored mermaid library, so a diagram in preview needs no network (OFF-2).
         // Registered before the static fallback, which would otherwise look for a file of
         // this name beside the document.
@@ -376,6 +388,60 @@ pub(crate) const IDENTITY_PATH: &str = "/__taliesin";
 /// collide with a page path: a project is free to have a page called `run`.
 pub(crate) const RUN_PATH: &str = "/__taliesin/run";
 
+/// The path a session accepts interrupt requests on (`taliesin run --interrupt`, and the
+/// Ctrl-C that a run installs for itself). Same namespace as [`RUN_PATH`], same reason.
+pub(crate) const INTERRUPT_PATH: &str = "/__taliesin/interrupt";
+
+/// What an interrupt request carries: which document's run to stop.
+#[derive(serde::Deserialize)]
+pub(crate) struct InterruptReq {
+    pub(crate) file: String,
+}
+
+/// `POST /__taliesin/interrupt` for the single-doc server.
+///
+/// Loopback only, for the same reason the run endpoint is: stopping someone's computation is
+/// no more a visitor's business than starting it, and the `--host` LAN token gates *viewing*.
+/// Unlike the run endpoint this does **not** refuse under `--no-exec`: a session started with
+/// `--no-exec` has nothing running, so the honest answer is "nothing to interrupt", and a 409
+/// would read as a failure to stop something.
+async fn interrupt_handler(
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>,
+    State(app): State<Arc<AppState>>,
+    axum::Json(req): axum::Json<InterruptReq>,
+) -> axum::response::Response {
+    if !peer.ip().is_loopback() {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "interrupts are accepted from loopback only",
+        )
+            .into_response();
+    }
+    let want = std::fs::canonicalize(&req.file).unwrap_or_else(|_| PathBuf::from(&req.file));
+    let mine = std::fs::canonicalize(&app.path).unwrap_or_else(|_| app.path.clone());
+    if want != mine {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            format!(
+                "this session previews {}, not {}",
+                mine.display(),
+                want.display()
+            ),
+        )
+            .into_response();
+    }
+    let lang = app.runs.existing(SINGLE_DOC_PAGE).and_then(|c| c.cancel());
+    axum::Json(serde_json::json!({
+        "interrupted": lang.is_some(),
+        "lang": lang,
+    }))
+    .into_response()
+}
+
+/// The registry key the single-doc server files its one page under. It has no site rel, and
+/// an empty string would be indistinguishable from "no page".
+pub(crate) const SINGLE_DOC_PAGE: &str = "<single-doc>";
+
 /// `POST /__taliesin/run` for the single-doc server. Same contract as the site server's
 /// twin (loopback only, `--no-exec` refuses, NDJSON out), against the one document this
 /// server owns: the request's `file` must BE that document.
@@ -419,6 +485,7 @@ async fn run_handler(
     *app.pending_run.lock() = Some(PendingRun {
         scope: req.scope(),
         run_id: run_id.clone(),
+        epoch: app.runs.control(SINGLE_DOC_PAGE).epoch(),
     });
     let _ = app.kick.send(());
 
@@ -1561,6 +1628,9 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             }));
             executor.set_progress(sink, None);
         }
+        // The same control the interrupt endpoint looks up. Set once: unlike the site
+        // server's pool, this executor lives for the whole process.
+        executor.set_run_control(app.runs.control(SINGLE_DOC_PAGE));
         // Initial execution pass: markdown is already live; this fills in outputs
         // (and starts the warm kernel) shortly after the page loads.
         rebuild_guarded(&app, &mut executor, None).await;
@@ -1761,7 +1831,9 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor, run: Opti
             return;
         }
     };
-    let blocks = executor.run_through(doc.blocks, until_block).await;
+    let blocks = executor
+        .run_through(doc.blocks, until_block, run.as_ref().map(|r| r.epoch))
+        .await;
     let mut diags = compute_diagnostics(app, executor);
     diags.extend(static_diags);
     // Render warnings (missing bibliography/theme file, broken citation) ride

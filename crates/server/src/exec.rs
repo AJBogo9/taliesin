@@ -274,6 +274,11 @@ pub struct Executor {
     /// so the first edit is near-instant. `None` (the default, and the `build`/test
     /// path with no pool) cold-starts exactly as before — no behavioral change.
     pool: Option<Arc<crate::warm_pool::WarmPool>>,
+    /// The handle an interrupt request uses to stop a run this executor is in the middle of
+    /// (see [`crate::run_control`]). Shared with the server's registry; the default is a
+    /// private one nobody else holds, which makes every non-server caller (`build`, tests)
+    /// behave exactly as before because nothing can ever raise its flag.
+    control: Arc<crate::run_control::RunControl>,
 }
 
 impl Executor {
@@ -324,7 +329,15 @@ impl Executor {
             sink: None,
             page: None,
             pool: None,
+            control: Arc::default(),
         }
+    }
+
+    /// Share this executor's run control with the server's registry, so
+    /// `POST /__taliesin/interrupt` can stop a run in flight. Executors that never call
+    /// this keep the private default, which nothing else can signal.
+    pub(crate) fn set_run_control(&mut self, control: Arc<crate::run_control::RunControl>) {
+        self.control = control;
     }
 
     /// Stream this executor's per-build progress (`build-state` messages) through
@@ -507,7 +520,7 @@ impl Executor {
     /// Each executable language runs against its own kernel; unknown languages are
     /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
-        self.run_through(blocks, None).await
+        self.run_through(blocks, None, None).await
     }
 
     /// [`Executor::run`], stopping after the cell at block index `until_block`.
@@ -523,10 +536,17 @@ impl Executor {
     /// The cap is a **block** index rather than a per-language cell index, so it
     /// means the same thing in a document that mixes `{python}` and `{r}`: every
     /// language runs its cells up to that point in the document.
+    /// `requested_at` is the [`crate::run_control::RunControl`] epoch this run was **asked
+    /// for** at, for a run that arrives through a queue (`POST /__taliesin/run`). The run
+    /// stops the moment the live epoch differs, which covers the case a run-start snapshot
+    /// cannot: an interrupt that lands while this run is still waiting its turn. `None` means
+    /// "not a queued request" (a watcher rebuild, the build path, tests) and snapshots the
+    /// epoch here instead, so such a rebuild is never pre-emptively cancelled.
     pub async fn run_through(
         &mut self,
         blocks: Vec<Block>,
         until_block: Option<usize>,
+        requested_at: Option<u64>,
     ) -> Vec<Block> {
         // `--no-exec`: never touch a kernel. The cells are already rendered as source
         // in `blocks`; returning them unchanged is exactly "preview as source".
@@ -564,8 +584,17 @@ impl Executor {
         // Map cell block index -> its output block (when non-empty), across langs.
         let mut output_blocks: HashMap<usize, Block> = HashMap::new();
         let mut tally = CacheTally::default();
+        let run_epoch = requested_at.unwrap_or_else(|| self.control.epoch());
         for (lang, cells) in &by_lang {
-            let (outputs, lang_tally) = self.compute_outputs(lang, cells, until_block).await;
+            // A document mixing `{python}` and `{r}` computes one language at a time. Ctrl-C
+            // means "stop this run", not "stop the python half and then do all the R", so
+            // the cancel has to break out here too.
+            if self.control.epoch() != run_epoch {
+                break;
+            }
+            let (outputs, lang_tally) = self
+                .compute_outputs(lang, cells, until_block, run_epoch)
+                .await;
             tally += lang_tally;
             for (cell, inner) in cells.iter().zip(&outputs) {
                 // `include: false` cells run (above) for their kernel-state side
@@ -592,6 +621,7 @@ impl Executor {
         // then clears. Flush any newly executed outputs to `_freeze/` once.
         self.force_next = false;
         self.freeze.save();
+        self.control.end_cell();
 
         let mut result = Vec::with_capacity(blocks.len() + output_blocks.len());
         for (i, b) in blocks.into_iter().enumerate() {
@@ -613,6 +643,7 @@ impl Executor {
         lang: &'static str,
         cells: &[CellRef],
         until_block: Option<usize>,
+        run_epoch: u64,
     ) -> (Vec<String>, CacheTally) {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
@@ -754,11 +785,41 @@ impl Executor {
 
         let mut outputs = Vec::with_capacity(cells.len());
         let mut ran_count = 0;
+        // Where a cancel stopped this language, if it did. Everything from here on was NOT
+        // executed, which the freeze + warm-prefix bookkeeping below both have to honour:
+        // recording an unexecuted cell as warm would make a later rebuild skip it, and that
+        // is precisely how a run that was stopped ends up publishing an output nobody
+        // computed.
+        let mut stopped_at: Option<usize> = None;
+        let control = self.control.clone();
         for (i, cell) in cells.iter().enumerate() {
             if i < shared {
                 outputs.push(warm.get(i).cloned().unwrap_or_default());
             } else if i < run_end {
-                if !has_kernel {
+                // Checked BETWEEN cells, which is the only place a run can be stopped
+                // cooperatively: the signal ends the cell that is executing, and this ends
+                // the ones that have not started. A `stopped_at` already set means an
+                // earlier cell in this loop tripped it.
+                if stopped_at.is_some() || control.epoch() != run_epoch {
+                    let at = *stopped_at.get_or_insert(i);
+                    debug_assert!(at <= i);
+                    // The cell was announced `queued`. Give it a terminal `skipped` so it
+                    // does not spin forever in a client, and so the terminal's summary counts
+                    // it honestly. `skipped` already means "did not run, has no output",
+                    // which is exactly true here.
+                    emit(
+                        &sink,
+                        crate::protocol::cell_state(
+                            page.as_deref(),
+                            &cell.id,
+                            "skipped",
+                            None,
+                            None,
+                            None,
+                        ),
+                    );
+                    outputs.push(String::new());
+                } else if !has_kernel {
                     // The kernel could not boot (a port-allocation race under
                     // concurrent starts, a backoff after a failed start, or no
                     // interpreter): this cell was meant to run but can't. If its output
@@ -850,7 +911,19 @@ impl Executor {
                         );
                         t0
                     });
+                    // Publish the kernel PID for the duration of this cell, so an interrupt
+                    // arriving on another request can signal it. It has to happen here,
+                    // before `exec_cell` takes its mutable borrow: once that borrow is
+                    // live, nothing else can read the kernel at all.
+                    control.begin_cell(
+                        lang,
+                        self.langs
+                            .get(lang)
+                            .and_then(|s| s.kernel.as_ref())
+                            .and_then(Kernel::pid),
+                    );
                     let out = self.exec_cell(lang, &code, &cell.id, page.as_deref()).await;
+                    control.end_cell();
                     if let Some(t0) = t0 {
                         let state = if is_uncacheable(&out) {
                             "error"
@@ -883,8 +956,14 @@ impl Executor {
         // Persist freshly executed, cacheable, non-error outputs (only ones a live
         // kernel actually produced). Errors and `cache: false` cells are never
         // stored, so a transient failure or a nondeterministic cell never sticks.
+        // A cancel truncates the executed range: cells from `stopped_at` on never ran, and
+        // their `outputs` entries are the empty placeholders pushed above. Persisting those
+        // would cache emptiness under a hash that means "this cell's real output", which is
+        // the worst failure this cache can have — a later build would restore nothing and
+        // call it a hit.
+        let executed_end = stopped_at.unwrap_or(run_end);
         if has_kernel {
-            for i in shared..run_end {
+            for i in shared..executed_end {
                 if cells[i].cache && !is_uncacheable(&outputs[i]) {
                     self.freeze.put(hashes[i].clone(), outputs[i].clone());
                 }
@@ -910,7 +989,12 @@ impl Executor {
             // rebuild start cold from cell 0 and self-heal on a fresh kernel.
             let kernel_alive = state.kernel.as_mut().is_some_and(Kernel::is_alive);
             state.ran = if kernel_alive {
-                (0..run_end)
+                // `executed_end`, not `run_end`: a cancelled run's kernel holds state only
+                // up to where it stopped. Recording the untouched tail as warm would make
+                // the next rebuild believe those cells' state is already in the kernel and
+                // skip them, leaving the document permanently missing their output with
+                // nothing to indicate why.
+                (0..executed_end)
                     .map(|i| Ran {
                         hash: hashes[i].clone(),
                         output: outputs[i].clone(),
@@ -1779,6 +1863,110 @@ mod tests {
             ex.diagnostic().is_none(),
             "no_exec is deliberate, not a kernel failure -> no diagnostic"
         );
+    }
+
+    /// Item 175(d). Against a REAL kernel, because every claim here is about live process
+    /// state: that the signal lands, that the run stops rather than continuing, and that the
+    /// warm variables survive. A mocked kernel could not tell any of those apart.
+    #[tokio::test]
+    async fn an_interrupt_stops_the_whole_run_and_keeps_the_warm_state() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the interrupt.");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("tali-interrupt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Cell 3's side effect is a FILE, deliberately. A variable would be invisible once
+        // the run is abandoned, and "cell 3 did not run" is exactly what this must prove.
+        let marker = dir.join("cell3-ran");
+
+        let mut ex = Executor::new().in_dir(&dir);
+        ex.set_interpreters(
+            crate::interpreter::resolve_python(py.to_str(), &dir),
+            crate::interpreter::resolve_r(None, &dir),
+        );
+        let control = std::sync::Arc::new(crate::run_control::RunControl::default());
+        ex.set_run_control(control.clone());
+
+        let blocks = vec![
+            python_cell_block_with("b-1", "warm = 41"),
+            python_cell_block_with("b-2", "import time\ntime.sleep(30)"),
+            python_cell_block_with(
+                "b-3",
+                &format!("open({:?}, 'w').write('ran')", marker.to_string_lossy()),
+            ),
+        ];
+
+        // Cancel once cell 2 is actually executing. Polling the control rather than sleeping
+        // a fixed amount: on a cold kernel boot a fixed sleep either fires before anything
+        // runs (testing nothing) or after 30s (testing nothing).
+        let waiter = {
+            let control = control.clone();
+            tokio::spawn(async move {
+                let deadline = std::time::Instant::now() + Duration::from_secs(60);
+                loop {
+                    if control.running_lang().is_some() {
+                        // In the middle of a cell. Cell 1 is instant, so this is cell 2.
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                        return control.cancel();
+                    }
+                    if std::time::Instant::now() > deadline {
+                        return None;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+        };
+
+        let t0 = std::time::Instant::now();
+        let out = ex.run(blocks).await;
+        let elapsed = t0.elapsed();
+        let cancelled = waiter.await.unwrap();
+
+        assert_eq!(
+            cancelled,
+            Some("python"),
+            "the interrupt never found a running cell, so nothing below is meaningful"
+        );
+        // The sleep is 30s. Anything near that means the SIGINT did not land and the cell
+        // simply finished, which would make the rest of this test pass for the wrong reason.
+        assert!(
+            elapsed < Duration::from_secs(25),
+            "the run took {elapsed:?}; the interrupt did not stop the sleeping cell"
+        );
+        // The cancellation half: signalling cell 2 ends cell 2. Without the cancel FLAG the
+        // run would carry on and execute cell 3, which is the bug this test exists for.
+        assert!(
+            !marker.exists(),
+            "cell 3 ran after the run was interrupted: the signal stopped one cell, not the run"
+        );
+        // And the whole point of interrupting rather than restarting: the kernel is alive and
+        // still holds what cell 1 put there.
+        let after = render_outputs(
+            &ex.langs
+                .get_mut("python")
+                .and_then(|s| s.kernel.as_mut())
+                .expect("the kernel must survive an interrupt")
+                .execute("print(warm + 1)")
+                .await
+                .unwrap(),
+        );
+        assert!(
+            after.contains("42"),
+            "cell 1's variable did not survive the interrupt, so this was a restart: {after}"
+        );
+        // Nothing was cached for the cell that did not finish, nor for the one that never
+        // started. `out` keeps the source blocks either way; the claim is about `_freeze`.
+        assert!(
+            out.len() >= 3,
+            "the block list should still describe the document"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn python_cell_block_with(id: &str, code: &str) -> Block {

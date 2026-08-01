@@ -1259,22 +1259,46 @@ impl Kernel {
         Ok(outputs)
     }
 
-    /// Send SIGINT to the kernel process: the `interrupt_mode: signal` path that
-    /// raises `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both
-    /// honour it), stopping a runaway cell while the warm kernel and prior cell
-    /// state survive. Unix-only; a no-op (the cap still ends the wait) elsewhere.
+    /// Send SIGINT to the kernel process, stopping a runaway cell while the warm kernel
+    /// and prior cell state survive. See [`interrupt_pid`], which this and the explicit
+    /// `taliesin run --interrupt` path share so they cannot drift on what an interrupt is.
     fn interrupt(&self) {
-        #[cfg(unix)]
         if let Some(pid) = self.proc.pid() {
-            // Safety: `kill` with a valid pid + signal is sound; a stale pid just
-            // returns ESRCH, which we ignore. For a forkserver child this is the
-            // exact same `kill(pid, SIGINT)` an owned child gets — the fork-spawn
-            // path keeps runaway-cell interruption working identically.
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGINT);
-            }
+            interrupt_pid(pid);
         }
     }
+
+    /// The kernel process's PID, for an interrupt that arrives from *outside* the run loop.
+    ///
+    /// `execute_streaming` holds the kernel mutably for a whole cell, so a concurrent
+    /// interrupt request can never reach [`Kernel::interrupt`]. It does not need to: the
+    /// signal only needs a number, and this hands that number to the caller before the
+    /// borrow starts.
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.proc.pid()
+    }
+}
+
+/// Send `SIGINT` to a kernel process by PID: the `interrupt_mode: signal` path that raises
+/// `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both honour it).
+///
+/// Free-standing, and the single implementation of "interrupt a kernel". Both callers reach
+/// it: the silence/wall-clock cap inside the polling loop, and the explicit interrupt from
+/// the run registry. Two copies of this would be two answers to "does an interrupt kill the
+/// kernel or just the cell", and the whole value of the feature is that it is the latter.
+///
+/// Unix-only; a no-op elsewhere (the cap still ends its own wait).
+pub(crate) fn interrupt_pid(pid: u32) {
+    #[cfg(unix)]
+    // Safety: `kill` with a valid pid + signal is sound; a stale pid just returns ESRCH,
+    // which we ignore. For a forkserver child this is the exact same `kill(pid, SIGINT)` an
+    // owned child gets — the fork-spawn path keeps runaway-cell interruption working
+    // identically.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGINT);
+    }
+    #[cfg(not(unix))]
+    let _ = pid;
 }
 
 /// Cleanup guard for [`Kernel::start`]: the 0700 `/tmp/tali-kernel-<uuid>` connection

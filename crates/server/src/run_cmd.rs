@@ -58,6 +58,8 @@ struct Opts {
     scope: RunScope,
     /// `--quiet`: only errors and the summary, for scripts and CI.
     quiet: bool,
+    /// `--interrupt`: stop this document's run in flight instead of starting one.
+    interrupt: bool,
 }
 
 impl Opts {
@@ -67,6 +69,7 @@ impl Opts {
         let mut line: Option<u32> = None;
         let mut all = false;
         let mut quiet = false;
+        let mut interrupt = false;
         let mut it = args.iter();
         while let Some(a) = it.next() {
             match a.as_str() {
@@ -78,10 +81,11 @@ impl Opts {
                 }
                 "--all" => all = true,
                 "--quiet" | "-q" => quiet = true,
+                "--interrupt" => interrupt = true,
                 s if s.starts_with("--") => {
                     return Err(crate::serve::unknown_flag_error(
                         s,
-                        &["--cell", "--line", "--all", "--quiet"],
+                        &["--cell", "--line", "--all", "--quiet", "--interrupt"],
                     ));
                 }
                 s if file.is_none() => file = Some(PathBuf::from(s)),
@@ -102,6 +106,12 @@ impl Opts {
         if all && (cell.is_some() || line.is_some()) {
             return Err("--all runs the whole document; drop --cell/--line".into());
         }
+        // `--interrupt` stops a run rather than starting one, so a scope is not a narrower
+        // request, it is a contradiction. Refused rather than ignored, in the same style as
+        // the three above: a caller who wrote both has not decided what they want.
+        if interrupt && (all || cell.is_some() || line.is_some()) {
+            return Err("--interrupt stops the running cells; drop --cell/--line/--all".into());
+        }
         let scope = match (cell, line) {
             (Some(n), _) => {
                 if n == 0 {
@@ -112,7 +122,12 @@ impl Opts {
             (None, Some(l)) => RunScope::ThroughLine(l),
             (None, None) => RunScope::All,
         };
-        Ok(Self { file, scope, quiet })
+        Ok(Self {
+            file,
+            scope,
+            quiet,
+            interrupt,
+        })
     }
 }
 
@@ -137,6 +152,13 @@ async fn run(opts: Opts) -> ExitCode {
     } else {
         &file
     };
+
+    // `--interrupt` never starts a session. No session means nothing is running, which is the
+    // answer; booting a kernel in order to interrupt it would take the full
+    // `SESSION_READY_TIMEOUT` to accomplish nothing.
+    if opts.interrupt {
+        return interrupt(key, &file, opts.quiet).await;
+    }
 
     let port = match attach_or_start(key, opts.quiet).await {
         Ok(p) => p,
@@ -171,9 +193,47 @@ async fn run(opts: Opts) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    // Ctrl-C stops the RUN, not just this process.
+    //
+    // Without this the signal killed only the client: `runspec::event_stream` saw the hangup,
+    // broke its forwarding loop, and the session executed the rest of the document with
+    // nobody watching. The author's only remaining brake was "Restart kernel", which discards
+    // the warm state the whole design exists to keep.
+    //
+    // The first Ctrl-C asks the session to stop and **keeps reading**, so the
+    // `KeyboardInterrupt` traceback and the run's own summary still arrive: exiting here would
+    // hide the very output that confirms the stop worked. A second Ctrl-C leaves immediately,
+    // for a session that is wedged or gone.
+    let mut stopping = false;
+
     let mut printer = crate::run_print::Printer::new(opts.quiet, &root);
     loop {
-        match resp.next_line().await {
+        let line = tokio::select! {
+            biased;
+            _ = tokio::signal::ctrl_c(), if !stopping => {
+                stopping = true;
+                if !opts.quiet {
+                    crate::log::info("interrupting the run (Ctrl-C again to stop waiting)");
+                }
+                let body = serde_json::json!({ "file": file.to_string_lossy() }).to_string();
+                // Best-effort: if the session cannot be reached the run is already over or
+                // the session is gone, and the stream below will end on its own.
+                let _ = crate::http1::post_json(
+                    port,
+                    crate::serve::INTERRUPT_PATH,
+                    &body,
+                    CONNECT_TIMEOUT,
+                )
+                .await;
+                continue;
+            }
+            _ = tokio::signal::ctrl_c(), if stopping => {
+                crate::log::error("gave up waiting for the session; the run may still be stopping");
+                return ExitCode::FAILURE;
+            }
+            line = resp.next_line() => line,
+        };
+        match line {
             Ok(Some(line)) if line.trim().is_empty() => {}
             Ok(Some(line)) => {
                 if printer.consume(&line) {
@@ -194,6 +254,65 @@ async fn run(opts: Opts) -> ExitCode {
         }
     }
     printer.finish()
+}
+
+/// `taliesin run --interrupt <file>`: stop that document's run, keeping the warm kernel.
+///
+/// Exits 0 whether or not anything was running. "Nothing is running" is a successful
+/// interrupt, not a failure: the author who hits this a second after the last cell finished
+/// wanted the run stopped, and it is.
+async fn interrupt(key: &Path, file: &Path, quiet: bool) -> ExitCode {
+    let Some(port) = crate::session::hinted_port(key) else {
+        if !quiet {
+            crate::log::info("no session is running for this project; nothing to interrupt");
+        }
+        return ExitCode::SUCCESS;
+    };
+    // The hint is a hint. Prove the responder is really this project's session before
+    // sending it anything, exactly as a run does — a recycled port could be anyone.
+    if !crate::serve::session_owns(port, key).await {
+        if !quiet {
+            crate::log::info("no session is running for this project; nothing to interrupt");
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    let body = serde_json::json!({ "file": file.to_string_lossy() }).to_string();
+    let mut resp =
+        match crate::http1::post_json(port, crate::serve::INTERRUPT_PATH, &body, CONNECT_TIMEOUT)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                crate::log::error(&format!("cannot reach the session on port {port}: {e}"));
+                return ExitCode::FAILURE;
+            }
+        };
+    let text = resp.text().await.unwrap_or_default();
+    if resp.status != 200 {
+        crate::log::error(&format!(
+            "session refused the interrupt ({}): {}",
+            resp.status,
+            text.trim()
+        ));
+        return ExitCode::FAILURE;
+    }
+    if !quiet {
+        let stopped = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| {
+                v.get("lang")
+                    .and_then(|l| l.as_str())
+                    .map(|s| s.to_string())
+            });
+        match stopped {
+            Some(lang) => crate::log::info(&format!(
+                "interrupted the running {lang} cell; the kernel and earlier cells are intact"
+            )),
+            None => crate::log::info("nothing was running"),
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// The port of this project's session, starting one if none is live.
@@ -327,6 +446,63 @@ mod tests {
         assert!(e.contains("--cell"), "must name the flag: {e}");
         let e = Opts::parse(&args(&[&fs, "--line"])).unwrap_err();
         assert!(e.contains("--line"), "must name the flag: {e}");
+    }
+
+    #[test]
+    fn interrupt_parses_and_carries_no_scope() {
+        let f = a_file();
+        let o = Opts::parse(&args(&[&f.to_string_lossy(), "--interrupt"])).unwrap();
+        assert!(o.interrupt);
+        assert_eq!(
+            o.scope,
+            RunScope::All,
+            "the scope is unused but must be sane"
+        );
+    }
+
+    #[test]
+    fn interrupt_refuses_a_scope_rather_than_ignoring_it() {
+        // `--interrupt --cell 3` has no meaning: you cannot stop "through cell 3". Picking
+        // one and dropping the other is the bad outcome, exactly as for --cell/--line.
+        let f = a_file();
+        let fs = f.to_string_lossy().to_string();
+        for extra in [vec!["--cell", "3"], vec!["--line", "9"], vec!["--all"]] {
+            let mut a = vec![fs.as_str(), "--interrupt"];
+            a.extend(extra.iter());
+            let e = Opts::parse(&args(&a)).unwrap_err();
+            assert!(
+                e.contains("--interrupt"),
+                "must name the flag that conflicts, got: {e}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupting_with_no_session_succeeds_without_starting_one() {
+        // Two claims, and the timing one is the load-bearing half. Booting a session in
+        // order to interrupt it would be absurd, and the way that regression would arrive is
+        // someone routing this through `attach_or_start` for symmetry with a real run — at
+        // which point this waits out SESSION_READY_TIMEOUT (45s) to accomplish nothing.
+        // Asserting only the exit code would not notice.
+        let dir = std::env::temp_dir().join(format!("tali-interrupt-none-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("doc.tmd");
+        std::fs::write(&file, "# t\n").unwrap();
+
+        let t0 = std::time::Instant::now();
+        let code = interrupt(&dir, &file, true).await;
+        let elapsed = t0.elapsed();
+
+        assert_eq!(
+            format!("{code:?}"),
+            format!("{:?}", ExitCode::SUCCESS),
+            "nothing to interrupt is a success, not a failure"
+        );
+        assert!(
+            elapsed < SESSION_READY_TIMEOUT / 4,
+            "took {elapsed:?}; this must not be waiting for a session to start"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

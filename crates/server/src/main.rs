@@ -44,6 +44,7 @@ mod protocol;
 mod publish;
 mod query;
 mod run_cmd;
+mod run_control;
 mod run_print;
 mod runspec;
 mod runtime_dirs;
@@ -202,7 +203,7 @@ Author
                              scaffold one document, correct on its first save
 
 Preview & build
-  run <file.tmd> [--cell N | --line L | --all] [--quiet]
+  run <file.tmd> [--cell N | --line L | --all] [--quiet] [--interrupt]
                              execute code cells in the terminal against this
                              project's warm session; no browser, outputs cached
                              so a later build re-executes nothing
@@ -314,7 +315,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin preview . --port 4400\n"
         }
         "run" => {
-            "taliesin run <file.tmd> [--cell N | --line L | --all] [--quiet]\n\
+            "taliesin run <file.tmd> [--cell N | --line L | --all] [--quiet] [--interrupt]\n\
              \n\
              Execute the document's code cells and print what they produced, in the\n\
              terminal, with no browser in the loop. Attaches to this project's warm\n\
@@ -333,13 +334,19 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --line L    run through the cell at source line L (what editors send)\n\
              \x20 --all       run the whole document (the default)\n\
              \x20 --quiet     only errors and the summary, for scripts\n\
+             \x20 --interrupt stop this document's run, keeping the warm kernel\n\
+             \n\
+             Ctrl-C stops a run: it interrupts the running cell and abandons the rest,\n\
+             leaving the kernel and every earlier cell's variables intact. `--interrupt`\n\
+             is the same thing from another terminal, and says so when nothing is running.\n\
              \n\
              Figures are written to `_freeze/figs/` and their paths printed, since a\n\
              terminal cannot show an image; ctrl-click one to open it.\n\
              \n\
              Example:\n\
              \x20 taliesin run analysis.tmd --cell 5\n\
-             \x20 taliesin run analysis.tmd --all --quiet\n"
+             \x20 taliesin run analysis.tmd --all --quiet\n\
+             \x20 taliesin run analysis.tmd --interrupt\n"
         }
         "build" => {
             "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
