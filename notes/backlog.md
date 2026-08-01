@@ -17,8 +17,8 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-- **P1 is a ranked build queue, not a menu.** Take from the top: 190 and 191 are defects in shipped
-  work, then the research-publishing cluster (181, 183-188), then the large swings. **Read
+- **P1 is a ranked build queue, not a menu.** Take from the top: the research-publishing cluster
+  (183-188), then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected. **The cross-cluster
   ranking of 181-188 against 164/167 is an owner call that has not been made.**
@@ -112,33 +112,6 @@ Two conditions apply to every item here. **Each still owes a corpus pin doc** (a
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
-
-190. **Pyodide delivery residuals.** (S, three defects left open when 158 shipped 2026-07-31 —
-     filed here rather than lost inside a completed item.)
-     - **A `{pyodide}` cell in a deck never gets an index `<meta>`**, because the deck assembler is a
-       separate path, so it fails in live deck preview even though the route is being served.
-     - **`build --out <dir>` degrades a cell that could work.** Every single-document output is
-       `AssetMode::Inline` and correctly degrades to a highlighted listing, but `--out <dir>` could
-       carry the runtime if the single-doc builder were given External assets — which is what the
-       plan's own delivery table assumed.
-     - **The vendored version is hardcoded twice** in `render/pyodide.rs` (`PYODIDE_DIR_NAME`,
-       `PREVIEW_PYODIDE_DIR`) with nothing drift-locking either to the payload, so a re-vendor can
-       leave a stale directory name under `Cache-Control: immutable`.
-
-191. **An inline reader-affordance link is below the tap-target floor.** (S, measured 2026-07-31 and
-     surfaced without a fix.) The code-download link renders **15 px** at a 390 px viewport against
-     WCAG 2.5.8's 24 px floor, because inline text inherits the line box. Pre-existing and shared, so
-     fix the class rather than the one link; the Settings segmented buttons and the Theme picker
-     measure 26 px and pass. Browser-measure any new interactive element the same way.
-
-181. **Layout escapes: `.column-page` / `.column-screen`.** (S. Survey §4A + §6.) A figure, wide
-     table, or multi-panel plot has **no way to be wider than the prose column** — only the gutter
-     end (`.column-margin`) exists, and re-measured 2026-08-01 no width-escape class of any spelling
-     is in the tree. Distill's `l-page`/`l-screen` and Tufte's `.fullwidth` are the same idea and
-     both apply to `div`/`table`/`pre`, not just figures. **This is CSS + two list entries, not a new
-     render path** (`.column-margin` has no `divs.rs` arm). **The trap is three container modes** —
-     single-doc `body`, `.tali-site-main`, and `.tali-site-main.has-toc`, which is a *grid*;
-     browser-verify all three. Pin: extend `corpus/layout/`.
 
 183. **Footnotes as margin sidenotes.** (S-M, **needs an owner ruling before code**. Survey §4C+§6.)
      Footnotes exist, gathered at the page end (`base.css:779`), and margin divs exist; a `[^note]`
@@ -514,6 +487,24 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-08-01 pyodide residuals + layout escapes** (190, 191, 181): a `{pyodide}` cell now runs in
+  **every** delivery mode with room for the runtime — verified in a browser running real NumPy, not
+  just asserted: `--out <dir>`, a site root page, live deck preview, and a deck inside a site build.
+  **The load-bearing find was a defect in 158's shipped work that item 190 did not name:**
+  `import(base + "pyodide.mjs")` got a page-relative `_assets/…`, which is a **bare module
+  specifier**, so the ROOT page of every site build failed at boot while nested pages worked (their
+  `../` is a valid relative specifier) — invisible to every server-side test. `pyodide.js` resolves
+  against `document.baseURI` now. **Do not re-file 191: it was already fixed** on 2026-07-31 by
+  `49d592c5` and the entry was rot; what was actually missing was the pin, which now exists
+  (measured 34.6px). `.column-page`/`.column-screen` are plain classes with **no render path**, and
+  there are **FIVE container modes, not the three the item claimed** (single-doc `body`,
+  `body.has-toc`, `.tali-site-main`, `.tali-site-main.has-toc`, `.tali-book-main`). **Do not
+  "simplify" the two TOC grids back to page-centred:** the rail is text with no background, and a
+  centred escape put content under it (measured: escape right edge 1331 vs rail left 1111), so on
+  those two modes an escape grows LEFT with its right edge flush to the prose. `overflow-x: **clip**`
+  (never `hidden`, which would make `<html>` a scroll container and kill every sticky element) is
+  scoped by `:has(.column-screen)`, and `.column-screen`'s gutter is what stops the ~7px full-bleed
+  overshoot from clipping the author's own text.
 - **2026-07-31 Pyodide cells** (158): a `{pyodide}` fence runs Python in the reader's browser off a
   vendored offline Pyodide + NumPy, in `preview` and a **site** build only; every single-document
   output degrades it to a listing. **`publish` is deliberately NOT on the cell `api`** (it is
