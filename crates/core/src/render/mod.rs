@@ -2807,7 +2807,7 @@ fn register_xref(
 /// The 1-based start line of a `L:C-L:C` sourcepos, or 0 when it carries none (a generated
 /// block with an empty sourcepos — not click-to-source anyway, and `locatable()` requires
 /// a `[1-9]` line, so 0 reads as "no location").
-fn sourcepos_start_line(sp: &str) -> u32 {
+pub fn sourcepos_start_line(sp: &str) -> u32 {
     sp.split(':')
         .next()
         .and_then(|l| l.parse().ok())

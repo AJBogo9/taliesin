@@ -43,9 +43,24 @@ struct AppState {
     restart_kernel: AtomicBool,
     /// Wakes the rebuild loop (the file watcher and the restart action both kick it).
     kick: mpsc::UnboundedSender<()>,
+    /// An explicit `taliesin run` waiting to be served by the next rebuild pass.
+    ///
+    /// A slot plus a [`Self::kick`] rather than a payload channel, because that is
+    /// already how "Restart kernel" reaches this loop; a second control channel would be
+    /// a second way for the two to interleave. Last request wins: the rebuild that serves
+    /// it re-executes from source anyway, so an older pending run has nothing left to say.
+    pending_run: Mutex<Option<PendingRun>>,
     /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
     /// loopback *origin* may open the control-channel ws (see [`security::origin_allowed`]).
     loopback_bound: bool,
+}
+
+/// A queued `taliesin run` for the single-doc server: how far to execute, and the id the
+/// waiting client is filtering on.
+#[derive(Clone)]
+struct PendingRun {
+    scope: crate::runspec::RunScope,
+    run_id: String,
 }
 
 #[derive(Default)]
@@ -107,9 +122,15 @@ impl DocState {
 }
 
 /// Entry point for `taliesin serve <file> [port] [--open]`.
-pub fn run(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
+pub fn run(
+    path: PathBuf,
+    port: u16,
+    open: bool,
+    expose: bool,
+    headless: bool,
+) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    let result = rt.block_on(serve(path, port, open, expose));
+    let result = rt.block_on(serve(path, port, open, expose, headless));
     // `serve` returns on a shutdown signal (see `shutdown_signal`); force the runtime
     // down so the spawned watcher task that owns the kernel is dropped promptly,
     // running its teardown (`Kernel`/`ForkserverDaemon` Drop = process/group SIGKILL).
@@ -163,7 +184,13 @@ pub(crate) async fn shutdown_signal() {
     }
 }
 
-async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
+async fn serve(
+    path: PathBuf,
+    port: u16,
+    open: bool,
+    expose: bool,
+    headless: bool,
+) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let (tx, _rx) = broadcast::channel(256);
@@ -175,6 +202,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         tx,
         restart_kernel: AtomicBool::new(false),
         kick,
+        pending_run: Mutex::new(None),
         loopback_bound: !expose,
     });
 
@@ -233,6 +261,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .route("/", get(index))
         .route("/favicon.ico", get(favicon))
         .route("/ws", get(ws_handler))
+        .route(RUN_PATH, axum::routing::post(run_handler))
         // The vendored mermaid library, so a diagram in preview needs no network (OFF-2).
         // Registered before the static fallback, which would otherwise look for a file of
         // this name beside the document.
@@ -254,6 +283,10 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     let (listener, addr) = bind_with_fallback(port, expose, &app.path).await?;
     let port = addr.port();
+    // Publish this session so `taliesin run` attaches here instead of starting a second
+    // server (a second kernel and a second `_freeze/` writer for one document). Keyed on
+    // the DOCUMENT for a single-doc preview, which is exactly the scope this server owns.
+    crate::session::write_hint(&app.path, port);
     let local = format!("http://127.0.0.1:{port}");
     // With --host we bound 0.0.0.0; surface the LAN URL (and a QR for phones), with the
     // session token in `?t=` so the first load authenticates and sets the cookie.
@@ -277,28 +310,35 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
             taliesin_core::script_summary(&d.body_html()),
         )
     };
-    crate::log::clear_screen();
-    crate::log::banner(taliesin_core::VERSION);
-    crate::log::ready(&local, start.elapsed());
-    if let Some(net) = &network {
-        crate::log::network(net);
-    } else if expose {
-        crate::log::warn("--host set, but no LAN address was found");
-    }
-    crate::log::first_run_notice();
-    crate::log::keys_hint();
-    crate::log::watching(&app.path.display().to_string(), &desc);
-    if let Some(n) = &narration {
-        crate::log::deck_duration(n.total_secs, n.scripted, n.slides);
-    }
-    if let Some(net) = &network {
-        print_qr(net);
-    }
-    if expose && std::env::var_os("TALIESIN_NO_EXEC").is_none() {
-        crate::log::warn(
-            "code cells run on this machine; only serve documents you trust over --host \
-             (pass --no-exec to preview as source)",
-        );
+    // A session has nobody watching its console: the screen clear, banner, QR and hints
+    // are for a preview you launched and are looking at. Announce one line instead, so
+    // `taliesin run` still leaves something greppable behind if it misbehaves.
+    if headless {
+        crate::log::info(&format!("session listening on {local}"));
+    } else {
+        crate::log::clear_screen();
+        crate::log::banner(taliesin_core::VERSION);
+        crate::log::ready(&local, start.elapsed());
+        if let Some(net) = &network {
+            crate::log::network(net);
+        } else if expose {
+            crate::log::warn("--host set, but no LAN address was found");
+        }
+        crate::log::first_run_notice();
+        crate::log::keys_hint();
+        crate::log::watching(&app.path.display().to_string(), &desc);
+        if let Some(n) = &narration {
+            crate::log::deck_duration(n.total_secs, n.scripted, n.slides);
+        }
+        if let Some(net) = &network {
+            print_qr(net);
+        }
+        if expose && std::env::var_os("TALIESIN_NO_EXEC").is_none() {
+            crate::log::warn(
+                "code cells run on this machine; only serve documents you trust over --host \
+                 (pass --no-exec to preview as source)",
+            );
+        }
     }
     if open {
         open_in_browser(&local);
@@ -311,19 +351,84 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     );
     // Race the server against a shutdown signal so Ctrl-C/SIGTERM returns cleanly and
     // the runtime teardown in `run` can reap the kernel (see `shutdown_signal`).
-    tokio::select! {
+    let outcome = tokio::select! {
         r = server => r.map_err(std::io::Error::other),
         _ = shutdown_signal() => {
             crate::log::kernel("shutting down (reaping kernel)");
             Ok(())
         }
-    }
+    };
+    // Clean exit: retract the hint so the next `taliesin run` starts a session rather than
+    // dialling a dead port. A SIGKILL skips this, which is why the client proves a hint
+    // with the identity handshake instead of trusting it.
+    crate::session::clear_hint(&app.path);
+    outcome
 }
 
 /// The path a preview answers with its own identity. A second launch uses it to tell
 /// "this root is already being previewed" (take the port over) from "some other server
 /// owns this port" (fall back to the next one).
 pub(crate) const IDENTITY_PATH: &str = "/__taliesin";
+
+/// The path a session accepts run requests on (`taliesin run`'s only control seam).
+///
+/// Under `/__taliesin` so it shares the identity endpoint's namespace and can never
+/// collide with a page path: a project is free to have a page called `run`.
+pub(crate) const RUN_PATH: &str = "/__taliesin/run";
+
+/// `POST /__taliesin/run` for the single-doc server. Same contract as the site server's
+/// twin (loopback only, `--no-exec` refuses, NDJSON out), against the one document this
+/// server owns: the request's `file` must BE that document.
+async fn run_handler(
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>,
+    State(app): State<Arc<AppState>>,
+    axum::Json(req): axum::Json<crate::runspec::RunReq>,
+) -> axum::response::Response {
+    if !peer.ip().is_loopback() {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "runs are accepted from loopback only",
+        )
+            .into_response();
+    }
+    if crate::exec::exec_disabled() {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            "this session was started with --no-exec",
+        )
+            .into_response();
+    }
+    let want = std::fs::canonicalize(&req.file).unwrap_or_else(|_| PathBuf::from(&req.file));
+    let mine = std::fs::canonicalize(&app.path).unwrap_or_else(|_| app.path.clone());
+    if want != mine {
+        return (
+            axum::http::StatusCode::NOT_FOUND,
+            format!(
+                "this session previews {}, not {}",
+                mine.display(),
+                want.display()
+            ),
+        )
+            .into_response();
+    }
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    // Subscribe BEFORE kicking the loop: a fast rebuild could otherwise finish between
+    // the two and broadcast `run-done` into an empty room, hanging the client.
+    let rx = app.tx.subscribe();
+    *app.pending_run.lock() = Some(PendingRun {
+        scope: req.scope(),
+        run_id: run_id.clone(),
+    });
+    let _ = app.kick.send(());
+
+    let body = axum::body::Body::from_stream(crate::runspec::event_stream(rx, None, run_id));
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
+        body,
+    )
+        .into_response()
+}
 
 /// Resolve a root to the form both sides of the identity check agree on. Falls back to
 /// the path as written when it cannot be canonicalized (`serve` deliberately stays up
@@ -360,6 +465,19 @@ struct Incumbent {
     port: u16,
     root: PathBuf,
     pid: i32,
+}
+
+/// Is a live session for `root` listening on `port`?
+///
+/// The proof `taliesin run` requires before sending anything to a port a hint file named.
+/// Deliberately the SAME check `bind_with_fallback` already makes about an incumbent, and
+/// for the same reason: a hint file survives SIGKILL, ports get recycled, and any local
+/// user can bind loopback, so the port holder must both claim this root and be confirmed
+/// by the OS ([`is_sibling_preview`] reads `/proc/<pid>/exe`) to be another instance of
+/// this binary. A pid-liveness check alone would be satisfied by a recycled pid.
+pub(crate) async fn session_owns(port: u16, root: &Path) -> bool {
+    let want = canonical(root);
+    matches!(identify(port).await, Some(i) if i.root == want && is_sibling_preview(i.pid))
 }
 
 /// How long a port holder gets to answer the identity probe. Generous, because a
@@ -1445,7 +1563,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
         }
         // Initial execution pass: markdown is already live; this fills in outputs
         // (and starts the warm kernel) shortly after the page loads.
-        rebuild_guarded(&app, &mut executor).await;
+        rebuild_guarded(&app, &mut executor, None).await;
         while signal_rx.recv().await.is_some() {
             tokio::time::sleep(Duration::from_millis(80)).await;
             while signal_rx.try_recv().is_ok() {}
@@ -1455,7 +1573,11 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
                 crate::log::kernel("restart requested (dev menu)");
                 executor.restart_kernel();
             }
-            rebuild_guarded(&app, &mut executor).await;
+            // Claim any pending run BEFORE the pass that serves it, so a request arriving
+            // mid-build is served by the NEXT pass rather than being answered by a build
+            // that started before it existed.
+            let pending = app.pending_run.lock().take();
+            rebuild_guarded(&app, &mut executor, pending).await;
             // A fresh kernel means fresh outputs — including any `ojs_define`
             // values. Reload so the `{js}` cells re-bind to the fresh `tali-define`
             // blobs from a clean module scope.
@@ -1591,13 +1713,23 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
 
 /// Re-render markdown, execute code cells (changed + downstream), then diff the
 /// assembled block list against the live state and broadcast the changes.
-async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
+async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor, run: Option<PendingRun>) {
+    // Same contract as the site server's `RunAnnounce`: a client blocked on `run-done`
+    // reads a missing terminal message as a hang, so every exit from here answers it.
+    let mut announce = RunAnnounce {
+        tx: app.tx.clone(),
+        run_id: run.as_ref().map(|r| r.run_id.clone()),
+    };
     let Some(doc) = render_doc(app) else {
         app.doc.lock().errored = true;
         let _ = app.tx.send(protocol::error(&format!(
             "cannot read {}",
             app.path.display()
         )));
+        announce.finish(
+            "error",
+            Some(&format!("cannot read {}", app.path.display())),
+        );
         return;
     };
     // Static lints (broken links, missing assets/media, dup ids, dangling anchors,
@@ -1614,7 +1746,22 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
             crate::check::Scope::Standalone,
         )
     };
-    let blocks = executor.run(doc.blocks).await;
+    // Resolve the cap against the rendered blocks (see the site server's twin): one
+    // reading of "which fence is cell 3", shared with the executor that is about to run.
+    let scope = run
+        .as_ref()
+        .map(|r| r.scope)
+        .unwrap_or(crate::runspec::RunScope::All);
+    let until_block = match crate::runspec::resolve(scope, &doc.blocks) {
+        crate::runspec::Resolved::Uncapped => None,
+        crate::runspec::Resolved::Cap(i) => Some(i),
+        crate::runspec::Resolved::Unresolvable => {
+            // Refuse rather than widen into a whole-document run.
+            announce.finish("error", Some("no code cell at that position"));
+            return;
+        }
+    };
+    let blocks = executor.run_through(doc.blocks, until_block).await;
     let mut diags = compute_diagnostics(app, executor);
     diags.extend(static_diags);
     // Render warnings (missing bibliography/theme file, broken citation) ride
@@ -1735,6 +1882,33 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     if ops > 0 {
         crate::log::update(ops);
     }
+    // After everything this pass published, so a client that exits on `run-done` cannot
+    // race ahead of the outputs it was waiting for.
+    announce.finish("ok", None);
+}
+
+/// Guarantees a waiting `taliesin run` gets exactly one terminal message, on every exit
+/// from [`rebuild`] including a panic unwinding through it. The single-doc twin of the
+/// site server's `RunAnnounce`, and armed only when a run is actually pending.
+struct RunAnnounce {
+    tx: broadcast::Sender<String>,
+    run_id: Option<String>,
+}
+
+impl RunAnnounce {
+    fn finish(&mut self, status: &str, message: Option<&str>) {
+        if let Some(run_id) = self.run_id.take() {
+            let _ = self
+                .tx
+                .send(protocol::run_done(None, &run_id, status, message));
+        }
+    }
+}
+
+impl Drop for RunAnnounce {
+    fn drop(&mut self) {
+        self.finish("error", Some("run ended without completing"));
+    }
 }
 
 /// Run a [`rebuild`], but catch any panic in the render/exec path so one bad
@@ -1742,9 +1916,13 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
 /// for the rest of the session). The panic is logged and surfaced to the client
 /// as an error diagnostic; the next good save recovers. `parking_lot` mutexes
 /// mean a panic mid-update releases the lock cleanly rather than poisoning it.
-async fn rebuild_guarded(app: &AppState, executor: &mut crate::exec::Executor) {
+async fn rebuild_guarded(
+    app: &AppState,
+    executor: &mut crate::exec::Executor,
+    run: Option<PendingRun>,
+) {
     use futures_util::FutureExt;
-    let outcome = std::panic::AssertUnwindSafe(rebuild(app, executor))
+    let outcome = std::panic::AssertUnwindSafe(rebuild(app, executor, run))
         .catch_unwind()
         .await;
     if let Err(payload) = outcome {

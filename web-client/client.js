@@ -27,7 +27,7 @@
  * @typedef {{ type: "title", title: ?string }} TitleMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
- * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
+ * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error"|"skipped", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
  * @typedef {{ type: "cell-output-append", page: ?string, cell_id: string, op: "append"|"replace_last", html: string }} CellOutputAppendMsg
  * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg|CellOutputAppendMsg} ServerMessage
  */
@@ -897,6 +897,10 @@
       // keeps "✓ 1.2s".
       if (msg.state === "done") badge.textContent = msg.source === "cache" ? "⚡ cached" : "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
       else if (msg.state === "error") badge.textContent = "✕";
+      // A capped `taliesin run` stopped above this cell: it did not run and has no
+      // output. Say so, rather than leaving the badge from a previous pass to imply
+      // the stale block below it is current.
+      else if (msg.state === "skipped") badge.textContent = "⋯ not run";
       else badge.textContent = "⏳"; // queued
     }
   }

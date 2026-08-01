@@ -330,6 +330,7 @@ fn command_desc(cmd: &str) -> &'static str {
         "render" => "render a full HTML page to stdout",
         "read" => "project the document to plain text",
         "build" => "build self-contained HTML (a dir builds the site)",
+        "run" => "execute code cells in the terminal (warm session, no browser)",
         "pdf" => "typeset, paginated PDF rendered from the built HTML",
         "blocks" => "list block ids + sourcepos (debug)",
         "schema" => "emit JSON Schemas for editor autocomplete",
@@ -378,6 +379,21 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 "render code cells as source, never run them",
             ),
             ("--port", true, "port to serve on"),
+            (
+                "--headless",
+                false,
+                "run as a background session: no console chrome, no browser",
+            ),
+        ],
+        "run" => &[
+            (
+                "--cell",
+                true,
+                "run through the Nth executable cell (1-based)",
+            ),
+            ("--line", true, "run through the cell at this source line"),
+            ("--all", false, "run the whole document (the default)"),
+            ("--quiet", false, "only errors and the summary"),
         ],
         "pdf" => &[
             ("--out", true, "write the PDF here (default <name>.pdf)"),
@@ -545,7 +561,7 @@ impl PathKind {
 fn positional_kind(sub: &str) -> Option<PathKind> {
     match canonical(sub) {
         "preview" | "build" | "check" => Some(PathKind::FileOrDir),
-        "render" | "read" | "blocks" | "symbols" => Some(PathKind::File),
+        "render" | "read" | "blocks" | "symbols" | "run" => Some(PathKind::File),
         "map" | "publish" | "init" => Some(PathKind::Dir),
         _ => None,
     }

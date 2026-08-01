@@ -507,6 +507,27 @@ impl Executor {
     /// Each executable language runs against its own kernel; unknown languages are
     /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
+        self.run_through(blocks, None).await
+    }
+
+    /// [`Executor::run`], stopping after the cell at block index `until_block`.
+    ///
+    /// This is the editor's "Run Cell": *make the document true through here*. The
+    /// plan's start is unchanged (the first cell whose state the kernel lacks), so a
+    /// warm session runs only the edited cell while a cold one runs the prefix it
+    /// needs — the cap only says how far this pass may go. Cells past the cap are
+    /// left to restore from the disk cache or stay empty; because nothing writes a
+    /// freeze entry for a cell that did not run, a capped run can never publish a
+    /// stale output. `None` is the uncapped whole-document run.
+    ///
+    /// The cap is a **block** index rather than a per-language cell index, so it
+    /// means the same thing in a document that mixes `{python}` and `{r}`: every
+    /// language runs its cells up to that point in the document.
+    pub async fn run_through(
+        &mut self,
+        blocks: Vec<Block>,
+        until_block: Option<usize>,
+    ) -> Vec<Block> {
         // `--no-exec`: never touch a kernel. The cells are already rendered as source
         // in `blocks`; returning them unchanged is exactly "preview as source".
         if self.no_exec {
@@ -544,7 +565,7 @@ impl Executor {
         let mut output_blocks: HashMap<usize, Block> = HashMap::new();
         let mut tally = CacheTally::default();
         for (lang, cells) in &by_lang {
-            let (outputs, lang_tally) = self.compute_outputs(lang, cells).await;
+            let (outputs, lang_tally) = self.compute_outputs(lang, cells, until_block).await;
             tally += lang_tally;
             for (cell, inner) in cells.iter().zip(&outputs) {
                 // `include: false` cells run (above) for their kernel-state side
@@ -591,6 +612,7 @@ impl Executor {
         &mut self,
         lang: &'static str,
         cells: &[CellRef],
+        until_block: Option<usize>,
     ) -> (Vec<String>, CacheTally) {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
@@ -622,7 +644,13 @@ impl Executor {
             .get(lang)
             .map(|s| s.ran.iter().map(|r| r.hash.clone()).collect())
             .unwrap_or_default();
-        let (shared, run_end) = plan(&ran, &hashes, known, |i| cells[i].cache);
+        // The caller's cap is a document **block** index; `plan` counts in this
+        // language's own cell indices. `cells` is in document order, so the count of
+        // cells at or before the cap is exactly "one past the last cell this pass may
+        // execute". A language with no cell at or before the cap gets `Some(0)` and
+        // therefore runs nothing, which is right: none of its cells is above the line.
+        let limit = until_block.map(|b| cells.iter().take_while(|c| c.block_index <= b).count());
+        let (shared, run_end) = plan(&ran, &hashes, known, |i| cells[i].cache, limit);
 
         // Per-cell states from the zones `plan()` just computed (pure observation —
         // doesn't change what runs or caches). The warm prefix `[0, shared)` and the
@@ -634,8 +662,21 @@ impl Executor {
             // The warm prefix and the disk-cached tail are both restored without running,
             // so tag them `source: "cache"` (DX9) — that's what turns a client's blank `✓`
             // into `⚡ cached`. The run range is still `queued` (no source yet).
-            let (state, source) = if i < shared || i >= run_end {
+            //
+            // A CAPPED run adds a fourth zone that did not exist before: cells past
+            // `run_end` that are NOT in the cache. They were not run and have no output,
+            // so calling them `done`/`cache` (as the tail rule alone would) is simply
+            // false — it reported "1 ran, 2 cached" for a document whose last two cells
+            // had never executed at all. They get `skipped`, which is what actually
+            // happened, and the next uncapped run or `build` picks them up.
+            let (state, source) = if i < shared {
                 ("done", Some("cache"))
+            } else if i >= run_end {
+                if known(i) {
+                    ("done", Some("cache"))
+                } else {
+                    ("skipped", None)
+                }
             } else {
                 ("queued", None)
             };
@@ -1161,6 +1202,7 @@ fn plan(
     hashes: &[String],
     known: impl Fn(usize) -> bool,
     cacheable: impl Fn(usize) -> bool,
+    limit: Option<usize>,
 ) -> (usize, usize) {
     let lcp = (0..hashes.len())
         .take_while(|&i| ran.get(i) == Some(&hashes[i]))
@@ -1188,6 +1230,19 @@ fn plan(
     // document is unchanged.
     if first_uncacheable < hashes.len() {
         run_end = hashes.len();
+    }
+    // A capped run ("make the document true THROUGH cell N" — the editor's Run Cell)
+    // may execute no further than `limit`. Applied LAST, after the `cache: false`
+    // extension, because the cap answers a different question: not "what is
+    // trustworthy" but "how far is this pass allowed to go". Cells past it are simply
+    // left stale, and since nothing persists a freeze entry for a cell that did not
+    // run, a capped run can never publish a lie — the next uncapped run, preview
+    // rebuild, or `build` finishes the job.
+    //
+    // `.max(shared)` keeps the range well-formed when the warm prefix already reaches
+    // past the cap: that is "already up to date through here", i.e. an empty run range.
+    if let Some(limit) = limit {
+        run_end = run_end.min(limit).max(shared);
     }
     (shared, run_end)
 }
@@ -2656,7 +2711,26 @@ mod tests {
     /// are cacheable here; `run_plan_nc` covers `#| cache: false`.
     fn run_plan(ran: &[&str], cur: &[&str], disk: &[&str]) -> (usize, usize) {
         let cur = h(cur);
-        plan(&h(ran), &cur, |i| disk.contains(&cur[i].as_str()), |_| true)
+        plan(
+            &h(ran),
+            &cur,
+            |i| disk.contains(&cur[i].as_str()),
+            |_| true,
+            None,
+        )
+    }
+
+    /// Like `run_plan`, but capped: `limit` is one past the last cell this pass may
+    /// execute (what `Executor::run_through` derives from a Run-Cell request).
+    fn run_plan_capped(ran: &[&str], cur: &[&str], disk: &[&str], limit: usize) -> (usize, usize) {
+        let cur = h(cur);
+        plan(
+            &h(ran),
+            &cur,
+            |i| disk.contains(&cur[i].as_str()),
+            |_| true,
+            Some(limit),
+        )
     }
 
     /// Like `run_plan`, but `nocache` lists the cell indices marked `#| cache: false`.
@@ -2667,7 +2741,48 @@ mod tests {
             &cur,
             |i| disk.contains(&cur[i].as_str()),
             |i| !nocache.contains(&i),
+            None,
         )
+    }
+
+    #[test]
+    fn capped_plan_runs_the_prefix_the_kernel_lacks_but_stops_at_the_cap() {
+        // Cold kernel, nothing cached, "Run cell 2" (limit = 2, i.e. cells 0 and 1).
+        // Doc semantics: the cap does NOT skip the prefix — cell 1 needs cell 0's
+        // state — it only stops the pass early. Cell 2 stays un-run.
+        assert_eq!(run_plan_capped(&[], &["a", "b", "c"], &[], 2), (0, 2));
+        // Warm through cell 0; "Run cell 1" then runs exactly one cell.
+        assert_eq!(run_plan_capped(&["a"], &["a", "b", "c"], &[], 2), (1, 2));
+        // Uncapped, the same state would run everything downstream. This is the
+        // whole point of the cap, so pin the contrast rather than trusting it.
+        assert_eq!(run_plan(&["a"], &["a", "b", "c"], &[]), (1, 3));
+    }
+
+    #[test]
+    fn capped_plan_runs_nothing_when_the_warm_prefix_already_passes_the_cap() {
+        // Warm kernel already ran [a,b,c]; "Run cell 0" must NOT re-execute cell 0
+        // out of order against state built by cells 1-2 (that is exactly Jupyter's
+        // hidden-state hazard). An empty range means "already up to date through here".
+        let (shared, run_end) = run_plan_capped(&["a", "b", "c"], &["a", "b", "c"], &[], 1);
+        assert_eq!(
+            shared, run_end,
+            "a cap behind the warm prefix must produce an EMPTY run range, got {shared}..{run_end}"
+        );
+    }
+
+    #[test]
+    fn capped_plan_never_extends_past_the_cap_for_a_cache_false_cell() {
+        // `cache: false` normally forces `run_end` to the document end so downstream
+        // cells re-run against fresh state. Under a cap that extension must still be
+        // clipped: the pass may not execute cells the author did not ask for. Cells
+        // past the cap keep their invalidated keys and re-run on the next full pass.
+        let cur = h(&["a", "b", "c", "d"]);
+        let (shared, run_end) = plan(&h(&[]), &cur, |_| true, |i| i != 1, Some(3));
+        assert_eq!(
+            (shared, run_end),
+            (0, 3),
+            "the cache:false extension to the document end must be clipped to the cap"
+        );
     }
 
     #[test]

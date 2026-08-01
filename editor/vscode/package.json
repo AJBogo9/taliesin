@@ -153,6 +153,18 @@
         "category": "Taliesin"
       },
       {
+        "command": "taliesin.runCell",
+        "title": "Run Cell",
+        "category": "Taliesin",
+        "icon": "$(play)"
+      },
+      {
+        "command": "taliesin.runAll",
+        "title": "Run All Cells",
+        "category": "Taliesin",
+        "icon": "$(run-all)"
+      },
+      {
         "command": "taliesin.check",
         "title": "Check This Document",
         "category": "Taliesin"

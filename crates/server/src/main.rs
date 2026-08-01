@@ -14,6 +14,7 @@ mod doctor;
 mod exec;
 mod freeze;
 mod headless_js;
+mod http1;
 mod image_opt;
 mod interactive;
 mod interpreter;
@@ -42,9 +43,13 @@ mod preview_diag;
 mod protocol;
 mod publish;
 mod query;
+mod run_cmd;
+mod run_print;
+mod runspec;
 mod runtime_dirs;
 mod serve;
 mod serve_site;
+mod session;
 #[cfg(test)]
 mod testutil;
 mod warm_pool;
@@ -75,6 +80,12 @@ fn main() -> ExitCode {
         Some("pdf") => pdf::cmd_pdf(&args),
         Some("publish") => publish::cmd_publish(&args),
         Some("blocks") => query::cmd_blocks(args.get(2)),
+        // `run` needs the same stale-runtime-dir sweep `build`/`preview` do: it may be
+        // the thing that starts the session that owns the kernels.
+        Some("run") => {
+            runtime_dirs::sweep_stale_runtime_dirs();
+            run_cmd::cmd_run(&args)
+        }
         Some("schema") => query::cmd_schema(&args),
         Some("vocab") => query::cmd_vocab(),
         Some("symbols") => query::cmd_symbols(&args),
@@ -134,6 +145,7 @@ const COMMANDS: &[&str] = &[
     "render",
     "read",
     "build",
+    "run",
     "pdf",
     "blocks",
     "schema",
@@ -190,6 +202,10 @@ Author
                              scaffold one document, correct on its first save
 
 Preview & build
+  run <file.tmd> [--cell N | --line L | --all] [--quiet]
+                             execute code cells in the terminal against this
+                             project's warm session; no browser, outputs cached
+                             so a later build re-executes nothing
   preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]
                              live preview server (aliases: dev, serve;
                              a dir previews the whole SITE with nav + hot reload;
@@ -290,10 +306,40 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --open      launch the default browser at the preview URL\n\
              \x20 --no-exec   render code cells as source ({python}/{r} and {js} alike),\n\
              \x20             never executing them. Not an HTML sanitizer\n\
+             \x20 --headless  run as a background SESSION: no console chrome, no browser.\n\
+             \x20             What `taliesin run` starts for you when none is up\n\
              \n\
              Example:\n\
              \x20 taliesin preview index.tmd --open\n\
              \x20 taliesin preview . --port 4400\n"
+        }
+        "run" => {
+            "taliesin run <file.tmd> [--cell N | --line L | --all] [--quiet]\n\
+             \n\
+             Execute the document's code cells and print what they produced, in the\n\
+             terminal, with no browser in the loop. Attaches to this project's warm\n\
+             session (starting one headlessly if none is up), so the kernel and its\n\
+             variables survive between runs: re-running one cell does not re-run the\n\
+             expensive ones above it.\n\
+             \n\
+             Outputs land in `_freeze/` exactly as a preview would write them, so a\n\
+             later `taliesin build` replays them and re-executes nothing.\n\
+             \n\
+             Runs are inclusive and top-down: `--cell 3` means \"make the document true\n\
+             THROUGH cell 3\", running whatever earlier cells the kernel is missing.\n\
+             \n\
+             Flags:\n\
+             \x20 --cell N    run through the Nth executable cell (1-based)\n\
+             \x20 --line L    run through the cell at source line L (what editors send)\n\
+             \x20 --all       run the whole document (the default)\n\
+             \x20 --quiet     only errors and the summary, for scripts\n\
+             \n\
+             Figures are written to `_freeze/figs/` and their paths printed, since a\n\
+             terminal cannot show an image; ctrl-click one to open it.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin run analysis.tmd --cell 5\n\
+             \x20 taliesin run analysis.tmd --all --quiet\n"
         }
         "build" => {
             "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\

@@ -19,6 +19,7 @@ import { registerRenameRepair } from "./rename";
 import { registerTerminalLinks } from "./termlinks";
 import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
+import { registerRunCell } from "./runcell";
 import { registerDecorations } from "./decorations";
 import { registerStatusBar } from "./statusbar";
 import { registerLmTools, registerMcpProvider } from "./lmtools";
@@ -78,6 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
   );
   registerLanguageClient(context);
   registerCommands(context);
+  registerRunCell(context);
   // The third half, and it is neither of the two above: paste and drop are edits the AUTHOR makes
   // in the editing surface, so they are not preview write-back, and they are not language features
   // either. The gesture is VS Code's; every string they insert comes from the server.

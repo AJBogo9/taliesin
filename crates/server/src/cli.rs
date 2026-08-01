@@ -912,7 +912,7 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
 
 /// Every long flag `preview`/`serve`/`dev` accepts (drives the unknown-flag did-you-mean).
 /// `--help`/`-h` are intercepted by `main()` before this parser runs, so they aren't here.
-const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec", "--port"];
+const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec", "--port", "--headless"];
 
 /// What `preview`/`serve`/`dev` parsed out of argv, before any environment or IO.
 #[derive(Debug, PartialEq)]
@@ -922,6 +922,10 @@ pub(crate) struct ServeArgs<'a> {
     pub open: bool,
     pub expose: bool,
     pub no_exec: bool,
+    /// Run as a background SESSION: no console chrome, never opens a browser. The server
+    /// is otherwise identical, which is the point — `taliesin run` must not get a
+    /// different executor from the one a preview would use.
+    pub headless: bool,
 }
 
 /// Parse `preview <file.tmd|dir> [port] [--port <N>] [--host] [--open] [--no-exec]`.
@@ -934,6 +938,7 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
     let mut positionals: Vec<&str> = Vec::new();
     let mut flag_port: Option<&str> = None;
     let (mut open, mut expose, mut no_exec) = (false, false, false);
+    let mut headless = false;
 
     let mut it = args[2..].iter().peekable();
     while let Some(a) = it.next() {
@@ -941,6 +946,11 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
             "--open" => open = true,
             "--host" => expose = true,
             "--no-exec" => no_exec = true,
+            // `--headless`: a SESSION rather than a preview you are watching. Same server,
+            // same kernels, same `_freeze/` — it just skips the console chrome (screen
+            // clear, banner, QR) that a background process has nobody to show. Started by
+            // `taliesin run` when no session is up.
+            "--headless" => headless = true,
             "--port" => {
                 flag_port = Some(
                     it.next()
@@ -968,6 +978,7 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
         open,
         expose,
         no_exec,
+        headless,
     })
 }
 
@@ -997,9 +1008,21 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     }
     // A directory is a multi-page site project; a single `.tmd` is one document.
     let result = if Path::new(parsed.path).is_dir() {
-        serve_site::run(PathBuf::from(parsed.path), parsed.port, open, expose)
+        serve_site::run(
+            PathBuf::from(parsed.path),
+            parsed.port,
+            open && !parsed.headless,
+            expose,
+            parsed.headless,
+        )
     } else {
-        serve::run(PathBuf::from(parsed.path), parsed.port, open, expose)
+        serve::run(
+            PathBuf::from(parsed.path),
+            parsed.port,
+            open && !parsed.headless,
+            expose,
+            parsed.headless,
+        )
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

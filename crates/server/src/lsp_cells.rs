@@ -11,6 +11,14 @@ pub(crate) struct CellRegion {
     /// 0-based first and last body lines, inclusive. An empty body yields no region.
     pub(crate) start_line: usize,
     pub(crate) end_line: usize,
+    /// Whether a kernel actually runs this fence: `{python}`/`{r}`, not a plain `python`
+    /// display block and not `{bash}`.
+    ///
+    /// Here rather than in the editor because the answer is
+    /// [`crate::exec::kernel_lang`]'s, and an editor deciding for itself would be a second
+    /// copy of the executable-language set — the drift that puts a Run button above a
+    /// fence nothing can run.
+    pub(crate) executable: bool,
 }
 
 /// Every fenced code block in `text` that names a language.
@@ -45,10 +53,13 @@ pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
         if let Some(language) = language_of(info)
             && close > body_start
         {
+            let executable = is_braced(info)
+                && crate::exec::kernel_lang(&language.to_ascii_lowercase()).is_some();
             out.push(CellRegion {
                 language,
                 start_line: body_start,
                 end_line: close - 1,
+                executable,
             });
         }
         i = close + 1;
@@ -105,6 +116,12 @@ fn close_line(lines: &[&str], from: usize, marker: char, width: usize) -> Option
 
 /// The language named by a fence's info string: `{python}`, `{python, echo=false}` and a
 /// bare `python` all name `python`. `None` when the fence names nothing.
+/// Is this info string the `{lang}` (executable cell) spelling rather than a plain
+/// `lang` display block? The brace is the whole difference the engine reads.
+fn is_braced(info: &str) -> bool {
+    info.trim_start().starts_with('{')
+}
+
 fn language_of(info: &str) -> Option<String> {
     let t = info.trim();
     let name = match t.strip_prefix('{') {
@@ -127,6 +144,27 @@ fn language_of(info: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_braced_kernel_languages_are_executable() {
+        // The Run button hangs off this flag, so the distinction has to be exact: a
+        // display block and a `{bash}` cell both look like code and neither runs.
+        let src = "```{python}\nx=1\n```\n\n```python\nx=1\n```\n\n                   ```{bash}\nls\n```\n\n```{r}\nx<-1\n```\n";
+        let got: Vec<(String, bool)> = cell_regions(src)
+            .into_iter()
+            .map(|r| (r.language, r.executable))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("python".to_string(), true),
+                ("python".to_string(), false),
+                ("bash".to_string(), false),
+                ("r".to_string(), true),
+            ],
+            "executable must mean `a kernel runs this`, not `this is code`"
+        );
+    }
 
     fn langs(text: &str) -> Vec<(String, usize, usize)> {
         cell_regions(text)

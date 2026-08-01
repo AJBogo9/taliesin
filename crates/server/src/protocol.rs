@@ -168,11 +168,16 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 }
 
 /// `cell-state`: per-cell execution state. `state` is one of
-/// "queued" | "running" | "done" | "error". `started_ms`/`duration_ms` are epoch
+/// "queued" | "running" | "done" | "error" | "skipped". `started_ms`/`duration_ms` are epoch
 /// millis / elapsed millis when known; the client ticks the live timer itself.
 /// `cell_id` is the cell's own id (the same id the output block is built from as
 /// `{cell_id}-out`), so the client can target that block. `page` is the source
 /// rel-path for the multi-page server, `None` for the single-doc server.
+///
+/// `state` is `queued` | `running` | `done` | `error` | `skipped`. `skipped` exists only
+/// for a **capped** run (`taliesin run --cell N`): the cell is past the cap, holds no
+/// cached output, and therefore did not run and produced nothing. It is deliberately not
+/// `done`, which would claim an output that does not exist.
 ///
 /// `source` is how a `done` cell reached its output (DX9): `"cache"` = restored
 /// without running (the warm in-memory prefix or the disk `_freeze` tail), `"fresh"`
@@ -211,6 +216,24 @@ pub fn cell_output_append(page: Option<&str>, cell_id: &str, op: &str, html: &st
     serde_json::json!({
         "type": "cell-output-append", "page": page, "cell_id": cell_id,
         "op": op, "html": html
+    })
+    .to_string()
+}
+
+/// The terminal message of an explicit `taliesin run`: this run, named by `run_id`, is
+/// over.
+///
+/// Carried on the page's ordinary broadcast rather than a private channel, so a run driven
+/// from the terminal and a browser watching the same page see one event stream and cannot
+/// disagree about what happened. Browsers ignore it (the client's dispatch has no arm for
+/// this type, and no default), which is exactly right: it is addressed to whoever asked.
+///
+/// `status` is `"ok"` or `"error"`. Every path out of a queued run emits exactly one of
+/// these, because a client blocked on it reads a missing message as a hang.
+pub fn run_done(page: Option<&str>, run_id: &str, status: &str, message: Option<&str>) -> String {
+    serde_json::json!({
+        "type": "run-done", "page": page, "runId": run_id,
+        "status": status, "message": message
     })
     .to_string()
 }

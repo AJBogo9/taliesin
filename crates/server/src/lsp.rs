@@ -3798,6 +3798,9 @@ mod tests {
                 "language": "python",
                 "startLine": 3,
                 "endLine": 4,
+                // The editor hangs its Run buttons off this, so it is part of the wire
+                // contract, not an internal detail.
+                "executable": true,
             }]),
             "got {regions}"
         );
