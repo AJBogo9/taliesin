@@ -254,6 +254,14 @@
       "name": "column-margin"
     },
     {
+      "description": "Widen content past the text column, up to the page width.",
+      "name": "column-page"
+    },
+    {
+      "description": "Widen content to the full width of the screen.",
+      "name": "column-screen"
+    },
+    {
       "description": "Margin aside (alias of `column-margin`).",
       "name": "aside"
     },

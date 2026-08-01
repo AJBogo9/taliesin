@@ -1,0 +1,67 @@
+---
+title: "Layout: escaping the text column"
+---
+
+The reading measure is deliberately narrow, around 70 characters, because that is what
+long-form prose wants. Some content does not: a wide table, a multi-panel plot, a
+diagram whose labels only fit at size. `.column-margin` already sends a note *out* to
+the gutter; these two send a block *wider* instead, and they are the same axis.
+
+::: {.column-margin}
+This margin note is the narrow end of the same axis the two escapes below widen along.
+It shares a page with them on purpose: a document usually wants both.
+:::
+
+## `.column-page`, past the text column {#sec-page}
+
+`::: {.column-page}` widens a block up to the page width. The prose around it stays at
+the reading measure, so the escape reads as a deliberate exception rather than as a
+change of layout.
+
+::: {.column-page}
+| Container | How an escape grows | Sticky rail in the way |
+| --- | --- | --- |
+| single-document `body` | centred on the viewport | no |
+| `body.has-toc` | leftward, right edge flush with the text | yes |
+| `.tali-site-main` | centred on the viewport | no |
+| `.tali-site-main.has-toc` | leftward, right edge flush with the text | yes |
+| `.tali-book-main` | centred on the viewport | no |
+:::
+
+That table is the reason the feature is one CSS formula rather than five. An escape
+centres on *its own container*, and the three plain containers are themselves centred in
+the viewport, so nothing in them needs to know which one it is.
+
+The two table-of-contents layouts are the exception, and the reason is visible on this
+page: the rail to the right is ordinary text with no background of its own, so an escape
+centred on the page would run its own text underneath it. On those pages an escape grows
+*leftward* into the unused margin and keeps its right edge flush with the prose, which is
+collision-free by construction and still recovers most of the wasted width.
+
+## `.column-screen`, edge to edge {#sec-screen}
+
+`::: {.column-screen}` goes the whole width of the viewport, with no gutter left at
+all. It is for content that is its own full-bleed band.
+
+::: {.column-screen}
+Edge to edge. On a phone this is the whole screen. On a page with a table-of-contents
+rail it stops at the prose column's right edge instead, for the same reason
+`.column-page` does, so "screen" there means every pixel that is not already spoken for.
+:::
+
+## They are plain classes {#sec-plain}
+
+Neither is a new block type, so neither needs a `:::` container of its own when the
+thing being widened is already a block. They apply to a table, a figure, a `pre`, or a
+div alike, and the block keeps its own identity, which is what lets a cross-reference
+still resolve through one.
+
+::: {.column-page}
+```python
+# A listing wide enough to want the room, inside an escape.
+records = [(name, kind, centre, offset) for name, kind, centre, offset in containers]
+```
+:::
+
+Back at the reading measure, and the paragraph after an escape sits exactly where the
+paragraph before it did.

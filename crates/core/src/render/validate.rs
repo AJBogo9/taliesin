@@ -63,6 +63,8 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "magic-move",
     "step",
     "column-margin",
+    "column-page",
+    "column-screen",
     "aside",
     "sidenote",
     "marginnote",

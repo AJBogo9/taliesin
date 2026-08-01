@@ -107,12 +107,25 @@
      with no dead space pooling to the right of the TOC. */
   .tali-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
+  /* Same rail rule the single-document TOC grid uses (base.css): the rail is content with
+     no background, so an escape grows LEFT and keeps its right edge flush with the text
+     rather than running underneath it. Same 8.25rem = half of (gap + rail). */
+  .tali-site-main.has-toc > main :is(.column-page, .column-screen) {
+    --tali-escape-room: calc(50vw + 50% - 8.25rem);
+    margin-left: calc(100% - var(--tali-escape-w));
+    margin-right: 0; }
   /* At the sheet breakpoint `#TOC` turns `position: fixed` and leaves the grid flow, so the
      14rem track would stand empty and auto-placement would drop the next sibling (the
      back-to-listing nav) into that vacant top-right cell. Collapse to the single reading
      column — which is what a book uses at every width (it has no rail at all, item 76). */
   @media (max-width: 60rem) {
     .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
+    /* One column again and no rail in the way: hand the escapes back to the page-centred
+       formula in base.css. */
+    .tali-site-main.has-toc > main :is(.column-page, .column-screen) {
+      --tali-escape-room: 100vw;
+      margin-left: calc(50% - var(--tali-escape-w) / 2);
+      margin-right: calc(50% - var(--tali-escape-w) / 2); }
     /* narrow back to the reading measure, unless `page-layout: full` widened the page */
     .tali-site-main.has-toc:not(.tali-wide) { max-width: var(--tali-maxw); }
   }

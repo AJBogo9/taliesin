@@ -41,7 +41,7 @@ Taliesin's Markdown is Pandoc-flavored. The closed sets below come straight from
 - **Code cells:** a fenced ` ```{python} ` (or `{r}`, `{js}`) block runs live. In-cell options use a `#| key: value` comment, e.g. `#| label: fig-scree` or `#| echo: false`. Options: `echo`, `include`, `cache`, `label`, `fig-cap`, `lst-cap`, `tbl-cap`, `fig-export`, `code-fold`, `code-summary`, `code-line-numbers`, `name`, `viewof`, `input`.
 - **Cross-references:** cite a labelled target with `@`-prefixes (`fig`, `tbl`, `sec`, `eq`, `lst`, `thm`, `lem`, `cor`, `prp`, `def`, `exm`, `rem`); e.g. `@fig-scree` renders as "Figure 3".
 - **Citations:** `[@key]` cites a `.bib` entry declared in the `bibliography:` front matter.
-- **Structural divs:** `::: {.class} ... :::` blocks. Classes: `panel-tabset`, `code-walkthrough`, `scrolly`, `magic-move`, `step`, `column-margin`, `aside`, `sidenote`, `marginnote`.
+- **Structural divs:** `::: {.class} ... :::` blocks. Classes: `panel-tabset`, `code-walkthrough`, `scrolly`, `magic-move`, `step`, `column-margin`, `column-page`, `column-screen`, `aside`, `sidenote`, `marginnote`.
 - **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `footer`, `logo`, `format`, `theme`, `css`, `page-layout`, `draft`, `title-block-style`, `include-in-header`, `include-before-body`, `include-after-body`, `toc`, `bibliography`, `execute`, `listing`, `hero`, `prose-lint`, `theorems`, `datasets`.
 
 ## Recipes

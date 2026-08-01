@@ -203,6 +203,8 @@ const DIV_CLASS_NAMES: &[&str] = &[
     "magic-move",
     "step",
     "column-margin",
+    "column-page",
+    "column-screen",
     "aside",
     "sidenote",
     "marginnote",
@@ -224,6 +226,14 @@ fn div_classes() -> Value {
                 "A step inside a code-walkthrough or scrolly (line focus or stage state).",
             ),
             ("column-margin", "Place content in the margin."),
+            (
+                "column-page",
+                "Widen content past the text column, up to the page width.",
+            ),
+            (
+                "column-screen",
+                "Widen content to the full width of the screen.",
+            ),
             ("aside", "Margin aside (alias of `column-margin`)."),
             ("sidenote", "Margin sidenote (alias of `column-margin`)."),
             ("marginnote", "Margin note (alias of sidenote)."),

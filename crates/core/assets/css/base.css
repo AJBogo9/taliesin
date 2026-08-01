@@ -804,6 +804,57 @@
       float: none; width: auto; margin: 1rem 0;
       padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   }
+  /* Layout escapes — the other end of the same axis as `.column-margin` above (item 181).
+     `::: {.column-page}` widens past the ~70ch prose measure; `::: {.column-screen}` goes
+     edge to edge. Distill's `l-page`/`l-screen` and Tufte's `.fullwidth` are the same idea,
+     and like them these are plain classes on a block, so they apply to a div, table, pre or
+     figure alike — there is no render path, no new fenced-div arm.
+
+     ONE formula serves every container mode because it is written against the CONTAINER,
+     not the viewport: a margin of `50% - w/2` puts the box's centre exactly on its
+     container's centre whatever that container's width is, and `width` then overflows
+     symmetrically on both sides. Taliesin's three block containers (single-doc `body`,
+     `.tali-site-main`, `.tali-book-main`) are themselves viewport-centred, so that lands on
+     the viewport centre for free, and nothing here needs to know which one it is in.
+
+     `--tali-escape-room` is how much width an escape may take. It is `100vw` here and is
+     overridden by the two TOC grid modes below, which have a sticky rail in the way.
+
+     `max(100%, …)` is a floor, not decoration: below ~26rem the viewport minus its gutter
+     is NARROWER than the reading column, and without it a `.column-page` would render
+     *indented* on a phone — an escape hatch that makes things smaller. */
+  .column-page, .column-screen {
+    box-sizing: border-box;
+    --tali-escape-room: 100vw;
+    width: var(--tali-escape-w);
+    max-width: none;
+    margin-left: calc(50% - var(--tali-escape-w) / 2);
+    margin-right: calc(50% - var(--tali-escape-w) / 2); }
+  .column-page { --tali-escape-w: max(100%, min(60rem, var(--tali-escape-room) - 2rem)); }
+  /* `100vw` is the viewport INCLUDING the classic scrollbar, so an edge-to-edge box
+     overshoots the space it actually has by half a scrollbar on each side (measured: 7px at
+     a 15px scrollbar). The overshoot is clipped, not scrolled, by the rule below — but with
+     no padding the thing being clipped is the first 7px of the author's own content. A
+     gutter absorbs it, and doubles as the reason full-bleed text is readable at all:
+     `border-box` keeps the BOX edge-to-edge while the content sits inside. */
+  .column-screen { --tali-escape-w: max(100%, var(--tali-escape-room)); padding-inline: 1rem; }
+  /* `100vw` is the viewport INCLUDING the classic scrollbar, so an edge-to-edge block is
+     ~15px wider than the space it has and the page grows a horizontal scrollbar it never
+     had. Measured before this rule: scrollWidth 1710 against clientWidth 1702.
+
+     `clip` rather than `hidden` because `hidden` would make <html> a scroll container and
+     break every `position: sticky` element on the page (the TOC rail, the book topbar).
+     `:has()` rather than a blanket rule because a page with no full-bleed block may have
+     some other reason to scroll horizontally, and silently clipping that would be a
+     regression in content nobody could then reach. */
+  html:has(.column-screen) { overflow-x: clip; }
+  /* Paper has no viewport to bleed to, and the print track (`taliesin pdf`) lays out to a
+     fixed page box: collapse both escapes back to the text column. `100%` makes each margin
+     `50% - 50%` = 0, so this is a true reset rather than an override fight. */
+  @media print {
+    .column-page, .column-screen {
+      --tali-escape-w: 100%; --tali-escape-room: 100%; padding-inline: 0; }
+  }
   .tali-output { margin: 0 0 1rem; }
   /* Cell output is BOUNDED, in CSS. A cell that prints ten thousand lines, or returns a
      10,000-row frame, otherwise pushes the rest of the document off the end of the page: the
@@ -944,6 +995,23 @@
   body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
                  grid-template-columns: minmax(0, var(--tali-maxw, 46rem)) 14rem; justify-content: center; }
   body.has-toc > main { min-width: 0; }
+  /* Layout escapes inside a TOC grid. The sticky rail is CONTENT, with no background of its
+     own, so an escape that centres on the page runs its text under the rail's text —
+     measured at 1702px: a `.column-page` reached x=1331 while the rail began at x=1111.
+     So on these pages an escape grows LEFT instead, keeping its right edge flush with the
+     text column: collision-free by construction, and it still roughly halves the wasted
+     margin (704px of prose to ~1055px here) rather than degrading to no escape at all.
+
+     `--tali-escape-room` is the exact distance from the viewport's left edge to the prose
+     column's right edge, so `.column-screen` lands on the viewport edge and stops. Its
+     8.25rem is half of (2.5rem gap + 14rem rail), a CONSTANT at every width above the
+     collapse breakpoint because only the prose track flexes — which is what makes it a
+     derivable offset rather than a magic number per breakpoint. `50%` resolves against the
+     prose track, since that is this element's containing block. */
+  body.has-toc > main :is(.column-page, .column-screen) {
+    --tali-escape-room: calc(50vw + 50% - 8.25rem);
+    margin-left: calc(100% - var(--tali-escape-w));
+    margin-right: 0; }
   #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
@@ -979,6 +1047,13 @@
        the minmax(0,1fr) track clamps <main> to the viewport, and `order` lifts
        the TOC (which follows <main> in the DOM) up instead of stranding it at the
        bottom. The live preview opts out via .tali-toc-sheet and uses the sheet. */
+    /* Both collapse paths below leave one full-width column and no rail in the way, so the
+       left-growing override above no longer describes anything: hand the escapes back to
+       the shared page-centred formula. */
+    body.has-toc > main :is(.column-page, .column-screen) {
+      --tali-escape-room: 100vw;
+      margin-left: calc(50% - var(--tali-escape-w) / 2);
+      margin-right: calc(50% - var(--tali-escape-w) / 2); }
     body.has-toc:not(.tali-toc-sheet) { grid-template-columns: minmax(0, 1fr); max-width: var(--tali-maxw); gap: 0; }
     body.has-toc:not(.tali-toc-sheet) > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
            border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
