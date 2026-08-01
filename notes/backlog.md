@@ -20,7 +20,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 **185, 186 and 187 shipped 2026-08-01**, which drains the research-publishing cluster down to 188.
 **Next session: 188 is the only cluster item left, and it is the one previously marked "leave"**
 (lowest conviction, and the item still says so) — so the real choice is 188 against the two large
-swings (164, 167), and **that cross-cluster ranking is an owner call that has not been made.** 189
+swings (164, 167), and **that cross-cluster ranking is an owner call that has not been made.** 194
 (below, S) came out of 186 and is unblocked.
 
 What those three established, for whoever touches this area next:
@@ -43,9 +43,11 @@ What those three established, for whoever touches this area next:
   187 rather than as a top-level map keyed by name, which would have had to match a name string
   back to an author and would drop the entry silently when the two spellings drifted.
 
-- **P1 is a ranked build queue, not a menu.** Take from the top: what is left of the
-  research-publishing cluster (189, then 188 — 183/184 shipped 2026-08-01 and 185/186/187 the same
-  day), then the large swings. **Read
+- **P1 is a ranked build queue, not a menu.** Take from the top: 194 (what is left of the
+  research-publishing cluster; 183/184 shipped 2026-08-01 and 185/186/187 the same day), then the
+  six author-reported reader/editor items filed 2026-08-01 (195, 196, 197, 198, 199, 200: all XS or
+  S except 200, and three measured down to a one-or-two-line cause; **199 and 200 were ruled the
+  same day and are builds now, not questions**), then 188, then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
   of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
@@ -145,7 +147,7 @@ pinned by a target corpus document added in the same change) — but **do not gr
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
 
-189. **The scholar block does not follow the site-author fallback.** (S. Found 2026-08-01 while
+194. **The scholar block does not follow the site-author fallback.** (S. Found 2026-08-01 while
      building 186, by a negative test that could not be written non-vacuously.) `site/meta.rs`'s
      `citation_*` block gates on `page.authors` alone, while `cite_this::resolve` and the JSON-LD
      `author` on the *same page* both fall back to `_site.yml`'s `author:` (owner ruling
@@ -156,6 +158,94 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      which says in its own comment what to change when this is fixed. **The JSON-LD branch's comment
      asserts `citation_author` "already followed" that chain — it does not; fix the comment too.**
      Deliberately left out of 186, which completed the block's tag list rather than its gate.
+
+195. **The enlarged lightbox image cannot be dismissed from itself.** (XS, author-reported
+     2026-08-01, measured.) The backdrop carries `cursor:zoom-out`, but the enlarged image is
+     `cursor:default` (`11-lightbox.js:20`) and the close handler explicitly excludes it
+     (`11-lightbox.js:202`: `if (t !== lbImg && t !== lbVideo && !lbSvg.contains(t)) close()`). So
+     the one element the reader is looking at advertises nothing and does nothing; dismissal is
+     backdrop, Esc, or the `×`. Open on click, close on click is the symmetry readers expect.
+     **Scope it to the image only.** `.tali-lb-svg` (mermaid) is a scrollable, pannable box where a
+     click is the start of a pan, and `<video>` clicks belong to the native control bar: extending
+     click-to-close to either trades one missing affordance for a broken one. Pin with a browser
+     test (`deck_browser.rs` is the pattern); no corpus doc is owed, the corpus already has figures.
+
+196. **The companion's three tree views have no collapse-all.** (XS, author-reported 2026-08-01.)
+     `sidebar.ts:84-86` builds all three with `treeDataProvider` alone; VS Code's built-in is
+     `showCollapseAll: true` on the `createTreeView` options. The reason it sprawls enough to want
+     one is a second line: every row with children is hardcoded `TreeItemCollapsibleState.Expanded`
+     (`sidebar.ts:51`), so a whole book opens fully expanded. **Decide both together**, since
+     defaulting deeper rows to `Collapsed` may remove the need for the button. Unlike a
+     `package.json` `contributes` enum, this one is a typed TS option, so `tsc` catches a
+     misspelling. Pin in the companion e2e: a unit test does not prove VS Code accepted the option.
+
+197. **The project outline is in path order while claiming reading order.** (S, author-reported
+     2026-08-01, measured.) `lsp.rs:1043` builds the outline from `collect_pages` order, which is
+     `inputs.sort()` (`discovery.rs:19`), i.e. alphabetical by path. The docstring directly above it
+     (`lsp.rs:1039`) says "in reading order", which is untrue today, so **fix the comment in the same
+     change whichever way this lands.** The ordering data already exists and is already resolved:
+     `book: chapters:` in `_site.yml` becomes the reading order in `book.rs`, which is what the
+     sidebar and prev/next already use. Reading the outline top to bottom would then show what
+     follows what, which is the author's stated reason for wanting it. **One design question blocks
+     coding:** a page absent from `chapters:` currently still appears in the tree, and ordering by a
+     list it is not in would silently drop it. It needs an explicit home (an "Unlisted" group) or an
+     explicit rule. Non-book projects have no `chapters:` and must keep a defined fallback.
+
+198. **The mobile contents handle reads as a drag grip, not a button.** (S, author-reported
+     2026-08-01. **Smaller than it was filed as**: the press-to-open button already exists.)
+     `#tali-toc-handle` is already a real `<button aria-label="Contents">` pinned bottom-centre
+     (`page.rs:467`, styled `base.css:1214`), and `toc-sheet.js` already opens the sheet on tap. Two
+     things make it read as "drag me from the bottom edge": its only visible content is a 42x5 px
+     grip (`base.css:1224`), with no chevron and no visible label, and it is `display:none` while
+     the sheet is open (`base.css:1221`), so there is no press-again-to-close. So this is a restyle
+     (chevron plus label, and keep it mounted as a toggle when open), **not a mobile-TOC rebuild.**
+     The author's own note asks for a survey of how other products handle a mobile TOC before
+     committing to a shape; that survey is optional here, because the shape is already chosen and
+     only its affordance is wrong. Pin with a browser test at the mobile viewport, and mind the
+     documented scroll/drag false-negative pattern.
+
+199. **Delete the top reading-progress bar.** (XS. **RULED 2026-08-01: remove it.**) The author finds
+     it distracting while scrolling a book. The ruling was made on the corrected premise, recorded
+     here so it is not re-litigated: the reason first given (redundant with a sidebar progress bar)
+     does not hold, because there is no sidebar progress bar. `.tali-readbar` (`base.css:56`, built
+     by `15-reading-progress.js:19-25`) is the *only* reading-progress bar; `#tali-progress` is the
+     dev server's activity dot (`serve/mod.rs:912`) and `.tali-progress` is the deck's slide bar,
+     both unrelated. **The standing reason is that it duplicates the native scrollbar.**
+     - **This reverses the 2026-07-06 decision** that kept dev-menu, `#tali-progress` and the
+       reading bar as three separate signals. That line in "Decided against" is annotated; do not
+       read it as still standing.
+     - **Delete the bar element only, NOT `taliInitReadingProgress`.** The resume pill and the
+       book-scoped "Continue reading" slot live in the same function and are unrelated features
+       that must survive. `frac()` also feeds `saveSoon()` and `maybeShowResume()`, so it stays;
+       only the `bar`/`fill` DOM and the width write in `render()` go.
+     - Also remove `.tali-readbar` / `.tali-readbar-fill` from `base.css:56-59`, its `@media print`
+       rule (`base.css:71`), and the `print.css:81` entry.
+     - No reader preference for it (perfect the default before adding a knob).
+
+200. **Drop sepia, leaving light + dark.** (M. **RULED 2026-08-01: remove it**, overriding the
+     recommendation to keep. Do not re-open on the a11y argument: it was made, considered and
+     overruled.) Measured blast radius: 81 references. This is a wider change than it looks and has
+     one trap that fails loudly and several that fail silently.
+     - **Test pins PANIC rather than fail.** `render/tests.rs:5530,5606` slice `TOKENS_CSS` at
+       `html[data-theme="sepia"] {` with `.expect("sepia block")`, and `:4694` iterates a
+       `("sepia", …)` case. Removing the block panics the suite until these are updated.
+     - **The stored-choice migration is already safe, which is worth knowing before over-engineering
+       it.** `theme.rs:143` validates the persisted `tali-theme` against the allowed list and falls
+       back to `auto`, so a reader whose localStorage says `sepia` degrades cleanly once `sepia`
+       leaves that list. Update both lists (`theme.rs:143` and `taliSetTheme` at `:194`) plus the
+       pre-paint `BG` map at `:150`; do not add migration code.
+     - **A deck embedded in a sepia host maps to a light deck** (`deck.rs`, pinned by
+       `render/tests.rs:3239-3245` asserting `t==='sepia' ? 'light'`). That mapping goes too.
+     - **Corpus is the regression net and leads here**: `corpus/reader/preferences.tmd` demonstrates
+       the theme picker and `corpus/README.md:47` describes the `reader/` project as covering
+       "theme/sepia/size/width/spacing". Both change in the same commit.
+     - Remaining surface: `tokens.css` (the `html[data-theme="sepia"]` block plus the light+sepia
+       comments), `tokens-dark.css:6`, `base.css` (search-mark and flash keyframes at `:97-99,113-114`
+       and the ~10 syntax-highlight overrides at `:1030-1036`), `14-reader-prefs.js:13`,
+       `web-client/globals.d.ts`, and the guide (`using/reading.tmd`, `using/theming.tmd`,
+       `reference/accessibility.tmd`, `docs/internals/offline-theming.tmd`).
+     - The WCAG values in the deleted comments are *measurements of sepia*, not of light or dark:
+       nothing else depends on them, so they go with it.
 
 188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey §6.)
      Evidenced need, rejected mechanism: every project page shows N result figures and reaches for a
@@ -215,6 +305,53 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      additionally flip-gated** and overlaps 149's launch-presentation group in P3; do not build the
      same thing twice from both entries.
 
+202. **`taliesin features <dir>` — the adoption report.** (M. From the 2026-08-01
+     [feature-value audit](2026-08-01-feature-value-audit.md), F5, its highest-ranked finding.)
+     The tool cannot answer *what does this document use*. The render pipeline already knows every
+     construct it expanded — shortcode, div class, cell language, front-matter key, theorem kind —
+     and nothing surfaces it, so producing that audit's adoption table took a session of `grep`.
+     A feature → documents report **makes the corpus-plus-roadmap policy self-checking** (the policy
+     says every capability ships pinned by a corpus doc; that round found four documented keys with
+     no pin, below) and makes every future portfolio audit free. **Ride the existing projection
+     machinery** (`query.rs`, which already backs `read`/`map`) rather than adding a fifth
+     projection — see the four-projection sweep in the standing constraints. **Brainstorm the output
+     shape first**: the useful cut is per-feature-per-document, and it is a reporting command, not a
+     gate. The audit ranks this **above 188, 164 and 167**; that ranking is a recommendation, and
+     the cross-cluster owner call recorded in Start here is still unmade.
+
+203. **Remove the `columns` fenced div; keep `layout-ncol`.** (S. Feature-value audit, C1, measured
+     across all 185 `.tmd` documents.) Two mechanisms for one job, and one of them never took:
+     `columns` has **one** genuine authored use (`corpus/media/gallery.tmd`, which uses
+     `layout-ncol` in the same document), the other two hits being a typo fixture
+     (`corpus/diagnostics/typos.tmd`) and the generated tour deck (`corpus/scaffold/deck-tour.tmd`,
+     where CLAUDE.md already calls it "the DX5 alias"). Inherited Quarto vocabulary that six weeks
+     of daily writing did not adopt. **Removal owes a retired-key diagnostic**, not silence — the
+     `about:` / `number-within:` precedent: a leftover `::: {.columns}` must say *removed*, not be
+     answered by a did-you-mean pointing at a surviving class. The tour deck must be updated in the
+     same change (it is byte-pinned by `new_cli.rs`).
+
+204. **`{{< dataset >}}` should derive its provenance; retire the `datasets:` keys.** (S.
+     Feature-value audit, C3.) The shortcode has **11 uses**; the `datasets:` front-matter block
+     that annotates it has **zero** outside its own pin and the reference page. The card already
+     derives what it needs from the file on disk, which is why nobody fills the block in. This is
+     the clearest available instance of the audit's F1: a declared key where the derived value was
+     already sufficient. **Check first whether the remote-file case still needs a declaration**
+     (licence, origin, a remote file's size + digest are the things a file genuinely cannot say
+     about itself, per the `KNOWN_KEYS` comment) — if it does, the answer is a smaller key, not the
+     current one. Retired-key diagnostic as in 203; six drift gates come *back* when a key goes.
+
+205. **Take pyodide's 12.9 MB out of the binary.** (M. Feature-value audit, F3/C8.) `pyodide.rs`
+     `include_bytes!`s the vendored WASM runtime into every executable, and
+     `target/release/taliesin` is **101 MB**. The *page*-level conditionality is already correct and
+     must not be touched: `has_client_cells_of(body, "pyodide")` gates emission, the payload is
+     served as a route rather than inlined, and a reader without a `{pyodide}` cell pays nothing.
+     The cost is the **evaluation funnel** the premortem round ranked in its top three: everyone who
+     downloads Taliesin downloads a Python runtime for a capability one showcase page uses.
+     Download-on-first-use or a cargo feature flag; **whichever lands must keep the tool offline by
+     default** — a first-use download that fires without asking breaks the offline guarantee, so the
+     fallback when it is absent is the existing "renders as source" path, not a network call.
+     MPL-2.0 §3.4 means the `LICENSE` travels with the bytes wherever they end up.
+
 ### P2 — filed so it is not rediscovered as a defect
 
 Not worth a session on its own. Each is a record or a known cost, not a task.
@@ -251,6 +388,56 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      you are not editing is stale, and the yank the reveal/mark split guards against is a cursor in
      the page *already* on screen, which still never navigates — but it has not been lived with. If
      it turns out wrong, the answer is a better default, not a knob.
+
+201. **`exec.rs` still calls `--no-exec` "the safe way to preview a document you don't trust".**
+     (XS residual of shipped item 109, found 2026-08-01.) 109 fixed the *user-facing* wording and
+     it is now exemplary: `cli.tmd:184` says the flag "does **not** strip raw HTML" and
+     `cli.tmd:198-201` explains why there is deliberately no sanitizer and no CSP (the 2026-07-03
+     CSP ruling). The internal doc comment at `exec.rs:255-257` kept the old claim, so the codebase
+     now contradicts itself about a security property. Raw HTML still passes through verbatim
+     (`emit.rs:111-112`) by the documented trust model (`lib.rs:20-27`), so the *behaviour* is
+     correct and unchanged; only the comment is wrong. **Two lines. Do it while touching `exec.rs`
+     for something else** rather than spending a session on it.
+
+206. **Fold `render`, `blocks` and `symbols` off the top level.** (S. 2026-08-01
+     [feature-value audit](2026-08-01-feature-value-audit.md), F4/C4.) Nineteen top-level
+     subcommands is not a single-purpose tool's surface. Measured against 6,265 lines of the
+     author's shell history: **zero** hand-invocations of all three, and `blocks` is the only
+     subcommand with **zero** documentation pages anywhere in `docs/`. `render` is `build` to
+     stdout; `blocks` and `symbols` are debug dumps. Fold `render` into `build --stdout` and put
+     `blocks`/`symbols` behind one `inspect` namespace, or drop them. **Absence from history is only
+     signal for these three** — it structurally cannot see `lsp` (spawned by the companion),
+     `mcp`/`map`/`skim`/`read` (agent-facing), `completions`/`init`/`new` (one-shot), or `doctor`
+     (whose value is on the bad day, and which the first-contact round called exceptional). Do not
+     use that history to argue against any of those. **Not an alias problem:** `preview` already has
+     three spellings (`preview | dev | serve`) and the author still twice typed a fourth
+     (`tali view`), so adding `view` is not the fix — if anything `dev`/`serve` are the retirees.
+
+207. **The front-matter surface: four unpinned keys, and a policy that should be standing.**
+     (XS for the pins; the policy half is a one-line addition to Standing constraints.
+     Feature-value audit, F1/I4.) `include-in-header`, `include-before-body`, `include-after-body`
+     and `logo` are documented in the guide and **exercised by no corpus document** — all four *are*
+     unit-tested (`render/tests.rs`, `config.rs`, `asset_bundle.rs` and others), so this is a **pin
+     gap, not a coverage gap**, but corpus-plus-roadmap makes the corpus the arbiter of done and
+     these were never arbitrated. Either pin them or drop them. The larger half: `KNOWN_KEYS` holds
+     **33 keys and the author's 33 real documents set 15**, while a new key trips **six** drift
+     gates — the highest fixed cost per feature anywhere in the tool. **Promote "derive, don't
+     declare" from a batch note to Standing constraints**, with the six-gate cost as its stated
+     reason, so every proposed key has to answer *what on the page already implies this?* The
+     precedents are already proven: `citation_arxiv_id` from the `links:` host (185), affiliation
+     numbers from first appearance (184), and `doi:` as the counter-example that earns a key.
+
+208. **Re-measure the provisional features on 2026-09-15.** (XS, dated. Feature-value audit, T3.)
+     Three capabilities were shipped within three days of that round and so could only be judged on
+     their ship date; each got a review date instead of a verdict, and this item exists so the
+     deferral does not quietly become a permanent pass. Re-run the audit's adoption probe (the
+     `${(f)...}` array form with a known-positive control row — the first attempt returned an
+     all-zero table because zsh does not word-split unquoted parameters) and ask: has any **real**
+     document set `doi:`/`links:`/`venue:`/`award:` (185/186/187); does anything beyond
+     `docs/guide/using/interactive.tmd` use `{pyodide}` or `{glsl}` or `num`; has `pdf` been invoked
+     once outside a test? A still-empty column is not automatically a cut — it is the trigger to
+     price one. **Front-matter adoption must be counted inside the YAML block**, not grepped from
+     body text, or the reference page that documents a key reads as a page that uses it.
 
 ### P3 — blocked on an owner ruling (not a task until then)
 
@@ -339,6 +526,21 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
        the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are both
        taken. Renaming twice is worse than a bad search name — if keeping it, always publish as
        "Taliesin — the `.tmd` dev server" so the disambiguator travels.
+
+209. **`prose-lint`: cut it, or fold it into `check --prose`.** (Ruling. 282 LOC, shipped
+     2026-06-26. 2026-08-01 [feature-value audit](2026-08-01-feature-value-audit.md), C2.)
+     **Five weeks, zero adoption**: `prose-lint:` is set by two documents, its own pin
+     (`corpus/diagnostics/prose.tmd`) and the reference page that documents it — by an author who
+     writes daily. The mechanism is the likely cause rather than the feature: **a prose linter that
+     is opt-in per document is a linter nobody turns on**, because the author has to remember it
+     exists at the moment they create a file. If the capability is wanted, it belongs behind
+     `check --prose`, where the author already goes (5 invocations, 27 docs pages) and where one
+     flag covers a whole project. If it is not, it is 282 LOC and a `KNOWN_KEYS` entry costing six
+     drift gates for a feature with no user. **This is a ruling because it is the deletion of a
+     working, tested, documented feature** — the audit measured the demand, not the intent, and the
+     author may have built it for writing that has not happened yet. Either way, `banned:` word
+     lists are per-project far more naturally than per-document, which is an argument for the fold
+     independent of the cut. Retired-key diagnostic if it goes, as in 203/204.
 
 ### P4 — blocked on a device, a real user, or working-as-intended
 
@@ -654,6 +856,12 @@ branch are enough to find its commits.
 ### Numbers retained, never reused
 
 Each closed by a ruling or folded into another item, kept so a later round does not re-derive them.
+**189 was issued twice** and the collision was fixed 2026-08-01: `{{< pdf >}}` + `license:` (Tier 3,
+filed 2026-07-31) **keeps** 189, because
+[2026-07-31-research-publishing-survey.md](2026-07-31-research-publishing-survey.md) names it as
+"189 in Tier 3" and that file is a dated record that must not be rewritten. The scholar-block item
+(filed 2026-08-01, P1) was the later claimant and **became 194**. This is the one sanctioned
+exception to "never renumbered": two live items sharing a number is worse than one moving.
 **25** — the pre-public flip procedure, folded into **100** (its options (a)/(b)/(c) were settled by
 that ruling). **116** — the positional cascade vs a Python DAG, CLOSED, do not build; reactivity is
 marimo's well-made claim while reproducibility is unclaimed by anyone, so tell the cascade story
@@ -731,7 +939,9 @@ headings deliberately excluded).
   (not pagination) book reading; ship REAL bold/italic faces, never synthesized.
 - **2026-07-06 decisions:** book pager stays bottom-only; book page-TOC fix-in-place, keep both nav
   surfaces; xref graph tool removed; focus mode stays ephemeral; deck overview keeps per-slide
-  backgrounds; dev-menu + `#tali-progress` + reading-progress bar stay three separate signals.
+  backgrounds; dev-menu + `#tali-progress` + reading-progress bar stay three separate signals
+  (**the reading-bar half was REVERSED 2026-08-01: it is being deleted, see item 199.** The other
+  two signals are unaffected and stay separate).
 - **2026-07-18 PMF re-derivations:** the reader "Cite this" box (D70) was REVIVED and shipped as B1;
   the deck desktop "async handout" reading view stays CUT (do not re-open without a fresh ruling).
 
