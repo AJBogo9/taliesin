@@ -136,6 +136,13 @@ through its wrappers. What was actually missing was a fixture *shape*.
 
 ## Probes and instruments (each one produced a false result first)
 
+- **An inline `<li>` has NO list marker, so a one-line list silently loses its numbers.**
+  (2026-08-01, item 184.) `display: inline` on a list item to lay two or three entries out on one
+  line drops every marker. The affiliation numbers vanished while the `1,2` superscripts beside the
+  author names went on referring to them — a byline pointing at nothing. No server-side test can
+  see it, because the `<ol>` is correct in the markup; only a rendered pixel shows the absence.
+  **If a number is content, emit it as content**; a marker is decoration and CSS may decline to
+  draw it. More generally: a list's *presentation* is not a place to put meaning.
 - **A table-shaped probe whose every cell is negative is a BROKEN probe until proven otherwise.**
   (2026-07-28, R11/R14.) A 27-row construct inventory across nine decks returned `NONE` for every
   row. The cause was not the corpus: **zsh does not word-split `$VAR` in a `for` loop**, so the
@@ -333,6 +340,31 @@ through its wrappers. What was actually missing was a fixture *shape*.
   rendered copy of everything, so a `grep -r` for any phrase returns the *artifact* as well as the
   source, and a stale artifact answers a question about the source wrongly. This is AP9's "12
   `<h1>`" trap in a new costume. Exclude `_book/` and `_site/`, or restrict to tracked source.
+
+## Rendering content into a block it was not written in
+
+**A block id is hashed from the block's SOURCE LINES (`make_id`), never from its emitted HTML.**
+(2026-08-01, item 183.) So the moment a feature renders content *from elsewhere* into a block —
+a footnote definition beside its reference, a transclusion, anything gathered — that content's
+source must be folded into the referencing block's hash input. Otherwise every id is unchanged
+after an edit, `diff.rs` emits no op, and the live preview silently keeps showing the old text.
+There is no error and no visible symptom except staleness, and a whole-suite green tells you
+nothing: pin it with a test that renders two versions and asserts the ids **differ**
+(`editing_a_footnote_definition_changes_its_referencing_block_id`). Fold in only the sources a
+block actually displays, or an edit to one note re-keys unrelated blocks and resets their live
+state.
+
+**CSS cannot move an element next to an arbitrary earlier one.** Item 183 was filed as "Tufte's
+mechanism is pure CSS". It is — but only because Tufte's *markup* already puts the note inline at
+the reference. comrak moves every footnote definition to the document end, so the move had to
+happen at render time. Before pricing any "put X beside Y" feature, check whether the parser has
+already relocated X.
+
+**Anything spliced into a block must be phrasing content.** A reference can sit in a paragraph, a
+heading, a table cell or a list item, so a `<p>`/`<ul>`/`<pre>` spliced beside it makes the HTML
+parser close the enclosing element early — leaving the block with **two root elements**, which
+breaks the one-root-element invariant the block swap depends on. Flatten and warn rather than emit
+a DOM the block model cannot address.
 
 ## What the test net structurally cannot see
 

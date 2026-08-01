@@ -17,11 +17,37 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
+**Next session: take 186, then 185, then 187.** All three are unblocked and none needs a ruling.
+The order is deliberate and is *not* the file order below:
+
+- **186 first** (S). It is the smallest and the most nearly done: `crate::author::Author` already
+  carries `affiliations` and `orcid`, so `citation_author_institution` is reading a field that
+  exists. Everything else on its list (`citation_doi`, `citation_arxiv_id`,
+  `citation_abstract_html_url`, `og:image:width`/`height`) is emission only. It shares `emit_social`
+  with the embedded-deck path **by construction — add there, not next door**, and the
+  inlined-asset needle trap applies in both directions (needle the full emitted tag, never a bare
+  class name, and remember a NEGATIVE assertion is satisfied by bundled CSS).
+- **185 next** (S), because its `venue:` key is the one input 186 cannot supply itself. Minimal-config
+  shape is URL inference (`arxiv.org` → arXiv, `github.com` → Code, `*.pdf` → Paper). **Do not
+  overload `hero:`** — it replaces the title block and has no icon concept. Icons are bundled SVG.
+- **187 after that** (M): follow `cite_this.rs`'s generated-block pattern **including its determinism
+  rule** (no accessed-date, no build timestamp, or the byte-identical build and the freeze cache both
+  break), and it owes the four-projection sweep.
+- **188 is the one to leave**: lowest conviction in the cluster, and the item says so.
+
+Two things 183/184 established that these three will touch. The **title block is where a paper page's
+identity now lives** (byline, affiliation list, equal-contribution note), so 185's resource-links row
+and 187's appendix both need to decide where they sit relative to it. And **`author:` sub-keys are a
+closed vocabulary** (`crate::author::AUTHOR_KEYS`) that warns on a typo — a new sub-key goes there or
+it is silently dropped.
+
 - **P1 is a ranked build queue, not a menu.** Take from the top: the research-publishing cluster
   (185-188 — 183 and 184 shipped 2026-08-01), then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
-  it records what Taliesin already leads on and what was deliberately rejected. **The cross-cluster
-  ranking of 181-188 against 164/167 is an owner call that has not been made.**
+  it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
+  of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
+  survey wrote down, because the project's minimal-config rule outranks it. **The cross-cluster
+  ranking of 185-188 against 164/167 is an owner call that has not been made.**
 - **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded here
   on purpose: the author and parallel sessions both push, and a recorded SHA is the line that rots
   first.
@@ -103,17 +129,19 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### P1 — build now
 
-**The order below IS the priority order.** It encodes four things: **defects in shipped work first**,
-then **dependencies** (184 is substrate for 185/186/187), then **size** (cheap wins before the two
-large swings), then the author's standing **feature-first policy** (170, the marketing site, is
-deliberately last).
+**The order below IS the priority order.** It encodes three things: **size** (cheap wins before the
+two large swings), the cluster's internal grouping, and the author's standing **feature-first
+policy** (170, the marketing site, is deliberately last). The dependency that used to order it —
+184 as substrate for 185/186/187 — **is discharged**: 184 shipped 2026-08-01, so
+`crate::author::Author` (name, `affiliations`, `orcid`, `url`, `email`, `equal`) is on both
+`Page.authors` and `SiteConfig.authors`, and all three dependents can be taken in any order.
 
 Two conditions apply to every item here. **Each still owes a corpus pin doc** (a capability ships
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
 
-185. **Resource-links row + venue/award badges.** (S, after 184. Survey §6.) The one element every
+185. **Resource-links row + venue/award badges.** (S; 184 shipped, so nothing blocks it. Survey §6.) The one element every
      fork of the project-page template keeps: Paper / arXiv / Code / Supplementary under the byline.
      **Minimal-config shape is URL inference** (`arxiv.org` → arXiv, `github.com` → Code, `*.pdf` →
      Paper), with a `{text:, href:}` override. **Do not overload `hero:`** — it replaces the title
@@ -130,7 +158,7 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      next door — the page and embedded-deck paths share it by construction. **The inlined-asset
      needle trap applies, in both directions.**
 
-187. **The appendix block: author contributions / acknowledgments / DOI.** (M, after 184. Survey
+187. **The appendix block: author contributions / acknowledgments / DOI.** (M; 184 shipped, so nothing blocks it. Survey
      §4D + §6.) Distill's `d-appendix` made author-contributions a first-class section rather than
      prose. Follow `cite_this.rs`'s generated-block pattern **including its determinism rule** (no
      accessed-date, no build timestamp, or the byte-identical build and the freeze cache both
@@ -469,52 +497,26 @@ branch are enough to find its commits.
 
 ### Shipped
 
-- **2026-08-01 margin sidenotes + structured authors** (183, 184). **183 was NOT pure CSS**, contra
-  the item: no selector relocates an end-of-document element next to an arbitrary earlier one, so
-  the note is spliced in after its own reference at render time, and there is **no gathered endnote
-  section** (one copy, or all four text projections report every note twice). Two traps that the
-  item did not name and that a re-implementation will hit again: comrak moves every definition to
-  the document end, so the walk meets a reference *before* its definition (hence a pre-pass); and
-  **a block id is hashed from SOURCE lines, not emitted HTML**, so the definitions a block displays
-  must be folded into its hash or editing a note emits no diff op and the preview silently keeps the
-  old text. It also fixed a **pre-existing** collision that 183 would have made constant: on the two
-  TOC grid modes the sticky rail owns the right gutter, so `.column-margin` already drew on top of
-  the rail's rows (measured at 1440px, no footnote involved). **Do not re-file the print
-  fragmentation**: an in-flow printed note splits its paragraph at the marker, the fix is
-  `float: footnote` in the print track (159), and it is recorded in `base.css` beside the rule.
-  **184 diverges from the survey's recorded shape on purpose** — affiliations are written as NAMES
-  and the superscripts derived from first appearance, so there is no author-written index, no
-  `affiliations:` key, and the five-drift-gate trap never applies. **Do not "restore" the indexed
-  form.** Three of the item's claims were false: `authors` is read by `meta.rs`, `feed.rs`,
-  `discovery.rs` and `book.rs` as well as `cite_this.rs`; the byline is a **second parse path** the
-  item never mentions; and that path is `extract_field`, a line scan that skips indented lines and
-  so silently blanks a structured byline. Measured while pinning the cite gate:
-  **`author: ""` suppresses the cite box** rather than falling through to the site author (a
-  one-element list never takes the empty branch). JSON-LD also read the *site* config's authors for
-  a page naming its own, so `citation_author` and the JSON-LD disagreed about who wrote the page;
-  now the same page-then-site chain. Browser-verified at 1440px and 390px, which is what caught the
-  one defect no test would have: **an inline `<li>` has no list marker**, so laying the affiliations
-  out on one line silently dropped every number while the `1,2` superscripts beside the names went
-  on referring to them. The numbers are emitted as content now — **do not "simplify" them back to a
-  list marker.**
-- **2026-08-01 pyodide residuals + layout escapes** (190, 191, 181): a `{pyodide}` cell now runs in
-  **every** delivery mode with room for the runtime — verified in a browser running real NumPy, not
-  just asserted: `--out <dir>`, a site root page, live deck preview, and a deck inside a site build.
-  **The load-bearing find was a defect in 158's shipped work that item 190 did not name:**
-  `import(base + "pyodide.mjs")` got a page-relative `_assets/…`, which is a **bare module
-  specifier**, so the ROOT page of every site build failed at boot while nested pages worked (their
-  `../` is a valid relative specifier) — invisible to every server-side test. `pyodide.js` resolves
-  against `document.baseURI` now. **Do not re-file 191: it was already fixed** on 2026-07-31 by
-  `49d592c5` and the entry was rot; what was actually missing was the pin, which now exists
-  (measured 34.6px). `.column-page`/`.column-screen` are plain classes with **no render path**, and
-  there are **FIVE container modes, not the three the item claimed** (single-doc `body`,
-  `body.has-toc`, `.tali-site-main`, `.tali-site-main.has-toc`, `.tali-book-main`). **Do not
-  "simplify" the two TOC grids back to page-centred:** the rail is text with no background, and a
-  centred escape put content under it (measured: escape right edge 1331 vs rail left 1111), so on
-  those two modes an escape grows LEFT with its right edge flush to the prose. `overflow-x: **clip**`
-  (never `hidden`, which would make `<html>` a scroll container and kill every sticky element) is
-  scoped by `:has(.column-screen)`, and `.column-screen`'s gutter is what stops the ~7px full-bleed
-  overshoot from clipping the author's own text.
+- **2026-08-01 margin sidenotes + structured authors** (183, 184): a `[^note]` renders beside the
+  line that cites it and there is **no gathered endnote section** (one copy, or all four text
+  projections report every note twice). **Do not re-file the print fragmentation** — an in-flow
+  printed note splits its paragraph at the marker; the fix is `float: footnote` in the print track
+  (159) and it is recorded in `base.css`. **Do not "restore" the indexed affiliation form**: 184
+  writes affiliations as NAMES and derives the superscripts, on purpose, so there is no
+  `affiliations:` key and no index to desync. **Do not "simplify" the affiliation numbers back to a
+  list marker** (an inline `<li>` has none). A pre-existing rail collision was fixed with it: on the
+  two TOC grid modes any right-margin float, `.column-margin` included, drew on the rail's rows.
+  Method lessons in [LESSONS.md](LESSONS.md); five of the two items' filed claims were false.
+- **2026-08-01 pyodide residuals + layout escapes** (190, 191, 181): a `{pyodide}` cell runs in
+  **every** delivery mode with room for the runtime. **Do not re-file 191** (already fixed
+  2026-07-31 by `49d592c5`; only the pin was missing). `pyodide.js` resolves against
+  `document.baseURI` — a page-relative `_assets/…` is a **bare module specifier**, which broke the
+  ROOT page of every site build while nested pages worked. There are **FIVE container modes, not
+  three** (single-doc `body`, `body.has-toc`, `.tali-site-main`, `.tali-site-main.has-toc`,
+  `.tali-book-main`). **Do not "simplify" the two TOC grids back to page-centred** — the rail is
+  text with no background, so an escape grows LEFT there, right edge flush to the prose.
+  `overflow-x: clip`, never `hidden` (which makes `<html>` a scroll container and kills every
+  sticky element).
 - **2026-07-31 Pyodide cells** (158): a `{pyodide}` fence runs Python in the reader's browser off a
   vendored offline Pyodide + NumPy, in `preview` and a **site** build only; every single-document
   output degrades it to a listing. **`publish` is deliberately NOT on the cell `api`** (it is
