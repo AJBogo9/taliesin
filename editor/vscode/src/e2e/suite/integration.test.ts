@@ -66,6 +66,10 @@ suite("Taliesin companion (integration)", () => {
       "taliesin.moveSectionDown",
       "taliesin.promoteHeading",
       "taliesin.demoteHeading",
+      // The CodeLens buttons are inert if these are not registered: VS Code renders the
+      // button and reports "command not found" on click.
+      "taliesin.runCell",
+      "taliesin.runAll",
     ]) {
       assert.ok(cmds.includes(id), `${id} should be registered after activation`);
     }
@@ -759,6 +763,135 @@ suite("Taliesin companion (integration)", () => {
       console.log(`deliberate override ${key} shadows: ${shadowed.join(", ") || "nothing"}`);
     }
     assert.deepStrictEqual(clashes, [], "keybinding clash");
+  });
+
+  // The run buttons (item 175(d), first half, shipped in 1b8b3756) had no coverage at all
+  // until these. A unit test over `runcell.ts` could only prove the module builds a lens
+  // array; it could never show that VS Code accepted the provider, asked the language server
+  // for the cell regions, and rendered a button. This repo has been bitten by exactly that
+  // gap twice, so these drive `vscode.executeCodeLensProvider` in a real Extension Host.
+  //
+  // The fixture is a dedicated file rather than a corpus document because these assert exact
+  // line numbers: a corpus doc is edited for unrelated reasons and would drift the arithmetic
+  // silently. The corpus keeps its place in the net via the last test here, which asserts
+  // against a real document without hardcoding a line.
+  const RUNCELL_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/runcell.tmd");
+
+  /** The lenses VS Code renders for `uri`, once the server has answered. */
+  async function lensesFor(uri: vscode.Uri): Promise<vscode.CodeLens[]> {
+    const doc = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(doc);
+    const lenses = await waitForValue(async () => {
+      const got = (await vscode.commands.executeCommand(
+        "vscode.executeCodeLensProvider",
+        uri
+      )) as vscode.CodeLens[] | undefined;
+      // The provider answers `[]` while the language client is still starting, which is not
+      // the same as "this document has no cells" — poll rather than assert on the empty.
+      return got && got.length > 0 ? got : undefined;
+    }, 15000);
+    return lenses ?? [];
+  }
+
+  test("puts Run Cell over every executable fence, anchored on the fence line", async () => {
+    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
+    const runCell = lenses.filter((l) => l.command?.title === "▶ Run Cell");
+
+    // The fixture has three runnable cells: `{python}`, `{python}`, `{r}`.
+    assert.strictEqual(runCell.length, 3, "expected one Run Cell button per executable cell");
+
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(RUNCELL_FIXTURE));
+    for (const lens of runCell) {
+      // The button must sit ON the fence, not over the cell's first statement: that is the
+      // whole point of the `startLine - 1` in the provider, and the failure it prevents is a
+      // button that covers the author's code.
+      const anchored = doc.lineAt(lens.range.start.line).text;
+      assert.match(
+        anchored,
+        /^```\{(python|r)\}/,
+        `a Run Cell button is anchored on "${anchored}", which is not an executable fence`
+      );
+    }
+    assert.deepStrictEqual(
+      runCell.map((l) => l.range.start.line + 1).sort((a, b) => a - b),
+      [8, 22, 31],
+      "the three buttons should sit on the fixture's three executable fence lines"
+    );
+  });
+
+  test("puts no button over a fence no kernel runs", async () => {
+    // Three negatives in one fixture, and each is a different way to not be runnable:
+    // a plain ```bash fence, a `{bash}` cell block (a cell, but no kernel runs it), and a
+    // plain ```python fence. A button over any of them is what drift looks like to an
+    // author — it offers to run something that cannot run.
+    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
+    // Without this, the whole test passes vacuously: every `!includes` below is trivially
+    // true of an empty list, so a provider that broke completely would look like a provider
+    // that correctly withheld three buttons.
+    assert.ok(lenses.length > 0, "no lenses at all, so the negatives below prove nothing");
+    const lines = lenses.map((l) => l.range.start.line + 1);
+    for (const [line, what] of [
+      [14, "a plain ```bash fence"],
+      [18, "a `{bash}` cell block, which no kernel runs"],
+      [26, "a plain ```python fence"],
+    ] as [number, string][]) {
+      assert.ok(!lines.includes(line), `a button was placed over ${what} (line ${line})`);
+    }
+  });
+
+  test("offers Run Above only where there is something above to run", async () => {
+    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
+    const above = lenses.filter((l) => l.command?.title === "Run Above");
+    // Two, not three: on the first runnable cell the button would run nothing, which reads
+    // as a broken button.
+    assert.deepStrictEqual(
+      above.map((l) => l.range.start.line + 1).sort((a, b) => a - b),
+      [22, 31],
+      "Run Above belongs on every runnable cell except the first"
+    );
+  });
+
+  test("points --line at a line that resolves back to the cell the button sits over", async () => {
+    // The pin that binds the TypeScript anchor arithmetic to what the Rust resolver will do
+    // with it. `runcell.ts` anchors at `startLine - 1` and sends `startLine + 1`, two
+    // different adjustments to one number; if either drifts, every button silently runs the
+    // wrong cell and nothing else in this file would notice.
+    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(RUNCELL_FIXTURE));
+    const runCell = lenses.filter((l) => l.command?.title === "▶ Run Cell");
+    assert.strictEqual(runCell.length, 3, "fixture regressed");
+
+    for (const lens of runCell) {
+      const [, line] = lens.command!.arguments as [vscode.Uri, number];
+      const fenceLine = lens.range.start.line + 1;
+      // `--line` is 1-based and must land INSIDE the cell body, i.e. strictly after the
+      // fence. `runspec::resolve` reads a line as "the last cell starting at or before it",
+      // so a line landing on or before the fence resolves to the PREVIOUS cell — the
+      // off-by-one that would make every button run its predecessor.
+      assert.strictEqual(
+        line,
+        fenceLine + 1,
+        `the button on the fence at line ${fenceLine} sends --line ${line}, which is not its body`
+      );
+      assert.doesNotMatch(
+        doc.lineAt(line - 1).text,
+        /^```/,
+        `--line ${line} points at a fence, not at code`
+      );
+    }
+  });
+
+  test("puts the buttons on a real corpus document too", async () => {
+    // The fixture pins the arithmetic; this keeps the corpus in the regression net. No line
+    // numbers, so editing the post for unrelated reasons cannot break it — it only asserts
+    // that a document the project actually ships gets buttons at all.
+    const lenses = await lensesFor(
+      vscode.Uri.file(path.join(REPO_ROOT, "corpus/posts/pca-geometry/index.tmd"))
+    );
+    assert.ok(
+      lenses.some((l) => l.command?.title === "▶ Run Cell"),
+      "a corpus post full of {python} cells got no Run Cell button"
+    );
   });
 });
 
