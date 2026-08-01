@@ -521,3 +521,30 @@ which 2 are false positives.
   *baseline* had rotted by 9, not that the branch added 17. A total is evidence only of the run that
   produced it. What is worth carrying forward is **0 ignored** plus each interpreter canary printing
   `... ok` — those two mean the gates ran, and they do not rot.
+- **Count a new key's drift gates from the tree, not from memory: it is SIX, and the sixth is in
+  another crate.** (2026-08-01, the 185/186/187 batch.) A new front-matter key must be added to
+  `KNOWN_KEYS` and then reconciled with the JSON schema, the editor vocab, the bundled
+  `assets/agents/AGENTS.md`, the guide-reference completeness gate — and **the repo-root
+  `AGENTS.md`, whose test lives in `crates/server/tests/`**. Four of the six bless with
+  `TALIESIN_BLESS=1`; the guide one wants prose; the last is a `cp` from the blessed asset. The
+  trap is that `cargo test -p taliesin-core` comes back fully green while the repo-root copy is
+  stale, so the natural fast loop certifies five of six. Only `cargo test --workspace` sees it.
+- **Prefer deriving a value over declaring it — and check whether the author has already written it
+  somewhere you can read.** (2026-08-01.) `citation_arxiv_id` looked like it needed an `arxiv:`
+  key; the id is already inside the `arxiv.org` URL in `links:`. A link's label and icon are
+  already in its host. An affiliation's number is already implied by first appearance (184). Each
+  derivation is a key that does not exist and therefore cannot be typo'd, mis-synced or forgotten.
+  The counter-test that keeps this honest: a DOI is **not** derivable (nothing on the page implies
+  it) and three consumers need it, so it is one declared key normalised at parse — one canonical
+  spelling in the model beats each consumer re-deriving one. "Can I read it off something already
+  written?" is the question; "is a key shorter?" is not.
+- **A negative test that cannot be written non-vacuously is telling you about a defect, not about
+  the test.** (2026-08-01.) Pinning "no `doi:` ⇒ no `citation_doi`" needed a page that still emits
+  the surrounding block. The obvious corpus candidate (dated, authored via the site fallback)
+  emitted *nothing* — which is how the real finding surfaced: the `citation_*` gate reads
+  `page.authors` with no site fallback, while the Cite-this box and the JSON-LD author on the same
+  page both have one, so three metadata blocks disagree about whether the page has an author. The
+  JSON-LD branch's own comment asserted `citation_author` "already followed" that chain. **When
+  hunting for a page that satisfies a negative's precondition turns hard, stop and ask why** — and
+  when the answer is out of scope, pin the measured behaviour with a test that says in its comment
+  what to change once it is fixed, rather than deleting the pin.

@@ -39,7 +39,15 @@
 /// The sub-keys a structured author entry may carry. A typo here is worth a warning
 /// rather than silence: the value is dropped, and the only symptom is an affiliation
 /// that never appears on the page.
-pub(crate) const AUTHOR_KEYS: &[&str] = &["name", "affiliation", "orcid", "url", "email", "equal"];
+pub(crate) const AUTHOR_KEYS: &[&str] = &[
+    "name",
+    "affiliation",
+    "orcid",
+    "url",
+    "email",
+    "equal",
+    "contribution",
+];
 
 /// One declared author. `name` is the only required part; everything else is absent in
 /// the scalar spellings above and stays absent rather than being invented.
@@ -53,6 +61,13 @@ pub(crate) struct Author {
     /// `equal: true` — an equal-contribution marker, the one piece of author metadata a
     /// paper page carries that is about the *authorship* rather than the person.
     pub equal: bool,
+    /// `contribution:` — what this person actually did ("Designed the study and wrote the
+    /// analysis"). Rendered as an Author Contributions entry in the appendix.
+    ///
+    /// A sub-key rather than a top-level `contributions:` map keyed by name, because a map
+    /// would have to match a name string back to an author and would silently drop the
+    /// entry when the two spellings differed. Declared beside the name, it cannot miss.
+    pub contribution: Option<String>,
 }
 
 impl Author {
@@ -110,6 +125,7 @@ fn push_one(v: &serde_yaml::Value, warnings: &mut Vec<String>, out: &mut Vec<Aut
                             == Some(true);
                     }
                     "affiliation" => a.affiliations = string_list(val),
+                    "contribution" => a.contribution = scalar(val),
                     other => warnings.push(crate::frontmatter::unknown_key_message(
                         "author key",
                         other,
@@ -234,6 +250,7 @@ mod tests {
                 url: Some("https://example.org/ada".into()),
                 email: None,
                 equal: true,
+                contribution: None,
             }]
         );
     }

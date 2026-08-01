@@ -97,6 +97,8 @@ it. See [`links:`](#links-the-resource-row).
 | `links` | list | Resource links under the byline. A bare URL infers its own label and icon; a `{ text:, href:, icon: }` map overrides either half |
 | `venue` | string | Where the work appeared (`Proceedings of …`, `NeurIPS 2026`). Shown as a badge, and emitted as the Scholar `citation_conference_title` |
 | `award` | string | An award badge shown beside the venue (`Best Paper`) |
+| `acknowledgments` | string | Acknowledgments prose, rendered as an [appendix](#the-appendix) section. `acknowledgements` is the same key |
+| `acknowledgements` | string | The British spelling of `acknowledgments`; identical in effect, and neither is a typo |
 
 ### Code execution
 
@@ -164,6 +166,7 @@ author:
 | `url` | string | A personal page; makes the name a link in the byline |
 | `email` | string | Reaches the metadata only. Deliberately *not* rendered as a `mailto:` link, since a published address is what harvesters read |
 | `equal` | boolean | Marks an equal-contribution author (`*` in the byline, with a note under it) |
+| `contribution` | string | What this person did. Collected into the [appendix](#the-appendix)'s Author Contributions section |
 
 **You never write an affiliation number.** Every other tool in this space asks you to
 keep a list of institutions and put `affiliation: 1` against each author. Taliesin reads
@@ -222,6 +225,47 @@ derived from the link rather than declared again, since you already wrote the id
 This lives in the title block on purpose, and it is *not* part of
 [`hero:`](#hero-a-landing-banner): a hero replaces the title block wholesale, so a
 paper page would have to choose between its byline and its links.
+
+## The appendix {#the-appendix}
+
+Three things a paper owes its reader that prose tends to forget: who did what, who
+made it possible, and where the citable record lives. Declare any of them and
+Taliesin appends an appendix section after the references.
+
+```yaml
+---
+title: "On the Analytical Engine"
+doi: 10.5281/zenodo.1825009
+acknowledgments: "With thanks to the Analytical Society."
+author:
+  - name: "Grace Hopper"
+    contribution: "Designed the study and wrote the analysis."
+  - name: "Charles Babbage"
+    contribution: "Built the engine and ran the experiments."
+---
+```
+
+**A contribution is declared beside the name, not in a list of its own.** Every other
+tool makes you write a separate block keyed by author name, which then has to match a
+name you typed somewhere else — and silently drops the statement when the two
+spellings drift apart. As an `author:` sub-key it cannot miss, and an author who
+declares none simply contributes no row.
+
+Acknowledgments are usually a paragraph, so write them as a YAML folded block when a
+quoted one-liner gets unwieldy:
+
+```yaml
+acknowledgments: >
+  We thank the reviewers for their patience, and the Analytical
+  Society for access to the difference engine.
+```
+
+The `doi:` renders as a resolvable `doi.org` link and is the same key Google Scholar's
+`citation_doi` reads, so the identifier is written once.
+
+Nothing in the appendix reads a clock: there is no "accessed" date and no build
+timestamp, so a rebuild of an unchanged page is byte-identical and the `_freeze/`
+execution cache is never invalidated by it.
 
 ## `datasets:` (where the data came from) {#datasets-where-the-data-came-from}
 

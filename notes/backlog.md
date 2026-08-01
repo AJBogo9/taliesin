@@ -17,37 +17,41 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**Next session: take 186, then 185, then 187.** All three are unblocked and none needs a ruling.
-The order is deliberate and is *not* the file order below:
+**185, 186 and 187 shipped 2026-08-01**, which drains the research-publishing cluster down to 188.
+**Next session: 188 is the only cluster item left, and it is the one previously marked "leave"**
+(lowest conviction, and the item still says so) — so the real choice is 188 against the two large
+swings (164, 167), and **that cross-cluster ranking is an owner call that has not been made.** 189
+(below, S) came out of 186 and is unblocked.
 
-- **186 first** (S). It is the smallest and the most nearly done: `crate::author::Author` already
-  carries `affiliations` and `orcid`, so `citation_author_institution` is reading a field that
-  exists. Everything else on its list (`citation_doi`, `citation_arxiv_id`,
-  `citation_abstract_html_url`, `og:image:width`/`height`) is emission only. It shares `emit_social`
-  with the embedded-deck path **by construction — add there, not next door**, and the
-  inlined-asset needle trap applies in both directions (needle the full emitted tag, never a bare
-  class name, and remember a NEGATIVE assertion is satisfied by bundled CSS).
-- **185 next** (S), because its `venue:` key is the one input 186 cannot supply itself. Minimal-config
-  shape is URL inference (`arxiv.org` → arXiv, `github.com` → Code, `*.pdf` → Paper). **Do not
-  overload `hero:`** — it replaces the title block and has no icon concept. Icons are bundled SVG.
-- **187 after that** (M): follow `cite_this.rs`'s generated-block pattern **including its determinism
-  rule** (no accessed-date, no build timestamp, or the byte-identical build and the freeze cache both
-  break), and it owes the four-projection sweep.
-- **188 is the one to leave**: lowest conviction in the cluster, and the item says so.
+What those three established, for whoever touches this area next:
 
-Two things 183/184 established that these three will touch. The **title block is where a paper page's
-identity now lives** (byline, affiliation list, equal-contribution note), so 185's resource-links row
-and 187's appendix both need to decide where they sit relative to it. And **`author:` sub-keys are a
-closed vocabulary** (`crate::author::AUTHOR_KEYS`) that warns on a typo — a new sub-key goes there or
-it is silently dropped.
+- **A paper page's identity lives in the title block**, and now ends there too: byline → affiliation
+  list → equal-contribution note → `venue`/`award` badges → the `links:` resource row, all inside
+  `<header class="tali-title-block">`. The appendix is a *separate* generated block appended after
+  References and before the code-download box.
+- **A new front-matter key trips SIX drift gates, not five**: `KNOWN_KEYS`, the JSON schema, the
+  editor vocab, `crates/core/assets/agents/AGENTS.md`, the guide-reference completeness gate — and
+  **the repo-root `AGENTS.md`, whose test lives in the SERVER crate**, so `cargo test -p
+  taliesin-core` is green while it is stale. The first four bless; the last is a `cp` from the asset.
+- **Prefer deriving over declaring, and it works more often than it looks.** `citation_arxiv_id`
+  comes from the `arxiv.org` entry in `links:`; a link's label and icon come from its host; an
+  affiliation number comes from first appearance (184). Each is a key that does not exist and so
+  cannot be got wrong. `doi:` is the counter-example that proves the rule: nothing on the page
+  implies it, three consumers need it, so it is one declared key normalised at parse.
+- **`author:` sub-keys are a closed vocabulary** (`crate::author::AUTHOR_KEYS`) that warns on a
+  typo — a new sub-key goes there or it is silently dropped. `contribution:` was added there for
+  187 rather than as a top-level map keyed by name, which would have had to match a name string
+  back to an author and would drop the entry silently when the two spellings drifted.
 
-- **P1 is a ranked build queue, not a menu.** Take from the top: the research-publishing cluster
-  (185-188 — 183 and 184 shipped 2026-08-01), then the large swings. **Read
+- **P1 is a ranked build queue, not a menu.** Take from the top: what is left of the
+  research-publishing cluster (189, then 188 — 183/184 shipped 2026-08-01 and 185/186/187 the same
+  day), then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
   of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
-  survey wrote down, because the project's minimal-config rule outranks it. **The cross-cluster
-  ranking of 185-188 against 164/167 is an owner call that has not been made.**
+  survey wrote down, and 185/186 rejected its separate `arxiv:` key, both because the project's
+  minimal-config rule outranks it. **The cross-cluster ranking of 188 against 164/167 is an owner
+  call that has not been made.**
 - **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded here
   on purpose: the author and parallel sessions both push, and a recorded SHA is the line that rots
   first.
@@ -141,28 +145,17 @@ pinned by a target corpus document added in the same change) — but **do not gr
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
 
-185. **Resource-links row + venue/award badges.** (S; 184 shipped, so nothing blocks it. Survey §6.) The one element every
-     fork of the project-page template keeps: Paper / arXiv / Code / Supplementary under the byline.
-     **Minimal-config shape is URL inference** (`arxiv.org` → arXiv, `github.com` → Code, `*.pdf` →
-     Paper), with a `{text:, href:}` override. **Do not overload `hero:`** — it replaces the title
-     block and has no icon concept. Icons must be bundled SVG, never a CDN font. `venue:` also feeds
-     186's `citation_conference_title`.
-
-186. **Complete the Scholar + social meta.** (S, `citation_author_institution` **unblocked** — 184
-     shipped 2026-08-01, so `Author.affiliations` is on the page. Survey §6.)
-     `site/meta.rs:148-161` emits `citation_title`, `citation_author`, `citation_publication_date`,
-     `citation_journal_title` and `citation_public_url` (re-measured 2026-08-01). Missing:
-     `citation_conference_title`, `citation_doi`, `citation_arxiv_id`,
-     `citation_author_institution`, `citation_abstract_html_url`, and `og:image:width`/`height`
-     (known at build; LinkedIn needs them for a large card). Add to the **shared** `emit_social`, not
-     next door — the page and embedded-deck paths share it by construction. **The inlined-asset
-     needle trap applies, in both directions.**
-
-187. **The appendix block: author contributions / acknowledgments / DOI.** (M; 184 shipped, so nothing blocks it. Survey
-     §4D + §6.) Distill's `d-appendix` made author-contributions a first-class section rather than
-     prose. Follow `cite_this.rs`'s generated-block pattern **including its determinism rule** (no
-     accessed-date, no build timestamp, or the byte-identical build and the freeze cache both
-     break). Owes the four-projection sweep.
+189. **The scholar block does not follow the site-author fallback.** (S. Found 2026-08-01 while
+     building 186, by a negative test that could not be written non-vacuously.) `site/meta.rs`'s
+     `citation_*` block gates on `page.authors` alone, while `cite_this::resolve` and the JSON-LD
+     `author` on the *same page* both fall back to `_site.yml`'s `author:` (owner ruling
+     2026-07-18). So a dated post by the site owner emits a Cite-this box and a JSON-LD author and
+     **no scholar block at all** — three metadata blocks disagreeing about whether the page has an
+     author. The measured behaviour is pinned by
+     `crates/core/tests/scholar_meta.rs::the_scholar_block_does_not_follow_the_site_author_fallback`,
+     which says in its own comment what to change when this is fixed. **The JSON-LD branch's comment
+     asserts `citation_author` "already followed" that chain — it does not; fix the comment too.**
+     Deliberately left out of 186, which completed the block's tag list rather than its gate.
 
 188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey §6.)
      Evidenced need, rejected mechanism: every project page shows N result figures and reaches for a

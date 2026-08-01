@@ -381,6 +381,14 @@
         "name": "award"
       },
       {
+        "description": "Acknowledgments prose; rendered as an appendix section.",
+        "name": "acknowledgments"
+      },
+      {
+        "description": "British spelling of `acknowledgments`; identical in effect.",
+        "name": "acknowledgements"
+      },
+      {
         "description": "Document-level code-cell execution defaults.",
         "name": "execute"
       },

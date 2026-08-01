@@ -506,6 +506,27 @@
   /* The glyph must not grow with the reader's text-size preference to the point of
      out-weighing its own label. */
   .tali-resource-link svg { flex: none; width: 15px; height: 15px; }
+  /* The appendix. Set smaller and quieter than the body: it is real content (who did
+     what, who paid for it, where the record lives) but it is not what the reader came
+     for, and a full-size block at the end competes with the conclusion above it. */
+  .tali-appendix { margin: 3rem 0 0; padding-top: 1.25rem;
+    border-top: 1px solid var(--tali-border); font-size: .9em; color: var(--tali-muted); }
+  .tali-appendix-part + .tali-appendix-part { margin-top: 1.25rem; }
+  /* An `<h2>` for the outline (these are real sections a reader may jump to), sized down
+     to the surrounding small print rather than to the document's other H2s. */
+  .tali-appendix h2 { font: 600 .95em/1.3 var(--tali-font-head); margin: 0 0 .4rem;
+    color: var(--tali-fg); letter-spacing: 0; }
+  .tali-appendix p { margin: 0; }
+  /* Name / statement pairs. The grid keeps the names in one column so the list scans as a
+     table of who-did-what; it collapses to stacked rows when there is no room for two. */
+  .tali-contributions { display: grid; grid-template-columns: max-content 1fr;
+    gap: .3rem 1rem; margin: 0; }
+  .tali-contributions dt { font-weight: 600; color: var(--tali-fg); }
+  .tali-contributions dd { margin: 0; }
+  @media (max-width: 32rem) {
+    .tali-contributions { grid-template-columns: 1fr; gap: 0; }
+    .tali-contributions dd { margin: 0 0 .5rem; }
+  }
   pre { position: relative; padding: 1rem; border-radius: var(--tali-radius-md); overflow: auto; font-size: .9em;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride

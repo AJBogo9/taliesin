@@ -273,6 +273,137 @@ fn a_venue_alone_still_renders_its_badge_without_a_links_row() {
 }
 
 #[test]
+fn the_appendix_renders_contributions_acknowledgments_and_the_doi() {
+    // Item 187. Contributions are declared BESIDE the name (an `author:` sub-key), not in
+    // a separate map keyed by name: a map has to match a name string back to an author and
+    // silently drops the entry when the two spellings differ.
+    let doc = render_document(concat!(
+        "---\n",
+        "title: T\n",
+        "doi: https://doi.org/10.5281/zenodo.1234\n",
+        "acknowledgments: Thanks to the reviewers.\n",
+        "author:\n",
+        "  - name: Ada Lovelace\n",
+        "    contribution: Designed the study.\n",
+        "  - name: Charles Babbage\n",
+        "    contribution: Built the engine.\n",
+        "  - name: Anon Nobody\n",
+        "---\n\nx\n",
+    ));
+    let h = &doc
+        .blocks
+        .iter()
+        .find(|b| b.id == crate::render::APPENDIX_BLOCK_ID)
+        .expect("appendix block emitted")
+        .html;
+    assert!(
+        h.contains("<dt>Ada Lovelace</dt><dd>Designed the study.</dd>")
+            && h.contains("<dt>Charles Babbage</dt><dd>Built the engine.</dd>"),
+        "each contributor pairs with what they did: {h}"
+    );
+    assert!(
+        !h.contains("Anon Nobody"),
+        "an author who declared no contribution contributes no row: {h}"
+    );
+    assert!(h.contains("<h2>Acknowledgments</h2>"), "ack section: {h}");
+    assert!(h.contains("Thanks to the reviewers."), "ack prose: {h}");
+    // The model holds the BARE doi; a reader needs the resolvable form.
+    assert!(
+        h.contains("<a href=\"https://doi.org/10.5281/zenodo.1234\">10.5281/zenodo.1234</a>"),
+        "the DOI links to its resolver and reads as the bare id: {h}"
+    );
+    // It lands after the content, not before it.
+    let idx = doc
+        .blocks
+        .iter()
+        .position(|b| b.id == crate::render::APPENDIX_BLOCK_ID)
+        .unwrap();
+    assert!(idx > 0, "the appendix is appended, not prepended");
+}
+
+#[test]
+fn the_british_spelling_of_acknowledgements_is_not_a_typo() {
+    let doc = render_document("---\ntitle: T\nacknowledgements: Funded by a grant.\n---\n\nx\n");
+    assert!(
+        doc.blocks
+            .iter()
+            .any(|b| b.html.contains("Funded by a grant.")),
+        "`acknowledgements:` must render exactly like `acknowledgments:`"
+    );
+}
+
+#[test]
+fn acknowledgments_written_as_a_folded_block_render_as_prose_not_as_the_fold_marker() {
+    // Acknowledgments are a PARAGRAPH, so `>` is the natural way to write them — and the
+    // front-matter LINE SCAN (`extract_field`) returns the fold marker itself for
+    // `acknowledgments: >`, which is worse than returning nothing: the appendix renders a
+    // literal ">" where the prose should be. Reading the parsed YAML is what fixes it.
+    let doc = render_document(concat!(
+        "---\n",
+        "title: T\n",
+        "acknowledgments: >\n",
+        "  We thank the reviewers for their patience,\n",
+        "  and the Analytical Society for the engine.\n",
+        "---\n\nx\n",
+    ));
+    let h = &doc
+        .blocks
+        .iter()
+        .find(|b| b.id == crate::render::APPENDIX_BLOCK_ID)
+        .expect("appendix block emitted")
+        .html;
+    assert!(
+        h.contains("We thank the reviewers for their patience, and the Analytical Society"),
+        "the folded paragraph must render as prose: {h}"
+    );
+    assert!(
+        !h.contains("<p>&gt;</p>") && !h.contains("<p>></p>"),
+        "the fold marker must never reach the page: {h}"
+    );
+}
+
+#[test]
+fn a_page_declaring_none_of_the_appendix_keys_emits_no_appendix() {
+    // Opt-in furniture: an ordinary post gains no trailing block. Keyed on the block ID
+    // rather than a class substring, since the bundled CSS names the class on every page.
+    let doc = render_document("---\ntitle: T\nauthor: A\ndate: 2026-05-15\n---\n\nx\n");
+    assert!(
+        !doc.blocks
+            .iter()
+            .any(|b| b.id == crate::render::APPENDIX_BLOCK_ID),
+        "no appendix keys -> no appendix block"
+    );
+}
+
+#[test]
+fn the_appendix_is_deterministic_across_renders() {
+    // The rule `cite_this` documents and this block inherits: a generated block that read
+    // a clock would change on every build, breaking the byte-identical build AND
+    // invalidating the freeze cache on every run. Nothing here reads one, and this is the
+    // test that keeps it that way.
+    let src = concat!(
+        "---\n",
+        "title: T\n",
+        "doi: 10.5281/zenodo.1234\n",
+        "acknowledgments: Thanks.\n",
+        "author:\n",
+        "  - name: Ada\n",
+        "    contribution: Everything.\n",
+        "---\n\nx\n",
+    );
+    let a = render_document(src);
+    let b = render_document(src);
+    let pick = |d: &crate::render::RenderedDoc| {
+        d.blocks
+            .iter()
+            .find(|b| b.id == crate::render::APPENDIX_BLOCK_ID)
+            .map(|b| b.html.clone())
+            .expect("appendix emitted")
+    };
+    assert_eq!(pick(&a), pick(&b), "two renders must be byte-identical");
+}
+
+#[test]
 fn a_structured_author_still_reaches_the_byline_at_all() {
     // The regression this design is most exposed to. The byline used to be read by
     // `extract_field`, a LINE SCAN that skips indented lines — so a structured

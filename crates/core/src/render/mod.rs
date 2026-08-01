@@ -529,6 +529,8 @@ fn render_internal_impl(
     let mut links: Vec<crate::resource::ResourceLink> = Vec::new();
     let mut venue: Option<String> = None;
     let mut award: Option<String> = None;
+    let mut acknowledgments: Option<String> = None;
+    let mut doi: Option<String> = None;
     let mut description: Option<String> = None;
     let mut lang: Option<String> = None;
     // Deck chrome: a persistent per-slide footer text + corner logo image. Read on any
@@ -718,16 +720,38 @@ fn render_internal_impl(
                         let (list, msgs) = crate::resource::parse(v.get("links"));
                         warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
                         links = list;
+                        // These four read the parsed value rather than `extract_field`,
+                        // and `acknowledgments` is why. It is a PARAGRAPH, so it is written
+                        // as a folded block more often than not — and the line scan returns
+                        // the fold marker itself for `acknowledgments: >`, which is worse
+                        // than returning nothing: the appendix would render a literal ">"
+                        // where the prose should be.
+                        //
+                        // Both spellings are the same word; accepting one and warning on the
+                        // other would be a spelling opinion enforced as a schema. Same
+                        // precedent as `datasets:`'s `licence:`/`license:`.
+                        acknowledgments = yaml_scalar(&v, "acknowledgments")
+                            .or_else(|| yaml_scalar(&v, "acknowledgements"));
+                        venue = yaml_scalar(&v, "venue");
+                        award = yaml_scalar(&v, "award");
+                        // The bare identifier, so the appendix and Scholar's `citation_doi`
+                        // read one canonical spelling of whatever the author pasted.
+                        doi = yaml_scalar(&v, "doi").and_then(|d| crate::site::normalize_doi(&d));
                     }
                     Err(_) => {
+                        // YAML the parser refuses at all: recover what a line scan can, so a
+                        // scalar `author: Name` still produces a byline.
                         authors = extract_field(fm, "author")
                             .map(crate::author::Author::named)
                             .into_iter()
                             .collect();
+                        venue = extract_field(fm, "venue");
+                        award = extract_field(fm, "award");
+                        acknowledgments = extract_field(fm, "acknowledgments")
+                            .or_else(|| extract_field(fm, "acknowledgements"));
+                        doi = extract_field(fm, "doi").and_then(|d| crate::site::normalize_doi(&d));
                     }
                 }
-                venue = extract_field(fm, "venue");
-                award = extract_field(fm, "award");
                 description = extract_field(fm, "description");
                 footer = extract_field(fm, "footer");
                 logo = extract_field(fm, "logo");
@@ -1387,6 +1411,21 @@ fn render_internal_impl(
             },
         );
     }
+    // The appendix (author contributions / acknowledgments / DOI), after the References a
+    // reader scrolls past and before the code download, which is chrome rather than content.
+    // Reading view only: a deck has no appendix.
+    if format == DocFormat::Html {
+        let ap = appendix_html(&authors, acknowledgments.as_deref(), doi.as_deref());
+        if !ap.is_empty() {
+            blocks.push(Block {
+                id: APPENDIX_BLOCK_ID.to_string(),
+                sourcepos: String::new(),
+                source_file: None,
+                html: ap,
+                cell: None,
+            });
+        }
+    }
     // The reader's code download (C-READ-2), appended last of the generated blocks so it
     // sits after the References/footnotes a reader scrolls past. Reading view only: a deck
     // has no place to put a download list, and `mark_section_extents` below must still see
@@ -1614,6 +1653,86 @@ fn byline_html(authors: &[crate::author::Author]) -> Option<String> {
     }
     out.push_str("</span>");
     Some(out)
+}
+
+/// A top-level front-matter scalar off the *parsed* YAML, trimmed, `None` when absent or
+/// empty. Unlike [`extract_field`]'s line scan this reads a folded/literal block (`key: >`)
+/// as the paragraph it is, rather than as the fold marker.
+fn yaml_scalar(v: &serde_yaml::Value, key: &str) -> Option<String> {
+    match v.get(key)? {
+        serde_yaml::Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        serde_yaml::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+/// The block id of the generated appendix, so the projections and the incremental client
+/// can name it without matching on markup.
+pub const APPENDIX_BLOCK_ID: &str = "tali-appendix";
+
+/// The appendix: **Author Contributions**, **Acknowledgments**, and the DOI, in that order.
+///
+/// Distill's `d-appendix` made author-contributions a first-class *section* rather than a
+/// paragraph someone remembered to write, and that is the whole idea here: the information
+/// exists on nearly every multi-author paper, and leaving it to prose is what makes it
+/// inconsistent and easy to omit.
+///
+/// **Deterministic by construction** — nothing here reads a clock. A generated block that
+/// embedded an "accessed" date or a build timestamp would change on every build, which
+/// breaks the byte-identical build *and* invalidates the freeze cache on every run; the
+/// same rule `cite_this` documents.
+///
+/// Empty string when the page declares none of the three, so an ordinary post gains no
+/// trailing furniture.
+fn appendix_html(
+    authors: &[crate::author::Author],
+    acknowledgments: Option<&str>,
+    doi: Option<&str>,
+) -> String {
+    let contributors: Vec<&crate::author::Author> = authors
+        .iter()
+        .filter(|a| {
+            a.contribution
+                .as_deref()
+                .is_some_and(|c| !c.trim().is_empty())
+        })
+        .collect();
+    let ack = acknowledgments.map(str::trim).filter(|s| !s.is_empty());
+    let doi = doi.map(str::trim).filter(|s| !s.is_empty());
+    if contributors.is_empty() && ack.is_none() && doi.is_none() {
+        return String::new();
+    }
+    let mut h = format!("<div class=\"tali-appendix\" data-block-id=\"{APPENDIX_BLOCK_ID}\">");
+    if !contributors.is_empty() {
+        h.push_str(
+            "<section class=\"tali-appendix-part\"><h2>Author Contributions</h2><dl class=\"tali-contributions\">",
+        );
+        for a in contributors {
+            h.push_str(&format!(
+                "<dt>{}</dt><dd>{}</dd>",
+                html_escape(&a.name),
+                html_escape(a.contribution.as_deref().unwrap_or("").trim())
+            ));
+        }
+        h.push_str("</dl></section>");
+    }
+    if let Some(text) = ack {
+        h.push_str(&format!(
+            "<section class=\"tali-appendix-part\"><h2>Acknowledgments</h2><p>{}</p></section>",
+            html_escape(text)
+        ));
+    }
+    if let Some(doi) = doi {
+        // The bare identifier is what the model holds (`site::frontmatter::normalize_doi`);
+        // a reader needs the resolvable form, so the link is built here rather than stored.
+        h.push_str(&format!(
+            "<section class=\"tali-appendix-part\"><h2>DOI</h2><p><a href=\"https://doi.org/{}\">{}</a></p></section>",
+            escape_attr(doi),
+            html_escape(doi)
+        ));
+    }
+    h.push_str("</div>");
+    h
 }
 
 /// The bundled glyph for a resource link's `icon` name (inline SVG on `currentColor`, the

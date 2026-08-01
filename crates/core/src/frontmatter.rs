@@ -62,6 +62,10 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "links",
     "venue",
     "award",
+    // The generated appendix (author contributions / acknowledgments / DOI). Both
+    // spellings of the same word are accepted; neither is a typo.
+    "acknowledgments",
+    "acknowledgements",
     // Execution
     "execute",
     // Listings / project pages

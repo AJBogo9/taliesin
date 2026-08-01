@@ -90,6 +90,14 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "Where the work appeared, as a badge and the Scholar venue tag.",
         ),
         ("award", "An award badge shown beside the venue."),
+        (
+            "acknowledgments",
+            "Acknowledgments prose; rendered as an appendix section.",
+        ),
+        (
+            "acknowledgements",
+            "British spelling of `acknowledgments`; identical in effect.",
+        ),
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("hero", "Landing-page hero block configuration."),
