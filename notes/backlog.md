@@ -675,6 +675,38 @@ sensitivity/tradeoff register (R6), the D≥8 detection cluster (R7, now
 [DETECTION-DEBT.md](DETECTION-DEBT.md)), the draft ACR (R9, now published in the guide) and the
 external-document shape inventory (R11, item 129).
 
+**One NEW family is open and proposed, not closed: feature-importance (FV).** The 2026-08-01
+[feature-value audit](2026-08-01-feature-value-audit.md) opened it — the first round to ask *what
+earns its keep* rather than *does it work* or *is it wanted*. It measured **adoption**, which is the
+cheapest axis and not the strongest, and its own "Successor rounds" section carries six lenses with
+a method and a **kill condition** each (a round that would only rebuild existing rows is not worth
+running). Ranked as that round left them:
+
+- **FV-2, ablation — run this next.** Delete a feature, run the corpus, count what breaks. Turns
+  every cut verdict from a judgement into a measurement. **Run it across all of T2–T4 or not at
+  all**: run against only the three already-named cuts it just rebuilds 203/204/209. **Commit
+  first** — the mutation-testing footgun eats uncommitted work.
+- **FV-3, cost-to-carry.** Churn + gates + defects per feature, i.e. the cost to *keep* rather than
+  to *build*, which is the shape the first round is blind to. Ten-minute pre-check: if churn just
+  concentrates in `render/mod.rs` and `build.rs` regardless of feature, the signal is noise — stop.
+- **FV-4, cognitive surface.** Closest lens to the author's stated "fits the hand like a glove"
+  goal: bloat is felt as *recall load*, not binary size. Count the vocabulary a user must hold vs
+  how much the tool teaches at point of need.
+- **FV-5, the LSP/editor value round.** ~11,300 LOC, the largest single investment in the tool, and
+  **structurally invisible** to the first round (shell history cannot see a companion-spawned
+  process). Blocked on method, not will; any instrumentation stays off by default.
+- **FV-6, reader-side value.** Every number so far is *author* adoption. **Needs an outside human —
+  do not run it as a desk exercise.**
+- **FV-7, inherited vocabulary.** How much of the surface exists because Quarto had it (`columns`
+  was one) rather than because it was chosen. Mind the triage doc's own degenerate-heading caveat.
+
+FV-8 is not a lens: it is item **208**, the dated 2026-09-15 re-measure.
+
+**Correction, noticed 2026-08-01 while adding the above:** the paragraph two above says L6 (a real
+external document) is "blocked on a repository that is not on this machine". [AUDITS.md](AUDITS.md)
+records that **R11 ran 2026-07-28** against `rust-lang/book` (112 files, 25,962 lines) and a real
+Quarto book, producing items 127-130. L6 is **not** blocked and should not be re-scoped as such.
+
 ## Quarto catalog (policy, not a task)
 
 **Owner ruling 2026-07-16: no sweep. Triage an area on demand, when you next work that area.** Before
