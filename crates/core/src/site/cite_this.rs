@@ -109,12 +109,12 @@ pub(crate) fn resolve(page: &Page, config: &SiteConfig, url: Option<String>) -> 
     let (year, month, day) = crate::frontmatter::calendar_date(page.date.as_deref()?)?;
     // Site-author fallback (owner ruling 2026-07-18): page `author:` else site `author:`.
     // The chain stops here — never the site *title* — so the byline is a real name.
-    let raw_authors: &[String] = if page.authors.is_empty() {
+    let declared: &[crate::author::Author] = if page.authors.is_empty() {
         &config.authors
     } else {
         &page.authors
     };
-    let authors = parse_authors(raw_authors);
+    let authors = parse_authors(&crate::author::names(declared));
     if authors.is_empty() {
         return None;
     }
@@ -393,7 +393,10 @@ mod tests {
             title: title.map(Into::into),
             date: date.map(Into::into),
             description: None,
-            authors: authors.iter().map(|s| s.to_string()).collect(),
+            authors: authors
+                .iter()
+                .map(|s| crate::author::Author::named(*s))
+                .collect(),
             card_image: None,
             card_image_alt: None,
             categories: vec![],
@@ -649,6 +652,127 @@ ER  -";
                 family: "Lovelace".into()
             }]
         );
+    }
+
+    #[test]
+    fn the_render_gate_is_exactly_title_and_date_and_some_author() {
+        // The whole gate as a truth table, pinned as one unit BEFORE the author parser is
+        // restructured (item 184). Every other test here checks one axis; the risk this
+        // guards is different — a change to how authors are *parsed* silently moving the
+        // boundary of which pages emit a cite box at all. A page that gains or loses the
+        // box is a visible, permanent change to published output, and nothing else would
+        // catch it: the box is generated furniture, so no corpus document's source
+        // mentions it.
+        let site_author = SiteConfig {
+            title: Some("A Site".into()),
+            authors: vec!["Ada Lovelace".into()],
+            ..Default::default()
+        };
+        let no_site_author = SiteConfig {
+            title: Some("A Site".into()),
+            ..Default::default()
+        };
+        /// label, title, date, page authors, site has an author, expect a box.
+        type Case = (
+            &'static str,
+            Option<&'static str>,
+            Option<&'static str>,
+            &'static [&'static str],
+            bool,
+            bool,
+        );
+        let cases: &[Case] = &[
+            (
+                "everything present",
+                Some("T"),
+                Some("2026-04-14"),
+                &["Grace Hopper"],
+                false,
+                true,
+            ),
+            (
+                "page author, site author too",
+                Some("T"),
+                Some("2026-04-14"),
+                &["Grace Hopper"],
+                true,
+                true,
+            ),
+            (
+                "no page author, site author",
+                Some("T"),
+                Some("2026-04-14"),
+                &[],
+                true,
+                true,
+            ),
+            (
+                "no author anywhere",
+                Some("T"),
+                Some("2026-04-14"),
+                &[],
+                false,
+                false,
+            ),
+            (
+                "no title",
+                None,
+                Some("2026-04-14"),
+                &["Grace Hopper"],
+                true,
+                false,
+            ),
+            (
+                "empty title",
+                Some("  "),
+                Some("2026-04-14"),
+                &["Grace Hopper"],
+                true,
+                false,
+            ),
+            ("no date", Some("T"), None, &["Grace Hopper"], true, false),
+            (
+                "unparseable date",
+                Some("T"),
+                Some("someday"),
+                &["Grace Hopper"],
+                true,
+                false,
+            ),
+            // Measured, and NOT what it looks like: `author: ""` is a one-element list, so
+            // the "page has no author" branch never runs and the site author is never
+            // reached; the empty name is then dropped and the box disappears. An explicit
+            // blank SUPPRESSES the box rather than falling through to the site. Pinned as
+            // the behaviour that ships, not the behaviour anyone would predict.
+            (
+                "blank page author does NOT fall through to site",
+                Some("T"),
+                Some("2026-04-14"),
+                &[""],
+                true,
+                false,
+            ),
+            (
+                "blank page author, no site author",
+                Some("T"),
+                Some("2026-04-14"),
+                &[""],
+                false,
+                false,
+            ),
+        ];
+        for (label, title, date, authors, site_has_author, expect_box) in cases {
+            let cfg = if *site_has_author {
+                &site_author
+            } else {
+                &no_site_author
+            };
+            let got = resolve(&page(*title, *date, authors), cfg, None).is_some();
+            assert_eq!(
+                got, *expect_box,
+                "render gate changed for the `{label}` case: emitted a cite box = {got}"
+            );
+        }
     }
 
     #[test]

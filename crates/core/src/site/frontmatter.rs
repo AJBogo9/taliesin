@@ -10,7 +10,7 @@ pub(crate) struct FrontInfo {
     pub(crate) date: Option<String>,
     pub(crate) description: Option<String>,
     /// Front-matter `author` (a scalar or a list), for scholarly `citation_author` meta.
-    pub(crate) authors: Vec<String>,
+    pub(crate) authors: Vec<crate::author::Author>,
     pub(crate) image: Option<String>,
     /// Front-matter `image-alt`: alt text for the listing card image.
     pub(crate) image_alt: Option<String>,
@@ -51,7 +51,13 @@ pub(crate) fn parse_front_matter(
         title: scalar(val.get("title")),
         date: scalar(val.get("date")),
         description: scalar(val.get("description")),
-        authors: string_list(val.get("author")),
+        authors: {
+            let (list, msgs) = crate::author::parse(val.get("author"));
+            // The page rel tags the message the same way a `listing:` warning is tagged;
+            // an author sub-key typo is otherwise invisible (the value is just dropped).
+            warnings.extend(msgs.into_iter().map(|m| format!("{label}: {m}")));
+            list
+        },
         image: scalar(val.get("image")),
         image_alt: scalar(val.get("image-alt")),
         categories: string_list(val.get("categories")),

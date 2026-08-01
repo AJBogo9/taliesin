@@ -27,6 +27,7 @@
 //! exception.
 
 pub mod agents;
+pub(crate) mod author;
 pub mod cite;
 pub mod diagnostics;
 pub mod diff;

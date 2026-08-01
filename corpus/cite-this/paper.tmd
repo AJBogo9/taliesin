@@ -1,12 +1,31 @@
 ---
 title: "On the Analytical Engine"
-author: "Grace Hopper"
+author:
+  - name: "Grace Hopper"
+    affiliation: "Harvard Computation Laboratory"
+    orcid: "0000-0002-1825-0097"
+    url: "https://example.org/hopper"
+    equal: true
+  - name: "Charles Babbage"
+    affiliation:
+      - "Harvard Computation Laboratory"
+      - "Analytical Society"
+    equal: true
 date: 2026-03-09
 bibliography: refs.bib
 ---
 
 A worked publication page. It sets its own `author:`, a `date:`, and a
-`bibliography:`, so the **Cite this** box renders with this page's author as the
+`bibliography:`, so the **Cite this** box renders with this page's authors as the
 byline and a scholarly (`article-journal` / `JOUR`) type.
+
+The `author:` here is the **structured** form: each entry carries a name plus the
+things a byline, a Google Scholar `citation_*` tag and a JSON-LD `Person` all need
+to say about a person. Affiliations are written as names rather than as indices
+into a separate list, and the superscript numbers a reader sees are derived from
+first appearance — so the two authors here share the number `1` because they typed
+the same institution, with no index to keep in sync. The scalar spelling
+(`author: "Grace Hopper"`) stays valid and is what every other page in this corpus
+still uses; `note.tmd` next door exercises the site-level fallback.
 
 The engine's design builds on earlier notes [@lovelace1843].

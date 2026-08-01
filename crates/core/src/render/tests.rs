@@ -146,9 +146,72 @@ fn title_block_includes_subtitle_date_and_description() {
     assert!(h.contains("<p class=\"subtitle\">S</p>"), "got: {h}");
     assert!(h.contains("<p class=\"description\">D</p>"), "got: {h}");
     assert!(
-        h.contains("<span>A</span>")
+        h.contains("<span class=\"tali-author\">A</span>")
             && h.contains("<time datetime=\"2026-05-15\">15 May 2026</time>"),
         "got: {h}"
+    );
+    // A plain scalar `author:` gains no affiliation furniture: the title block a page
+    // without affiliations emits is the one it always emitted, plus a class name.
+    assert!(!h.contains("tali-affiliations"), "got: {h}");
+}
+
+#[test]
+fn a_structured_author_list_renders_a_byline_with_numbered_affiliations() {
+    // The whole point of item 184: `author:` carries more than a name, and the byline is
+    // the first of the three consumers to show it. The numbers are DERIVED from the
+    // affiliation strings (first appearance wins), so nothing in the source names an
+    // index and nothing can drift out of sync.
+    let doc = render_document(concat!(
+        "---\n",
+        "title: T\n",
+        "author:\n",
+        "  - name: Ada Lovelace\n",
+        "    affiliation: Analytical Engine Institute\n",
+        "    url: https://example.org/ada\n",
+        "    equal: true\n",
+        "  - name: Charles Babbage\n",
+        "    affiliation: [Analytical Engine Institute, Somewhere Else]\n",
+        "---\n\nx\n",
+    ));
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("<a href=\"https://example.org/ada\">Ada Lovelace</a>"),
+        "a `url:` links the name: {h}"
+    );
+    assert!(
+        h.contains("<sup class=\"tali-author-mark\">1,*</sup>"),
+        "Ada is at institution 1 and claims equal contribution: {h}"
+    );
+    assert!(
+        h.contains("<sup class=\"tali-author-mark\">1,2</sup>"),
+        "Charles shares institution 1 and adds 2: {h}"
+    );
+    assert!(
+        h.contains("<li>Analytical Engine Institute</li><li>Somewhere Else</li>"),
+        "the list is ordered by first appearance: {h}"
+    );
+    assert!(h.contains("* Equal contribution"), "equal note: {h}");
+    // One entry for an institution two authors share — the reason the strings are the
+    // key rather than an author-written index.
+    assert_eq!(
+        h.matches("Analytical Engine Institute").count(),
+        1,
+        "a shared affiliation is listed once: {h}"
+    );
+}
+
+#[test]
+fn a_structured_author_still_reaches_the_byline_at_all() {
+    // The regression this design is most exposed to. The byline used to be read by
+    // `extract_field`, a LINE SCAN that skips indented lines — so a structured
+    // `author:` (whose name sits on a sub-line) returned None and the byline vanished
+    // with no error. Nothing else would catch it: a title block is generated, so no
+    // document's source mentions the author's name.
+    let doc = render_document("---\ntitle: T\nauthor:\n  - name: Ada Lovelace\n---\n\nx\n");
+    assert!(
+        doc.blocks[0].html.contains("Ada Lovelace"),
+        "structured author must still produce a byline: {}",
+        doc.blocks[0].html
     );
 }
 

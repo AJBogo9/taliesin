@@ -126,7 +126,11 @@ impl Site {
                     .unwrap_or(base),
             ]
         } else {
-            self.config.authors.iter().map(String::as_str).collect()
+            self.config
+                .authors
+                .iter()
+                .map(|a| a.name.as_str())
+                .collect()
         };
         // Feed `updated` = newest entry's date (items are already date-sorted desc, but
         // take the max defensively).

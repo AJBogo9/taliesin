@@ -525,7 +525,7 @@ fn render_internal_impl(
     let mut title: Option<String> = None;
     let mut subtitle: Option<String> = None;
     let mut date: Option<String> = None;
-    let mut author: Option<String> = None;
+    let mut authors: Vec<crate::author::Author> = Vec::new();
     let mut description: Option<String> = None;
     let mut lang: Option<String> = None;
     // Deck chrome: a persistent per-slide footer text + corner logo image. Read on any
@@ -692,7 +692,29 @@ fn render_internal_impl(
                 title = extract_field(fm, "title");
                 subtitle = extract_field(fm, "subtitle");
                 date = extract_field(fm, "date");
-                author = extract_field(fm, "author");
+                // The byline reads the front matter as YAML, not with `extract_field`'s
+                // line scan: a structured `author:` puts the name on an INDENTED
+                // sub-line, which the scan skips, so it would return None and the byline
+                // would silently vanish. The scan stays the fallback for a block YAML
+                // cannot parse at all, where a scalar `author: Name` is still recoverable.
+                // `fm` is comrak's literal, `---` fences included, and a trailing `---`
+                // opens a SECOND YAML document that `from_str::<Value>` refuses outright.
+                // Parse the stripped block instead.
+                let block = crate::frontmatter::front_matter_block(src).unwrap_or(fm);
+                authors = match serde_yaml::from_str::<serde_yaml::Value>(block) {
+                    Ok(v) => {
+                        let (list, msgs) = crate::author::parse(v.get("author"));
+                        // Front matter is the head of the primary document by
+                        // definition, so line 1 is the right anchor and the only one in
+                        // scope here (the per-block `file`/`start_line` are bound below).
+                        warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
+                        list
+                    }
+                    Err(_) => extract_field(fm, "author")
+                        .map(crate::author::Author::named)
+                        .into_iter()
+                        .collect(),
+                };
                 description = extract_field(fm, "description");
                 footer = extract_field(fm, "footer");
                 logo = extract_field(fm, "logo");
@@ -1307,7 +1329,7 @@ fn render_internal_impl(
         && let Some(tb) = title_block_html(
             title.as_deref(),
             subtitle.as_deref(),
-            author.as_deref(),
+            &authors,
             date.as_deref(),
             description.as_deref(),
             read_time.as_deref(),
@@ -1478,7 +1500,7 @@ pub fn time_html(raw: &str, class: &str) -> String {
 fn title_block_html(
     title: Option<&str>,
     subtitle: Option<&str>,
-    author: Option<&str>,
+    authors: &[crate::author::Author],
     date: Option<&str>,
     description: Option<&str>,
     read_time: Option<&str>,
@@ -1495,9 +1517,7 @@ fn title_block_html(
     if let Some(d) = description.filter(|s| !s.is_empty()) {
         h.push_str(&format!("<p class=\"description\">{}</p>", html_escape(d)));
     }
-    let author_span = author
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("<span>{}</span>", html_escape(s)));
+    let author_span = byline_html(authors);
     // The date is humanized for display ("2026-04-14" → "14 April 2026") inside a
     // `<time datetime>` so it stays machine-readable; a value that isn't a plain ISO date is
     // shown verbatim (never mangled).
@@ -1517,8 +1537,89 @@ fn title_block_html(
             meta.join("")
         ));
     }
+    h.push_str(&affiliations_html(authors));
     h.push_str("</header>");
     Some(h)
+}
+
+/// The byline: every declared author, each carrying the superscript markers that tie it
+/// to the affiliation list below. `None` when nobody is named, so the meta line collapses
+/// exactly as it did when the byline was one optional string.
+///
+/// Names are joined with a comma rather than an "and" before the last: an author list is
+/// data here, and the "A, B and C" form has to know about locale and about a two-author
+/// list to read correctly, which is a lot of machinery for a separator.
+fn byline_html(authors: &[crate::author::Author]) -> Option<String> {
+    let named: Vec<&crate::author::Author> = authors
+        .iter()
+        .filter(|a| !a.name.trim().is_empty())
+        .collect();
+    if named.is_empty() {
+        return None;
+    }
+    let index = crate::author::affiliation_index(authors);
+    let mut out = String::from("<span class=\"tali-byline\">");
+    for (i, a) in named.iter().enumerate() {
+        if i > 0 {
+            out.push_str("<span class=\"tali-byline-sep\">, </span>");
+        }
+        out.push_str("<span class=\"tali-author\">");
+        // A `url:` makes the name a link to that person; without one it is plain text.
+        // Deliberately not `mailto:` from `email:` — an address published as a link is
+        // what address harvesters read, and `email:` exists for the metadata consumers.
+        match a.url.as_deref() {
+            Some(u) => out.push_str(&format!(
+                "<a href=\"{}\">{}</a>",
+                escape_attr(safe_url(u, false)),
+                html_escape(&a.name)
+            )),
+            None => out.push_str(&html_escape(&a.name)),
+        }
+        let mut marks: Vec<String> = crate::author::marks(a, &index)
+            .iter()
+            .map(|m| m.to_string())
+            .collect();
+        if a.equal {
+            marks.push("*".to_string());
+        }
+        if !marks.is_empty() {
+            out.push_str(&format!(
+                "<sup class=\"tali-author-mark\">{}</sup>",
+                html_escape(&marks.join(","))
+            ));
+        }
+        out.push_str("</span>");
+    }
+    out.push_str("</span>");
+    Some(out)
+}
+
+/// The numbered affiliation list under the byline, plus the equal-contribution note when
+/// any author claims one. Empty when no author declared either, so a page with a plain
+/// `author: Name` emits exactly the title block it always did.
+///
+/// An `<ol>` because the numbers ARE the content here — they are what the superscripts
+/// beside the names refer to — so they must survive with the text rather than being drawn
+/// by CSS a copy-paste would drop.
+fn affiliations_html(authors: &[crate::author::Author]) -> String {
+    let index = crate::author::affiliation_index(authors);
+    let any_equal = authors.iter().any(|a| a.equal);
+    if index.is_empty() && !any_equal {
+        return String::new();
+    }
+    let mut out = String::from("<div class=\"tali-affiliations\">");
+    if !index.is_empty() {
+        out.push_str("<ol class=\"tali-affiliation-list\">");
+        for aff in &index {
+            out.push_str(&format!("<li>{}</li>", html_escape(aff)));
+        }
+        out.push_str("</ol>");
+    }
+    if any_equal {
+        out.push_str("<p class=\"tali-equal-note\">* Equal contribution</p>");
+    }
+    out.push_str("</div>");
+    out
 }
 
 /// The built-in dark theme, scoped to `html[data-theme="dark"]` so it can be

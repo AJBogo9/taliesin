@@ -148,7 +148,7 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
             h.push_str(&meta("name", "citation_title", title));
         }
         for author in &page.authors {
-            h.push_str(&meta("name", "citation_author", author));
+            h.push_str(&meta("name", "citation_author", &author.name));
         }
         if let Some(d) = page.date.as_deref() {
             h.push_str(&meta("name", "citation_publication_date", d));
@@ -202,7 +202,11 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
     let authors: Vec<&str> = if site.config.authors.is_empty() {
         site.config.title.as_deref().into_iter().collect()
     } else {
-        site.config.authors.iter().map(String::as_str).collect()
+        site.config
+            .authors
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect()
     };
     // schema.org takes a lone Person or an array, so a single-author site is unchanged.
     let author_value = |authors: &[&str]| -> Option<Value> {
@@ -238,7 +242,19 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
             "mainEntityOfPage": &url,
             "url": &url,
         });
-        if let Some(a) = author_value(&authors) {
+        // The page's OWN authors, falling back to the site's — the same chain
+        // `cite_this::resolve` documents, and the same one `citation_author` already
+        // followed. This branch used to read the site config alone, so a page that named
+        // its own authors still advertised the site owner as the author of the article:
+        // the two metadata blocks on one page disagreed about who wrote it.
+        let declared = if page.authors.is_empty() {
+            &site.config.authors
+        } else {
+            &page.authors
+        };
+        if let Some(a) = person_value(declared) {
+            bp["author"] = a;
+        } else if let Some(a) = author_value(&authors) {
             bp["author"] = a;
         }
         if let Some(d) = page.description.as_deref() {
@@ -283,6 +299,55 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
     }
 }
 
+/// Declared authors as schema.org `Person` objects, carrying whatever each one declared:
+/// `affiliation` as an `Organization` (item 184's third consumer), `url`, `email`, and an
+/// ORCID as `sameAs` — which is the property a crawler resolves an identity through, and
+/// the reason storing a bare ORCID string would be worth nothing.
+///
+/// `None` when nobody is named, so the caller keeps its site-title fallback.
+fn person_value(authors: &[crate::author::Author]) -> Option<Value> {
+    let people: Vec<Value> = authors
+        .iter()
+        .filter(|a| !a.name.trim().is_empty())
+        .map(|a| {
+            let mut p = json!({ "@type": "Person", "name": a.name });
+            match a.affiliations.as_slice() {
+                [] => {}
+                [one] => p["affiliation"] = json!({ "@type": "Organization", "name": one }),
+                many => {
+                    p["affiliation"] = Value::Array(
+                        many.iter()
+                            .map(|n| json!({ "@type": "Organization", "name": n }))
+                            .collect(),
+                    )
+                }
+            }
+            if let Some(u) = &a.url {
+                p["url"] = json!(u);
+            }
+            if let Some(e) = &a.email {
+                p["email"] = json!(e);
+            }
+            if let Some(o) = &a.orcid {
+                // An ORCID identifies the person only if it is resolvable; a bare digit
+                // string is not something a consumer can follow.
+                let iri = if o.starts_with("http") {
+                    o.clone()
+                } else {
+                    format!("https://orcid.org/{o}")
+                };
+                p["sameAs"] = json!(iri);
+            }
+            p
+        })
+        .collect();
+    match people.len() {
+        0 => None,
+        1 => people.into_iter().next(),
+        _ => Some(Value::Array(people)),
+    }
+}
+
 /// Absolute social URLs from footer items that carry an `icon:` (the Person `sameAs`).
 fn footer_social_links(site: &Site) -> Vec<String> {
     let Some(f) = site.config.footer.as_ref() else {
@@ -301,6 +366,58 @@ fn footer_social_links(site: &Site) -> Vec<String> {
 #[cfg(test)]
 mod jsonld_tests {
     use crate::site::{Site, tests::write_site};
+
+    #[test]
+    fn a_structured_author_reaches_json_ld_with_its_affiliation() {
+        // Item 184's third consumer. Also pins the fix that came with it: this branch read
+        // the SITE config's authors, so a page naming its own authors still advertised the
+        // site owner as the article's author — while `citation_author` on the same page
+        // named the real ones. Two metadata blocks disagreeing about who wrote the page is
+        // worse than either being absent.
+        let root = write_site(
+            "jsonldaffil",
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal\nurl: https://ex.com\nauthor: \"Site Owner\"\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    concat!(
+                        "---\n",
+                        "title: My Paper\n",
+                        "date: 2026-05-15\n",
+                        "author:\n",
+                        "  - name: Ada Lovelace\n",
+                        "    affiliation: Analytical Engine Institute\n",
+                        "    orcid: 0000-0002-1825-0097\n",
+                        "---\n\nx\n",
+                    ),
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert!(
+            html.contains(r#""name":"Ada Lovelace""#),
+            "the PAGE's author wins over the site's: {html}"
+        );
+        assert!(
+            !html.contains(r#""@type":"Person","name":"Site Owner""#),
+            "the site owner must not be published as this page's author: {html}"
+        );
+        assert!(
+            html.contains(
+                r#""affiliation":{"@type":"Organization","name":"Analytical Engine Institute"}"#
+            ),
+            "affiliation rides along as an Organization: {html}"
+        );
+        assert!(
+            html.contains(r#""sameAs":"https://orcid.org/0000-0002-1825-0097""#),
+            "a bare ORCID is published as a RESOLVABLE iri, or it identifies nobody: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn post_emits_blogposting() {

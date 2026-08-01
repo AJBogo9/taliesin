@@ -456,6 +456,29 @@
   .tali-title-block .description { margin: .4rem 0; color: var(--tali-fg); }
   .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
     font: 14px var(--tali-font-head); color: var(--tali-muted); }
+  /* Structured byline (item 184). The byline is ONE flex item on the meta line, so a
+     multi-author list wraps as a unit and never interleaves with the date — the names
+     stay together and the separators stay with them. */
+  .tali-title-block .tali-byline { display: inline; }
+  .tali-title-block .tali-author { white-space: nowrap; }
+  /* A name that carries a `url:` reads as a name, not as a link in a sentence: the
+     underline arrives on hover/focus rather than sitting under every byline. */
+  .tali-title-block .tali-author a { color: inherit; text-decoration: none; }
+  .tali-title-block .tali-author a:hover,
+  .tali-title-block .tali-author a:focus-visible { text-decoration: underline;
+    text-underline-offset: .15em; }
+  /* The superscript tying a name to its affiliation. `line-height: 0` keeps the marker
+     from stretching the byline's line box, the same trick `.tali-fnref` uses. */
+  .tali-author-mark { font-size: .75em; line-height: 0; vertical-align: super;
+    margin-left: .1em; color: var(--tali-accent); }
+  /* The numbered list under the byline. `list-style-position: inside` + inline `<li>`s
+     keeps two or three institutions on one quiet line instead of a stacked block that
+     would out-weigh the title it sits under. */
+  .tali-affiliations { margin: .35rem 0 0; font: 13px/1.5 var(--tali-font-head);
+    color: var(--tali-muted); }
+  .tali-affiliation-list { margin: 0; padding: 0; list-style-position: inside; }
+  .tali-affiliation-list li { display: inline; margin-right: .9rem; }
+  .tali-equal-note { margin: .2rem 0 0; }
   pre { position: relative; padding: 1rem; border-radius: var(--tali-radius-md); overflow: auto; font-size: .9em;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
