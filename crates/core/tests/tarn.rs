@@ -396,35 +396,6 @@ fn a_below_toc_gate_chapters_sections_reach_the_drawer_outline() {
 }
 
 #[test]
-fn the_navs_prose_length_agrees_with_the_skim_projection() {
-    // Three surfaces now report a chapter's length — the drawer, the landing Contents, and
-    // `skim`/`map`'s `words` (which the LSP outline and any agent read). They must be one
-    // number. `skim` counted the RAW source while the nav counts the include-EXPANDED one,
-    // which agrees on every chapter that has no include and silently disagrees on the ones
-    // that do; this pins them equal across a whole real book.
-    let site = tarn();
-    let book = site.book.as_ref().expect("tarn is a book");
-    let skimmed: std::collections::HashMap<String, usize> =
-        site.skim().into_iter().map(|p| (p.url, p.words)).collect();
-    let mut checked = 0;
-    for e in book.entries.iter().filter(|e| e.part.is_none()) {
-        let Some(&words) = skimmed.get(&e.url) else {
-            continue; // a page skim can decline (the 404 chrome page)
-        };
-        assert_eq!(
-            e.words, words,
-            "the nav and the skim projection disagree on {}",
-            e.url
-        );
-        checked += 1;
-    }
-    assert!(
-        checked >= 12,
-        "every chapter should be compared, got {checked}"
-    );
-}
-
-#[test]
 fn both_chapter_nav_surfaces_print_the_same_prose_length() {
     // The drawer and the landing Contents are two renderers over one `Book.entries` list,
     // so the cost signal must come from one `words_label` or they will print different

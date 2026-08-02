@@ -270,7 +270,7 @@ fn render_doc_with_includes_impl(
     // expand after includes, line-preserving so `origins` stays valid. A `{{< name >}}`
     // that no built-in declares is left verbatim but reported, so a typo'd shortcode
     // doesn't ship silently as literal text.
-    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded, Some(base_dir));
+    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
     // Hands `expanded`/`origins` over rather than copying them: the watchdog needs owned
     // inputs, and this path already owns both.
     let mut doc = render_internal(
@@ -529,11 +529,6 @@ fn render_internal_impl(
     let mut subtitle: Option<String> = None;
     let mut date: Option<String> = None;
     let mut authors: Vec<crate::author::Author> = Vec::new();
-    let mut links: Vec<crate::resource::ResourceLink> = Vec::new();
-    let mut venue: Option<String> = None;
-    let mut award: Option<String> = None;
-    let mut acknowledgments: Option<String> = None;
-    let mut doi: Option<String> = None;
     let mut description: Option<String> = None;
     let mut lang: Option<String> = None;
     // Deck chrome: a persistent per-slide footer text + corner logo image. Read on any
@@ -707,29 +702,6 @@ fn render_internal_impl(
                         // scope here (the per-block `file`/`start_line` are bound below).
                         warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
                         authors = list;
-                        // `links:` is YAML-shaped for the same reason `author:` is (a map
-                        // entry lives on indented sub-lines), so it reads the parsed value
-                        // rather than the line scan.
-                        let (list, msgs) = crate::resource::parse(v.get("links"));
-                        warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
-                        links = list;
-                        // These four read the parsed value rather than `extract_field`,
-                        // and `acknowledgments` is why. It is a PARAGRAPH, so it is written
-                        // as a folded block more often than not — and the line scan returns
-                        // the fold marker itself for `acknowledgments: >`, which is worse
-                        // than returning nothing: the appendix would render a literal ">"
-                        // where the prose should be.
-                        //
-                        // Both spellings are the same word; accepting one and warning on the
-                        // other would be a spelling opinion enforced as a schema. Same
-                        // precedent as `datasets:`'s `licence:`/`license:`.
-                        acknowledgments = yaml_scalar(&v, "acknowledgments")
-                            .or_else(|| yaml_scalar(&v, "acknowledgements"));
-                        venue = yaml_scalar(&v, "venue");
-                        award = yaml_scalar(&v, "award");
-                        // The bare identifier, so the appendix and Scholar's `citation_doi`
-                        // read one canonical spelling of whatever the author pasted.
-                        doi = yaml_scalar(&v, "doi").and_then(|d| crate::site::normalize_doi(&d));
                     }
                     Err(_) => {
                         // YAML the parser refuses at all: recover what a line scan can, so a
@@ -738,11 +710,6 @@ fn render_internal_impl(
                             .map(crate::author::Author::named)
                             .into_iter()
                             .collect();
-                        venue = extract_field(fm, "venue");
-                        award = extract_field(fm, "award");
-                        acknowledgments = extract_field(fm, "acknowledgments")
-                            .or_else(|| extract_field(fm, "acknowledgements"));
-                        doi = extract_field(fm, "doi").and_then(|d| crate::site::normalize_doi(&d));
                     }
                 }
                 description = extract_field(fm, "description");
@@ -786,7 +753,6 @@ fn render_internal_impl(
                             echo: cell_flag_or(&cb.literal, "echo", true),
                             include: cell_flag_or(&cb.literal, "include", true),
                             cache: cell_flag_or(&cb.literal, "cache", exec_cache),
-                            fig_export: cell_option(&cb.literal, "fig-export").map(str::to_string),
                             js,
                         }
                     }),
@@ -1375,11 +1341,6 @@ fn render_internal_impl(
             date.as_deref(),
             description.as_deref(),
             read_time.as_deref(),
-            crate::resource::Resources {
-                links: &links,
-                venue: venue.as_deref(),
-                award: award.as_deref(),
-            },
         )
     {
         blocks.insert(
@@ -1416,11 +1377,11 @@ fn render_internal_impl(
             },
         );
     }
-    // The appendix (author contributions / acknowledgments / DOI), after the References a
-    // reader scrolls past and before the code download, which is chrome rather than content.
-    // Reading view only: a deck has no appendix.
+    // The appendix (author contributions), after the References a reader scrolls past and
+    // before the code download, which is chrome rather than content. Reading view only: a
+    // deck has no appendix.
     if format == DocFormat::Html {
-        let ap = appendix_html(&authors, acknowledgments.as_deref(), doi.as_deref());
+        let ap = appendix_html(&authors);
         if !ap.is_empty() {
             blocks.push(Block {
                 id: APPENDIX_BLOCK_ID.to_string(),
@@ -1566,7 +1527,6 @@ fn title_block_html(
     date: Option<&str>,
     description: Option<&str>,
     read_time: Option<&str>,
-    resources: crate::resource::Resources<'_>,
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
@@ -1601,9 +1561,6 @@ fn title_block_html(
         ));
     }
     h.push_str(&affiliations_html(authors));
-    // Last inside the title block: the artefacts a reader came for sit under the people
-    // who made them, which is also where every project-page template puts them.
-    h.push_str(&resource_links_html(resources));
     h.push_str("</header>");
     Some(h)
 }
@@ -1660,17 +1617,6 @@ fn byline_html(authors: &[crate::author::Author]) -> Option<String> {
     Some(out)
 }
 
-/// A top-level front-matter scalar off the *parsed* YAML, trimmed, `None` when absent or
-/// empty. Unlike [`extract_field`]'s line scan this reads a folded/literal block (`key: >`)
-/// as the paragraph it is, rather than as the fold marker.
-fn yaml_scalar(v: &serde_yaml::Value, key: &str) -> Option<String> {
-    match v.get(key)? {
-        serde_yaml::Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        _ => None,
-    }
-}
-
 /// The block id of the generated appendix, so the projections and the incremental client
 /// can name it without matching on markup.
 pub const APPENDIX_BLOCK_ID: &str = "tali-appendix";
@@ -1689,11 +1635,7 @@ pub const APPENDIX_BLOCK_ID: &str = "tali-appendix";
 ///
 /// Empty string when the page declares none of the three, so an ordinary post gains no
 /// trailing furniture.
-fn appendix_html(
-    authors: &[crate::author::Author],
-    acknowledgments: Option<&str>,
-    doi: Option<&str>,
-) -> String {
+fn appendix_html(authors: &[crate::author::Author]) -> String {
     let contributors: Vec<&crate::author::Author> = authors
         .iter()
         .filter(|a| {
@@ -1702,9 +1644,7 @@ fn appendix_html(
                 .is_some_and(|c| !c.trim().is_empty())
         })
         .collect();
-    let ack = acknowledgments.map(str::trim).filter(|s| !s.is_empty());
-    let doi = doi.map(str::trim).filter(|s| !s.is_empty());
-    if contributors.is_empty() && ack.is_none() && doi.is_none() {
+    if contributors.is_empty() {
         return String::new();
     }
     let mut h = format!("<div class=\"tali-appendix\" data-block-id=\"{APPENDIX_BLOCK_ID}\">");
@@ -1721,99 +1661,8 @@ fn appendix_html(
         }
         h.push_str("</dl></section>");
     }
-    if let Some(text) = ack {
-        h.push_str(&format!(
-            "<section class=\"tali-appendix-part\"><h2>Acknowledgments</h2><p>{}</p></section>",
-            html_escape(text)
-        ));
-    }
-    if let Some(doi) = doi {
-        // The bare identifier is what the model holds (`site::frontmatter::normalize_doi`);
-        // a reader needs the resolvable form, so the link is built here rather than stored.
-        h.push_str(&format!(
-            "<section class=\"tali-appendix-part\"><h2>DOI</h2><p><a href=\"https://doi.org/{}\">{}</a></p></section>",
-            escape_attr(doi),
-            html_escape(doi)
-        ));
-    }
     h.push_str("</div>");
     h
-}
-
-/// The bundled glyph for a resource link's `icon` name (inline SVG on `currentColor`, the
-/// same shape `site::chrome::social_icon` uses). Bundled rather than fetched: an icon font
-/// or a CDN sprite would put a network request in a page that is otherwise fully offline,
-/// and the row would render as empty boxes when that request fails. An unknown name gets
-/// the generic link glyph, so a hand-written `icon:` can never blank the button.
-fn resource_icon(name: &str) -> &'static str {
-    match name {
-        // A document with a folded corner: paper / arXiv / DOI.
-        "paper" => {
-            "<path d=\"M4 1.5h5L13 5.5v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z\"/><path d=\"M9 1.5v4h4\"/>"
-        }
-        // Angle brackets: a code repository.
-        "code" => "<path d=\"M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5\"/>",
-        // A stack of discs: a dataset.
-        "data" => {
-            "<ellipse cx=\"8\" cy=\"4\" rx=\"5\" ry=\"2\"/><path d=\"M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2\"/>"
-        }
-        // A play triangle in a frame.
-        "video" => {
-            "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\"/><path d=\"m7 6.5 3.5 1.5L7 9.5z\"/>"
-        }
-        _ => {
-            "<path d=\"M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2.5-2.5a2.5 2.5 0 0 0-3.5-3.5l-.8.8\"/><path d=\"M9.5 6.5a2.5 2.5 0 0 0-3.5 0L3.5 9a2.5 2.5 0 0 0 3.5 3.5l.8-.8\"/>"
-        }
-    }
-}
-
-/// The resource row under the byline: the `venue:` / `award:` badges, then one button per
-/// `links:` entry. Empty string when the page declares none of the three, so an ordinary
-/// post's title block is byte-for-byte what it always was.
-///
-/// Badges lead and links follow, in one band, because they answer a reader's two questions
-/// in that order: *where did this appear*, then *where do I get it*.
-fn resource_links_html(resources: crate::resource::Resources<'_>) -> String {
-    if resources.is_empty() {
-        return String::new();
-    }
-    let crate::resource::Resources { links, .. } = resources;
-    let venue = resources.venue.filter(|s| !s.trim().is_empty());
-    let award = resources.award.filter(|s| !s.trim().is_empty());
-    let mut out = String::from("<div class=\"tali-resources\">");
-    if venue.is_some() || award.is_some() {
-        out.push_str("<div class=\"tali-badges\">");
-        if let Some(v) = venue {
-            out.push_str(&format!(
-                "<span class=\"tali-badge tali-badge-venue\">{}</span>",
-                html_escape(v)
-            ));
-        }
-        if let Some(a) = award {
-            out.push_str(&format!(
-                "<span class=\"tali-badge tali-badge-award\">{}</span>",
-                html_escape(a)
-            ));
-        }
-        out.push_str("</div>");
-    }
-    if !links.is_empty() {
-        out.push_str("<div class=\"tali-resource-links\">");
-        for l in links {
-            out.push_str(&format!(
-                "<a class=\"tali-resource-link\" href=\"{}\"><svg xmlns=\"http://www.w3.org/2000/svg\" \
-                 width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" \
-                 stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\" \
-                 aria-hidden=\"true\">{}</svg><span>{}</span></a>",
-                escape_attr(safe_url(&l.href, false)),
-                resource_icon(&l.icon),
-                html_escape(&l.text)
-            ));
-        }
-        out.push_str("</div>");
-    }
-    out.push_str("</div>");
-    out
 }
 
 /// The numbered affiliation list under the byline, plus the equal-contribution note when
@@ -2302,7 +2151,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
-    include_str!("../../assets/js/code-enhance/17-cite-box.js"),
     include_str!("../../assets/js/code-enhance/18-media.js"),
     include_str!("../../assets/js/code-enhance/19-book-outline.js"),
     include_str!("../../assets/js/code-enhance/20-code-visibility.js"),

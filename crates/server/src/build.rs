@@ -3495,7 +3495,6 @@ mod build_diag_tests {
                 echo: true,
                 include: true,
                 cache: true,
-                fig_export: None,
                 js: JsOpts::default(),
             })
         };

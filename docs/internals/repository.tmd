@@ -108,7 +108,7 @@ links are written as relative `.html`. Preview either directly with
 Source media lives **next to the document that uses it**, never in a central pile:
 the Fourier-transform post ships its `*.wav` and the blog its `*.webp` images under
 `corpus/tech-blog/`, the showcase its assets under `samples/assets/`. Media a cell
-*generates* (audio from `scipy.io.wavfile`, a `#| fig-export:` or `ggsave` figure)
+*generates* (audio from `scipy.io.wavfile`, a `savefig` or `ggsave` figure)
 also lands beside its document, because [code cells run in the document's own
 directory](execution.tmd) rather than wherever the server was launched. Those
 generated outputs regenerate on render, so `.gitignore` keeps them out of git

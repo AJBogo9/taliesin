@@ -339,7 +339,6 @@ fn command_desc(cmd: &str) -> &'static str {
         "check" => "list located diagnostics (non-zero if any)",
         "doctor" => "audit the environment for running code cells",
         "map" => "whole-project outline (pages, nav, xref)",
-        "skim" => "the book's skimmable layers as one linear stream",
         "features" => "which constructs are used, and which nothing uses",
         "mcp" => "stdio MCP server",
         "lsp" => "stdio LSP server (live diagnostics in any editor)",
@@ -458,10 +457,6 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--json", false, "shorthand for --format json"),
         ],
         "map" => &[
-            ("--format", true, "human | json"),
-            ("--json", false, "shorthand for --format json"),
-        ],
-        "skim" => &[
             ("--format", true, "human | json"),
             ("--json", false, "shorthand for --format json"),
         ],
@@ -932,7 +927,6 @@ mod brain_tests {
             ("schema", &["--out"][..]),
             ("symbols", &["--format", "--json"][..]),
             ("map", &["--format", "--json"][..]),
-            ("skim", &["--format", "--json"][..]),
             ("features", &["--format", "--json"][..]),
             ("completions", &["--install"][..]),
             ("init", &["--template", "--yes"][..]),

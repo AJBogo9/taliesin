@@ -1,7 +1,0 @@
-title: "Journal of Examples"
-url: https://example.org
-# A site-level author: the "Cite this" box (B1) falls back to this when a page
-# sets no author: of its own (owner ruling 2026-07-18, site-author fallback).
-author: "Ada Lovelace"
-nav:
-  - { text: Home, href: index.tmd }

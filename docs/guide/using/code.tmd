@@ -156,34 +156,32 @@ draws = rng.normal(size=10_000)
 round(float(draws.mean()), 3), round(float(draws.std()), 3)
 ```
 
-### Exporting figures for print / LaTeX
+### Writing a figure to disk
 
 Inline `{python}` figures are themed for the web (transparent background, neutral
 grey axes that read on light **and** dark), but that theming never touches global
 `rcParams`, so a plain `fig.savefig("x.pdf")` in a cell already writes a clean,
-print-ready figure (black on white).
-
-To export without the boilerplate, add `#| fig-export:` and Taliesin writes the
-cell's figure to disk with print styling the moment it renders. Give it one path,
-or a comma-separated list to emit several formats at once:
+print-ready figure (black on white):
 
 ```{python}
 #| label: fig-loss
 #| fig-cap: "Loss curve"
-#| fig-export: figures/loss.pdf, figures/loss.png
 import matplotlib.pyplot as plt, numpy as np
 fig, ax = plt.subplots()
 ax.plot(np.arange(40), np.exp(-0.1 * np.arange(40)))
 ax.set_xlabel("iteration"); ax.set_ylabel("loss")
+fig.savefig("figures/loss.pdf")
 plt.show()
 ```
 
 Use a vector format (`.pdf`/`.svg`) for line art so it stays sharp at any size;
-`.png` is written at a print DPI for raster content (spectrograms, heatmaps). Paths
-are relative to where you run Taliesin (normally the document's directory), and
-parent folders are created as needed. Then in LaTeX:
-`\includegraphics[width=\columnwidth]{figures/loss.pdf}`. Changing the
-`fig-export` path re-runs the cell so the file is rewritten.
+`.png` at a high `dpi=` for raster content (spectrograms, heatmaps). A cell runs with
+its **document's directory** as the working directory, so a relative path lands beside
+the source rather than wherever you launched Taliesin — create the folder yourself
+(`os.makedirs("figures", exist_ok=True)`). Then in LaTeX:
+`\includegraphics[width=\columnwidth]{figures/loss.pdf}`.
+
+An R cell writes its own file the same way (`ggsave()`).
 
 ## Live interactive content
 
@@ -232,6 +230,7 @@ return Plot.lineY(
   {curve: "basis", stroke: "#4c8dff"}
 ).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
 ```
+
 
 ### The Python → JS bridge
 

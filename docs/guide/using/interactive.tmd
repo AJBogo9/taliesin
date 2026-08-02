@@ -171,49 +171,6 @@ const name = tali.value("palette");          // "viridis" | "magma" | "cividis"
 return Plot.plot({ color: { scheme: name }, marks: [/* … */] });
 ```
 
-### Two controls that are not form fields
-
-`animate` and `point` publish through the same reactive node as everything above; they
-just are not a box you type in.
-
-**`animate`** is a play / pause / step / reset control over a monotonic tick, for a demo
-that advances a frame at a time: an EM sweep, a gradient descent, a travelling wave.
-
-```markdown
-{{< input name="t" type="animate" min="0" max="60" step="1" fps="10" label="frame" >}}
-```
-
-`min` is the starting value (and where Reset returns to), `step` is how far one frame
-moves, `fps` is how fast Play advances, and `max` makes the tick **loop** back to `min`
-rather than stop — a sweep that halts on its last frame reads as a hang. Leave `max` off
-and it counts on forever. A consuming cell is an ordinary sink:
-
-```js
-//| input: t
-const k = tali.value("t");                   // a number, not a string
-return Plot.plot({ marks: [/* … drawn for frame k … */] });
-```
-
-Playback advances **one** scheduled pass per frame, and the next frame is not requested
-until that pass has finished, so a slow cell slows the animation instead of queueing
-passes behind itself.
-
-**`point`** is a two-dimensional coordinate the reader drags, for "place a data point and
-watch it refit". It is the one control whose value is structured: `tali.value()` returns
-`{x, y}`.
-
-```markdown
-{{< input name="p" type="point" min="-3" max="3" step="0.2" value="0.8,1.2" label="new observation" >}}
-```
-
-`min`/`max` are the domain of **both** axes, `value` is `"x,y"` (default: the centre of
-the domain), and `step` is how far one arrow-key press moves. **`y` increases upward**,
-because these pads place points on plots. The pad is focusable and arrow-key operable, and
-the readout beside it announces the new coordinates, so it works without a pointer.
-
-Both controls ride the URL fragment like every other input, so a link captures the frame
-you paused on or the point you dragged to.
-
 ## Shader cells: `{glsl}`
 
 A `{glsl}` cell is a fragment shader drawn to a live `<canvas>`. Like `{js}`, its kernel

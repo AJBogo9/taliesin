@@ -1,11 +1,11 @@
 //! Structured `author:` front matter.
 //!
 //! One declaration feeds every consumer that has to say something about a person: the
-//! visible byline (`render/mod.rs`), the Scholar `citation_author` /
-//! `citation_author_institution` tags and JSON-LD `Person`/`affiliation`
-//! (`site/meta.rs`), the Atom feed's `<author>` (`site/feed.rs`), and the three citation
-//! formats in the "Cite this" box (`site/cite_this.rs`). Before this existed each of
-//! those read a flat `Vec<String>`, so an affiliation had nowhere to live at all.
+//! visible byline (`render/mod.rs`), JSON-LD `Person`/`affiliation` (`site/meta.rs`), and
+//! the Atom feed's `<author>` (`site/feed.rs`). Before this existed each of those read a
+//! flat `Vec<String>`, so an affiliation had nowhere to live at all. (Two further
+//! consumers, the Scholar `citation_author` tags and the cite-this box, were retired with
+//! the academic-publishing cluster on 2026-08-03.)
 //!
 //! **Every older spelling stays valid**, which is not politeness — `author:` is a scalar
 //! in every document in the corpus, and a parse that broke them would take the byline off
@@ -143,9 +143,9 @@ fn push_one(v: &serde_yaml::Value, warnings: &mut Vec<String>, out: &mut Vec<Aut
             }
             out.push(a);
         }
-        // A scalar author. Kept verbatim — `cite_this` is what knows how to split a
-        // `Family, Given` or an ` and `-joined list, and it must keep seeing the raw
-        // string to do it.
+        // A scalar author. Kept verbatim: the byline prints what the author wrote, and
+        // guessing where a `Family, Given` or an ` and `-joined list splits is how a name
+        // gets mangled. The one consumer that did split names left on 2026-08-03.
         other => {
             if let Some(s) = scalar(other) {
                 out.push(Author::named(s));
@@ -194,12 +194,6 @@ pub(crate) fn marks(author: &Author, index: &[String]) -> Vec<usize> {
         .collect()
 }
 
-/// Just the names, for the consumers that only ever wanted a `Vec<String>` (the Atom
-/// feed's `<author>`, `cite_this`'s name splitter).
-pub(crate) fn names(authors: &[Author]) -> Vec<String> {
-    authors.iter().map(|a| a.name.clone()).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,8 +218,8 @@ mod tests {
             vec![Author::named("Ada Lovelace"), Author::named("Grace Hopper")]
         );
 
-        // The ` & `-joined spelling stays ONE raw string here: splitting it is
-        // `cite_this::parse_authors`'s job and it needs the original.
+        // The ` & `-joined spelling stays ONE raw string: nothing downstream splits a
+        // name, so the byline prints exactly what was written.
         let (a, _) = parse_str("author: \"Ada Lovelace & Grace Hopper\"\n");
         assert_eq!(a, vec![Author::named("Ada Lovelace & Grace Hopper")]);
     }

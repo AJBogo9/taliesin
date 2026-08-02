@@ -23,7 +23,6 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "fig-cap",
     "lst-cap",
     "tbl-cap",
-    "fig-export",
     "code-fold",
     "code-summary",
     "code-line-numbers",
@@ -82,13 +81,13 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
 
 /// Input control types `.input type=` recognizes.
 ///
-/// The first six are plain form fields. `animate` (a play/pause/step/reset tick) and
-/// `point` (a draggable 2-D coordinate) are not — but they publish through the same hidden
-/// `[data-tali-input]` element and the same `input` event, so from the reactive graph's
-/// side they are indistinguishable from a slider.
-pub(crate) const INPUT_TYPES: &[&str] = &[
-    "slider", "range", "number", "checkbox", "text", "select", "animate", "point",
-];
+/// Every one is a plain form field, and that is the whole set on purpose. Two structural
+/// controls (`animate`, a play/pause/step/reset tick, and `point`, a draggable 2-D
+/// coordinate) were retired on 2026-08-03: neither had a use outside its own fixture, and
+/// each carried a special case through the emitter, the a11y markup and the URL-state
+/// serializer. A document that wants a frame pump drives one from a `{js}` cell.
+pub(crate) const INPUT_TYPES: &[&str] =
+    &["slider", "range", "number", "checkbox", "text", "select"];
 
 /// Enumerate a cell's leading option keys with each key's 0-based line offset within
 /// `literal` (the fence body). Mirrors `cell_option`'s scan: only the contiguous

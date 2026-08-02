@@ -82,7 +82,7 @@ const MAX_CONTEXT_CHARS: usize = 160;
 /// The reference's position has to survive tag-stripping to be found in the plain text,
 /// so a NUL is planted just inside the link's open tag and read back out of the stripped
 /// string. Splitting the HTML and stripping the two halves separately does not work:
-/// [`skim::plain`] trims and re-joins on whitespace, so the space separating "in" from
+/// [`sentences::plain`] trims and re-joins on whitespace, so the space separating "in" from
 /// the link would be lost on one side and invented on the other.
 pub(super) fn citing_sentence(html: &str, anchor: &str) -> Option<String> {
     const MARK: char = '\u{0}';
@@ -90,10 +90,10 @@ pub(super) fn citing_sentence(html: &str, anchor: &str) -> Option<String> {
     let lt = html[..at].rfind('<')?;
     let gt = lt + html[lt..].find('>')?;
     let marked = format!("{}{MARK}{}", &html[..=gt], &html[gt + 1..]);
-    let text = skim::plain(&marked);
+    let text = sentences::plain(&marked);
     let mark_at = text.find(MARK)?;
     let text = text.replace(MARK, "");
-    let sentence = skim::sentence_at(&text, mark_at)?;
+    let sentence = sentences::sentence_at(&text, mark_at)?;
     Some(truncate_chars(&sentence, MAX_CONTEXT_CHARS))
 }
 
@@ -445,7 +445,7 @@ mod tests {
     #[test]
     fn citing_sentence_keeps_inline_code_flush_against_its_punctuation() {
         // `indexable_text` puts a space at every tag boundary, which reads as "the
-        // `plan` ." on a display string. Sharing `skim::plain` is what avoids it — and
+        // `plan` ." on a display string. Sharing `sentences::plain` is what avoids it — and
         // inline code is in most of the paragraphs this will ever quote.
         let html = "<p>It is keyed by <code>plan</code>, exactly as \
                     <a href=\"exec.html#sec-plan\" class=\"tali-xref\">Chapter&nbsp;4</a>.</p>";

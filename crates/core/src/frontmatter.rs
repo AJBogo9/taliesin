@@ -49,18 +49,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Citations. `csl` is recognized but NOT honored; see UNSUPPORTED_KEYS.
     "bibliography",
     "csl",
-    // The published record's own identifier. Normalized to its bare form at parse
-    // (`site::frontmatter::normalize_doi`), so every consumer reads one spelling.
-    "doi",
-    // The resource row under the byline: artefact links (label + icon inferred from the
-    // URL) and the venue / award badges beside them. See `crate::resource`.
-    "links",
-    "venue",
-    "award",
-    // The generated appendix (author contributions / acknowledgments / DOI). Both
-    // spellings of the same word are accepted; neither is a typo.
-    "acknowledgments",
-    "acknowledgements",
     // Execution
     "execute",
     // Listings / project pages
@@ -237,6 +225,53 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
          uses them: write `{{< dataset data/x.csv licence=CC0-1.0 source=... >}}`. There is \
          no `path:`/`url:` any more because the shortcode's own argument already names the \
          file, so this is a move rather than a rename",
+    ),
+    // --- The academic-publishing cluster, retired 2026-08-03 with the reader-facing
+    // cite-this box and the Google Scholar `citation_*` meta it fed. (No quotation marks
+    // in this comment on purpose: `quarto_migration_page.rs` scans the block for string
+    // literals and chunks them by three, so a quoted phrase here shifts every tuple after
+    // it.) Citations themselves are untouched:
+    // `bibliography:` and `[@key]` are the load-bearing half and stay. What went is the
+    // *outward* record-of-publication layer, which no document outside its own fixture set.
+    (
+        "front-matter key",
+        "doi",
+        "it was removed on 2026-08-03 with the appendix and the Google Scholar metadata \
+         that were its only readers. A DOI is a link like any other now: write it in the \
+         page body, e.g. `[10.5281/zenodo.1825009](https://doi.org/10.5281/zenodo.1825009)`",
+    ),
+    (
+        "front-matter key",
+        "links",
+        "it was removed on 2026-08-03 with the resource row it rendered under the byline. \
+         Write the artefact links in the page body as ordinary Markdown links, which is \
+         what a reader clicks either way",
+    ),
+    (
+        "front-matter key",
+        "venue",
+        "it was removed on 2026-08-03 with the resource row and the Google Scholar \
+         `citation_conference_title` it fed. Name the venue in the page body or in \
+         `subtitle:`",
+    ),
+    (
+        "front-matter key",
+        "award",
+        "it was removed on 2026-08-03 with the resource row that rendered its badge. Say it \
+         in the page body or in `subtitle:`",
+    ),
+    (
+        "front-matter key",
+        "acknowledgments",
+        "it was removed on 2026-08-03 with the generated appendix. Acknowledgments are \
+         prose: write them as a final section of the document, where you can edit them",
+    ),
+    (
+        "front-matter key",
+        "acknowledgements",
+        "it was removed on 2026-08-03 with the generated appendix (both spellings were \
+         accepted). Acknowledgements are prose: write them as a final section of the \
+         document, where you can edit them",
     ),
     (
         "front-matter key",

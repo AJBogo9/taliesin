@@ -20,11 +20,10 @@ struct JsNode {
 /// cells (Kahn's topo-sort over `define -> consumer` edges; any cell left undrained is in
 /// a cycle). Read-only — never touches the reactive runtime.
 ///
-/// Conservative, matching `validate_internal_anchors`: a Python `ojs_define` publishes
-/// names at *runtime* via a blob a static pass can't enumerate, so when the doc has any
-/// non-`{js}` executable cell the *dangling-input* half is suppressed (a name could be
-/// defined at runtime). The *cycle* half is a structural fact among `{js}` cells, so it
-/// always runs.
+/// Conservative, matching `validate_internal_anchors`: a Python `define(...)` publishes
+/// names at *runtime* via a blob a static pass can't enumerate, so a cell that calls it
+/// suppresses the *dangling-input* half. The *cycle* half is a structural fact among
+/// `{js}` cells, so it always runs.
 pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     let nodes: Vec<JsNode> = blocks
         .iter()
@@ -76,17 +75,20 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
 
     let mut out = Vec::new();
 
-    // (a) Dangling inputs — suppressed if a non-js executable cell could define names at
-    // runtime (Python/R `ojs_define`).
-    // "Could a name appear at runtime?" means "is there a cell this static pass cannot
-    // read", i.e. a KERNEL cell (Python/R `ojs_define`) — not merely "a cell that is not
-    // `{js}`". Spelled the old way, registering a second client-side language would have
-    // silently suppressed the whole dangling-input check on any page carrying one, since
-    // a `{glsl}` cell is `lang != "js"` while publishing nothing at runtime.
+    // (a) Dangling inputs — suppressed only where a name really could appear at runtime.
+    //
+    // The predicate is "a KERNEL cell that CALLS `define(`", narrowed from "any kernel
+    // cell" on 2026-08-03. Two earlier spellings were each wrong in their own direction.
+    // `lang != "js"` suppressed the check on any page carrying a `{glsl}` shader, which
+    // publishes nothing at runtime. Then "any kernel cell" suppressed it on every page
+    // with a `{python}` cell at all — which is every real blog post in the corpus, so the
+    // check was off exactly where documents are longest and a typo'd input most likely.
+    // Reading the cell's own literal is what distinguishes "this document uses the bridge"
+    // from "this document runs Python", and only the first can define a name invisibly.
     let runtime_defines = blocks.iter().any(|b| {
-        b.cell
-            .as_ref()
-            .is_some_and(|c| crate::render::client_lang(&c.lang).is_none())
+        b.cell.as_ref().is_some_and(|c| {
+            crate::render::client_lang(&c.lang).is_none() && c.code.contains("define(")
+        })
     });
     if !runtime_defines {
         let candidates: Vec<String> = defined.iter().cloned().collect();

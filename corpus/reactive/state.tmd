@@ -1,15 +1,13 @@
 ---
-title: "Animated ticks and cross-run state"
+title: "State that survives a re-run"
 ---
 
-`{{< input type="animate" >}}` is a play / pause / step / reset control over a monotonic
-tick. It publishes a plain number through the same reactive node a slider does, so a cell
-advances a frame by listing it in `//| input:`.
+A `{js}` cell body re-runs **from scratch** on every scheduled pass, which is what keeps
+this a scheduler rather than a reactive virtual machine. `tali.state` is the blessed
+exception: a small per-cell store that survives a scheduled re-run, so an iterative demo
+accumulates instead of recomputing from nothing each time.
 
-{{< input name="t" type="animate" min="0" max="60" step="1" fps="10" label="frame" >}}
-
-Each frame is **one** scheduled downstream pass, and the next frame is not requested until
-that pass has finished — a slow cell slows the animation rather than queueing behind it.
+{{< input name="t" type="slider" min="0" max="60" step="1" value="0" label="frame" >}}
 
 ```{js}
 //| name: wave
@@ -20,7 +18,7 @@ return num.linspace(0, 6.28, 120).map((x) => Math.sin(x + k * 0.12));
 
 ```{js}
 //| label: fig-wave
-//| fig-cap: A travelling wave, advanced one frame per tick.
+//| fig-cap: A travelling wave, advanced one step at a time.
 //| input: wave
 return Plot.plot({
   height: 180,
@@ -29,12 +27,7 @@ return Plot.plot({
 });
 ```
 
-## Accumulating across frames
-
-A cell body re-runs from scratch on every pass, which is what keeps this a scheduler rather
-than a reactive virtual machine. `tali.state` is the blessed exception: a small per-cell
-store that survives a scheduled re-run, so an iterative demo accumulates instead of
-recomputing from nothing each frame.
+## Accumulating across passes
 
 ```{js}
 //| input: t

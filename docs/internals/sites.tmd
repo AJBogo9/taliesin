@@ -1,6 +1,6 @@
 ---
 title: "The multi-page subsystem"
-description: "What the page walker collects, how a book differs from a website, and the projections built on top: search, cross-references and skim."
+description: "What the page walker collects, how a book differs from a website, and the projections built on top: search and cross-references."
 ---
 
 A directory with a `_site.yml` is a **project**: a website or a book. The core's
@@ -309,46 +309,30 @@ and therefore absent from search, without search needing any special case for ei
 same mechanism, read through the other discovery mode. See @sec-draft-filtering.)
 :::
 
-## The layer-cake projection {#sec-skim}
+## Reading-form text {#sec-sentences}
 
-`skim.rs` projects a whole project down to the layers a reader skims: numbered headings,
-each section's opening sentence, and the captions, callout titles and theorem statements
-that carry meaning without their surrounding prose. `Site::skim()` returns it as data;
-`taliesin skim` prints it, and `map --format json` borrows its `words` and `headings`.
+`sentences.rs` turns rendered HTML back into the words a person reads: `plain` flattens a
+fragment to prose, and `sentence_at` finds the sentence containing an offset in it. Its one
+consumer is `backlinks.rs`, which quotes the sentence a citing page wrote around its
+reference.
 
-It shares the search index's **render recipe**, not its text extraction, and the split is
-deliberate on both sides:
+It is a carve-out. Until 2026-08-03 these two lived inside a whole-project "layer-cake
+projection" that fed a `taliesin skim` verb and `map`'s per-page `words` and
+`headings`. The verb had no invocations and those two fields had no consumers, so the
+projection was retired — but the sentence splitter was pointed at by backlinks
+*deliberately*, to avoid a second "strip the tags and find a sentence" pass, so it outlives
+what it was built for.
 
-- **Shared: `search::render_finished`.** Numbers exist only after the render's post-passes,
-  and the order is load-bearing (scope the render, then `number_chapter_headings`, then
-  resolve xrefs). Ship A shipped a bug from getting exactly that order wrong, so the recipe
-  is written once and both callers use it. A projection that reported unnumbered headings
-  for a numbered book would be worse than no projection.
-- **Not shared: the text.** `indexable_text` deliberately flattens *everything*, which is
-  right for search (a reader may hunt for a word inside a code block) and wrong here: with
-  no sentence terminators between blocks, a tabset's labels and its shell commands welded
-  onto the preceding paragraph and were reported as one opening sentence. `skim` instead
-  reads the section's first **paragraph**, skipping `<pre>`, figures, tables and the
-  callout / theorem / proof boxes (the last three are projected as their own layers).
+**Why a sentence splitter is not a one-liner.** A period ends a sentence only when what
+follows looks like a new one: not a decimal point (`3.14`), not an ellipsis, not an initial
+(`A. Turing`), and not a known abbreviation (`e.g.`). Splitting at `e.g.` would invent a
+two-word quote the author never wrote, attributed to them, under a backlink.
 
-::: {.callout-important}
-## The projection must never suppress
-
-Its first customer is not a reader but the structural tooling itself: you cannot calibrate
-a lint about document structure against a corpus whose shape nobody can see. So the raw
-first sentence is **always** printed, and a judgement appears as a visible annotation
-beside it (`(no opening prose)`), never as a dropped row. The moment a genuinely thin
-section and a heuristic misfire render identically, the instrument stops measuring and
-starts asserting.
-:::
-
-Word counts come from `prose::word_count` rather than from the rendered text, so `skim`,
-`map`, the LSP outline's `detail` and the page's own reading-time figure cannot report four
-different lengths. That is also why there is no per-*section* count in `skim`: prose
-selection (excluding fenced code and `:::` fences) is a markdown notion, and a section's
-markdown extent is not available when walking rendered HTML. The LSP outline *does* carry
-one, because `lsp_outline` computed the line extent already — and because a node's extent
-spans its subsections, a parent there says "N words total" while a leaf says "N words".
+Word counts come from `prose::word_count` rather than from the rendered text, so the book
+nav, the LSP outline's `detail` and the page's own reading-time figure cannot report
+different lengths. The LSP outline carries a per-*section* count where the nav does not,
+because `lsp_outline` computed the line extent already — and because a node's extent spans
+its subsections, a parent there says "N words total" while a leaf says "N words".
 
 ## Social & SEO metadata
 

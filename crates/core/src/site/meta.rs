@@ -92,7 +92,7 @@ fn emit_social(
 /// Url-gated exactly like a page: the absolute `og:url` + the branded `og:image` card appear
 /// only when `_site.yml` sets `url:` (else the deck keeps a plain `summary` text card built
 /// from its title/subtitle). `og:type` is `website` (a deck is not a dated article), and
-/// there is no `citation_*` (a deck is not a scholarly document). The `og:image` derives from
+/// The `og:image` derives from
 /// the same [`card::deck_card_spec`] the build writes to disk, so URL and file agree.
 pub(crate) fn deck_social_head(
     site: &Site,
@@ -145,81 +145,15 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     };
 
     // The core OG/Twitter block is shared verbatim with a deck (`deck_social_head`) so the
-    // two can't drift; the page-only `citation_*` scholar block is appended below.
-    let mut h = emit_social(
+    // two can't drift.
+    emit_social(
         cfg.title.as_deref(),
         title,
         desc,
         page_url.as_deref(),
         image.as_deref(),
         og_type,
-    );
-    // Google Scholar / Highwire-Press `citation_*` meta so a scholarly post is indexable
-    // by academic databases. Emitted only for an article (has a `date`) that names an
-    // `author` — a blog post's shape, not a nav/landing page. `citation_pdf_url` is
-    // intentionally absent (there is no PDF; the print-pdf track is deferred).
-    //
-    // The authors are the page's own, falling back to `_site.yml`'s: the same chain
-    // `cite_this::resolve` documents (owner ruling 2026-07-18) and the same one the JSON-LD
-    // `author` below follows. Gating on `page.authors` alone made a dated post by the site
-    // owner carry a Cite-this box and a JSON-LD author and no scholar block at all — three
-    // metadata blocks on one page disagreeing about whether it has an author. Like that
-    // chain, it stops at the site author and never reaches the site *title*.
-    let scholar_authors = if page.authors.is_empty() {
-        &cfg.authors
-    } else {
-        &page.authors
-    };
-    if page.date.is_some() && !scholar_authors.is_empty() {
-        if !title.is_empty() {
-            h.push_str(&meta("name", "citation_title", title));
-        }
-        // Scholar reads `citation_author_institution` POSITIONALLY: it belongs to the
-        // `citation_author` immediately above it. Emitting every author and then every
-        // institution parses as "the last author holds all of them", so the interleaving
-        // here is the semantics, not the formatting.
-        for author in scholar_authors {
-            h.push_str(&meta("name", "citation_author", &author.name));
-            for aff in &author.affiliations {
-                h.push_str(&meta("name", "citation_author_institution", aff));
-            }
-        }
-        if let Some(d) = page.date.as_deref() {
-            h.push_str(&meta("name", "citation_publication_date", d));
-        }
-        // Where the work appeared. A declared `venue:` names the real one, so it REPLACES
-        // the site-title stand-in rather than joining it: emitting both would tell Scholar
-        // the paper was published in two places. Scholar splits journal from conference and
-        // nothing in a `venue:` string says which it is; conference is the better default
-        // for the page shape this row exists for (a paper/project page), and the site title
-        // stays the journal-ish fallback for an ordinary post.
-        match page.venue.as_deref().filter(|v| !v.trim().is_empty()) {
-            Some(venue) => h.push_str(&meta("name", "citation_conference_title", venue)),
-            None => {
-                if let Some(journal) = cfg.title.as_deref() {
-                    h.push_str(&meta("name", "citation_journal_title", journal));
-                }
-            }
-        }
-        // The identifiers, canonical first: a DOI names the published record, an arXiv id
-        // names the preprint of it.
-        if let Some(doi) = page.doi.as_deref() {
-            h.push_str(&meta("name", "citation_doi", doi));
-        }
-        // Derived from the `arxiv.org` entry in `links:` — an author who links their
-        // preprint has already written the id, and a separate key would be a second copy.
-        if let Some(id) = crate::resource::arxiv_id(&page.links) {
-            h.push_str(&meta("name", "citation_arxiv_id", &id));
-        }
-        if let Some(u) = &page_url {
-            h.push_str(&meta("name", "citation_public_url", u));
-            // The landing page carrying the abstract IS this page. Scholar uses this to
-            // resolve a record back to readable full text; without it an indexed record can
-            // be a dead end.
-            h.push_str(&meta("name", "citation_abstract_html_url", u));
-        }
-    }
-    h
+    )
 }
 
 /// `<link rel="alternate" type="application/atom+xml">` autodiscovery tags so a browser
@@ -300,12 +234,18 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
             "mainEntityOfPage": &url,
             "url": &url,
         });
-        // The page's OWN authors, falling back to the site's — the same chain
-        // `cite_this::resolve` documents. This branch used to read the site config alone,
-        // so a page that named its own authors still advertised the site owner as the
-        // author of the article: the two metadata blocks on one page disagreed about who
-        // wrote it. `citation_author` did NOT already follow this chain when that was
-        // written (it gated on `page.authors` alone); it does now, and all three agree.
+        // **The author chain: the page's OWN authors, else the site's.** Documented here
+        // because this is now its only implementation — it was written for the "Cite this"
+        // box (owner ruling 2026-07-18) and outlived it when that box and the Scholar
+        // `citation_*` block were retired on 2026-08-03.
+        //
+        // It starts at the PAGE, because reading the site config alone made a page that
+        // named its own authors still advertise the site owner as the author of the article.
+        // Where it ends differs from the retired box on purpose: that box stopped at the
+        // site author and emitted nothing rather than a wrong name, while JSON-LD keeps
+        // falling through to the organisation-style site-title byline above (`authors`).
+        // The box was a citation a reader copies; this is a crawler hint, and an
+        // organisation byline is a real answer there.
         let declared = if page.authors.is_empty() {
             &site.config.authors
         } else {
@@ -423,14 +363,85 @@ fn footer_social_links(site: &Site) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod scholar_tests {
+mod author_chain_tests {
     use crate::site::{Site, tests::write_site};
 
-    /// A paper page: two authors, three affiliations between them (one shared), a `doi:`,
-    /// a `date:` and a site `url:` so the whole scholar block is live.
-    fn paper_site(name: &str, doi_line: &str) -> std::path::PathBuf {
-        write_site(
-            name,
+    /// The author chain outlived the two features it was written for (the "Cite this" box
+    /// and the Scholar `citation_*` block, both retired 2026-08-03), and JSON-LD is now its
+    /// only reader. Pinned here because deleting those features deleted its end-to-end pin:
+    /// a page that names no author of its own must publish the SITE author, and a page that
+    /// names its own must publish those and not the site owner.
+    #[test]
+    fn jsonld_author_falls_back_to_the_site_author_but_never_past_it() {
+        let root = write_site(
+            "jsonldauthorchain",
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal of Examples\nurl: https://ex.com\nauthor: Ada Lovelace\n",
+                ),
+                (
+                    "own.tmd",
+                    "---\ntitle: Own\ndate: 2026-05-15\nauthor: Grace Hopper\n---\n\nx\n",
+                ),
+                (
+                    "borrowed.tmd",
+                    "---\ntitle: Borrowed\ndate: 2026-05-16\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+
+        let own = site.render_page("own.tmd").unwrap();
+        assert!(
+            own.contains(r#""author":{"@type":"Person","name":"Grace Hopper"}"#),
+            "the page's own author wins over the site's: {own}"
+        );
+        assert!(
+            !own.contains("Ada Lovelace"),
+            "the site owner must not be advertised as the author of a page that named one: {own}"
+        );
+
+        let borrowed = site.render_page("borrowed.tmd").unwrap();
+        assert!(
+            borrowed.contains(r#""author":{"@type":"Person","name":"Ada Lovelace"}"#),
+            "a page with no author of its own falls back to the site author: {borrowed}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Where the chain ENDS, pinned because the retired "Cite this" box ended it somewhere
+    /// else and the difference is deliberate: with no author declared anywhere, JSON-LD
+    /// publishes the site title as an organisation-style byline (see `jsonld_head`'s
+    /// `authors`), where the box emitted no citation at all. Two audiences, two answers.
+    #[test]
+    fn with_no_author_declared_the_chain_ends_at_the_site_title_byline() {
+        let root = write_site(
+            "jsonldnoauthor",
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal of Examples\nurl: https://ex.com\n",
+                ),
+                ("p.tmd", "---\ntitle: P\ndate: 2026-05-15\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("p.tmd").unwrap();
+        let start = html.find("application/ld+json").expect("ld+json present");
+        let payload = &html[start..start + html[start..].find("</script>").unwrap()];
+        assert!(
+            payload.contains(r#""author":{"@type":"Person","name":"Journal of Examples"}"#),
+            "the site title is the last resort, as an organisation-style byline: {payload}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn og_image_carries_the_cards_known_dimensions() {
+        let root = write_site(
+            "carddims",
             &[
                 (
                     "_site.yml",
@@ -438,122 +449,10 @@ mod scholar_tests {
                 ),
                 (
                     "posts/a/index.tmd",
-                    &format!(
-                        concat!(
-                            "---\n",
-                            "title: On Gradients\n",
-                            "date: 2026-05-15\n",
-                            "{}",
-                            "author:\n",
-                            "  - name: Ada Lovelace\n",
-                            "    affiliation: [Analytical Engine Institute, Somewhere Else]\n",
-                            "  - name: Grace Hopper\n",
-                            "    affiliation: Analytical Engine Institute\n",
-                            "  - name: Anon Nobody\n",
-                            "---\n\nx\n",
-                        ),
-                        doi_line
-                    ),
+                    "---\ntitle: On Gradients\ndate: 2026-05-15\nauthor: Ada Lovelace\n---\n\nx\n",
                 ),
             ],
-        )
-    }
-
-    /// Google Scholar reads `citation_author_institution` **positionally**: it belongs to
-    /// the `citation_author` immediately above it. Emitting all the authors and then all
-    /// the institutions parses as "the last author has every affiliation", so the ordering
-    /// is the whole feature, not presentation. An author with no affiliation contributes no
-    /// tag rather than an empty one.
-    #[test]
-    fn each_author_institution_directly_follows_its_own_author() {
-        let root = paper_site("scholarinst", "");
-        let site = Site::discover(&root);
-        let html = site.render_page("posts/a/index.tmd").unwrap();
-
-        // Slice the head's citation_* tags into source order, so the assertion is about
-        // sequence rather than mere presence.
-        let seq: Vec<&str> = html
-            .match_indices("<meta name=\"citation_")
-            .map(|(i, _)| {
-                let rest = &html[i..];
-                &rest[..rest.find('>').expect("closing angle")]
-            })
-            .filter(|t| t.contains("citation_author"))
-            .collect();
-        assert_eq!(
-            seq,
-            vec![
-                r#"<meta name="citation_author" content="Ada Lovelace""#,
-                r#"<meta name="citation_author_institution" content="Analytical Engine Institute""#,
-                r#"<meta name="citation_author_institution" content="Somewhere Else""#,
-                r#"<meta name="citation_author" content="Grace Hopper""#,
-                r#"<meta name="citation_author_institution" content="Analytical Engine Institute""#,
-                r#"<meta name="citation_author" content="Anon Nobody""#,
-            ],
-            "each institution must directly follow the author it belongs to"
         );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// `citation_abstract_html_url` points a crawler at the full-text landing page — the
-    /// same canonical URL, which is what makes the record resolvable when the index shows
-    /// only the tags.
-    #[test]
-    fn abstract_html_url_is_the_canonical_page_url() {
-        let root = paper_site("scholarabs", "");
-        let site = Site::discover(&root);
-        let html = site.render_page("posts/a/index.tmd").unwrap();
-        assert!(
-            html.contains(
-                r#"<meta name="citation_abstract_html_url" content="https://ex.com/posts/a/">"#
-            ),
-            "citation_abstract_html_url = the clean canonical URL: {html}"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// A DOI is written however the author copied it, and Scholar wants the bare form.
-    /// Normalising at parse means every consumer (this tag, and the appendix block) reads
-    /// one canonical spelling instead of each re-deriving it.
-    #[test]
-    fn doi_is_emitted_bare_whichever_spelling_the_author_used() {
-        for spelling in [
-            "10.5281/zenodo.1234",
-            "https://doi.org/10.5281/zenodo.1234",
-            "http://dx.doi.org/10.5281/zenodo.1234",
-            "doi:10.5281/zenodo.1234",
-        ] {
-            let root = paper_site("scholardoi", &format!("doi: \"{spelling}\"\n"));
-            let site = Site::discover(&root);
-            let html = site.render_page("posts/a/index.tmd").unwrap();
-            assert!(
-                html.contains(r#"<meta name="citation_doi" content="10.5281/zenodo.1234">"#),
-                "`doi: {spelling}` must normalise to the bare DOI: {html}"
-            );
-            let _ = std::fs::remove_dir_all(&root);
-        }
-    }
-
-    /// No `doi:` invents no DOI, and the tag is scoped to the scholar block like the rest
-    /// (an undated page is not an article, so it carries none of them).
-    #[test]
-    fn no_doi_key_emits_no_doi_tag() {
-        let root = paper_site("scholarnodoi", "");
-        let site = Site::discover(&root);
-        let html = site.render_page("posts/a/index.tmd").unwrap();
-        assert!(
-            !html.contains("citation_doi"),
-            "an absent doi: must not be invented: {html}"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// LinkedIn needs `og:image:width`/`height` to render a large card at all; without
-    /// them it falls back to a thumbnail. Both are known at build time because the og:image
-    /// is ALWAYS the generated card, never an arbitrary page image.
-    #[test]
-    fn og_image_carries_the_cards_known_dimensions() {
-        let root = paper_site("scholardims", "");
         let site = Site::discover(&root);
         let html = site.render_page("posts/a/index.tmd").unwrap();
         assert!(
@@ -611,9 +510,9 @@ mod jsonld_tests {
     fn a_structured_author_reaches_json_ld_with_its_affiliation() {
         // Item 184's third consumer. Also pins the fix that came with it: this branch read
         // the SITE config's authors, so a page naming its own authors still advertised the
-        // site owner as the article's author — while `citation_author` on the same page
-        // named the real ones. Two metadata blocks disagreeing about who wrote the page is
-        // worse than either being absent.
+        // site owner as the article's author, while the other two metadata blocks on the
+        // same page named the real ones. Blocks disagreeing about who wrote the page is
+        // worse than any of them being absent.
         let root = write_site(
             "jsonldaffil",
             &[

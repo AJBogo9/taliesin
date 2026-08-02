@@ -73,14 +73,6 @@ pub struct Page {
     /// Whether the page declares a `bibliography:` (a cited/scholarly document). Drives the
     /// `ScholarlyArticle` vs `BlogPosting` JSON-LD choice.
     pub has_bibliography: bool,
-    /// Front-matter `doi:`, held **bare** (`10.5281/zenodo.1234`) whatever spelling the
-    /// author used, for Scholar's `citation_doi`.
-    pub doi: Option<String>,
-    /// Front-matter `venue:`, for Scholar's `citation_conference_title`.
-    pub venue: Option<String>,
-    /// Front-matter `links:` (the resource row). Held here because `citation_arxiv_id` is
-    /// derived from an `arxiv.org` entry rather than declared separately.
-    pub(crate) links: Vec<crate::resource::ResourceLink>,
     /// `draft: true` in front matter. `false` for every published page; `true` only for a
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.
@@ -226,15 +218,14 @@ mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
 mod book_toc;
 mod categories;
-mod cite_this;
 mod feed;
 mod hover;
 mod llms;
 mod manifest;
 mod meta;
 mod search;
+mod sentences;
 mod seo;
-pub mod skim;
 mod xref;
 pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
 use xref::scan_xref_targets;
@@ -591,27 +582,6 @@ impl Site {
     /// being REBUILT, i.e. the open tabs, and a renumbered figure goes stale in the
     /// fragments of pages nobody has open — which is the exact
     /// snippet-contradicts-its-target defect this index ordering exists to prevent.
-    /// The whole project as one linear [layer-cake projection](skim), in page order: the
-    /// reading-order stream of numbered headings, opening sentences and standalone layers
-    /// that `taliesin skim` prints and the structural work is calibrated against.
-    ///
-    /// Renders each page once with its post-passes finished (the same recipe the search
-    /// index uses), so every number here is the number the page shows. Executes no code.
-    pub fn skim(&self) -> Vec<skim::PageSkim> {
-        let defaults = self.render_defaults();
-        self.pages
-            .iter()
-            .filter_map(|p| {
-                skim::page_skim(
-                    p,
-                    book::chapter_of(&self.book, p),
-                    &self.xref_targets,
-                    Some(&defaults),
-                )
-            })
-            .collect()
-    }
-
     pub fn rebuild_search_index(&mut self) {
         self.search_sections = search::build_sections(
             &self.pages,
@@ -1167,8 +1137,6 @@ impl Site {
         self.expand_page(page, blocks, warnings);
         // The whole-book Contents list, on the book landing page only.
         self.attach_book_toc(page, blocks);
-        // Last: the reader-facing "Cite this" box, when the page carries enough metadata.
-        self.attach_cite_this(page, blocks);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub

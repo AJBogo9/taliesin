@@ -70,27 +70,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "Force the table of contents on or off (otherwise it is automatic).",
         ),
         ("bibliography", "Path(s) to `.bib` file(s) for citations."),
-        (
-            "doi",
-            "The published record's DOI, written bare or as a `doi.org` URL.",
-        ),
-        (
-            "links",
-            "Resource links under the byline; a bare URL infers its own label and icon.",
-        ),
-        (
-            "venue",
-            "Where the work appeared, as a badge and the Scholar venue tag.",
-        ),
-        ("award", "An award badge shown beside the venue."),
-        (
-            "acknowledgments",
-            "Acknowledgments prose; rendered as an appendix section.",
-        ),
-        (
-            "acknowledgements",
-            "British spelling of `acknowledgments`; identical in effect.",
-        ),
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("hero", "Landing-page hero block configuration."),
@@ -140,7 +119,6 @@ fn cell_option_descriptions() -> &'static [(&'static str, &'static str)] {
         ("fig-cap", "Figure caption."),
         ("lst-cap", "Listing (code) caption."),
         ("tbl-cap", "Table caption."),
-        ("fig-export", "Export the figure as a file."),
         ("code-fold", "Collapse the code block (`true` or `show`)."),
         ("code-summary", "Summary label for a folded code block."),
         ("code-line-numbers", "Show or highlight code line numbers."),

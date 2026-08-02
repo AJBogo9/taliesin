@@ -21,7 +21,6 @@
  * @typedef {{ type: "insert", gen?: number, after_id: ?string, html: string }} InsertMsg
  * @typedef {{ type: "remove", gen?: number, target_id: string }} RemoveMsg
  * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
- * @typedef {{ kind: string, label: string, added: number, removed: number, count: number, at: ?{ file: ?string, line: number } }} DigestEntry
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "title", title: ?string }} TitleMsg
@@ -74,23 +73,6 @@
     wordCountEl.textContent = `${words.toLocaleString()} words · ${mins} min`;
   };
 
-  // --- session revision digest ------------------------------------------------
-  // The block-op stream this client already applies, made visible. Every edit arrives
-  // here as a precise statement about what changed — which block, by how many words,
-  // at which source line — and until now all of it was spent on the DOM and thrown
-  // away, so "what did that edit actually do?" was a question only the console could
-  // half-answer.
-  //
-  // The word figures are a real diff, not a length subtraction: the words of the
-  // outgoing and incoming block are compared as multisets, so rewording a sentence
-  // reads `+3 −4` rather than `−1`. That also keeps the session totals honest — the
-  // net (added minus removed) is exactly the document's word change, whatever path
-  // the ops took to get there.
-  const DIGEST_MAX = 12;
-  const digest = { added: 0, removed: 0, entries: /** @type {DigestEntry[]} */ ([]) };
-  let digestSumEl = /** @type {HTMLElement|null} */ (null);
-  let digestListEl = /** @type {HTMLElement|null} */ (null);
-
   /** The prose words of an element: code, math and equation numbers excluded, as `Words` is. */
   const proseWords = (/** @type {?Element} */ node) => {
     if (!node) return /** @type {string[]} */ ([]);
@@ -106,136 +88,6 @@
    * `added - removed` is always `after.length - before.length`, which is what makes the
    * running totals add up to the document.
    */
-  const wordDelta = (/** @type {string[]} */ before, /** @type {string[]} */ after) => {
-    /** @type {Map<string, number>} */
-    const counts = new Map();
-    before.forEach((w) => counts.set(w, (counts.get(w) || 0) - 1));
-    after.forEach((w) => counts.set(w, (counts.get(w) || 0) + 1));
-    let added = 0;
-    let removed = 0;
-    counts.forEach((n) => {
-      if (n > 0) added += n;
-      else removed -= n;
-    });
-    return { added, removed };
-  };
-
-  /** A short human name for a block: its heading if it has one, else its opening words. */
-  const blockLabel = (/** @type {?Element} */ node) => {
-    if (!node) return "block";
-    const heading =
-      (node.matches && node.matches("h1,h2,h3,h4,h5,h6") && node) ||
-      (node.querySelector && node.querySelector("h1,h2,h3,h4,h5,h6"));
-    const clip = (/** @type {string} */ s) => {
-      const t = s.replace(/\s+/g, " ").trim();
-      return t.length > 42 ? t.slice(0, 41) + "…" : t;
-    };
-    if (heading instanceof Element) return "§ " + clip(heading.textContent || "");
-    // A cell's output block is named by what it is, not by its first number: "1.4142…"
-    // is a worse label than "code output".
-    if (node.hasAttribute && node.hasAttribute("data-tali-cell-state")) return "code output";
-    if (node.matches && node.matches("pre, figure, table")) {
-      return { PRE: "code", FIGURE: "figure", TABLE: "table" }[node.tagName] || "block";
-    }
-    const text = clip(node.textContent || "");
-    return text || (node.tagName || "block").toLowerCase();
-  };
-
-  /** Where a block's source is, for the entry's click-to-source. */
-  const blockSource = (/** @type {?Element} */ node) => {
-    if (!(node instanceof HTMLElement)) return null;
-    const line = parseInt((node.dataset.sourcepos || "").split(":")[0], 10);
-    if (!Number.isFinite(line) || line < 1) return null;
-    return { file: node.dataset.sourceFile || null, line };
-  };
-
-  /**
-   * Record one applied op. `before`/`after` are the outgoing and incoming elements —
-   * either may be null (an insert has no before, a remove has no after).
-   *
-   * Consecutive shifts coalesce into one entry: a structural edit shifts every block
-   * below it, and twelve rows of "line numbers moved" would push the edit that caused
-   * them off the feed.
-   */
-  const noteOp = (
-    /** @type {string} */ kind,
-    /** @type {?Element} */ before,
-    /** @type {?Element} */ after
-  ) => {
-    const delta = wordDelta(proseWords(before), proseWords(after));
-    digest.added += delta.added;
-    digest.removed += delta.removed;
-    const at = blockSource(after || before);
-    const last = digest.entries[0];
-    if (kind === "shift" && last && last.kind === "shift") {
-      last.count += 1;
-      // Named while it is one block, counted once it is many: "§ Method" says more than
-      // "1 block shifted", and "§ Method ×16" says less than "16 blocks shifted" — the
-      // heading is then just the first of sixteen and reads as if only it moved.
-      last.label = `${last.count} blocks shifted`;
-      // The position stays the FIRST shifted block's: it is the one nearest the edit that
-      // caused the shift, so it is where an author following the row wants to land.
-    } else {
-      digest.entries.unshift({
-        kind,
-        label: blockLabel(after || before),
-        added: delta.added,
-        removed: delta.removed,
-        count: 1,
-        at,
-      });
-      digest.entries.length = Math.min(digest.entries.length, DIGEST_MAX);
-    }
-    renderDigest();
-  };
-
-  const renderDigest = () => {
-    if (digestSumEl) {
-      digestSumEl.textContent = digest.entries.length
-        ? `+${digest.added.toLocaleString()} / −${digest.removed.toLocaleString()} words`
-        : "no edits yet";
-    }
-    if (!digestListEl) return;
-    const list = digestListEl;
-    list.textContent = "";
-    digest.entries.forEach((e) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "tali-digest-row";
-      row.dataset.taliOp = e.kind;
-      const words =
-        e.added || e.removed
-          ? ` +${e.added} −${e.removed}`
-          : e.kind === "shift"
-            ? ""
-            : " (no word change)";
-      // No count suffix: a coalesced shift carries its count in the label, and a single
-      // one is named by the block that moved.
-      row.textContent = `${DIGEST_GLYPH[e.kind] || "·"} ${e.label}${words}`;
-      if (e.at) {
-        row.title = "Open this block's source";
-        row.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          if (e.at) gotoSource(e.at.file, e.at.line);
-        });
-      } else {
-        // No honest line to jump to (a gathered block, or one already gone from the
-        // document): the row still reports what happened, it just does not pretend to
-        // navigate. Same rule as `locatable()` applies to Ctrl-click.
-        row.disabled = true;
-      }
-      list.appendChild(row);
-    });
-  };
-
-  const DIGEST_GLYPH = /** @type {Record<string, string>} */ ({
-    update: "±",
-    insert: "+",
-    remove: "−",
-    shift: "⇕",
-    full: "⟳",
-  });
-
   // --- section annotations ------------------------------------------------------
   // The revision view of the document's shape: every heading with the weight of its
   // section and the problems inside it. Deliberately NOT a heading tree for its own
@@ -776,19 +628,10 @@
       "Cells marked ⚡ replayed from the _freeze cache without running. " +
       "Restart kernel (above) or set TALIESIN_NO_CACHE=1 to force a fresh re-run.";
 
-    // The revision digest: the session's word delta, then the last N ops as click-to-source
-    // rows. Placed under Words because it is the same question one step further in — Words
-    // is where the document stands, this is what you did to it.
-    digestSumEl = document.createElement("span");
-    digestSumEl.id = "tali-digest-sum";
-    digestListEl = document.createElement("div");
-    digestListEl.className = "tali-dev-digest";
-
     sectionsEl = document.createElement("div");
     sectionsEl.className = "tali-dev-sections";
 
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint), devRow("Changes", digestSumEl), digestListEl, devRow("Sections", document.createElement("span")), sectionsEl);
-    renderDigest();
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint), devRow("Sections", document.createElement("span")), sectionsEl);
 
     // Draft pages (preview only): a count that expands to click-to-open links. The server
     // sets window.TALIESIN_DRAFTS on site previews; absent/empty on single-doc + builds.
@@ -1644,10 +1487,6 @@
         ssrPending = false;
         if (genKnown) mountedGen = /** @type {number} */ (msg.gen);
         if (msg.boot != null) mountedBoot = msg.boot;
-        // A whole-page re-render is not a block op, but its words are just as real: leaving
-        // them out of the session totals would make the digest quietly disagree with the
-        // document whenever a structural edit forced a full mount.
-        const fullBefore = skipMount ? null : proseWords(root);
         if (!skipMount) {
           // For a live deck, reconcile the incoming <section>s against the mounted ones so
           // only the edited slides re-mount — every untouched slide keeps its {js}/WebGL/
@@ -1664,25 +1503,6 @@
           if (!reconciled) {
             resetJs();
             keepScroll(() => { root.innerHTML = msg.body_html; });
-          }
-        }
-        if (fullBefore) {
-          const delta = wordDelta(fullBefore, proseWords(root));
-          // A full render with identical prose is the initial mount or a chrome-only change:
-          // recording "the whole page re-rendered, +0 −0" would be noise, not information.
-          if (delta.added || delta.removed) {
-            digest.added += delta.added;
-            digest.removed += delta.removed;
-            digest.entries.unshift({
-              kind: "full",
-              label: "whole page re-rendered",
-              added: delta.added,
-              removed: delta.removed,
-              count: 1,
-              at: null,
-            });
-            digest.entries.length = Math.min(digest.entries.length, DIGEST_MAX);
-            renderDigest();
           }
         }
         scheduleAfterChange();
@@ -1706,7 +1526,6 @@
         const el = elById(msg.target_id);
         const node = fragment(msg.html);
         if (el && node) {
-          noteOp("update", el, node); // before the swap: the outgoing block's words
           teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
           keepFocus(el, () => {
             keepScroll(() => el.replaceWith(node));
@@ -1737,7 +1556,6 @@
             if (after) after.after(node);
             else root.prepend(node);
           });
-          noteOp("insert", null, node); // after insertion: the node now knows its position
           pulse(node, "tali-flash");
         }
         scheduleAfterChange();
@@ -1747,7 +1565,6 @@
         renderOk();
         const el = elById(msg.target_id);
         if (el) {
-          noteOp("remove", el, null); // before the removal, while its words still exist
           teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
           keepFocus(el, () => {
             keepScroll(() => el.remove());
@@ -1771,7 +1588,6 @@
           else el.removeAttribute("data-source-file");
           // Recorded AFTER the patch, so the row's click-to-source uses the new position.
           // No words move in a shift, which is the whole point of the op.
-          noteOp("shift", el, el);
           if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         }
         break;

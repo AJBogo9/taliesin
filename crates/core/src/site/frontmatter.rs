@@ -9,7 +9,7 @@ pub(crate) struct FrontInfo {
     pub(crate) title: Option<String>,
     pub(crate) date: Option<String>,
     pub(crate) description: Option<String>,
-    /// Front-matter `author` (a scalar or a list), for scholarly `citation_author` meta.
+    /// Front-matter `author` (a scalar or a list): the byline, JSON-LD, the Atom feed.
     pub(crate) authors: Vec<crate::author::Author>,
     pub(crate) image: Option<String>,
     /// Front-matter `image-alt`: alt text for the listing card image.
@@ -27,37 +27,6 @@ pub(crate) struct FrontInfo {
     /// Drives the `ScholarlyArticle` vs `BlogPosting` JSON-LD choice (author-free, so a
     /// research post with no `author:` still upgrades).
     pub(crate) has_bibliography: bool,
-    /// `doi:`, stored **bare** (`10.5281/zenodo.1234`); see [`normalize_doi`].
-    pub(crate) doi: Option<String>,
-    /// `venue:` — where the work appeared. A badge in the title block, and Scholar's
-    /// `citation_conference_title`.
-    pub(crate) venue: Option<String>,
-    /// `links:` — the resource row. Parsed here as well as in `render` because the
-    /// `arxiv.org` entry is what `citation_arxiv_id` is derived from.
-    pub(crate) links: Vec<crate::resource::ResourceLink>,
-}
-
-/// A DOI reduced to its bare form, whatever the author pasted.
-///
-/// The same identifier is copied out of a publisher page as a `https://doi.org/…` URL, out
-/// of a BibTeX record as a bare `10.…`, and out of older tooling as `doi:10.…`. Google
-/// Scholar's `citation_doi` wants the bare form and a link wants the URL, so normalising
-/// once at parse leaves exactly one spelling in the model and lets each consumer build what
-/// it needs — rather than every consumer re-deriving it and disagreeing.
-///
-/// Anything that is not recognisably a DOI (every one starts `10.`) is kept verbatim: it is
-/// the author's string, and silently blanking it would be worse than emitting it as typed.
-pub(crate) fn normalize_doi(raw: &str) -> Option<String> {
-    let s = raw.trim();
-    let bare = s
-        .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .trim_start_matches("dx.")
-        .trim_start_matches("doi.org/")
-        .trim_start_matches("doi:")
-        .trim();
-    let out = if bare.starts_with("10.") { bare } else { s };
-    (!out.is_empty()).then(|| out.to_string())
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
@@ -97,13 +66,6 @@ pub(crate) fn parse_front_matter(
         page_layout: scalar(val.get("page-layout")),
         draft: bool_field(&val, "draft", false, label, warnings),
         has_bibliography: val.get("bibliography").is_some(),
-        doi: scalar(val.get("doi")).and_then(|d| normalize_doi(&d)),
-        venue: scalar(val.get("venue")),
-        links: {
-            let (list, msgs) = crate::resource::parse(val.get("links"));
-            warnings.extend(msgs.into_iter().map(|m| format!("{label}: {m}")));
-            list
-        },
     }
 }
 

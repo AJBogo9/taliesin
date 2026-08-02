@@ -1,37 +1,20 @@
 //! Declarative shortcodes: expand `{{< name args >}}` invocations to inline HTML. The
 //! built-ins are `{{< embed deck.tmd >}}` (an isolated deck iframe), `{{< video
-//! clip.mp4 >}}` (a framed screencast), `{{< input … >}}` (a reactive control) and
-//! `{{< dataset … >}}` (a data-provenance card). Line-preserving so the include source
+//! clip.mp4 >}}` (a framed screencast) and `{{< input … >}}` (a reactive control).
+//! Line-preserving so the include source
 //! map stays valid; `use super::*` reaches the shared `Warning` and HTML-escape helpers.
 
 use super::*;
-
-pub(crate) mod dataset;
-
-/// What a shortcode may need beyond its own arguments. Only `{{< dataset >}}` uses it: a
-/// provenance card reads the file it names (size, digest), which the invocation line
-/// cannot supply.
-///
-/// `base_dir` is `None` for a render with no filesystem context, which is a real case
-/// (`render_document` on a string). A dataset card then states only what was declared,
-/// rather than claiming a size it could not measure.
-pub(super) struct ShortcodeCtx<'a> {
-    pub base_dir: Option<&'a std::path::Path>,
-}
 
 /// Expand declarative shortcodes (`{{< name args >}}`) to inline HTML. Line-preserving
 /// — each invocation opens and closes on one line — so the include source map stays
 /// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example* in a
 /// code fence stays literal; unknown shortcodes are left untouched (with a warning).
-pub(super) fn expand_shortcodes(
-    src: &str,
-    base_dir: Option<&std::path::Path>,
-) -> (String, Vec<Warning>) {
+pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
     let mut warnings: Vec<Warning> = Vec::new();
     if !src.contains("{{<") {
         return (src.to_string(), warnings);
     }
-    let ctx = ShortcodeCtx { base_dir };
     let mut out = String::with_capacity(src.len());
     let mut in_code = false;
     // Deduplicates `{{< input >}}` control ids across the document, so two controls that
@@ -50,13 +33,7 @@ pub(super) fn expand_shortcodes(
         } else if in_code {
             out.push_str(line); // literal inside a code block (it's an example)
         } else {
-            out.push_str(&expand_in_line(
-                line,
-                i + 1,
-                &mut warnings,
-                &mut input_ids,
-                &ctx,
-            ));
+            out.push_str(&expand_in_line(line, i + 1, &mut warnings, &mut input_ids));
         }
     }
     if src.ends_with('\n') {
@@ -68,19 +45,19 @@ pub(super) fn expand_shortcodes(
 /// Every built-in shortcode name the tool implements.
 ///
 /// [`SHORTCODE_SPECS`] is NOT this list and must not be used as one: it holds only the
-/// shortcodes whose *arguments* `render_shortcode` lints. `input` and `dataset` are
-/// dispatched ahead of it in [`expand_in_line`], and `include` is resolved a whole pass
-/// earlier (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would
-/// report three of the five as not existing.
-pub(crate) const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "dataset", "include"];
+/// shortcodes whose *arguments* `render_shortcode` lints. `input` is dispatched ahead of
+/// it in [`expand_in_line`], and `include` is resolved a whole pass earlier
+/// (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would report two
+/// of the four as not existing.
+pub(crate) const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "include"];
 
 /// Every `key=` argument a built-in shortcode accepts, qualified by the shortcode that
-/// takes it (`dataset.licence`, `video.poster`), for [`crate::features`]'s catalogue.
+/// takes it (`video.poster`), for [`crate::features`]'s catalogue.
 ///
 /// Qualified for the same reason nested front-matter keys are: `title=` on an
-/// `{{< embed >}}` is an iframe title while `title=` on a `{{< dataset >}}` is the data's
-/// name, and one unqualified row would report a single adoption number for two features.
-/// Bare flags are included too, since writing one is a use.
+/// `{{< embed >}}` is an iframe title, and an unqualified row would report a single
+/// adoption number for two features that happen to share a spelling. Bare flags are
+/// included too, since writing one is a use.
 pub(crate) fn shortcode_argument_names() -> Vec<String> {
     SHORTCODE_SPECS
         .iter()
@@ -136,7 +113,6 @@ fn expand_in_line(
     line_no: usize,
     warnings: &mut Vec<Warning>,
     input_ids: &mut std::collections::HashMap<String, u32>,
-    ctx: &ShortcodeCtx<'_>,
 ) -> String {
     if !line.contains("{{<") {
         return line.to_string();
@@ -171,36 +147,6 @@ fn expand_in_line(
             if inner.split_whitespace().next() == Some("input") {
                 let toks = tokenize_args(inner);
                 out.push_str(&input_shortcode(&toks[1..], line_no, warnings, input_ids));
-                i = end + 3;
-                continue;
-            }
-            // `{{< dataset >}}` is expanded here for the same reason `input` is: it needs
-            // the line number, the warning sink and the document's directory, none of
-            // which `render_shortcode` carries.
-            if inner.split_whitespace().next() == Some("dataset") {
-                let toks = tokenize_args(inner);
-                // The positional source is the first token that is not a `key=value`, so
-                // `{{< dataset licence=CC0 data/x.csv >}}` finds its file whatever the
-                // argument order.
-                match toks[1..].iter().find(|t| !is_named_arg(t)) {
-                    Some(target) => {
-                        validate_shortcode_args("dataset", &toks[1..], line_no, warnings);
-                        let decl = dataset::from_args(&toks[1..]);
-                        let (html, ws) = dataset::render(target, &decl, ctx.base_dir, line_no);
-                        warnings.extend(ws);
-                        out.push_str(&html);
-                    }
-                    None => {
-                        warnings.push(
-                            Warning::new(format!(
-                                "`{{{{< dataset >}}}}` at line {line_no} has no source path \
-                                 (write `{{{{< dataset data/file.csv >}}}}` or a URL)"
-                            ))
-                            .at(None, line_no as u32),
-                        );
-                        out.push_str(&line[i..end + 3]);
-                    }
-                }
                 i = end + 3;
                 continue;
             }
@@ -484,18 +430,13 @@ const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
 /// **The vocabulary is closed**, which is what lets [`validate_shortcode_args`] tell a typo
 /// from an argument it simply has not heard of — the same closed-vocabulary contract front
 /// matter, cell options and `_site.yml` are linted against.
-const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 3] = [
+const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 2] = [
     ("embed", &["title"], &[]),
     (
         "video",
         &["dark", "poster", "caption", "captions"],
         &VIDEO_FLAGS,
     ),
-    // `dataset` is dispatched ahead of this table (it needs the line number, the warning
-    // sink and the document's directory), which is why it carried NO argument linting at
-    // all until its annotations moved off front matter. Listing it here is what gives
-    // `souce=` the same did-you-mean `postr=` gets on a video.
-    ("dataset", dataset::DATASET_KEYS, &[]),
 ];
 
 /// Whether a bare token is more plausibly a **misspelled flag** than a source path. A path
@@ -662,69 +603,7 @@ fn input_shortcode(
             .map(|v| format!(" {k}=\"{}\"", escape_attr(&v)))
             .unwrap_or_default()
     };
-    // The same optional argument under a `data-` name: `animate`/`point` carry their bounds
-    // as `data-min`/`data-max`/`data-step` rather than as the HTML validation attributes,
-    // because the element holding them is a hidden field (whose `min`/`max` the browser
-    // would apply to a value the reader never types) or a `<span>` pad (where they are not
-    // attributes at all).
-    let data_attr = |data_key: &str, arg: &str| {
-        shortcode_named(args, arg)
-            .map(|v| format!(" {data_key}=\"{}\"", escape_attr(&v)))
-            .unwrap_or_default()
-    };
-    // The label is a `<label for>` for a plain form field, but `animate` and `point` are
-    // operated through a button group / a focusable pad while their VALUE lives in a hidden
-    // field — and `<label for>` pointing at a hidden input names nothing. Those two take a
-    // plain `<span>` with an id instead, which the operable element references with
-    // `aria-labelledby`.
-    let structural = kind == "animate" || kind == "point";
-    let label_id = format!("{ctrl_id}-lbl");
     let control = match kind.as_str() {
-        // A monotonic tick with transport controls. The value rides a hidden
-        // `type="number"` so `readValue`'s existing `valueAsNumber` branch returns a NUMBER
-        // (a `type="hidden"` field would hand every downstream cell the string "3"), and
-        // the `hidden` ATTRIBUTE keeps it out of both the layout and the a11y tree.
-        "animate" => {
-            let btn = |act: &str, aria: &str, glyph: &str, pressed: &str| {
-                format!(
-                    "<button type=\"button\" class=\"tali-animate-btn\" data-tali-animate=\"{act}\" \
-                     aria-label=\"{aria}\"{pressed}>{glyph}</button>"
-                )
-            };
-            format!(
-                "<span class=\"tali-animate-controls\" role=\"group\" aria-labelledby=\"{label_id}\">\
-                 {play}{step}{reset}</span>\
-                 <input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" \
-                 data-tali-tick type=\"number\" hidden{min}{max}{step_a}{fps} value=\"{start}\">",
-                play = btn("play", "Play", "▶", " aria-pressed=\"false\""),
-                step = btn("step", "Step forward", "⏭", ""),
-                reset = btn("reset", "Reset", "⏮", ""),
-                min = data_attr("data-min", "min"),
-                max = data_attr("data-max", "max"),
-                step_a = data_attr("data-step", "step"),
-                fps = data_attr("data-fps", "fps"),
-                start = escape_attr(
-                    value
-                        .as_deref()
-                        .or(shortcode_named(args, "min").as_deref())
-                        .unwrap_or("0")
-                ),
-            )
-        }
-        // A draggable 2-D point. The published value is `{"x":…,"y":…}` JSON on a hidden
-        // field tagged `data-tali-json`, which is the one widening `readValue` needed: the
-        // string still round-trips through the URL fragment like every other control.
-        "point" => format!(
-            "<span class=\"tali-point-pad\" tabindex=\"0\" role=\"application\" \
-             aria-labelledby=\"{label_id}\" aria-describedby=\"{ctrl_id}-out\"\
-             {min}{max}{step}><span class=\"tali-point-dot\"></span></span>\
-             <input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" \
-             data-tali-json type=\"hidden\" value=\"{start}\">",
-            min = data_attr("data-min", "min"),
-            max = data_attr("data-max", "max"),
-            step = data_attr("data-step", "step"),
-            start = escape_attr(&point_value(value.as_deref())),
-        ),
         "select" => {
             let opts: String = options
                 .as_deref()
@@ -771,66 +650,20 @@ fn input_shortcode(
             )
         }
     };
-    // Every control whose value is not visible in the control itself gets a readout. For a
-    // slider that is a convenience; for `animate` and `point` it is the ONLY place the
-    // current value appears, and it is the live region a screen-reader user hears when the
-    // pad moves — so those two get `aria-live` as well (a slider announces itself).
+    // A slider's value is not visible in the control itself, so it gets a readout. `for`
+    // ties it to the control it reflects, so AT announces them together.
     let readout = match kind.as_str() {
-        "slider" | "range" => Some(String::new()),
-        "animate" => Some(html_escape(value.as_deref().unwrap_or("0"))),
-        "point" => Some(String::new()),
-        _ => None,
-    }
-    .map(|initial| {
-        // The id + live region are for the two structural controls only: `point` points
-        // its pad's `aria-describedby` here, and both need the readout to SPEAK because it
-        // is the only place their value appears. A slider announces its own value, so it
-        // keeps the markup it already had.
-        let extra = if structural {
-            format!(" id=\"{ctrl_id}-out\" aria-live=\"polite\"")
-        } else {
-            String::new()
-        };
-        // `for` ties the readout to the control it reflects, so AT announces them together.
-        format!(
-            "<output class=\"tali-input-out\"{extra} for=\"{ctrl_id}\" data-tali-out>{}</output>",
-            if initial.is_empty() {
-                html_escape(value.as_deref().unwrap_or(""))
-            } else {
-                initial
-            }
-        )
-    })
-    .unwrap_or_default();
-    let label_html = if structural {
-        format!(
-            "<span class=\"tali-input-label\" id=\"{label_id}\">{}</span>",
-            html_escape(&label)
-        )
-    } else {
-        format!(
-            "<label class=\"tali-input-label\" for=\"{ctrl_id}\">{}</label>",
-            html_escape(&label)
-        )
+        "slider" | "range" => format!(
+            "<output class=\"tali-input-out\" for=\"{ctrl_id}\" data-tali-out>{}</output>",
+            html_escape(value.as_deref().unwrap_or(""))
+        ),
+        _ => String::new(),
     };
-    let kind_class = if structural {
-        format!(" tali-input-{kind}")
-    } else {
-        String::new()
-    };
-    format!("<div class=\"tali-input{kind_class}\">{label_html}{control}{readout}</div>")
-}
-
-/// The `point` control's initial `{"x":…,"y":…}` JSON, from a `value="0.3,0.7"` argument.
-/// Defaults to the centre of the default 0..1 domain, which is the only starting position
-/// that is not a claim about the reader's data.
-fn point_value(value: Option<&str>) -> String {
-    let parsed = value.and_then(|v| {
-        let (x, y) = v.split_once(',')?;
-        Some((x.trim().parse::<f64>().ok()?, y.trim().parse::<f64>().ok()?))
-    });
-    let (x, y) = parsed.unwrap_or((0.5, 0.5));
-    format!("{{\"x\":{x},\"y\":{y}}}")
+    let label_html = format!(
+        "<label class=\"tali-input-label\" for=\"{ctrl_id}\">{}</label>",
+        html_escape(&label)
+    );
+    format!("<div class=\"tali-input\">{label_html}{control}{readout}</div>")
 }
 
 /// The HTML for a `{{< video >}}`: a framed `<video>` with an optional caption. Playback is
@@ -1015,7 +848,7 @@ mod arg_validation_tests {
 
     /// Every warning `expand_shortcodes` produces for one line of source.
     fn warn_msgs(src: &str) -> Vec<String> {
-        expand_shortcodes(src, None)
+        expand_shortcodes(src)
             .1
             .into_iter()
             .map(|w| w.message)
@@ -1036,7 +869,7 @@ mod arg_validation_tests {
             "{{< video https://evil.example/x.mp4 >}}\n",
             "{{< video data:text/html,x >}}\n",
         ] {
-            let (html, warnings) = expand_shortcodes(src, None);
+            let (html, warnings) = expand_shortcodes(src);
             // The shortcode does not expand at all. What is left is the source text
             // verbatim — the existing "nothing is lost" path an unrecognised shortcode
             // already takes — so the URL survives as inert page text and never becomes an
@@ -1068,7 +901,6 @@ mod arg_validation_tests {
         // what it understood".
         let (html, warnings) = expand_shortcodes(
             "{{< video tour.mp4 dark=javascript:alert(1) poster=//e.x/p.png >}}\n",
-            None,
         );
         assert!(
             html.contains("src=\"tour.mp4\"") || html.contains("data-src=\"tour.mp4\""),
@@ -1101,13 +933,12 @@ mod arg_validation_tests {
             "{{< embed talk.tmd >}}\n",
             "{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption=\"A: a tour\" >}}\n",
         ] {
-            let (_, warnings) = expand_shortcodes(src, None);
+            let (_, warnings) = expand_shortcodes(src);
             let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
             assert!(msgs.is_empty(), "{src:?} must not warn: {msgs:?}");
         }
         // And a caption is prose: a colon in a sentence is not a scheme.
-        let (html, _) =
-            expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n", None);
+        let (html, _) = expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n");
         assert!(html.contains("Fig 1: the tour"), "caption survives: {html}");
     }
 
@@ -1153,7 +984,7 @@ mod arg_validation_tests {
         // `key=value` nor a known flag", so a typo'd flag WRITTEN FIRST became the `src`
         // and the real clip became a stray argument. A bare token with no `.` and no `/`
         // that is within edit distance 2 of a known flag is read as the typo it is.
-        let (html, warnings) = expand_shortcodes("{{< video control tour.mp4 >}}\n", None);
+        let (html, warnings) = expand_shortcodes("{{< video control tour.mp4 >}}\n");
         assert!(
             html.contains("src=\"tour.mp4\""),
             "the real clip must still be the source: {html}"
@@ -1211,7 +1042,7 @@ mod arg_validation_tests {
     #[test]
     fn an_argument_warning_is_located_on_its_own_line() {
         // Located like every other render warning, so the preview can link to it.
-        let (_, warnings) = expand_shortcodes("intro\n\n{{< video tour.mp4 control >}}\n", None);
+        let (_, warnings) = expand_shortcodes("intro\n\n{{< video tour.mp4 control >}}\n");
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].line, Some(3), "warning: {:?}", warnings[0]);
     }

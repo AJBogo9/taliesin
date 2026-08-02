@@ -81,7 +81,8 @@ Two more `format:` shapes to know:
 | `listing: { sort: … }` | Removed on 2026-08-02. A listing is newest-first by `date`, which is what every listing that spelled it out was asking for. |
 | `hero: { image: … }`, `hero: { image-alt: … }` | Removed on 2026-08-02. The banner is type, not a figure; put the image in the page body as a normal figure. |
 | `prose-lint:` | Removed on 2026-08-02 with the linter it configured (doubled words, weasel words, `banned:`). Nothing replaces it: delete the key. |
-| `datasets:` | Removed on 2026-08-02. The annotations moved onto the invocation that uses them: `{{< dataset data/x.csv licence=CC0-1.0 source=… >}}`. There is no `path:`/`url:` any more, since the shortcode's own argument already names the file, so this is a move rather than a rename. |
+| `doi:`, `venue:`, `award:`, `links:`, `acknowledgments:` (and `acknowledgements:`) | Removed on 2026-08-03 with the "Cite this" box, the resource row and the Google Scholar `citation_*` metadata they fed. Citations are untouched — `bibliography:` and `[@key]` stay. Write a DOI or an artefact link as an ordinary Markdown link in the body, name the venue in the body or in `subtitle:`, and write acknowledgements as a closing section, where you can edit them. |
+| `datasets:` | Removed on 2026-08-02, and the `{{< dataset >}}` shortcode its annotations moved onto followed on 2026-08-03. Cite a data file the way you cite anything else: link it from the prose, and let a `bibliography:` entry carry the provenance if you need one. |
 | `page-layout: article` (or `custom`, …) | Ignored. Taliesin uses the reading-width column by default and only `page-layout: full` widens it. |
 
 ### `_site.yml` keys that were removed

@@ -46,7 +46,7 @@ pub struct BookEntry {
     /// include-expanded source), shown in the drawer and the landing Contents so the
     /// "which chapter do I open" decision is made with its cost visible. 0 for a part
     /// header. **Prose only:** front matter, fenced code and `:::` fences are excluded,
-    /// which is the same selection `lint`/`skim`/`map`/the reading-time estimate use — so
+    /// which is the same selection `lint` and the reading-time estimate use — so
     /// a code-heavy chapter is understated, and the label says "words", never a time.
     pub words: usize,
 }
@@ -304,9 +304,6 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
                 hero: fm.hero,
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,
-                doi: fm.doi,
-                venue: fm.venue,
-                links: fm.links,
                 draft: c.draft,
             }
         })
@@ -376,10 +373,41 @@ mod tests {
         book
     }
 
+    /// The count reads the **include-expanded** source, not the raw file. A chapter that is
+    /// mostly `{{< include >}}` would otherwise be advertised as a few words long, which is
+    /// exactly backwards: the transcluded prose is the chapter.
+    ///
+    /// Pinned here since 2026-08-03. It used to be caught in `tarn.rs` by comparing the nav
+    /// against the `skim` projection (which counted the raw source), and that projection was
+    /// retired — a cross-surface drift test cannot outlive the surface it compared against,
+    /// so the property it was really protecting is asserted directly instead.
+    #[test]
+    fn a_chapters_prose_length_counts_what_its_includes_bring_in() {
+        let book = book_of_bodies(
+            "chapters:\n  - a.tmd\n",
+            &[
+                (
+                    "a.tmd",
+                    "---\ntitle: \"Host\"\n---\n\none two\n\n{{< include _part.tmd >}}\n",
+                ),
+                ("_part.tmd", "three four five six\n"),
+            ],
+        );
+        let chapter = book
+            .entries
+            .iter()
+            .find(|e| e.part.is_none())
+            .expect("one chapter");
+        assert_eq!(
+            chapter.words, 6,
+            "the included prose counts toward the chapter's advertised length"
+        );
+    }
+
     #[test]
     fn a_chapters_prose_length_excludes_code_and_front_matter() {
         // The cost signal in the drawer and the landing Contents is `prose::word_count`,
-        // the same selection `lint`, `skim`, `map` and the reading-time estimate use — so
+        // the same selection `lint` and the reading-time estimate use — so
         // front matter, fenced code and `:::` fences are all out. Counting raw words would
         // report a code-heavy chapter as the longest thing in the book.
         let book = book_of_bodies(

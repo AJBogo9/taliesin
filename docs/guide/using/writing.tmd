@@ -328,8 +328,9 @@ with `[@key]` inserted at the cursor. Both edits are one undo. If the key is alr
 `.bib` you get the citation and no duplicate entry, since a duplicate key is something
 `check` would report.
 
-**Drop a `.csv`** to get a `{{< dataset >}}` provenance card plus a loader cell in the
-language your document already uses, skipping an import you already have.
+**Drop any file** from the Explorer to get a reference to it, plus a verdict on whether
+the build will be able to ship it: a file outside the document's folder is one the build
+would drop, so you are offered a copy rather than a broken link.
 
 **Rename or move a `.tmd`** and every reference is repaired: the includes, embeds, links
 and `_site.yml` entries that point *at* it, and, when it changes folder, its own images and

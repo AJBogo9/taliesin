@@ -1,0 +1,38 @@
+---
+title: "On the Analytical Engine"
+author:
+  - name: "Grace Hopper"
+    affiliation: "Harvard Computation Laboratory"
+    orcid: "0000-0002-1825-0097"
+    url: "https://example.org/hopper"
+    equal: true
+    contribution: "Designed the study and wrote the analysis."
+  - name: "Charles Babbage"
+    affiliation:
+      - "Harvard Computation Laboratory"
+      - "Analytical Society"
+    equal: true
+    contribution: "Built the engine and ran the experiments."
+date: 2026-03-09
+bibliography: refs.bib
+---
+
+A worked publication page. It sets its own `author:`, a `date:` and a
+`bibliography:`, so it types as a `ScholarlyArticle` in JSON-LD with this page's own
+authors rather than the site's.
+
+The `author:` here is the **structured** form: each entry carries a name plus the
+things a byline and a JSON-LD `Person` need to say about a person. Affiliations are
+written as names rather than as indices into a separate list, and the superscript
+numbers a reader sees are derived from first appearance — so the two authors here
+share the number `1` because they typed the same institution, with no index to keep
+in sync. The scalar spelling (`author: "Grace Hopper"`) stays valid and is what every
+other page in this corpus still uses; `note.tmd` next door exercises the site-level
+fallback.
+
+Both authors declare a `contribution:`, so the page carries the generated appendix —
+which is Author Contributions and nothing else since the academic-publishing cluster
+(`doi:`, `venue:`, `award:`, `links:`, `acknowledgments:`) was retired on 2026-08-03.
+
+Equal contribution is marked with `equal: true`, which prints the `*` in the byline
+and the note under it [@lovelace1843].

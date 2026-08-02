@@ -324,15 +324,20 @@ fn concurrent_pages_with_same_relative_export_do_not_clobber() {
         "title: Fig Isolation\nnavbar:\n  left:\n    - alpha/index.tmd\n    - beta/index.tmd\n",
     )
     .unwrap();
-    // Two pages in different dirs, each exporting `figures/x.pdf` with a *different* plot.
-    // NB: plain matplotlib (no `matplotlib.use('Agg')`) — the fig-export hook rides the
-    // kernel's *inline* Figure formatter, which forcing the Agg backend would bypass.
+    // Two pages in different dirs, each writing the same RELATIVE path with a *different*
+    // plot. The write is the cell's own `savefig` — an ordinary relative file write, which
+    // is the general case (`#| fig-export:` used to be one instance of it, retired
+    // 2026-08-03; the isolation it exercised here is the property, so it moved to the
+    // plain form rather than leaving with it).
     let page = |label: &str, y: &str| {
         format!(
             "---\ntitle: {label}\n---\n\n# {label}\n\n\
-             ```{{python}}\n#| fig-export: figures/x.pdf\n\
+             ```{{python}}\n\
+             import os\n\
              import matplotlib.pyplot as plt\n\
-             plt.figure()\nplt.plot([0, 1, 2], {y})\nplt.title('{label}')\nplt.show()\n\
+             os.makedirs('figures', exist_ok=True)\n\
+             plt.figure()\nplt.plot([0, 1, 2], {y})\nplt.title('{label}')\n\
+             plt.savefig('figures/x.pdf')\nplt.show()\n\
              ```\n"
         )
     };
@@ -342,31 +347,31 @@ fn concurrent_pages_with_same_relative_export_do_not_clobber() {
     // Concurrent build: both pages' kernels run with cwd = their own dir.
     build_and_collect(&root, "_site", "4");
 
-    // The fig-export PDFs land beside each page's *source* (cwd = page dir), not in `_site`.
+    // The PDFs land beside each page's *source* (cwd = page dir), not in `_site`.
     let alpha_pdf = root.join("alpha/figures/x.pdf");
     let beta_pdf = root.join("beta/figures/x.pdf");
     assert!(
         alpha_pdf.is_file(),
-        "alpha's fig-export missing at {}",
+        "alpha's figure missing at {}",
         alpha_pdf.display()
     );
     assert!(
         beta_pdf.is_file(),
-        "beta's fig-export missing at {}",
+        "beta's figure missing at {}",
         beta_pdf.display()
     );
     let a = fs::read(&alpha_pdf).unwrap();
     let b = fs::read(&beta_pdf).unwrap();
     assert!(
         !a.is_empty() && !b.is_empty(),
-        "a fig-export PDF is empty (alpha {} B, beta {} B)",
+        "a written PDF is empty (alpha {} B, beta {} B)",
         a.len(),
         b.len()
     );
     // Different plots → different files: proves neither page clobbered the other.
     assert_ne!(
         a, b,
-        "the two pages' same-named exports are byte-identical — one clobbered the other \
+        "the two pages' same-named writes are byte-identical — one clobbered the other \
          (cwd isolation failed under concurrency)"
     );
 

@@ -74,7 +74,6 @@
    * @property {Record<string, Set<() => void>>} listeners
    * @property {TaliJsCell[]} cells
    * @property {Record<string, Record<string, any>>} state
-   * @property {Record<string, Promise<void>>} pending
    * @property {TaliJsGraph} [graph]
    */
 
@@ -84,7 +83,7 @@
   function rt() {
     if (!window.__talijs) {
       window.__talijs = {
-        scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [], state: {}, pending: {},
+        scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [], state: {},
       };
     }
     return /** @type {TaliJsRuntime} */ (window.__talijs);
@@ -94,13 +93,6 @@
   function readValue(el) {
     if (!el) return undefined;
     if (el.type === "checkbox") return el.checked;
-    // A structured control (the draggable `point`) keeps its value as JSON in a hidden
-    // field, so it rides the existing string-valued paths — DOM value, URL fragment,
-    // `applyInputValue` — and only widens at the READ end. A malformed blob degrades to
-    // the raw string rather than throwing inside an input listener.
-    if (el.hasAttribute && el.hasAttribute("data-tali-json")) {
-      try { return JSON.parse(el.value); } catch (e) { return el.value; }
-    }
     if (el.type === "range" || el.type === "number") return el.valueAsNumber;
     if (el.value !== undefined) return el.value;
     return undefined;
@@ -146,13 +138,7 @@
     document.querySelectorAll("[data-tali-input]").forEach(function (el) {
       var n = el.getAttribute("data-tali-input");
       if (!n) return;
-      // A structured control round-trips its RAW field text: `readValue` parsed it into an
-      // object, and `String({x: 1})` is "[object Object]" — which `applyInputValue` would
-      // then faithfully restore on the next load.
-      var raw = el.hasAttribute("data-tali-json")
-        ? String(/** @type {HTMLInputElement} */ (el).value)
-        : String(readValue(el));
-      parts.push(encodeURIComponent(n) + "=" + encodeURIComponent(raw));
+      parts.push(encodeURIComponent(n) + "=" + encodeURIComponent(String(readValue(el))));
     });
     var q = parts.join("&");
     var url;
@@ -178,8 +164,7 @@
     el.addEventListener("input", function () {
       // Re-run the transitive-downstream closure of this input, in dependency order
       // (the cells that consume `name`, then whatever consumes their derived names).
-      // Parked so the `animate` pump can await this exact pass; see `scheduleFrom`.
-      r.pending[name] = scheduleFrom(r, name);
+      scheduleFrom(r, name);
       // Still fire any callbacks registered manually via the public `tali.onInput` API.
       var set = r.listeners[name];
       if (set) set.forEach(function (fn) { fn(); });
@@ -766,196 +751,13 @@
   // Re-run exactly the closure downstream of `name`, once each, in dependency order — a
   // single controlled pass (NOT cascading listener fires, which would be a reactive VM).
   //
-  // Returns the pass's promise, which `registerInput` parks on `r.pending[name]`. Only the
-  // `animate` tick reads it, and it is the mechanism that keeps a frame pump honest: the
-  // next frame is not scheduled until the previous pass has RESOLVED, so a slow sink slows
-  // the animation rather than queueing passes behind it. Every other caller ignores it, so
-  // an input change is still fire-and-forget.
+  // Returns the pass's promise. Every caller ignores it, so an input change is
+  // fire-and-forget; it was awaited by the `animate` tick's frame pump, which was retired
+  // on 2026-08-03 along with the `pending` map that parked it.
   /** @param {TaliJsRuntime} r @param {string} name @returns {Promise<void>} */
   function scheduleFrom(r, name) {
     var cells = downstreamInOrder(r, name);
     return cells.length ? runSequentially(cells) : Promise.resolve();
-  }
-
-  // --- the two non-form controls (item 155) ---------------------------------
-  // `{{< input type="animate" >}}` and `type="point"` publish through exactly the same
-  // `[data-tali-input]` element every other control uses — a hidden `<input>` — and drive
-  // it with a plain `input` event. That is the whole design: the fragment sync, the
-  // readout, `registerInput`'s single scheduled downstream pass and the URL round-trip are
-  // all reused verbatim, so neither control adds an edge the dependency graph cannot see.
-
-  /** A readout string for any control value, including the structured `point`. @param {any} v */
-  function formatOut(v) {
-    if (v && typeof v === "object" && typeof v.x === "number") {
-      return fmtNum(v.x, 2) + ", " + fmtNum(v.y, 2);
-    }
-    return String(v);
-  }
-
-  /** @param {HTMLInputElement} el @param {any} value */
-  function publish(el, value) {
-    el.value = String(value);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-
-  /**
-   * The `animate` control: play / pause / step / reset over a monotonic tick.
-   *
-   * **The named trap, and the two mechanisms that hold it off.** A tick that free-runs is a
-   * continuous dataflow loop, which is the reactive VM this project has refused three
-   * times. So: (1) frames are paced to `fps`, not to the display's refresh rate, and
-   * (2) the next frame is not even *considered* until the previous downstream pass has
-   * RESOLVED (`r.pending[name]`, parked by `registerInput`). A sink slower than the frame
-   * budget therefore slows the animation; it can never queue passes behind itself. The
-   * pump also stops itself when the element leaves the document, so a live-preview swap
-   * mid-play cannot leave an orphan rAF running against a detached input.
-   * @param {TaliJsRuntime} r @param {HTMLInputElement} el @param {string} name
-   */
-  function bindAnimate(r, el, name) {
-    var wrap = el.closest(".tali-input");
-    if (!wrap) return;
-    /** @param {string} k @param {number} d */
-    var num = function (k, d) {
-      var v = parseFloat(el.getAttribute(k) || "");
-      return isFinite(v) ? v : d;
-    };
-    var from = num("data-min", 0);
-    var to = el.hasAttribute("data-max") ? num("data-max", NaN) : NaN;
-    var step = num("data-step", 1) || 1;
-    var fps = Math.max(1, num("data-fps", 8));
-    var playing = false;
-    var last = 0;
-    var raf = 0;
-    var play = wrap.querySelector('[data-tali-animate="play"]');
-
-    function advance() {
-      var next = (el.valueAsNumber || 0) + step;
-      // A bounded tick LOOPS rather than stopping: these demos are sweeps, and a sweep
-      // that halts on its last frame reads as a hang. Unbounded (`max` unset) counts on.
-      if (isFinite(to) && next > to) next = from;
-      publish(el, next);
-    }
-
-    /** @param {boolean} on */
-    function setPlaying(on) {
-      playing = on;
-      if (play) {
-        play.setAttribute("aria-pressed", on ? "true" : "false");
-        play.setAttribute("aria-label", on ? "Pause" : "Play");
-        play.textContent = on ? "⏸" : "▶";
-      }
-      if (on) { last = 0; raf = requestAnimationFrame(frame); }
-      else if (raf) { cancelAnimationFrame(raf); raf = 0; }
-    }
-
-    /** @param {number} now */
-    function frame(now) {
-      if (!playing) return;
-      if (!el.isConnected) { setPlaying(false); return; } // swapped out mid-play
-      if (!last || now - last >= 1000 / fps) {
-        last = now;
-        advance();
-        // Await THIS tick's downstream pass before asking for another frame.
-        Promise.resolve(r.pending[name]).then(function () {
-          if (playing) raf = requestAnimationFrame(frame);
-        });
-        return;
-      }
-      raf = requestAnimationFrame(frame);
-    }
-
-    wrap.querySelectorAll("[data-tali-animate]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var act = b.getAttribute("data-tali-animate");
-        if (act === "play") setPlaying(!playing);
-        else if (act === "step") { setPlaying(false); advance(); }
-        else if (act === "reset") { setPlaying(false); publish(el, from); }
-      });
-    });
-  }
-
-  /**
-   * The draggable `point` control: pointer drag/click on a square pad, plus arrow keys.
-   * Publishes `{x, y}` as JSON on the hidden field (`readValue` parses it back), with **y
-   * increasing upward** — these pads place data points on a plot, and a pad whose y ran
-   * downward would silently mirror every demo built on it.
-   *
-   * Accessibility: the pad is the operable element (`tabindex="0"`), not the hidden field,
-   * and arrow keys move by `step`. There is no ARIA pattern for a 2-D value — `slider` is
-   * one-dimensional — so the pad takes `role="application"` (which routes arrow keys to it
-   * rather than to the reader's browse mode) with the label, and the sibling readout is the
-   * live region that speaks the new coordinates.
-   * @param {HTMLInputElement} el
-   */
-  function bindPointPad(el) {
-    var wrap = el.closest(".tali-input");
-    // `const` so the null-guard below survives into the pointer/key closures.
-    const pad = wrap && wrap.querySelector(".tali-point-pad");
-    if (!pad) return;
-    var dot = pad.querySelector(".tali-point-dot");
-    /** @param {string} k @param {number} d */
-    var attr = function (k, d) {
-      var v = parseFloat(pad.getAttribute(k) || "");
-      return isFinite(v) ? v : d;
-    };
-    var lo = attr("data-min", 0);
-    var hi = attr("data-max", 1);
-    var step = attr("data-step", (hi - lo) / 50);
-    var span = hi - lo || 1;
-    /** @param {number} v */
-    var clamp = function (v) { return Math.min(hi, Math.max(lo, v)); };
-
-    function current() {
-      var v = readValue(el);
-      return (v && typeof v === "object") ? v : { x: (lo + hi) / 2, y: (lo + hi) / 2 };
-    }
-    function paint() {
-      var p = current();
-      if (dot instanceof HTMLElement) {
-        dot.style.left = ((p.x - lo) / span) * 100 + "%";
-        // Screen y grows downward; the published value grows upward.
-        dot.style.top = (1 - (p.y - lo) / span) * 100 + "%";
-      }
-    }
-    /** @param {number} x @param {number} y */
-    function emit(x, y) {
-      publish(el, JSON.stringify({ x: clamp(x), y: clamp(y) }));
-      paint();
-    }
-    // A function EXPRESSION, not a declaration: a declaration is hoisted above the
-    // `if (!pad) return` guard, so the narrowing that guard performs would not apply here.
-    /** @param {PointerEvent} e */
-    const fromPointer = function (e) {
-      var b = pad.getBoundingClientRect();
-      if (!b.width || !b.height) return;
-      emit(
-        lo + ((e.clientX - b.left) / b.width) * span,
-        lo + (1 - (e.clientY - b.top) / b.height) * span
-      );
-    };
-    pad.addEventListener("pointerdown", function (e) {
-      var pe = /** @type {PointerEvent} */ (e);
-      // Pointer capture, like the `descent` corpus doc's drag: the drag keeps tracking
-      // after the pointer leaves the pad, and never fights the page's scroll.
-      /** @type {any} */ (pad).setPointerCapture(pe.pointerId);
-      fromPointer(pe);
-      e.preventDefault();
-    });
-    pad.addEventListener("pointermove", function (e) {
-      var pe = /** @type {PointerEvent} */ (e);
-      if (/** @type {any} */ (pad).hasPointerCapture(pe.pointerId)) fromPointer(pe);
-    });
-    pad.addEventListener("keydown", function (e) {
-      var ke = /** @type {KeyboardEvent} */ (e);
-      /** @type {Record<string, number[]>} */
-      var steps = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
-      var d = steps[ke.key];
-      if (!d) return;
-      var p = current();
-      emit(p.x + d[0] * step, p.y + d[1] * step);
-      e.preventDefault();
-    });
-    paint();
   }
 
   /** @param {ParentNode | null} [root] */
@@ -980,16 +782,10 @@
         registerInput(r, name, el);
         // Persist to the fragment on every change (shareable/deep-linkable state).
         el.addEventListener("input", syncInputFragment);
-        // Behaviour for the two controls that are not a plain form field: the `animate`
-        // frame pump and the draggable `point` pad (item 155). Both drive this SAME
-        // element through the same `input` event, so everything below — the fragment
-        // sync, the readout, `registerInput`'s scheduled pass — is untouched by them.
-        if (el.hasAttribute("data-tali-tick")) bindAnimate(r, /** @type {any} */ (el), name);
-        if (el.hasAttribute("data-tali-json")) bindPointPad(/** @type {any} */ (el));
         // const so the null-guard survives into the `upd` input closure.
         const out = el.parentNode && el.parentNode.querySelector("[data-tali-out]");
         if (out) {
-          var upd = function () { out.textContent = formatOut(readValue(el)); };
+          var upd = function () { out.textContent = String(readValue(el)); };
           el.addEventListener("input", upd);
           upd();
         }

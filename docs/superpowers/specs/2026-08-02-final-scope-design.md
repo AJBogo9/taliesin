@@ -357,6 +357,46 @@ Ships as a single commit with all `RETIRED_KEYS` entries, per "Batch the retirem
 
 ### Wave 3: surfaces with no user (~2,250 LOC)
 
+> **Status: DONE, 2026-08-03**, one commit. Measured: **6,559 lines removed**, 826 added, 90
+> files. Final `./tools/gates.sh` = **PASSED, 9/9 gates ran**. Five corrections a later wave
+> must not re-derive:
+>
+> - **3.8 is REFUTED and was NOT cut.** "Zero uses anywhere including fixtures" measured the
+>   *retired* spelling `ojs_define`. The live author API is `define(**kwargs)` — the kernel
+>   preamble says so at its own definition — and **eight** corpus documents use it, five of
+>   them real tech-blog posts (`fourier-transform`, `em-algorithm`, `pca-geometry`,
+>   `Kruskal-Wallis-test`, `evidence-lower-bound`). The cut was executed, then reverted. The
+>   **5-line fix landed**, with its predicate corrected to `define(`: `runtime_defines` now
+>   means "a kernel cell that CALLS `define(`", not "any kernel cell". It does *not* restore
+>   the check on the six real blog posts — those genuinely use the bridge, so suppression is
+>   correct there — it restores it on the two documents with a kernel cell and no bridge
+>   call (`corpus/deck.tmd`, `tech-blog/posts/a-star`), both of which pass. Verified by
+>   running the binary, not only by unit test.
+> - **`csl:` was kept** (owner call, 2026-08-03). It is the sole entry of `UNSUPPORTED_KEYS`,
+>   not part of the cite-this cluster, and the row's evidence sentence is false for it: it
+>   appears in **zero** documents by design. Cutting it would downgrade a citation-specific
+>   message to a did-you-mean for exactly the migrating-Quarto stranger this scope targets.
+>   The other five keys went.
+> - **There is no MCP `skim` tool** (3.3). `mcp.rs` exposes six tools and `skim` is not among
+>   them; `skim` reached agents only through `map`'s `words`/`headings`, which is 3.6. So 3.3
+>   and 3.6 are one change and were executed together.
+> - **Three cuts would have taken a surviving feature's only pin with them.** `corpus/cite-this/`
+>   also pinned structured `author:` (items 184/187) → repurposed as `corpus/structured-authors/`;
+>   `corpus/reactive/animate.tmd` also pinned `tali.state` (156) → repurposed as
+>   `corpus/reactive/state.tmd`, slider-driven; the `fig-export` determinism test also pinned
+>   **cwd isolation under a concurrent build** → rewritten on a plain `savefig`. A fourth,
+>   the JSON-LD author-fallback chain, lost its only end-to-end pin with `scholar_meta.rs` and
+>   is now a unit test in `meta.rs`. This is the Wave 2 lesson recurring: when a fixture is
+>   named for one feature, check what *else* it is the only pin for.
+> - **Two Wave 2 leftovers were found and fixed in passing**, both in the User Guide, neither
+>   gated: `reference/frontmatter.tmd` still documented the retired `execute: echo:`/`include:`
+>   as live sub-keys (with an example a reader copying would get warned for), and the `csl:`
+>   row still justified itself by a collision with `css:`, retired on 2026-08-02.
+>
+> Wave 4.2 (the `taliesin/insertEdit` Dataset drop kind) was **pulled forward** into this
+> wave: it is one logical change with 3.2, and shipping 3.2 alone would leave a VS Code drop
+> gesture inserting a shortcode that no longer exists.
+
 | # | Item | LOC | Evidence |
 |---|---|---|---|
 | 3.1 | **Academic-publishing cluster**: cite-this box, Google Scholar `citation_*` meta, and the `doi`/`venue`/`award`/`links`/`acknowledgements`/`csl` keys | ~600 | Every key appears in exactly two files: its pin fixture and the page documenting it. Measured **zero** emissions on all four built projects. Six keys at six gates each. |

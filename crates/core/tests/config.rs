@@ -85,48 +85,6 @@ fn site_head_is_injected_and_the_retired_body_slots_are_not() {
 }
 
 #[test]
-fn scholarly_citation_meta_for_authored_dated_posts_only() {
-    let d = TempProj::new();
-    d.file(
-        "_site.yml",
-        "title: \"My Journal\"\nurl: \"https://ex.org\"\nnav:\n  - { text: Home, href: index.tmd }\n",
-    );
-    // An article: author + date -> gets citation_* (Google Scholar) meta.
-    d.file(
-        "post.tmd",
-        "---\ntitle: On Gradients\nauthor:\n  - Ada Lovelace\n  - Alan Turing\ndate: 2026-01-15\n---\n\nBody.\n",
-    );
-    // A plain page: no author/date -> NO citation_* meta.
-    d.file("index.tmd", "---\ntitle: Home\n---\n\n# Hi\n");
-    let site = Site::discover(&d.0);
-
-    let post = site.render_page("post.tmd").expect("renders");
-    assert!(
-        post.contains("<meta name=\"citation_title\" content=\"On Gradients\">"),
-        "citation_title missing: {post}"
-    );
-    assert!(
-        post.contains("<meta name=\"citation_author\" content=\"Ada Lovelace\">")
-            && post.contains("<meta name=\"citation_author\" content=\"Alan Turing\">"),
-        "one citation_author per author expected"
-    );
-    assert!(
-        post.contains("<meta name=\"citation_publication_date\" content=\"2026-01-15\">"),
-        "citation_publication_date missing"
-    );
-    assert!(
-        post.contains("<meta name=\"citation_journal_title\" content=\"My Journal\">"),
-        "citation_journal_title (site title) missing"
-    );
-
-    let home = site.render_page("index.tmd").expect("renders");
-    assert!(
-        !home.contains("citation_"),
-        "a non-article (no author/date) must not emit citation_* meta"
-    );
-}
-
-#[test]
 fn chapters_present_infers_a_book() {
     let d = site("title: \"Bk\"\nchapters:\n  - index.tmd\n");
     let site = Site::discover(&d.0);

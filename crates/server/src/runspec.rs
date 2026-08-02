@@ -195,7 +195,6 @@ mod tests {
                 echo: true,
                 include: true,
                 cache: true,
-                fig_export: None,
                 js: Default::default(),
             }),
         }

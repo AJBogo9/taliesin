@@ -12,7 +12,6 @@ if (reg) {
   reg.register(function () { taliInitSkipLink(); });
   reg.register(function () { taliInitKeyboard(); });
   reg.register(taliInitCategoryFilter);
-  reg.register(taliInitCiteBox);
   reg.register(function () { taliInitBookOutline(); });
   reg.register(function () { taliInitCodeVisibility(); });
 }

@@ -83,7 +83,6 @@ An option marked `(none)` in the **Default** column does nothing unless you set 
 | `fig-cap` | `python`, `r`, `mermaid`, `js` | (none) | A caption for the output; also turns the output into a numbered `<figure>` |
 | `lst-cap` | `python`, `r` | (none) | A caption for the **source listing**, making it a numbered listing |
 | `tbl-cap` | `python`, `r` | (none) | A caption for the output **table**, making it a numbered table |
-| `fig-export` | `python`, `r` | (none) | Comma-separated paths; a `python` cell's figures are auto-written print-clean to disk, while an `r` cell must write its own file (e.g. `ggsave()`). Folded into the cache key either way, so changing a path re-runs the cell |
 | `code-fold` | `python`, `r` | (none) | `true` collapses the listing into a closed `<details>`; `show` folds it but starts open |
 | `code-summary` | `python`, `r` | `"Code"` | The summary label for a `code-fold` listing |
 | `code-line-numbers` | `python`, `r` | `false` | Wraps each source line so a deck can step through / highlight `\|`-separated line ranges (e.g. `"1\|3-5"`); there is no line-number gutter |

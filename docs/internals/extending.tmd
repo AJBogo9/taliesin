@@ -143,7 +143,7 @@ answered by the same server:
 |---|---|
 | `taliesin/cellRegions` | where the code cells are and what language each one is, so a client can route completion inside one to whoever owns that language. LSP cannot say "this range is Python, go ask Pylance" |
 | `taliesin/sectionEdit` | the four structural transforms — move a section up or down, promote or demote a heading — as `TextEdit`s over the buffer (`lsp_edits.rs`). It takes a **cursor**, which is why it is not a code action (that would put a lightbulb on every section, for an operation the author asks for by keystroke) and not `workspace/executeCommand` (whose client-side forwarder is invoked by a keybinding with no arguments at all). rust-analyzer's "move item up/down" is a custom request for the same reason |
-| `taliesin/insertEdit` | the text a paste or drop gesture inserts: a figure block for a pasted image, a pipe table for a pasted spreadsheet, `[@key]` plus a `.bib` append for a pasted BibTeX entry, a `{{< dataset >}}` card plus a loader cell for a dropped `.csv`. The split is forced, not chosen: only the client has the clipboard, and only the server knows what a figure looks like (`lsp_insert.rs`), so the gesture goes in and the text comes out |
+| `taliesin/insertEdit` | the text a paste or drop gesture inserts: a figure block for a pasted image, a pipe table for a pasted spreadsheet, `[@key]` plus a `.bib` append for a pasted BibTeX entry, a shippable reference for a dragged file. The split is forced, not chosen: only the client has the clipboard, and only the server knows what a figure looks like (`lsp_insert.rs`), so the gesture goes in and the text comes out |
 | `taliesin/renameFileEdits` | the edits that keep a renamed or moved file's references correct: every `{{< include >}}`, `{{< embed >}}`, relative link and `_site.yml` entry pointing at it, plus the file's own outgoing relative references when it changed directory. A rename is a one-shot event, so this walks the project instead of maintaining an index, which is why it needs none of the parked project-index work. Both link spellings are handled, because a cross-page link is authored as `.html` while an include names the `.tmd` (`lsp_rename_file.rs`) |
 | `taliesin/projectOutline` | the whole book as a tree, grouped by page and in reading order — `chapters:` resolved from the same `Book` the drawer and prev/next use, with a page absent from that list sorted last and flagged `listed: false` so the client can name it rather than drop it — plus the numbered-float index. Not `workspace/symbol`: that method deliberately answers a *flat, queried* list, which is the wrong shape for a view the author browses rather than searches |
 | `taliesin/projectRefs` | every cross-reference target with the uses pointing at it, **dangling ones included**. The dangling half is why the server grew a full-document `xref_occurrences` scan beside the targeted `anchor_occurrences`: a reference whose target exists nowhere has an id no caller could have thought to ask for |
@@ -273,7 +273,7 @@ exact source line. So adding one is two steps, in order.
      HTML is emitted (`render/mod.rs` parses the leading `#|` block; `emit.rs` applies the
      code-fold / line-number wrappers). Add your read there if the option only changes how
      the cell or its output looks.
-   - **Execution-time** options (`echo`, `include`, `cache`, `fig-export`) are read in
+   - **Execution-time** options (`echo`, `include`, `cache`) are read in
      `server/exec.rs`, where each is captured onto the per-cell `CellRef` before the run
      and consulted while planning what re-runs. Add your read there if the option changes
      *whether or how* a cell runs.
@@ -288,34 +288,6 @@ The parser only reads the **leading contiguous** `#|` block: the first non-optio
 stops option parsing. A `#|` comment further down the cell body is just code, not an
 option, so your new key has to appear at the top of the cell.
 :::
-
-### Write a figure file on execution: `#| fig-export:`
-
-`#| fig-export: figures/x.pdf` (a comma-separated list for several files at once, e.g. a
-vector `.pdf` plus a raster `.png`) is the path through `exec.rs` worth understanding
-because it touches three things at once: the executor, the cache key, and the kernel
-preamble.
-
-- **It is executor-side, not a render transform.** For a Python cell, `export_wrapped`
-  (`server/exec.rs`) prepends a one-line `_tali_export([...], install=True)` trigger to the
-  cell's code before sending it to the kernel. The `_tali_export` hook itself is defined
-  once in the Python preamble (`server/kernel.rs`); `install=True` makes it idempotently
-  wrap the figure even for a cell that produces a plot without naming matplotlib directly.
-- **Paths are relative to the document directory.** The warm kernel's working directory is
-  the document's own directory (`kernel.rs`), so an exported `figures/x.pdf`, like any
-  other file a cell writes (`ggsave`, an audio file), lands beside the source where the
-  build can find and copy it.
-- **It is written at display time, before any inline recolour.** The figure is saved
-  print-clean (real black axes/text for LaTeX/print) the moment the plot is displayed,
-  *before* the light/dark inline recolouring that produces the `.tali-fig-light` /
-  `.tali-fig-dark` pair the page swaps on a theme change. So the on-disk file is a clean
-  print artifact, not a theme-tinted screen image.
-- **It is folded into the cache key.** The export spec is appended to the cell's hashed
-  code (`# tali-fig-export: <spec>`), so adding or changing it **moves the cell's
-  cumulative hash** and forces a re-run, which rewrites the file. A cell *without*
-  `fig-export:` hashes exactly as before, so existing `_freeze/` entries stay valid. This
-  is what guarantees the exported file is never stale relative to the cell that produced
-  it.
 
 ## The dev loop
 

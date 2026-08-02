@@ -1,0 +1,8 @@
+---
+title: "A field note"
+date: 2026-05-01
+---
+
+This page sets a `title:` and a `date:` but no `author:` of its own, so the JSON-LD
+`author` falls back to the site-level `author:` in `_site.yml`. No `bibliography:`,
+so it types as a `BlogPosting` rather than a `ScholarlyArticle`.

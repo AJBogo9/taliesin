@@ -516,44 +516,6 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   .tali-backref { border-bottom: 1px solid LinkText; }
 }
 
-/* "Cite this" box (B1): the reader-facing citation exporter appended at the end of an
-   authored, dated page. Scholarly apparatus, on-theme in light + dark — a bordered card
-   with format tabs (BibTeX / CSL-JSON / RIS), the serialized citation in a mono block,
-   and copy/download actions. Progressive enhancement: with no JS the default BibTeX
-   citation is still shown and selectable. */
-.tali-cite-this {
-  margin: 3rem 0 1rem; padding: 1.1rem 1.25rem 1.25rem;
-  border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg); background: var(--tali-code-bg); }
-.tali-cite-this-title {
-  margin: 0 0 .75rem; font: 600 .95rem/1.2 var(--tali-font-head);
-  letter-spacing: .02em; text-transform: uppercase; color: var(--tali-muted); }
-.tali-cite-tabs {
-  display: flex; flex-wrap: wrap; gap: .25rem;
-  margin-bottom: .75rem; border-bottom: 1px solid var(--tali-border); }
-.tali-cite-tab {
-  appearance: none; background: none; border: 0; margin-bottom: -1px;
-  padding: .35rem .6rem; font: 600 .82rem var(--tali-font-head);
-  color: var(--tali-muted); cursor: pointer; border-bottom: 2px solid transparent; }
-.tali-cite-tab:hover { color: var(--tali-fg); }
-.tali-cite-tab[aria-selected="true"] { color: var(--tali-fg); border-bottom-color: var(--tali-accent); }
-.tali-cite-out {
-  margin: 0; padding: .75rem .9rem; max-height: 15rem; overflow: auto;
-  background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
-  font: .8rem/1.5 var(--tali-font-mono); color: var(--tali-fg); white-space: pre; tab-size: 2; }
-.tali-cite-actions { display: flex; gap: .5rem; margin-top: .75rem; }
-.tali-cite-copy, .tali-cite-download {
-  appearance: none; cursor: pointer; padding: .4rem .8rem;
-  font: 600 .82rem var(--tali-font-head); color: var(--tali-fg);
-  background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); }
-.tali-cite-copy:hover, .tali-cite-download:hover { border-color: var(--tali-accent); color: var(--tali-accent); }
-.tali-cite-copy[data-copied="true"] {
-  color: var(--tali-on-accent); background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); }
-@media (forced-colors: active) {
-  .tali-cite-this { border: 1px solid CanvasText; }
-  .tali-cite-tab[aria-selected="true"] { border-bottom-color: Highlight; }
-  .tali-cite-copy, .tali-cite-download { border: 1px solid ButtonText; }
-}
-
 /* Draft indicators (preview only — a built page/listing never contains a draft).
    The badge marks a draft's listing card + book-drawer entry; the banner tops a draft
    page. Muted, not alarming: a draft is a normal state, just not published. */

@@ -346,7 +346,7 @@ fn outgoing_references(line: &str) -> Vec<(usize, &str)> {
         at = close;
     }
 
-    // `{{< include path >}}`, `{{< embed path >}}`, `{{< dataset path >}}`: the first argument.
+    // `{{< include path >}}`, `{{< embed path >}}`: the first argument.
     let mut at = 0usize;
     while let Some(open) = line[at..].find("{{<").map(|i| at + i + 3) {
         let Some(close) = line[open..].find(">}}").map(|i| open + i) else {
@@ -355,7 +355,7 @@ fn outgoing_references(line: &str) -> Vec<(usize, &str)> {
         let inner = &line[open..close];
         let mut words = inner.split_whitespace();
         let name = words.next().unwrap_or("");
-        if matches!(name, "include" | "embed" | "dataset")
+        if matches!(name, "include" | "embed")
             && let Some(arg) = words.next()
         {
             // The offset of the argument inside the line, found by searching from the name so an

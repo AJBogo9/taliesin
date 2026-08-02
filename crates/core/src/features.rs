@@ -576,7 +576,7 @@ See @fig-scree.
     fn adoption_counts_documents_per_feature() {
         let a = Adoption::build(&[
             ("one.tmd".into(), scan("---\ntitle: T\n---\n")),
-            ("two.tmd".into(), scan("---\ntitle: T\ndoi: 10.1/x\n---\n")),
+            ("two.tmd".into(), scan("---\ntitle: T\nsubtitle: S\n---\n")),
         ]);
         assert_eq!(a.documents, 2);
         let fm = a
@@ -586,8 +586,8 @@ See @fig-scree.
             .unwrap();
         let title = fm.features.iter().find(|f| f.name == "title").unwrap();
         assert_eq!(title.documents, ["one.tmd", "two.tmd"]);
-        let doi = fm.features.iter().find(|f| f.name == "doi").unwrap();
-        assert_eq!(doi.documents, ["two.tmd"]);
+        let subtitle = fm.features.iter().find(|f| f.name == "subtitle").unwrap();
+        assert_eq!(subtitle.documents, ["two.tmd"]);
         // The half the report exists for: a catalogued key nobody set is present and empty,
         // never absent, or "unused" and "not a feature" would look the same.
         let logo = fm.features.iter().find(|f| f.name == "logo").unwrap();

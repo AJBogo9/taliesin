@@ -2,16 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "acknowledgements": {},
-    "acknowledgments": {},
     "author": {},
-    "award": {},
     "bibliography": {},
     "categories": {},
     "csl": {},
     "date": {},
     "description": {},
-    "doi": {},
     "draft": {},
     "execute": {
       "additionalProperties": false,
@@ -50,7 +46,6 @@
     "image": {},
     "image-alt": {},
     "lang": {},
-    "links": {},
     "listing": {
       "oneOf": [
         {
@@ -108,8 +103,7 @@
     "title-block-style": {},
     "toc": {
       "type": "boolean"
-    },
-    "venue": {}
+    }
   },
   "title": "Taliesin document front matter",
   "type": "object"

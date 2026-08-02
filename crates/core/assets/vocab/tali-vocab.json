@@ -103,10 +103,6 @@
       "name": "tbl-cap"
     },
     {
-      "description": "Export the figure as a file.",
-      "name": "fig-export"
-    },
-    {
       "description": "Collapse the code block (`true` or `show`).",
       "name": "code-fold"
     },
@@ -341,30 +337,6 @@
         "name": "bibliography"
       },
       {
-        "description": "The published record's DOI, written bare or as a `doi.org` URL.",
-        "name": "doi"
-      },
-      {
-        "description": "Resource links under the byline; a bare URL infers its own label and icon.",
-        "name": "links"
-      },
-      {
-        "description": "Where the work appeared, as a badge and the Scholar venue tag.",
-        "name": "venue"
-      },
-      {
-        "description": "An award badge shown beside the venue.",
-        "name": "award"
-      },
-      {
-        "description": "Acknowledgments prose; rendered as an appendix section.",
-        "name": "acknowledgments"
-      },
-      {
-        "description": "British spelling of `acknowledgments`; identical in effect.",
-        "name": "acknowledgements"
-      },
-      {
         "description": "Document-level code-cell execution defaults.",
         "name": "execute"
       },
@@ -478,9 +450,7 @@
     "number",
     "checkbox",
     "text",
-    "select",
-    "animate",
-    "point"
+    "select"
   ],
   "mathCommands": [
     {

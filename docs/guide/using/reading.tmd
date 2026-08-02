@@ -85,10 +85,9 @@ script: the runtime orders cells by dependency, not by position, and a cell that
 as a file would be handing the reader something that is not the program that ran. Re-running
 a `{js}` document is reloading it.
 
-For the **data** the code reads, see the `{{< dataset >}}` shortcode in
-[Writing](writing.tmd): a provenance card stating what a file is, its size, its SHA-256 and
-where it came from. A multi-GB parquet does not belong in a folder of HTML, so the
-web-native answer to "can I get the data" is a citation you can verify, not a copy.
+The **data** the code reads is yours to cite. A small file in the project travels with
+the page because something on it links to the file; a multi-GB parquet does not belong in
+a folder of HTML, so name it and link it the way you would any other source.
 
 ## Reading progress and resume
 

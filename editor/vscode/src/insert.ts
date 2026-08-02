@@ -162,8 +162,7 @@ export const dropProvider: vscode.DocumentDropEditProvider = {
     }
     if (dropped.scheme !== "file") return undefined;
 
-    const isCsv = dropped.fsPath.toLowerCase().endsWith(".csv");
-    let result = await ask(document, isCsv ? "dataset" : "asset", dropped.fsPath);
+    let result = await ask(document, "asset", dropped.fsPath);
     if (!result) return undefined;
 
     if (result.outside) {
@@ -179,7 +178,7 @@ export const dropProvider: vscode.DocumentDropEditProvider = {
         await vscode.workspace.fs.copy(dropped, target, { overwrite: false });
         // Ask again for the now-inside path, so the inserted reference comes from the server
         // rather than being assembled here.
-        result = await ask(document, isCsv ? "dataset" : "asset", target.fsPath);
+        result = await ask(document, "asset", target.fsPath);
         if (!result) return undefined;
       } else if (choice !== anyway) {
         return undefined;

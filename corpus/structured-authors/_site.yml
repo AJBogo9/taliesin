@@ -1,0 +1,7 @@
+title: "Journal of Examples"
+url: https://example.org
+# A site-level author: JSON-LD's author chain falls back to this when a page sets no
+# author: of its own, and stops at the site-title byline below that.
+author: "Ada Lovelace"
+nav:
+  - { text: Home, href: index.tmd }

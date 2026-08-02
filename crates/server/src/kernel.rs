@@ -239,10 +239,8 @@ globals()["define"] = define
 ///     the theme *background* (keeping the author's `framealpha`) rather than going
 ///     transparent, because the box is what makes a legend readable over the data.
 ///
-/// This also powers `#| fig-export:`: the export writes the *pristine* figure to
-/// disk (print-clean) at display time, before any inline recolour. Data colours are
-/// never touched. The wrap installs lazily (on the first cell that mentions
-/// matplotlib) so non-plotting documents pay nothing.
+/// Data colours are never touched. The wrap installs lazily (on the first cell that
+/// mentions matplotlib) so non-plotting documents pay nothing.
 const MPL_THEME_PREAMBLE: &str = r#"
 try:
     _ip = get_ipython()
@@ -258,28 +256,7 @@ try:
         # 'none' and lets the page show through.
         _TALI_LIGHT = ('#1a1a1a', '#d0d0d0', '#ffffff')
         _TALI_DARK = ('#e6e6e6', '#363a44', '#16181d')
-        _tali_pending_export = []
         _tali_orig_png = [None]  # the real Figure->png formatter, captured once
-
-        def _tali_do_export(fig):
-            # Write the (still-pristine) figure to the files a `#| fig-export:` cell
-            # requested, with print-clean styling for LaTeX/print. PNG gets a print
-            # DPI; vector formats (.pdf/.svg) are resolution-independent.
-            if not _tali_pending_export:
-                return
-            import os as _os, sys as _sys
-            for _p in list(_tali_pending_export):
-                _d = _os.path.dirname(_p)
-                if _d:
-                    _os.makedirs(_d, exist_ok=True)
-                _kw = {'bbox_inches': 'tight', 'facecolor': 'white', 'edgecolor': 'white'}
-                if _p.lower().endswith('.png'):
-                    _kw['dpi'] = 200
-                try:
-                    fig.savefig(_p, **_kw)
-                except Exception as _e:
-                    print('taliesin: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
-            _tali_pending_export.clear()
 
         def _tali_fill_boxes(ax):
             # Data-space rectangles painted by a colour-mapped artist: an image
@@ -459,7 +436,6 @@ try:
             def _themed_html(fig):
                 if not fig.axes and not fig.lines:
                     return None  # empty figure: emit nothing (matches print_figure)
-                _tali_do_export(fig)
                 _l = _tali_render(fig, *_TALI_LIGHT)
                 _d = _tali_render(fig, *_TALI_DARK)
                 if _l is None or _d is None:
@@ -472,17 +448,6 @@ try:
                 return None
             _suppress._tali_suppress = True
             _png.for_type(Figure, _suppress)
-
-        def _tali_export(paths, install=False):
-            # Called via a line the executor prepends to a `#| fig-export:` cell.
-            _tali_pending_export[:] = [p for p in paths if p]
-            if install:
-                try:
-                    import matplotlib.pyplot  # noqa: F401
-                    _tali_ensure_inline()
-                    _tali_install()
-                except Exception:
-                    pass
 
         def _tali_pre(*_a, **_k):
             _info = _a[0] if _a else None
@@ -511,8 +476,8 @@ pub struct KernelSpec {
     /// Builds the process argv given the path to the written connection file
     /// (ipykernel takes `-f <conn>`, IRkernel takes `--args <conn>`).
     argv: fn(&Path) -> Vec<String>,
-    /// Code run once at startup (the `ojs_define` bridge + matplotlib theme for
-    /// Python; nothing for R yet).
+    /// Code run once at startup (the Python->JS `define` bridge + matplotlib theme
+    /// for Python; nothing for R yet).
     preambles: &'static [&'static str],
 }
 
@@ -901,7 +866,7 @@ impl Kernel {
     /// connect to it. The kernel stays warm for the lifetime of this value.
     ///
     /// `cwd` is the kernel process's working directory: a cell's relative file I/O
-    /// (`scipy.io.wavfile.write`, a `#| fig-export:` `savefig`, R's `ggsave`)
+    /// (`scipy.io.wavfile.write`, matplotlib's `savefig`, R's `ggsave`)
     /// resolves against it, so generated media lands beside the document rather
     /// than wherever the server was launched. `None` inherits the server's cwd.
     pub async fn start(spec: &KernelSpec, cwd: Option<&Path>) -> io::Result<Kernel> {
@@ -1010,8 +975,8 @@ impl Kernel {
             cell_cap: cell_timeout(),
             silence_cap: silence_timeout(),
         };
-        // Language-specific startup (e.g. Python's `ojs_define` bridge + matplotlib
-        // theme); each preamble runs once against the warm kernel.
+        // Language-specific startup (e.g. Python's `define` bridge + matplotlib theme);
+        // each preamble runs once against the warm kernel.
         for preamble in spec.preambles {
             let _ = kernel.execute(preamble).await;
         }

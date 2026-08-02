@@ -77,8 +77,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    discovery, chrome, link rewrite, listings + `hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs),
                    Atom feeds per dated listing (feed.rs),
-                   Cmd-K search (search.rs), the skim layer-cake projection (skim.rs,
-                   shares search's render recipe, not its text extraction),
+                   Cmd-K search (search.rs), reading-form text + sentence splitting
+                   (sentences.rs, read by backlinks.rs),
                    cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview
@@ -167,7 +167,6 @@ cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
 cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full page to stdout
 cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
-cargo run -p taliesin-server -- skim   <dir>                   # the book's skimmable layers as one linear stream
 cargo run -p taliesin-server -- features <file.tmd | dir>      # what a document uses; and what NO document uses
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
@@ -247,7 +246,7 @@ dependency change. Never call one of these verified without its output.
   preserve those invariants (`crates/core/tests/corpus.rs` enforces them).
 - **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** Measured
   2026-08-02: `DIV_CLASS_NAMES` carries 11 classes where `render::DIV_FEATURE_CLASSES`
-  carries 16, and `SHORTCODE_SPECS` omits `input`/`dataset` (both dispatched ahead of it).
+  carries 16, and `SHORTCODE_SPECS` omits `input` (dispatched ahead of it).
   Answer "what does the tool support" from the validator consts or from `taliesin
   features`, never from `vocab` — it reports live features as missing.
 - **A new front-matter key trips FIVE drift gates; a RETIRED one trips EIGHT.** The three

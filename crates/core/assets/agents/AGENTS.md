@@ -38,11 +38,11 @@ Three read-only commands describe what Taliesin accepts, so an agent never has t
 Taliesin's Markdown is Pandoc-flavored. The closed sets below come straight from the validator (run `taliesin vocab` for the full list with descriptions):
 
 - **Callouts:** a fenced div `::: {.callout-note}` opens a callout. Kinds: `note`, `tip`, `warning`, `important`, `caution`.
-- **Code cells:** a fenced ` ```{python} ` (or `{r}`, `{js}`) block runs live. In-cell options use a `#| key: value` comment, e.g. `#| label: fig-scree` or `#| echo: false`. Options: `echo`, `include`, `cache`, `label`, `fig-cap`, `lst-cap`, `tbl-cap`, `fig-export`, `code-fold`, `code-summary`, `code-line-numbers`, `name`, `viewof`, `input`.
+- **Code cells:** a fenced ` ```{python} ` (or `{r}`, `{js}`) block runs live. In-cell options use a `#| key: value` comment, e.g. `#| label: fig-scree` or `#| echo: false`. Options: `echo`, `include`, `cache`, `label`, `fig-cap`, `lst-cap`, `tbl-cap`, `code-fold`, `code-summary`, `code-line-numbers`, `name`, `viewof`, `input`.
 - **Cross-references:** cite a labelled target with `@`-prefixes (`fig`, `tbl`, `sec`, `eq`, `lst`, `thm`, `lem`, `cor`, `prp`, `def`, `exm`, `rem`); e.g. `@fig-scree` renders as "Figure 3".
 - **Citations:** `[@key]` cites a `.bib` entry declared in the `bibliography:` front matter.
 - **Structural divs:** `::: {.class} ... :::` blocks. Classes: `panel-tabset`, `code-walkthrough`, `scrolly`, `magic-move`, `step`, `column-margin`, `column-page`, `column-screen`, `aside`, `sidenote`, `marginnote`.
-- **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `footer`, `logo`, `format`, `theme`, `page-layout`, `draft`, `title-block-style`, `toc`, `bibliography`, `doi`, `links`, `venue`, `award`, `acknowledgments`, `acknowledgements`, `execute`, `listing`, `hero`, `theorems`.
+- **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `footer`, `logo`, `format`, `theme`, `page-layout`, `draft`, `title-block-style`, `toc`, `bibliography`, `execute`, `listing`, `hero`, `theorems`.
 
 ## Recipes
 

@@ -1,6 +1,6 @@
 ---
 title: "Shortcode reference"
-description: "The five shortcodes: include for a partial, embed for a deck in an iframe, video for a framed screencast, input for a reactive control, and dataset for data provenance."
+description: "The four shortcodes: include for a partial, embed for a deck in an iframe, video for a framed screencast, and input for a reactive control."
 ---
 
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
@@ -106,41 +106,6 @@ silently. Four things stop an expansion, each with its own located warning:
 
 A `{{< include >}}` inside a fenced code block is treated as documentation (this
 page relies on that) and is neither expanded nor watched.
-
-## `{{< dataset >}}`: cite the data you computed from
-
-```markdown
-{{< dataset data/measurements.csv >}}
-{{< dataset data/measurements.csv licence=CC0-1.0 source=https://example.org/survey >}}
-{{< dataset https://example.org/full-season.parquet bytes=2400000000 sha256=9f2c4a1e… >}}
-```
-
-Renders a provenance card: what the file is, how big it is, what it hashes to, its
-licence, and where it came from. A figure is only reproducible if a reader can get
-the same data, and a data file named only inside a `{python}` string is invisible to
-Taliesin — not copied, not validated, not mentioned.
-
-**It cites the data; it does not bundle it.** That distinction is the design:
-
-- A file **in the project** gets a download link. Because the card emits an `href`,
-  the build copies it into the output beside the page, so a small file really does
-  travel with the document.
-- A file **elsewhere** gets its URL and a `curl` + `sha256sum -c` snippet. Nothing is
-  fetched at build time — `check` stays offline — and a multi-gigabyte parquet never
-  ends up in a folder of HTML.
-
-For an in-tree file the size and SHA-256 are read off the file, so the shortcode alone
-is a complete card with nothing to configure. The arguments add only what a file cannot
-state about itself, and are required for a remote file, which has nothing local to
-measure: `title=`, `licence=` (or `license=`), `source=`, `description=`, `sha256=`,
-`bytes=`. The vocabulary is closed, so a typo'd `souce=` gets a did-you-mean rather than
-silently doing nothing.
-
-Two things are checked rather than merely displayed. A declared `sha256=` is compared
-against an in-tree file on every render, so data that moved under your figures is
-reported instead of silently changing them. A remote card with no `sha256=` is
-reported too: a reader who downloads it would have no way to tell whether they got the
-same bytes.
 
 ## `{{< embed >}}`: a slide deck in an iframe
 

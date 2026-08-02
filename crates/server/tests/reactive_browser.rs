@@ -1,12 +1,12 @@
 //! A browser test of the explorable cluster: the cell-language registry and `{glsl}` (153),
-//! the `num` global (154), the `animate` tick and draggable `point` (155), `tali.state`
-//! (156), and `tali.tex`/`tali.table` (157).
+//! the `num` global (154), `tali.state` (156), and `tali.tex`/`tali.table` (157). (Item
+//! 155's `animate` tick and draggable `point` were retired on 2026-08-03; `tali.state`,
+//! which shared their fixture, is driven from a slider here instead.)
 //!
 //! **Why a browser test and not more emission tests.** Every one of those five items is
 //! mostly JavaScript. The Rust suite can prove a `<script type="application/tali-glsl">`
-//! reaches the page and a `data-tali-tick` field is emitted; it cannot see whether the
-//! shader compiled, whether pressing Play advances anything, whether `tali.state` survives
-//! a re-run, or whether `num.gaussian.pdf` returns the right number. Those are the claims
+//! reaches the page; it cannot see whether the shader compiled, whether `tali.state`
+//! survives a re-run, or whether `num.gaussian.pdf` returns the right number. Those are the claims
 //! the features actually make, and without this file all of them would be untested — the
 //! exact hole `deck_browser.rs` was written to close for `deck.js`.
 //!
@@ -175,48 +175,12 @@ struct GlslFacts {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-struct AnimateFacts {
+struct StateFacts {
     #[serde(flatten)]
     page: PageFacts,
-    /// The tick's value.
-    tick: f64,
-    /// The downstream `//| name: wave` value's first sample, which changes with the tick.
-    #[serde(rename = "waveHead")]
-    wave_head: f64,
     /// The accumulating cell's readout, e.g. "last frames: 0, 1, 2".
     #[serde(rename = "seenText")]
     seen_text: String,
-    /// The Play button's `aria-pressed`.
-    #[serde(rename = "playPressed")]
-    play_pressed: String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct PointFacts {
-    #[serde(flatten)]
-    page: PageFacts,
-    /// The published value, parsed — this is the widened `readValue` path.
-    x: f64,
-    y: f64,
-    /// The last point in the consuming cell's published `fitted.pts`, i.e. what a
-    /// downstream cell actually RECEIVED. This is the assertion that the widened
-    /// `readValue` works: had the cell been handed the raw JSON string, `p.x` would be
-    /// `undefined` and these would be null — a silent failure, not an error.
-    #[serde(rename = "fittedX")]
-    fitted_x: Option<f64>,
-    #[serde(rename = "fittedY")]
-    fitted_y: Option<f64>,
-    /// The dot's `left`/`top` as percentages, so the painted position can be checked
-    /// against the published one (and the y-up convention with it).
-    #[serde(rename = "dotLeft")]
-    dot_left: f64,
-    #[serde(rename = "dotTop")]
-    dot_top: f64,
-    /// The readout's text, which is this control's only visible value.
-    #[serde(rename = "outText")]
-    out_text: String,
-    /// The URL fragment, which must carry the structured value.
-    hash: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -244,9 +208,8 @@ struct TexFacts {
 struct Run {
     glsl: GlslFacts,
     /// Animate: (at rest, after one Step, after ~a second of Play, after Reset).
-    animate: Vec<AnimateFacts>,
+    state: Vec<StateFacts>,
     /// Point: (initial, after ArrowRight×2 + ArrowUp, after a real mouse click at 25%/25%).
-    point: Vec<PointFacts>,
     tex: TexFacts,
     numerics: Numerics,
 }
@@ -393,46 +356,21 @@ async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
     // --- {glsl} -----------------------------------------------------------
     let glsl = read_glsl(browser, dir).await?;
 
-    // --- animate + tali.state ---------------------------------------------
-    let anim_page = open(browser, &build(dir, "animate")?).await?;
-    let mut animate = vec![read::<AnimateFacts>(&anim_page, &probe(ANIMATE_BODY)).await?];
-    click(&anim_page, "[data-tali-animate=\"step\"]").await?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    animate.push(read(&anim_page, &probe(ANIMATE_BODY)).await?);
-    click(&anim_page, "[data-tali-animate=\"play\"]").await?;
-    tokio::time::sleep(Duration::from_millis(1100)).await;
-    let playing: AnimateFacts = read(&anim_page, &probe(ANIMATE_BODY)).await?;
-    click(&anim_page, "[data-tali-animate=\"play\"]").await?; // pause, so the reading is stable
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    animate.push(playing);
-    click(&anim_page, "[data-tali-animate=\"reset\"]").await?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    animate.push(read(&anim_page, &probe(ANIMATE_BODY)).await?);
-    let _ = anim_page.close().await;
-
-    // --- point ------------------------------------------------------------
-    let point_page = open(browser, &build(dir, "point")?).await?;
-    let mut point = vec![read::<PointFacts>(&point_page, &probe(POINT_BODY)).await?];
-    focus(&point_page, ".tali-point-pad").await?;
-    for (key, code, vk) in [
-        ("ArrowRight", "ArrowRight", 39),
-        ("ArrowRight", "ArrowRight", 39),
-        ("ArrowUp", "ArrowUp", 38),
-    ] {
-        press(&point_page, key, code, vk).await?;
-        tokio::time::sleep(Duration::from_millis(60)).await;
+    // --- tali.state -------------------------------------------------------
+    // Driven by moving the slider, which is what a scheduled re-run is: each move is one
+    // downstream pass, and the accumulating cell must carry its store across them.
+    let state_page = open(browser, &build(dir, "state")?).await?;
+    let mut state = vec![read::<StateFacts>(&state_page, &probe(STATE_BODY)).await?];
+    for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] {
+        set_slider(&state_page, v).await?;
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        if v == 1 {
+            state.push(read(&state_page, &probe(STATE_BODY)).await?);
+        }
     }
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    point.push(read(&point_page, &probe(POINT_BODY)).await?);
-    // A REAL mouse press, dispatched through CDP: the pad uses pointer capture, and a
-    // synthetic `PointerEvent` carries a pointerId the browser will refuse to capture, so
-    // a JS-dispatched event would exercise a different path than a reader's finger does.
-    let (px, py) = pad_point(&point_page, 0.25, 0.25).await?;
-    mouse(&point_page, DispatchMouseEventType::MousePressed, px, py).await?;
-    mouse(&point_page, DispatchMouseEventType::MouseReleased, px, py).await?;
     tokio::time::sleep(Duration::from_millis(300)).await;
-    point.push(read(&point_page, &probe(POINT_BODY)).await?);
-    let _ = point_page.close().await;
+    state.push(read(&state_page, &probe(STATE_BODY)).await?);
+    let _ = state_page.close().await;
 
     // --- num + tali.tex + tali.table --------------------------------------
     let num_page = open(browser, &build(dir, "numerics")?).await?;
@@ -442,8 +380,7 @@ async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
 
     Ok(Run {
         glsl,
-        animate,
-        point,
+        state,
         tex,
         numerics,
     })
@@ -488,6 +425,19 @@ async fn click(page: &Page, selector: &str) -> Result<(), String> {
     let hit: bool = read(page, &script).await?;
     hit.then_some(())
         .ok_or_else(|| format!("no element matched {selector}"))
+}
+
+/// Set the page's one `{{< input >}}` slider and fire the `input` event a reader's drag
+/// fires, so the runtime schedules exactly the downstream pass it would for a real move.
+async fn set_slider(page: &Page, value: i32) -> Result<(), String> {
+    page.evaluate(format!(
+        "(() => {{ const el = document.querySelector('[data-tali-input]'); \
+         if (!el) return false; el.value = String({value}); \
+         el.dispatchEvent(new Event('input', {{ bubbles: true }})); return true; }})()"
+    ))
+    .await
+    .map_err(|e| format!("set_slider: {e}"))?;
+    Ok(())
 }
 
 async fn focus(page: &Page, selector: &str) -> Result<(), String> {
@@ -727,44 +677,14 @@ const GLSL_BODY: &str = r#"
   });
 "#;
 
-const ANIMATE_BODY: &str = r#"
-  var rt = window.__talijs || {};
-  var tick = document.querySelector('[data-tali-tick]');
-  var play = document.querySelector('[data-tali-animate="play"]');
-  var wave = (rt.scope || {}).wave;
+const STATE_BODY: &str = r#"
   // The accumulating cell's own paragraph, found by its text rather than by a class the
   // corpus document does not carry.
   var seen = '';
   document.querySelectorAll('.tali-js-out p').forEach(function (p) {
     if ((p.textContent || '').indexOf('last frames') === 0) seen = p.textContent;
   });
-  return Object.assign({}, pageFacts, {
-    tick: tick ? Number(tick.value) : NaN,
-    waveHead: (wave && wave.length) ? wave[0] : NaN,
-    seenText: seen,
-    playPressed: play ? String(play.getAttribute('aria-pressed')) : '',
-  });
-"#;
-
-const POINT_BODY: &str = r#"
-  var el = document.querySelector('[data-tali-json]');
-  var dot = document.querySelector('.tali-point-dot');
-  var out = document.querySelector('[data-tali-out]');
-  var v = null;
-  try { v = JSON.parse(el.value); } catch (e) {}
-  // What the CONSUMING cell received, read off the value it published.
-  var fitted = (window.__talijs && window.__talijs.scope) ? window.__talijs.scope.fitted : null;
-  var last = (fitted && fitted.pts && fitted.pts.length) ? fitted.pts[fitted.pts.length - 1] : null;
-  return Object.assign({}, pageFacts, {
-    x: v ? v.x : NaN,
-    y: v ? v.y : NaN,
-    fittedX: (last && typeof last[0] === 'number' && isFinite(last[0])) ? last[0] : null,
-    fittedY: (last && typeof last[1] === 'number' && isFinite(last[1])) ? last[1] : null,
-    dotLeft: dot ? parseFloat(dot.style.left) : NaN,
-    dotTop: dot ? parseFloat(dot.style.top) : NaN,
-    outText: out ? (out.textContent || '') : '',
-    hash: location.hash,
-  });
+  return Object.assign({}, pageFacts, { seenText: seen });
 "#;
 
 const TEX_BODY: &str = r#"
@@ -899,79 +819,12 @@ fn a_glsl_cell_compiles_and_paints() {
     );
 }
 
-/// Item 155a: the tick advances, and the downstream cell re-runs with it. Step first
-/// (deterministic), then Play (which must keep advancing on its own), then Reset.
-#[test]
-fn the_animate_control_advances_the_tick_and_its_downstream_cell() {
-    let Some(r) = observed() else { return };
-    let (rest, stepped, played, reset) =
-        (&r.animate[0], &r.animate[1], &r.animate[2], &r.animate[3]);
-    for (label, f) in [
-        ("at rest", rest),
-        ("stepped", stepped),
-        ("played", played),
-        ("reset", reset),
-    ] {
-        assert_clean(&f.page, label);
-    }
-
-    assert_eq!(rest.tick, 0.0, "the tick starts at its `min`");
-    assert_eq!(stepped.tick, 1.0, "Step advances exactly one frame");
-    assert!(
-        played.tick > stepped.tick + 2.0,
-        "~1s of Play at 10 fps should advance several frames, got {} -> {}",
-        stepped.tick,
-        played.tick
-    );
-    assert_eq!(reset.tick, 0.0, "Reset returns to `min`");
-
-    // The point of the tick: a downstream cell recomputes. Reading the runtime's published
-    // `wave` value, not the tick, is what makes this about the GRAPH rather than the input.
-    assert!(
-        (stepped.wave_head - rest.wave_head).abs() > 1e-9,
-        "the downstream `//| name: wave` cell did not re-run on the tick ({} vs {})",
-        rest.wave_head,
-        stepped.wave_head
-    );
-
-    assert_eq!(
-        played.play_pressed, "true",
-        "Play must report its pressed state to assistive tech while running"
-    );
-    assert_eq!(reset.play_pressed, "false", "Reset also stops playback");
-}
-
-// ---------------------------------------------------------------------------
-// Item 155a's named trap — measured, and NOT automatically covered. Read this before
-// adding a test for it.
-// ---------------------------------------------------------------------------
-//
-// The trap is that a tick must schedule ONE downstream pass per frame through the existing
-// scheduler, never a continuous dataflow loop. Two mechanisms in `bindAnimate` enforce it:
-// frames are paced to `fps`, and the next frame is not requested until the previous pass
-// has resolved (`r.pending[name]`).
-//
-// **Two candidate assertions were written and both were deleted as coverage illusions**,
-// each after being mutation-checked with the mechanisms removed:
-//
-//   1. A frame CEILING ("~1.1 s at fps=10 is under 20 frames"). Green with both mechanisms
-//      deleted: headless Chrome's own `requestAnimationFrame` is throttled by the Plot
-//      re-render, so a runaway pump advances no faster than a paced one.
-//   2. A LAG measure (the drawn wave's tick versus the counter's). Also green with both
-//      deleted, because each pass reads `tali.value` when it STARTS, so the last pass to
-//      run always reads the newest tick — the figure stays in step even when passes
-//      overlap.
-//
-// So the property has no observable this harness can reach, and a green assertion that
-// cannot fail is worse than none. It is enforced by construction in `bindAnimate` and by
-// review; recorded in `notes/DETECTION-DEBT.md` as a known gap rather than papered over.
-
 /// Item 156: state survives a scheduled re-run (so the list grows) and is bounded by the
 /// cell's own logic rather than by anything the runtime does.
 #[test]
 fn tali_state_accumulates_across_re_runs() {
     let Some(r) = observed() else { return };
-    let (rest, stepped, played) = (&r.animate[0], &r.animate[1], &r.animate[2]);
+    let (rest, stepped, played) = (&r.state[0], &r.state[1], &r.state[2]);
     let count = |s: &str| s.split(',').count();
 
     assert!(
@@ -989,86 +842,8 @@ fn tali_state_accumulates_across_re_runs() {
     // entry forever and a store that never dropped anything would show dozens.
     assert!(
         count(&played.seen_text) > 2 && count(&played.seen_text) <= 8,
-        "after ~10 frames the cell's own `slice(-8)` should bound the list, got {:?}",
+        "after ~10 passes the cell's own `slice(-8)` should bound the list, got {:?}",
         played.seen_text
-    );
-}
-
-/// Item 155b: the pad publishes a STRUCTURED value, the arrow keys move it, and the
-/// published `y` grows upward while the painted dot moves up the screen.
-#[test]
-fn the_point_pad_publishes_a_structured_value_by_keyboard() {
-    let Some(r) = observed() else { return };
-    let (start, keyed) = (&r.point[0], &r.point[1]);
-    assert_clean(&start.page, "point at rest");
-    assert_clean(&keyed.page, "point after keys");
-
-    // The widened `readValue` proved end to end: the consuming cell put the pad's point
-    // into its own published `fitted.pts`, which requires `p.x`/`p.y` to have been NUMBERS.
-    // Handed the raw JSON string instead, `p.x` is `undefined` — no error, just a plot
-    // quietly built on NaN.
-    assert_eq!(
-        (keyed.fitted_x, keyed.fitted_y),
-        (Some(keyed.x), Some(keyed.y)),
-        "the downstream cell did not receive the point as an object"
-    );
-    assert!(
-        (keyed.x - (start.x + 0.4)).abs() < 1e-6,
-        "two ArrowRights at step=0.2 should move x by 0.4: {} -> {}",
-        start.x,
-        keyed.x
-    );
-    assert!(
-        (keyed.y - (start.y + 0.2)).abs() < 1e-6,
-        "one ArrowUp at step=0.2 should move y by 0.2: {} -> {}",
-        start.y,
-        keyed.y
-    );
-    // y up in the value, up on the screen: `top` must DECREASE as `y` increases. This is
-    // the assertion that catches a mirrored pad, which no numeric check would.
-    assert!(
-        keyed.dot_top < start.dot_top && keyed.dot_left > start.dot_left,
-        "the painted dot did not follow the value (left {} -> {}, top {} -> {})",
-        start.dot_left,
-        keyed.dot_left,
-        start.dot_top,
-        keyed.dot_top
-    );
-    assert!(
-        keyed.out_text.contains(','),
-        "the readout is this control's only visible value: {:?}",
-        keyed.out_text
-    );
-    assert!(
-        keyed.hash.contains("%22x%22") || keyed.hash.contains("\"x\""),
-        "the structured value must round-trip through the URL fragment: {:?}",
-        keyed.hash
-    );
-}
-
-/// The same pad under a REAL pointer press, which is the path `setPointerCapture` is on —
-/// a synthetic event carries a pointerId the browser refuses to capture, so this is the
-/// only way to know a reader's drag works.
-#[test]
-fn the_point_pad_follows_a_real_pointer_press() {
-    let Some(r) = observed() else { return };
-    let (keyed, clicked) = (&r.point[1], &r.point[2]);
-    assert_clean(&clicked.page, "point after click");
-    // Pressed at 25% across and 25% down, on a -3..3 domain: x ≈ -1.5, and y ≈ +1.5
-    // because screen-down is value-up.
-    assert!(
-        (clicked.x - -1.5).abs() < 0.25,
-        "a press at 25% across a -3..3 pad should publish x ≈ -1.5, got {}",
-        clicked.x
-    );
-    assert!(
-        (clicked.y - 1.5).abs() < 0.25,
-        "a press at 25% DOWN should publish y ≈ +1.5 (y grows upward), got {}",
-        clicked.y
-    );
-    assert!(
-        (clicked.x - keyed.x).abs() > 0.1,
-        "the press did not move the point at all — it never reached the pad"
     );
 }
 

@@ -339,16 +339,34 @@ fn js_reactive_graph_detects_cycle() {
     );
 }
 
+/// The suppressing half of the pair. A Python cell that CALLS `define(` really can publish
+/// `runtime_name` at runtime through a blob no static pass can enumerate, so the
+/// dangling-input check must stay quiet.
 #[test]
-fn js_dangling_input_suppressed_when_python_cell_present() {
-    // A Python `ojs_define` can publish `runtime_name` at runtime, which a static pass
-    // can't see; so the presence of any non-js cell suppresses the dangling-input half.
+fn js_dangling_input_suppressed_when_a_python_cell_calls_define() {
     let doc = render_document(
-        "```{python}\nojs_define(runtime_name=5)\n```\n\n\
+        "```{python}\ndefine(runtime_name=5)\n```\n\n\
          ```{js}\n//| input: runtime_name\nreturn runtime_name;\n```\n",
     );
     let m = msgs(&validate_js_reactive_graph(&doc.blocks));
     assert!(m.is_empty(), "dangling-input must be suppressed: {m:?}");
+}
+
+/// The other half, and the one the narrowing bought. A Python cell that does NOT call
+/// `define(` publishes nothing into the reactive graph, so the broken reference below is
+/// reported — where until 2026-08-03 merely *having* a `{python}` cell switched the check
+/// off, which is every real blog post in the corpus.
+#[test]
+fn js_dangling_input_is_reported_when_the_python_cell_defines_nothing() {
+    let doc = render_document(
+        "```{python}\nx = 5\n```\n\n\
+         ```{js}\n//| input: runtime_name\nreturn runtime_name;\n```\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&doc.blocks));
+    assert!(
+        m.iter().any(|s| s.contains("`runtime_name`")),
+        "a kernel cell that defines nothing must not suppress the check: {m:?}"
+    );
 }
 
 #[test]

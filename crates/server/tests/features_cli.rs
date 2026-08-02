@@ -184,7 +184,9 @@ fn an_unused_feature_is_a_row_not_an_omission() {
 /// Item 207 originally listed four. Three of them — `include-in-header`,
 /// `include-before-body`, `include-after-body` — were resolved on 2026-08-02 by *removal*
 /// rather than by writing a pin, which is the other way a documented-but-unpinned key can
-/// be discharged. `logo:` remains, joined by the two recognized-but-unpinned metadata keys.
+/// be discharged. `logo:` remains, joined by the recognized-but-unhonoured `csl:`. (The
+/// third, `acknowledgements:`, was discharged the third way on 2026-08-03: the key was
+/// retired with the academic-publishing cluster.)
 #[test]
 fn the_real_corpus_shows_the_documented_but_unpinned_keys() {
     let corpus = format!("{}/../../corpus", env!("CARGO_MANIFEST_DIR"));
@@ -193,7 +195,7 @@ fn the_real_corpus_shows_the_documented_but_unpinned_keys() {
         v["documents"].as_u64().unwrap() > 100,
         "the corpus walk must find the whole corpus, not one directory"
     );
-    for unpinned in ["logo", "csl", "acknowledgements"] {
+    for unpinned in ["logo", "csl"] {
         assert!(
             docs_of(&v, "frontmatter-keys", unpinned).is_empty(),
             "`{unpinned}` is documented in the guide and pinned by no corpus document \
@@ -323,13 +325,13 @@ fn documentation_of_a_feature_is_not_use_of_it() {
     let d = scratch("docs");
     std::fs::write(
         d.join("reference.tmd"),
-        "---\ntitle: Reference\n---\n\nThe `doi:` key, and `{{< embed x.tmd >}}`:\n\n\
+        "---\ntitle: Reference\n---\n\nThe `logo:` key, and `{{< embed x.tmd >}}`:\n\n\
          ````\n::: {.magic-move}\n:::\n\n{{< video a.mp4 >}}\n````\n",
     )
     .unwrap();
     let v = json(&["features", d.to_str().unwrap(), "--json"]);
     for (slug, name) in [
-        ("frontmatter-keys", "doi"),
+        ("frontmatter-keys", "logo"),
         ("shortcodes", "embed"),
         ("shortcodes", "video"),
         ("div-classes", "magic-move"),

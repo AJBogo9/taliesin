@@ -181,10 +181,6 @@ struct CellRef {
     /// `#| cache: false`: never restore from / persist to the disk cache; always
     /// re-executes (the escape hatch for non-deterministic cells).
     cache: bool,
-    /// `#| fig-export: figures/x.pdf[, …]`: also write the cell's figure to these
-    /// files (print-clean) for LaTeX/print. Folded into the cache key so adding or
-    /// changing it re-runs the cell (and thus rewrites the file).
-    fig_export: Option<String>,
 }
 
 /// A cell the *current warm kernel* has executed: its cumulative cache key and the
@@ -302,7 +298,7 @@ impl Executor {
     }
 
     /// Run this executor's kernels in `dir` (the document's directory), so a cell's
-    /// relative file writes (audio, `#| fig-export:` figures, `ggsave`) land beside
+    /// relative file writes (audio, a `ggsave`/`savefig` figure) land beside
     /// the source rather than wherever the server was launched. Canonicalized to an
     /// absolute path (an empty/relative `dir` resolves against the current dir); a
     /// path that can't be canonicalized is used as given.
@@ -575,7 +571,6 @@ impl Executor {
                     table: c.table.clone(),
                     include: c.include,
                     cache: c.cache,
-                    fig_export: c.fig_export.clone(),
                 });
             }
         }
@@ -658,17 +653,7 @@ impl Executor {
             Some((_, program)) => interp_id(lang, &program).await,
             None => lang.to_string(),
         };
-        // Fold `#| fig-export:` into the hashed code so adding/changing it moves the
-        // cell's key and forces a re-run (which rewrites the exported file); a cell
-        // without it hashes exactly as before, so existing caches stay valid.
-        let codes: Vec<String> = cells
-            .iter()
-            .map(|c| match &c.fig_export {
-                Some(spec) => format!("{}\n# tali-fig-export: {spec}", c.code),
-                None => c.code.clone(),
-            })
-            .collect();
-        let code_refs: Vec<&str> = codes.iter().map(String::as_str).collect();
+        let code_refs: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
         let hashes = freeze::cumulative_hashes(&interp, &code_refs);
 
         // A cell is "known" (restorable without running) when its output is on disk
@@ -891,13 +876,7 @@ impl Executor {
                             ),
                         );
                     }
-                    // Python `#| fig-export:` cells get a one-line trigger prepended
-                    // so the kernel writes the figure to disk when it's displayed.
-                    let code = if lang == "python" {
-                        export_wrapped(&cell.code, cell.fig_export.as_deref())
-                    } else {
-                        cell.code.clone()
-                    };
+                    let code = cell.code.clone();
                     // queued → running → done|error per cell. Only when a kernel is
                     // actually live: without one the cell is an instant no-op that
                     // stays honestly `queued` (it never ran), and we never emit
@@ -1104,7 +1083,7 @@ impl Executor {
         // which case we fall through to the unchanged cold start below. A pooled
         // kernel is forked from the daemon's cwd, so we chdir it to this document's
         // `work_dir` to match a cold kernel started with `current_dir(work_dir)`;
-        // this keeps relative cell writes (fig-export, audio) landing beside the
+        // this keeps relative cell writes (a saved figure, audio) landing beside the
         // source, exactly as before (and preserves the per-page file isolation the
         // determinism/clobber tests rely on).
         if lang == "python"
@@ -1236,7 +1215,7 @@ impl Executor {
 }
 
 /// Point a freshly-claimed warm-pool kernel at `dir`, so its relative file writes
-/// (fig-export PDFs, `ggsave`, audio) land beside the document's source — matching a
+/// (a `savefig`/`ggsave` figure, audio) land beside the document's source — matching a
 /// cold kernel that `Kernel::start` launches with `current_dir(dir)`. The pool forks
 /// kernels from the daemon's cwd, so without this they'd write into the server's
 /// launch dir instead; setting it here keeps behavior (and the per-page file
@@ -1335,37 +1314,6 @@ fn plan(
         run_end = run_end.min(limit).max(shared);
     }
     (shared, run_end)
-}
-
-/// Prepend a `#| fig-export:` trigger to a Python cell's code so the kernel writes
-/// the cell's figure to the requested file(s) (print-clean) the moment it's
-/// displayed. A comma-separated list exports to several files at once (e.g. a vector
-/// `.pdf` plus a raster `.png`). The `_tali_export` hook is defined in the Python
-/// preamble ([`crate::kernel`]); `install=True` makes it idempotently install the
-/// figure wrap even for cells that produce a figure without naming matplotlib.
-/// Returns the code unchanged when there's nothing to export.
-fn export_wrapped(code: &str, fig_export: Option<&str>) -> String {
-    let Some(spec) = fig_export else {
-        return code.to_string();
-    };
-    let paths: Vec<String> = spec
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(py_str_literal)
-        .collect();
-    if paths.is_empty() {
-        return code.to_string();
-    }
-    format!("_tali_export([{}], install=True)\n{code}", paths.join(", "))
-}
-
-/// Quote a path as a Python single-quoted string literal, escaping backslashes and
-/// quotes so a path with spaces or odd characters survives being embedded in the
-/// prepended `_tali_export([...])` call.
-fn py_str_literal(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
-    format!("'{escaped}'")
 }
 
 /// Whether `--no-exec` / `TALIESIN_NO_EXEC` is in force, i.e. code cells render as source
@@ -1757,7 +1705,6 @@ mod tests {
             table: None,
             include: true,
             cache: true,
-            fig_export: None,
         }
     }
 
@@ -1846,7 +1793,6 @@ mod tests {
                 echo: true,
                 include: true,
                 cache: true,
-                fig_export: None,
                 js: Default::default(),
             }),
         }
@@ -2871,7 +2817,7 @@ mod tests {
     async fn cells_run_in_the_document_directory() {
         // A cell's relative file write must land in the executor's working dir (the
         // document's own directory), not wherever the server process was launched.
-        // This is what keeps generated media (audio, `#| fig-export:` figures) beside
+        // This is what keeps generated media (audio, a saved figure) beside
         // the source instead of cluttering the repo root. Skipped (not failed) when no
         // Python kernel is installed, so it stays green in a kernel-less CI.
         let dir = std::env::temp_dir().join(format!("taliesin-cwd-{}", std::process::id()));

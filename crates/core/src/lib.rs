@@ -42,7 +42,6 @@ pub mod math_preview;
 mod math_vocab;
 pub mod prose;
 pub mod render;
-pub(crate) mod resource;
 pub mod schema;
 pub mod site;
 pub mod vocab;

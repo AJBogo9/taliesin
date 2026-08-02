@@ -204,84 +204,16 @@ fn a_structured_author_list_renders_a_byline_with_numbered_affiliations() {
 }
 
 #[test]
-fn a_resource_row_infers_each_links_label_and_icon_from_its_url() {
-    // Item 185. The bare-URL spelling is the feature: the author writes three URLs and
-    // gets three correctly-labelled buttons, so there is nothing to keep in sync.
-    let doc = render_document(concat!(
-        "---\n",
-        "title: T\n",
-        "venue: NeurIPS 2026\n",
-        "award: Best Paper\n",
-        "links:\n",
-        "  - https://arxiv.org/abs/2501.01234\n",
-        "  - https://github.com/me/project\n",
-        "  - { text: Supplementary, href: https://example.org/extra.pdf }\n",
-        "---\n\nx\n",
-    ));
-    let h = &doc.blocks[0].html;
-    assert!(
-        h.contains("<span class=\"tali-badge tali-badge-venue\">NeurIPS 2026</span>")
-            && h.contains("<span class=\"tali-badge tali-badge-award\">Best Paper</span>"),
-        "both badges render, venue first: {h}"
-    );
-    // The labels are inferred, so none of these three strings appears in the source.
-    for (href, label) in [
-        ("https://arxiv.org/abs/2501.01234", "arXiv"),
-        ("https://github.com/me/project", "Code"),
-        ("https://example.org/extra.pdf", "Supplementary"),
-    ] {
-        assert!(
-            h.contains(&format!("href=\"{href}\"")) && h.contains(&format!("<span>{label}</span>")),
-            "{label} button missing: {h}"
-        );
-    }
-    // The row sits INSIDE the title block, after the byline — not as a sibling that a
-    // `title-block-style: none` page would keep on its own.
-    let block = h.find("tali-resources").expect("row present");
-    let close = h.find("</header>").expect("header closes");
-    assert!(
-        block < close,
-        "the row must live inside the title block: {h}"
-    );
-}
-
-#[test]
-fn a_page_with_no_links_venue_or_award_emits_no_resource_row() {
-    // The whole row is opt-in furniture: an ordinary post's title block must be exactly
-    // what it always was. Asserting on the container class is the honest check — the
-    // bundled CSS mentions every one of these class names on every page, so a bare
-    // `contains("tali-badge")` would pass for the wrong reason.
-    let doc = render_document("---\ntitle: T\nauthor: A\ndate: 2026-05-15\n---\n\nx\n");
-    let h = &doc.blocks[0].html;
-    assert!(
-        !h.contains("<div class=\"tali-resources\">"),
-        "no keys -> no row: {h}"
-    );
-}
-
-#[test]
-fn a_venue_alone_still_renders_its_badge_without_a_links_row() {
-    // The three keys are independent; a page can carry a venue and no artefacts yet.
-    let doc = render_document("---\ntitle: T\nvenue: JMLR\n---\n\nx\n");
-    let h = &doc.blocks[0].html;
-    assert!(h.contains("<div class=\"tali-resources\">"), "row: {h}");
-    assert!(h.contains(">JMLR</span>"), "venue badge: {h}");
-    assert!(
-        !h.contains("<div class=\"tali-resource-links\">"),
-        "no links -> no empty links container: {h}"
-    );
-}
-
-#[test]
-fn the_appendix_renders_contributions_acknowledgments_and_the_doi() {
+fn the_appendix_renders_each_authors_contribution() {
     // Item 187. Contributions are declared BESIDE the name (an `author:` sub-key), not in
     // a separate map keyed by name: a map has to match a name string back to an author and
     // silently drops the entry when the two spellings differ.
+    //
+    // Contributions are the whole appendix since 2026-08-03; its other two parts
+    // (`acknowledgments:` and `doi:`) went with the academic-publishing cluster.
     let doc = render_document(concat!(
         "---\n",
         "title: T\n",
-        "doi: https://doi.org/10.5281/zenodo.1234\n",
-        "acknowledgments: Thanks to the reviewers.\n",
         "author:\n",
         "  - name: Ada Lovelace\n",
         "    contribution: Designed the study.\n",
@@ -305,13 +237,6 @@ fn the_appendix_renders_contributions_acknowledgments_and_the_doi() {
         !h.contains("Anon Nobody"),
         "an author who declared no contribution contributes no row: {h}"
     );
-    assert!(h.contains("<h2>Acknowledgments</h2>"), "ack section: {h}");
-    assert!(h.contains("Thanks to the reviewers."), "ack prose: {h}");
-    // The model holds the BARE doi; a reader needs the resolvable form.
-    assert!(
-        h.contains("<a href=\"https://doi.org/10.5281/zenodo.1234\">10.5281/zenodo.1234</a>"),
-        "the DOI links to its resolver and reads as the bare id: {h}"
-    );
     // It lands after the content, not before it.
     let idx = doc
         .blocks
@@ -321,44 +246,18 @@ fn the_appendix_renders_contributions_acknowledgments_and_the_doi() {
     assert!(idx > 0, "the appendix is appended, not prepended");
 }
 
+/// The appendix is opt-in furniture: a page whose authors declare no `contribution:` must
+/// emit no appendix at all. Load-bearing since 2026-08-03, when contributions became its
+/// only part — before that an `acknowledgments:` or a `doi:` could still carry the block,
+/// so "contributors empty" did not mean "no appendix".
 #[test]
-fn the_british_spelling_of_acknowledgements_is_not_a_typo() {
-    let doc = render_document("---\ntitle: T\nacknowledgements: Funded by a grant.\n---\n\nx\n");
+fn no_contributions_emits_no_appendix() {
+    let doc = render_document("---\ntitle: T\nauthor: Ada Lovelace\ndate: 2026-05-15\n---\n\nx\n");
     assert!(
-        doc.blocks
+        !doc.blocks
             .iter()
-            .any(|b| b.html.contains("Funded by a grant.")),
-        "`acknowledgements:` must render exactly like `acknowledgments:`"
-    );
-}
-
-#[test]
-fn acknowledgments_written_as_a_folded_block_render_as_prose_not_as_the_fold_marker() {
-    // Acknowledgments are a PARAGRAPH, so `>` is the natural way to write them — and the
-    // front-matter LINE SCAN (`extract_field`) returns the fold marker itself for
-    // `acknowledgments: >`, which is worse than returning nothing: the appendix renders a
-    // literal ">" where the prose should be. Reading the parsed YAML is what fixes it.
-    let doc = render_document(concat!(
-        "---\n",
-        "title: T\n",
-        "acknowledgments: >\n",
-        "  We thank the reviewers for their patience,\n",
-        "  and the Analytical Society for the engine.\n",
-        "---\n\nx\n",
-    ));
-    let h = &doc
-        .blocks
-        .iter()
-        .find(|b| b.id == crate::render::APPENDIX_BLOCK_ID)
-        .expect("appendix block emitted")
-        .html;
-    assert!(
-        h.contains("We thank the reviewers for their patience, and the Analytical Society"),
-        "the folded paragraph must render as prose: {h}"
-    );
-    assert!(
-        !h.contains("<p>&gt;</p>") && !h.contains("<p>></p>"),
-        "the fold marker must never reach the page: {h}"
+            .any(|b| b.id == crate::render::APPENDIX_BLOCK_ID),
+        "no contribution -> no appendix"
     );
 }
 
@@ -3543,156 +3442,6 @@ fn input_slider_shortcode_emits_reactive_control() {
     assert!(h.contains(">k</label>"), "label: {h}");
 }
 
-/// `type="animate"` (item 155): transport buttons over a hidden **numeric** tick.
-///
-/// The `type="number"` is the load-bearing detail and the reason this asserts it by name.
-/// `readValue` returns `valueAsNumber` for `number`/`range` and the raw STRING for anything
-/// else, so a `type="hidden"` field would hand every downstream cell `"3"` instead of `3` —
-/// and `"3" + 1` is `"31"`, which is a wrong plot rather than an error.
-#[test]
-fn input_animate_shortcode_emits_transport_controls_over_a_numeric_tick() {
-    let doc = render_document_with_includes(
-        "{{< input name=\"t\" type=\"animate\" min=\"0\" max=\"60\" step=\"1\" fps=\"10\" label=\"frame\" >}}\n",
-        std::path::Path::new("."),
-    );
-    let h = doc.body_html();
-    assert!(
-        h.contains("class=\"tali-input tali-input-animate\""),
-        "kind class: {h}"
-    );
-    assert!(
-        h.contains("data-tali-input=\"t\"") && h.contains("data-tali-tick"),
-        "the reactive node + the tick marker the runtime binds on: {h}"
-    );
-    assert!(
-        h.contains("type=\"number\" hidden"),
-        "the tick must be a hidden NUMBER field, not type=hidden: {h}"
-    );
-    for (act, aria) in [
-        ("play", "Play"),
-        ("step", "Step forward"),
-        ("reset", "Reset"),
-    ] {
-        assert!(
-            h.contains(&format!("data-tali-animate=\"{act}\"")),
-            "missing the {act} button: {h}"
-        );
-        assert!(
-            h.contains(&format!("aria-label=\"{aria}\"")),
-            "{act} label: {h}"
-        );
-    }
-    assert!(
-        h.contains("data-min=\"0\"")
-            && h.contains("data-max=\"60\"")
-            && h.contains("data-step=\"1\"")
-            && h.contains("data-fps=\"10\""),
-        "bounds ride as data-* (a hidden field's own min/max would be applied by the \
-         browser to a value the reader never types): {h}"
-    );
-    // The buttons are the operable surface, so the label is a `<span>` they reference —
-    // a `<label for>` pointing at a hidden input names nothing.
-    assert!(
-        h.contains("<span class=\"tali-input-label\" id=\"qin-t-lbl\">frame</span>")
-            && h.contains("aria-labelledby=\"qin-t-lbl\""),
-        "label wired to the button group: {h}"
-    );
-    assert!(
-        h.contains("aria-live=\"polite\""),
-        "the readout is this control's only visible value, so it must speak: {h}"
-    );
-    assert!(
-        !doc.warnings
-            .iter()
-            .any(|w| w.message.contains("input type"))
-    );
-}
-
-/// `type="point"` (item 155): a focusable pad publishing `{x, y}` JSON.
-#[test]
-fn input_point_shortcode_emits_a_focusable_pad_publishing_json() {
-    let doc = render_document_with_includes(
-        "{{< input name=\"p\" type=\"point\" min=\"-3\" max=\"3\" step=\"0.2\" value=\"0.8,1.2\" label=\"obs\" >}}\n",
-        std::path::Path::new("."),
-    );
-    let h = doc.body_html();
-    assert!(
-        h.contains("class=\"tali-input tali-input-point\""),
-        "kind class: {h}"
-    );
-    assert!(
-        h.contains("data-tali-json") && h.contains("type=\"hidden\""),
-        "the structured value rides a hidden field tagged for JSON parsing: {h}"
-    );
-    assert!(
-        h.contains(r#"value="{&quot;x&quot;:0.8,&quot;y&quot;:1.2}""#),
-        "`value=\"x,y\"` becomes the published JSON: {h}"
-    );
-    assert!(
-        h.contains("class=\"tali-point-pad\" tabindex=\"0\" role=\"application\""),
-        "the PAD is the operable element, and it is keyboard-reachable: {h}"
-    );
-    assert!(
-        h.contains("aria-labelledby=\"qin-p-lbl\"") && h.contains("aria-describedby=\"qin-p-out\""),
-        "pad named by the label and described by the live readout: {h}"
-    );
-    assert!(
-        h.contains("data-min=\"-3\"")
-            && h.contains("data-max=\"3\"")
-            && h.contains("data-step=\"0.2\""),
-        "the pad carries its own domain: {h}"
-    );
-}
-
-/// The default position is the centre of the domain, because any other default is a claim
-/// about data the document has not shown yet.
-#[test]
-fn a_point_without_a_value_starts_at_the_centre() {
-    let h = render_document_with_includes(
-        "{{< input name=\"p\" type=\"point\" >}}\n",
-        std::path::Path::new("."),
-    )
-    .body_html();
-    assert!(
-        h.contains(r#"value="{&quot;x&quot;:0.5,&quot;y&quot;:0.5}""#),
-        "centre of the default 0..1 domain: {h}"
-    );
-}
-
-/// A malformed `value=` must not produce malformed JSON — the runtime would then hand a
-/// downstream cell a raw string and every `p.x` on the page would be `undefined`.
-#[test]
-fn a_point_with_an_unparseable_value_falls_back_rather_than_emitting_junk() {
-    for bad in ["nonsense", "1", "a,b", "1,"] {
-        let h = render_document_with_includes(
-            &format!("{{{{< input name=\"p\" type=\"point\" value=\"{bad}\" >}}}}\n"),
-            std::path::Path::new("."),
-        )
-        .body_html();
-        assert!(
-            h.contains(r#"value="{&quot;x&quot;:0.5,&quot;y&quot;:0.5}""#),
-            "`value=\"{bad}\"` should fall back to the centre, got: {h}"
-        );
-    }
-}
-
-/// Both new types are in the linted vocabulary, so a typo still gets a did-you-mean rather
-/// than rendering a silent slider.
-#[test]
-fn the_new_input_types_are_in_the_linted_vocabulary() {
-    let doc = render_document_with_includes(
-        "{{< input name=\"t\" type=\"animte\" >}}\n",
-        std::path::Path::new("."),
-    );
-    assert!(
-        doc.warnings
-            .iter()
-            .any(|w| w.message.contains("did you mean `animate`?")),
-        "expected a did-you-mean for `animte`: {:?}",
-        doc.warnings
-    );
-}
-
 /// The `data-block-id` of a `tali-input` block, extracted from rendered `body_html`.
 fn tali_input_block_id(h: &str) -> String {
     let key = "class=\"tali-input\" data-block-id=\"";
@@ -5937,26 +5686,17 @@ fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
 }
 
 /// PA-C1/C2/C3 (2026-07-22 polish audit): the "confirmed"/"active" chrome controls — the
-/// cite-this "Copied!" button (site.css), the deck speaker "Read mode" toggle, and the deck
-/// share "Copy" button (deck.css) — filled themselves with the raw `--tali-accent` behind
-/// white text. In dark mode the accent is a LIGHT indigo (#9aa8dc), so white-on-accent was
-/// ≈2.3:1, below AA on the one control a dark reader sees on success. Every filled control
-/// must use the AA-tuned `--tali-accent-fill` (white on it = 5.59:1 in dark) + `--tali-on-accent`,
-/// the same pairing the Cmd-K selected row already uses; the off-palette one-off blues
-/// (#3b6ea5, #4b57b0) must be gone.
+/// deck speaker "Read mode" toggle and the deck share "Copy" button (deck.css) — filled
+/// themselves with the raw `--tali-accent` behind white text. In dark mode the accent is a
+/// LIGHT indigo (#9aa8dc), so white-on-accent was ≈2.3:1, below AA on the one control a dark
+/// reader sees on success. Every filled control must use the AA-tuned `--tali-accent-fill`
+/// (white on it = 5.59:1 in dark) + `--tali-on-accent`, the same pairing the Cmd-K selected
+/// row already uses; the off-palette one-off blues (#3b6ea5, #4b57b0) must be gone.
+///
+/// The audit's third control was the cite-this "Copied!" button; it left with the box on
+/// 2026-08-03, so the two deck controls are the whole live set.
 #[test]
 fn filled_chrome_controls_use_the_aa_accent_fill_not_raw_accent() {
-    // The page-side cite-this confirmed button.
-    let i = SITE_CSS
-        .find(".tali-cite-copy[data-copied=\"true\"] {")
-        .expect("the cite-copy confirmed rule");
-    let rule = &SITE_CSS[i..i + SITE_CSS[i..].find('}').expect("closing brace")];
-    assert!(
-        rule.contains("background: var(--tali-accent-fill)")
-            && rule.contains("color: var(--tali-on-accent)")
-            && !rule.contains("var(--tali-accent)"),
-        "cite-copy confirmed must fill with --tali-accent-fill + --tali-on-accent, not raw --tali-accent: {rule}"
-    );
     // The deck's two filled controls (speaker "Read mode" active + share "Copy").
     //
     // Match the rule that sets the FILL, not merely the first rule naming the selector: a

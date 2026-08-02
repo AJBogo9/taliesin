@@ -214,8 +214,8 @@ client connections. `start()`:
 2. spawns the interpreter (`python -m ipykernel` / `R -e IRkernel::main()`) with
    **stderr piped**, and with its **working directory set to the document's own
    directory** (each `Executor` is created `.in_dir(...)` of its page) so a cell's
-   relative file writes, audio from `scipy.io.wavfile`, a `#| fig-export:` /
-   `ggsave` figure, land beside the source rather than in whatever directory the
+   relative file writes, audio from `scipy.io.wavfile`, a `savefig` / `ggsave`
+   figure, land beside the source rather than in whatever directory the
    server was launched from,
 3. connects the `shell` + `iopub` ZMQ channels, and **races the connect against
    the process exiting**, so a missing `ipykernel` fails in ~1s with its real
@@ -374,15 +374,15 @@ emits them together as `<img class="tali-fig tali-fig-light">` + `<img class="ta
 tali-fig-dark">`. The standalone `image/png` representation is suppressed so only the
 dual-theme HTML survives. The page then swaps which image shows on a `data-theme`
 change, so a plot's axes and text always match the surrounding page with no
-re-execution, the same trick the theme-matched `{{< video >}}` uses. Only data colours
-are left untouched; a `#| fig-export:` writes the *pristine* figure to disk before any
-recolouring.
+re-execution, the same trick the theme-matched `{{< video >}}` uses. Only data colours are left untouched. The recolouring is applied to the *inline*
+representation alone and never to global `rcParams`, so a cell's own `savefig` still
+writes a clean print-ready figure (black on white).
 
 ## How generated outputs reach the build
 
 Inline kernel images, a matplotlib figure, an `image/png`, an SVG, are emitted as `data:`
 URIs baked straight into the cell's output HTML, so they ship inside the page and need no
-sidecar copy at all. A file a cell **writes to disk** (a `#| fig-export:` PNG, a `ggsave`,
+sidecar copy at all. A file a cell **writes to disk** (a `savefig` PNG, a `ggsave`,
 audio from `scipy.io.wavfile`) is different: it lands in the document's own directory,
 because each `Executor` runs `.in_dir(<doc dir>)` and the kernel inherits that working
 directory (see [the warm kernel](#the-warm-kernel-kernel-rs)). The cell then references it
@@ -396,8 +396,8 @@ build shapes do it differently:
   execution: it scans every `src=`/`href=` value (`local_refs`), keeps the local ones
   (`is_local_ref` drops external URLs, `data:` URIs, in-page anchors), strips any
   `?query`/`#fragment`, and copies each existing file to the same relative path beside the
-  page. Because the scan runs after the cells ran, a freshly written `#| fig-export:`
-  figure is on disk and gets picked up like any hand-placed image. A separate pass
+  page. Because the scan runs after the cells ran, a figure a cell freshly wrote is on
+  disk and gets picked up like any hand-placed image. A separate pass
   (`copy_js_imports`) follows a `{js}` cell's relative `import()`/`fetch()` specifiers,
   which the `src=`/`href=` scan can't see. An **in-place** build (output beside the
   source) skips every self-copy.

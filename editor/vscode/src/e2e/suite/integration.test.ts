@@ -1077,18 +1077,18 @@ suite("Taliesin authoring gestures", () => {
     assert.match(opened.getText(), /\| site\s+\| depth \|/, "aligned by the server");
   });
 
-  test("dropping a CSV inserts a dataset card and a loader cell", async () => {
+  test("dropping a file inserts a reference the build can ship", async () => {
     const dir = scratch("drop");
     const doc = path.join(dir, "notes.tmd");
     fs.writeFileSync(doc, "# Notes\n");
-    const csv = path.join(dir, "m.csv");
-    fs.writeFileSync(csv, "a,b\n1,2\n");
+    const asset = path.join(dir, "m.csv");
+    fs.writeFileSync(asset, "a,b\n1,2\n");
 
     const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
     await vscode.window.showTextDocument(opened);
 
     const dt = new vscode.DataTransfer();
-    dt.set("text/uri-list", new vscode.DataTransferItem(vscode.Uri.file(csv).toString()));
+    dt.set("text/uri-list", new vscode.DataTransferItem(vscode.Uri.file(asset).toString()));
 
     // Called directly: no built-in command drives a drop provider (measured, see the suite note).
     const edit = await dropProvider.provideDocumentDropEdits!(
@@ -1099,9 +1099,7 @@ suite("Taliesin authoring gestures", () => {
     );
     assert.ok(edit, "the provider answered the drop");
     const text = String((edit as vscode.DocumentDropEdit).insertText);
-    assert.match(text, /\{\{< dataset m\.csv >\}\}/, `card: ${text}`);
-    assert.match(text, /```\{python\}/, `loader: ${text}`);
-    assert.match(text, /pd\.read_csv\("m\.csv"\)/, `loader body: ${text}`);
+    assert.match(text, /m\.csv/, `reference: ${text}`);
   });
 });
 

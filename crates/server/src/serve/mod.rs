@@ -455,18 +455,6 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--tali-muted, #888); } \
     .tali-dev-row .tali-dev-label { font-weight: 600; } \
     #tali-wordcount { font-variant-numeric: tabular-nums; } \
-    #tali-digest-sum { font-variant-numeric: tabular-nums; } \
-    .tali-dev-digest { display: flex; flex-direction: column; gap: .15rem; max-width: 22rem; } \
-    .tali-dev-digest .tali-digest-row { display: block; width: 100%; text-align: left; \
-      font: inherit; font-size: 12px; line-height: 1.3; cursor: pointer; \
-      background: none; border: 0; border-left: 2px solid var(--tali-border, #e0e0e0); \
-      padding: .1rem .35rem; color: var(--tali-muted, #888); \
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
-    .tali-dev-digest .tali-digest-row:hover:not(:disabled) { color: var(--tali-fg, #111); \
-      border-left-color: var(--tali-accent, #4c8dff); } \
-    .tali-dev-digest .tali-digest-row:disabled { cursor: default; opacity: .7; } \
-    .tali-dev-digest .tali-digest-row[data-tali-op=\"insert\"] { border-left-color: #3fa45b; } \
-    .tali-dev-digest .tali-digest-row[data-tali-op=\"remove\"] { border-left-color: #e5534b; } \
     .tali-dev-sections { display: flex; flex-direction: column; gap: .1rem; max-width: 22rem; \
       max-height: 14rem; overflow-y: auto; } \
     .tali-dev-sections .tali-section-row { display: flex; gap: .5rem; justify-content: space-between; \
@@ -903,58 +891,6 @@ mod protocol_contract {
         assert!(
             STATUS_CSS.contains("data-tali-cell-source=\"cache\""),
             "STATUS_CSS must style the cached-cell border distinctly from a fresh run"
-        );
-    }
-
-    /// The revision digest (item 162) is two halves in two languages: `client.js` records
-    /// every applied op and builds the rows, `STATUS_CSS` is the only thing that makes them
-    /// legible. Neither half fails loudly without the other — unstyled rows are a wall of
-    /// grey text, and a styled class nothing emits is invisible — so they are pinned
-    /// together here, as the cell-provenance and card-preview panes already are.
-    ///
-    /// It also pins the *op coverage*, which is the part that would rot silently: a fifth
-    /// block-op arriving with no `noteOp` call would simply not be reported, and the digest
-    /// would keep looking correct while under-counting the session.
-    #[test]
-    fn client_reports_every_block_op_in_the_revision_digest() {
-        for op in ["\"update\"", "\"insert\"", "\"remove\"", "\"shift\""] {
-            assert!(
-                CLIENT_JS.contains(&format!("noteOp({op}")),
-                "client.js must record a {op} op in the revision digest"
-            );
-        }
-        // The four `case` arms a block op can arrive on. If a new one is added to
-        // `BlockOp`/the wire, this list is where the omission shows up.
-        for arm in [
-            "case \"update\"",
-            "case \"insert\"",
-            "case \"remove\"",
-            "case \"set_meta\"",
-        ] {
-            assert!(CLIENT_JS.contains(arm), "client.js must handle {arm}");
-        }
-        assert!(
-            CLIENT_JS.contains("tali-digest-row"),
-            "client.js must emit the digest rows"
-        );
-        assert!(
-            STATUS_CSS.contains(".tali-digest-row"),
-            "STATUS_CSS must style the digest rows, or the feed is unreadable grey text"
-        );
-        // The attribute carrying the op kind, which is what colours an insert green and a
-        // remove red. Renamed on one side only, every row silently goes grey.
-        assert!(
-            CLIENT_JS.contains("row.dataset.taliOp"),
-            "client.js must tag each row with its op kind (data-tali-op)"
-        );
-        assert!(
-            STATUS_CSS.contains("[data-tali-op=\"insert\"]"),
-            "STATUS_CSS must select on data-tali-op"
-        );
-        // The rows are click-to-source, which is the whole reason they beat a console log.
-        assert!(
-            CLIENT_JS.contains("gotoSource(e.at.file, e.at.line)"),
-            "a digest row must open its block's source"
         );
     }
 

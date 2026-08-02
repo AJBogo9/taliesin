@@ -9,7 +9,7 @@
 // `lsp_insert.rs`. Nothing here knows what a figure looks like.
 
 /** Kinds the server understands. Mirrors `InsertKind` in `lsp_insert.rs`. */
-export type InsertKind = "image" | "htmlTable" | "tsvTable" | "bibtex" | "dataset" | "asset";
+export type InsertKind = "image" | "htmlTable" | "tsvTable" | "bibtex" | "asset";
 
 /** Mirrors `InsertEditResult` in `lsp_insert.rs` (camelCase over the wire). */
 export interface InsertEditResult {

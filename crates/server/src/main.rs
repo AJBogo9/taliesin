@@ -91,7 +91,6 @@ fn main() -> ExitCode {
         Some("vocab") => query::cmd_vocab(),
         Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
-        Some("skim") => query::cmd_skim(&args),
         Some("features") => query::cmd_features(&args),
         Some("check") => check::cmd_check(&args),
         Some("doctor") => doctor::cmd_doctor(&args),
@@ -156,7 +155,6 @@ const COMMANDS: &[&str] = &[
     "check",
     "doctor",
     "map",
-    "skim",
     "features",
     "mcp",
     "lsp",
@@ -252,8 +250,6 @@ Inspect
                              text (agent-readable; --run executes cells + reports
                              produced figures/output; --format json emits
                              {path, executed, cells, text}; a dir reads the book)
-  skim   <dir> [--format human|json]  the book's skimmable layers as one linear
-                             stream (numbered headings, opening sentences, captions)
   features <file.tmd | dir> [--format human|json]  which constructs a document
                              uses, and which constructs no document uses
   render <file.tmd>          render a full HTML page to stdout
@@ -480,21 +476,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin map . --format json | jq '.pages[].url'\n"
-        }
-        "skim" => {
-            "taliesin skim <dir> [--format human|json]\n\
-             \n\
-             The whole book as the layers a reader actually skims, in one linear stream:\n\
-             numbered headings, each section's opening sentence, and the captions, callout\n\
-             titles and theorem statements that carry meaning on their own. Reuses site\n\
-             discovery; no kernel, no code execution.\n\
-             \n\
-             Every section prints its raw opening sentence, and a judgement (\"no prose\")\n\
-             is an annotation beside it, never a suppression — so a thin section and a\n\
-             projection miss can always be told apart.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin skim . | less\n"
         }
         "features" => {
             "taliesin features <file.tmd | dir> [--format human|json]\n\
@@ -1107,10 +1088,11 @@ mod cli_microcopy_tests {
     /// real subcommand. The command half of the same link `env_help_lists_every_runtime_env_var`
     /// makes for environment variables — and the one that was missing.
     ///
-    /// `skim` shipped with a dispatch arm, an entry in `COMMANDS`, a focused `--help` page
-    /// and an integration test, and was absent from the one list a user reads to find out
-    /// what the tool can do. Every other gate passed: `subcommand_help_covers_documented_commands`
-    /// only asks whether a *focused* page exists, which it did.
+    /// The since-retired `skim` shipped with a dispatch arm, an entry in `COMMANDS`, a
+    /// focused `--help` page and an integration test, and was absent from the one list a user
+    /// reads to find out what the tool can do. Every other gate passed:
+    /// `subcommand_help_covers_documented_commands` only asks whether a *focused* page
+    /// exists, which it did.
     #[test]
     fn commands_help_lists_every_subcommand() {
         // Aliases are named inside `preview`'s entry as prose ("aliases: dev, serve") rather
@@ -1120,7 +1102,7 @@ mod cli_microcopy_tests {
         // A command's entry opens its line: two spaces, the name, then a space. Matching the
         // bare name anywhere would pass on a mention inside another command's description
         // (`preview`'s text names `--no-exec`, `read`'s names `--run`), which is exactly the
-        // false pass that lets the next `skim` through.
+        // false pass that let `skim` through.
         let listed = |name: &str| COMMANDS_HELP.contains(&format!("\n  {name} "));
 
         for cmd in COMMANDS.iter().filter(|c| !LISTED_IN_PROSE.contains(c)) {

@@ -55,14 +55,12 @@ struct Cell {
     echo: bool,                    // #| echo: false hides source (cell still runs, output shows)
     include: bool,                 // #| include: false hides source AND output (still runs)
     cache: bool,                   // #| cache: false → never freeze; always re-run
-    fig_export: Option<String>,    // #| fig-export: a.pdf[, b.svg] → print-clean figure files
     js: JsOpts,                    // {js} cell wiring; default/empty for every other language
 }
 ```
 
 `echo`, `include`, and `cache` default to `true` (the front-matter `execute:`
-block sets the document default, the `#|` option overrides per cell). `fig_export`
-is comma-separated; the Python kernel preamble writes the files at display time.
+block sets the document default, the `#|` option overrides per cell).
 
 ### `JsOpts`
 
@@ -329,7 +327,7 @@ These two are **private to the executor** (not part of any public API); they app
 here only so [the execution chapter](execution.tmd) reads cleanly. `CellRef` is a
 code cell pulled out of the block list with everything needed to run it and rebuild
 its output block (`block_index`, `id`, `code`, `sourcepos`, `source_file`, plus the
-same `figure` / `table` / `include` / `cache` / `fig_export` it carried on the
+same `figure` / `table` / `include` / `cache` it carried on the
 `Cell`). `Ran` is one cell the **current warm kernel** has already executed: its
 cumulative cache key (`hash`) and the `output` HTML it produced. The ordered list
 of `Ran`s doubles as the record of what state the live kernel holds, which the

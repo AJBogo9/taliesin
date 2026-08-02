@@ -301,15 +301,25 @@ fn a_glsl_cells_own_dangling_input_is_reported() {
     );
 }
 
-/// A real kernel cell still suppresses it, because a Python `ojs_define` genuinely can
-/// publish a name this static pass cannot enumerate. The conservatism is the point; the
-/// bug was applying it to a language that has no runtime at all.
+/// A kernel cell suppresses the check only when it CALLS `define(`, narrowed from "any
+/// kernel cell" on 2026-08-03. The conservatism is right where the bridge is really used
+/// and wrong everywhere else: spelled `lang != "js"` it went silent on a `{glsl}` page
+/// (the bug the test above covers), and spelled "any kernel cell" it went silent on every
+/// real blog post in the corpus, which is precisely where a typo'd input hides best.
 #[test]
-fn a_python_cell_still_suppresses_the_dangling_input_check() {
-    let msgs = dangling("```{python}\nx = 1\n```\n\n```{js}\n//| input: nope\nreturn 1;\n```\n");
+fn only_a_python_cell_that_calls_define_suppresses_the_dangling_input_check() {
+    let suppressed =
+        dangling("```{python}\ndefine(x=1)\n```\n\n```{js}\n//| input: nope\nreturn 1;\n```\n");
     assert!(
-        msgs.is_empty(),
-        "a kernel cell must keep the check suppressed: {msgs:?}"
+        suppressed.is_empty(),
+        "a cell using the bridge must keep the check suppressed: {suppressed:?}"
+    );
+
+    let reported =
+        dangling("```{python}\nx = 1\n```\n\n```{js}\n//| input: nope\nreturn 1;\n```\n");
+    assert!(
+        reported.iter().any(|m| m.contains("`nope`")),
+        "a cell that defines nothing must not suppress it: {reported:?}"
     );
 }
 
