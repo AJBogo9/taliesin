@@ -315,10 +315,12 @@ their own box instead of stretching the page; type and spacing tighten on narrow
 screens; in-page links scroll smoothly; and everything honours
 `prefers-reduced-motion`.
 
-On a phone the table of contents becomes a **pull-up sheet**: a quiet handle at
-the bottom edge that you drag up (or tap) to open the contents, with the current
-section flashing in as you scroll. It is keyboard- and screen-reader-friendly
-(Enter/Space to open, Escape to close).
+On a phone the table of contents becomes a **pull-up sheet**: a labelled
+**Contents** button at the bottom edge that you press to open and press again to
+close (or drag up, if you would rather), with the current section flashing in
+above it as you scroll. It stays put while the sheet is open, so the way in is
+also the way out. It is keyboard- and screen-reader-friendly (Enter/Space to
+toggle, Escape to close).
 
 To see it on a real device, start the server with `--host`:
 

@@ -465,7 +465,8 @@ const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoade
 /// cannot render without its client anyway) sets that class server-side.
 pub const TOC_SHEET_MARKUP: &str = "<div id=\"tali-toc-backdrop\"></div>\n\
      <button id=\"tali-toc-handle\" type=\"button\" aria-label=\"Contents\">\
-     <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>\n";
+     <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-chev\" aria-hidden=\"true\"></span>\
+     <span class=\"tali-toc-label\">Contents</span></button>\n";
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     html_page_inner(doc, fallback_title, None, mode, AssetMode::Inline)

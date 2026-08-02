@@ -1207,18 +1207,33 @@
     body.tali-toc-sheet #tali-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
       background: var(--tali-scrim); opacity: 0; pointer-events: none; transition: opacity var(--tali-dur-slow); }
     body.tali-toc-sheet.tali-toc-open #tali-toc-backdrop { opacity: 1; pointer-events: auto; }
-    /* the resting handle: a quiet grabber you drag up or tap */
-    body.tali-toc-sheet #tali-toc-handle { display: flex; flex-direction: column; align-items: center;
+    /* The contents handle: a labelled TOGGLE, not a grabber. It used to be a bare 42x5 px
+       grip with `cursor: grab` and `display: none` while open, which said "drag me from the
+       bottom edge" and offered no press-again-to-close (item 198). Dragging it up still
+       works; the chevron and the word are what say a press works too. */
+    body.tali-toc-sheet #tali-toc-handle { display: flex; flex-direction: row; align-items: center;
       position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
-      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1.3rem .5rem; gap: .3rem;
-      min-height: 24px; box-sizing: border-box;
+      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1rem; gap: .4rem;
+      min-height: 32px; box-sizing: border-box;
       border: 0; border-radius: var(--tali-radius-lg); background: color-mix(in srgb, var(--tali-bg) 72%, transparent);
       -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: var(--tali-shadow-sm);
-      cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
-    body.tali-toc-sheet.tali-toc-open #tali-toc-handle { display: none; }
-    /* the grip is the only affordance that opens the contents sheet: it must clear the 3:1
-       non-text floor (`opacity: .6` put it at 2.46-2.85:1) and its handle a 24px target. */
-    #tali-toc-handle .tali-toc-grip { width: 42px; height: 5px; border-radius: var(--tali-radius-sm); background: var(--tali-muted); }
+      cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none; }
+    /* Open: it stays mounted as the close affordance, and has to sit ABOVE the sheet
+       (z-index 10001) and its backdrop (10000) or a press lands on the backdrop instead. The
+       sheet's bottom padding grows to match, so nothing in the list hides underneath it. */
+    body.tali-toc-sheet.tali-toc-open #tali-toc-handle { z-index: 10002; }
+    body.tali-toc-sheet.tali-toc-open #TOC { padding-bottom: calc(3.6rem + env(safe-area-inset-bottom, 0px)); }
+    /* The chevron: two borders of a rotated square, so no glyph and no font dependency. It
+       points UP at rest (pull/press up to open) and flips down when the sheet is open. Its
+       partner is the word beside it, so it carries no meaning on its own (aria-hidden). */
+    #tali-toc-handle .tali-toc-chev { width: 7px; height: 7px; margin-top: 3px;
+      border-left: 2px solid var(--tali-muted); border-top: 2px solid var(--tali-muted);
+      transform: rotate(45deg); transition: transform var(--tali-dur-slow), margin var(--tali-dur-slow); }
+    body.tali-toc-open #tali-toc-handle .tali-toc-chev { transform: rotate(-135deg); margin-top: -3px; }
+    /* The label is text, so it answers to the text contrast floor rather than the 3:1
+       non-text one the old grip was tuned against. */
+    #tali-toc-handle .tali-toc-label { font: 600 13px ui-sans-serif, system-ui, sans-serif;
+      line-height: 1; color: var(--tali-muted); }
     /* current-section chip: hidden at rest, flashes in while scrolling, then fades */
     #tali-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
       transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;

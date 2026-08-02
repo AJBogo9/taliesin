@@ -13,9 +13,11 @@ offset, so it survives a re-render or a change of window size.
 A long document is not a failure of editing; sometimes the subject is large. What a long
 document owes its reader is orientation. A printed book gives it for free: the heft in your
 left hand versus your right tells you, without a word, how far you have come and how far is
-left. A web page gives you nothing. The scrollbar is a poor substitute, thin and easy to
-ignore, and it measures pixels, not ideas. A reader deep in a forty-minute chapter, with no
-sense of the end, reads differently than one who can see the shore.
+left. A web page has one answer already built in, the scrollbar, and it is a coarse one:
+it measures pixels rather than ideas. But it is *there*, on every page, in the shape every
+reader already knows, and a second bar painted along the top says the same coarse thing
+twice while moving in the corner of your eye. So this page adds nothing to it. What is worth
+adding is the part the scrollbar genuinely cannot do, which is the next two sections.
 
 ## On memory
 

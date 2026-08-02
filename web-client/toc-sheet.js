@@ -4,8 +4,8 @@
 // The live preview drives its own copy of this from client.js (it also rebuilds the
 // TOC live). A static export has no websocket client, so this self-contained enhancer
 // wires the same bottom-sheet interaction against the server-rendered `#TOC`:
-//   drag the handle up (or tap it) to open; tap the backdrop / a TOC entry / Esc, or
-//   drag the open sheet down, to close.
+//   drag the handle up (or press it) to open; press it again, or tap the backdrop /
+//   a TOC entry / Esc, or drag the open sheet down, to close.
 // It only does anything at the sheet breakpoint (<= 60rem) where the CSS reveals the
 // handle; on desktop the `#TOC` stays the sticky sidebar and this stays inert.
 // Registered on TOC pages by `render::toc_scripts()` (build-only).
@@ -90,7 +90,13 @@
       if (!d) return;
       var dt = Date.now() - d.t;
       var tap = d.moved < 6 && dt < 300;
-      var open = tap || d.moved > d.h * 0.3 || (d.moved > 36 && d.moved / Math.max(dt, 1) > 0.45);
+      // A tap TOGGLES (item 198): the handle stays mounted over the open sheet as its
+      // close affordance, so "tap" can no longer mean "open" unconditionally. A DRAG still
+      // only ever opens — dragging up from a shut sheet is the gesture; the open sheet is
+      // dismissed by dragging the sheet itself down.
+      var open = tap
+        ? !document.body.classList.contains("tali-toc-open")
+        : d.moved > d.h * 0.3 || (d.moved > 36 && d.moved / Math.max(dt, 1) > 0.45);
       resetSheet();
       setOpen(!!open);
       d = null;
@@ -136,9 +142,13 @@
     toc.addEventListener("touchend", endDrag);
     toc.addEventListener("touchcancel", endDrag);
 
-    // Keyboard: Enter/Space opens the handle; Escape closes and returns focus.
+    // Keyboard: Enter/Space toggles the handle (it is a button and says so); Escape
+    // closes and returns focus.
     handle.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); }
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setOpen(!document.body.classList.contains("tali-toc-open"));
+      }
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && document.body.classList.contains("tali-toc-open")) {

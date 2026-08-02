@@ -1283,7 +1283,13 @@
       if (!d) return;
       const dt = Date.now() - d.t;
       const tap = d.moved < 6 && dt < 300;
-      const open = tap || d.moved > d.h * 0.3 || (d.moved > 36 && d.moved / Math.max(dt, 1) > 0.45);
+      // A tap TOGGLES (item 198): the handle stays mounted over the open sheet as its
+      // close affordance, so "tap" can no longer mean "open" unconditionally. A DRAG still
+      // only ever opens — dragging up from a shut sheet is the gesture; the open sheet is
+      // dismissed by dragging the sheet itself down.
+      const open = tap
+        ? !document.body.classList.contains("tali-toc-open")
+        : d.moved > d.h * 0.3 || (d.moved > 36 && d.moved / Math.max(dt, 1) > 0.45);
       resetSheet();
       setOpen(!!open);
       d = null;
@@ -1326,9 +1332,13 @@
     tocEl.addEventListener("touchend", endSheetDrag);
     tocEl.addEventListener("touchcancel", endSheetDrag);
 
-    // keyboard: Enter/Space on the handle opens; Escape closes and returns focus.
+    // keyboard: Enter/Space on the handle toggles (it is a button and now says so);
+    // Escape closes and returns focus.
     tocHandle.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); }
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setOpen(!document.body.classList.contains("tali-toc-open"));
+      }
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && document.body.classList.contains("tali-toc-open")) {

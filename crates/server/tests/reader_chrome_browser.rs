@@ -25,6 +25,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
 use chromiumoxide::cdp::browser_protocol::input::{
     DispatchMouseEventParams, DispatchMouseEventType, MouseButton,
 };
@@ -118,6 +119,28 @@ struct Progress {
     errors: Vec<String>,
 }
 
+/// One reading of the mobile contents handle.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct Handle {
+    /// Whether the handle has a box at all. `display: none` reports false.
+    shown: bool,
+    /// Its visible text with the (absolutely-positioned, hidden-at-rest) current-section
+    /// chip removed — i.e. what a reader can actually read on the button.
+    label: String,
+    /// `getComputedStyle(...).cursor`. `grab` is what made it read as a drag grip.
+    cursor: String,
+    /// The `aria-expanded` it publishes.
+    expanded: String,
+    /// Whether the sheet is open (`body.tali-toc-open`).
+    #[serde(rename = "sheetOpen")]
+    sheet_open: bool,
+    /// Whether anything is painted at the handle's centre AND that thing is the handle (or
+    /// inside it). The control on `shown`: an element with a box can still be buried under
+    /// the sheet's backdrop, where a press reaches the backdrop instead.
+    #[serde(rename = "hitIsHandle")]
+    hit_is_handle: bool,
+}
+
 struct Run {
     /// Immediately after clicking a figure image on the page.
     opened: Shot,
@@ -130,6 +153,8 @@ struct Run {
     after_backdrop_click: Shot,
     /// Reading progress + resume, on a long document.
     progress: Progress,
+    /// The mobile contents handle: at rest, after a press, and after a second press.
+    handle: Vec<Handle>,
 }
 
 static RUN: OnceLock<Result<Run, String>> = OnceLock::new();
@@ -216,6 +241,7 @@ async fn drive(dir: &Path) -> Result<Run, String> {
 
 async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
     let progress = read_progress(browser, dir).await?;
+    let handle = read_toc_handle(browser, dir).await?;
 
     let page_path = build(dir, "media/gallery.tmd", "gallery.html")?;
     let page = open(browser, &page_path).await?;
@@ -248,7 +274,100 @@ async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
         after_image_click,
         after_backdrop_click,
         progress,
+        handle,
     })
+}
+
+/// The mobile contents handle at a phone viewport: at rest, after one press, after a second.
+///
+/// Emulated metrics rather than a resized window, because a headless Chrome window will not
+/// go below roughly 500 px wide and the sheet breakpoint is 60rem — a plain resize would test
+/// the desktop rail while reporting phone numbers.
+async fn read_toc_handle(browser: &Browser, dir: &Path) -> Result<Vec<Handle>, String> {
+    // `reader/long-read.tmd` sets `toc: true`, which is what puts the sheet chrome on the page.
+    let path = build(dir, "reader/long-read.tmd", "long-read-toc.html")?;
+    let page = browser
+        .new_page("about:blank")
+        .await
+        .map_err(|e| format!("new page: {e}"))?;
+    let metrics = SetDeviceMetricsOverrideParams::builder()
+        .width(390)
+        .height(844)
+        .device_scale_factor(1.0)
+        .mobile(true)
+        .build()
+        .map_err(|e| format!("metrics params: {e}"))?;
+    page.execute(metrics)
+        .await
+        .map_err(|e| format!("emulate phone: {e}"))?;
+    page.goto(format!("file://{}", path.display()))
+        .await
+        .map_err(|e| format!("navigate: {e}"))?;
+    for _ in 0..200 {
+        let ready: bool = read(
+            &page,
+            "function () { return document.body.classList.contains('tali-toc-sheet'); }",
+        )
+        .await?;
+        if ready {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let mut shots = vec![handle_shot(&page).await?];
+    for _ in 0..2 {
+        press_handle(&page).await?;
+        // The sheet slides on a .3s transition; the class flips at once but the hit-test
+        // below needs the paint to have settled where it ends up.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        shots.push(handle_shot(&page).await?);
+    }
+    Ok(shots)
+}
+
+/// A real press on the handle: `pointerdown`/`pointerup` at its centre, because the handle
+/// is driven by pointer events (a synthetic `.click()` would bypass the tap/drag decision
+/// that is the thing being asserted).
+async fn press_handle(page: &Page) -> Result<(), String> {
+    let pt: Vec<f64> = read(
+        page,
+        "function () {
+           var r = document.getElementById('tali-toc-handle').getBoundingClientRect();
+           return [r.left + r.width / 2, r.top + r.height / 2];
+         }",
+    )
+    .await?;
+    match pt.as_slice() {
+        [x, y] => mouse_click(page, *x, *y).await,
+        _ => Err("could not measure the contents handle".to_string()),
+    }
+}
+
+async fn handle_shot(page: &Page) -> Result<Handle, String> {
+    read(
+        page,
+        "function () {
+           var h = document.getElementById('tali-toc-handle');
+           if (!h) return { shown: false, label: '', cursor: 'none', expanded: '',
+                            sheetOpen: false, hitIsHandle: false };
+           var r = h.getBoundingClientRect();
+           var cur = document.getElementById('tali-toc-cur');
+           var text = (h.textContent || '').replace(cur ? cur.textContent || '' : '', '').trim();
+           var hit = r.width > 0 && r.height > 0
+             ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+             : null;
+           return {
+             shown: r.width > 0 && r.height > 0,
+             label: text,
+             cursor: getComputedStyle(h).cursor,
+             expanded: h.getAttribute('aria-expanded') || '',
+             sheetOpen: document.body.classList.contains('tali-toc-open'),
+             hitIsHandle: !!(hit && (hit === h || h.contains(hit))),
+           };
+         }",
+    )
+    .await
 }
 
 /// Scroll a long page halfway, let the position record settle, then arrive at the same
@@ -578,6 +697,53 @@ fn stepping_the_gallery_does_not_close_the_lightbox() {
         "control: the next button must actually step the gallery, or 'still open' is \
          satisfied by an inert button"
     );
+}
+
+/// Item 198: the bottom-centre contents handle on a phone must read as a button and behave
+/// like one. It was a 42x5 px grip with `cursor: grab`, no chevron, no visible label, and
+/// `display: none` while the sheet was open — so it announced "drag me from the bottom edge"
+/// and offered no press-again-to-close.
+#[test]
+fn the_mobile_contents_handle_reads_and_behaves_as_a_toggle() {
+    if !have_chrome() {
+        return;
+    }
+    let shots = &observed().handle;
+    let (rest, opened, closed) = (&shots[0], &shots[1], &shots[2]);
+
+    assert!(
+        rest.shown && rest.hit_is_handle,
+        "control: the handle must be on screen and pressable at rest: {rest:?}"
+    );
+    assert!(
+        rest.label.contains("Contents"),
+        "the handle must say what it opens: {rest:?}"
+    );
+    assert_ne!(
+        rest.cursor, "grab",
+        "`grab` is the cursor that made it read as a drag grip: {rest:?}"
+    );
+    assert_eq!(
+        rest.expanded, "false",
+        "at rest the sheet is shut: {rest:?}"
+    );
+
+    assert!(
+        opened.sheet_open,
+        "a press must open the contents sheet: {opened:?}"
+    );
+    assert!(
+        opened.shown && opened.hit_is_handle,
+        "and the handle must stay mounted AND pressable over the open sheet, or there is \
+         no press-again-to-close: {opened:?}"
+    );
+    assert_eq!(opened.expanded, "true");
+
+    assert!(
+        !closed.sheet_open,
+        "a second press must close it again: {closed:?}"
+    );
+    assert_eq!(closed.expanded, "false");
 }
 
 /// Item 199: the top reading-progress bar is gone (it duplicates the native scrollbar),

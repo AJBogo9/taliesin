@@ -17,10 +17,10 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**194, 195, 196, 197 and 199 shipped 2026-08-02**, which closes the research-publishing
-cluster's last non-optional item and four of the six author-reported ones. **Next session: 198
-and 200 are what is left of the author-reported band** (198 is a restyle with a browser pin,
-200 is the sepia removal and the larger of the two), then 188, then the large swings.
+**194, 195, 196, 197, 198 and 199 shipped 2026-08-02**, which closes the research-publishing
+cluster's last non-optional item and five of the six author-reported ones. **Next session: 200
+is the only one of that band left** (the sepia removal, M, ruled and measured at 81
+references), then 188, then the large swings.
 **188 is the only cluster item left, and it is the one previously marked "leave"** (lowest
 conviction, and the item still says so) — so the real choice after the band is 188 against the two
 large swings (164, 167), and **that cross-cluster ranking is an owner call that has not been
@@ -63,9 +63,9 @@ What 185/186/187 established, for whoever touches that area next:
   back to an author and would drop the entry silently when the two spellings drifted.
 
 - **P1 is a ranked build queue, not a menu.** Take from the top: the rest of the author-reported
-  reader/editor band filed 2026-08-01 (198, 200 — 195, 196, 197 and 199 shipped 2026-08-02;
-  each measured down to a small cause; **200 was ruled the day it was filed and is a build
-  now, not a question**), then 188, then the large swings. **Read
+  reader/editor band filed 2026-08-01 (200 — 195, 196, 197, 198 and 199 shipped 2026-08-02;
+  **200 was ruled the day it was filed and is a build now, not a question**), then 188, then
+  the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
   of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
@@ -164,19 +164,6 @@ Two conditions apply to every item here. **Each still owes a corpus pin doc** (a
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
-
-198. **The mobile contents handle reads as a drag grip, not a button.** (S, author-reported
-     2026-08-01. **Smaller than it was filed as**: the press-to-open button already exists.)
-     `#tali-toc-handle` is already a real `<button aria-label="Contents">` pinned bottom-centre
-     (`page.rs:467`, styled `base.css:1214`), and `toc-sheet.js` already opens the sheet on tap. Two
-     things make it read as "drag me from the bottom edge": its only visible content is a 42x5 px
-     grip (`base.css:1224`), with no chevron and no visible label, and it is `display:none` while
-     the sheet is open (`base.css:1221`), so there is no press-again-to-close. So this is a restyle
-     (chevron plus label, and keep it mounted as a toggle when open), **not a mobile-TOC rebuild.**
-     The author's own note asks for a survey of how other products handle a mobile TOC before
-     committing to a shape; that survey is optional here, because the shape is already chosen and
-     only its affordance is wrong. Pin with a browser test at the mobile viewport, and mind the
-     documented scroll/drag false-negative pattern.
 
 200. **Drop sepia, leaving light + dark.** (M. **RULED 2026-08-01: remove it**, overriding the
      recommendation to keep. Do not re-open on the a11y argument: it was made, considered and
@@ -695,6 +682,17 @@ branch are enough to find its commits.
   in the same function. **Do not extend click-to-close to the lightbox's video or mermaid box**: a
   `<video>` click belongs to the native control bar and `.tali-lb-svg` is a pannable scroller.
   Pinned by `crates/server/tests/reader_chrome_browser.rs`, the sixth `headless-js` test.
+- **2026-08-02 the mobile contents handle is a labelled toggle** (198): `#tali-toc-handle`
+  shows a chevron plus the word **Contents**, `cursor: pointer` not `grab`, and it **stays
+  mounted while the sheet is open** as the close affordance. Two things a restyle alone would
+  have missed: it must be raised to `z-index: 10002` or a press lands on the backdrop (which
+  sits at 10000, the sheet at 10001), and the sheet's bottom padding has to grow to match or
+  its last chapter hides under the button. The tap decision toggles in **both** copies of the
+  wiring (`web-client/toc-sheet.js` for a build, `client.js` for the preview); a drag still
+  only ever opens. **Do not re-add the grip** — the bare 42x5 px bar is what read as
+  "drag me from the bottom edge". `corpus/reader/long-read.tmd`'s prose was arguing that "the
+  scrollbar is a poor substitute" while 199 deleted the bar on the opposite ground; it now
+  says what the tool does.
 - **2026-08-02 the project outline is in reading order** (197): `taliesin/projectOutline` sorts
   pages by `chapters:` as resolved from the same `Book` the drawer and prev/next use, and its
   docstring (which claimed reading order while delivering path order) now describes what it
