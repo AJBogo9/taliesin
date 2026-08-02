@@ -186,20 +186,106 @@ fn fenced_code(lang: &str, code: &str) -> String {
     format!("```{lang}\n{}\n```", code.trim_end_matches('\n'))
 }
 
-/// Decode already-stripped text: `&nbsp;` normalized to a space, then the entities the
-/// renderer emits decoded exactly once. The single home for this recipe — [`visible`]
-/// and [`indexable_text`] differ only in how they strip and trim, never in how they
-/// decode, and a caller that rewrites it by hand gets `&amp;lt;` wrong (a chained
-/// `.replace` decodes it twice, to `<`).
+/// Decode already-stripped text: `&nbsp;` normalized to a space, numeric character
+/// references resolved, then the named entities the renderer emits decoded exactly once.
+/// The single home for this recipe — [`visible`] and [`indexable_text`] differ only in how
+/// they strip and trim, never in how they decode, and a caller that rewrites it by hand
+/// gets `&amp;lt;` wrong (a chained `.replace` decodes it twice, to `<`).
+///
+/// **Numeric refs are decoded BEFORE the named ones**, for the same reason `&amp;` is
+/// decoded last: a literal, double-encoded `&amp;#8217;` must survive as the text
+/// `&#8217;`, and a numeric pass that ran after `&amp;`→`&` would eat it. Author sources
+/// carry these (`&#8217;`, `&#x2019;`) wherever a typographic mark was written as an
+/// escape; leaving them raw published `it&#8217;s` into `llms-full.txt` and the search
+/// index, which is what blocked Wave 1.5's fold until now.
 fn decode(stripped: &str) -> String {
-    unescape_html(&stripped.replace("&nbsp;", " "))
+    unescape_html(&decode_numeric(&stripped.replace("&nbsp;", " ")))
+}
+
+/// Resolve `&#NNN;` / `&#xHH;` character references. An unterminated, over-long, or
+/// out-of-range reference is left exactly as written rather than guessed at.
+fn decode_numeric(s: &str) -> String {
+    if !s.contains("&#") {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find("&#") {
+        out.push_str(&rest[..i]);
+        let body = &rest[i + 2..];
+        let hex = body.starts_with(['x', 'X']);
+        let digits = if hex { &body[1..] } else { body };
+        // Bounded: the longest legal code point is 7 decimal digits (0x10FFFF = 1114111).
+        let len = digits
+            .chars()
+            .take(8)
+            .take_while(|c| c.is_digit(if hex { 16 } else { 10 }))
+            .count();
+        let ch = (len > 0 && digits[len..].starts_with(';'))
+            .then(|| u32::from_str_radix(&digits[..len], if hex { 16 } else { 10 }).ok())
+            .flatten()
+            .and_then(char::from_u32);
+        match ch {
+            Some(c) => {
+                out.push(c);
+                rest = &digits[len + 1..];
+            }
+            // Not a resolvable reference: emit the `&` and rescan from the `#`, so a
+            // later valid reference in the same string is still found.
+            None => {
+                out.push('&');
+                rest = &rest[i + 1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Visible text of a block's HTML: tags stripped (KaTeX `<math>` MathML dropped),
-/// `&nbsp;` normalized to a space, entities decoded. Identical extraction to the
-/// TOC/slug path, so what `read` shows matches what a heading's slug/label sees.
+/// `&nbsp;` normalized to a space, entities decoded, and a word boundary left at every
+/// non-phrasing tag.
+///
+/// That last part is what keeps a *multi-field* block readable. One block's HTML can carry
+/// a title, a date and a reading time; stripping with no boundary welds them into
+/// "…alignment.17 March 20263 min read". Phrasing tags stay boundary-free, so `re<em>st</em>art`
+/// is still one word and a heading's text still matches its slug.
 fn visible(html: &str) -> String {
-    decode(&strip_tags(html)).trim().to_string()
+    collapse_spaces(&decode(&strip_tags_block_separated(html)))
+        .trim()
+        .to_string()
+}
+
+/// Collapse runs of spaces/tabs to one space, and drop spaces that trail a line.
+/// **Newlines are preserved**, so an authored paragraph keeps the shape it was written in.
+///
+/// KaTeX is why this is needed: its glyph spans are laid out with generous interior
+/// whitespace, so an inline formula strips to `plotting␠␠␠␠␠␠P␠␠␠␠␠and`. Collapsing gives
+/// "plotting P and" — the sentence the page actually reads. (The prose extractor this
+/// projection replaced dodged the problem by deleting math outright, which lost the P and
+/// the Q as well.)
+fn collapse_spaces(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for line in s.lines() {
+        let mut sp = false;
+        for ch in line.chars() {
+            match ch {
+                ' ' | '\t' => sp = true,
+                c => {
+                    if sp && !out.is_empty() {
+                        out.push(' ');
+                    }
+                    sp = false;
+                    out.push(c);
+                }
+            }
+        }
+        out.push('\n');
+    }
+    // `lines()` drops the distinction between a trailing newline and none; the callers
+    // trim, so restoring it exactly is not load-bearing.
+    out.truncate(out.trim_end_matches('\n').len());
+    out
 }
 
 /// Visible text of a *run* of block HTML, for the cross-page search index: the same
@@ -614,6 +700,50 @@ mod tests {
     fn project_src(src: &str) -> String {
         let doc = crate::render_document(src);
         project(&doc.blocks)
+    }
+
+    /// The word-boundary rule [`visible`] uses. A phrasing tag marks up a run of running
+    /// text, so it must NOT leave a space (or `re<em>st</em>art` reads "re st art"); every
+    /// other tag must, or a block holding several fields welds them into one token. Both
+    /// halves matter: this replaced a pair of tests on `site::llms::text_content`, deleted
+    /// when `llms-full.txt` folded onto this projection.
+    #[test]
+    fn visible_separates_fields_but_not_inline_emphasis() {
+        assert_eq!(visible("<p>re<em>st</em>art</p>"), "restart");
+        assert_eq!(visible("<p>a <code>b</code> c</p>"), "a b c");
+        assert_eq!(
+            visible("<span>17 March 2026</span><span>3 min read</span>"),
+            "17 March 2026 3 min read"
+        );
+        assert_eq!(
+            visible("<h3>KL Divergence</h3><p>How to measure it.</p>"),
+            "KL Divergence How to measure it."
+        );
+    }
+
+    /// A boundary is never doubled, and KaTeX's airy glyph layout collapses to the sentence
+    /// the page reads. Newlines survive, so an authored paragraph keeps its shape.
+    #[test]
+    fn visible_collapses_space_runs_and_keeps_newlines() {
+        assert_eq!(visible("<span>A</span> <span>B</span>"), "A B");
+        assert_eq!(
+            visible("<p>plotting     P     and   Q</p>"),
+            "plotting P and Q"
+        );
+        assert_eq!(visible("<p>one\ntwo</p>"), "one\ntwo");
+    }
+
+    /// Numeric character references decode, and a literal double-encoded one does not.
+    /// This is the divergence that blocked folding `llms-full.txt` onto this projection.
+    #[test]
+    fn decode_resolves_numeric_references_once() {
+        assert_eq!(decode("it&#8217;s"), "it\u{2019}s");
+        assert_eq!(decode("it&#x2019;s"), "it\u{2019}s");
+        // A literal, double-encoded reference must survive as text, not decode twice.
+        assert_eq!(decode("&amp;#8217;"), "&#8217;");
+        // Unterminated / nonsense references are left exactly as written.
+        assert_eq!(decode("&#nope;"), "&#nope;");
+        assert_eq!(decode("a &#8217 b"), "a &#8217 b");
     }
 
     /// The MVP: a heading keeps its `#`, and a labelled figure projects its *resolved*

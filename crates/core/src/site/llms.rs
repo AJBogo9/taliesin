@@ -1,7 +1,10 @@
 //! `llms.txt` (a curated Markdown map — identity + linked page lists) and
-//! `llms-full.txt` (every non-draft page's clean prose), so an assistant can answer
-//! "who is this and what do they do?" from content the author wrote for humans.
+//! `llms-full.txt` (every non-draft page as `taliesin read` projects it), so an assistant
+//! can answer "who is this and what do they do?" from content the author wrote for humans.
 //! Url-gated. The identity header is auto-derived from the home page's `hero:`.
+//!
+//! `llms-full.txt` has no text extractor of its own: it is [`crate::render::text`], the
+//! same projection `read` and the search index use (Wave 1.5).
 
 use super::{Page, Site};
 use crate::render;
@@ -144,8 +147,18 @@ impl Site {
         Some(s)
     }
 
-    /// `llms-full.txt`: the identity header, then every page's title + absolute URL +
-    /// clean prose (code cells and math excluded). `None` without `url:`.
+    /// `llms-full.txt`: the identity header, then every page's title + absolute URL + the
+    /// page as `taliesin read` projects it. `None` without `url:`.
+    ///
+    /// **This is the `read` projection, not a second extractor** (Wave 1.5). The file
+    /// exists so someone else's assistant can ingest the site, and on a technical site the
+    /// code is the content — so headings, fenced code, resolved "Figure N" and display math
+    /// as TeX all belong in it. The previous prose-only extractor (`page_prose` +
+    /// `strip_katex` + `text_content`) was the second of the tool's text projections and is
+    /// gone; `render::text` is the one recipe.
+    ///
+    /// Rendered WITHOUT execution, as before: a cell's source is content, its output is a
+    /// build artifact.
     pub fn llms_full_txt(&self) -> Option<String> {
         self.canonical_base()?;
         let mut s = self.llms_header();
@@ -154,106 +167,24 @@ impl Site {
                 continue;
             };
             let title = page.title.as_deref().unwrap_or(&page.rel);
-            let prose = self.page_prose(page);
-            if prose.trim().is_empty() {
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let base = page.input.parent().unwrap_or(&self.root);
+            let body = render::render_document_scoped_with_site(
+                &src,
+                base,
+                self.chapter_for(page),
+                Some(&self.render_defaults()),
+            )
+            .body_text();
+            if body.trim().is_empty() {
                 continue;
             }
-            s.push_str(&format!("\n---\n\n## {title}\n{url}\n\n{prose}\n"));
+            s.push_str(&format!("\n---\n\n## {title}\n{url}\n\n{body}\n"));
         }
         Some(s)
     }
-
-    /// Render a page to its block model and extract readable prose: skip executable
-    /// code cells and plain code blocks (`<pre>`) and math regions; strip tags + decode
-    /// entities on the rest. Re-renders without execution (cell outputs aren't prose).
-    fn page_prose(&self, page: &Page) -> String {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
-            return String::new();
-        };
-        let base = page.input.parent().unwrap_or(&self.root);
-        let doc = render::render_document_scoped_with_site(
-            &src,
-            base,
-            self.chapter_for(page),
-            Some(&self.render_defaults()),
-        );
-        let mut parts = Vec::new();
-        for b in &doc.blocks {
-            if b.cell.is_some() {
-                continue; // executable code cell → not prose
-            }
-            if b.id == crate::render::REPRO_BLOCK_ID {
-                continue; // reader affordance (the code-download box), not prose
-            }
-            let html = strip_katex(&b.html);
-            if html.trim_start().starts_with("<pre") {
-                continue; // a plain (non-cell) code block
-            }
-            let t = text_content(&html);
-            if !t.is_empty() {
-                parts.push(t);
-            }
-        }
-        parts.join("\n\n")
-    }
-}
-
-/// Remove balanced `<span class="katex-display">…</span>` and `<span class="katex">…</span>`
-/// regions so math produces no duplicated/garbled text (v1 omits math). Accounts for
-/// nested `<span>`s via depth matching.
-fn strip_katex(html: &str) -> String {
-    let mut out = html.to_string();
-    for marker in [r#"<span class="katex-display">"#, r#"<span class="katex">"#] {
-        while let Some(start) = out.find(marker) {
-            let mut depth = 1usize;
-            let mut i = start + marker.len();
-            while i < out.len() && depth > 0 {
-                if out[i..].starts_with("<span") {
-                    depth += 1;
-                    i += 5;
-                } else if out[i..].starts_with("</span>") {
-                    depth -= 1;
-                    i += 7;
-                } else {
-                    i += (1..=4).find(|n| out.is_char_boundary(i + n)).unwrap_or(1);
-                }
-            }
-            out.replace_range(start..i.min(out.len()), " ");
-        }
-    }
-    out
-}
-
-/// Visible text of an HTML fragment: strip tags, decode the common entities, and
-/// collapse whitespace. (`a11y::strip_tags` strips tags but does not decode entities.)
-pub(crate) fn text_content(html: &str) -> String {
-    let mut no_tags = String::with_capacity(html.len());
-    let mut depth = 0u32;
-    for ch in html.chars() {
-        match ch {
-            // A space at every tag so text from adjacent blocks/inlines stays
-            // word-separated (the trailing whitespace-collapse tidies the runs).
-            // Without it a title block emits "KL DivergenceHow to measure...
-            // alignment.17 March 20263 min read".
-            '<' => {
-                depth += 1;
-                no_tags.push(' ');
-            }
-            '>' => depth = depth.saturating_sub(1),
-            c if depth == 0 => no_tags.push(c),
-            _ => {}
-        }
-    }
-    // Decode `&amp;` LAST so a literal, double-encoded `&amp;lt;` isn't turned into `<`.
-    let decoded = no_tags
-        .replace("&nbsp;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&#8217;", "\u{2019}")
-        .replace("&amp;", "&");
-    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -261,36 +192,38 @@ mod tests {
     use super::*;
     use crate::site::tests::write_site;
 
-    // R1 (deferred): `page_prose` cannot simply reuse `render::indexable_text`. The two text
-    // extractors decode DIFFERENT entity sets — `text_content` decodes numeric/`&nbsp;` refs
-    // like `&#8217;`, while `render::text::decode` (behind `indexable_text`) does not.
-    // Consolidating would leave raw entities in `llms.txt`, a regression. Aligning them is a
-    // separate call (it also changes the search index), out of this pass's scope. This test
-    // pins the divergence so a change that removes it flags R1 as revivable.
+    /// Math must land in the dump exactly once. KaTeX emits every formula TWICE — a MathML
+    /// `<annotation>` carrying the TeX source plus the visual glyph spans — so a naive tag
+    /// strip publishes both, garbled and doubled. The old prose extractor solved that by
+    /// deleting math outright; the shared `render::text` projection solves it by reading one
+    /// of the two (display math as its TeX, inline math as its glyphs). Either way the
+    /// invariant is the same, and it is the reason this fold could not use a hand-rolled
+    /// `<`/`>` scan.
     #[test]
-    fn text_content_decodes_more_entities_than_indexable_text() {
-        let stripped = strip_katex(r#"<p>it&#8217;s fine&nbsp;here</p>"#);
-        assert_eq!(text_content(&stripped), "it\u{2019}s fine here");
-        assert_eq!(
-            crate::render::indexable_text(&stripped),
-            "it&#8217;s fine here"
+    fn llms_full_carries_math_once_not_doubled() {
+        let root = write_site(
+            "llmsmath",
+            &[
+                ("_site.yml", "title: S\nurl: https://ex.com\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\nEnergy $E=mc^2$ is conserved.\n\n$$a+b$$\n",
+                ),
+            ],
         );
-    }
-
-    #[test]
-    fn strip_katex_removes_inline_math_not_just_display() {
-        // Inline `<span class="katex">` must be stripped too, not only block `katex-display`:
-        // KaTeX emits the source twice (a MathML `<annotation>` plus the visual glyph spans),
-        // so leaving inline math in place duplicates/garbles it in the `llms.txt` projection.
-        // The one existing strip_katex test feeds no katex span at all, so it never exercised
-        // the removal path — a regression dropping the inline marker went unnoticed.
-        let html = r#"<p>Energy <span class="katex"><span class="katex-mathml"><math><annotation>E=mc^2</annotation></math></span><span class="katex-html">E=mc2</span></span> is conserved.</p>"#;
-        let text = text_content(&strip_katex(html));
-        assert_eq!(text, "Energy is conserved.");
+        let site = Site::discover(&root);
+        let full = site.llms_full_txt().expect("llms-full.txt with url:");
         assert!(
-            !text.contains("mc") && !text.contains("E="),
-            "inline KaTeX markup leaked into the text projection: {text:?}"
+            !full.contains("annotation") && !full.contains("<math"),
+            "KaTeX MathML leaked into the dump: {full}"
         );
+        assert_eq!(
+            full.matches("a+b").count(),
+            1,
+            "display math must appear exactly once (TeX or glyphs, never both): {full}"
+        );
+        assert!(full.contains("is conserved."), "prose kept: {full}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -341,15 +274,18 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// `llms-full.txt` is the `read` projection, page by page (Wave 1.5). It carries the
+    /// code, because the file exists so someone else's assistant can ingest the site and on
+    /// a technical site the code IS the content. Drafts stay excluded.
     #[test]
-    fn llms_full_has_prose_skips_code_and_excludes_drafts() {
+    fn llms_full_is_the_read_projection_and_excludes_drafts() {
         let root = write_site(
             "llmsfull",
             &[
                 ("_site.yml", "title: S\nurl: https://ex.com\n"),
                 (
                     "index.tmd",
-                    "---\ntitle: Home\n---\n\nThe intro prose paragraph.\n\n```python\nsecret_code_token = 1\n```\n",
+                    "---\ntitle: Home\n---\n\nThe intro prose paragraph.\n\n```python\nvisible_code_token = 1\n```\n",
                 ),
                 (
                     "posts/draft/index.tmd",
@@ -363,7 +299,10 @@ mod tests {
             full.contains("The intro prose paragraph."),
             "prose kept: {full}"
         );
-        assert!(!full.contains("secret_code_token"), "code skipped: {full}");
+        assert!(
+            full.contains("```python\nvisible_code_token = 1\n```"),
+            "code fenced with its language, as `read` projects it: {full}"
+        );
         assert!(
             !full.contains("Hidden draft prose"),
             "draft excluded: {full}"
@@ -371,36 +310,74 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The R1 blocker, discharged. `llms-full.txt` could not adopt the shared projection
+    /// while that projection left numeric character references raw: the old `text_content`
+    /// decoded `&#8217;`/`&nbsp;` and `render::text::decode` did not, so folding would have
+    /// published `it&#8217;s` where the site reads `it's`. `decode` now handles numeric
+    /// refs, so one recipe serves `read`, the search index and this file.
     #[test]
-    fn text_content_strips_tags_and_decodes_entities() {
-        assert_eq!(
-            text_content("<p>Two &amp; three &lt; four</p>"),
-            "Two & three < four"
+    fn llms_full_decodes_numeric_character_references() {
+        let root = write_site(
+            "llmsents",
+            &[
+                ("_site.yml", "title: S\nurl: https://ex.com\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\nit&#8217;s fine&nbsp;here\n",
+                ),
+            ],
         );
-        assert_eq!(text_content("<h2>A&nbsp;B</h2>"), "A B");
-        // A literal, double-encoded `&lt;` must decode once, not collapse to `<`.
-        assert_eq!(text_content("<p>&amp;lt;</p>"), "&lt;");
+        let site = Site::discover(&root);
+        let full = site.llms_full_txt().expect("llms-full.txt with url:");
+        assert!(
+            full.contains("it\u{2019}s fine"),
+            "the numeric reference must decode in the published dump: {full}"
+        );
+        assert!(
+            !full.contains("&#8217;") && !full.contains("&#"),
+            "a raw numeric entity leaked into llms-full.txt: {full}"
+        );
+        // `&nbsp;` survives as a real U+00A0 rather than being flattened to a space: the
+        // author wrote a non-breaking space and the dump reports what the page says.
+        assert!(full.contains("fine\u{a0}here"), "nbsp preserved: {full}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The word-boundary rule the deleted `text_content` existed to enforce, re-pinned at
+    /// the artifact instead of at the helper. A listing card is ONE block whose HTML holds
+    /// adjacent elements (title, date, reading time); a tag strip that leaves no boundary
+    /// fused them in the real published file — "…alignment.17 March 20263 min read". This
+    /// asserts the fused forms never come back, whichever projection produces the dump.
     #[test]
-    fn text_content_separates_adjacent_blocks() {
-        // Stripping a tag must leave a word boundary behind: without one, every
-        // post in the real `llms-full.txt` fused its title into its description
-        // and its date into its reading time ("...alignment.17 March 20263 min read").
-        assert_eq!(
-            text_content("<h3>KL Divergence</h3><p>How to measure it.</p>"),
-            "KL Divergence How to measure it."
+    fn llms_full_does_not_fuse_a_listing_cards_fields() {
+        let root = write_site(
+            "llmslisting",
+            &[
+                (
+                    "_site.yml",
+                    "title: S\nurl: https://ex.com\nnav:\n  left:\n    - href: index.tmd\n      text: Home\n",
+                ),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nRecent writing.\n",
+                ),
+                (
+                    "posts/kl.tmd",
+                    "---\ntitle: KL Divergence\ndate: 2026-03-17\ndescription: How to measure alignment.\n---\n\nBody prose.\n",
+                ),
+            ],
         );
-        assert_eq!(
-            text_content("<span>17 March 2026</span><span>3 min read</span>"),
-            "17 March 2026 3 min read"
+        let site = Site::discover(&root);
+        let full = site.llms_full_txt().expect("llms-full.txt with url:");
+        assert!(
+            !full.contains("alignment.17"),
+            "listing description fused into the date: {full}"
         );
-        // Accepted trade-off (same call `search.rs::section_text` makes): the date +
-        // reading-time fusion above is two *inline* `<span>`s, so a block-level-only
-        // rule would still emit "20263 min read". Separating at every tag fixes that
-        // and costs mid-word inline emphasis, which degrades to readable words rather
-        // than to a fake number.
-        assert_eq!(text_content("<p>re<em>st</em>art</p>"), "re st art");
+        assert!(
+            !full.contains("20263"),
+            "listing date fused into the reading time: {full}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

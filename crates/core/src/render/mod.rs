@@ -3382,7 +3382,7 @@ pub(crate) fn tag_end(html: &str) -> Option<usize> {
 /// leaks LaTeX (`$H_0$` → `H0H_0H0`). So the whole `<math>…</math>` subtree is dropped,
 /// leaving only the visible `katex-html` glyphs (`H0`).
 fn strip_tags(html: &str) -> String {
-    strip_tags_inner(html, false)
+    strip_tags_inner(html, Separate::Never)
 }
 
 /// [`strip_tags`], but with a space at every tag boundary, so text from *adjacent
@@ -3391,18 +3391,46 @@ fn strip_tags(html: &str) -> String {
 /// "First.Second."). The TOC/slug path must NOT do this — a space there would split
 /// `<em>Fig</em>ure` into two words and change every slug.
 fn strip_tags_separated(html: &str) -> String {
-    strip_tags_inner(html, true)
+    strip_tags_inner(html, Separate::EveryTag)
 }
 
-fn strip_tags_inner(html: &str, separate: bool) -> String {
+/// [`strip_tags`], but with a space at every tag boundary EXCEPT the phrasing elements
+/// that mark up a run of running text ([`PHRASING`]). This is the rule a *single block*
+/// wants: one block's HTML can hold several distinct fields — a listing/title block is a
+/// heading plus a `<span>` date plus a `<span>` reading time — and stripping with no
+/// boundary fuses them ("…alignment.17 March 20263 min read", which is what the real
+/// published `llms-full.txt` carried). Separating at *every* tag instead over-corrects,
+/// splitting `re<em>st</em>art` into "re st art".
+fn strip_tags_block_separated(html: &str) -> String {
+    strip_tags_inner(html, Separate::NonPhrasing)
+}
+
+/// Where [`strip_tags_inner`] leaves a word boundary behind.
+#[derive(Clone, Copy, PartialEq)]
+enum Separate {
+    /// Never — the TOC/slug path, where a space changes every slug.
+    Never,
+    /// At every tag — a run of blocks read as one string (the search index).
+    EveryTag,
+    /// At every tag but [`PHRASING`] — one block that may hold several fields.
+    NonPhrasing,
+}
+
+/// HTML phrasing elements that mark up a run of running text, so a boundary inside them
+/// would split a word. Deliberately excludes `span`: Taliesin's title/listing blocks use
+/// `<span>` for *separate fields* (date, reading time), which is precisely the fusion
+/// [`strip_tags_block_separated`] exists to prevent.
+const PHRASING: &[&str] = &[
+    "a", "abbr", "b", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark", "q", "s", "samp",
+    "small", "strong", "sub", "sup", "time", "u", "var",
+];
+
+fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut out = String::new();
     let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
     let mut chars = html.chars();
     while let Some(ch) = chars.next() {
         if ch == '<' {
-            if separate {
-                out.push(' ');
-            }
             // Consume the tag body up to the closing `>` (quote-aware: a `>` inside a
             // quoted attribute value does not end the tag).
             let mut tag = String::new();
@@ -3434,6 +3462,19 @@ fn strip_tags_inner(html: &str, separate: bool) -> String {
                 .take_while(|c| c.is_ascii_alphanumeric())
                 .flat_map(|c| c.to_lowercase())
                 .collect();
+            // Decided from the tag NAME, so it has to follow the parse above rather than
+            // precede it. Nothing else is pushed in between, so the space still lands
+            // exactly where the tag was.
+            let boundary = match separate {
+                Separate::Never => false,
+                Separate::EveryTag => true,
+                Separate::NonPhrasing => !PHRASING.contains(&name.as_str()),
+            };
+            // Never double a boundary that is already there. `</span> <span>` carries a
+            // real space of its own, and pushing a second one publishes "models.  14 April".
+            if boundary && !out.ends_with(char::is_whitespace) {
+                out.push(' ');
+            }
             if name == "math" {
                 if is_close {
                     skip_math = skip_math.saturating_sub(1);
