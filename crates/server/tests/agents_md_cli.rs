@@ -86,18 +86,3 @@ fn scaffolded_agents_md_matches_the_generator() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
-
-/// The repo's own shipped `AGENTS.md` (committed at the workspace root) must stay in sync
-/// with the generator, so this repo's onramp cannot drift from the vocabulary either.
-#[test]
-fn repo_root_agents_md_matches_the_generator() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../AGENTS.md");
-    let shipped = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("read repo-root AGENTS.md at {path}: {e}"));
-    assert_eq!(
-        shipped,
-        taliesin_core::agents::AGENTS_MD,
-        "repo-root AGENTS.md drifted; regenerate with \
-         `TALIESIN_BLESS=1 cargo test -p taliesin-core --lib agents` then copy the asset to the repo root"
-    );
-}

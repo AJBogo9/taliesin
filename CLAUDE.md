@@ -238,11 +238,14 @@ dependency change. Never call one of these verified without its output.
   carries 16, and `SHORTCODE_SPECS` omits `input`/`dataset` (both dispatched ahead of it).
   Answer "what does the tool support" from the validator consts or from `taliesin
   features`, never from `vocab` — it reports live features as missing.
-- **A new front-matter key trips SIX drift gates; a RETIRED one trips EIGHT.** The two extra
+- **A new front-matter key trips FIVE drift gates; a RETIRED one trips SEVEN.** The two extra
   are `docs/guide/using/from-quarto.tmd` (a retired key must tell a migrating reader what to
-  do) and `vocab.rs`'s `descriptions_present`. Two of the eight live in the **server** crate,
-  so `cargo test -p taliesin-core` is green while they are stale. A new *subcommand* also has
-  four registration sites in `main.rs` plus three tables in `complete.rs`, each drift-gated.
+  do) and `vocab.rs`'s `descriptions_present`. (It was SIX/EIGHT until Wave 1 deleted the
+  repo-root `AGENTS.md` duplicate and its gate; the bundled `assets/agents/AGENTS.md` golden
+  is now the only copy.) One of the seven still lives in the **server** crate
+  (`tests/agents_md_cli.rs`, which drives `init` and reads `vocab()`), so `cargo test -p
+  taliesin-core` is green while it is stale. A new *subcommand* also has four registration
+  sites in `main.rs` plus three tables in `complete.rs`, each drift-gated.
 - **A withdrawn div class needs a `RETIRED_DIV_CLASSES` entry**; div classes are an *open*
   vocabulary, so without one a leftover class gets **silence**, not a did-you-mean, and the
   page quietly loses its layout. (Front-matter keys have `RETIRED_KEYS` for the same job.)

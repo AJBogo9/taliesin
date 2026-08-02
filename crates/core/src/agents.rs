@@ -13,8 +13,10 @@
 use serde_json::Value;
 use std::fmt::Write as _;
 
-/// The committed onramp, bundled so `init` can scaffold it and the repo can ship a
-/// verbatim copy without runtime generation, exactly as `vocab.rs` bundles the vocab JSON.
+/// The committed onramp, bundled so `init` can scaffold it without runtime generation,
+/// exactly as `vocab.rs` bundles the vocab JSON. This is the **only** committed copy: Wave
+/// 1.2 deleted the byte-identical repo-root duplicate (and the server-crate gate that kept
+/// it in sync by hand), so a vocabulary change now reconciles here and nowhere else.
 pub const AGENTS_MD: &str = include_str!("../assets/agents/AGENTS.md");
 
 /// The worked CSV→figure cell embedded in the `## Recipes` section (DX19). Kept

@@ -535,14 +535,16 @@ which 2 are false positives.
   *baseline* had rotted by 9, not that the branch added 17. A total is evidence only of the run that
   produced it. What is worth carrying forward is **0 ignored** plus each interpreter canary printing
   `... ok` — those two mean the gates ran, and they do not rot.
-- **Count a new key's drift gates from the tree, not from memory: it is SIX, and the sixth is in
-  another crate.** (2026-08-01, the 185/186/187 batch.) A new front-matter key must be added to
-  `KNOWN_KEYS` and then reconciled with the JSON schema, the editor vocab, the bundled
-  `assets/agents/AGENTS.md`, the guide-reference completeness gate — and **the repo-root
-  `AGENTS.md`, whose test lives in `crates/server/tests/`**. Four of the six bless with
-  `TALIESIN_BLESS=1`; the guide one wants prose; the last is a `cp` from the blessed asset. The
-  trap is that `cargo test -p taliesin-core` comes back fully green while the repo-root copy is
-  stale, so the natural fast loop certifies five of six. Only `cargo test --workspace` sees it.
+- **Count a new key's drift gates from the tree, not from memory: it is FIVE, and one of them is
+  in another crate.** (2026-08-01, the 185/186/187 batch; **recounted 2026-08-02 in Wave 1.2**,
+  which deleted the repo-root `AGENTS.md` duplicate and took the count from six to five.) A new
+  front-matter key must be added to `KNOWN_KEYS` and then reconciled with the JSON schema, the
+  editor vocab, the bundled `assets/agents/AGENTS.md` — now the only committed copy — and the
+  guide-reference completeness gate. Four of the five bless with `TALIESIN_BLESS=1`; the guide
+  one wants prose. The trap the deleted copy taught is still live in a weaker form:
+  `crates/server/tests/agents_md_cli.rs` reads `vocab()` from the server crate, so `cargo test
+  -p taliesin-core` can come back fully green while a server-side vocabulary gate is stale.
+  Only `cargo test --workspace` sees it. **The count itself is the thing that rots — recount.**
 - **Prefer deriving a value over declaring it — and check whether the author has already written it
   somewhere you can read.** (2026-08-01.) `citation_arxiv_id` looked like it needed an `arxiv:`
   key; the id is already inside the `arxiv.org` URL in `links:`. A link's label and icon are

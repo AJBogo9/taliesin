@@ -95,15 +95,17 @@ evidence independently on its first run.
   as the counter-example that earns a key. **Underivable is not the same as belonging in front
   matter**: `datasets:` passed the derive test and was still retired (204), because an annotation
   that describes one invocation belongs *on* that invocation.
-- **A new front-matter key trips SIX drift gates, and a RETIRED one trips EIGHT** (six measured
-  while shipping 185-187; the extra two measured while retiring `datasets:` in 204 — the Quarto
-  migration page, which must tell a migrating reader what to do about a key that now warns, and
-  `vocab.rs`'s `descriptions_present`, which walks a hardcoded list of nested blocks):
-  `KNOWN_KEYS`, the JSON schema, the editor vocab, `crates/core/assets/agents/AGENTS.md`, the
-  guide-reference completeness gate — and **the repo-root `AGENTS.md`, whose test lives in the
-  SERVER crate**, so `cargo test -p taliesin-core` is green while it is stale. The first four
-  bless; the last is a `cp` from the asset. Six gates *come back* when a key is removed. That
-  cost is the standing argument for item 207's "derive, don't declare".
+- **A new front-matter key trips FIVE drift gates, and a RETIRED one trips SEVEN** (it was
+  six/eight until Wave 1.2 deleted the repo-root `AGENTS.md` duplicate and its gate; the extra
+  two were measured while retiring `datasets:` in 204 — the Quarto migration page, which must
+  tell a migrating reader what to do about a key that now warns, and `vocab.rs`'s
+  `descriptions_present`, which walks a hardcoded list of nested blocks):
+  `KNOWN_KEYS`, the JSON schema, the editor vocab, `crates/core/assets/agents/AGENTS.md` (now
+  the ONLY committed copy) and the guide-reference completeness gate. Four of the five bless
+  with `TALIESIN_BLESS=1`; the guide one wants prose. `crates/server/tests/agents_md_cli.rs`
+  still reads `vocab()` from the SERVER crate, so `cargo test -p taliesin-core` can be green
+  while it is stale. Five gates *come back* when a key is removed. That cost is the standing
+  argument for item 207's "derive, don't declare".
 - **Any new generated block owes the four-projection sweep** — `taliesin read`, `skim.rs`, the search
   index and `llms-full.txt` — or its text leaks into the search index. Four projections in three
   modules; two of item 173's leaks were found only by building a real site and grepping the
