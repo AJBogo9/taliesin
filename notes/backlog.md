@@ -17,10 +17,12 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**194, 195, 196, 197, 198 and 199 shipped 2026-08-02**, which closes the research-publishing
-cluster's last non-optional item and five of the six author-reported ones. **Next session: 200
-is the only one of that band left** (the sepia removal, M, ruled and measured at 81
-references), then 188, then the large swings.
+**194, 195, 196, 197, 198, 199 and 200 shipped 2026-08-02**, which **drains the whole
+author-reported band and the research-publishing cluster's last non-optional item.** What is
+left in P1 is the part that was never a queue: **188 against the two large swings (164, 167),
+and 202-205 from the feature-value audit, which ranks 202 above all three. That cross-cluster
+ranking is an owner call that has not been made** — it is the first thing to settle next
+session, and nothing below it is blocked on anything.
 **188 is the only cluster item left, and it is the one previously marked "leave"** (lowest
 conviction, and the item still says so) — so the real choice after the band is 188 against the two
 large swings (164, 167), and **that cross-cluster ranking is an owner call that has not been
@@ -62,10 +64,9 @@ What 185/186/187 established, for whoever touches that area next:
   187 rather than as a top-level map keyed by name, which would have had to match a name string
   back to an author and would drop the entry silently when the two spellings drifted.
 
-- **P1 is a ranked build queue, not a menu.** Take from the top: the rest of the author-reported
-  reader/editor band filed 2026-08-01 (200 — 195, 196, 197, 198 and 199 shipped 2026-08-02;
-  **200 was ruled the day it was filed and is a build now, not a question**), then 188, then
-  the large swings. **Read
+- **P1 stopped being a ranked queue when the band drained.** Everything cheap and ruled has
+  shipped; what remains (188, 164, 167, 202-205, 56, 175(c), 174, 170) is ordered by theme and
+  size, not by a decision. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
   of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
@@ -164,31 +165,6 @@ Two conditions apply to every item here. **Each still owes a corpus pin doc** (a
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
-
-200. **Drop sepia, leaving light + dark.** (M. **RULED 2026-08-01: remove it**, overriding the
-     recommendation to keep. Do not re-open on the a11y argument: it was made, considered and
-     overruled.) Measured blast radius: 81 references. This is a wider change than it looks and has
-     one trap that fails loudly and several that fail silently.
-     - **Test pins PANIC rather than fail.** `render/tests.rs:5530,5606` slice `TOKENS_CSS` at
-       `html[data-theme="sepia"] {` with `.expect("sepia block")`, and `:4694` iterates a
-       `("sepia", …)` case. Removing the block panics the suite until these are updated.
-     - **The stored-choice migration is already safe, which is worth knowing before over-engineering
-       it.** `theme.rs:143` validates the persisted `tali-theme` against the allowed list and falls
-       back to `auto`, so a reader whose localStorage says `sepia` degrades cleanly once `sepia`
-       leaves that list. Update both lists (`theme.rs:143` and `taliSetTheme` at `:194`) plus the
-       pre-paint `BG` map at `:150`; do not add migration code.
-     - **A deck embedded in a sepia host maps to a light deck** (`deck.rs`, pinned by
-       `render/tests.rs:3239-3245` asserting `t==='sepia' ? 'light'`). That mapping goes too.
-     - **Corpus is the regression net and leads here**: `corpus/reader/preferences.tmd` demonstrates
-       the theme picker and `corpus/README.md:47` describes the `reader/` project as covering
-       "theme/sepia/size/width/spacing". Both change in the same commit.
-     - Remaining surface: `tokens.css` (the `html[data-theme="sepia"]` block plus the light+sepia
-       comments), `tokens-dark.css:6`, `base.css` (search-mark and flash keyframes at `:97-99,113-114`
-       and the ~10 syntax-highlight overrides at `:1030-1036`), `14-reader-prefs.js:13`,
-       `web-client/globals.d.ts`, and the guide (`using/reading.tmd`, `using/theming.tmd`,
-       `reference/accessibility.tmd`, `docs/internals/offline-theming.tmd`).
-     - The WCAG values in the deleted comments are *measurements of sepia*, not of light or dark:
-       nothing else depends on them, so they go with it.
 
 188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey §6.)
      Evidenced need, rejected mechanism: every project page shows N result figures and reaches for a
@@ -682,6 +658,18 @@ branch are enough to find its commits.
   in the same function. **Do not extend click-to-close to the lightbox's video or mermaid box**: a
   `<video>` click belongs to the native control bar and `.tali-lb-svg` is a pannable scroller.
   Pinned by `crates/server/tests/reader_chrome_browser.rs`, the sixth `headless-js` test.
+- **2026-08-02 sepia is gone; light + dark are the whole set** (200, ruled 2026-08-01). Removed
+  from `tokens.css`, `base.css` (search mark, flash keyframes, the ten syntax-scope overrides),
+  `tokens-dark.css`'s comment, `theme.rs` (the allowed list, the pre-paint `BG` map,
+  `taliSetTheme`), `14-reader-prefs.js`, `globals.d.ts`, `deck.rs`'s host-theme map, the corpus
+  (`reader/preferences.tmd`, `README.md`, BOTH em-algorithm twins) and the guide. **No migration
+  code, on purpose**: `theme.rs` validates the stored `tali-theme` against the allowed list and
+  anything else reads as `auto`, so a reader whose localStorage still says `sepia` degrades to
+  following the OS — that property is now stated in the docstring so the next withdrawal is
+  cheap too. Three of the old tests SLICED `TOKENS_CSS` at the sepia selector with `.expect`,
+  which panics rather than fails; they read light + dark now. `sepia_is_gone_from_every_theme_surface`
+  is the whole-surface pin and reads light + dark from the same files as its control. **Do not
+  re-add it on the a11y argument** — that was made, considered and overruled.
 - **2026-08-02 the mobile contents handle is a labelled toggle** (198): `#tali-toc-handle`
   shows a chevron plus the word **Contents**, `cursor: pointer` not `grab`, and it **stays
   mounted while the sheet is open** as the close affordance. Two things a restyle alone would

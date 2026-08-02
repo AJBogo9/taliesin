@@ -60,8 +60,8 @@ and an inverse for every element.
 
 ::: {.remark}
 A definition is upright and a theorem is italic. That is the amsthm distinction, not a
-Taliesin invention, and the accent colours are theme variables, so they track light,
-dark, and sepia.
+Taliesin invention, and the accent colours are theme variables, so they track light
+and dark.
 :::
 
 There is no namespace prefix on these classes (a callout is `.callout-note`, but a

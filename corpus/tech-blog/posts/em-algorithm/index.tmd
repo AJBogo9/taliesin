@@ -372,7 +372,7 @@ const fig = Plot.plot({
 // Knock a page-coloured halo out from behind the glyphs: paint-order puts the stroke
 // down first, so `fill` (the colour encoding) is untouched. Plot writes `stroke` as a
 // presentation attribute, where var() cannot resolve, hence the inline style, which
-// also keeps the halo correct across a live light/dark/sepia theme flip.
+// also keeps the halo correct across a live light/dark theme flip.
 for (const t of fig.querySelectorAll('g[aria-label="text"] text')) {
   t.style.paintOrder = "stroke";
   t.style.stroke = "var(--tali-bg)";

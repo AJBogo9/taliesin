@@ -1,5 +1,5 @@
 
-  /* The owned palette (light + sepia + dark) + fonts/geometry/motion tokens live in
+  /* The owned palette (light + dark) + fonts/geometry/motion tokens live in
      tokens.css, `include_str!`'d ahead of this file (and ahead of deck.css) so they are
      declared exactly once. See tokens.css. */
   html { scroll-behavior: smooth; }
@@ -88,28 +88,17 @@
   html[data-theme="dark"] mark.tali-search-mark { background-color: #6e5414; }
   @keyframes tali-search-mark-fade-dark { 0%, 45% { background-color: #6e5414; } 100% { background-color: transparent; } }
   html[data-theme="dark"] mark.tali-search-mark { animation-name: tali-search-mark-fade-dark; }
-  /* Sepia has no Custom-Highlight-API branch either; without its own <mark> tuning it fell
-     through to the light 50%-alpha amber over warm paper. Sepia ink (#5b4636) is dark, so the
-     mark stays LIGHT but opaque + warm-tuned to the paper, keeping body text at 5.45:1 ON it. */
-  html[data-theme="sepia"] mark.tali-search-mark { background-color: #e9c86a; }
-  @keyframes tali-search-mark-fade-sepia { 0%, 45% { background-color: #e9c86a; } 100% { background-color: transparent; } }
-  html[data-theme="sepia"] mark.tali-search-mark { animation-name: tali-search-mark-fade-sepia; }
   html.tali-search-flashing { animation: tali-search-flash 1.5s ease-out forwards; }
   @keyframes tali-search-flash {
     0%, 45% { --tali-search-flash: rgba(250, 204, 21, .55); }
     100% { --tali-search-flash: transparent; }
   }
   /* A search hit is amber in every theme (the one universal "found it" colour, and not a brand
-     surface). Alphas are capped so body text stays >= 4.5:1 ON the highlight: dark was a vendor
-     blue, and sepia's .45 rendered 4.36:1. */
+     surface). Alphas are capped so body text stays >= 4.5:1 ON the highlight (dark was a
+     vendor blue). */
   html[data-theme="dark"].tali-search-flashing { animation-name: tali-search-flash-dark; }
   @keyframes tali-search-flash-dark {
     0%, 45% { --tali-search-flash: rgba(250, 204, 21, .36); } /* body 5.55:1 */
-    100% { --tali-search-flash: transparent; }
-  }
-  html[data-theme="sepia"].tali-search-flashing { animation-name: tali-search-flash-sepia; }
-  @keyframes tali-search-flash-sepia {
-    0%, 45% { --tali-search-flash: rgba(154, 106, 58, .34); } /* body 5.01:1 */
     100% { --tali-search-flash: transparent; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -117,7 +106,7 @@
   }
 
   /* Reactive input controls ({{< input ... >}}). A labeled native control feeding the
-     {js} reactive graph; native controls inherit color-scheme so dark/sepia just work. */
+     {js} reactive graph; native controls inherit color-scheme so dark just works. */
   .tali-input { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
     margin: 1rem 0; font: inherit; }
   .tali-input-label { font-weight: 600; }
@@ -557,7 +546,7 @@
      the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
   :not(pre) > code { background: var(--tali-code-bg); padding: .1em .35em; border-radius: var(--tali-radius-sm);
     font-size: .875em; overflow-wrap: anywhere; }
-  /* Tokenised so the copy button follows every theme (light / dark / sepia) from one
+  /* Tokenised so the copy button follows every theme (light / dark) from one
      definition; DARK_CSS no longer needs a per-theme override. */
   .tali-copy { position: absolute; top: .45rem; right: .45rem;
               display: inline-flex; align-items: center; justify-content: center;
@@ -757,8 +746,8 @@
   .cw-code { max-height: 52vh; overflow: auto; }
   .cw-code pre { margin: 0; }
   /* Recede an inactive step with `--tali-muted`, not `opacity`. An opacity multiplier composites
-     the text toward the page and silently drops it below AA (.62 rendered 3.03:1 in sepia); the
-     muted token is contrast-checked in every theme. The active step takes full `--tali-fg` plus
+     the text toward the page and silently drops it below AA (.62 rendered 3.03:1 on the warm
+     reading theme this was measured against); the muted token is contrast-checked in every theme. The active step takes full `--tali-fg` plus
      the accent rail, so emphasis still tracks the scroll. */
   .cw-steps .step { min-height: 48vh; display: flex; flex-direction: column; justify-content: center;
     padding: 1.3rem 0 1.3rem 1rem; border-left: 2px solid transparent; color: var(--tali-muted); }
@@ -839,7 +828,7 @@
   }
   /* Citations and cross-references were the only links on the page with no underline, so colour
      alone said "clickable". Against BODY text (the 1.4.1 comparison) the link tone is 1.93:1 in
-     dark (the default theme) and 1.51:1 in sepia. An underline discharges 1.4.1 in every theme
+     dark, the default theme. An underline discharges 1.4.1 in every theme
      and also serves colour-blind readers. */
   .tali-xref { text-decoration: underline; text-underline-offset: .12em;
     text-decoration-thickness: from-font; }
@@ -974,7 +963,7 @@
      would make a traceback uncopyable and drop it from print entirely. A scroll box degrades
      to "a tall box" everywhere instead.
      Code input and its output were two near-identical untokenised greys (#f5f5f5 / #fbfbfb).
-     One surface token; sepia + dark no longer need a manual patch. */
+     One surface token; dark no longer needs a manual patch. */
   .tali-output > pre {
     background-color: var(--tali-code-bg); border-left: 3px solid var(--tali-border);
     max-height: var(--tali-output-max);
@@ -1024,15 +1013,6 @@
     background: color-mix(in srgb, var(--tali-callout-warning) 13%, var(--tali-bg)) !important; }
   .tali-error { border-left-color: var(--tali-callout-important) !important;
     background: color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg)) !important; }
-  /* Sepia syntax scopes: the light syntax palette clashes with the warm sepia page, so
-     restyle the scope colours warm (parallels DARK_CSS). The output/error boxes above are
-     token-derived and need no sepia override. Sepia is low-contrast, so these stay muted. */
-  html[data-theme="sepia"] .tali-hl-comment { color: #6c604b; } /* AA (4.8:1) on the sepia code bg */
-  html[data-theme="sepia"] .tali-hl-string { color: #3f6a44; }
-  html[data-theme="sepia"] .tali-hl-keyword, html[data-theme="sepia"] .tali-hl-storage { color: #9a3b28; }
-  html[data-theme="sepia"] .tali-hl-constant, html[data-theme="sepia"] .tali-hl-support { color: #2f5f84; }
-  html[data-theme="sepia"] .tali-hl-entity { color: #7d4a86; }
-  html[data-theme="sepia"] .tali-hl-variable { color: #9a4a1a; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
@@ -1345,7 +1325,7 @@
   /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast.
      `:root:root` (0,2,0), not `:root` (0,1,0) or `html[data-theme="dark"]` (0,1,1): dark.css
      is inlined AFTER base.css, so an equal-specificity selector loses on source order and
-     neither dark nor sepia ever got the boost. Doubling the pseudo-class outranks every
+     dark never got the boost. Doubling the pseudo-class outranks every
      `html[data-theme=…]` block no matter where it is inlined. */
   @media (prefers-contrast: more) {
     :root:root { --tali-muted: var(--tali-fg); --tali-border: var(--tali-fg); }
@@ -1355,7 +1335,7 @@
      with the contents list lifted to the top, and avoid clipping/awkward breaks.
      Placed last so it outranks the width-query rules that also match on paper. */
   @media print {
-    /* `:root:root` (0,2,0) so this outranks `html[data-theme="dark"]` / `="sepia"` (0,1,1)
+    /* `:root:root` (0,2,0) so this outranks `html[data-theme="dark"]` (0,1,1)
        whichever order the theme sheets are inlined in. The head script additionally swaps
        `data-theme` to light for the print job, which also neutralises dark.css's untokenised
        syntax + diagnostic-box colours; this block is the no-JS fallback. */

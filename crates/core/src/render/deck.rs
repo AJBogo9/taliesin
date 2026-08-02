@@ -342,7 +342,7 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
   var BG = {{ dark: '#16181d', light: '#ffffff' }};
   var embedded = window.self !== window.top;
   function osDark(){{ try {{ return matchMedia('(prefers-color-scheme: dark)').matches; }} catch(e){{ return false; }} }}
-  function hostTheme(){{ try {{ var t = window.top.document.documentElement.getAttribute('data-theme'); return (t==='dark'||t==='light') ? t : (t==='sepia' ? 'light' : null); }} catch(e){{ return null; }} }}
+  function hostTheme(){{ try {{ var t = window.top.document.documentElement.getAttribute('data-theme'); return (t==='dark'||t==='light') ? t : null; }} catch(e){{ return null; }} }}
   function stored(){{ try {{ var v = localStorage.getItem('tali-deck-theme'); return (v==='dark'||v==='light') ? v : null; }} catch(e){{ return null; }} }}
   function resolve(){{
     if (embedded) {{ return hostTheme() || (osDark() ? 'dark' : 'light'); }}  // follow the host page

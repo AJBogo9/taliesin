@@ -87,7 +87,7 @@ a small **pre-paint `<head>` script** that runs before the body renders. It:
   `<html>`, in that same pre-paint script**, so the browser's canvas (and its native
   form controls, scrollbars, and `<select>` popups) are the theme colour from the very
   first frame. The background comes from a small fixed map in the script itself
-  (`{ dark: #16181d, sepia: #f4ecd8, light: #ffffff }`), not from a stylesheet, so it
+  (`{ dark: #16181d, light: #ffffff }`), not from a stylesheet, so it
   is in effect before any CSS parses.
 
 Without that inline background, the canvas stays white until the inline `<style>`
@@ -99,7 +99,7 @@ the no-flash behaviour work in static `build` output too, and it defines the
 `taliSetTheme` / `taliWireThemeToggles` helpers the reader Settings gear and the
 dev-menu toggle call.
 
-The reader's theme is their single display choice: light, dark, or sepia, picked from
+The reader's theme is their single display choice: auto, light or dark, picked from
 the Settings gear (see [The reader experience](../guide/using/reading.html)). It rides
 this exact mechanism, `localStorage["tali-theme"]` applied before paint, so a returning
 reader never flashes the wrong theme. There are deliberately no per-reader typography

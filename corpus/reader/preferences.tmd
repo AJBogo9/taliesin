@@ -3,7 +3,7 @@ title: "Reading settings"
 ---
 
 This page is a reading surface. The **Settings** gear (top-right of the built page) lets a
-reader pick a theme (light, dark, or sepia). The choice is stored in the reader's own browser
+reader pick a theme (light or dark). The choice is stored in the reader's own browser
 and applied before the next page paints, so it never flashes and never touches the author's
 source.
 
@@ -12,7 +12,7 @@ source.
 A document is read far more often than it is written, on screens the author never saw: a
 phone in bright sun, a wide monitor at night, a room lit only by the screen. Reader settings
 move that last decision, *how the page is lit*, from the author to the reader, where it
-belongs: a bright, a dark, or a warm sepia page, chosen per reader.
+belongs: a bright page or a dark one, chosen per reader.
 
 The text below is here to look right in every theme.
 
@@ -21,9 +21,9 @@ The text below is here to look right in every theme.
 The gap between a comfortable read and an uncomfortable one is small and entirely mechanical:
 the size of the type, the length of the line, and the contrast of the page. Set the measure
 too wide and the eye loses the start of the next line; too narrow and the rhythm breaks every
-few words. Sepia exists because a warm, low-contrast page is easier on the eye in dim light
-than stark black on white. None of this is decoration. It is the difference between finishing
-the chapter and closing the tab.
+few words. Two themes cover the two conditions that matter, a lit room and a dark one, and each
+is tuned to clear its contrast floors rather than offered as a third of a slider. None of this
+is decoration. It is the difference between finishing the chapter and closing the tab.
 
 ## A figure
 

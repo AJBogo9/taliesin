@@ -2,21 +2,21 @@
   /* ===========================================================================
      Design tokens: the ONE source of the owned palette (+ fonts, geometry, motion).
      `include_str!`'d ahead of BOTH the page bundle (base.css) and the deck bundle
-     (deck.css), so the light/dark/sepia palette is typed exactly once instead of
+     (deck.css), so the light/dark palette is typed exactly once instead of
      re-declared per surface. The deck reads the same `--tali-*` tokens (it used to
      carry a parallel `--deck-*` near-miss of each); the OG-card generator can't share
      CSS, so `site/card.rs` is drift-locked against the dark values by a test.
      Keep in sync: nothing else should declare these tokens.
      =========================================================================== */
   :root {
-    /* The accent is ONE owned hue across light/dark/sepia and the deck: OKLCH H 271, chroma
+    /* The accent is ONE owned hue across light/dark and the deck: OKLCH H 271, chroma
        .077: roughly a third the chroma of a brand blue, and darker. It reads as ink rather
        than as a button, which is the point: iron-gall ink is what Taliesin's Book survives in.
        Its three lightnesses are the only accent values in the product. Previously this was
        three unrelated vendor blues (a stock light blue, GitHub Primer's, and Tailwind's
        blue-600) plus a fourth in the deck. The exact hexes are banned by a test. */
     --tali-bg: #ffffff; --tali-fg: #1a1a1a; --tali-muted: #555; --tali-accent: #3a4673;
-    /* Light + sepia are dark enough that the accent doubles as its own fill (white on it is
+    /* Light is dark enough that the accent doubles as its own fill (white on it is
        9.12:1); only dark needs a separate, darker fill. */
     --tali-accent-fill: #3a4673; --tali-on-accent: #ffffff;
     --tali-link: #3a4673; --tali-code-bg: #f5f5f5; --tali-border: #e3e3e3;
@@ -72,32 +72,10 @@
     /* One "dim behind an overlay" scrim for every modal/drawer/sheet backdrop, so the dimming
        is set once instead of drifting per surface (it was .38/.42/.55 across site/base/deck).
        A pure black alpha, theme-independent like the literals it replaces (a black scrim reads
-       as "content is behind this" in light, dark, and sepia alike). */
+       as "content is behind this" in light and dark alike). */
     --tali-scrim: rgba(0, 0, 0, .42);
   }
 
-  /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Settings panel). */
-  html[data-theme="sepia"] {
-    /* --tali-muted darkened from #7a6a55 (4.44:1, below AA) to #6e5d46 (5.38:1) on the
-       sepia bg, so muted prose/labels/captions clear WCAG-AA. */
-    --tali-bg: #f4ecd8; --tali-fg: #5b4636; --tali-muted: #6e5d46; --tali-accent: #384165;
-    --tali-accent-fill: #384165; --tali-on-accent: #ffffff;
-    --tali-link: #384165; --tali-code-bg: #ece2c8; --tali-border: #ddd0b0;
-    --tali-border-strong: #877764; /* 3.68:1 on paper, 3.35:1 on the code surface */
-    --tali-edge-shadow: rgba(91, 70, 54, .14);
-    /* `--tali-flash` was never overridden here, so the live-edit pulse and a targeted footnote
-       painted the :root blue onto warm paper. It is the ONE place the accent is not the source:
-       the accent's chroma is so low that a 14% indigo wash over beige composites to chroma .018
-       and reads as a grey shadow rather than a highlight, where a warm wash keeps chroma .037.
-       A transient "this block changed" pulse is a signal, not a brand surface. */
-    --tali-flash: rgba(154, 106, 58, .18);
-    /* Sepia needs its own semantic set: the light family leaves `tip`'s icon at 2.99:1 on the
-       warm title tint, and the vivid light hues clash with the paper outright. */
-    --tali-callout-note: #4f5c86; --tali-callout-tip: #1f7359; --tali-callout-warning: #856115;
-    --tali-callout-important: #9e3f4b; --tali-callout-caution: #763610;
-    --tali-thm-plain: #454e70; --tali-thm-definition: #2a6553; --tali-thm-remark: #71685c;
-    color-scheme: light;
-  }
   /* The dark palette override lives in tokens-dark.css (keyed on `html[data-theme="dark"]` AND
      the deck's `html.tali-deck-dark` toggle) so a `--bare` page can flatten just that layer to
      `:root` / a `prefers-color-scheme` query. */

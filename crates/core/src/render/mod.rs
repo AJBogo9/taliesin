@@ -2059,7 +2059,7 @@ fn fonts_css_linked(hrefs: &[(&str, String)]) -> String {
     css
 }
 
-/// The owned design tokens (light + sepia palette, fonts, geometry, motion),
+/// The owned design tokens (the light palette, fonts, geometry, motion),
 /// `include_str!`'d ahead of BOTH `base.css` (the page) and `deck.css` (the deck) so
 /// the palette is declared exactly once. See `tokens.css`. The dark palette override
 /// is `TOKENS_DARK_CSS` (kept separate so a `--bare` page can flatten just that layer).

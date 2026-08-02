@@ -37,20 +37,20 @@ fragment with no pre-paint script) follows the same OS-preference logic, just vi
 plain CSS `prefers-color-scheme` media query instead of the head script.
 
 ::: {.callout-note}
-## Sepia is a reader mode, not a `theme:` value
+## Two built-in palettes, and the reader picks between them
 
-There is a third built-in palette, **Sepia** (a warm, low-contrast reading
-surface), but you cannot select it with `theme: sepia` in the front matter. It is
-offered only in the reader's own **Settings** gear (top-right), in the Theme section
-alongside Light and Dark. Sepia is a reader choice, not an author default. See
-[The reader experience](reading.tmd) for the rest of that menu.
+Light and Dark are the whole built-in set. A warm low-contrast "sepia" palette
+shipped for a while and was removed: a third palette is a third of every rule and
+every contrast measurement, for a preference a reader can already get from their
+system. Which of the two a reader sees is theirs to choose, from the **Settings**
+gear (top-right); see [The reader experience](reading.tmd) for the rest of that menu.
 :::
 
 ## How the toggle works
 
 The toggle changes one attribute, `data-theme` on `<html>`, and CSS does the rest.
-The base palette lives in a `:root` block; `html[data-theme="dark"]` (and
-`html[data-theme="sepia"]`) supply override values for the same `--tali-*` names.
+The base palette lives in a `:root` block and `html[data-theme="dark"]` supplies
+override values for the same `--tali-*` names.
 A pre-paint `<head>` script reads the saved choice from `localStorage` before the
 first frame, so a returning reader never sees a flash of the wrong theme. Crucially,
 **syntax highlighting recolours with no re-highlight**: code is highlighted once,
@@ -66,8 +66,7 @@ library itself is vendored like everything else, so this costs no network either
 
 ## The variable reference
 
-Every knob a theme can turn, with its light and dark values. (Sepia overrides a
-subset of the colours; the layout and font variables it inherits.)
+Every knob a theme can turn, with its light and dark values.
 
 ### Colours
 
@@ -317,7 +316,7 @@ touching, and the toggle still swaps light and dark instantly.
 ## The reader's theme is their own
 
 The variable values above are the *author's* theme. On top of them, each reader can
-pick their own theme, Light, Dark, or Sepia, from the **Settings** gear (top-right).
+pick their own theme, Auto, Light or Dark, from the **Settings** gear (top-right).
 That choice **persists per reader** in their browser `localStorage`, never touching your
 source, and is applied before the page paints, so a returning reader never sees a flash of
 the wrong theme. See [The reader experience](reading.tmd) for the rest of the Settings menu.

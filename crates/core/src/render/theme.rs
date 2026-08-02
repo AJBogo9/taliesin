@@ -114,9 +114,14 @@ pub(super) fn theme_default_mode(theme: Option<&str>) -> &'static str {
 /// and the Settings picker, and keeps `auto` in sync with OS changes.
 ///
 /// Two values, deliberately distinct: the **choice** is what the reader picked
-/// (`auto`/`light`/`dark`/`sepia`), the **mode** is what actually paints
-/// (`light`/`dark`/`sepia`, never `auto`). A picker has to render the choice, or
+/// (`auto`/`light`/`dark`), the **mode** is what actually paints
+/// (`light`/`dark`, never `auto`). A picker has to render the choice, or
 /// its `auto` option can never read as selected; everything else wants the mode.
+///
+/// The allowed list here is also the **migration** for a mode that is withdrawn: a stored
+/// choice is validated against it and anything else reads as `auto`, so a reader whose
+/// localStorage still says `sepia` (removed 2026-08-02, item 200) degrades to following the
+/// OS rather than to a `data-theme` nothing paints. That is why there is no migration code.
 pub fn theme_head(default_mode: &str) -> String {
     format!(
         r#"<script>
@@ -136,18 +141,19 @@ pub fn theme_head(default_mode: &str) -> String {
     return "light";
   }}
   // The reader's stored CHOICE. Absent or unrecognized reads as "auto", so clearing
-  // the key is what returns a page to following the OS.
+  // the key is what returns a page to following the OS — and so does a choice that no
+  // longer exists, which is what makes withdrawing one safe with no migration step.
   function choice(){{
     var v = null;
     try {{ v = localStorage.getItem("tali-theme"); }} catch(e) {{}}
-    return (v === "light" || v === "dark" || v === "sepia") ? v : "auto";
+    return (v === "light" || v === "dark") ? v : "auto";
   }}
   // The MODE that actually paints: never "auto".
   function pref(){{
     var c = choice();
     return c === "auto" ? DEFAULT() : c;
   }}
-  var BG = {{ dark: '#16181d', sepia: '#f4ecd8', light: '#ffffff' }};
+  var BG = {{ dark: '#16181d', light: '#ffffff' }};
   function apply(){{
     var mode = pref();
     var el = document.documentElement;
@@ -191,7 +197,7 @@ pub fn theme_head(default_mode: &str) -> String {
   // OS listener above keys off exactly that.
   window.taliSetTheme = function(p){{
     try {{
-      if (p === "light" || p === "dark" || p === "sepia") localStorage.setItem("tali-theme", p);
+      if (p === "light" || p === "dark") localStorage.setItem("tali-theme", p);
       else localStorage.removeItem("tali-theme");
     }} catch(e) {{}}
     apply();

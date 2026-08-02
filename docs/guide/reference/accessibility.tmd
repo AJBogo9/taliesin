@@ -74,7 +74,7 @@ each is an absence of evidence.
 Independent of the table above, the reading experience is deliberately adjustable,
 because these are personal preferences rather than document configuration:
 
-- **Theme** (light / dark / sepia), with contrast verified in each.
+- **Theme** (auto / light / dark), with contrast verified in each.
 - **Text size and line spacing.**
 - **Focus mode**, which removes surrounding chrome.
 - **`prefers-reduced-motion`** is honoured for every animation and for

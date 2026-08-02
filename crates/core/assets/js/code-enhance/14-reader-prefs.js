@@ -1,4 +1,4 @@
-// Reader theme picker (auto / light / dark / sepia), mounted as a row in the Settings menu. The
+// Reader theme picker (auto / light / dark), mounted as a row in the Settings menu. The
 // choice lives in the reader's own localStorage and is applied before paint by the pre-paint
 // head script (taliSetTheme / taliGetThemeChoice in theme.rs), so this enhancer is only the UI.
 // Read-only. Skipped on decks.
@@ -10,7 +10,7 @@ function taliInitReaderPrefs() {
 
   var THEMES = [
     ['auto', 'Auto', 'Follow your system light/dark setting'],
-    ['light', 'Light'], ['dark', 'Dark'], ['sepia', 'Sepia', 'Warm, low-contrast reading'],
+    ['light', 'Light'], ['dark', 'Dark'],
   ];
   // Compare against the stored CHOICE, not the resolved mode: the mode is never "auto",
   // so syncing on it would leave the Auto button permanently unpressed.
@@ -51,7 +51,7 @@ function taliInitReaderPrefs() {
 
   var setTheme = window.taliSetTheme; // guarded present above; captured for the pick closure
   var themeSeg = seg('Theme', THEMES, curTheme, function (v) {
-    setTheme(/** @type {'auto' | 'light' | 'dark' | 'sepia'} */ (v));
+    setTheme(/** @type {'auto' | 'light' | 'dark'} */ (v));
   });
   window.addEventListener('tali:themechange', themeSeg.sync);
   window.taliReaderMenu.addSection('', themeSeg.row, themeSeg.sync);

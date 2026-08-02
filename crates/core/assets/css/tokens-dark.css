@@ -3,7 +3,7 @@
      deck engine's `html.tali-deck-dark` class (deck.js sets the class on <html>, not a data-theme
      attribute), so the page and the deck share one dark palette instead of the old parallel
      `--deck-*` set. A `--bare` page (no data-theme script) flattens this file's `html[data-theme=
-     "dark"]` prefix to `:root` via bare_theme_css. Same accent hue as light + sepia (OKLCH H 272),
+     "dark"]` prefix to `:root` via bare_theme_css. Same accent hue as light (OKLCH H 272),
      lifted in lightness and eased in chroma so it does not vibrate on the dark surface. 7.62:1 as
      link text. */
   html[data-theme="dark"], html.tali-deck-dark {

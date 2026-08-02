@@ -2656,7 +2656,7 @@ fn inline_image_in_a_sentence_stays_inline() {
 fn assembled_page_ships_theme_picker() {
     let page = render_html_page("# Title\n\nProse to read.\n", "doc");
     // The theme-picker enhancer (the Settings gear's Theme row) ships on every built page via
-    // code_scripts(), so a reader can choose light / dark / sepia.
+    // code_scripts(), so a reader can choose auto / light / dark.
     assert!(
         page.contains("taliInitReaderPrefs"),
         "theme-picker enhancer not shipped in the assembled page"
@@ -2672,7 +2672,7 @@ fn assembled_page_ships_theme_picker() {
 #[test]
 fn theme_head_separates_the_reader_choice_from_the_resolved_mode() {
     // A reader who once toggled could never return to following the OS: the only saved
-    // values were light/dark/sepia, and nothing cleared the key. The head script must
+    // values were light and dark, and nothing cleared the key. The head script must
     // therefore expose the RAW choice (which can be "auto") alongside the resolved mode
     // (which never is), and selecting "auto" must CLEAR the key so `hasSaved()` goes false
     // and the `prefers-color-scheme` listener resumes driving the page.
@@ -2697,7 +2697,7 @@ fn theme_head_separates_the_reader_choice_from_the_resolved_mode() {
 fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
     // The picker's segmented control marks the pressed option by comparing each option's
     // value against the current one. Comparing against the RESOLVED mode means an "Auto"
-    // button can never read as pressed (the mode is always light/dark/sepia), so it must
+    // button can never read as pressed (the mode is always light or dark), so it must
     // compare against the stored choice.
     assert!(
         CODE_ENHANCE_JS.contains("['auto', 'Auto'"),
@@ -3244,13 +3244,13 @@ fn deck_theme_is_custom_and_head_gating() {
     );
     // A custom theme owns the colours -> no theme-management script.
     assert!(deck_theme_head("auto", true).is_empty());
-    // B4-22: an embedded deck follows the host page's data-theme. A `sepia` host is a
-    // light reading surface, so hostTheme() must map it to 'light' (not fall through to
-    // the OS, which could turn the deck dark inside a cream page).
+    // B4-22: an embedded deck follows the host page's data-theme, and only the two modes
+    // that exist — anything else falls through to the OS rather than guessing. (A `sepia`
+    // host used to map to a light deck; the mode was removed in item 200.)
     let head = deck_theme_head("auto", false);
     assert!(
-        head.contains("t==='sepia' ? 'light'"),
-        "hostTheme() should map a sepia host to a light deck"
+        head.contains("(t==='dark'||t==='light') ? t : null"),
+        "hostTheme() should take the host's mode when it is one it knows, else defer: {head}"
     );
     // PL13: the 3-state Auto/Light/Dark control. `taliDeckThemeChoice` exposes the current choice
     // ('auto' when no key), the setter CLEARS the key for a non-light/dark value (so "Auto"
@@ -4627,8 +4627,8 @@ fn the_overview_wraps_at_one_count_for_the_whole_map() {
 }
 
 /// The hex value of `token` inside the first block after `selector` in `css`. The block
-/// matters: `tokens.css` defines `--tali-bg` twice (the light root and the sepia theme), so a
-/// first-match scan would silently compare against the wrong palette.
+/// matters: a stylesheet can define `--tali-bg` more than once (a `:root` and a themed
+/// override), so a first-match scan would silently compare against the wrong palette.
 #[cfg(test)]
 fn token_hex_in(css: &str, selector: &str, token: &str) -> String {
     let block = css
@@ -4699,7 +4699,6 @@ fn the_pre_paint_canvas_map_tracks_the_theme_tokens() {
     for (mode, css, selector) in [
         ("dark", TOKENS_DARK_CSS, ":root"),
         ("light", TOKENS_CSS, ":root"),
-        ("sepia", TOKENS_CSS, "html[data-theme=\"sepia\"]"),
     ] {
         let want = token_hex_in(css, selector, "--tali-bg");
         // Matched as the map entry (`dark: '#16181d'`), so a hex that merely appears somewhere
@@ -4710,6 +4709,50 @@ fn the_pre_paint_canvas_map_tracks_the_theme_tokens() {
             "the pre-paint BG map must read `{entry}` (from `--tali-bg`); it does not"
         );
     }
+}
+
+/// Item 200: sepia was dropped, leaving light + dark. This is the whole-surface pin, because
+/// the theme is assembled from five separate places that each had their own sepia branch and
+/// a leftover in any one of them is either a dead rule or a picker offering a mode nothing
+/// paints. Light and dark are read alongside as the control: a test that only asserts an
+/// absence passes just as well on an empty stylesheet.
+#[test]
+fn sepia_is_gone_from_every_theme_surface() {
+    for (what, css) in [
+        ("tokens.css", TOKENS_CSS),
+        ("tokens-dark.css", TOKENS_DARK_CSS),
+        ("base.css", BASE_CSS),
+        ("dark.css", DARK_CSS),
+        ("deck.css", deck::DECK_CSS),
+    ] {
+        assert!(
+            !css.to_ascii_lowercase().contains("sepia"),
+            "{what} still mentions sepia; it was removed (item 200)"
+        );
+    }
+    // The two that remain, read from the same files, so "no sepia" cannot be satisfied by
+    // an empty or renamed stylesheet.
+    assert!(TOKENS_CSS.contains("--tali-bg"), "the light root survives");
+    assert!(
+        TOKENS_DARK_CSS.contains("--tali-bg"),
+        "the dark palette survives"
+    );
+
+    // The reader's picker and the persisted-choice validator: a stored `sepia` must fall
+    // back to `auto` rather than name a mode nothing paints.
+    let head = super::theme::theme_head("light");
+    assert!(
+        !head.to_ascii_lowercase().contains("sepia"),
+        "the head theme script still knows sepia: {head}"
+    );
+    assert!(
+        head.contains("light") && head.contains("dark"),
+        "control: the head script still knows the two modes that remain"
+    );
+    assert!(
+        !CODE_ENHANCE_JS.contains("sepia"),
+        "the reader menu still offers a Sepia row"
+    );
 }
 
 /// PA-H1's residual: a DECK keeps `<meta name="theme-color">` in step with its canvas too.
@@ -5533,15 +5576,9 @@ fn cross_document_view_transitions_ship_bundled_and_respect_reduced_motion() {
 /// code-bg). The hairline `--tali-border` stays decorative and is deliberately not checked.
 #[test]
 fn border_strong_clears_the_ui_boundary_floor_on_both_surfaces() {
-    // The palette lives in tokens.css (light `:root` first, then sepia) + tokens-dark.css (dark);
-    // slice from the sepia selector before reading that theme's value.
-    let sepia_block = &TOKENS_CSS[TOKENS_CSS
-        .find("html[data-theme=\"sepia\"] {")
-        .expect("sepia block")..];
     for (theme, css, bg, code_bg) in [
         ("light", TOKENS_CSS, "#ffffff", "#f5f5f5"),
         ("dark", TOKENS_DARK_CSS, "#16181d", "#21242b"),
-        ("sepia", sepia_block, "#f4ecd8", "#ece2c8"),
     ] {
         let c = color_after(css, "--tali-border-strong:");
         let (a, b) = (wcag_contrast(c, bg), wcag_contrast(c, code_bg));
@@ -5553,7 +5590,7 @@ fn border_strong_clears_the_ui_boundary_floor_on_both_surfaces() {
 }
 
 /// Citations and cross-references must not signal "link" with colour alone: against body text the
-/// link tone is 1.93:1 in dark (the default theme) and 1.51:1 in sepia. WCAG 1.4.1.
+/// link tone is 1.93:1 in dark, the default theme. WCAG 1.4.1.
 #[test]
 fn xref_links_carry_a_non_colour_affordance() {
     let i = BASE_CSS.find(".tali-xref {").expect("the .tali-xref rule");
@@ -5607,21 +5644,18 @@ fn dark_search_mark_keeps_body_text_readable() {
     assert!(r >= 4.5, "dark search mark {c}: body text at {r:.2}");
 }
 
-/// Sepia never overrode `--tali-flash`, so the live-edit pulse painted the `:root` blue onto warm
-/// paper. Pin that every theme defines its own.
+/// A theme that does not override `--tali-flash` inherits the `:root` value, which is how the
+/// live-edit pulse once painted an indigo wash onto a warm page. Pin that every theme that is
+/// not the root defines its own.
 #[test]
 fn every_theme_defines_its_own_flash_tint() {
-    let sepia = TOKENS_CSS
-        .find("html[data-theme=\"sepia\"] {")
-        .expect("sepia block");
-    let block = &TOKENS_CSS[sepia..sepia + TOKENS_CSS[sepia..].find('}').expect("closing brace")];
     assert!(
-        block.contains("--tali-flash:"),
-        "sepia must define --tali-flash, not inherit the :root blue"
+        TOKENS_CSS.contains("--tali-flash:"),
+        "the light root defines it"
     );
     assert!(
         TOKENS_DARK_CSS.contains("--tali-flash:"),
-        "dark must define it too"
+        "dark must define it too, rather than inheriting the light value"
     );
 }
 
@@ -5758,13 +5792,9 @@ fn mix_over(fg: &str, pct: f64, bg: &str) -> String {
 /// are compliance.)
 #[test]
 fn callout_family_meets_its_contrast_floors_in_every_theme() {
-    let sepia = &TOKENS_CSS[TOKENS_CSS
-        .find("html[data-theme=\"sepia\"] {")
-        .expect("sepia block")..];
     for (theme, css, bg, fg) in [
         ("light", TOKENS_CSS, "#ffffff", "#1a1a1a"),
         ("dark", TOKENS_DARK_CSS, "#16181d", "#e6e6e6"),
-        ("sepia", sepia, "#f4ecd8", "#5b4636"),
     ] {
         for kind in ["note", "tip", "warning", "important", "caution"] {
             let c = color_after(css, &format!("--tali-callout-{kind}:"));
@@ -5788,13 +5818,9 @@ fn callout_family_meets_its_contrast_floors_in_every_theme() {
 /// still clearing the 3:1 graphical floor for their left border.
 #[test]
 fn theorem_accents_clear_the_graphical_floor_in_every_theme() {
-    let sepia = &TOKENS_CSS[TOKENS_CSS
-        .find("html[data-theme=\"sepia\"] {")
-        .expect("sepia block")..];
     for (theme, css, bg) in [
         ("light", TOKENS_CSS, "#ffffff"),
         ("dark", TOKENS_DARK_CSS, "#16181d"),
-        ("sepia", sepia, "#f4ecd8"),
     ] {
         for kind in ["plain", "definition", "remark"] {
             let c = color_after(css, &format!("--tali-thm-{kind}:"));
@@ -5823,7 +5849,7 @@ fn diagnostic_boxes_derive_from_callout_tokens_not_per_theme_literals() {
         BASE_CSS.contains("color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg))"),
         ".tali-error/.tali-js-error must derive their surface from --tali-callout-important"
     );
-    // No per-theme (dark/sepia) `.tali-stderr`/`.tali-error` override survives.
+    // No per-theme (dark) `.tali-stderr`/`.tali-error` override survives.
     for (name, css) in [("dark.css", DARK_CSS), ("base.css", BASE_CSS)] {
         assert!(
             !css.contains("] .tali-stderr {") && !css.contains("] .tali-error {"),
@@ -5837,8 +5863,8 @@ fn print_and_high_contrast_blocks_outrank_every_theme_block() {
     // `dark.css` is inlined AFTER `base.css` (see page.rs), so a print/contrast override
     // written as `html[data-theme="dark"]` ties that theme block on specificity (0,1,1) and
     // LOSES on source order: printing from dark mode put #e6e6e6 ink on white paper.
-    // `html[data-theme="sepia"]` (0,1,1) likewise outranks a bare `:root` (0,1,0), so sepia
-    // printed brown and never got the `prefers-contrast: more` boost. A doubled `:root:root`
+    // Any `html[data-theme=…]` block (0,1,1) likewise outranks a bare `:root` (0,1,0), so a
+    // themed page never got the `prefers-contrast: more` boost. A doubled `:root:root`
     // is (0,2,0), which outranks every `html[data-theme=…]` block regardless of order.
     let print_block = &BASE_CSS[BASE_CSS
         .rfind("@media print")
@@ -5856,7 +5882,7 @@ fn print_and_high_contrast_blocks_outrank_every_theme_block() {
         .expect("the prefers-contrast block")..];
     assert!(
         contrast_block.contains(":root:root"),
-        "prefers-contrast: more must reach dark + sepia, not only light"
+        "prefers-contrast: more must reach dark too, not only light"
     );
 }
 
@@ -5880,23 +5906,20 @@ fn printing_forces_the_light_theme_even_from_dark() {
 
 #[test]
 fn syntax_comment_token_meets_wcag_aa() {
-    // Batch 3b: the comment token was sub-AA (light 4.17, sepia 3.17) on its code
-    // background. Pin ≥ 4.5:1 against the actual code-block backgrounds so a future
-    // palette edit can't silently regress it.
+    // Batch 3b: the comment token was sub-AA (light 4.17) on its code background. Pin
+    // >= 4.5:1 against the actual code-block backgrounds so a future palette edit can't
+    // silently regress it.
     let light = color_after(BASE_CSS, ".tali-hl-comment { color: ");
     assert!(
         wcag_contrast(light, "#f5f5f5") >= 4.5,
         "light comment {light} vs #f5f5f5 = {:.2}",
         wcag_contrast(light, "#f5f5f5")
     );
-    let sepia = color_after(
-        BASE_CSS,
-        "html[data-theme=\"sepia\"] .tali-hl-comment { color: ",
-    );
+    let dark = color_after(DARK_CSS, ".tali-hl-comment { color: ");
     assert!(
-        wcag_contrast(sepia, "#ece2c8") >= 4.5,
-        "sepia comment {sepia} vs #ece2c8 = {:.2}",
-        wcag_contrast(sepia, "#ece2c8")
+        wcag_contrast(dark, "#21242b") >= 4.5,
+        "dark comment {dark} vs #21242b = {:.2}",
+        wcag_contrast(dark, "#21242b")
     );
 }
 
@@ -6011,20 +6034,6 @@ fn every_interactive_deck_control_gets_a_focus_visible_ring() {
             "deck control {cls} must get a :focus-visible ring"
         );
     }
-}
-
-/// PA-C4: the search-hit `<mark>` fallback (engines without the Custom Highlight API) had a
-/// light and a dark branch but no sepia one, so a sepia reader fell through to the base
-/// 50%-alpha amber over warm paper. Pin an opaque sepia mark that keeps the sepia body ink
-/// (`--tali-fg` #5b4636) AA-readable ON the highlight.
-#[test]
-fn sepia_search_mark_keeps_body_text_readable() {
-    let c = color_after(
-        BASE_CSS,
-        "html[data-theme=\"sepia\"] mark.tali-search-mark { background-color: ",
-    );
-    let r = wcag_contrast("#5b4636", c);
-    assert!(r >= 4.5, "sepia search mark {c}: body text at {r:.2}");
 }
 
 /// PA-F3: keyboard focus on a listing card missed the pointer-hover lift/border/title-tint,

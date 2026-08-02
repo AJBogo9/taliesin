@@ -57,9 +57,9 @@ interface Window {
   /** Theme API from the head script (`theme_head`). The reader's *choice* may be
    *  `"auto"`; the resolved *mode* that paints never is. Passing `"auto"` (or any
    *  unrecognized value) to `taliSetTheme` clears the saved choice. */
-  taliSetTheme?: (choice: 'auto' | 'light' | 'dark' | 'sepia') => void;
-  taliGetThemePref?: () => 'light' | 'dark' | 'sepia';
-  taliGetThemeChoice?: () => 'auto' | 'light' | 'dark' | 'sepia';
+  taliSetTheme?: (choice: 'auto' | 'light' | 'dark') => void;
+  taliGetThemePref?: () => 'light' | 'dark';
+  taliGetThemeChoice?: () => 'auto' | 'light' | 'dark';
   /** Wires every `[data-tali-theme-toggle]` button (defined in theme_head). */
   taliWireThemeToggles?: () => void;
   /** Flip light <-> dark (defined in theme_head; ships on every page). The Cmd-K palette's

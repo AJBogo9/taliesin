@@ -29,21 +29,17 @@ gear again.
 
 ## Theme
 
-The **Theme** section is a single segmented control: Light, Dark, or Sepia. The choice
+The **Theme** section is a single segmented control: Auto, Light, or Dark. The choice
 persists in the reader's `localStorage` and is applied *before the page paints*, so a
-returning reader never sees a flash of the wrong theme.
+returning reader never sees a flash of the wrong theme. Auto follows the operating
+system's own light/dark setting and keeps following it, live.
 
-The first two are the familiar pair. The third, **Sepia**, is a warm, low-contrast
-reading mode: a soft cream page (`#f4ecd8`) with a dark-brown ink (`#5b4636`) instead of
-black on white. The point is comfort for long, plain-prose reads, where full Light
-contrast can feel harsh, especially in dim light or on a bright panel. It is a true theme,
-not a tint: links, code backgrounds, borders, and the focus ring all shift to the sepia
-palette together, and it declares `color-scheme: light` so native form controls match.
-
-Sepia is **reader-choice only**. It is not a value you can set in a page's front-matter
-`theme:` (that field selects Light, Dark, or an extension bundle): it is a reading mode
-the reader picks for themselves, the same way they pick Light or Dark. An author who
-wants a warm default ships a custom theme through the usual extension or `css:` route.
+**Two themes, not three.** A warm low-contrast "sepia" mode shipped for a while and was
+removed: two themes cover the two conditions that actually differ, a lit room and a dark
+one, and each is tuned to clear its contrast floors. A third palette is a third of
+everything, every rule and every contrast measurement, for a preference the reader can
+get from their own system or browser. An author who wants a warm page ships it as a
+custom theme through the usual extension or `css:` route.
 
 There is deliberately no text-size, width, or spacing knob. Taliesin tunes those defaults
 once, for every reader, rather than shipping a comfort panel of sliders: the browser
@@ -167,7 +163,7 @@ preference, whereas a shortcut you cannot turn off is a barrier.
 Keyboard focus is always visible: every interactive control (links, buttons, tabs,
 the Settings controls, and the deck controls) shares one consistent focus ring,
 shown only for keyboard or assistive-technology focus and never on a mouse click. The
-ring is a single theme token, so it follows the active theme (including Sepia and the
+ring is a single theme token, so it follows the active theme (including the
 high-contrast modes below).
 
 **Landmarks and dialogs.** Each `<nav>` on a page carries a distinguishing accessible
