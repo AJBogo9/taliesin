@@ -206,6 +206,59 @@ Totals are approximate and should be re-measured at execution.
 
 The highest-value work in the document. Each item removes a *second mechanism for one job*.
 
+> **Status, 2026-08-02: 1.2, 1.3, 1.4 and 1.5 are DONE. 1.1 is NOT, and is blocked on a
+> ruling.** What executing them corrected in this table, which a later wave must not
+> re-derive:
+>
+> - **1.2 and 1.4 are one deletion counted twice.** Both remove the repo-root `AGENTS.md`;
+>   their ~220 + ~200 double-counts it. Landed as one commit. Of the two readings of "one
+>   generated artifact", the bundled `assets/agents/AGENTS.md` golden was **kept** (it is the
+>   house pattern `vocab.rs`/`schema.rs` use, and it keeps a vocabulary change reviewable as a
+>   diff); only the hand-kept duplicate and its wrong-crate gate went. A front-matter key now
+>   trips **five** drift gates, a retired one **seven**.
+> - **1.5 was blocked by a real, previously-filed obstacle, now discharged.** The deferred
+>   note "R1" in `llms.rs` was correct: the shared projection decoded a *smaller* entity set
+>   than the prose extractor, so a naive fold would have published `it&#8217;s`.
+>   `render::text::decode` now resolves numeric character references. The fold also surfaced
+>   two defects in the shared recipe that `read` and the search index had all along — field
+>   fusion ("…alignment.17 March 20263 min read") and KaTeX whitespace runs — both fixed at
+>   `visible`, not worked around. The published artifact grows deliberately: 45,403 → 141,999
+>   bytes on `corpus/tech-blog`, because it now carries the code.
+> - **1.1's central premise is wrong, and the item cannot land as written.** The table below
+>   argues the single-doc server is "the *degraded* one" from `grep -c warm_pool`. That is
+>   true of kernel warmth and **false of decks**: `serve/mod.rs` dispatches `DocFormat::Reveal`
+>   to `deck_index_html` and carries deck-aware incremental update (`deck_op_is_structural`,
+>   `is_slide_structural`, `is_pause_paragraph`, `deck_meta_changed`), while `serve_site`
+>   explicitly does not — `serve_site/mod.rs:1779`, "A site page never restructures a deck".
+>   A site also *warns and flattens* a loose `format: deck` page rather than serving it. So
+>   folding as specified **regresses `taliesin preview slides.tmd`**, a supported, documented
+>   workflow. Decks being frozen ("supported, zero further investment") is an argument
+>   against silently breaking them, not for it.
+>
+>   Measured cost of the fix: the deck *shell* already exists in `serve_site` (it serves
+>   `{{< embed >}}`ed decks at `mod.rs:770-790`); what is missing is ~120 lines of
+>   structural-change detection to move. That is code motion, not deck investment.
+> - **The coupling in 1.1 is understated.** `serve` is not a module `serve_site` imports
+>   fifteen things from; it is the crate's shared HTTP/CLI-error layer. `query.rs`,
+>   `publish.rs`, `cli.rs`, `doctor.rs`, `run_cmd.rs`, `mcp.rs`, `log.rs` and `session.rs` all
+>   depend on it (`guarded`, `unknown_flag_error`, `bad_format_error`, `RUN_PATH`,
+>   `INTERRUPT_PATH`, `session_owns`, `IDENTITY_PATH`, `is_sibling_preview`, `STATUS_CSS`,
+>   `MAX_WS_MESSAGE_BYTES`). The cheap shape is therefore **not** "extract 424 lines to a new
+>   module" but "delete the single-doc half in place and keep the module as the shared
+>   layer", which leaves every `crate::serve::` import path untouched.
+>
+> **Ruling needed before 1.1 proceeds:** port the ~120 lines so a one-page project serves a
+> deck properly (recommended — it is the only option that both keeps the workflow and yields
+> the full deletion), *or* keep a deck-only single-doc path (smaller win, two servers remain),
+> *or* accept that `preview slides.tmd` flattens (a regression in a supported workflow).
+>
+> Also settled while executing, and needed by whichever option wins: **`preview <file.tmd>`
+> should resolve to the file's enclosing `_site.yml` project and open at that page**, falling
+> back to a one-page project rooted at the parent directory. That is already what the VS Code
+> companion does (`extension.ts:150-154`, item 150: "Previewing the file alone gives an orphan:
+> no nav, no breadcrumb, and every cross-page link dead"), so it makes the CLI and the editor
+> agree instead of disagree.
+
 | # | Item | LOC | Note |
 |---|---|---|---|
 | 1.1 | **Fold `serve/mod.rs` into `serve_site` as a one-page project** | ~2,000 | The largest single win. The site model already handles a bare directory. Verified: `grep -c warm_pool` gives **0** in `serve/mod.rs` and **3** in `serve_site/mod.rs`, so the unused copy is the *degraded* one and a `.tmd` with no ancestor `_site.yml` (the companion's fallback) cold-starts its kernel where a site preview does not. This is an upgrade, not merely a dedup: it also removes the surface's only two-owner protocol contract. Zero of 64 `preview` invocations since the rename targeted a single file. **Execution constraint, measured: `serve/mod.rs` is not purely a duplicate.** `serve_site/mod.rs:31-35` imports fifteen items from it (`CLIENT_JS`, `FAVICON`, `STATUS_CSS`, `bind_with_fallback`, `js_str`, `lan_url`, `local_ip`, `new_session_token`, `open_in_browser`, `percent_decode`, `print_qr`, `with_host_guard`, `with_identity`, `with_lan_guard`, `ws_origin_ok`). Ten of them span ~424 lines in `mod.rs`; the other five live in `serve/security.rs` (416 lines), which stays untouched. **Step one is extracting those ~424 lines into a shared module; only the ~2,329-line single-doc remainder is the deletion.** |
