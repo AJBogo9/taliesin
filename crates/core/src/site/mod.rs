@@ -379,6 +379,31 @@ impl Site {
     /// keeps `draft: true` pages in the page set (tagged `Page.draft`) so the live
     /// **preview** shows them in nav/listings/prev-next; `Exclude` is the published view.
     pub fn discover_with(root: &Path, drafts: DraftMode) -> Site {
+        Self::discover_scoped(root, drafts, None)
+    }
+
+    /// The project for a single `.tmd` previewed on its own: its parent directory carrying
+    /// exactly that one document, plus whatever that document `{{< embed >}}`s.
+    ///
+    /// This is what `taliesin preview <file.tmd>` builds when the file has no ancestor
+    /// `_site.yml`. Scoping to the one file (rather than discovering the whole parent
+    /// directory) is the point: previewing a scratch note must not pull thirty unrelated
+    /// siblings into the nav, and must not parse them to find that out.
+    ///
+    /// A file that declares `format: deck` becomes a [`DeckRef`] rather than a page, so it
+    /// is served as a deck. Without that it would be a *loose* deck — flattened to a
+    /// chrome-wrapped article, with a warning telling the author to embed it — which is the
+    /// right answer inside a real site and the wrong one for the file you asked to see.
+    pub fn discover_single(file: &Path) -> Site {
+        let root = file.parent().unwrap_or_else(|| Path::new("."));
+        Self::discover_scoped(root, DraftMode::Include, Some(file))
+    }
+
+    /// [`discover_with`](Self::discover_with), optionally narrowed to one document
+    /// (see [`discover_single`](Self::discover_single)). The narrowing happens before decks,
+    /// cross-references and the search index are computed, so every downstream artifact is
+    /// built from the scoped page set rather than filtered afterwards.
+    fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
         let mut warnings = Vec::new();
         let mut excluded_drafts = Vec::new();
         let config = load_config(root, &mut warnings);
@@ -400,8 +425,29 @@ impl Site {
         // page, so a deck that's only there to be embedded would otherwise also become
         // a navigable, chrome-wrapped page (and show up in nav/search). Drop those from
         // the page set: an embedded deck is served as a standalone deck, not a page.
-        let decks = discover_decks(root, &pages, &mut warnings);
+        // Scoped to one document: drop every other page BEFORE decks/xrefs/search are
+        // computed, so they are built from the one page and not filtered after the fact.
+        if let Some(only) = only {
+            let want = only.canonicalize().unwrap_or_else(|_| only.to_path_buf());
+            pages.retain(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want);
+        }
+
+        let mut decks = discover_decks(root, &pages, &mut warnings);
         pages.retain(|p| !decks.iter().any(|d| d.url == p.url));
+
+        // The scoped document is itself a deck: serve it as one. In a real site a deck is
+        // reached through the page that embeds it, so `discover_decks` finds it there; a
+        // deck previewed on its own is embedded by nothing and would otherwise flatten.
+        if only.is_some()
+            && let Some(p) = pages.first()
+            && std::fs::read_to_string(&p.input).is_ok_and(|s| render::is_reveal_doc(&s))
+        {
+            decks.push(DeckRef {
+                input: p.input.clone(),
+                url: p.url.clone(),
+            });
+            pages.clear();
+        }
 
         // An `{{< embed >}}` target is a COMPONENT of the page that embeds it, not an
         // independently published page: `discover_decks` resolves it straight off the
@@ -2610,6 +2656,92 @@ pub(crate) mod tests {
             fs::write(p, body).unwrap();
         }
         root
+    }
+
+    /// `preview <file.tmd>` on a document with no ancestor `_site.yml` gets a project of
+    /// exactly that document — not its whole parent directory. Thirty unrelated notes next
+    /// to it must not become nav entries (nor be parsed to discover that they are not).
+    #[test]
+    fn discover_single_scopes_the_project_to_one_document() {
+        let root = write_site(
+            "single",
+            &[
+                ("note.tmd", "---\ntitle: Note\n---\n\nThe note.\n"),
+                ("other.tmd", "---\ntitle: Other\n---\n\nUnrelated.\n"),
+                (
+                    "deep/third.tmd",
+                    "---\ntitle: Third\n---\n\nAlso unrelated.\n",
+                ),
+            ],
+        );
+        let site = Site::discover_single(&root.join("note.tmd"));
+        assert_eq!(
+            site.pages.iter().map(|p| &p.rel).collect::<Vec<_>>(),
+            vec!["note.tmd"],
+            "only the previewed document is a page"
+        );
+        // Discovering the directory instead is what this must NOT do.
+        assert_eq!(
+            Site::discover(&root).pages.len(),
+            3,
+            "the fixture has three"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A deck previewed on its own is a DECK. Inside a site a deck is reached through the
+    /// page that `{{< embed >}}`s it, so a deck with no embedder is "loose" and flattens to
+    /// an article — the right answer for a stray file in a real site, the wrong one for the
+    /// file the author asked to look at.
+    #[test]
+    fn discover_single_serves_a_standalone_deck_as_a_deck() {
+        let root = write_site(
+            "singledeck",
+            &[(
+                "talk.tmd",
+                "---\ntitle: Talk\nformat: deck\n---\n\n# One\n\n# Two\n",
+            )],
+        );
+        let site = Site::discover_single(&root.join("talk.tmd"));
+        assert!(site.pages.is_empty(), "not served as a flat page");
+        assert!(
+            site.deck("talk.html").is_some(),
+            "served as a deck: {:?}",
+            site.decks
+        );
+        assert!(
+            !site.warnings.iter().any(|w| w.contains("loose page")),
+            "no loose-deck warning for a deck previewed deliberately: {:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Scoping happens before decks are discovered, so the one page still brings its own
+    /// embedded deck with it (that deck is a component of the page, not a sibling).
+    #[test]
+    fn discover_single_keeps_the_pages_own_embedded_deck() {
+        let root = write_site(
+            "singleembed",
+            &[
+                (
+                    "post.tmd",
+                    "---\ntitle: Post\n---\n\n{{< embed slides.tmd >}}\n",
+                ),
+                (
+                    "slides.tmd",
+                    "---\ntitle: Slides\nformat: deck\n---\n\n# A\n\n# B\n",
+                ),
+            ],
+        );
+        let site = Site::discover_single(&root.join("post.tmd"));
+        assert_eq!(site.pages.len(), 1, "one page");
+        assert!(
+            site.deck("slides.html").is_some(),
+            "its embedded deck is still served: {:?}",
+            site.decks
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Render `rel` in `site` and return (html, render-warnings).

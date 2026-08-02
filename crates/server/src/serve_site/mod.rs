@@ -129,6 +129,24 @@ struct Project {
     /// pool) because the pool is owned by the build task, and the interrupt endpoint is a
     /// request handler that must reach a run without waiting on that task's lock.
     runs: crate::run_control::RunRegistry,
+    /// Set when this project is one document previewed on its own (`preview <file.tmd>`
+    /// with no ancestor `_site.yml`): the document it is scoped to.
+    ///
+    /// Load-bearing on **re-discovery**, not just at boot. A save that touches `_site.yml`
+    /// or creates a `.tmd` re-runs discovery, and an unscoped re-run would quietly widen a
+    /// one-document preview into "every `.tmd` in the parent directory" — the scoping would
+    /// hold until the first save and then evaporate.
+    scope: Option<PathBuf>,
+}
+
+impl Project {
+    /// Re-discover this project the same way it was discovered, scope included.
+    fn rediscover(&self) -> Site {
+        match &self.scope {
+            Some(file) => Site::discover_single(file),
+            None => Site::discover_with(&self.dir, taliesin_core::DraftMode::Include),
+        }
+    }
 }
 
 /// A mounted sub-project served under `prefix` (e.g. `gallery/course`).
@@ -362,16 +380,123 @@ impl PageDoc {
     }
 }
 
-/// Entry point for `taliesin preview <dir>` when the path is a site project.
-pub fn run(
+/// What `taliesin preview` was pointed at.
+///
+/// Both arms are served by this one server. There is no second, single-document server:
+/// a `.tmd` is previewed as the project it belongs to, which is what makes its nav,
+/// breadcrumbs and cross-page links work (and is what the VS Code companion has always
+/// done — see `editor/vscode/src/extension.ts`, item 150).
+pub enum Target {
+    /// A directory: the whole project.
+    Project(PathBuf),
+    /// One `.tmd`: its enclosing `_site.yml` project opened at that page, or — with no
+    /// ancestor `_site.yml` — a project of just that document.
+    Document(PathBuf),
+}
+
+impl Target {
+    /// A directory is a project; anything else is a document.
+    pub fn at(path: PathBuf) -> Target {
+        if path.is_dir() {
+            Target::Project(path)
+        } else {
+            Target::Document(path)
+        }
+    }
+}
+
+/// Resolve a [`Target`] to the project to serve: its root, its discovered [`Site`], and
+/// the document it is scoped to (`None` for a whole-project target).
+///
+/// A document inside a project is served as **that project**, not alone. Previewing the
+/// file by itself produces an orphan — no nav, no breadcrumb, every cross-page link dead —
+/// and the enclosing project is a fact about the tree (the nearest `_site.yml`), so there
+/// is nothing here for the author to configure. Only a document with no ancestor
+/// `_site.yml` gets a project of its own, scoped to it.
+/// Returns `(root, site, scoped, doc)`. `scoped` is `Some` only for an out-of-project
+/// document — it is what re-discovery must stay narrowed to. `doc` is the target document
+/// in either case, which is what the browser opens at.
+fn resolve_target(target: Target) -> std::io::Result<Resolved> {
+    let (root, scope) = match target {
+        Target::Project(dir) => (dir, None),
+        Target::Document(file) => {
+            let file = file.canonicalize().unwrap_or(file);
+            if !file.is_file() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("no document at {}", file.display()),
+                ));
+            }
+            match taliesin_core::site::enclosing_site_root(&file) {
+                // In a project: serve the project, open at this page.
+                Some(root) => (root, Some(file)),
+                // Not in a project: a project of exactly this document, rooted at its
+                // directory so relative images/includes/assets resolve as they always did.
+                None => (
+                    file.parent()
+                        .unwrap_or(std::path::Path::new("."))
+                        .to_path_buf(),
+                    Some(file),
+                ),
+            }
+        }
+    };
+    let root = root.canonicalize().unwrap_or(root);
+    // Only an OUT-of-project document narrows discovery. A document inside a project must
+    // discover the whole project, or its nav and cross-page links would be the very orphan
+    // this routing exists to prevent.
+    let scoped = scope
+        .as_deref()
+        .filter(|f| taliesin_core::site::enclosing_site_root(f).is_none())
+        .map(|f| f.to_path_buf());
+    let site = match &scoped {
+        Some(file) => Site::discover_single(file),
+        None => Site::discover_with(&root, taliesin_core::DraftMode::Include),
+    };
+    Ok(Resolved {
+        root,
+        site,
+        scoped,
+        doc: scope,
+    })
+}
+
+/// What [`resolve_target`] worked out about the thing being previewed.
+struct Resolved {
     root: PathBuf,
+    site: Site,
+    /// The document discovery is narrowed to, for an out-of-project single document.
+    /// Carried onto [`Project::scope`] so a re-discovery cannot silently widen it.
+    scoped: Option<PathBuf>,
+    /// The document the browser should open at, in project and single-document cases alike.
+    doc: Option<PathBuf>,
+}
+
+/// The URL a document target should open at: its page, or the deck it is.
+fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
+    let same = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) == file;
+    site.pages
+        .iter()
+        .find(|p| same(&p.input))
+        .map(|p| p.url.clone())
+        .or_else(|| {
+            site.decks
+                .iter()
+                .find(|d| same(&d.input))
+                .map(|d| d.url.clone())
+        })
+}
+
+/// Entry point for `taliesin preview <dir|file.tmd>`.
+pub fn run(
+    target: Target,
     port: u16,
     open: bool,
     expose: bool,
     headless: bool,
 ) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    let result = rt.block_on(serve(root, port, open, expose, headless));
+    let result = rt.block_on(serve(target, port, open, expose, headless));
     // `serve` returns on a shutdown signal (see `crate::serve::shutdown_signal`);
     // force the runtime down so the builder task that owns the warm pool + kernels is
     // dropped promptly, running its teardown (the forkserver group-kill + kernel
@@ -381,18 +506,31 @@ pub fn run(
 }
 
 async fn serve(
-    root: PathBuf,
+    target: Target,
     port: u16,
     open: bool,
     expose: bool,
     headless: bool,
 ) -> std::io::Result<()> {
     let start = std::time::Instant::now();
-    let root = root.canonicalize().unwrap_or(root);
     // Preview shows drafts inline (nav/listings/prev-next, badged); build/publish exclude
     // them. See `docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md`.
-    let site = Site::discover_with(&root, taliesin_core::DraftMode::Include);
+    let Resolved {
+        root,
+        site,
+        scoped,
+        doc,
+    } = resolve_target(target)?;
+    // Where to point the browser: a document target opens at its own page rather than at
+    // the project's home, so `preview chapter-7.tmd` shows chapter 7.
+    let focus = doc.as_deref().and_then(|f| focus_url(&site, f));
     for w in &site.warnings {
+        // "no _site.yml at …" is a finding about a *project*. When the author asked to see
+        // one document, its absence is the expected case — it is precisely what put us on
+        // the single-document path — so reporting it reads as a fault where there is none.
+        if scoped.is_some() && taliesin_core::site::is_missing_config_warning(w) {
+            continue;
+        }
         crate::log::warn(w);
     }
     let page_count = site.pages.len();
@@ -437,6 +575,9 @@ async fn serve(
                     site: Mutex::new(msite),
                     pages: Mutex::new(HashMap::new()),
                     runs: Default::default(),
+                    // A mount is always a whole project; only the root can be a single
+                    // document, and a single document declares no `mounts:`.
+                    scope: None,
                 }),
             })
         })
@@ -445,7 +586,7 @@ async fn serve(
     // used to bind a port, 404 `/`, and boot the kernel pool for nothing. The two front
     // doors must agree. A page-less root that only `mounts:` sub-projects is legitimate —
     // it is how a docs container is previewed — so it is not empty.
-    if page_count == 0 && mounts.is_empty() {
+    if page_count == 0 && mounts.is_empty() && site.decks.is_empty() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("no .tmd pages found under {}", root.display()),
@@ -460,6 +601,7 @@ async fn serve(
             site: Mutex::new(site),
             pages: Mutex::new(HashMap::new()),
             runs: Default::default(),
+            scope: scoped,
         }),
         mounts,
         build_tx,
@@ -549,7 +691,11 @@ async fn serve(
         }
     }
     if open {
-        open_in_browser(&local);
+        // A document target opens at its own page; a project target at its home.
+        match &focus {
+            Some(url) => open_in_browser(&format!("{local}/{url}")),
+            None => open_in_browser(&local),
+        }
     }
     // `into_make_service_with_connect_info` surfaces the peer address to the LAN guard
     // (loopback detection); harmless when no guard is installed.
@@ -790,9 +936,29 @@ async fn page_or_asset(
         // must resolve to `.html` here too, or preview disagrees with the build about
         // where a deck's links point (preview happens to serve the rendered page for a
         // `.tmd` URL, which is exactly what masks the build's version of this bug).
-        return Html(taliesin_core::site::rewrite_tmd_links(
-            &taliesin_core::render_doc_to_page(&doc, stem, taliesin_core::OutputMode::Preview),
-        ))
+        let html = taliesin_core::site::rewrite_tmd_links(&taliesin_core::render_doc_to_page(
+            &doc,
+            stem,
+            taliesin_core::OutputMode::Preview,
+        ));
+        // Click-to-source, which is one of the three load-bearing goals and was dead on
+        // every deck served here: `client.js`'s `openSource` bails without `TALIESIN_DOC`,
+        // so a deck's blocks carried `data-block-id`/`data-sourcepos` that nothing could
+        // act on. The page path above injects this; the deck path never did.
+        let doc_path = deck
+            .input
+            .canonicalize()
+            .unwrap_or_else(|_| deck.input.clone());
+        let doc_global = format!(
+            "<script>window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};</script>",
+            js_str(&doc_path.to_string_lossy()),
+            js_str(&base.to_string_lossy()),
+            js_str(&project.dir.to_string_lossy()),
+        );
+        return Html(match html.rfind("</body>") {
+            Some(i) => format!("{}{doc_global}{}", &html[..i], &html[i..]),
+            None => format!("{html}{doc_global}"),
+        })
         .into_response();
     }
     // 4) A static asset under this project's root, else this project's own 404 page
@@ -1977,7 +2143,7 @@ fn rebuild_project(
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
     if config_changed {
-        let new = Site::discover_with(&project.dir, taliesin_core::DraftMode::Include);
+        let new = project.rediscover();
         // A mid-edit save can leave `_site.yml` transiently malformed; re-discovering then
         // would replace the live site with the degraded default (losing nav/title/output).
         // Keep the last-good `Site` instead, and surface the parse error, so the preview
@@ -2009,13 +2175,33 @@ fn rebuild_project(
     // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
     // normal per-page rebuild against the refreshed site.
     if structural {
-        let new = Site::discover_with(&project.dir, taliesin_core::DraftMode::Include);
+        let new = project.rediscover();
         let set_changed = page_rels(&new) != page_rels(&project.site.lock());
         *project.site.lock() = new;
         if set_changed {
             reload_open_tabs(project);
             return;
         }
+    }
+
+    // A deck is served by rendering it on request, not from live per-page block state, so
+    // it owns no entry in `project.pages` and the dependency scan below — which walks
+    // `site.page(rel)` — cannot see it. Without this, editing a deck produced no feedback
+    // at all: not a block update, not a reload, nothing.
+    //
+    // A full reload is the right answer rather than an oversight. The block-level path
+    // wants live state per document, and a deck has none here; decks are frozen, so the
+    // fix is to make the existing mechanism reach them, not to build a second live path.
+    // Every deck in a project already behaved this way — now the standalone one does too.
+    let deck_changed = {
+        let site = project.site.lock();
+        site.decks.iter().any(|d| {
+            changed_canon.contains(&d.input.canonicalize().unwrap_or_else(|_| d.input.clone()))
+        })
+    };
+    if deck_changed {
+        reload_open_tabs(project);
+        return;
     }
 
     // Rebuild only pages that are open (have live state) and depend on a change.
@@ -2513,6 +2699,7 @@ mod project_tests {
             site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
             pages: parking_lot::Mutex::new(HashMap::new()),
             runs: Default::default(),
+            scope: None,
         };
 
         // A real page resolves, by source rel and by output url alike.
@@ -2637,6 +2824,7 @@ mod project_tests {
             site: parking_lot::Mutex::new(site),
             pages: parking_lot::Mutex::new(pages),
             runs: Default::default(),
+            scope: None,
         });
         site_page_html(&project, &page)
     }

@@ -1002,24 +1002,16 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
         // threads spawn, so no other thread is touching the environment.
         unsafe { std::env::set_var("TALIESIN_NO_EXEC", "1") };
     }
-    // A directory is a multi-page site project; a single `.tmd` is one document.
-    let result = if Path::new(parsed.path).is_dir() {
-        serve_site::run(
-            PathBuf::from(parsed.path),
-            parsed.port,
-            open && !parsed.headless,
-            expose,
-            parsed.headless,
-        )
-    } else {
-        serve::run(
-            PathBuf::from(parsed.path),
-            parsed.port,
-            open && !parsed.headless,
-            expose,
-            parsed.headless,
-        )
-    };
+    // A directory is a project; a `.tmd` is one document, served as the project it belongs
+    // to (or as a project of its own). One server handles both — there is no separate
+    // single-document server to dispatch to.
+    let result = serve_site::run(
+        serve_site::Target::at(PathBuf::from(parsed.path)),
+        parsed.port,
+        open && !parsed.headless,
+        expose,
+        parsed.headless,
+    );
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
