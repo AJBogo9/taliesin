@@ -89,9 +89,21 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
   src/cli.rs       CLI arg parsing + subcommand dispatch
-  src/serve/       single-doc axum websocket + notify file watcher (mod.rs, security.rs)
-  src/serve_site/  multi-page site server (mod.rs: per-page state/executor, cross-page
-                   nav, hot reload; exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze)
+  src/serve/       the dev server's SHARED layer, not a server: HTTP/asset plumbing,
+                   port binding + the single-instance probe, security.rs's LAN/host/
+                   identity guards, the watch predicates, and the CLI error helpers
+                   (`guarded`, `unknown_flag_error`, `bad_format_error`) that eight
+                   modules import. Wave 1.1 deleted the single-doc server that used
+                   to live here; the path stays so `crate::serve::` imports resolve
+  src/serve_site/  THE dev server — one server for a project and for a single document
+                   alike (mod.rs: per-page state/executor, cross-page nav, hot reload;
+                   exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze).
+                   `preview <file.tmd>` resolves to the file's enclosing `_site.yml`
+                   project, opened at that page; with no ancestor `_site.yml` it is a
+                   project of just that document (`Site::discover_single`), and a
+                   standalone `format: deck` file is served AS a deck. Previewing a
+                   file alone would be an orphan (no nav, dead cross-page links), which
+                   is why the companion already resolved to the project (item 150)
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks; plans
                    what re-runs via cumulative-hash keys (warm reuse + cold replay)
   src/freeze.rs    persistent execution cache (`_freeze/<page>.json`): rendered cell

@@ -89,8 +89,9 @@ go out only when the socket is `OPEN`.
 The preview's only chrome is one collapsed corner widget, `#tali-controls`: a `</>`
 toggle carrying the live-status dot, expanding to a panel of preview-only tools. The
 panel shows the connection status, the word/reading-time count, the Ctrl-click hint,
-a Restart-kernel button, and (only in single-doc preview, where there is no site
-navbar) a theme toggle. It also aggregates three issue sources into one list, each
+a Restart-kernel button, and — only when the page chrome ships no theme toggle of
+its own, which is the case for a document previewed outside any project — a theme
+toggle. It also aggregates three issue sources into one list, each
 row jumping to the offending source line: server `diagnostics` (broken include,
 missing kernel), per-cell runtime errors (Python `.tali-error`, `{js}`
 `.tali-js-error`), and an in-browser a11y audit run after every render (missing alt

@@ -127,9 +127,10 @@ or a directory.
 Both walk the same re-render → execute → diff path per document, and both speak
 the same messages (`full_render`, `update` / `insert` / `remove` / `set_meta`,
 `diagnostics`, `style`, `reload`, `error`), so the browser client cannot tell
-which one it is connected to. The site server is the single-doc server
-generalised to a project: navigation between pages is an ordinary full page load
-(no SPA), and only the visited page keeps a warm kernel. The multi-page subsystem
+which target it is serving. One server handles a project and a single document
+alike (a document resolves to the project it belongs to, or becomes a project of
+itself): navigation between pages is an ordinary full page load (no SPA), and only
+the visited page keeps a warm kernel. The multi-page subsystem
 (page discovery, chrome, cross-page references) lives a layer up in `site/`; see
 [The multi-page subsystem](sites.tmd).
 

@@ -7,7 +7,7 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 
 | Command | Effect |
 |---|---|
-| `preview <file.tmd> [port]` | Live preview server (default port 4321; aliases `dev`, `serve`) |
+| `preview <file.tmd> [port]` | Live preview server (default port 4321; aliases `dev`, `serve`). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
 | `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload) |
 | `run <file.tmd> [--cell N \| --line L \| --all] [--quiet] [--interrupt]` | Execute code cells **in the terminal**, against this project's warm session. No browser; outputs are cached so a later `build` re-executes nothing. Ctrl-C (or `--interrupt` from elsewhere) stops the run and keeps the kernel |
 | `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |

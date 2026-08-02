@@ -2744,6 +2744,31 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A single-document project has exactly one page and no `index.tmd`, so the server
+    /// must answer the bare preview URL with that document. This pins the fact the routing
+    /// depends on: the one page's URL is NOT `index.html`, so a root request that falls
+    /// through to the usual lookup finds nothing and serves the 404 page — for the one
+    /// document the author asked to see. (Caught by `pyodide_browser.rs`, which previews a
+    /// `.tmd` and fetches `/`; a gate that only `tools/gates.sh` runs.)
+    #[test]
+    fn a_single_document_project_has_no_index_page_to_answer_the_root_with() {
+        let root = write_site(
+            "singleroot",
+            &[("note.tmd", "---\ntitle: Note\n---\n\nBody.\n")],
+        );
+        let site = Site::discover_single(&root.join("note.tmd"));
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(
+            site.pages[0].url, "note.html",
+            "the document keeps its own URL; the server maps the root onto it"
+        );
+        assert!(
+            site.page("index.html").is_none(),
+            "nothing answers `index.html`, which is why the root needs the mapping"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Render `rel` in `site` and return (html, render-warnings).
     fn render_page(site: &Site, rel: &str) -> (String, Vec<Warning>) {
         let page = site.pages.iter().find(|p| p.rel == rel).unwrap();

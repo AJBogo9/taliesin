@@ -223,9 +223,9 @@ Click it to expand a panel with the preview-only tools:
   `TALIESIN_PYTHON` or install a missing package and want a clean replay.
 - A reminder that **Ctrl-click (Cmd-click on Mac)** opens any block's source in
   your editor.
-- On a single-document preview, a **theme toggle** (light/dark). A site puts that
-  toggle in its navbar instead, so the dev menu only adds one when the page chrome
-  has none.
+- A **theme toggle** (light/dark), but only when the page has no theme toggle of its
+  own. A site puts one in its navbar, so the dev menu adds one only for a document
+  previewed outside any project, whose chrome has none.
 - The **diagnostics** list (detailed below), each entry click-to-source, with the
   button's badge tracking the count.
 - **Changes**: what this session's edits actually did (below).

@@ -1,14 +1,16 @@
 ---
 title: "The dev server"
-description: "Two servers behind one file watcher: what each owns, why they were never merged, and what opening a preview to the LAN requires."
+description: "One server behind one file watcher: how a document and a project take the same path, why the second server was folded away, and what opening a preview to the LAN requires."
 ---
 
 The server (`crates/server`) is the long-running process behind `preview`: an
 [axum](https://github.com/tokio-rs/axum) HTTP/websocket server, a
 [`notify`](https://github.com/notify-rs/notify) file watcher, and the kernel pool
-from [the previous chapter](execution.tmd). There are two of them, `serve/mod.rs`
-for a single document and `serve_site/mod.rs` for a directory (site/book), sharing
-the small HTTP/asset helpers and the websocket message contract.
+from [the previous chapter](execution.tmd). There is **one** of them,
+`serve_site/mod.rs`, and it serves a whole project and a single document alike.
+`serve/mod.rs` is not a second server: it is the shared layer underneath — the
+HTTP/asset helpers, port binding, the security guards, the watch predicates and the
+CLI error helpers that the rest of the crate imports.
 
 ## The save → preview loop
 
@@ -32,74 +34,30 @@ broadcasts **only the ops** (`update`/`insert`/`remove`), or a fresh `full_rende
 when recovering from a previous failure, plus a `diagnostics` message when those
 change. The full message contract is in [the websocket protocol](protocol.tmd).
 
-## Single-document server (`serve/mod.rs`)
+## What the target means (`serve_site::Target`)
 
-`AppState` is the shared state, behind a non-poisoning lock:
+`preview` takes either a directory or a `.tmd`, and both end up in the same server:
 
-```rust
-struct AppState {
-    doc: parking_lot::Mutex<DocState>,  // title, blocks, diagnostics, …
-    tx: broadcast::Sender<String>,      // fan-out of JSON messages to clients
-    restart_kernel: AtomicBool,         // set by the dev-menu action
-    kick: mpsc::UnboundedSender<()>,    // watcher → rebuild task
-}
-```
+- a **directory** is the project;
+- a **`.tmd`** is resolved to the project it belongs to — the nearest ancestor
+  `_site.yml` — and the browser opens at that document's page;
+- a `.tmd` with **no** ancestor `_site.yml` gets a project of exactly itself
+  (`Site::discover_single`), rooted at its own directory.
 
-A single spawned task owns the rebuild loop: it waits on `kick`, debounces a
-burst of saves (~80 ms), honours a pending kernel restart, then rebuilds. The
-rebuild itself (`rebuild`) re-renders the document, runs its cells through the
-`Executor`, diffs the new blocks against `DocState.blocks`, and broadcasts the
-ops **under the lock** (so a connecting client can't interleave a `full_render`
-with an op stream).
+The third case is scoped on purpose: previewing a scratch note must not pull thirty
+unrelated siblings into the nav, nor parse them to find that out. The scope is carried
+on `Project::scope`, so a later re-discovery (a `_site.yml` save, a new `.tmd`) cannot
+silently widen it.
 
-### Panic isolation
+A file that declares `format: deck` becomes a deck rather than a page, so
+`preview slides.tmd` serves slides. Inside a real site a deck is reached through the
+page that `{{< embed >}}`s it, and a deck nothing embeds is "loose" — flattened to an
+article with a warning. That is the right answer for a stray file in a project and the
+wrong one for the file you asked to look at.
 
-The rebuild runs in a spawned task, so a panic in the render/exec path would
-silently kill hot-reload for the rest of the session. `rebuild_guarded` wraps each
-rebuild in `catch_unwind` (via `AssertUnwindSafe` over the awaited future, so the
-panic is caught rather than propagated): on a caught panic it pulls a human message
-off the payload (`panic_msg` downcasts the `Box<dyn Any>` to `&str`/`String`), logs
-it, marks the doc `errored`, and broadcasts a `protocol::error` so every connected
-client shows an error overlay. The loop itself survives, so the next good save
-re-renders and clears the overlay (the `errored` flag makes that recovery a full
-re-mount even when the diff is empty). The **initial render** is guarded the same
-way: a document that panics the renderer on first load surfaces the panic as a
-connect-time diagnostic instead of crashing startup, so the server still comes up
-and can show the error. Because `AppState.doc` is a `parking_lot::Mutex` (not
-`std::sync::Mutex`), a panic while the lock is held releases it cleanly rather than
-poisoning it, so the next rebuild can take the lock normally.
+## The server (`serve_site/mod.rs`)
 
-### The watcher
-
-`spawn_watcher` runs `notify` on its own thread (notify is synchronous; the thread
-just parks to stay alive) and forwards qualifying events to the rebuild task through
-the same `kick` channel the dev-menu restart uses. It reacts only to
-`Modify`/`Create`/`Remove` event kinds, then applies `relevant_path` to each touched
-path: the extension must be a known source/asset type, and no path component may be a
-generated or VCS directory. The two lists are explicit:
-
-- **extensions:** `tmd`, `md`, `bib`, `csl`, `css`, `scss`, `yml`, `yaml`, `json`,
-  `js`, `html`, `svg`, `png`, `jpg`, `jpeg`, `webp`, `gif`;
-- **skipped directories:** `_site`, `_book`, `_freeze`, `.git`,
-  `node_modules`.
-
-Skipping `_freeze` matters: the executor writes its own cache there on every run, and
-without the skip each write would kick a redundant rebuild. The filter as a whole
-keeps an unrelated save (an editor swap file, a build-output write) from triggering a
-wasteful 0-op rebuild.
-
-A burst of saves is debounced in the rebuild task, not the watcher: on the first
-`kick` it sleeps ~80 ms and then drains any further pending kicks (`try_recv` in a
-loop) before doing one rebuild, so a save that touches several files coalesces into a
-single re-render. `watch_dirs` watches the document's own directory **plus the
-directory of every `{{< include >}}`d file** (recursively, via
-`includes::dependencies`), so editing an out-of-tree included partial still refreshes
-the preview.
-
-## Multi-page server (`serve_site/mod.rs`)
-
-A directory generalises the single-doc server to a project. State is **per page**,
-built lazily on first visit:
+State is **per page**, built lazily on first visit:
 
 ```rust
 struct SiteApp {
@@ -115,19 +73,64 @@ A save rebuilds only the affected page and hot-reloads it in place with the same
 block diff; a `_site.yml` change re-discovers the whole site and reloads open
 tabs. A single spawned **executor worker** drains `build_tx`, so each page's cells
 run on its own kernel without blocking the HTTP handlers; `build_page_guarded`
-gives it the same `catch_unwind` isolation as the single-doc loop. To keep a long
+gives it `catch_unwind` isolation. To keep a long
 browse from leaking a kernel per visited page, the worker holds at most
 `MAX_WARM_PAGES` (6) warm executors and evicts the least-recently-built (dropping its
 executor kills its kernel children); an evicted page just pays a cold kernel start on
 its next edit.
 
-## Why two servers, not one
+### Panic isolation
 
-The single-doc path has no chrome, no cross-page links, and one block state; the
-site path adds per-page state, navigation, listing/chrome expansion, and the
-cross-page xref + search index. Keeping them separate keeps each one simple; the
-shared surface (the websocket message shapes, the asset/`favicon` helpers, the
-embedded client) lives in `serve/mod.rs` and is reused by `serve_site/mod.rs`.
+Builds run in a spawned task, so a panic in the render/exec path would silently kill
+hot-reload for the rest of the session. `build_page_guarded` wraps each build in
+`catch_unwind` (via `AssertUnwindSafe` over the awaited future, so the panic is caught
+rather than propagated): on a caught panic it pulls a human message off the payload
+(`panic_msg` downcasts the `Box<dyn Any>` to `&str`/`String`), logs it, and broadcasts
+a `protocol::error` so every connected client shows an error overlay. The worker
+survives, so the next good save re-renders and clears the overlay (the errored flag
+makes that recovery a full re-mount even when the diff is empty). Because the state
+lives behind a `parking_lot::Mutex` (not `std::sync::Mutex`), a panic while the lock is
+held releases it cleanly rather than poisoning it.
+
+### The watcher
+
+`spawn_watcher` runs `notify` on its own thread (notify is synchronous) and watches the
+root project **plus every mounted sub-project**, so an edit to a mounted page
+hot-reloads exactly like a root one. Events are pumped through a channel so that thread
+owns the watcher and can register watches for directories created after startup: the
+recursive-watch model added an inotify descriptor per directory, including
+`node_modules` and `.git`, which a large project uses to exhaust `max_user_watches` and
+kill hot reload outright.
+
+Skipping `_freeze` matters: the executor writes its own cache there on every run, and
+without the skip each write would kick a redundant rebuild. The filter as a whole keeps
+an unrelated save (an editor swap file, a build-output write) from triggering a wasteful
+0-op rebuild. A burst of saves is debounced so several files coalesce into one rebuild.
+
+A **deck** is the exception to per-page rebuilding. It is rendered on request rather
+than from live per-page state, so it owns no entry in `pages` and the dependency scan
+(which walks the page list) cannot see it; a deck source change therefore reloads open
+tabs instead of swapping blocks.
+
+## Why one server, not two
+
+There used to be two: `serve/mod.rs` for a single document and `serve_site/mod.rs` for a
+directory. The stated reason was simplicity — the single-doc path has no chrome, no
+cross-page links and one block state, so keeping it separate kept each one small.
+
+That reasoning did not survive contact with the result. "One document" is not a
+different *kind* of thing from "a project"; it is a project with one page, and modelling
+it as its own server bought a second copy of the watcher, the rebuild loop, the diff
+broadcast and the page shell, which then drifted. The single-doc copy never gained the
+warm-executor pool, so a document with no ancestor `_site.yml` cold-started its kernel
+where a project preview did not. Worse, previewing a file *inside* a project served it
+alone: no nav, no breadcrumb, every cross-page link dead — which is why the VS Code
+companion had already stopped doing it and resolved to the project instead.
+
+So the single-document server was folded away and its path kept as the shared layer.
+The lesson is the general one about a second mechanism for one job: the duplicate does
+not stay a simplification, it becomes the degraded copy, and the drift shows up as
+behaviour the author has to remember rather than as a compile error.
 
 ## LAN exposure & the `--host` token
 

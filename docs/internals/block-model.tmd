@@ -195,10 +195,9 @@ differences**.
 | client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |
 | client → server | `restart_kernel` | *(none)*; drop + respawn the kernel, re-run all cells |
 
-These message shapes are defined **once**, in `protocol.rs`, and shared by both
-dev servers and the browser client. The single-document server, the multi-page
-server, and `web-client/` are all ends of this one contract, so they can't drift
-apart from each other. The `update` / `insert` / `remove` / `set_meta` messages are
+These message shapes are defined **once**, in `protocol.rs`, and shared by the dev
+server and the browser client. `serve_site/` and `web-client/` are the two ends of this
+one contract, so they can't drift apart from each other. The `update` / `insert` / `remove` / `set_meta` messages are
 just the serialized `BlockOp` enum (the variant name lowercased into the `type`
 field); its four Rust variants and their fields are catalogued in [the data-type
 reference](data-types.tmd#blockop). For the exact JSON shape of every message,

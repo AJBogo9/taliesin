@@ -9,12 +9,11 @@ you. The server is the producer (it pushes renders and diffs); the browser is th
 consumer (it applies them to the DOM). A small client-to-server back-channel
 carries click-to-source reports and the "restart kernel" action, and nothing else.
 
-The message shapes are defined **once**, in `crates/server/src/protocol.rs`, and
-shared by both dev servers: the single-document [`serve/mod.rs`](server.tmd) and the
-multi-page `serve_site/mod.rs` push the *same* messages, and `web-client/client.js` is
-the other end of the contract. A contract test (`protocol_contract`) and the
-client's `// @ts-check` typedefs lock the two ends to one shape, so the server and
-the browser can't drift apart. This chapter is the catalog of that contract.
+The message shapes are defined **once**, in `crates/server/src/protocol.rs`. The dev
+server ([`serve_site/mod.rs`](server.tmd)) pushes them and `web-client/client.js` is the
+other end of the contract. Contract tests next to the producers, plus the client's
+`// @ts-check` typedefs, lock the two ends to one shape, so the server and the browser
+can't drift apart. This chapter is the catalog of that contract.
 
 ::: {.callout-note}
 This page documents the *wire* protocol. How the diff that produces these ops is

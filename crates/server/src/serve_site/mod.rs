@@ -472,7 +472,8 @@ struct Resolved {
     doc: Option<PathBuf>,
 }
 
-/// The URL a document target should open at: its page, or the deck it is.
+/// The URL a scoped document lives at: its page, or the deck it is. Used both to open the
+/// browser at it and to answer the project root with it.
 fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
     let same = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) == file;
     site.pages
@@ -877,7 +878,20 @@ async fn page_or_asset(
     // execute live in preview (replacing the old static pre-exec render of a mount).
     let (project, sub) = resolve_project(&app, &path);
     let lookup = if sub.is_empty() {
-        "index.html".to_string()
+        // For a single-document preview the document IS the root. `preview note.tmd`
+        // serves a project of one page called `note.html`, and without this the bare
+        // preview URL would resolve to an `index.html` that does not exist and answer
+        // with the 404 page — for the one document the author asked to see. (The old
+        // single-document server served it at `/`, and `--open` still opens its page
+        // directly, so this is the path a hand-typed URL or a script takes.)
+        project
+            .scope
+            .as_deref()
+            .and_then(|f| {
+                let site = project.site.lock();
+                focus_url(&site, f)
+            })
+            .unwrap_or_else(|| "index.html".to_string())
     } else {
         sub.to_string()
     };

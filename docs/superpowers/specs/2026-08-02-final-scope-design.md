@@ -206,9 +206,8 @@ Totals are approximate and should be re-measured at execution.
 
 The highest-value work in the document. Each item removes a *second mechanism for one job*.
 
-> **Status, 2026-08-02: 1.2, 1.3, 1.4 and 1.5 are DONE. 1.1 is NOT, and is blocked on a
-> ruling.** What executing them corrected in this table, which a later wave must not
-> re-derive:
+> **Status, 2026-08-02: Wave 1 is COMPLETE — 1.1, 1.2, 1.3, 1.4 and 1.5 all landed.**
+> What executing them corrected in this table, which a later wave must not re-derive:
 >
 > - **1.2 and 1.4 are one deletion counted twice.** Both remove the repo-root `AGENTS.md`;
 >   their ~220 + ~200 double-counts it. Landed as one commit. Of the two readings of "one
@@ -224,20 +223,17 @@ The highest-value work in the document. Each item removes a *second mechanism fo
 >   fusion ("…alignment.17 March 20263 min read") and KaTeX whitespace runs — both fixed at
 >   `visible`, not worked around. The published artifact grows deliberately: 45,403 → 141,999
 >   bytes on `corpus/tech-blog`, because it now carries the code.
-> - **1.1's central premise is wrong, and the item cannot land as written.** The table below
+> - **1.1's central premise was wrong.** The table below
 >   argues the single-doc server is "the *degraded* one" from `grep -c warm_pool`. That is
 >   true of kernel warmth and **false of decks**: `serve/mod.rs` dispatches `DocFormat::Reveal`
 >   to `deck_index_html` and carries deck-aware incremental update (`deck_op_is_structural`,
 >   `is_slide_structural`, `is_pause_paragraph`, `deck_meta_changed`), while `serve_site`
 >   explicitly does not — `serve_site/mod.rs:1779`, "A site page never restructures a deck".
 >   A site also *warns and flattens* a loose `format: deck` page rather than serving it. So
->   folding as specified **regresses `taliesin preview slides.tmd`**, a supported, documented
->   workflow. Decks being frozen ("supported, zero further investment") is an argument
->   against silently breaking them, not for it.
->
->   Measured cost of the fix: the deck *shell* already exists in `serve_site` (it serves
->   `{{< embed >}}`ed decks at `mod.rs:770-790`); what is missing is ~120 lines of
->   structural-change detection to move. That is code motion, not deck investment.
+>   folding exactly as specified **would have regressed `taliesin preview slides.tmd`**, a
+>   supported, documented workflow. Decks being frozen ("supported, zero further investment")
+>   is an argument against silently breaking them, not for it. See "How 1.1 was resolved"
+>   below for what this actually cost, which was not what a first estimate said.
 > - **The coupling in 1.1 is understated.** `serve` is not a module `serve_site` imports
 >   fifteen things from; it is the crate's shared HTTP/CLI-error layer. `query.rs`,
 >   `publish.rs`, `cli.rs`, `doctor.rs`, `run_cmd.rs`, `mcp.rs`, `log.rs` and `session.rs` all
@@ -247,17 +243,30 @@ The highest-value work in the document. Each item removes a *second mechanism fo
 >   module" but "delete the single-doc half in place and keep the module as the shared
 >   layer", which leaves every `crate::serve::` import path untouched.
 >
-> **Ruling needed before 1.1 proceeds:** port the ~120 lines so a one-page project serves a
-> deck properly (recommended — it is the only option that both keeps the workflow and yields
-> the full deletion), *or* keep a deck-only single-doc path (smaller win, two servers remain),
-> *or* accept that `preview slides.tmd` flattens (a regression in a supported workflow).
+> **How 1.1 was resolved.** `serve/mod.rs` 2,753 → 1,026 lines; `serve_site` is the only
+> server. `preview <file.tmd>` resolves to the file's enclosing `_site.yml` project and opens
+> at that page, falling back to a one-document project (`Site::discover_single`) rooted at the
+> parent directory — matching the companion (`extension.ts:150-154`, item 150) so the CLI and
+> the editor agree. The shared layer stays at `crate::serve::` so no import path churned.
 >
-> Also settled while executing, and needed by whichever option wins: **`preview <file.tmd>`
-> should resolve to the file's enclosing `_site.yml` project and open at that page**, falling
-> back to a one-page project rooted at the parent directory. That is already what the VS Code
-> companion does (`extension.ts:150-154`, item 150: "Previewing the file alone gives an orphan:
-> no nav, no breadcrumb, and every cross-page link dead"), so it makes the CLI and the editor
-> agree instead of disagree.
+> The deck estimate above was **wrong, and the correction is the useful part**: the gap is not
+> ~120 lines of structural detection to move. `serve_site` renders a deck *statically per
+> request* — a deck owns no live per-page state there at all — so there was nothing for the
+> ported predicates to act on. Two consequences, both now handled:
+>
+> - **Click-to-source was already dead on every deck served by `serve_site`**, embedded ones
+>   included, because the deck branch never injected `TALIESIN_DOC`. This was a pre-existing
+>   defect in one of the three load-bearing goals, found only by folding. Fixed.
+> - **A deck edit produced no feedback at all** (the rebuild scan walks `site.page(rel)`, and
+>   a deck is not a page). It now reloads open tabs. That is a real reduction against the old
+>   single-doc server's structural op diff, taken deliberately: decks are frozen, so the fix
+>   is to make the existing mechanism reach them rather than build a second live path, and
+>   every deck inside a project already behaved exactly this way.
+>
+> Scoping is enforced on **re-discovery** as well as at boot (`Project::scope`); without that
+> a save touching `_site.yml` silently widens a one-document preview to its whole parent
+> directory. That failure mode is invisible until the first save, which is why it is recorded
+> here.
 
 | # | Item | LOC | Note |
 |---|---|---|---|

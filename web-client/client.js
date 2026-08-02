@@ -682,7 +682,7 @@
   // One collapsed dev menu (Next.js-style): a corner button showing the live
   // status dot, expanding to a panel with the preview-only tools — live status,
   // word count, the click-to-source toggle, diagnostics, and (only when the page
-  // chrome has no real theme toggle, i.e. single-doc preview) a theme toggle.
+  // chrome has no real theme toggle of its own) a theme toggle.
   // The site navbar's theme toggle is a real, shipped feature, not a dev tool.
   (function buildDevMenu() {
     const host = document.getElementById("tali-controls");
