@@ -10,69 +10,31 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > [DETECTION-DEBT.md](DETECTION-DEBT.md). "Do not re-add / re-scope" is a compact anti-rot guard —
 > **one line per entry**, not a changelog.
 >
-> **This file has now been cut back twice for the same reason** (1,767 lines on 2026-07-29; 1,298 on
-> 2026-08-01, when the "Now" section had become a changelog of *shipped* batches and a third of the
-> one-line "Shipped" guards had grown into 40-line reports). If it is growing again, move the detail
-> out; do not add a summary at the top.
+> **This file has now been cut back three times for the same reason** (1,767 lines on 2026-07-29;
+> 1,298 on 2026-08-01, when the "Now" section had become a changelog of *shipped* batches and a
+> third of the one-line "Shipped" guards had grown into 40-line reports; 966 on 2026-08-02, when a
+> seven-item batch wrote itself up as five multi-paragraph guards plus a "what this batch
+> established" section at the top — **the same shape, within one session of the last trim**). If it
+> is growing again, move the detail out; do not add a summary at the top. The durable half of a
+> batch is one guard line here, a trap in [LESSONS.md](LESSONS.md), or a row in
+> [DETECTION-DEBT.md](DETECTION-DEBT.md) — never a narrative.
 
 ## Start here
 
-**194, 195, 196, 197, 198, 199 and 200 shipped 2026-08-02**, which **drains the whole
-author-reported band and the research-publishing cluster's last non-optional item.** What is
-left in P1 is the part that was never a queue: **188 against the two large swings (164, 167),
-and 202-205 from the feature-value audit, which ranks 202 above all three. That cross-cluster
-ranking is an owner call that has not been made** — it is the first thing to settle next
-session, and nothing below it is blocked on anything.
-**188 is the only cluster item left, and it is the one previously marked "leave"** (lowest
-conviction, and the item still says so) — so the real choice after the band is 188 against the two
-large swings (164, 167), and **that cross-cluster ranking is an owner call that has not been
-made.**
+**Items 194-200 shipped 2026-08-02**, which drains the whole author-reported reader/editor band
+and the research-publishing cluster's last non-optional item. Nothing cheap and ruled is left.
 
-Three things worth not rediscovering from the 2026-08-02 batch:
+**So the first thing to settle is a ranking nobody has made:** 188 (the cluster's
+lowest-conviction item, and its entry still says so) against the two large swings (164, 167)
+against 202-205 from the [feature-value audit](2026-08-01-feature-value-audit.md), which ranks
+202 above all three. **That is an owner call.** Nothing in P1 is blocked on anything else, so
+any of them can start the moment it is made.
 
-- **Three metadata blocks on one page now agree about who wrote it.** `citation_*`, the Cite-this
-  box and the JSON-LD `author` all resolve through page `author:` → `_site.yml` `author:`, and all
-  three stop at the site author rather than falling through to the site *title*. The JSON-LD
-  comment that claimed `citation_author` "already followed" that chain was false when written and
-  is fixed.
-- **A browser probe that can return `null` fails the whole run**, not the assertion:
-  `chromiumoxide` reports `decode state: No value found` and every test sharing the `OnceLock`
-  dies with it. Return `''` and decide in Rust. And `scroll-behavior: smooth` makes `scrollTo`
-  asynchronous, so a probe that scrolls and reads the offset back in one evaluation measures the
-  top of the page. Both are now in [LESSONS.md](LESSONS.md).
-- **`crates/server/tests/reader_chrome_browser.rs` is the home for reader-chrome browser pins**
-  (lightbox, reading position). It is the sixth `headless-js` test and carries the sixth
-  `gates.sh` canary; item 198's mobile-TOC pin belongs there rather than in a seventh file.
-
-What 185/186/187 established, for whoever touches that area next:
-
-- **A paper page's identity lives in the title block**, and now ends there too: byline → affiliation
-  list → equal-contribution note → `venue`/`award` badges → the `links:` resource row, all inside
-  `<header class="tali-title-block">`. The appendix is a *separate* generated block appended after
-  References and before the code-download box.
-- **A new front-matter key trips SIX drift gates, not five**: `KNOWN_KEYS`, the JSON schema, the
-  editor vocab, `crates/core/assets/agents/AGENTS.md`, the guide-reference completeness gate — and
-  **the repo-root `AGENTS.md`, whose test lives in the SERVER crate**, so `cargo test -p
-  taliesin-core` is green while it is stale. The first four bless; the last is a `cp` from the asset.
-- **Prefer deriving over declaring, and it works more often than it looks.** `citation_arxiv_id`
-  comes from the `arxiv.org` entry in `links:`; a link's label and icon come from its host; an
-  affiliation number comes from first appearance (184). Each is a key that does not exist and so
-  cannot be got wrong. `doi:` is the counter-example that proves the rule: nothing on the page
-  implies it, three consumers need it, so it is one declared key normalised at parse.
-- **`author:` sub-keys are a closed vocabulary** (`crate::author::AUTHOR_KEYS`) that warns on a
-  typo — a new sub-key goes there or it is silently dropped. `contribution:` was added there for
-  187 rather than as a top-level map keyed by name, which would have had to match a name string
-  back to an author and would drop the entry silently when the two spellings drifted.
-
-- **P1 stopped being a ranked queue when the band drained.** Everything cheap and ruled has
-  shipped; what remains (188, 164, 167, 202-205, 56, 175(c), 174, 170) is ordered by theme and
-  size, not by a decision. **Read
-  [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
-  it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
-  of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
-  survey wrote down, and 185/186 rejected its separate `arxiv:` key, both because the project's
-  minimal-config rule outranks it. **The cross-cluster ranking of 188 against 164/167 is an owner
-  call that has not been made.**
+- **Read [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the
+  research-publishing cluster** — it records what Taliesin already leads on and what was
+  deliberately rejected, **but it is a record of research, not a ruling**: 184 rejected the
+  author-indexed affiliation shape the survey wrote down, and 185/186 rejected its separate
+  `arxiv:` key, both because the project's minimal-config rule outranks it.
 - **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded here
   on purpose: the author and parallel sessions both push, and a recorded SHA is the line that rots
   first.
@@ -86,7 +48,10 @@ What 185/186/187 established, for whoever touches that area next:
   symbol in source before pricing the work. Measured 2026-08-01: **item 182 was filed on 2026-07-31
   as "Taliesin has both link shapes and zero hover machinery (grepped)", while `site/hover.rs` plus
   `code-enhance/12-link-preview.js` had shipped exactly that feature on 2026-07-06** — it was
-  deleted, not built. Three filed causes were false in the three batches before it.
+  deleted, not built. Three filed causes were false in the three batches before it. **This file's
+  own shorthand rots the same way**: it writes the book spine as `book: chapters:`, but the native
+  `_site.yml` schema is FLAT and `chapters:` is top level, so a fixture copying the shorthand
+  parses as a website with no chapters (measured 2026-08-02, item 197).
 - **Two measurement hazards, both of which have cost time.** (1) `target/release/taliesin` is shared
   across sessions and may be built from another branch — check `taliesin --version` against your own
   HEAD before trusting any CLI number. (2) A table-shaped probe whose every cell is negative is a
@@ -118,6 +83,12 @@ What 185/186/187 established, for whoever touches that area next:
   `-- --test-threads=1` as it does: several tests own process-global state (`CHROME_PATH`), so at
   full parallelism a browser test fails in a way that reads exactly like a regression. `cargo test`
   aborts the remaining binaries at the first failure, so re-run before trusting a total.
+- **A new front-matter key trips SIX drift gates, not five** (measured while shipping 185-187):
+  `KNOWN_KEYS`, the JSON schema, the editor vocab, `crates/core/assets/agents/AGENTS.md`, the
+  guide-reference completeness gate — and **the repo-root `AGENTS.md`, whose test lives in the
+  SERVER crate**, so `cargo test -p taliesin-core` is green while it is stale. The first four
+  bless; the last is a `cp` from the asset. Six gates *come back* when a key is removed. That
+  cost is the standing argument for item 207's "derive, don't declare".
 - **Any new generated block owes the four-projection sweep** — `taliesin read`, `skim.rs`, the search
   index and `llms-full.txt` — or its text leaks into the search index. Four projections in three
   modules; two of item 173's leaks were found only by building a real site and grepping the
@@ -154,12 +125,11 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### P1 — build now
 
-**The order below IS the priority order.** It encodes three things: **size** (cheap wins before the
-two large swings), the cluster's internal grouping, and the author's standing **feature-first
-policy** (170, the marketing site, is deliberately last). The dependency that used to order it —
-184 as substrate for 185/186/187 — **is discharged**: 184 shipped 2026-08-01, so
-`crate::author::Author` (name, `affiliations`, `orcid`, `url`, `email`, `equal`) is on both
-`Page.authors` and `SiteConfig.authors`, and all three dependents can be taken in any order.
+**The order below is NOT a priority order any more.** It was one while the band of cheap, ruled
+items existed; that drained on 2026-08-02 and what is left is 188 vs 164/167 vs 202-205, which is
+the unmade owner call in *Start here*. Nothing here is blocked on anything else, and the only
+standing order constraint is the author's **feature-first policy**: 170, the marketing site,
+stays last.
 
 Two conditions apply to every item here. **Each still owes a corpus pin doc** (a capability ships
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
@@ -649,60 +619,24 @@ branch are enough to find its commits.
 
 ### Shipped
 
-- **2026-08-02 scholar-block fallback + reader chrome** (194, 195, 199): the `citation_*` block
-  follows the page→site `author:` chain the Cite-this box and the JSON-LD already did (and stops at
-  the site author, never the site title); the enlarged lightbox image closes the viewer and says so
-  with `cursor: zoom-out`; the top reading-progress bar is **deleted**. **Do not re-add the bar** —
-  it duplicates the native scrollbar (ruling 2026-08-01, reversing 2026-07-06); `frac()` and
-  `taliInitReadingProgress` stay, because the resume pill and the book "Continue reading" slot live
-  in the same function. **Do not extend click-to-close to the lightbox's video or mermaid box**: a
-  `<video>` click belongs to the native control bar and `.tali-lb-svg` is a pannable scroller.
-  Pinned by `crates/server/tests/reader_chrome_browser.rs`, the sixth `headless-js` test.
-- **2026-08-02 sepia is gone; light + dark are the whole set** (200, ruled 2026-08-01). Removed
-  from `tokens.css`, `base.css` (search mark, flash keyframes, the ten syntax-scope overrides),
-  `tokens-dark.css`'s comment, `theme.rs` (the allowed list, the pre-paint `BG` map,
-  `taliSetTheme`), `14-reader-prefs.js`, `globals.d.ts`, `deck.rs`'s host-theme map, the corpus
-  (`reader/preferences.tmd`, `README.md`, BOTH em-algorithm twins) and the guide. **No migration
-  code, on purpose**: `theme.rs` validates the stored `tali-theme` against the allowed list and
-  anything else reads as `auto`, so a reader whose localStorage still says `sepia` degrades to
-  following the OS — that property is now stated in the docstring so the next withdrawal is
-  cheap too. Three of the old tests SLICED `TOKENS_CSS` at the sepia selector with `.expect`,
-  which panics rather than fails; they read light + dark now. `sepia_is_gone_from_every_theme_surface`
-  is the whole-surface pin and reads light + dark from the same files as its control. **Do not
-  re-add it on the a11y argument** — that was made, considered and overruled.
-- **2026-08-02 the mobile contents handle is a labelled toggle** (198): `#tali-toc-handle`
-  shows a chevron plus the word **Contents**, `cursor: pointer` not `grab`, and it **stays
-  mounted while the sheet is open** as the close affordance. Two things a restyle alone would
-  have missed: it must be raised to `z-index: 10002` or a press lands on the backdrop (which
-  sits at 10000, the sheet at 10001), and the sheet's bottom padding has to grow to match or
-  its last chapter hides under the button. The tap decision toggles in **both** copies of the
-  wiring (`web-client/toc-sheet.js` for a build, `client.js` for the preview); a drag still
-  only ever opens. **Do not re-add the grip** — the bare 42x5 px bar is what read as
-  "drag me from the bottom edge". `corpus/reader/long-read.tmd`'s prose was arguing that "the
-  scrollbar is a poor substitute" while 199 deleted the bar on the opposite ground; it now
-  says what the tool does.
-- **2026-08-02 the project outline is in reading order** (197): `taliesin/projectOutline` sorts
-  pages by `chapters:` as resolved from the same `Book` the drawer and prev/next use, and its
-  docstring (which claimed reading order while delivering path order) now describes what it
-  does. **The open design question was ruled in the build**: a page `chapters:` never names is
-  KEPT, sorted last, flagged `listed: false`, and gathered by the client under an `Unlisted`
-  group — ordering by a list must not be a way to disappear a page. A **website declares no
-  order**, so it reports `book: false`, keeps path order and marks every page listed; "not in
-  the list" and "there is no list" are different answers. **The native `_site.yml` schema is
-  FLAT** — `chapters:` is top level, and this file's own `book: chapters:` shorthand is how it
-  is written about, not in; a fixture using the nested form silently produces a website.
-  `_site.yml` is now stamped by `lsp_project`'s memo, or a `chapters:` edit would not
-  invalidate it.
-- **2026-08-02 companion sidebar defaults** (196): `showCollapseAll` on Outline + References
-  (**not** the float index — it is flat by construction, and a button that cannot act is worse
-  than none), plus the collapsed defaults that were the real cause of the sprawl: the outline
-  opens the page you are editing and leaves every other page one row, and References opens
-  Dangling and shuts Resolved. **`showCollapseAll` is not observable from any extension API** —
-  VS Code keeps it as the private context key `treeView.<id>.enableCollapseAll` and registers
-  the per-view `collapseAll` COMMAND for every tree pane regardless, so a test asserting that
-  command's absence on a view that never asked for it FAILS. That gap is in
-  [DETECTION-DEBT.md](DETECTION-DEBT.md); the row states are plain data in `sidebartree.ts` and
-  are unit-tested.
+- **2026-08-02 the author-reported band + the scholar-block gate** (194-200): `citation_*` follows
+  the page→site `author:` chain the Cite-this box and the JSON-LD already did (and stops at the site
+  author, never the site title); the enlarged lightbox image closes the viewer; the top
+  reading-progress bar, the mobile handle's bare grip and **sepia** are all deleted; the companion
+  sidebar collapses; the project outline is in `chapters:` order. **Do not re-add the reading bar**
+  (it duplicates the native scrollbar — ruling 2026-08-01, reversing 2026-07-06; `frac()` and
+  `taliInitReadingProgress` stay, the resume pill and the book "Continue reading" slot live in the
+  same function), **the TOC grip** (a bare 42x5 px bar is what read as "drag me"), or **sepia**
+  (the a11y argument was made, considered and overruled). **Do not extend lightbox click-to-close
+  to the video or the mermaid box** — a `<video>` click belongs to the native control bar and
+  `.tali-lb-svg` is a pannable scroller. Withdrawing a theme needs **no migration code**:
+  `theme.rs` validates the stored `tali-theme` against the allowed list and anything else reads as
+  `auto`. 197's open design question was ruled in the build: a page `chapters:` never names is
+  KEPT, flagged `listed: false` and grouped under `Unlisted`, while a website reports `book: false`
+  and keeps path order. **`showCollapseAll` is unobservable from any extension API** (VS Code
+  registers the per-view `collapseAll` command for every tree pane regardless) — that gap is in
+  [DETECTION-DEBT.md](DETECTION-DEBT.md), the probe traps are in [LESSONS.md](LESSONS.md), and
+  `crates/server/tests/reader_chrome_browser.rs` is where a reader-chrome browser pin goes.
 - **2026-08-01 margin sidenotes + structured authors** (183, 184): a `[^note]` renders beside the
   line that cites it and there is **no gathered endnote section** (one copy, or all four text
   projections report every note twice). **Do not re-file the print fragmentation** — an in-flow
