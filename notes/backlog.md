@@ -21,14 +21,18 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**Items 194-200 shipped 2026-08-02**, which drains the whole author-reported reader/editor band
-and the research-publishing cluster's last non-optional item. Nothing cheap and ruled is left.
+**Items 202, 203 and 204 shipped 2026-08-02** (plus 201 and 207's policy half), on the owner
+ranking that settled the cross-cluster call the previous session left open: the feature-value
+audit's own order, 202 first as the instrument and 203/204 as the two cuts it measures.
 
-**So the first thing to settle is a ranking nobody has made:** 188 (the cluster's
-lowest-conviction item, and its entry still says so) against the two large swings (164, 167)
-against 202-205 from the [feature-value audit](2026-08-01-feature-value-audit.md), which ranks
-202 above all three. **That is an owner call.** Nothing in P1 is blocked on anything else, so
-any of them can start the moment it is made.
+**What is left in P1 is 188, 164, 167, 56, 175(c), 174 and 170**, and no ranking among them has
+been made. 205 (pyodide's 12.9 MB out of the binary) was the runner-up in that call and is the
+obvious next pick if nothing else is pressing.
+
+**`taliesin features <dir>` now exists, so do not re-derive an adoption table by grep.** It reads
+the validator consts, not `vocab.rs` (which is the *offered-completions* subset and would report a
+live feature as unused), and it prints zero rows on purpose. It reproduced item 203's hand-grepped
+evidence independently on its first run.
 
 - **Read [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the
   research-publishing cluster** — it records what Taliesin already leads on and what was
@@ -83,7 +87,18 @@ any of them can start the moment it is made.
   `-- --test-threads=1` as it does: several tests own process-global state (`CHROME_PATH`), so at
   full parallelism a browser test fails in a way that reads exactly like a regression. `cargo test`
   aborts the remaining binaries at the first failure, so re-run before trusting a total.
-- **A new front-matter key trips SIX drift gates, not five** (measured while shipping 185-187):
+- **Derive, don't declare.** Every proposed front-matter key must first answer *what on the page
+  already implies this?* A key is the highest fixed cost per feature anywhere in the tool (the gate
+  count below), so the bar is that the value is genuinely underivable, not merely convenient to
+  state. Proven precedents: `citation_arxiv_id` from the `links:` host (185), affiliation numbers
+  from first appearance (184), a dataset's size and digest from the file itself (176), and `doi:`
+  as the counter-example that earns a key. **Underivable is not the same as belonging in front
+  matter**: `datasets:` passed the derive test and was still retired (204), because an annotation
+  that describes one invocation belongs *on* that invocation.
+- **A new front-matter key trips SIX drift gates, and a RETIRED one trips EIGHT** (six measured
+  while shipping 185-187; the extra two measured while retiring `datasets:` in 204 — the Quarto
+  migration page, which must tell a migrating reader what to do about a key that now warns, and
+  `vocab.rs`'s `descriptions_present`, which walks a hardcoded list of nested blocks):
   `KNOWN_KEYS`, the JSON schema, the editor vocab, `crates/core/assets/agents/AGENTS.md`, the
   guide-reference completeness gate — and **the repo-root `AGENTS.md`, whose test lives in the
   SERVER crate**, so `cargo test -p taliesin-core` is green while it is stale. The first four
@@ -125,11 +140,11 @@ anything client-side, and **delete the item from this file when it lands**.
 
 ### P1 — build now
 
-**The order below is NOT a priority order any more.** It was one while the band of cheap, ruled
-items existed; that drained on 2026-08-02 and what is left is 188 vs 164/167 vs 202-205, which is
-the unmade owner call in *Start here*. Nothing here is blocked on anything else, and the only
-standing order constraint is the author's **feature-first policy**: 170, the marketing site,
-stays last.
+**The order below is NOT a priority order.** The band of cheap, ruled items drained on 2026-08-02,
+and the cross-cluster ranking made that day covered only 202/203/204, which have shipped. What
+remains is unranked: 188 vs 164 vs 167 vs 205 vs the residuals (56, 175(c), 174). Nothing here is
+blocked on anything else, and the only standing order constraint is the author's **feature-first
+policy**: 170, the marketing site, stays last.
 
 Two conditions apply to every item here. **Each still owes a corpus pin doc** (a capability ships
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
@@ -200,41 +215,6 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      additionally flip-gated** and overlaps 149's launch-presentation group in P3; do not build the
      same thing twice from both entries.
 
-202. **`taliesin features <dir>` — the adoption report.** (M. From the 2026-08-01
-     [feature-value audit](2026-08-01-feature-value-audit.md), F5, its highest-ranked finding.)
-     The tool cannot answer *what does this document use*. The render pipeline already knows every
-     construct it expanded — shortcode, div class, cell language, front-matter key, theorem kind —
-     and nothing surfaces it, so producing that audit's adoption table took a session of `grep`.
-     A feature → documents report **makes the corpus-plus-roadmap policy self-checking** (the policy
-     says every capability ships pinned by a corpus doc; that round found four documented keys with
-     no pin, below) and makes every future portfolio audit free. **Ride the existing projection
-     machinery** (`query.rs`, which already backs `read`/`map`) rather than adding a fifth
-     projection — see the four-projection sweep in the standing constraints. **Brainstorm the output
-     shape first**: the useful cut is per-feature-per-document, and it is a reporting command, not a
-     gate. The audit ranks this **above 188, 164 and 167**; that ranking is a recommendation, and
-     the cross-cluster owner call recorded in Start here is still unmade.
-
-203. **Remove the `columns` fenced div; keep `layout-ncol`.** (S. Feature-value audit, C1, measured
-     across all 185 `.tmd` documents.) Two mechanisms for one job, and one of them never took:
-     `columns` has **one** genuine authored use (`corpus/media/gallery.tmd`, which uses
-     `layout-ncol` in the same document), the other two hits being a typo fixture
-     (`corpus/diagnostics/typos.tmd`) and the generated tour deck (`corpus/scaffold/deck-tour.tmd`,
-     where CLAUDE.md already calls it "the DX5 alias"). Inherited Quarto vocabulary that six weeks
-     of daily writing did not adopt. **Removal owes a retired-key diagnostic**, not silence — the
-     `about:` / `number-within:` precedent: a leftover `::: {.columns}` must say *removed*, not be
-     answered by a did-you-mean pointing at a surviving class. The tour deck must be updated in the
-     same change (it is byte-pinned by `new_cli.rs`).
-
-204. **`{{< dataset >}}` should derive its provenance; retire the `datasets:` keys.** (S.
-     Feature-value audit, C3.) The shortcode has **11 uses**; the `datasets:` front-matter block
-     that annotates it has **zero** outside its own pin and the reference page. The card already
-     derives what it needs from the file on disk, which is why nobody fills the block in. This is
-     the clearest available instance of the audit's F1: a declared key where the derived value was
-     already sufficient. **Check first whether the remote-file case still needs a declaration**
-     (licence, origin, a remote file's size + digest are the things a file genuinely cannot say
-     about itself, per the `KNOWN_KEYS` comment) — if it does, the answer is a smaller key, not the
-     current one. Retired-key diagnostic as in 203; six drift gates come *back* when a key goes.
-
 205. **Take pyodide's 12.9 MB out of the binary.** (M. Feature-value audit, F3/C8.) `pyodide.rs`
      `include_bytes!`s the vendored WASM runtime into every executable, and
      `target/release/taliesin` is **101 MB**. The *page*-level conditionality is already correct and
@@ -284,16 +264,6 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      the page *already* on screen, which still never navigates — but it has not been lived with. If
      it turns out wrong, the answer is a better default, not a knob.
 
-201. **`exec.rs` still calls `--no-exec` "the safe way to preview a document you don't trust".**
-     (XS residual of shipped item 109, found 2026-08-01.) 109 fixed the *user-facing* wording and
-     it is now exemplary: `cli.tmd:184` says the flag "does **not** strip raw HTML" and
-     `cli.tmd:198-201` explains why there is deliberately no sanitizer and no CSP (the 2026-07-03
-     CSP ruling). The internal doc comment at `exec.rs:255-257` kept the old claim, so the codebase
-     now contradicts itself about a security property. Raw HTML still passes through verbatim
-     (`emit.rs:111-112`) by the documented trust model (`lib.rs:20-27`), so the *behaviour* is
-     correct and unchanged; only the comment is wrong. **Two lines. Do it while touching `exec.rs`
-     for something else** rather than spending a session on it.
-
 206. **Fold `render`, `blocks` and `symbols` off the top level.** (S. 2026-08-01
      [feature-value audit](2026-08-01-feature-value-audit.md), F4/C4.) Nineteen top-level
      subcommands is not a single-purpose tool's surface. Measured against 6,265 lines of the
@@ -308,19 +278,16 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      three spellings (`preview | dev | serve`) and the author still twice typed a fourth
      (`tali view`), so adding `view` is not the fix — if anything `dev`/`serve` are the retirees.
 
-207. **The front-matter surface: four unpinned keys, and a policy that should be standing.**
-     (XS for the pins; the policy half is a one-line addition to Standing constraints.
-     Feature-value audit, F1/I4.) `include-in-header`, `include-before-body`, `include-after-body`
-     and `logo` are documented in the guide and **exercised by no corpus document** — all four *are*
-     unit-tested (`render/tests.rs`, `config.rs`, `asset_bundle.rs` and others), so this is a **pin
-     gap, not a coverage gap**, but corpus-plus-roadmap makes the corpus the arbiter of done and
-     these were never arbitrated. Either pin them or drop them. The larger half: `KNOWN_KEYS` holds
-     **33 keys and the author's 33 real documents set 15**, while a new key trips **six** drift
-     gates — the highest fixed cost per feature anywhere in the tool. **Promote "derive, don't
-     declare" from a batch note to Standing constraints**, with the six-gate cost as its stated
-     reason, so every proposed key has to answer *what on the page already implies this?* The
-     precedents are already proven: `citation_arxiv_id` from the `links:` host (185), affiliation
-     numbers from first appearance (184), and `doi:` as the counter-example that earns a key.
+207. **Four documented-but-unpinned front-matter keys: pin them or drop them.** (XS. Feature-value
+     audit, F1/I4. **The policy half landed 2026-08-02** as "derive, don't declare" in Standing
+     constraints.) `include-in-header`, `include-before-body`, `include-after-body` and `logo` are
+     documented in the guide, unit-tested, and exercised by **no corpus document**, so this is a pin
+     gap rather than a coverage gap — but corpus-plus-roadmap makes the corpus the arbiter of done
+     and these were never arbitrated. **`taliesin features corpus` now prints them**, and
+     `crates/server/tests/features_cli.rs` asserts the list, so the gap is measured rather than
+     re-derived: if it changes, update this item, not the test. This is an owner call between
+     pinning four keys and dropping four keys, which is why it was not made while building the
+     instrument that surfaced them.
 
 208. **Re-measure the provisional features on 2026-09-15.** (XS, dated. Feature-value audit, T3.)
      Three capabilities were shipped within three days of that round and so could only be judged on
@@ -619,6 +586,19 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-08-02 the adoption report and the two cuts it measures** (202, 203, 204, plus 201 and
+  207's policy half): `taliesin features <file|dir>` reports what a document uses and what nothing
+  uses; `::: {.columns}`/`.column`/`ncol=` are **removed** for `{layout-ncol=N}`; `{{< dataset >}}`
+  carries its own annotations and the `datasets:` key is retired. **Do not rebuild `features` on
+  `vocab.rs`** (the offered-completions subset: 11 div classes where the validator has 23, and a
+  shortcode list missing `input`/`dataset`, so it reports live features as unused) and **do not
+  instrument the render to collect it** (the validator walk only sees divs that missed every
+  feature class, and the warm incremental render is not a thing to tax for a report). **Do not
+  re-file 204 as "derive it instead"** — its filed cause was false; the derivable half was already
+  derived and the move was about shape, not redundancy. A withdrawn div class needs
+  `RETIRED_DIV_CLASSES`: div classes are an OPEN vocabulary, so without it a leftover `.columns`
+  gets **silence**, not a wrong hint (verified by mutation). A retirement trips **eight** gates,
+  not six.
 - **2026-08-02 the author-reported band + the scholar-block gate** (194-200): `citation_*` follows
   the page→site `author:` chain the Cite-this box and the JSON-LD already did (and stops at the site
   author, never the site title); the enlarged lightbox image closes the viewer; the top

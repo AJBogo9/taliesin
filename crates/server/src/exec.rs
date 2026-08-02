@@ -253,8 +253,14 @@ pub struct Executor {
     /// so "Restart kernel" actually re-runs rather than replaying stale outputs.
     force_next: bool,
     /// `--no-exec` / `TALIESIN_NO_EXEC`: never run code cells, render them as source.
-    /// The safe way to preview a document you don't trust (executing it would run
-    /// its `{python}`/`{r}` cells against a live kernel).
+    ///
+    /// **It is not a sanitizer and does not make an untrusted document safe.** It stops
+    /// `{python}`/`{r}` cells reaching a live kernel and covers `{js}`, but raw HTML in the
+    /// source still passes through verbatim (`emit.rs`), by the documented trust model in
+    /// `taliesin_core`'s crate docs: the author owns their own input. There is deliberately
+    /// no HTML sanitizer and no CSP (the 2026-07-03 ruling), which the user-facing docs
+    /// state outright (`docs/guide/reference/cli.tmd`). This comment used to call the flag
+    /// "the safe way to preview a document you don't trust", which contradicted them.
     no_exec: bool,
     /// Working directory for this document's kernels (the document's own dir), so a
     /// cell's relative writes land beside the source instead of in the server's
