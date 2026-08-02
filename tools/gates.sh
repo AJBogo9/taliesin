@@ -82,6 +82,11 @@ CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
 # asserts what Rust EMITTED (the script tag, the index `<meta>`, the vendored file list) and
 # would stay green with the whole 12.9 MB runtime payload deleted.
 CANARY_PYODIDE="a_pyodide_cell_boots_and_publishes_to_a_js_consumer"
+# A sixth browser-backed capability, independent of the other five: the figure lightbox.
+# The whole viewer is built in JS, so nothing about it reaches the served HTML — every
+# other test of a figure asserts what Rust EMITTED and would stay green with the viewer's
+# open/close handlers inverted.
+CANARY_LIGHTBOX="clicking_the_enlarged_image_closes_the_lightbox"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -233,7 +238,8 @@ run_gate "cargo clippy -D warnings" clippy.log \
 #
 # `--features taliesin-server/headless-js` because the browser driver is OFF by
 # default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
-# `read_run_js` / `print_pdf` / `deck_browser` / `reactive_browser` / `pyodide_browser`
+# `read_run_js` / `print_pdf` / `deck_browser` / `reactive_browser` / `pyodide_browser` /
+# `reader_chrome_browser`
 # declare it in `required-features` — so without this
 # flag cargo would quietly skip building them and the chrome canary below would go
 # missing. That pairing is deliberate: forgetting the feature turns this gate RED
@@ -287,7 +293,8 @@ else
             "chrome (math hover):$CANARY_MATH_HOVER" \
             "chrome (reactive client):$CANARY_REACTIVE" \
             "chrome (print track):$CANARY_PRINT" \
-            "chrome (pyodide):$CANARY_PYODIDE"; do
+            "chrome (pyodide):$CANARY_PYODIDE" \
+            "chrome (lightbox):$CANARY_LIGHTBOX"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

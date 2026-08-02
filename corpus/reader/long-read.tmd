@@ -3,11 +3,10 @@ title: "A longer read"
 toc: true
 ---
 
-This page is deliberately long. It exists to be scrolled, so the reading-progress bar at the
-top fills as you move down and your position is remembered: close the tab partway through and
-a *Resume reading* pill brings you back to the exact block you left, anchored to that block's
-content hash rather than a raw scroll offset, so it survives a re-render or a change of window
-size.
+This page is deliberately long. It exists to be scrolled, so your position is remembered as
+you move down it: close the tab partway through and a *Resume reading* pill brings you back to
+the exact block you left, anchored to that block's content hash rather than a raw scroll
+offset, so it survives a re-render or a change of window size.
 
 ## On length
 
@@ -42,7 +41,9 @@ The danger with reading aids is that they crowd the page. A progress bar that pu
 counter that jumps, a pill that nags: each one steals attention from the words, which is the
 opposite of the point. The right amount of chrome is the least amount that still answers the
 reader's two quiet questions, *where am I* and *can I come back*, and then gets out of the
-way. A thin bar, a small number, a pill that appears once and then dismisses itself.
+way. The first question the browser's own scrollbar already answers, which is why there is no
+progress bar here to answer it twice; the second gets a small number and a pill that appears
+once and then dismisses itself.
 
 ## A middle section
 
@@ -63,9 +64,9 @@ idea, the identified block, cashed in two directions at once.
 
 A reader who reaches the end of a long piece has given you something scarce, their sustained
 attention, and the least you can do is make the journey legible while it happens. By the time
-these words are on screen the progress bar should be near full and the estimate near zero. The
-end of a document is a small event worth marking quietly, not with confetti, just with the
-honest absence of any more bar to fill.
+these words are on screen the scrollbar's thumb should be resting at the bottom of its track
+and the estimate near zero. The end of a document is a small event worth marking quietly, not
+with confetti, just with the honest absence of anywhere further to go.
 
 ## The end
 

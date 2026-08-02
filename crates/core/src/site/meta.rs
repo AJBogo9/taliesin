@@ -158,7 +158,19 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     // by academic databases. Emitted only for an article (has a `date`) that names an
     // `author` — a blog post's shape, not a nav/landing page. `citation_pdf_url` is
     // intentionally absent (there is no PDF; the print-pdf track is deferred).
-    if page.date.is_some() && !page.authors.is_empty() {
+    //
+    // The authors are the page's own, falling back to `_site.yml`'s: the same chain
+    // `cite_this::resolve` documents (owner ruling 2026-07-18) and the same one the JSON-LD
+    // `author` below follows. Gating on `page.authors` alone made a dated post by the site
+    // owner carry a Cite-this box and a JSON-LD author and no scholar block at all — three
+    // metadata blocks on one page disagreeing about whether it has an author. Like that
+    // chain, it stops at the site author and never reaches the site *title*.
+    let scholar_authors = if page.authors.is_empty() {
+        &cfg.authors
+    } else {
+        &page.authors
+    };
+    if page.date.is_some() && !scholar_authors.is_empty() {
         if !title.is_empty() {
             h.push_str(&meta("name", "citation_title", title));
         }
@@ -166,7 +178,7 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         // `citation_author` immediately above it. Emitting every author and then every
         // institution parses as "the last author holds all of them", so the interleaving
         // here is the semantics, not the formatting.
-        for author in &page.authors {
+        for author in scholar_authors {
             h.push_str(&meta("name", "citation_author", &author.name));
             for aff in &author.affiliations {
                 h.push_str(&meta("name", "citation_author_institution", aff));
@@ -289,10 +301,11 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
             "url": &url,
         });
         // The page's OWN authors, falling back to the site's — the same chain
-        // `cite_this::resolve` documents, and the same one `citation_author` already
-        // followed. This branch used to read the site config alone, so a page that named
-        // its own authors still advertised the site owner as the author of the article:
-        // the two metadata blocks on one page disagreed about who wrote it.
+        // `cite_this::resolve` documents. This branch used to read the site config alone,
+        // so a page that named its own authors still advertised the site owner as the
+        // author of the article: the two metadata blocks on one page disagreed about who
+        // wrote it. `citation_author` did NOT already follow this chain when that was
+        // written (it gated on `page.authors` alone); it does now, and all three agree.
         let declared = if page.authors.is_empty() {
             &site.config.authors
         } else {

@@ -136,6 +136,20 @@ through its wrappers. What was actually missing was a fixture *shape*.
 
 ## Probes and instruments (each one produced a false result first)
 
+- **A CDP probe that can return `null` reads as a browser failure, not as an absence.**
+  (2026-08-02, items 195/199.) `read::<Option<String>>` over `chromiumoxide` on a script whose
+  `querySelector` missed reports `decode state: No value found` — a hard error out of the whole
+  run, so four unrelated tests in the same `OnceLock` failed with a message about decoding. **Have
+  every browser probe return a string and use `''` for absent**, then decide in Rust. The reading
+  is the same; the failure mode goes from "the browser broke" to "the element was not there".
+- **`scroll-behavior: smooth` makes `window.scrollTo` asynchronous, so the very next line measures
+  the top of the page.** (2026-08-02, item 199 — the documented scroll false-negative pattern,
+  seen again.) A probe that scrolled halfway and read `pageYOffset` back in the same evaluation
+  got `0`, which made a working resume position read as "nothing was recorded". Force
+  `documentElement.style.scrollBehavior = 'auto'` **before** the scroll, settle, then read — and
+  carry the measured fraction into the assertions as a control, so a page too short to scroll
+  fails as a broken fixture rather than passing as a clean negative.
+
 - **An inline `<li>` has NO list marker, so a one-line list silently loses its numbers.**
   (2026-08-01, item 184.) `display: inline` on a list item to lay two or three entries out on one
   line drops every marker. The affiliation numbers vanished while the `1,2` superscripts beside the

@@ -254,7 +254,7 @@ indistinguishable from core's. The notable ones:
   preview, so neither path touches the network. `TALIESIN_MERMAID_URL` overrides the
   loader URL in either mode.
 - The **reader menu** and its features (theme / text-size / spacing prefs, focus
-  mode, reading progress), the **image lightbox**, **anchor permalinks**, the
+  mode, reading position + resume), the **image lightbox**, **anchor permalinks**, the
   **link-preview card**, the **keyboard shortcuts** layer, the **skip link**, and
   the listing **category filter**.
 

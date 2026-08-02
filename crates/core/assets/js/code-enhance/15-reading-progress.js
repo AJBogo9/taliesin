@@ -1,6 +1,8 @@
-// Reading progress + resume: a thin ambient top progress bar tied to scroll, a
-// block-id-anchored resume position within a page, and a book-scoped "Continue reading"
-// pill on a book's landing page. Reader-side + read-only: derives from the live DOM and
+// Reading position: a block-id-anchored resume position within a page, and a book-scoped
+// "Continue reading" pill on a book's landing page. (A thin ambient top progress bar used
+// to ride along here; it was deleted 2026-08-02 because it duplicates the native
+// scrollbar. `frac()` stays — it is what anchors both features below.)
+// Reader-side + read-only: derives from the live DOM and
 // the reader's own localStorage; never writes the author's source, never talks to a
 // server, no account, no sync. Skipped on decks. Idempotent (document-level, builds once).
 function taliInitReadingProgress() {
@@ -16,14 +18,6 @@ function taliInitReadingProgress() {
     });
   }
 
-  var bar = document.createElement('div');
-  bar.className = 'tali-readbar';
-  bar.setAttribute('aria-hidden', 'true');
-  var fill = document.createElement('div');
-  fill.className = 'tali-readbar-fill';
-  bar.appendChild(fill);
-  document.body.appendChild(bar);
-
   function frac() {
     var h = document.documentElement;
     var max = (h.scrollHeight || document.body.scrollHeight) - window.innerHeight;
@@ -32,14 +26,6 @@ function taliInitReadingProgress() {
     var y = window.pageYOffset != null ? window.pageYOffset : h.scrollTop;
     return Math.min(1, Math.max(0, y / max));
   }
-  var ticking = false;
-  function render() {
-    ticking = false;
-    var f = frac();
-    fill.style.width = (f * 100).toFixed(2) + '%';
-  }
-  function schedule() { if (!ticking) { ticking = true; requestAnimationFrame(render); } }
-
   // Resume position (block-id anchored), reader-local, keyed by page path.
   var KEY = 'tali-pos:' + location.pathname;
   function topBlockId() {
@@ -92,7 +78,6 @@ function taliInitReadingProgress() {
   }
 
   function onScroll() {
-    schedule();
     saveSoon();
     // Dismiss the resume pill on the reader's own scroll (not the first programmatic tick).
     if (resumeEl) { if (resumeArmed) dismissResume(); else resumeArmed = true; }
@@ -148,9 +133,9 @@ function taliInitReadingProgress() {
     }
   }
 
-  render();
+  // No `resize` listener: the deleted bar was the only thing that had to be repainted when
+  // the viewport changed. The resume record is written off a scroll and read once, on load.
   window.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', schedule, { passive: true });
   maybeShowResume();
 }
 

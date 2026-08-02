@@ -17,13 +17,32 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**185, 186 and 187 shipped 2026-08-01**, which drains the research-publishing cluster down to 188.
-**Next session: 188 is the only cluster item left, and it is the one previously marked "leave"**
-(lowest conviction, and the item still says so) — so the real choice is 188 against the two large
-swings (164, 167), and **that cross-cluster ranking is an owner call that has not been made.** 194
-(below, S) came out of 186 and is unblocked.
+**194, 195 and 199 shipped 2026-08-02**, which closes the research-publishing cluster's last
+non-optional item and the first two of the six author-reported ones. **Next session: 196, 197,
+198 and 200 are what is left of the author-reported band** (196 and 197 are XS/S, 198 is a
+restyle, 200 is the sepia removal and the largest of the four), then 188, then the large swings.
+**188 is the only cluster item left, and it is the one previously marked "leave"** (lowest
+conviction, and the item still says so) — so the real choice after the band is 188 against the two
+large swings (164, 167), and **that cross-cluster ranking is an owner call that has not been
+made.**
 
-What those three established, for whoever touches this area next:
+Three things worth not rediscovering from the 2026-08-02 batch:
+
+- **Three metadata blocks on one page now agree about who wrote it.** `citation_*`, the Cite-this
+  box and the JSON-LD `author` all resolve through page `author:` → `_site.yml` `author:`, and all
+  three stop at the site author rather than falling through to the site *title*. The JSON-LD
+  comment that claimed `citation_author` "already followed" that chain was false when written and
+  is fixed.
+- **A browser probe that can return `null` fails the whole run**, not the assertion:
+  `chromiumoxide` reports `decode state: No value found` and every test sharing the `OnceLock`
+  dies with it. Return `''` and decide in Rust. And `scroll-behavior: smooth` makes `scrollTo`
+  asynchronous, so a probe that scrolls and reads the offset back in one evaluation measures the
+  top of the page. Both are now in [LESSONS.md](LESSONS.md).
+- **`crates/server/tests/reader_chrome_browser.rs` is the home for reader-chrome browser pins**
+  (lightbox, reading position). It is the sixth `headless-js` test and carries the sixth
+  `gates.sh` canary; item 198's mobile-TOC pin belongs there rather than in a seventh file.
+
+What 185/186/187 established, for whoever touches that area next:
 
 - **A paper page's identity lives in the title block**, and now ends there too: byline → affiliation
   list → equal-contribution note → `venue`/`award` badges → the `links:` resource row, all inside
@@ -43,11 +62,10 @@ What those three established, for whoever touches this area next:
   187 rather than as a top-level map keyed by name, which would have had to match a name string
   back to an author and would drop the entry silently when the two spellings drifted.
 
-- **P1 is a ranked build queue, not a menu.** Take from the top: 194 (what is left of the
-  research-publishing cluster; 183/184 shipped 2026-08-01 and 185/186/187 the same day), then the
-  six author-reported reader/editor items filed 2026-08-01 (195, 196, 197, 198, 199, 200: all XS or
-  S except 200, and three measured down to a one-or-two-line cause; **199 and 200 were ruled the
-  same day and are builds now, not questions**), then 188, then the large swings. **Read
+- **P1 is a ranked build queue, not a menu.** Take from the top: the rest of the author-reported
+  reader/editor band filed 2026-08-01 (196, 197, 198, 200 — 195 and 199 shipped 2026-08-02; all XS
+  or S except 200, and each measured down to a small cause; **200 was ruled the day it was filed
+  and is a build now, not a question**), then 188, then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
   of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
@@ -147,29 +165,6 @@ pinned by a target corpus document added in the same change) — but **do not gr
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
 
-194. **The scholar block does not follow the site-author fallback.** (S. Found 2026-08-01 while
-     building 186, by a negative test that could not be written non-vacuously.) `site/meta.rs`'s
-     `citation_*` block gates on `page.authors` alone, while `cite_this::resolve` and the JSON-LD
-     `author` on the *same page* both fall back to `_site.yml`'s `author:` (owner ruling
-     2026-07-18). So a dated post by the site owner emits a Cite-this box and a JSON-LD author and
-     **no scholar block at all** — three metadata blocks disagreeing about whether the page has an
-     author. The measured behaviour is pinned by
-     `crates/core/tests/scholar_meta.rs::the_scholar_block_does_not_follow_the_site_author_fallback`,
-     which says in its own comment what to change when this is fixed. **The JSON-LD branch's comment
-     asserts `citation_author` "already followed" that chain — it does not; fix the comment too.**
-     Deliberately left out of 186, which completed the block's tag list rather than its gate.
-
-195. **The enlarged lightbox image cannot be dismissed from itself.** (XS, author-reported
-     2026-08-01, measured.) The backdrop carries `cursor:zoom-out`, but the enlarged image is
-     `cursor:default` (`11-lightbox.js:20`) and the close handler explicitly excludes it
-     (`11-lightbox.js:202`: `if (t !== lbImg && t !== lbVideo && !lbSvg.contains(t)) close()`). So
-     the one element the reader is looking at advertises nothing and does nothing; dismissal is
-     backdrop, Esc, or the `×`. Open on click, close on click is the symmetry readers expect.
-     **Scope it to the image only.** `.tali-lb-svg` (mermaid) is a scrollable, pannable box where a
-     click is the start of a pan, and `<video>` clicks belong to the native control bar: extending
-     click-to-close to either trades one missing affordance for a broken one. Pin with a browser
-     test (`deck_browser.rs` is the pattern); no corpus doc is owed, the corpus already has figures.
-
 196. **The companion's three tree views have no collapse-all.** (XS, author-reported 2026-08-01.)
      `sidebar.ts:84-86` builds all three with `treeDataProvider` alone; VS Code's built-in is
      `showCollapseAll: true` on the `createTreeView` options. The reason it sprawls enough to want
@@ -203,24 +198,6 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      committing to a shape; that survey is optional here, because the shape is already chosen and
      only its affordance is wrong. Pin with a browser test at the mobile viewport, and mind the
      documented scroll/drag false-negative pattern.
-
-199. **Delete the top reading-progress bar.** (XS. **RULED 2026-08-01: remove it.**) The author finds
-     it distracting while scrolling a book. The ruling was made on the corrected premise, recorded
-     here so it is not re-litigated: the reason first given (redundant with a sidebar progress bar)
-     does not hold, because there is no sidebar progress bar. `.tali-readbar` (`base.css:56`, built
-     by `15-reading-progress.js:19-25`) is the *only* reading-progress bar; `#tali-progress` is the
-     dev server's activity dot (`serve/mod.rs:912`) and `.tali-progress` is the deck's slide bar,
-     both unrelated. **The standing reason is that it duplicates the native scrollbar.**
-     - **This reverses the 2026-07-06 decision** that kept dev-menu, `#tali-progress` and the
-       reading bar as three separate signals. That line in "Decided against" is annotated; do not
-       read it as still standing.
-     - **Delete the bar element only, NOT `taliInitReadingProgress`.** The resume pill and the
-       book-scoped "Continue reading" slot live in the same function and are unrelated features
-       that must survive. `frac()` also feeds `saveSoon()` and `maybeShowResume()`, so it stays;
-       only the `bar`/`fill` DOM and the width write in `render()` go.
-     - Also remove `.tali-readbar` / `.tali-readbar-fill` from `base.css:56-59`, its `@media print`
-       rule (`base.css:71`), and the `print.css:81` entry.
-     - No reader preference for it (perfect the default before adding a knob).
 
 200. **Drop sepia, leaving light + dark.** (M. **RULED 2026-08-01: remove it**, overriding the
      recommendation to keep. Do not re-open on the a11y argument: it was made, considered and
@@ -730,6 +707,15 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-08-02 scholar-block fallback + reader chrome** (194, 195, 199): the `citation_*` block
+  follows the page→site `author:` chain the Cite-this box and the JSON-LD already did (and stops at
+  the site author, never the site title); the enlarged lightbox image closes the viewer and says so
+  with `cursor: zoom-out`; the top reading-progress bar is **deleted**. **Do not re-add the bar** —
+  it duplicates the native scrollbar (ruling 2026-08-01, reversing 2026-07-06); `frac()` and
+  `taliInitReadingProgress` stay, because the resume pill and the book "Continue reading" slot live
+  in the same function. **Do not extend click-to-close to the lightbox's video or mermaid box**: a
+  `<video>` click belongs to the native control bar and `.tali-lb-svg` is a pannable scroller.
+  Pinned by `crates/server/tests/reader_chrome_browser.rs`, the sixth `headless-js` test.
 - **2026-08-01 margin sidenotes + structured authors** (183, 184): a `[^note]` renders beside the
   line that cites it and there is **no gathered endnote section** (one copy, or all four text
   projections report every note twice). **Do not re-file the print fragmentation** — an in-flow
@@ -978,8 +964,8 @@ headings deliberately excluded).
 - **2026-07-06 decisions:** book pager stays bottom-only; book page-TOC fix-in-place, keep both nav
   surfaces; xref graph tool removed; focus mode stays ephemeral; deck overview keeps per-slide
   backgrounds; dev-menu + `#tali-progress` + reading-progress bar stay three separate signals
-  (**the reading-bar half was REVERSED 2026-08-01: it is being deleted, see item 199.** The other
-  two signals are unaffected and stay separate).
+  (**the reading-bar half was REVERSED 2026-08-01 and the bar was DELETED 2026-08-02.** The other
+  two signals are unaffected and stay separate.)
 - **2026-07-18 PMF re-derivations:** the reader "Cite this" box (D70) was REVIVED and shipped as B1;
   the deck desktop "async handout" reading view stays CUT (do not re-open without a fresh ruling).
 

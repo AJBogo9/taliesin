@@ -95,31 +95,70 @@ fn the_doi_reaches_the_page_normalised_not_as_the_author_wrote_it() {
     );
 }
 
-/// The `citation_*` block reads `page.authors` **with no site-level fallback**, unlike the
-/// "Cite this" box (`cite_this::resolve`) and the JSON-LD `author` on the very same page,
-/// which both fall back to `_site.yml`'s `author:`. So `note.tmd` — dated, and authored as
-/// far as every other consumer is concerned — emits no scholar block at all.
+/// The `citation_*` block resolves its authors through the **same** chain as the "Cite
+/// this" box (`cite_this::resolve`) and the JSON-LD `author` on the very same page: the
+/// page's own `author:`, falling back to `_site.yml`'s (owner ruling 2026-07-18). So
+/// `note.tmd` — dated, authorless of its own, and authored as far as every other consumer
+/// is concerned — emits a full scholar block naming the site owner.
 ///
-/// This pins the asymmetry as *measured*, not as *intended*: it is filed as its own backlog
-/// item, and it is deliberately outside item 186 (which completes the block's tag list, not
-/// its gate). The value of pinning it is that whoever changes the gate is told, by a failing
-/// test naming the other two chains, that three metadata blocks on one page disagree about
-/// whether it has an author.
+/// This pins the agreement between the three blocks. Before this was fixed the gate read
+/// `page.authors` alone, so one page carried a Cite-this box, a JSON-LD author and **no**
+/// scholar block: three metadata blocks disagreeing about whether the page has an author.
 #[test]
-fn the_scholar_block_does_not_follow_the_site_author_fallback() {
+fn the_scholar_block_follows_the_site_author_fallback() {
     let site = Site::discover(&corpus_dir().join("cite-this"));
     let html = site.render_page("note.tmd").expect("renders");
     assert!(
         html.contains("data-block-id=\"tali-cite-this\""),
-        "note.tmd's Cite-this box DOES resolve an author via the site fallback"
+        "note.tmd's Cite-this box resolves an author via the site fallback"
     );
     assert!(
         html.contains(r#""@type":"Person","name":"Ada Lovelace""#),
         "...and so does its JSON-LD author: {html}"
     );
+    assert_eq!(
+        citation_tags(&html),
+        vec![
+            ("citation_title".into(), "A field note".into()),
+            // The site author, reached by the fallback — the whole point of this test.
+            ("citation_author".into(), "Ada Lovelace".into()),
+            ("citation_publication_date".into(), "2026-05-01".into()),
+            (
+                "citation_journal_title".into(),
+                "Journal of Examples".into()
+            ),
+            (
+                "citation_public_url".into(),
+                "https://example.org/note.html".into()
+            ),
+            (
+                "citation_abstract_html_url".into(),
+                "https://example.org/note.html".into()
+            ),
+        ],
+        "...and the scholar block agrees with both of them"
+    );
+}
+
+/// A page with neither its own `author:` nor a site-level one emits **no** scholar block:
+/// the fallback ends at the site author and never reaches the site *title*, matching
+/// `cite_this`'s documented chain. Without this, "fall back" could quietly mean "publish
+/// the journal name as a person".
+#[test]
+fn an_authorless_site_emits_no_scholar_block() {
+    let proj = common::TempProj::new();
+    proj.file(
+        "_site.yml",
+        "title: \"Journal of Examples\"\nurl: https://example.org\n",
+    )
+    .file(
+        "note.tmd",
+        "---\ntitle: \"A field note\"\ndate: 2026-05-01\n---\n\nBody.\n",
+    );
+    let site = Site::discover(&proj.0);
+    let html = site.render_page("note.tmd").expect("renders");
     assert!(
         !html.contains("citation_"),
-        "...while the scholar block emits nothing. If this now fails, the gate was fixed \
-         (good) — update this test to assert the block instead of its absence."
+        "no author anywhere means no scholar block: {html}"
     );
 }

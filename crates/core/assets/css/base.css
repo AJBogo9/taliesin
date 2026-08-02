@@ -52,11 +52,8 @@
   .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
   @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
-  /* Reading progress (top bar + "min left") + block-id-anchored resume (taliInitReadingProgress). */
-  .tali-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
-    z-index: 2147481400; pointer-events: none; }
-  .tali-readbar-fill { height: 100%; width: 0; background: var(--tali-accent);
-    transition: width .08s linear; }
+  /* Block-id-anchored resume (taliInitReadingProgress). The top reading-progress bar that
+     used to live here was deleted 2026-08-02: it duplicates the native scrollbar. */
   .tali-resume { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
     display: flex; align-items: stretch; background: var(--tali-bg);
     border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius-md); overflow: hidden;
@@ -68,7 +65,7 @@
     color: var(--tali-muted); cursor: pointer; font: inherit; font-size: 1rem; line-height: 1;
     padding: 0 .6rem; }
   .tali-resume-x:hover { color: var(--tali-fg); }
-  @media print { .tali-readbar, .tali-resume { display: none !important; } }
+  @media print { .tali-resume { display: none !important; } }
 
   /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
      CSS Custom Highlight API; search.js). Registered as an animatable colour so it can

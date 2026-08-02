@@ -3,7 +3,9 @@
 // triggering the block-level click/double-click handlers (highlight,
 // click-to-source). Images are shown via <img>; mermaid SVGs are cloned live
 // (so <foreignObject> labels keep rendering, which an <img> would drop). Modifier
-// clicks pass through (new tab, reveal alt-zoom). Dismiss: backdrop, Esc, or x.
+// clicks pass through (new tab, reveal alt-zoom). Dismiss: the enlarged image itself,
+// the backdrop, Esc, or x — but NOT a video (its control bar owns the clicks) or a
+// mermaid box (a press there is the start of a pan).
 function taliInitLightbox() {
   if (window.__taliLightbox) return;
   window.__taliLightbox = true;
@@ -17,7 +19,10 @@ function taliInitLightbox() {
     'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
     '#tali-lightbox.open{display:flex;opacity:1}' +
-    '#tali-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
+    // The enlarged image dismisses the viewer, so it advertises it: open on click, close
+    // on click. Deliberately NOT extended to the video (its control bar owns the clicks)
+    // or the mermaid box (which is a pannable scroller, where a press starts a pan).
+    '#tali-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:zoom-out;' +
     'background:var(--tali-bg,#fff);border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#tali-lightbox video{display:none;max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'border-radius:6px;background:#000;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
@@ -198,8 +203,13 @@ function taliInitLightbox() {
   box.addEventListener('click', function (e) {
     // The nav buttons live on the backdrop; stopPropagation below keeps their click from
     // reaching here (which would treat it as an outside-click and close the viewer).
+    // The enlarged IMAGE closes too (item 195): it is the element the reader is looking
+    // at, and open-on-click/close-on-click is the symmetry they expect. The video and the
+    // mermaid box stay excluded on purpose — a `<video>` click belongs to the native
+    // control bar, and `.tali-lb-svg` is a scrollable, pannable box where a press is the
+    // start of a pan, so closing on either would trade a missing affordance for a broken one.
     var t = /** @type {Node | null} */ (e.target);
-    if (t !== lbImg && t !== lbVideo && !lbSvg.contains(t)) close();
+    if (t !== lbVideo && !lbSvg.contains(t)) close();
   });
   // Visible prev/next controls (mouse + touch): keyboard ←/→ already works, but the
   // gallery had no on-screen affordance. stopPropagation so the backdrop-close doesn't fire.

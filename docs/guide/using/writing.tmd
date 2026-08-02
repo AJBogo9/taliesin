@@ -123,7 +123,8 @@ stateDiagram-v2
 
 A standalone image with a `{#fig-…}` attribute, or a code cell tagged with
 `#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`; clicking it
-opens a full-screen **lightbox**, and `@fig-` cross-references resolve to its
+opens a full-screen **lightbox** (click the enlarged image again, the backdrop,
+`Esc` or the `×` to dismiss it), and `@fig-` cross-references resolve to its
 number. @fig-scree is drawn by a matplotlib cell that sets *no* theme colours:
 inline figures default to a transparent background with neutral-grey axes, so they
 track the light/dark theme on their own.

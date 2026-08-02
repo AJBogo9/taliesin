@@ -2712,11 +2712,19 @@ fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
 #[test]
 fn assembled_page_ships_reading_progress() {
     let page = render_html_page("# Title\n\nProse to read at length.\n", "doc");
-    // The reading-progress enhancer (progress bar + min-left + resume) ships on every
-    // built page via code_scripts().
+    // The reading-position enhancer (resume pill + the book's "Continue reading" slot)
+    // ships on every built page via code_scripts().
     assert!(
         page.contains("taliInitReadingProgress"),
         "reading-progress enhancer not shipped in the assembled page"
+    );
+    // The top progress bar was deleted (item 199, 2026-08-02): it duplicated the native
+    // scrollbar. Asserted here as well as in the browser test because THIS is the
+    // assertion that fails if someone re-adds it to the bundled asset — the browser test
+    // proves the reader never sees it, this one proves it is not shipped at all.
+    assert!(
+        !page.contains("tali-readbar"),
+        "the top reading-progress bar is deleted; do not re-add it (see item 199)"
     );
 }
 

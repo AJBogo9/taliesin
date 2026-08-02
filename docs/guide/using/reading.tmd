@@ -96,9 +96,11 @@ web-native answer to "can I get the data" is a citation you can verify, not a co
 
 ## Reading progress and resume
 
-For long reads, an unobtrusive trio answers "where was I?", with no control to open:
+For long reads, an unobtrusive pair answers "where was I?", with no control to open.
+(There is deliberately no progress bar: the browser's own scrollbar already says how
+far down the page you are, and a second copy of that answer is one more thing moving
+while you read.)
 
-- A thin **progress bar** at the top of the page fills as you scroll.
 - A **Resume reading** pill appears when you reopen a page you left partway
   through. It scrolls you back to the exact block you stopped at, anchored to that
   block's content hash. It dismisses itself after a few seconds or on your next
