@@ -9,7 +9,8 @@ Module map:
 - `cell_numbered.rs` numbered `{js}`/figure/listing emitters + `numbered_caption` (interpolate the orchestrator's `attrs`; never build data-attrs)
 - `page.rs`   full HTML-page assembly (the `PAGE_TEMPLATE` shell, `SiteCtx` wiring, favicon)
 - `emit.rs`   per-block HTML (server-side highlight, code line-wrapping)
-- `divs.rs`   `:::` fenced divs (callouts, columns, magic-move)
+- `divs.rs`   `:::` fenced divs (callouts, the `layout-ncol` grid, magic-move) + the
+              fenced-div and fenced-code source scanners `crate::features` reuses
 - `figure.rs` numbered figures + captions
 - `deck.rs` the slide-deck engine (bundles `deck.css`/`deck.js`; native `.tali-deck`/`.tali-slide` + `window.TaliesinDeck`)
 - `theme.rs`  `--tali-*` themes (light/dark), `theme_head`

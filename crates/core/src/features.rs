@@ -45,7 +45,7 @@ pub struct Group {
 ///
 /// **Sourced from the validator consts, not from [`crate::vocab`].** `vocab.rs` is the
 /// *offered-completions* projection, not the implemented set: `vocab::DIV_CLASS_NAMES` holds
-/// 11 entries where `render::DIV_FEATURE_CLASSES` holds 23, because `columns`, `fragment`,
+/// 11 entries where `render::DIV_FEATURE_CLASSES` holds 16, because `fragment`,
 /// `incremental`, `notes`, `fade-out` and `highlight` are implemented and deliberately not
 /// offered. Building the report on `vocab.rs` would not merely undercount, it would report a
 /// live feature as unused when it is only unsuggested. `crate::vocab` is consulted only for

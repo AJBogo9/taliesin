@@ -75,9 +75,10 @@ Denominators come from the authoritative validator consts, not from `vocab.rs`.
 
 **`vocab.rs` is the wrong source and this is the trap worth writing down.** It is the
 *offered-completions* projection, not the implemented set: `vocab::DIV_CLASS_NAMES` holds 11
-entries while `render::validate::DIV_FEATURE_CLASSES` holds 23, because `columns`, `column`,
+entries while `render::validate::DIV_FEATURE_CLASSES` holds 18, because `columns`, `column`,
 `fragment`, `incremental`, `notes`, `fade-out` and `highlight` are implemented and deliberately
-not offered. `vocab`'s shortcode list is likewise short: `SHORTCODE_SPECS` has two entries
+not offered. (18 measured 2026-08-02 before item 203's removal, 16 after. An earlier draft of
+this line said 23, which was never right.) `vocab`'s shortcode list is likewise short: `SHORTCODE_SPECS` has two entries
 (`embed`, `video`) while `input` and `dataset` are dispatched ahead of it in
 `extension/mod.rs`. A report built on `vocab.rs` would under-count and, worse, would report a
 feature as unused when it is merely unsuggested.
@@ -113,7 +114,7 @@ front-matter keys              33 known · 15 used · 18 unused
   include-in-header             0  (no document)
   logo                          0  (no document)
 
-div classes                    23 known · 19 used · 4 unused
+div classes                    18 known · 15 used · 3 unused
   column-margin                11
   columns                       3  corpus/media/gallery.tmd,
                                    corpus/scaffold/deck-tour.tmd,

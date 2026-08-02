@@ -590,7 +590,7 @@ branch are enough to find its commits.
   207's policy half): `taliesin features <file|dir>` reports what a document uses and what nothing
   uses; `::: {.columns}`/`.column`/`ncol=` are **removed** for `{layout-ncol=N}`; `{{< dataset >}}`
   carries its own annotations and the `datasets:` key is retired. **Do not rebuild `features` on
-  `vocab.rs`** (the offered-completions subset: 11 div classes where the validator has 23, and a
+  `vocab.rs`** (the offered-completions subset: 11 div classes where the validator has 16, and a
   shortcode list missing `input`/`dataset`, so it reports live features as unused) and **do not
   instrument the render to collect it** (the validator walk only sees divs that missed every
   feature class, and the warm incremental render is not a thing to tax for a report). **Do not

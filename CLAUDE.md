@@ -50,7 +50,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                      The old back-compat alias is deleted; `window.TaliesinDeck` is
                      the only name
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
-    divs.rs          `:::` fenced divs (callouts, columns, magic-move)
+    divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, magic-move);
+                     also the fenced-div + fenced-code source scanners `features.rs` reuses
     figure.rs        numbered figures + captions
     extension/       shortcode expansion, incl. the built-in `{{< embed deck.tmd >}}`
                      + `{{< video clip.mp4 dark= >}}`. NOT `_extensions/`, which is a
@@ -66,6 +67,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
+  src/features.rs  the feature catalogue (read from the validator consts) + the
+                   per-document scan behind `taliesin features`; OFF the render path
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
   src/highlight.rs server-side syntax highlighting (syntect → `tali-hl-` scope classes)
   src/cite/        citations ([@key]) + cross-references (@fig-, @sec-): a module dir
@@ -153,6 +156,7 @@ cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE
 cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full page to stdout
 cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
 cargo run -p taliesin-server -- skim   <dir>                   # the book's skimmable layers as one linear stream
+cargo run -p taliesin-server -- features <file.tmd | dir>      # what a document uses; and what NO document uses
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
@@ -229,6 +233,19 @@ dependency change. Never call one of these verified without its output.
   included blocks also carry `data-source-file`. Source mapping, incremental
   re-render, and live-state preservation all key off this one block model, so
   preserve those invariants (`crates/core/tests/corpus.rs` enforces them).
+- **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** Measured
+  2026-08-02: `DIV_CLASS_NAMES` carries 11 classes where `render::DIV_FEATURE_CLASSES`
+  carries 16, and `SHORTCODE_SPECS` omits `input`/`dataset` (both dispatched ahead of it).
+  Answer "what does the tool support" from the validator consts or from `taliesin
+  features`, never from `vocab` — it reports live features as missing.
+- **A new front-matter key trips SIX drift gates; a RETIRED one trips EIGHT.** The two extra
+  are `docs/guide/using/from-quarto.tmd` (a retired key must tell a migrating reader what to
+  do) and `vocab.rs`'s `descriptions_present`. Two of the eight live in the **server** crate,
+  so `cargo test -p taliesin-core` is green while they are stale. A new *subcommand* also has
+  four registration sites in `main.rs` plus three tables in `complete.rs`, each drift-gated.
+- **A withdrawn div class needs a `RETIRED_DIV_CLASSES` entry**; div classes are an *open*
+  vocabulary, so without one a leftover class gets **silence**, not a did-you-mean, and the
+  page quietly loses its layout. (Front-matter keys have `RETIRED_KEYS` for the same job.)
 - Minimal config: perfect the default before adding a knob. Aim for a
   near-perfect default experience so the user does not *need* to configure;
   only explore configuration once the defaults are perfected, and prefer a
