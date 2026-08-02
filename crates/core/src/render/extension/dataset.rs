@@ -16,8 +16,20 @@
 //!
 //! **Zero configuration is the default.** For a file in the tree, size and digest are read
 //! off the file itself, so `{{< dataset data/penguins.csv >}}` alone renders a complete
-//! card. Front matter is only for what a file cannot tell you — licence, where it came
-//! from, a human title — and for a remote file, which has nothing local to interrogate.
+//! card. The arguments are only for what a file cannot tell you (licence, where it came
+//! from, a human title) and for a remote file, which has nothing local to interrogate.
+//!
+//! **Those annotations ride the shortcode, not front matter** (backlog item 204, 2026-08-02).
+//! They used to be a `datasets:` front-matter block addressing each entry by `path:`/`url:`.
+//! Measured across every `.tmd` in the repo, the shortcode had 11 uses and the block had
+//! **zero** outside its own pin and the page documenting it. The block's filed problem was
+//! that it re-declared what the card already derives, and that turned out to be false: the
+//! derivable half was already derived and everything left really is underivable. The real
+//! cost was the shape. A key costs six drift gates, and addressing an entry back to an
+//! invocation by repeating its path is an index to keep in step for no gain, when the
+//! invocation is right there. `{{< video >}}` already carries `poster=`/`caption=` inline,
+//! so this is the house idiom rather than a new one, and the argument vocabulary is closed
+//! and typo-linted like every other.
 
 use std::path::Path;
 
@@ -25,13 +37,13 @@ use sha2::{Digest, Sha256};
 
 use crate::render::{Warning, escape_attr};
 
-/// One declared entry of the front-matter `datasets:` list. Every field is optional
-/// because the point is to add what the file cannot say about itself; an entry is
-/// addressed by whichever of `path`/`url` the shortcode names.
+/// What one `{{< dataset >}}` invocation declared. Every field is optional because the
+/// point is to add only what the file cannot say about itself.
+///
+/// **There is no `path`/`url` field.** The shortcode's positional argument already names
+/// the data, so an addressing field would be a second copy of it that can fall out of step.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Declared {
-    pub path: Option<String>,
-    pub url: Option<String>,
     pub title: Option<String>,
     pub licence: Option<String>,
     pub source: Option<String>,
@@ -44,11 +56,10 @@ pub(crate) struct Declared {
     pub bytes: Option<u64>,
 }
 
-/// The sub-keys a `datasets:` entry accepts. Closed, like every other vocabulary here, so
-/// `licence:`/`license:` and a typo'd `souce:` get a did-you-mean rather than silence.
+/// The `key=value` arguments `{{< dataset >}}` accepts, read by `SHORTCODE_SPECS` so the
+/// same did-you-mean that catches `postr=` on a video catches `souce=` here. Closed, like
+/// every other vocabulary in the tool.
 pub(crate) const DATASET_KEYS: &[&str] = &[
-    "path",
-    "url",
     "title",
     "licence",
     "license",
@@ -58,43 +69,29 @@ pub(crate) const DATASET_KEYS: &[&str] = &[
     "bytes",
 ];
 
-/// Parse the front-matter `datasets:` list. Anything malformed yields no entry rather than
-/// an error: the front-matter linter is what reports shape problems, and a card that falls
-/// back to what the file itself says is better than a document that fails to render.
-pub(crate) fn declared(src: &str) -> Vec<Declared> {
-    let Some(fm) = crate::frontmatter::front_matter_block(src) else {
-        return Vec::new();
-    };
-    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(fm) else {
-        return Vec::new();
-    };
-    let Some(seq) = v.get("datasets").and_then(|d| d.as_sequence()) else {
-        return Vec::new();
-    };
-    seq.iter()
-        .filter_map(|item| {
-            let m = item.as_mapping()?;
-            let s = |k: &str| {
-                m.get(serde_yaml::Value::String(k.to_owned()))
-                    .and_then(|v| v.as_str())
-                    .map(str::to_owned)
-            };
-            Some(Declared {
-                path: s("path"),
-                url: s("url"),
-                title: s("title"),
-                // Both spellings, because both are correct English and an author should
-                // not have to guess which one this tool picked.
-                licence: s("licence").or_else(|| s("license")),
-                source: s("source"),
-                description: s("description"),
-                sha256: s("sha256"),
-                bytes: m
-                    .get(serde_yaml::Value::String("bytes".to_owned()))
-                    .and_then(|v| v.as_u64()),
-            })
+/// Read the invocation's `key=value` arguments. An unrecognized or malformed one yields
+/// nothing here rather than an error: `validate_shortcode_args` is what reports it (with a
+/// did-you-mean), and a card that falls back to what the file itself says is better than a
+/// document that fails to render.
+pub(crate) fn from_args(args: &[String]) -> Declared {
+    let get = |k: &str| -> Option<String> {
+        args.iter().find_map(|a| {
+            a.strip_prefix(k)
+                .and_then(|rest| rest.strip_prefix('='))
+                .map(|v| v.trim_matches(['"', '\'']).to_owned())
+                .filter(|v| !v.is_empty())
         })
-        .collect()
+    };
+    Declared {
+        title: get("title"),
+        // Both spellings, because both are correct English and an author should not have
+        // to guess which one this tool picked.
+        licence: get("licence").or_else(|| get("license")),
+        source: get("source"),
+        description: get("description"),
+        sha256: get("sha256"),
+        bytes: get("bytes").and_then(|b| b.parse().ok()),
+    }
 }
 
 /// Whether `target` names a remote resource rather than a file in the tree.
@@ -149,29 +146,17 @@ fn short_digest(hex: &str) -> String {
 
 /// Render one `{{< dataset … >}}`, plus any warnings it earned.
 ///
+/// `decl` is what THIS invocation declared, so there is no lookup and nothing to mismatch.
 /// `base_dir` is the document's directory; `None` (a render with no filesystem context)
 /// means an in-tree file cannot be measured, so the card states only what was declared.
 pub(crate) fn render(
     target: &str,
-    declared: &[Declared],
+    decl: &Declared,
     base_dir: Option<&Path>,
     line_no: usize,
 ) -> (String, Vec<Warning>) {
     let mut warnings = Vec::new();
     let remote = is_remote(target);
-    // Match by whichever field addresses this target, so `{{< dataset data/x.csv >}}` and
-    // `{{< dataset https://… >}}` each find their own entry.
-    let decl = declared
-        .iter()
-        .find(|d| {
-            if remote {
-                d.url.as_deref() == Some(target)
-            } else {
-                d.path.as_deref() == Some(target)
-            }
-        })
-        .cloned()
-        .unwrap_or_default();
 
     // What the file itself says, when there is a file. This is the half that needs no
     // configuration, and the half that can contradict the declaration.
@@ -204,7 +189,7 @@ pub(crate) fn render(
         warnings.push(
             Warning::new(format!(
                 "`{{{{< dataset >}}}}` at line {line_no}: `{target}` hashes to \
-                 `{got}`, but `datasets:` declares `{want}` — the file changed since it \
+                 `{got}`, but the card declares `sha256={want}` — the file changed since it \
                  was recorded, so any figure computed from it is stale"
             ))
             .at(None, line_no as u32),
@@ -216,7 +201,7 @@ pub(crate) fn render(
         warnings.push(
             Warning::new(format!(
                 "`{{{{< dataset >}}}}` at line {line_no}: remote dataset `{target}` \
-                 declares no `sha256:`, so a reader who downloads it cannot tell whether \
+                 declares no `sha256=`, so a reader who downloads it cannot tell whether \
                  they got the same bytes you used"
             ))
             .at(None, line_no as u32),
@@ -342,7 +327,7 @@ mod tests {
     fn an_in_tree_file_needs_no_declaration_at_all() {
         let dir = scratch("bare");
         std::fs::write(dir.join("d.csv"), b"a,b\n1,2\n").unwrap();
-        let (html, warnings) = render("d.csv", &[], Some(&dir), 3);
+        let (html, warnings) = render("d.csv", &Declared::default(), Some(&dir), 3);
         assert!(warnings.is_empty(), "{warnings:?}");
         assert!(html.contains("8 B"), "the measured size: {html}");
         // A checksum row exists, carrying the file's own digest. (That the digest really
@@ -374,7 +359,7 @@ mod tests {
         // The canonical SHA-256 of "abc", from FIPS 180-4.
         let want = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         assert_eq!(file_sha256(&dir.join("d.txt")).unwrap(), want);
-        let (html, _) = render("d.txt", &[], Some(&dir), 1);
+        let (html, _) = render("d.txt", &Declared::default(), Some(&dir), 1);
         assert!(
             html.contains(&format!("title=\"sha256:{want}\"")),
             "the full digest stays copyable in the title: {html}"
@@ -392,11 +377,10 @@ mod tests {
         let dir = scratch("drift");
         std::fs::write(dir.join("d.txt"), b"abc").unwrap();
         let stale = Declared {
-            path: Some("d.txt".into()),
             sha256: Some("0".repeat(64)),
             ..Default::default()
         };
-        let (_html, warnings) = render("d.txt", std::slice::from_ref(&stale), Some(&dir), 7);
+        let (_html, warnings) = render("d.txt", &stale, Some(&dir), 7);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(
             warnings[0]
@@ -413,7 +397,7 @@ mod tests {
             sha256: file_sha256(&dir.join("d.txt")),
             ..stale.clone()
         };
-        let (_h, ok) = render("d.txt", &[good], Some(&dir), 7);
+        let (_h, ok) = render("d.txt", &good, Some(&dir), 7);
         assert!(ok.is_empty(), "a matching digest must not warn: {ok:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -421,13 +405,12 @@ mod tests {
     #[test]
     fn a_remote_dataset_gets_a_verify_snippet_and_is_never_downloaded() {
         let decl = Declared {
-            url: Some("https://example.org/big.parquet".into()),
             sha256: Some("dead".repeat(16)),
             licence: Some("ODbL-1.0".into()),
             bytes: Some(2_400_000_000),
             ..Default::default()
         };
-        let (html, warnings) = render("https://example.org/big.parquet", &[decl], None, 2);
+        let (html, warnings) = render("https://example.org/big.parquet", &decl, None, 2);
         assert!(warnings.is_empty(), "{warnings:?}");
         assert!(html.contains("Remote dataset"));
         assert!(html.contains("2.4 GB"), "the declared size: {html}");
@@ -448,11 +431,7 @@ mod tests {
 
     #[test]
     fn a_remote_dataset_without_a_digest_is_reported() {
-        let decl = Declared {
-            url: Some("https://example.org/x.csv".into()),
-            ..Default::default()
-        };
-        let (_html, warnings) = render("https://example.org/x.csv", &[decl], None, 4);
+        let (_html, warnings) = render("https://example.org/x.csv", &Declared::default(), None, 4);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(
             warnings[0]
@@ -466,7 +445,7 @@ mod tests {
     #[test]
     fn a_dataset_that_names_no_file_is_reported() {
         let dir = scratch("missing");
-        let (html, warnings) = render("data/gone.csv", &[], Some(&dir), 9);
+        let (html, warnings) = render("data/gone.csv", &Declared::default(), Some(&dir), 9);
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(
             warnings[0]
@@ -479,17 +458,33 @@ mod tests {
         );
     }
 
+    /// Arguments are read off the invocation, both spellings of licence accepted, and
+    /// anything absent or unparseable falls back to what the file itself says rather than
+    /// failing the render (`validate_shortcode_args` is what reports a bad argument).
     #[test]
-    fn declared_reads_both_spellings_of_licence() {
-        let uk = declared("---\ndatasets:\n  - path: a.csv\n    licence: CC0-1.0\n---\n");
-        let us = declared("---\ndatasets:\n  - path: a.csv\n    license: CC0-1.0\n---\n");
-        assert_eq!(uk[0].licence.as_deref(), Some("CC0-1.0"));
-        assert_eq!(us[0].licence.as_deref(), Some("CC0-1.0"));
-        // No `datasets:` at all, and malformed front matter, both yield nothing rather
-        // than failing the render.
-        assert!(declared("---\ntitle: t\n---\n").is_empty());
-        assert!(declared("no front matter").is_empty());
-        assert!(declared("---\ndatasets: not-a-list\n---\n").is_empty());
+    fn from_args_reads_the_invocation_and_both_spellings_of_licence() {
+        let args = |s: &str| -> Vec<String> { s.split(' ').map(str::to_owned).collect() };
+        assert_eq!(
+            from_args(&args("licence=CC0-1.0")).licence.as_deref(),
+            Some("CC0-1.0")
+        );
+        assert_eq!(
+            from_args(&args("license=CC0-1.0")).licence.as_deref(),
+            Some("CC0-1.0")
+        );
+        let full = from_args(&args(
+            "data/x.csv title=Measurements source=https://example.org bytes=2400 sha256=abc",
+        ));
+        assert_eq!(full.title.as_deref(), Some("Measurements"));
+        assert_eq!(full.source.as_deref(), Some("https://example.org"));
+        assert_eq!(full.bytes, Some(2400));
+        assert_eq!(full.sha256.as_deref(), Some("abc"));
+        // The positional source is not swallowed as a value, and an empty or unparseable
+        // argument yields nothing rather than an empty-string annotation on the card.
+        let bare = from_args(&args("data/x.csv"));
+        assert!(bare.title.is_none() && bare.licence.is_none() && bare.bytes.is_none());
+        assert!(from_args(&args("title= bytes=many")).title.is_none());
+        assert_eq!(from_args(&args("bytes=many")).bytes, None);
     }
 
     #[test]

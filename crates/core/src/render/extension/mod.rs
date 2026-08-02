@@ -8,16 +8,15 @@ use super::*;
 
 pub(crate) mod dataset;
 
-/// What a shortcode may need beyond its own arguments. Only `{{< dataset >}}` uses it so
-/// far: a provenance card reads the file it names (size, digest) and the front-matter
-/// `datasets:` entry that annotates it, neither of which is on the invocation line.
+/// What a shortcode may need beyond its own arguments. Only `{{< dataset >}}` uses it: a
+/// provenance card reads the file it names (size, digest), which the invocation line
+/// cannot supply.
 ///
 /// `base_dir` is `None` for a render with no filesystem context, which is a real case
 /// (`render_document` on a string). A dataset card then states only what was declared,
 /// rather than claiming a size it could not measure.
 pub(super) struct ShortcodeCtx<'a> {
     pub base_dir: Option<&'a std::path::Path>,
-    pub datasets: Vec<dataset::Declared>,
 }
 
 /// Expand declarative shortcodes (`{{< name args >}}`) to inline HTML. Line-preserving
@@ -32,10 +31,7 @@ pub(super) fn expand_shortcodes(
     if !src.contains("{{<") {
         return (src.to_string(), warnings);
     }
-    let ctx = ShortcodeCtx {
-        base_dir,
-        datasets: dataset::declared(src),
-    };
+    let ctx = ShortcodeCtx { base_dir };
     let mut out = String::with_capacity(src.len());
     let mut in_code = false;
     // Deduplicates `{{< input >}}` control ids across the document, so two controls that
@@ -77,6 +73,24 @@ pub(super) fn expand_shortcodes(
 /// earlier (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would
 /// report three of the five as not existing.
 pub(crate) const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "dataset", "include"];
+
+/// Every `key=` argument a built-in shortcode accepts, qualified by the shortcode that
+/// takes it (`dataset.licence`, `video.poster`), for [`crate::features`]'s catalogue.
+///
+/// Qualified for the same reason nested front-matter keys are: `title=` on an
+/// `{{< embed >}}` is an iframe title while `title=` on a `{{< dataset >}}` is the data's
+/// name, and one unqualified row would report a single adoption number for two features.
+/// Bare flags are included too, since writing one is a use.
+pub(crate) fn shortcode_argument_names() -> Vec<String> {
+    SHORTCODE_SPECS
+        .iter()
+        .flat_map(|(name, keys, flags)| {
+            keys.iter()
+                .chain(flags.iter())
+                .map(move |k| format!("{name}.{k}"))
+        })
+        .collect()
+}
 
 /// Every `{{< name args… >}}` written in `src`, as `(name, args)`, for the
 /// feature-adoption report (`crate::features`).
@@ -174,14 +188,18 @@ fn expand_in_line(
                 continue;
             }
             // `{{< dataset >}}` is expanded here for the same reason `input` is: it needs
-            // the line number and the warning sink, plus the document's directory and its
-            // `datasets:` declarations, none of which `render_shortcode` carries.
+            // the line number, the warning sink and the document's directory, none of
+            // which `render_shortcode` carries.
             if inner.split_whitespace().next() == Some("dataset") {
                 let toks = tokenize_args(inner);
-                match toks.get(1) {
+                // The positional source is the first token that is not a `key=value`, so
+                // `{{< dataset licence=CC0 data/x.csv >}}` finds its file whatever the
+                // argument order.
+                match toks[1..].iter().find(|t| !is_named_arg(t)) {
                     Some(target) => {
-                        let (html, ws) =
-                            dataset::render(target, &ctx.datasets, ctx.base_dir, line_no);
+                        validate_shortcode_args("dataset", &toks[1..], line_no, warnings);
+                        let decl = dataset::from_args(&toks[1..]);
+                        let (html, ws) = dataset::render(target, &decl, ctx.base_dir, line_no);
                         warnings.extend(ws);
                         out.push_str(&html);
                     }
@@ -479,13 +497,18 @@ const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
 /// **The vocabulary is closed**, which is what lets [`validate_shortcode_args`] tell a typo
 /// from an argument it simply has not heard of — the same closed-vocabulary contract front
 /// matter, cell options and `_site.yml` are linted against.
-const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 2] = [
+const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 3] = [
     ("embed", &["title"], &[]),
     (
         "video",
         &["dark", "poster", "caption", "captions"],
         &VIDEO_FLAGS,
     ),
+    // `dataset` is dispatched ahead of this table (it needs the line number, the warning
+    // sink and the document's directory), which is why it carried NO argument linting at
+    // all until its annotations moved off front matter. Listing it here is what gives
+    // `souce=` the same did-you-mean `postr=` gets on a video.
+    ("dataset", dataset::DATASET_KEYS, &[]),
 ];
 
 /// Whether a bare token is more plausibly a **misspelled flag** than a source path. A path

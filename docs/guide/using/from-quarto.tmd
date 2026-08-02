@@ -75,6 +75,7 @@ Two more `format:` shapes to know:
 | `csl: apa.csl` | Recognised but **not** honoured. References always render in the built-in IEEE style; the `.csl` file is never parsed. |
 | `about:` | Removed on 2026-07-17. The landing banner is `hero:`, which takes different sub-keys (`eyebrow` / `headline` / `lead` / `actions`) — a rewrite, not a rename. |
 | `theorems: { number-within: … }` | Removed. Theorem numbers scope to a numbered book chapter automatically, so nothing replaces it: delete the key. |
+| `datasets:` | Removed on 2026-08-02. The annotations moved onto the invocation that uses them: `{{< dataset data/x.csv licence=CC0-1.0 source=… >}}`. There is no `path:`/`url:` any more, since the shortcode's own argument already names the file, so this is a move rather than a rename. |
 | `page-layout: article` (or `custom`, …) | Ignored. Taliesin uses the reading-width column by default and only `page-layout: full` widens it. |
 
 None of these is phrased as a did-you-mean on purpose. A did-you-mean is a

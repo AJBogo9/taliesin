@@ -247,10 +247,12 @@ fn first_kernel_language(text: &str) -> Option<&'static str> {
 
 /// A dropped `.csv`: the provenance card, plus a loader cell when the document has a kernel.
 ///
-/// There is deliberately no `datasets:` front-matter scaffold. `corpus/datasets.tmd` documents
-/// that block as optional, because the size and checksum are read off the file itself, so the
-/// only keys it would add (licence, source, description) are facts the author has and the editor
-/// does not. Emitting them empty is noise a lint may flag.
+/// The invocation is deliberately emitted bare, with no annotation arguments scaffolded in.
+/// Size and checksum are read off the file itself, so a bare card is already complete, and the
+/// only arguments left to add (`licence=`, `source=`, `description=`) are facts the author has
+/// and the editor does not. Emitting them empty is noise a lint may flag. (Those annotations
+/// moved off a `datasets:` front-matter block onto the shortcode on 2026-08-02, item 204; the
+/// reasoning here is unchanged by the move, only the place they would have gone.)
 fn dataset_drop(doc: &Path, text: &str, csv: &Path) -> Result<InsertEditResult, String> {
     let dir = doc.parent().ok_or("the document has no directory")?;
     // Unlike a dragged image, a dataset is REFUSED rather than offered with a warning: the card

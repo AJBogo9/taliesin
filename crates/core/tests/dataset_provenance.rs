@@ -32,13 +32,21 @@ fn an_in_tree_dataset_card_reports_the_files_own_size_and_digest() {
         body.contains(&format!("<dd>{bytes} B</dd>")),
         "the card must state the file's measured size ({bytes} B)"
     );
-    // Computed here the same way a reader would, so this fails if the fixture is edited
-    // without its declaration being updated — which is the drift case, checked below.
-    let declared_line = fs::read_to_string(corpus_dir().join(PIN)).unwrap();
-    let declared = declared_line
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("sha256: \""))
-        .and_then(|l| l.strip_suffix('"'))
+    // Read back off the pin's own invocation the way a reader would, so this fails if the
+    // fixture is edited without its declaration being updated — the drift case, checked
+    // below. The annotations ride the shortcode since item 204, so this scrapes an
+    // argument rather than a front-matter line.
+    let pin_src = fs::read_to_string(corpus_dir().join(PIN)).unwrap();
+    let declared = pin_src
+        .split("sha256=")
+        .nth(1)
+        .map(|rest| {
+            rest.split([' ', '\n', '>'])
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .filter(|d| d.len() == 64)
         .expect("the pin declares a sha256 for the in-tree file");
     assert!(
         body.contains(&format!("title=\"sha256:{declared}\"")),
@@ -114,12 +122,8 @@ fn data_that_moved_under_the_document_is_reported() {
     fs::create_dir_all(dir.join("data")).unwrap();
     fs::write(dir.join("data/m.csv"), b"a,b\n1,2\n").unwrap();
 
-    let declare = |sha: &str| {
-        format!(
-            "---\ntitle: T\ndatasets:\n  - path: data/m.csv\n    sha256: \"{sha}\"\n---\n\n\
-             {{{{< dataset data/m.csv >}}}}\n"
-        )
-    };
+    let declare =
+        |sha: &str| format!("---\ntitle: T\n---\n\n{{{{< dataset data/m.csv sha256={sha} >}}}}\n");
 
     // Known-positive first: with the right digest the document is silent. Without this
     // control, "declaring a digest warns" would pass the test below just as well.
@@ -164,4 +168,35 @@ fn the_pin_document_is_warning_free() {
     let doc = rendered();
     let msgs: Vec<&String> = doc.warnings.iter().map(|w| &w.message).collect();
     assert!(msgs.is_empty(), "corpus/datasets.tmd warns: {msgs:?}");
+}
+
+/// The annotations moved onto the invocation (item 204), and joining `SHORTCODE_SPECS` is
+/// what buys the closed-vocabulary did-you-mean. Worth its own pin because `dataset` is
+/// dispatched AHEAD of that table, so it carried no argument linting at all while its
+/// annotations lived in front matter: a typo'd sub-key was caught by the front-matter
+/// validator, and moving them without this would have traded a diagnostic for silence.
+#[test]
+fn a_typod_dataset_argument_earns_a_did_you_mean() {
+    let dir = std::env::temp_dir().join(format!("tali-ds-typo-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("d.csv"), b"a,b\n1,2\n").unwrap();
+
+    let doc = taliesin_core::render_single_doc(
+        "---\ntitle: T\n---\n\n{{< dataset d.csv souce=x licence=CC0-1.0 >}}\n",
+        &dir,
+    );
+    let msgs: Vec<&String> = doc.warnings.iter().map(|w| &w.message).collect();
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("`souce=`") && m.contains("did you mean `source=`")),
+        "a typo'd argument must be named with its correction: {msgs:?}"
+    );
+    // The control: the correctly-spelled sibling on the SAME invocation stays silent, so
+    // this is a vocabulary check rather than "any argument warns".
+    assert!(
+        !msgs.iter().any(|m| m.contains("licence")),
+        "a known argument must not warn: {msgs:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
 }

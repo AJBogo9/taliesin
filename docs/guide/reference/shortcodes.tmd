@@ -111,7 +111,8 @@ page relies on that) and is neither expanded nor watched.
 
 ```markdown
 {{< dataset data/measurements.csv >}}
-{{< dataset https://example.org/full-season.parquet >}}
+{{< dataset data/measurements.csv licence=CC0-1.0 source=https://example.org/survey >}}
+{{< dataset https://example.org/full-season.parquet bytes=2400000000 sha256=9f2c4a1e… >}}
 ```
 
 Renders a provenance card: what the file is, how big it is, what it hashes to, its
@@ -129,14 +130,15 @@ Taliesin — not copied, not validated, not mentioned.
   ends up in a folder of HTML.
 
 For an in-tree file the size and SHA-256 are read off the file, so the shortcode alone
-is a complete card with nothing to configure. A front-matter
-[`datasets:`](frontmatter.tmd#datasets-where-the-data-came-from) entry adds only what a
-file cannot state about itself, and is required for a remote file, which has nothing
-local to measure.
+is a complete card with nothing to configure. The arguments add only what a file cannot
+state about itself, and are required for a remote file, which has nothing local to
+measure: `title=`, `licence=` (or `license=`), `source=`, `description=`, `sha256=`,
+`bytes=`. The vocabulary is closed, so a typo'd `souce=` gets a did-you-mean rather than
+silently doing nothing.
 
-Two things are checked rather than merely displayed. A declared `sha256:` is compared
+Two things are checked rather than merely displayed. A declared `sha256=` is compared
 against an in-tree file on every render, so data that moved under your figures is
-reported instead of silently changing them. A remote entry with no `sha256:` is
+reported instead of silently changing them. A remote card with no `sha256=` is
 reported too: a reader who downloads it would have no way to tell whether they got the
 same bytes.
 

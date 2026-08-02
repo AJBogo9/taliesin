@@ -75,7 +75,6 @@ pub fn catalogue() -> Vec<Group> {
         ("hero", HERO_KEYS),
         ("prose-lint", PROSE_LINT_KEYS),
         ("theorems", THEOREM_KEYS),
-        ("datasets", crate::render::extension::dataset::DATASET_KEYS),
     ]
     .iter()
     .flat_map(|(parent, keys)| keys.iter().map(move |k| format!("{parent}.{k}")))
@@ -107,6 +106,11 @@ pub fn catalogue() -> Vec<Group> {
             "shortcodes",
             crate::render::extension::SHORTCODE_NAMES,
         ),
+        Group {
+            name: "shortcode arguments",
+            slug: "shortcode-args",
+            known: sorted(crate::render::extension::shortcode_argument_names()),
+        },
         group("input types", "input-types", INPUT_TYPES),
         Group {
             name: "cross-reference kinds",
@@ -184,7 +188,13 @@ pub fn scan(src: &str) -> DocFeatures {
         &known("cell-languages"),
         &known("cell-options"),
     );
-    scan_shortcode_uses(src, &mut out, &known("shortcodes"), &known("input-types"));
+    scan_shortcode_uses(
+        src,
+        &mut out,
+        &known("shortcodes"),
+        &known("shortcode-args"),
+        &known("input-types"),
+    );
     scan_xrefs(src, &mut out, &known("xref-kinds"));
     out
 }
@@ -292,6 +302,7 @@ fn scan_shortcode_uses(
     src: &str,
     out: &mut DocFeatures,
     known_names: &BTreeSet<String>,
+    known_args: &BTreeSet<String>,
     known_types: &BTreeSet<String>,
 ) {
     for (name, args) in crate::render::extension::scan_shortcodes(src) {
@@ -299,6 +310,15 @@ fn scan_shortcode_uses(
             continue;
         }
         out.add("shortcodes", &name);
+        for key in args
+            .iter()
+            .filter_map(|a| a.split_once('=').map(|(k, _)| k))
+        {
+            let qualified = format!("{name}.{key}");
+            if known_args.contains(&qualified) {
+                out.add("shortcode-args", qualified);
+            }
+        }
         if name == "input" {
             for t in args
                 .iter()
@@ -450,7 +470,7 @@ Two up.
 print(1)
 ```
 
-{{< video clip.mp4 >}}
+{{< video clip.mp4 poster=still.png >}}
 
 {{< input type=slider name=rate >}}
 
@@ -514,6 +534,7 @@ See @fig-scree.
         assert_eq!(got("cell-languages"), ["python"]);
         assert_eq!(got("cell-options"), ["echo", "label"]);
         assert_eq!(got("shortcodes"), ["input", "video"]);
+        assert_eq!(got("shortcode-args"), ["video.poster"]);
         assert_eq!(got("input-types"), ["slider"]);
         assert_eq!(got("xref-kinds"), ["fig"]);
     }

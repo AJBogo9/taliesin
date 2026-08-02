@@ -1306,6 +1306,27 @@ mod tests {
     fn shortcode_names_and_cell_option_values_are_non_empty_closed_sets() {
         assert!(shortcode_names().iter().any(|(n, _)| *n == "include"));
         assert!(shortcode_names().iter().any(|(n, _)| *n == "video"));
+
+        // This list is a SECOND copy of a set core already owns, and until now nothing
+        // tied the two together: a new built-in would have shipped uncompletable, and a
+        // withdrawn one would have stayed on offer, both silently. Diff it against the
+        // feature catalogue's `shortcodes` group, which reads
+        // `render::extension::SHORTCODE_NAMES` (the dispatch itself).
+        let core: std::collections::BTreeSet<String> = taliesin_core::features::catalogue()
+            .into_iter()
+            .find(|g| g.slug == "shortcodes")
+            .expect("the catalogue has a shortcodes group")
+            .known
+            .into_iter()
+            .collect();
+        let offered: std::collections::BTreeSet<String> = shortcode_names()
+            .iter()
+            .map(|(n, _)| (*n).to_owned())
+            .collect();
+        assert_eq!(
+            offered, core,
+            "the completion list and the shortcodes taliesin dispatches on have drifted"
+        );
         assert!(cell_option_values("echo").iter().any(|(v, _)| *v == "true"));
         assert!(cell_option_values("label").is_empty());
     }

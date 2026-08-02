@@ -75,10 +75,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "prose-lint",
     // Theorem environments (per-document numbering config; see render::TheoremConfig).
     "theorems",
-    // Data provenance: annotations for the files `{{< dataset >}}` cards cite. Only what
-    // a file cannot say about itself (licence, origin, a remote file's size + digest);
-    // an in-tree file needs no entry at all.
-    "datasets",
 ];
 
 /// Keys taliesin RECOGNIZES but does not honor: it reads them, then ignores them.
@@ -110,6 +106,14 @@ pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 /// `(scope, key, what to do instead)`, where `scope` is [`unknown_key_message`]'s `what`
 /// label, so a retired *sub*-key is only recognized in the map it actually lived in.
 pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "front-matter key",
+        "datasets",
+        "it was removed on 2026-08-02 and the annotations now ride the invocation that \
+         uses them: write `{{< dataset data/x.csv licence=CC0-1.0 source=... >}}`. There is \
+         no `path:`/`url:` any more because the shortcode's own argument already names the \
+         file, so this is a move rather than a rename",
+    ),
     (
         "front-matter key",
         "about",
@@ -224,23 +228,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
             }
         }
         _ => {}
-    }
-    // `datasets:` is a sequence of mappings. Same closed-vocabulary treatment as
-    // `listing:`, so a `souce:` typo gets a did-you-mean instead of silently dropping the
-    // one field that says where the data came from.
-    if let Some(serde_yaml::Value::Sequence(seq)) = map.get("datasets") {
-        for item in seq {
-            if let Some(m) = item.as_mapping() {
-                validate_child_keys(
-                    m,
-                    "datasets",
-                    "dataset key",
-                    crate::render::extension::dataset::DATASET_KEYS,
-                    block,
-                    &mut out,
-                );
-            }
-        }
     }
     out
 }
