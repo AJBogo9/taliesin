@@ -190,26 +190,27 @@ ones after it referring to undefined state.
 
 ## Document-level defaults
 
-The front-matter `execute:` block sets document-wide defaults for `echo`,
-`include`, and `cache`. Each defaults to `true`, and a per-cell `#|` option always
-wins:
+The front-matter `execute:` block sets one document-wide default, `cache:`. It defaults
+to `true`, and a per-cell `#| cache:` always wins:
 
 ```yaml
 ---
 title: "Report"
 execute:
-  echo: false      # hide all source by default
-  cache: true      # (the default; shown for completeness)
+  cache: false     # re-run every cell; do not read or write _freeze/
 ---
 ```
 
-With `execute: echo: false` set, every cell hides its source unless a cell opts
-back in with its own `#| echo: true`. The override is per-key: a cell that sets
-`#| echo: true` still inherits the document's `include` and `cache` defaults. Only
-`echo`, `include`, and `cache` live under `execute:`; the `eval` / `output` /
-`warning` keys some other tools put there are not honoured. See the
-[Configuration reference](configuration.tmd) for where `execute:` sits in front
-matter.
+`cache:` is the only sub-key, and that is deliberate. `echo:` and `include:` used to live
+here as document-wide defaults and were removed on 2026-08-02: every real document says
+those per cell (`#| echo: false`), and a whole-file default that silently suppresses every
+listing is harder to read than three cells that say what they mean. Caching is different
+in kind: it is a property of the document's relationship to `_freeze/`, not of how any one
+cell reads.
+
+The `eval` / `output` / `warning` keys some other tools put under `execute:` are not
+honoured either. See the [Configuration reference](configuration.tmd) for where `execute:`
+sits in front matter.
 
 ## `{js}` reactive options
 

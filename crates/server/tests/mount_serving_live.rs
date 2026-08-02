@@ -182,8 +182,7 @@ fn fixture(tag: &str) -> PathBuf {
 
     fs::write(
         root.join("_site.yml"),
-        "title: RootSite\nmounts:\n  - at: manual\n    path: ../manual\n  \
-         - at: manual/deep\n    path: ../deep\n",
+        "title: RootSite\nmounts:\n  manual: ../manual\n  manual/deep: ../deep\n",
     )
     .unwrap();
     // Every needle below is a coined word. A bare word like \"Home\" would be found in the

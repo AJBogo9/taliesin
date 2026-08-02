@@ -527,16 +527,13 @@ impl Site {
             }
         }
 
-        // Resolve the site-wide head/body/css includes once, relative to the site
-        // root (where `_site.yml` and its referenced css/js files live).
+        // Resolve the site-wide `head:` include once, relative to the site root (where
+        // `_site.yml` and any file it references live).
         let includes = render::includes_from_parts(
             config.head.as_ref(),
-            config.body_start.as_ref(),
-            config.body_end.as_ref(),
-            config.css.as_ref(),
             Some(root),
             // The site root is the explicit containment boundary (equivalent to the
-            // `_site.yml`-marker walk, but not dependent on it): head/css includes stay
+            // `_site.yml`-marker walk, but not dependent on it): a head include stays
             // inside the project.
             Some(root),
         );
@@ -637,13 +634,13 @@ impl Site {
         self.book.is_some()
     }
 
-    /// The output directory `build` writes to (default `_site`, or `_book` for a
-    /// book).
+    /// The output directory `build` writes to: `_site`, or `_book` for a book.
+    ///
+    /// Not configurable. The `output:` key was retired on 2026-08-02 because both configs
+    /// that set it wrote the value this returns anyway; `build --out <dir>` is the way to
+    /// put the build somewhere else, and it does not need the config's permission.
     pub fn output_dir(&self) -> &str {
-        self.config
-            .output_dir
-            .as_deref()
-            .unwrap_or(if self.is_book() { "_book" } else { "_site" })
+        if self.is_book() { "_book" } else { "_site" }
     }
 
     /// The filename of the offline download archive a book build emits at its output root
@@ -1256,13 +1253,19 @@ impl Site {
         render::render_doc_to_page_external(&self.not_found_doc(), "Page not found", assets)
     }
 
-    /// Whether a page shows a table of contents: its own front-matter `toc:` wins
-    /// (an explicit `toc: false` suppresses it even when the site enables TOCs, and an
-    /// explicit `toc: true` forces it on regardless of length); otherwise the site-wide
-    /// `toc:` applies, but only to article pages with enough headings to warrant it — the
-    /// page's rendered `blocks` are counted by `render::toc_entry_count`, and a page below
-    /// [`MIN_TOC_HEADINGS`] (or a listing / hero page) reads as a single column
-    /// instead of getting a near-empty TOC. Used by both the static build and live preview.
+    /// Whether a page shows a table of contents: its own front-matter `toc:` wins (an
+    /// explicit `toc: false` suppresses it, an explicit `toc: true` forces it on regardless
+    /// of length); otherwise it is **automatic**, and an article page earns one by being
+    /// long enough — the page's rendered `blocks` are counted by `render::toc_entry_count`,
+    /// and a page below [`MIN_TOC_HEADINGS`] (or a listing / hero page) reads as a single
+    /// column instead of getting a near-empty TOC. Used by the static build and preview alike.
+    ///
+    /// **There is no site-wide `toc:` any more** (retired 2026-08-02). It was a switch in
+    /// front of a gate that already answers the same question per page, and it answered it
+    /// worse: it could only turn TOCs off for pages that warranted one, or on for a whole
+    /// project regardless. The page-level key stays because a page really can know better
+    /// than a heading count — a long reference table wants no rail, a short landing essay
+    /// might want one.
     ///
     /// **A book never shows one** (item 76, owner ruling 2026-07-27, reversing the
     /// 2026-07-06 "keep both nav surfaces" decision). A book already has an in-chapter
@@ -1277,11 +1280,9 @@ impl Site {
             return false;
         }
         doc_toc.unwrap_or_else(|| {
-            self.config.toc.unwrap_or(false)
-                && page.listings.is_empty()
+            page.listings.is_empty()
                 && page.hero.is_none()
-                // Auto-gate (NN/g: show a TOC only on long, chunkable pages): a site-wide
-                // `toc: true` lands the sidebar TOC only when the page has enough sections.
+                // The gate (NN/g: show a TOC only on long, chunkable pages).
                 && render::toc_entry_count(blocks) >= MIN_TOC_HEADINGS
         })
     }

@@ -1,9 +1,21 @@
+---
+theorems:
+  shared: [theorem, lemma]
+---
+
 # Alpha
 
-This chapter carries no `theorems:` block of its own, so it inherits the book-wide
-policy (`numbered: false`) set in `_site.yml`.
+This chapter declares its own `theorems:` block. There is no book-wide `theorems:` key
+to inherit from (it was retired on 2026-08-02), so a chapter's counter policy is
+entirely its own — and must not leak to a sibling chapter.
+
+`shared:` puts theorem and lemma on ONE counter, and a book chapter scopes the number,
+so these read "Theorem 1.1" and "Lemma 1.2".
 
 ::: {.theorem #thm-alpha title="Alpha"}
-A statement that inherits the book-wide unnumbered policy, so it renders as a bare
-"Theorem" with no number.
+The first claim of the shared sequence.
+:::
+
+::: {.lemma #lem-alpha title="Alpha helper"}
+The second, continuing the same counter rather than starting a new one.
 :::

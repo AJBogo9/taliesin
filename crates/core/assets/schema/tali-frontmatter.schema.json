@@ -9,7 +9,6 @@
     "bibliography": {},
     "categories": {},
     "csl": {},
-    "css": {},
     "date": {},
     "description": {},
     "doi": {},
@@ -18,12 +17,6 @@
       "additionalProperties": false,
       "properties": {
         "cache": {
-          "type": "boolean"
-        },
-        "echo": {
-          "type": "boolean"
-        },
-        "include": {
           "type": "boolean"
         }
       },
@@ -34,20 +27,28 @@
     "hero": {
       "additionalProperties": false,
       "properties": {
-        "actions": {},
+        "actions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "href": {},
+              "primary": {
+                "type": "boolean"
+              },
+              "text": {}
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
         "eyebrow": {},
         "headline": {},
-        "image": {},
-        "image-alt": {},
         "lead": {}
       },
       "type": "object"
     },
     "image": {},
     "image-alt": {},
-    "include-after-body": {},
-    "include-before-body": {},
-    "include-in-header": {},
     "lang": {},
     "links": {},
     "listing": {
@@ -63,7 +64,6 @@
             "max-items": {
               "type": "integer"
             },
-            "sort": {},
             "type": {}
           },
           "type": "object"
@@ -80,7 +80,6 @@
               "max-items": {
                 "type": "integer"
               },
-              "sort": {},
               "type": {}
             },
             "type": "object"
@@ -91,43 +90,11 @@
     },
     "logo": {},
     "page-layout": {},
-    "prose-lint": {
-      "oneOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "banned": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        }
-      ]
-    },
     "subtitle": {},
     "theme": {},
     "theorems": {
       "additionalProperties": false,
       "properties": {
-        "numbered": {
-          "oneOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "enum": [
-                "unless-unique"
-              ],
-              "type": "string"
-            }
-          ]
-        },
         "shared": {
           "items": {
             "type": "string"

@@ -4117,14 +4117,22 @@ mod tests {
 
         let items = complete_at(&client, &uri, 21, 2, 2);
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-        let echo = items
+        // `cache` is the only `execute:` child since `echo`/`include` were retired
+        // (2026-08-02), so it is what an indented completion under `execute:` must offer.
+        let cache = items
             .iter()
-            .find(|i| i.label == "echo")
+            .find(|i| i.label == "cache")
             .unwrap_or_else(|| panic!("expected an `execute:` child key, got {labels:?}"));
+        assert!(
+            !items
+                .iter()
+                .any(|i| i.label == "echo" || i.label == "include"),
+            "a retired sub-key must never be OFFERED: {labels:?}"
+        );
         // Every item carries its kind, which is what the editor draws an icon from and
         // sorts by; without one the list degrades to undifferentiated text.
         assert_eq!(
-            echo.kind,
+            cache.kind,
             Some(lsp_types::CompletionItemKind::PROPERTY),
             "a front-matter key completes as a property"
         );
@@ -4264,32 +4272,39 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
-    // An id'd but unnumbered target (`theorems: numbered: false`) registers with an EMPTY
-    // number. It must fall back to the generic detail rather than render its label with the
-    // number missing — "Theorem " with a trailing space is what the guard exists to prevent.
+    // A target the render has no number for falls back to the generic detail rather than
+    // rendering its label with the number missing — "Theorem " with a trailing space is what
+    // the guard in `merged_xref_targets` exists to prevent.
+    //
+    // The case this used to drive was `theorems: numbered: false`, retired 2026-08-02. The
+    // live route is now the buffer-anchor half of the union: `harvest_anchor_ids` offers an
+    // anchor as soon as it is typed, before anything numbers it — which is also what an
+    // author sees mid-edit. (The render's own empty-number arm is defensive rather than
+    // document-reachable now: something that is not numbered, such as a `.proof`, registers
+    // no xref entry at all rather than an empty one. The arm is kept as such.)
     #[test]
-    fn completion_detail_stays_generic_for_an_unnumbered_target() {
+    fn completion_detail_stays_generic_for_a_target_with_no_number() {
         let (server, client) = Connection::memory();
         let thread = std::thread::spawn(move || run(server));
         handshake(&client);
 
         let uri = Url::parse("file:///tmp/tali-lsp-comp-unnumbered.tmd").unwrap();
-        let text = "---\ntheorems:\n  numbered: false\n---\n\n::: {.theorem #thm-key}\n\
-                    A claim that carries no number.\n:::\n\nSee @\n"
-            .to_string();
+        // `#thm-key` on a span: a real xref prefix, harvested from the buffer, but attached
+        // to nothing the render numbers.
+        let text = "---\ntitle: T\n---\n\n[anchored]{#thm-key}\n\nSee @\n".to_string();
         did_open(&client, &uri, text);
         let _ = recv_publish(&client);
 
-        // Cursor right after the `@` on line 9.
-        let items = complete_at(&client, &uri, 49, 9, 5);
+        // Cursor right after the `@` on line 6.
+        let items = complete_at(&client, &uri, 49, 6, 5);
         let hit = items
             .iter()
             .find(|i| i.label == "thm-key")
-            .expect("the unnumbered theorem's anchor should still be offered");
+            .expect("the unnumbered target's anchor should still be offered");
         assert_eq!(
             hit.detail.as_deref(),
             Some("cross-reference target"),
-            "an unnumbered target has no number to show, so it must not claim a label"
+            "a target with no number must not claim a label"
         );
 
         shutdown(&client);

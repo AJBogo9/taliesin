@@ -149,12 +149,11 @@ listings, equations, and theorems all scope together, so a chapter can never sho
 opt out: being in a numbered chapter is a fact the renderer already knows, not a
 preference. If you are carrying over a `theorems: number-within: chapter` from Quarto,
 delete it; the key does not exist, and `check` will flag it as an unknown `theorems`
-key rather than ignoring it.
+key rather than ignoring it. The same goes for a `numbered:` from an earlier Taliesin.
 
 ## The `theorems:` block
 
-Two front-matter keys tune numbering per document. Both are optional and the defaults
-are what most documents want.
+One optional front-matter key, `shared:`. The default is what most documents want.
 
 ### `shared:` (one counter across kinds)
 
@@ -178,32 +177,17 @@ Note that the kind names inside `shared:` are not spell-checked, so a typo does 
 warn: the misspelled entry simply never joins the group and that kind keeps its own
 counter. If a shared sequence is not merging, check the spelling in the list.
 
-### `numbered:` (whether to number at all)
+### There is no `numbered:` key
 
-| Value | Effect |
-|---|---|
-| `true` | Number everything. The default; you never need to write it |
-| `false` | Number nothing. Every environment shows a bare label |
-| `unless-unique` | Number a kind only when it occurs more than once |
+An environment is numbered. `numbered:` (`true` / `false` / `unless-unique`) was removed
+on 2026-08-02: it had no users, and the interesting mode it offered — `unless-unique`,
+which left a lone Definition unnumbered — quietly cost more than it gave, because an
+unnumbered environment is not a reference target and so `@def-x` had nothing to resolve
+to. A stale `numbered:` is now flagged as an unknown `theorems` key rather than silently
+doing nothing; delete it.
 
-`unless-unique` is the interesting one. A post with a single definition in it reads
-better as "Definition" than "Definition 1", since there is no second one to
-distinguish it from, but the moment a second appears the numbers are needed again.
-Rather than making you notice and switch, the mode counts occurrences per counter and
-decides per kind:
-
-```yaml
----
-theorems:
-  numbered: unless-unique
----
-```
-
-An unnumbered environment is not registered as a reference target, which follows: there
-is no number for `@def-x` to resolve to. `numbered:` accepts only those three values,
-and anything else warns with a suggestion rather than passing a green check, because a
-plausible-looking `numbered: never` would otherwise silently render the exact opposite
-of its intent.
+If you want a claim to read without a number, use a plain callout or a `::: {.proof}`
+block, both of which are unnumbered by design.
 
 ## Reading affordances
 

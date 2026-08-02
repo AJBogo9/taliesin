@@ -40,13 +40,14 @@ fn native_flat_config_parses_nav_footer_and_icon() {
     );
 }
 
-/// A site's `head:`, `body-start:` and `body-end:` (from `_site.yml`) are each injected into
-/// every page: head inside <head>, body-start ahead of the content, body-end after it. The
-/// tech-blog dropped its own head:/body-*: (Quarto nav-prefetch residue), so this synthetic
-/// site is the injection mechanism's net. `body-start:` had no test of its own, and the
-/// ordering asserts distinguish the before/after slots so a swap can't pass on presence alone.
+/// `_site.yml`'s `head:` is injected into every page's `<head>`. It is the ONE
+/// raw-injection hatch left after 2026-08-02, so this is the whole mechanism's net.
+///
+/// The companion assert is that the retired siblings are **inert and diagnosed**:
+/// `body-start:`/`body-end:` used to fill the two body slots, and an author who leaves one
+/// in place must not be left believing their markup still ships.
 #[test]
-fn site_head_body_start_and_body_end_are_injected() {
+fn site_head_is_injected_and_the_retired_body_slots_are_not() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
@@ -64,20 +65,23 @@ fn site_head_body_start_and_body_end_are_injected() {
         head.contains("probe-head"),
         "head: must be injected inside <head>"
     );
+    for probe in ["probe-body-start", "probe-body-end"] {
+        assert!(
+            !html.contains(probe),
+            "a retired body slot must inject nothing, found {probe}"
+        );
+    }
 
-    // body-start lands ahead of the content, body-end after it — assert the ordering, not just
-    // presence, so swapping the before_body/after_body include slots fails the test.
-    let start = html.find("probe-body-start").expect("body-start present");
-    let content = html.find("Content Anchor").expect("content present");
-    let end = html.find("probe-body-end").expect("body-end present");
-    assert!(
-        start < content,
-        "body-start: must be injected ahead of the page content"
-    );
-    assert!(
-        content < end,
-        "body-end: must be injected after the page content"
-    );
+    // And it must say so, rather than dropping the markup in silence.
+    for key in ["body-start", "body-end"] {
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| w.contains(&format!("`{key}`")) && w.contains("removed on 2026-08-02")),
+            "no retirement diagnostic for `{key}`: {:?}",
+            site.warnings
+        );
+    }
 }
 
 #[test]

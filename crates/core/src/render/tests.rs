@@ -1332,20 +1332,29 @@ fn execute_block_sets_document_cell_defaults() {
 }
 
 #[test]
-fn execute_flow_mapping_sets_document_cell_defaults() {
-    // The inline YAML flow form `execute: {echo: false}` must behave like the
-    // block form (`execute:\n  echo: false`).
-    let doc = render_document("---\nexecute: {echo: false}\n---\n\n```{python}\nprint(1)\n```\n");
-    let cell = doc
-        .blocks
-        .iter()
-        .find(|b| b.cell.is_some())
-        .expect("a code cell");
-    // echo:false renders the cell as the hidden marker (no source listing).
+fn execute_flow_mapping_sets_the_document_cache_default() {
+    // The inline YAML flow form `execute: {cache: false}` must behave like the block form
+    // (`execute:\n  cache: false`). `cache:` is the only sub-key left.
+    for src in [
+        "---\nexecute: {cache: false}\n---\n\n```{python}\nprint(1)\n```\n",
+        "---\nexecute:\n  cache: false\n---\n\n```{python}\nprint(1)\n```\n",
+    ] {
+        let doc = render_document(src);
+        let cell = doc
+            .blocks
+            .iter()
+            .find_map(|b| b.cell.as_ref())
+            .expect("a code cell");
+        assert!(!cell.cache, "cache: false must reach the cell, for:\n{src}");
+    }
+    // Absent -> cached.
+    let doc = render_document("---\ntitle: T\n---\n\n```{python}\nprint(1)\n```\n");
     assert!(
-        cell.html.contains("tali-cell-hidden"),
-        "execute: {{echo: false}} (flow form) should hide the cell source: {}",
-        cell.html
+        doc.blocks
+            .iter()
+            .find_map(|b| b.cell.as_ref())
+            .expect("a code cell")
+            .cache
     );
 }
 
@@ -1685,7 +1694,7 @@ fn front_matter_without_title_yields_no_blocks() {
 }
 
 #[test]
-fn reveal_deck_injects_includes_and_theme() {
+fn a_deck_ignores_the_retired_include_keys_like_every_other_format() {
     let src = "---\n\
             format: deck\n\
             include-in-header:\n  text: |\n    <meta name=\"deck\" content=\"1\">\n\
@@ -1694,17 +1703,14 @@ fn reveal_deck_injects_includes_and_theme() {
     let page = render_html_page(src, "deck");
     assert!(
         page.contains("<div class=\"tali-deck\">"),
-        "should render as a deck"
+        "should still render as a deck"
     );
-    let head = &page[..page.find("</head>").expect("has </head>")];
-    assert!(
-        head.contains("<meta name=\"deck\" content=\"1\">"),
-        "include-in-header not injected into the deck <head>"
-    );
-    assert!(
-        page.contains("<script>window.__deck=1</script>"),
-        "include-after-body not injected into the deck"
-    );
+    for needle in ["<meta name=\"deck\" content=\"1\">", "window.__deck=1"] {
+        assert!(
+            !page.contains(needle),
+            "the deck must not resurrect a retired include key: {needle:?}"
+        );
+    }
 }
 
 #[test]
@@ -1773,30 +1779,56 @@ fn front_matter_lang_sets_html_lang_attr() {
 }
 
 #[test]
-fn front_matter_include_text_injected_at_head_and_body() {
+/// The per-document raw-injection family was retired on 2026-08-02. A leftover key must be
+/// INERT (nothing reaches the page) and DIAGNOSED — the dangerous outcome for an injection
+/// key is the quiet one, where an author believes their analytics snippet is still shipping.
+fn retired_front_matter_include_keys_inject_nothing_and_say_so() {
     let src = "---\n\
             title: T\n\
+            css:\n  text: |\n    body { color: red }\n\
             include-in-header:\n  text: |\n    <meta name=\"x\" content=\"y\">\n\
             include-before-body:\n  text: |\n    <div id=\"top-banner\"></div>\n\
             include-after-body:\n  text: |\n    <script>window.__after=1</script>\n\
             ---\n\nBody.\n";
     let page = render_html_page(src, "fallback");
-    let head = &page[..page.find("</head>").expect("has </head>")];
-    assert!(
-        head.contains("<meta name=\"x\" content=\"y\">"),
-        "include-in-header not injected into <head>"
-    );
-    // before-body lands ahead of the rendered body paragraph.
-    let banner = page.find("top-banner").expect("before-body injected");
-    let body_para = page.find("Body.").expect("body present");
-    assert!(
-        banner < body_para,
-        "include-before-body must precede the body"
-    );
-    assert!(
-        page.contains("<script>window.__after=1</script>"),
-        "include-after-body not injected"
-    );
+    for needle in [
+        "<meta name=\"x\" content=\"y\">",
+        "top-banner",
+        "window.__after=1",
+        "body { color: red }",
+    ] {
+        assert!(
+            !page.contains(needle),
+            "a retired include key must inject nothing, found {needle:?}"
+        );
+    }
+    let doc = render_document(src);
+    for key in [
+        "css",
+        "include-in-header",
+        "include-before-body",
+        "include-after-body",
+    ] {
+        let msg = doc
+            .warnings
+            .iter()
+            .map(|w| &w.message)
+            .find(|m| m.contains(&format!("`{key}`")))
+            .unwrap_or_else(|| {
+                panic!(
+                    "silently inert `{key}:` — no diagnostic in {:?}",
+                    doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            msg.contains("removed on 2026-08-02"),
+            "`{key}` must say when it went: {msg}"
+        );
+        assert!(
+            msg.contains("head:"),
+            "`{key}` must point at the surviving hatch: {msg}"
+        );
+    }
 }
 
 #[test]
@@ -3165,15 +3197,20 @@ fn yaml_11_boolean_words_coerce_on_cell_and_execute_flags() {
     assert!(cell_flag_or("1 + 1", "echo", true));
     assert!(!cell_flag_or("1 + 1", "echo", false));
 
-    // Document-level `execute:` defaults, both flow and block form.
-    assert_eq!(
-        detect_execute_defaults("execute: {echo: no, cache: off}\n"),
-        (false, true, false)
-    );
-    assert_eq!(
-        detect_execute_defaults("execute:\n  echo: off\n  include: no\n"),
-        (false, false, true)
-    );
+    // The document-level `execute: cache:` default, both flow and block form.
+    assert!(!detect_execute_cache("execute: {cache: off}\n"));
+    assert!(!detect_execute_cache("execute:\n  cache: no\n"));
+    assert!(detect_execute_cache("execute:\n  cache: true\n"));
+    // Absent -> on.
+    assert!(detect_execute_cache("title: X\n"));
+    // A leftover `echo:`/`include:` (retired 2026-08-02) must not reach `cache`. They warn
+    // as unknown `execute` sub-keys; here the point is that they change nothing.
+    assert!(detect_execute_cache(
+        "execute:\n  echo: off\n  include: no\n"
+    ));
+    assert!(!detect_execute_cache(
+        "execute:\n  echo: off\n  cache: off\n"
+    ));
 }
 
 #[test]
@@ -4115,32 +4152,40 @@ fn scrolly_without_name_omits_hidden_input() {
 }
 
 #[test]
-fn prose_lint_emits_located_warnings_when_opted_in() {
+/// The opt-in prose linter was retired on 2026-08-02. A leftover `prose-lint:` must produce
+/// the retired-key diagnostic and NO lint warnings — the failure to avoid is a document
+/// that still looks linted because the key parsed.
+fn prose_lint_is_retired_and_lints_nothing() {
     let doc = render_document("---\ntitle: T\nprose-lint: true\n---\n\nThis is very very good.\n");
-    // "very very" -> a doubled word AND two weasel-word hits, all on line 6.
-    let msgs: Vec<_> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
     assert!(
-        msgs.contains(&"repeated word `very`"),
-        "expected doubled-word warning, got: {msgs:?}"
+        !doc.warnings.iter().any(|w| {
+            w.message.starts_with("weasel word ")
+                || w.message.starts_with("repeated word ")
+                || w.message.starts_with("banned term ")
+        }),
+        "no lint rule may still fire: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
     assert!(
         doc.warnings
             .iter()
-            .any(|w| w.message.contains("weasel word `very`") && w.line == Some(6)),
-        "weasel warning should be located on line 6, got: {:?}",
-        doc.warnings
+            .any(|w| w.message.contains("`prose-lint`")
+                && w.message.contains("removed on 2026-08-02")),
+        "the retired key must say so: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
 }
 
+/// Reading time still works: `prose::word_count` is the surviving half of `prose.rs` and it
+/// has many consumers (the title block here, the book chapter-cost signal, the LSP outline,
+/// `map`). Removing the linter must not have taken the selection walk with it.
 #[test]
-fn prose_lint_is_silent_when_not_opted_in() {
-    let doc = render_document("# T\n\nThis is very very good.\n");
+fn reading_time_still_counts_prose() {
+    let doc = render_document("---\ntitle: T\ndate: 2026-01-01\n---\n\nOne two three four five.\n");
     assert!(
-        !doc.warnings
-            .iter()
-            .any(|w| w.message.contains("weasel") || w.message.contains("repeated word")),
-        "prose-lint must be off without opt-in, got: {:?}",
-        doc.warnings
+        doc.body_html().contains("min read"),
+        "a dated post still gets its reading-time estimate:\n{}",
+        doc.body_html()
     );
 }
 
@@ -5198,12 +5243,11 @@ fn theorems_scope_to_the_book_chapter_without_any_config() {
 
 /// A `shared:` group inside a numbered chapter: the two features compose, so the group
 /// draws ONE chapter-scoped sequence (Theorem 2.1, Lemma 2.2) rather than restarting per
-/// kind or dropping the chapter. `numbered: unless-unique` still suppresses a lone kind's
-/// number, since that decision is made before the number is built.
+/// kind or dropping the chapter. An unlisted kind keeps its own counter, also chapter-scoped.
 #[test]
 fn a_shared_group_draws_one_chapter_scoped_sequence() {
     let doc = render_document_with_includes_scoped(
-        "---\ntheorems:\n  shared: [theorem, lemma]\n  numbered: unless-unique\n---\n\n::: {.theorem}\nA.\n:::\n\n::: {.lemma}\nB.\n:::\n\n::: {.definition}\nOnly one.\n:::\n",
+        "---\ntheorems:\n  shared: [theorem, lemma]\n---\n\n::: {.theorem}\nA.\n:::\n\n::: {.lemma}\nB.\n:::\n\n::: {.definition}\nOnly one.\n:::\n",
         std::path::Path::new("."),
         Some(2),
     );
@@ -5222,9 +5266,9 @@ fn a_shared_group_draws_one_chapter_scoped_sequence() {
     );
     assert!(
         body.contains(
-            "<span class=\"tali-theorem-label\">Definition<span class=\"tali-theorem-number\"></span></span>"
+            "<span class=\"tali-theorem-label\">Definition<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"
         ),
-        "a lone kind stays unnumbered under unless-unique, chapter or not: {body}"
+        "an unlisted kind runs its own counter, scoped to the same chapter: {body}"
     );
 }
 
@@ -5249,58 +5293,14 @@ fn theorems_stay_flat_without_a_chapter() {
 }
 
 #[test]
-fn numbered_false_suppresses_the_number() {
-    let doc = render_document(
-        "---\ntheorems:\n  numbered: false\n---\n\n::: {.theorem}\nA.\n:::\n\n::: {.theorem}\nB.\n:::\n",
-    );
+fn a_theorem_ref_resolves_to_its_number() {
+    // Every theorem is numbered since `numbered:` was retired (2026-08-02), so a same-page
+    // `@thm-` ref always resolves to a numbered label, never to a broken-ref marker.
+    let doc = render_document("::: {.theorem #thm-x}\nA.\n:::\n\nSee @thm-x.\n");
     let body = doc.body_html();
     assert!(
-        body.contains(
-            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\"></span></span>"
-        ),
-        "numbered: false leaves the number slot empty: {body}"
-    );
-    assert!(
-        !body.contains("tali-theorem-number\">&nbsp;"),
-        "no number is emitted anywhere: {body}"
-    );
-}
-
-#[test]
-fn numbered_unless_unique_numbers_only_repeated_kinds() {
-    let doc = render_document(
-        "---\ntheorems:\n  numbered: unless-unique\n---\n\n::: {.definition}\nLone.\n:::\n\n::: {.theorem}\nT1.\n:::\n\n::: {.theorem}\nT2.\n:::\n",
-    );
-    let body = doc.body_html();
-    // definition appears once -> unnumbered
-    assert!(
-        body.contains(
-            "<span class=\"tali-theorem-label\">Definition<span class=\"tali-theorem-number\"></span></span>"
-        ),
-        "a lone kind is unnumbered: {body}"
-    );
-    // theorem appears twice -> numbered 1, 2
-    assert!(
-        body.contains(
-            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
-        ) && body.contains(
-            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2</span></span>"
-        ),
-        "a repeated kind is numbered: {body}"
-    );
-}
-
-#[test]
-fn unnumbered_theorem_ref_resolves_to_bare_label_not_broken() {
-    // An id'd but unnumbered theorem (numbered: false) is still a valid same-page ref
-    // target: the ref resolves to a bare label and is NOT left as a broken marker.
-    let doc = render_document(
-        "---\ntheorems:\n  numbered: false\n---\n\n::: {.theorem #thm-x}\nA.\n:::\n\nSee @thm-x.\n",
-    );
-    let body = doc.body_html();
-    assert!(
-        body.contains("<a href=\"#thm-x\" class=\"tali-xref\">Theorem</a>"),
-        "unnumbered theorem ref resolves to a bare label: {body}"
+        body.contains("<a href=\"#thm-x\" class=\"tali-xref\">Theorem&nbsp;1</a>"),
+        "the ref resolves to the theorem's number: {body}"
     );
     assert!(
         !body.contains("data-tali-xref=\"thm-x\""),
@@ -6874,35 +6874,71 @@ fn has_mermaid_detects_the_diagram_marker() {
     assert!(!has_mermaid("<p>no diagrams here</p>"));
 }
 
+/// A theorem is numbered, full stop. The `numbered:` opt-outs (`false`, `unless-unique`)
+/// and the book-wide `_site.yml theorems:` policy that could set them were retired on
+/// 2026-08-02, so no project state and no leftover key can produce an unnumbered theorem.
 #[test]
-fn book_theorem_config_is_a_fallback_for_a_page_with_none_of_its_own() {
-    // A theorem block with no front-matter `theorems:` of its own.
+fn a_theorem_is_always_numbered_whatever_the_document_says() {
     let src = "::: {.theorem title=\"T\"}\nbody\n:::\n";
-    let book = parse_theorem_config("theorems:\n  numbered: false\n");
-    assert_eq!(
-        book.numbered(),
-        Numbered::No,
-        "book config parsed as expected"
-    );
     let base = std::path::Path::new(".");
-    // With the book fallback (numbered: false) the number span stays empty.
-    let defaults = SiteDefaults {
-        theorems: Some(book.clone()),
-        ..Default::default()
-    };
-    let doc = render_document_scoped_with_site(src, base, None, Some(&defaults));
-    let html = doc.body_html();
-    assert!(
-        html.contains(r#"tali-theorem-number"></span>"#),
-        "book policy (numbered:false) applied to a page without its own:\n{html}"
-    );
-    // Without the book fallback the default numbers it.
+    let numbered = r#"tali-theorem-number">&nbsp;1</span>"#;
+
+    // No front matter at all.
     let plain = render_document_scoped_with_site(src, base, None, None);
     assert!(
-        plain
-            .body_html()
-            .contains(r#"tali-theorem-number">&nbsp;1</span>"#),
-        "default policy numbers the theorem"
+        plain.body_html().contains(numbered),
+        "a bare theorem is numbered:\n{}",
+        plain.body_html()
+    );
+
+    // A project passing its defaults through carries no numbering policy to apply.
+    let defaults = SiteDefaults::default();
+    let with_site = render_document_scoped_with_site(src, base, None, Some(&defaults));
+    assert!(
+        with_site.body_html().contains(numbered),
+        "a page rendered inside a project is numbered the same:\n{}",
+        with_site.body_html()
+    );
+
+    // A leftover `numbered: false` is an unknown sub-key, not a working opt-out.
+    let stale = format!("---\ntheorems:\n  numbered: false\n---\n\n{src}");
+    let doc = render_document_scoped_with_site(&stale, base, None, None);
+    assert!(
+        doc.body_html().contains(numbered),
+        "a retired `numbered: false` must not still suppress the number:\n{}",
+        doc.body_html()
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("theorems key `numbered`")),
+        "and it must say so: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+}
+
+/// `shared:` is what survives the block: several kinds drawing one counter, declared by the
+/// chapter that wants it (`corpus/course/mle.tmd`, `corpus/refs/theorems-shared.tmd`).
+#[test]
+fn shared_counters_still_draw_one_sequence() {
+    let src = "---\ntheorems:\n  shared: [theorem, lemma]\n---\n\n\
+               ::: {.theorem}\na\n:::\n\n::: {.lemma}\nb\n:::\n\n::: {.definition}\nc\n:::\n";
+    let doc = render_document_scoped_with_site(src, std::path::Path::new("."), None, None);
+    let html = doc.body_html();
+    // Theorem 1, then Lemma 2 off the same counter; `definition` counts on its own from 1.
+    assert!(
+        html.contains(r#"tali-theorem-number">&nbsp;1</span>"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"tali-theorem-number">&nbsp;2</span>"#),
+        "{html}"
+    );
+    assert_eq!(
+        html.matches(r#"tali-theorem-number">&nbsp;1</span>"#)
+            .count(),
+        2,
+        "the unlisted `definition` starts its own sequence at 1:\n{html}"
     );
 }
 

@@ -74,7 +74,7 @@ fn docs_of(v: &serde_json::Value, slug: &str, name: &str) -> Vec<String> {
 const USES: &str = r#"---
 title: Uses
 theorems:
-  numbered: false
+  shared: [theorem, lemma]
 ---
 
 ::: {.scrolly}
@@ -139,7 +139,7 @@ fn a_bare_directory_reports_who_uses_what() {
     assert_eq!(docs_of(&v, "xref-kinds", "fig"), ["uses.tmd"]);
     assert!(docs_of(&v, "xref-kinds", "thm").is_empty());
     assert_eq!(
-        docs_of(&v, "frontmatter-subkeys", "theorems.numbered"),
+        docs_of(&v, "frontmatter-subkeys", "theorems.shared"),
         ["uses.tmd"]
     );
     assert!(docs_of(&v, "frontmatter-subkeys", "hero.headline").is_empty());
@@ -177,10 +177,14 @@ fn an_unused_feature_is_a_row_not_an_omission() {
     _ = std::fs::remove_dir_all(&d);
 }
 
-/// The four keys backlog item 207 filed as documented-but-unpinned. This is the report
-/// checking the corpus-plus-roadmap policy against the real corpus, which is the whole
-/// point of building it, and it doubles as a positive control on a real tree rather than a
-/// synthetic one.
+/// The keys still filed as documented-but-unpinned. This is the report checking the
+/// corpus-plus-roadmap policy against the real corpus, which is the whole point of building
+/// it, and it doubles as a positive control on a real tree rather than a synthetic one.
+///
+/// Item 207 originally listed four. Three of them — `include-in-header`,
+/// `include-before-body`, `include-after-body` — were resolved on 2026-08-02 by *removal*
+/// rather than by writing a pin, which is the other way a documented-but-unpinned key can
+/// be discharged. `logo:` remains, joined by the two recognized-but-unpinned metadata keys.
 #[test]
 fn the_real_corpus_shows_the_documented_but_unpinned_keys() {
     let corpus = format!("{}/../../corpus", env!("CARGO_MANIFEST_DIR"));
@@ -189,12 +193,7 @@ fn the_real_corpus_shows_the_documented_but_unpinned_keys() {
         v["documents"].as_u64().unwrap() > 100,
         "the corpus walk must find the whole corpus, not one directory"
     );
-    for unpinned in [
-        "include-in-header",
-        "include-before-body",
-        "include-after-body",
-        "logo",
-    ] {
+    for unpinned in ["logo", "csl", "acknowledgements"] {
         assert!(
             docs_of(&v, "frontmatter-keys", unpinned).is_empty(),
             "`{unpinned}` is documented in the guide and pinned by no corpus document \

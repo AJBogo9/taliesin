@@ -3,7 +3,6 @@ title: "Blog"
 title-block-style: none
 listing:
   contents: posts
-  sort: "date desc"
   type: list
   categories: true
 ---

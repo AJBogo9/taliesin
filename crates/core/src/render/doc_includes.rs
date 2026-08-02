@@ -1,126 +1,73 @@
-//! Document-level front-matter include + CSS resolution.
+//! Resolution for `_site.yml`'s `head:` — the one raw-injection hatch.
 //!
-//! Resolves the `include-in-header` / `include-before-body` / `include-after-body` /
-//! `css` front-matter keys into ready-to-inject markup, reading referenced files
-//! relative to `base_dir` behind the path-traversal guard. A missing file degrades to
-//! an HTML comment (warn, don't reject); nothing here touches the orchestrator's shared
-//! state. Distinct from crate-level `includes.rs` (the `{{< include >}}` resolver) and
+//! Turns the configured value (a path, `{text:}`/`{file:}`, or a list of those) into
+//! ready-to-inject `<head>` markup, reading referenced files relative to `base_dir` behind
+//! the path-traversal guard. A missing file degrades to an HTML comment (warn, don't
+//! reject); nothing here touches the orchestrator's shared state.
+//!
+//! This module used to resolve a family of seven: the per-document `include-in-header` /
+//! `include-before-body` / `include-after-body` / `css` front-matter keys and `_site.yml`'s
+//! `css:` / `body-start:` / `body-end:`. All seven were retired on 2026-08-02 at measured
+//! zero adoption across 218 documents and 17 configs — one escape hatch is what a published
+//! tool needs, and seven ways to reach it is surface area, not capability.
+//!
+//! Distinct from crate-level `includes.rs` (the `{{< include >}}` resolver) and
 //! `frontmatter.rs` (YAML parse + lint).
 
 use super::PageIncludes;
 use std::path::{Path, PathBuf};
 
-/// Resolve the `include-in-header`/`include-before-body`/`include-after-body` +
-/// `css` keys from a doc's front-matter YAML into ready-to-inject markup, reading
-/// referenced files relative to `base_dir`.
-pub(super) fn resolve_doc_includes(
-    front_matter: &str,
-    base_dir: Option<&Path>,
-    root: Option<&Path>,
-) -> PageIncludes {
-    // comrak hands us the block *with* its `---` fences; strip them so serde_yaml
-    // sees a single document (the bare `---` would otherwise read as a separator).
-    let body = {
-        let mut lines: Vec<&str> = front_matter.lines().collect();
-        while lines.first().is_some_and(|l| l.trim().is_empty()) {
-            lines.remove(0);
-        }
-        if lines.first().is_some_and(|l| l.trim() == "---") {
-            lines.remove(0);
-        }
-        while lines.last().is_some_and(|l| l.trim().is_empty()) {
-            lines.pop();
-        }
-        if lines.last().is_some_and(|l| l.trim() == "---") {
-            lines.pop();
-        }
-        lines.join("\n")
-    };
-    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(&body) else {
-        return PageIncludes::default();
-    };
-    includes_from_parts(
-        v.get("include-in-header"),
-        v.get("include-before-body"),
-        v.get("include-after-body"),
-        v.get("css"),
-        base_dir,
-        root,
-    )
-}
-
-/// Build [`PageIncludes`] from already-located YAML values for each key. Shared by
-/// the single-doc front-matter path and the site `format: html:` path (which keep
-/// these as typed `serde_yaml::Value` fields). `css` files are wrapped in `<style>`
-/// and placed ahead of the header text so an author stylesheet can override ours.
+/// Build [`PageIncludes`] from `_site.yml`'s already-parsed `head:` value.
+///
+/// Only `in_header` is populated. `before_body`/`after_body` remain live slots on
+/// [`PageIncludes`] — the site chrome writes the draft banner into `before_body` — they
+/// simply have no *configured* source any more.
 pub fn includes_from_parts(
     in_header: Option<&serde_yaml::Value>,
-    before_body: Option<&serde_yaml::Value>,
-    after_body: Option<&serde_yaml::Value>,
-    css: Option<&serde_yaml::Value>,
     base_dir: Option<&Path>,
     root: Option<&Path>,
 ) -> PageIncludes {
-    let mut head = resolve_include_value(css, base_dir, root, true);
-    head.push_str(&resolve_include_value(in_header, base_dir, root, false));
-    PageIncludes {
-        in_header: head,
-        before_body: resolve_include_value(before_body, base_dir, root, false),
-        after_body: resolve_include_value(after_body, base_dir, root, false),
-    }
-}
-
-/// Resolve one include value: a path string (file contents), a `{text: …}` or
-/// `{file: …}` map, or a list of those. `css == true` wraps each resolved chunk
-/// in a `<style>` block; otherwise the markup is injected verbatim.
-fn resolve_include_value(
-    v: Option<&serde_yaml::Value>,
-    base_dir: Option<&Path>,
-    root: Option<&Path>,
-    css: bool,
-) -> String {
     let mut out = String::new();
-    if let Some(v) = v {
-        resolve_include_into(v, base_dir, root, css, &mut out);
+    if let Some(v) = in_header {
+        resolve_include_into(v, base_dir, root, &mut out);
     }
-    out
+    PageIncludes {
+        in_header: out,
+        ..PageIncludes::default()
+    }
 }
 
+/// Resolve one `head:` value: a path string (file contents), a `{text: …}` or `{file: …}`
+/// map, or a list of those. The markup is injected verbatim — this is the escape hatch, so
+/// it does not second-guess what the author wrote.
 fn resolve_include_into(
     v: &serde_yaml::Value,
     base_dir: Option<&Path>,
     root: Option<&Path>,
-    css: bool,
     out: &mut String,
 ) {
     use serde_yaml::Value;
     match v {
-        Value::String(s) => append_include(&read_include_file(base_dir, s, root), css, out),
+        Value::String(s) => append_include(&read_include_file(base_dir, s, root), out),
         Value::Mapping(_) => {
             if let Some(Value::String(t)) = v.get("text") {
-                append_include(t, css, out);
+                append_include(t, out);
             } else if let Some(Value::String(f)) = v.get("file") {
-                append_include(&read_include_file(base_dir, f, root), css, out);
+                append_include(&read_include_file(base_dir, f, root), out);
             }
         }
         Value::Sequence(seq) => {
             for item in seq {
-                resolve_include_into(item, base_dir, root, css, out);
+                resolve_include_into(item, base_dir, root, out);
             }
         }
         _ => {}
     }
 }
 
-fn append_include(content: &str, css: bool, out: &mut String) {
-    if css {
-        out.push_str("<style>\n");
-        out.push_str(content);
-        out.push_str("\n</style>\n");
-    } else {
-        out.push_str(content);
-        out.push('\n');
-    }
+fn append_include(content: &str, out: &mut String) {
+    out.push_str(content);
+    out.push('\n');
 }
 
 /// Read an include/css file relative to the doc (or site root). A missing file is

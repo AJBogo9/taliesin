@@ -6,7 +6,6 @@ listing:
   - id: cv-projects
     contents: projects
     type: default
-    sort: "date desc"
 ---
 
 M.Sc. student at Aalto University specialising in machine learning and mathematics. I build systems at the intersection of math and production-quality software.

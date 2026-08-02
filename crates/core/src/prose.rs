@@ -1,69 +1,17 @@
-//! Opt-in, markdown-aware prose linter. Diagnostic-only: [`lint`] returns `(line, message)`
-//! pairs that `render` maps into located, click-to-source warnings (the same channel as
-//! broken xrefs / unknown shortcodes). Three high-precision rules — doubled words, weasel
-//! words, a custom banned-terms list — skipping code, math, links, and HTML so only prose is
-//! checked. Off unless the doc opts in via the `prose-lint` front-matter key ([`config`]).
+//! The prose selection: what counts as prose in a `.tmd`, and how many words of it there
+//! are. [`word_count`] is the reading-time measure, and via [`for_each_prose_line`] it is
+//! the single definition of "prose" — front matter, fenced code, `:::` fences, and inline
+//! code/math/links/HTML all excluded — shared by the reading-time estimate, the book
+//! chapter-cost signal, the LSP outline, and `map`.
+//!
+//! This module was also an opt-in prose LINTER (doubled words, weasel words, a
+//! `prose-lint: { banned: [...] }` list). It was retired on 2026-08-02: it was opt-in and
+//! never opted into, by the person who writes daily. The selection walk survives because it
+//! always had the other, load-bearing consumer.
 
-use serde_yaml::Value;
-
-/// Resolved `prose-lint` configuration (the linter is off when [`config`] returns `None`).
-pub(crate) struct ProseLint {
-    pub banned: Vec<String>,
-}
-
-/// Conservative, well-known hedges. Whole-word, case-insensitive.
-const WEASEL_WORDS: &[&str] = &[
-    "very",
-    "really",
-    "quite",
-    "just",
-    "actually",
-    "basically",
-    "simply",
-    "clearly",
-    "obviously",
-    "essentially",
-    "fairly",
-    "somewhat",
-    "rather",
-];
-
-/// Parse the `prose-lint` front-matter key. `None` = linter off. `true` enables the built-in
-/// rules; a mapping additionally reads a `banned` string list.
-pub(crate) fn config(front_matter: &str) -> Option<ProseLint> {
-    let value: Value = serde_yaml::from_str(front_matter).ok()?;
-    let pl = value.get("prose-lint")?;
-    match pl {
-        Value::Bool(true) => Some(ProseLint { banned: Vec::new() }),
-        Value::Mapping(_) => {
-            let banned = pl
-                .get("banned")
-                .and_then(Value::as_sequence)
-                .map(|seq| {
-                    seq.iter()
-                        .filter_map(|v| v.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-            Some(ProseLint { banned })
-        }
-        _ => None, // false / null / scalar -> off
-    }
-}
-
-/// Scan markdown `src` for prose-rule violations. Returns `(1-based line, message)`.
-pub(crate) fn lint(src: &str, cfg: &ProseLint) -> Vec<(usize, String)> {
-    let banned: Vec<String> = cfg.banned.iter().map(|b| b.to_lowercase()).collect();
-    let mut out = Vec::new();
-    for_each_prose_line(src, |line_no, text| {
-        scan_line(text, line_no, &banned, &mut out)
-    });
-    out
-}
-
-/// Count prose words in markdown `src` — the reading-time measure. Reuses the exact
-/// prose-selection of [`lint`] (front matter, fenced code, `:::` fences, and inline
-/// code/math/links/HTML all excluded), matching the client's live count that drops
+/// Count prose words in markdown `src` — the reading-time measure. Uses the prose
+/// selection of [`for_each_prose_line`] (front matter, fenced code, `:::` fences, and
+/// inline code/math/links/HTML all excluded), matching the client's live count that drops
 /// `<pre>`/`.katex` from the DOM. `src` is expected include-expanded (so an included
 /// file's prose counts). Rounding to whole minutes lives at the call site.
 pub fn word_count(src: &str) -> usize {
@@ -74,8 +22,9 @@ pub fn word_count(src: &str) -> usize {
 
 /// Walk `src`'s prose lines — skipping front matter, fenced code blocks, and `:::` div
 /// fences — invoking `f(1-based line, stripped)` with the [`strip_inline`]'d prose text of
-/// each remaining line. The single source of "what counts as prose", shared by [`lint`]
-/// and [`word_count`] so they can never disagree.
+/// each remaining line. The single source of "what counts as prose"; [`word_count`] is its
+/// only caller today, and it stays a separate walk so the next prose measure cannot
+/// disagree with the reading time.
 fn for_each_prose_line(src: &str, mut f: impl FnMut(usize, &str)) {
     let mut in_front = false;
     let mut fence: Option<char> = None; // inside a ``` or ~~~ code block
@@ -199,84 +148,31 @@ fn words(text: &str) -> Vec<String> {
     ws
 }
 
-fn scan_line(text: &str, line_no: usize, banned: &[String], out: &mut Vec<(usize, String)>) {
-    let ws = words(text);
-    let mut prev: Option<String> = None;
-    for w in &ws {
-        let lw = w.to_lowercase();
-        let is_alpha = lw.chars().next().is_some_and(|c| c.is_alphabetic());
-        if is_alpha && prev.as_deref() == Some(lw.as_str()) {
-            out.push((line_no, format!("repeated word `{lw}`")));
-        }
-        if WEASEL_WORDS.contains(&lw.as_str()) {
-            out.push((line_no, format!("weasel word `{lw}` (consider cutting)")));
-        }
-        if banned.contains(&lw) {
-            out.push((line_no, format!("banned term `{lw}`")));
-        }
-        prev = Some(lw);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn cfg(banned: &[&str]) -> ProseLint {
-        ProseLint {
-            banned: banned.iter().map(|s| s.to_string()).collect(),
-        }
+    #[test]
+    fn counts_prose_words_only() {
+        assert_eq!(word_count("Two words."), 2);
     }
 
     #[test]
-    fn config_off_unless_opted_in() {
-        assert!(config("title: T").is_none());
-        assert!(config("prose-lint: false").is_none());
-        assert!(config("prose-lint: true").is_some());
+    fn skips_front_matter_code_math_and_fences() {
+        // Everything but "Prose here." is excluded from the selection: front matter, a
+        // fenced block, inline code, display math, and a `:::` fence.
+        let src = "---\ntitle: A Long Title\n---\n\nProse here.\n\n\
+`ignored_code` $x + y$\n\n```\nfn ignored() {}\n```\n\n\
+::: {.callout-note}\n:::\n";
+        assert_eq!(word_count(src), 2, "only `Prose here.` counts");
     }
 
     #[test]
-    fn config_reads_banned_list() {
-        let c = config("prose-lint:\n  banned: [utilize, leverage]").expect("on");
-        assert_eq!(c.banned, vec!["utilize", "leverage"]);
-    }
-
-    #[test]
-    fn flags_doubled_words() {
-        let w = lint("We we should fix it.", &cfg(&[]));
-        assert_eq!(w, vec![(1, "repeated word `we`".to_string())]);
-    }
-
-    #[test]
-    fn flags_weasel_words() {
-        let w = lint("This is very fast and really clever.", &cfg(&[]));
-        assert!(w.contains(&(1, "weasel word `very` (consider cutting)".to_string())));
-        assert!(w.contains(&(1, "weasel word `really` (consider cutting)".to_string())));
-    }
-
-    #[test]
-    fn flags_banned_terms_case_insensitively() {
-        let w = lint("Please Utilize the API.", &cfg(&["utilize"]));
-        assert_eq!(w, vec![(1, "banned term `utilize`".to_string())]);
-    }
-
-    #[test]
-    fn skips_code_math_link_urls_and_fences() {
-        // `utilize` in code, `very` in math, and `utilize` inside a link URL must all be
-        // skipped (link *text* is prose and would be linted, so keep it clean here); the
-        // fenced block is skipped too.
-        let src = "`utilize` code, $very$ math, and a [plain link](http://utilize.example) stay fine.\n\n```\nutilize very very\n```\n";
-        let w = lint(src, &cfg(&["utilize"]));
-        assert!(
-            w.is_empty(),
-            "code, math, link URLs, and fences must be skipped, got: {w:?}"
+    fn link_text_counts_but_the_url_does_not() {
+        // "See the docs" — the URL's own path segments are not prose.
+        assert_eq!(
+            word_count("See [the docs](http://example.com/deep/path)."),
+            3
         );
-    }
-
-    #[test]
-    fn reports_correct_line_numbers() {
-        let src = "Clean line.\nAnother clean one.\nPlease utilize this.";
-        let w = lint(src, &cfg(&["utilize"]));
-        assert_eq!(w, vec![(3, "banned term `utilize`".to_string())]);
     }
 }

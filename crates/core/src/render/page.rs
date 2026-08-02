@@ -234,6 +234,26 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     };
     // The head CSS block + framework script tags differ by asset mode; the body frame,
     // skip link, theme bootstrap, and passed-in pre/post scripts are identical.
+    // The enhancer registry, emitted in <head> AHEAD of `{include_in_header}`.
+    //
+    // `01-registry.js` defines `window.taliEnhancers` / `taliEnhanceCode`, and the documented
+    // way to ship an extension enhancer is a `<script>` in the project's `_site.yml` `head:`
+    // (docs/internals/extending.tmd). That markup lands in `<head>`, so the registry has to be
+    // defined by then or the extension's `window.taliEnhancers.register(fn)` throws at parse.
+    //
+    // It used to be emitted in the body beside `code_scripts`, which was correct while the
+    // documented route was the front-matter `include-after-body` (a body slot). That family was
+    // retired on 2026-08-02 leaving `head:` as the only route, which runs EARLIER — so the
+    // registry moved up to stay ahead of it. `01-registry.js` opens with
+    // `if (window.taliEnhancers) return;`, so the later bundled copy (deferred app.js, or the
+    // inline bundle) still no-ops exactly as it did before.
+    //
+    // Bare output ships no scripts at all, so it gets none of this.
+    let enhancer_registry = if bare {
+        String::new()
+    } else {
+        format!("<script>{REGISTRY_JS}</script>\n")
+    };
     let (style_block, katex_block, js_head_html, framework_scripts) = match &p.assets {
         AssetMode::Inline => {
             let site_css = if p.with_site_css { SITE_CSS } else { "" };
@@ -346,23 +366,16 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            // Emit the enhancer registry INLINE at parse, ahead of the deferred app.js and any
-            // `include-after-body` extension script. Why this shape (keep this reasoning):
-            //   * `01-registry.js` defines `window.taliEnhancers` / `taliEnhanceCode`. #17 folded
-            //     it into the DEFERRED app.js, so a documented `include-after-body` extension that
-            //     calls `window.taliEnhancers.register(fn)` (docs/internals/extending.tmd) ran
-            //     INLINE at parse BEFORE app.js defined the registry, throwing silently. Emitting
-            //     the registry inline here (the same code-scripts position the pre-#17 inline
-            //     bundle ran from) restores parse-time availability of `taliEnhancers` for
-            //     `scripts_post` (STATIC_ENHANCE) and every `include-after-body` script.
-            //   * app.js stays deferred (non-blocking): when it runs after parse, its own bundled
-            //     `01-registry` copy hits `if (window.taliEnhancers) return;` and no-ops, while
-            //     its feature scripts (02-16) register into the already-created list.
-            //   * On DOMContentLoaded, STATIC_ENHANCE calls `taliEnhanceCode` = registry.run,
-            //     running every registered enhancer (core + tali-js + any extension); the deferred
-            //     jslibs (d3/Plot) have executed by then, so `{js}` cells still run correctly.
+            // The registry itself is emitted in <head> (see `enhancer_registry` above), so this
+            // is just the deferred bundle. app.js stays deferred (non-blocking): when it runs
+            // after parse, its own bundled `01-registry` copy hits
+            // `if (window.taliEnhancers) return;` and no-ops, while its feature scripts (02-16)
+            // register into the already-created list. On DOMContentLoaded, STATIC_ENHANCE calls
+            // `taliEnhanceCode` = registry.run, running every registered enhancer (core +
+            // tali-js + any extension); the deferred jslibs (d3/Plot) have executed by then, so
+            // `{js}` cells still run correctly.
             let framework_scripts = format!(
-                "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}",
+                "<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}",
                 a.app_js
             );
             // External: link the shared `_assets/<PYODIDE_DIR_NAME>/` directory the build
@@ -396,7 +409,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {style_block}{katex_block}
 {js_head}
 {theme_css}
-{include_in_header}
+{enhancer_registry}{include_in_header}
 {extra_head}</head>
 <body{body_class}>
 {skip_link}{include_before_body}
@@ -416,6 +429,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         katex_block = katex_block,
         js_head = js_head_html,
         theme_css = theme_style(p.theme_css),
+        enhancer_registry = enhancer_registry,
         include_in_header = p.include_in_header,
         extra_head = p.extra_head,
         body_class = p.body_class,

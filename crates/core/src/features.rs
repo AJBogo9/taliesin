@@ -58,7 +58,7 @@ pub struct Group {
 /// fact about adoption while the second is false.
 pub fn catalogue() -> Vec<Group> {
     use crate::frontmatter::{
-        EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS, THEOREM_KEYS,
+        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, THEOREM_KEYS,
     };
     use crate::render::{
         CALLOUT_KINDS, CELL_OPTION_KEYS, DIV_FEATURE_CLASSES, INPUT_TYPES, THEOREM_KINDS,
@@ -66,14 +66,14 @@ pub fn catalogue() -> Vec<Group> {
 
     // Nested keys are qualified by their parent, because the same word means different
     // things in two maps: top-level `categories:` tags a page for listings while
-    // `listing.categories` toggles a filter widget, and `image:` is a social card while
-    // `hero.image` is a portrait. An unqualified list would silently merge the pairs and
-    // report one adoption number for two features.
+    // `listing.categories` toggles a filter widget. An unqualified list would silently
+    // merge such pairs and report one adoption number for two features. `hero.actions` is
+    // qualified twice over (`hero.actions.text`) for the same reason.
     let nested: Vec<String> = [
         ("execute", EXECUTE_KEYS),
         ("listing", LISTING_KEYS),
         ("hero", HERO_KEYS),
-        ("prose-lint", PROSE_LINT_KEYS),
+        ("hero.actions", HERO_ACTION_KEYS),
         ("theorems", THEOREM_KEYS),
     ]
     .iter()
@@ -443,7 +443,7 @@ mod tests {
 title: T
 csl: x.csl
 execute:
-  echo: false
+  cache: false
 hero:
   headline: H
 ---
@@ -523,7 +523,7 @@ See @fig-scree.
         assert_eq!(got("frontmatter-keys"), ["csl", "execute", "hero", "title"]);
         assert_eq!(
             got("frontmatter-subkeys"),
-            ["execute.echo", "hero.headline"]
+            ["execute.cache", "hero.headline"]
         );
         // `.theorem` is a THEOREM kind, not a div feature class: theorem kinds have no
         // namespace prefix, so that set IS its own dispatch vocabulary.

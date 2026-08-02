@@ -372,7 +372,7 @@ fn a_site_deck_links_the_shared_assets_instead_of_inlining_them() {
 }
 
 /// Regression pin for the #17 blocker: in an External (`build <dir>`) page, a documented
-/// `include-after-body` extension that calls `window.taliEnhancers.register(...)` runs INLINE at
+/// A `_site.yml` `head:` extension that calls `window.taliEnhancers.register(...)` runs at
 /// parse. #17 folded the registry into the DEFERRED `_assets/app.<hash>.js`, so that hook fired
 /// before the registry was defined and threw `Cannot read properties of undefined`. The fix emits
 /// the registry inline at parse (ahead of the deferred app.js), so the hook resolves. This asserts
@@ -385,16 +385,20 @@ fn external_inlines_enhancer_registry_before_include_after_body() {
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&out);
     std::fs::create_dir_all(root.join("sub")).unwrap();
-    std::fs::write(root.join("_site.yml"), "title: AB\n").unwrap();
-    // The home page carries an `include-after-body` extension script (inline `text:` form, so no
-    // separate file to ship) that registers an enhancer through the public hook taught in
+    // The project carries an extension script in `_site.yml` `head:` (inline `text:` form, so
+    // no separate file to ship) that registers an enhancer through the public hook taught in
     // docs/internals/extending.tmd. `TALI-PIN-HOOK` is a unique marker to locate its position.
+    //
+    // `head:` is the ONLY raw-injection route left (the per-document `include-*` family was
+    // retired 2026-08-02), and it injects into `<head>` — EARLIER than the body slot this
+    // test was originally written against, so the ordering it pins matters more, not less.
     std::fs::write(
-        root.join("index.tmd"),
-        "---\ntitle: Home\ninclude-after-body:\n  text: |\n    \
-         <script>window.taliEnhancers.register(function(root){/* TALI-PIN-HOOK */});</script>\n---\n\nHi.\n",
+        root.join("_site.yml"),
+        "title: AB\nhead:\n  text: |\n    \
+         <script defer>window.taliEnhancers.register(function(root){/* TALI-PIN-HOOK */});</script>\n",
     )
     .unwrap();
+    std::fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
     std::fs::write(
         root.join("sub/page.tmd"),
         "---\ntitle: Sub\n---\n\nHello.\n",
@@ -418,7 +422,7 @@ fn external_inlines_enhancer_registry_before_include_after_body() {
     // The extension hook was injected (proves the include-after-body wiring reached the page).
     let hook_pos = index
         .find("TALI-PIN-HOOK")
-        .expect("include-after-body extension script must be present on the page");
+        .expect("the `head:` extension script must be present on the page");
 
     // The registry DEFINITION (`window.taliEnhancers = {`) is a literal unique to the registry
     // source (the hook only *calls* `.register`), and app.js is an external file whose body is
@@ -433,11 +437,11 @@ fn external_inlines_enhancer_registry_before_include_after_body() {
         "the inline registry must carry its idempotency guard verbatim"
     );
 
-    // The registry must be DEFINED before the `include-after-body` hook runs, so the hook's
-    // `window.taliEnhancers.register(...)` resolves at parse instead of throwing.
+    // The registry must be DEFINED before the `head:` hook runs, so the hook's
+    // `window.taliEnhancers.register(...)` resolves instead of throwing.
     assert!(
         reg_pos < hook_pos,
-        "the registry must be defined (inline) BEFORE the include-after-body extension script"
+        "the registry must be defined (inline) BEFORE a `head:` extension script"
     );
 
     // The registry is inline, but app.js is STILL deferred + external (the fix keeps the bundle

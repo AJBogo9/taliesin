@@ -14,7 +14,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
 
     let expected = [
         "unknown front-matter key `treme` (did you mean `theme`?)",
-        "unknown execute key `eccho` (did you mean `echo`?)",
+        "unknown execute key `cach` (did you mean `cache`?)",
         "unknown listing key `max-itemz` (did you mean `max-items`?)",
         "unknown callout kind `importnat` (did you mean `important`?)",
         "unknown cell option `labl` (did you mean `label`?)",

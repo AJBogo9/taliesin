@@ -1,6 +1,4 @@
-title: "Theorem policy book"
+title: "Theorem counters book"
 chapters:
   - alpha.tmd
   - beta.tmd
-theorems:
-  numbered: false

@@ -210,27 +210,23 @@ theme: light   # or dark
 
 Nothing to write or ship. This is the right answer most of the time.
 
-### b. Override a few variables inline
+### b. Override a few variables for a whole project
 
-The `css:` front-matter key accepts inline CSS via a `{text: …}` map. A short
-`:root` block is enough to recolour the whole page, because everything reads the
-variables:
+Put a `:root` block in your project's `_site.yml` `head:`. Because the overrides land
+*after* the base stylesheet, they win:
 
 ```yaml
----
-title: "My post"
-css:
-  text: ":root { --tali-accent: #d6336c; --tali-accent-fill: #a61e4d; }"
----
+# _site.yml
+head:
+  text: "<style>:root { --tali-accent: #d6336c; --tali-accent-fill: #a61e4d; }</style>"
 ```
 
-`css:` also accepts the same shapes the other include keys do, not only `{text: …}`:
-a bare path string (`css: brand.css`), a `{file: brand.css}` map, or a list mixing any
-of those (`css: [reset.css, {text: ":root { … }"}]`). Each resolved entry is wrapped in
-its own `<style>` block.
+To recolour the dark theme too, override the same names inside
+`html[data-theme="dark"] { … }`.
 
-Because the overrides land *after* the base stylesheet, they win. To recolour the
-dark theme too, override the same names inside `html[data-theme="dark"] { … }`.
+There is no per-document `css:` key. It was removed on 2026-08-02 (nothing used it), and
+the two remaining routes are better shaped for the job: `head:` for a project-wide tweak,
+and `theme:` below for anything longer than a couple of lines.
 
 ### c. Point `theme:` at a `.css` or `.scss` file
 

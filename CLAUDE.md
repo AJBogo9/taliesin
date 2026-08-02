@@ -250,14 +250,21 @@ dependency change. Never call one of these verified without its output.
   carries 16, and `SHORTCODE_SPECS` omits `input`/`dataset` (both dispatched ahead of it).
   Answer "what does the tool support" from the validator consts or from `taliesin
   features`, never from `vocab` — it reports live features as missing.
-- **A new front-matter key trips FIVE drift gates; a RETIRED one trips SEVEN.** The two extra
-  are `docs/guide/using/from-quarto.tmd` (a retired key must tell a migrating reader what to
-  do) and `vocab.rs`'s `descriptions_present`. (It was SIX/EIGHT until Wave 1 deleted the
-  repo-root `AGENTS.md` duplicate and its gate; the bundled `assets/agents/AGENTS.md` golden
-  is now the only copy.) One of the seven still lives in the **server** crate
-  (`tests/agents_md_cli.rs`, which drives `init` and reads `vocab()`), so `cargo test -p
-  taliesin-core` is green while it is stale. A new *subcommand* also has four registration
-  sites in `main.rs` plus three tables in `complete.rs`, each drift-gated.
+- **A new front-matter key trips FIVE drift gates; a RETIRED one trips EIGHT.** The three
+  extra are `docs/guide/using/from-quarto.tmd` (a retired key must tell a migrating reader
+  what to do), `vocab.rs`'s `descriptions_present`, and — measured on 2026-08-02 —
+  `editor/vscode/schema/tali-site.schema.json`, a bundled COPY of the crate's schema gated
+  only by the companion's own `node --test`. **Two of the eight live outside
+  `taliesin-core`** (that one, and `crates/server/tests/agents_md_cli.rs`), so `cargo test
+  --workspace` can be green while both are stale: only `./tools/gates.sh` catches them.
+  A new *subcommand* also has four registration sites in `main.rs` plus three tables in
+  `complete.rs`, each drift-gated.
+- **`RETIRED_KEYS` is SCOPED — `(scope, key, note)` — and nothing may flatten it.** The same
+  word is retired in one vocabulary and live in another: `toc:`/`theorems:` are gone from
+  `_site.yml` but live in front matter, `image:` is gone from `hero:` but live at top level,
+  `echo:` is gone from `execute:` but live as `#| echo:`. Both validators consult the register
+  through `unknown_key_message` (the `_site.yml` side under the `config key` scope; it had its
+  own `did_you_mean` until Wave 2 and answered a retired `toc:` with "did you mean `logo`?").
 - **A withdrawn div class needs a `RETIRED_DIV_CLASSES` entry**; div classes are an *open*
   vocabulary, so without one a leftover class gets **silence**, not a did-you-mean, and the
   page quietly loses its layout. (Front-matter keys have `RETIRED_KEYS` for the same job.)

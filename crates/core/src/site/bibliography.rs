@@ -86,16 +86,15 @@ pub(crate) fn shared_for_single_doc(root: &Path) -> Vec<PathBuf> {
 }
 
 impl Site {
-    /// What every page of this project inherits from `_site.yml`: the book-wide `theorems:`
-    /// policy and the project-wide `bibliography:`. One value, so a render call site names
-    /// the project once instead of listing its policies (and so the next project-wide key
-    /// does not widen six signatures again).
+    /// What every page of this project inherits from `_site.yml`: the project-wide
+    /// `bibliography:`. One value, so a render call site names the project once instead of
+    /// listing its policies (and so the next project-wide key does not widen six signatures
+    /// again).
     ///
     /// Cheap but not free (it clones the resolved paths), so a loop over pages should bind
     /// it once rather than call it per page.
     pub fn render_defaults(&self) -> crate::render::SiteDefaults {
         crate::render::SiteDefaults {
-            theorems: self.config.theorems.clone(),
             bibliography: self.bibliography.clone(),
         }
     }

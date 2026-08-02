@@ -117,9 +117,12 @@ flattened to the native shape.
 
 `validate_keys` is deliberately a **warning, not an error**: every top-level key in
 `_site.yml` is checked against the `NATIVE_KEYS` constant (`title`, `author`,
-`description`, `url`, `favicon`, `image`, `output`, `toc`, `css`, `head`, `body-start`,
-`body-end`, `nav`, `footer`, `chapters`, `mounts`), and an unknown one is reported but the
-rest of the config still parses. The "did you mean" comes from the same `closest()` the
+`description`, `url`, `favicon`, `logo`, `head`, `nav`, `footer`, `chapters`, `mounts`,
+`publish`, `python`, `r`, `bibliography`), and an unknown one is reported but the rest of
+the config still parses. A key the config *used* to honour is answered from
+`frontmatter::RETIRED_KEYS` under the `config key` scope, so it gets the reason it went
+and what to write instead rather than a rename hint. Otherwise the "did you mean" comes
+from the same `closest()` the
 front-matter linter and the CLI's unknown-command suggestion use: the nearest known key
 within **Levenshtein edit distance 2** (so `favicn` suggests `favicon`, but a key two-plus
 edits away suggests nothing rather than guessing wildly). Two harder failures also degrade

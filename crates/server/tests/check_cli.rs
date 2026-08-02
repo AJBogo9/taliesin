@@ -397,50 +397,54 @@ fn check_json_front_matter_typo_carries_a_column_span() {
 
 // --- the three-state severity floor (SKIM-3a) ---------------------------------------
 // `check` used to exit non-zero on ANY diagnostic, which made an advice-shaped rule
-// impossible: `prose.tmd`'s "weasel word `very` (consider cutting)" was reported as an
-// ERROR and failed `check`, `build --strict` and `publish` (strict by default). The floor
-// is now three-state, so advice is printed and gates only when asked for.
+// impossible: a style suggestion was reported as an ERROR and failed `check`,
+// `build --strict` and `publish` (strict by default). The floor is now three-state, so
+// advice is printed and gates only when asked for.
+//
+// These drove `corpus/diagnostics/prose.tmd` until the prose linter was retired on
+// 2026-08-02. The advice source is now the shape lint (`TAL-SHAPE-DUP`, two headings that
+// read the same), which needs no opt-in — a better fixture for this floor than a rule a
+// document had to ask for.
+
+/// A document whose only findings are advice.
+fn advice_only_doc(name: &str) -> std::path::PathBuf {
+    tmp_doc(name, "---\ntitle: T\n---\n\n## Same\n\na\n\n## Same\n\nb\n")
+}
 
 #[test]
 fn advice_is_reported_at_severity_suggestion_and_passes_the_default_gate() {
-    let (ok, stdout, _e) = run(&[
-        "check",
-        &corpus("diagnostics/prose.tmd"),
-        "--format",
-        "json",
-    ]);
+    let doc = advice_only_doc("advice-default-gate");
+    let (ok, stdout, _e) = run(&["check", doc.to_str().unwrap(), "--format", "json"]);
     assert!(
         ok,
         "a document whose only findings are advice passes: {stdout}"
     );
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
     let diags = v["diagnostics"].as_array().expect("diagnostics array");
-    assert!(
-        !diags.is_empty(),
-        "prose.tmd still trips the lint: {stdout}"
-    );
+    assert!(!diags.is_empty(), "the shape lint still fires: {stdout}");
     // Reported, not swallowed — and every one of them is advice, so nothing gates.
     assert!(
         diags.iter().all(|d| d["severity"] == "suggestion"),
-        "every prose-lint finding is advice: {stdout}"
+        "every finding here is advice: {stdout}"
     );
     // Each carries its own family code, not the generic fallback.
     assert!(
         diags.iter().all(|d| d["code"]
             .as_str()
-            .is_some_and(|c| c.starts_with("TAL-PROSE-"))),
-        "prose findings carry their own codes: {stdout}"
+            .is_some_and(|c| c.starts_with("TAL-SHAPE-"))),
+        "shape findings carry their own codes: {stdout}"
     );
 }
 
 #[test]
 fn strict_gates_on_advice_and_errors_only_hides_it() {
-    let path = corpus("diagnostics/prose.tmd");
+    let doc = advice_only_doc("advice-strict-vs-errors-only");
+    let path = doc.to_str().unwrap();
     // --strict: the same advice now fails the run (the opt-in strictest gate).
-    let (ok_strict, _o, _e) = run(&["check", &path, "--strict"]);
+    let (ok_strict, _o, _e) = run(&["check", path, "--strict"]);
     assert!(!ok_strict, "--strict fails on advice");
     // --errors-only: advice is below the floor, so it is neither shown nor gated.
-    let (ok_eo, stdout, _e2) = run(&["check", &path, "--errors-only", "--format", "json"]);
+    let (ok_eo, stdout, _e2) = run(&["check", path, "--errors-only", "--format", "json"]);
     assert!(ok_eo, "--errors-only passes an advice-only document");
     let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
     assert!(
@@ -451,7 +455,8 @@ fn strict_gates_on_advice_and_errors_only_hides_it() {
 
 #[test]
 fn the_human_summary_does_not_call_advice_a_problem() {
-    let (ok, _o, stderr) = run(&["check", &corpus("diagnostics/prose.tmd")]);
+    let doc = advice_only_doc("advice-human-summary");
+    let (ok, _o, stderr) = run(&["check", doc.to_str().unwrap()]);
     assert!(ok, "advice-only passes");
     assert!(
         stderr.contains("suggestion") && stderr.contains("nothing here fails the run"),
@@ -467,10 +472,11 @@ fn the_human_summary_does_not_call_advice_a_problem() {
 fn build_strict_ships_a_document_whose_only_findings_are_advice() {
     // The failure this whole floor exists to prevent: `publish` is strict by default, so an
     // ERROR-severity style suggestion blocked releasing a document over a word choice.
+    let doc = advice_only_doc("advice-build-strict");
     let out = std::env::temp_dir().join(format!("tali-advice-build-{}.html", std::process::id()));
     let (ok, _o, stderr) = run(&[
         "build",
-        &corpus("diagnostics/prose.tmd"),
+        doc.to_str().unwrap(),
         out.to_str().unwrap(),
         "--strict",
     ]);
@@ -481,11 +487,9 @@ fn build_strict_ships_a_document_whose_only_findings_are_advice() {
 
 #[test]
 fn a_suggestion_only_document_passes_until_strict() {
-    // The third state of 24a's severity floor, now reachable without opting into the prose
-    // lint: two headings reading the same is a SUGGESTION, so it is advice everywhere
-    // except under `--strict`. This is the case the exit-code tests were missing — before
-    // the shape lints the only suggestion source was `prose-lint:`, which a document has
-    // to ask for.
+    // The third state of 24a's severity floor: two headings reading the same is a
+    // SUGGESTION, so it is advice everywhere except under `--strict`. This asserts the whole
+    // exit-code ladder on one document, where the tests above take one rung each.
     let doc = tmp_doc(
         "suggestion-only",
         "---\ntitle: T\n---\n\n## Same\n\na\n\n## Same\n\nb\n",

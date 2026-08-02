@@ -25,17 +25,14 @@ table below repeats the front-matter keys most often paired with project config.
 | `title`, `subtitle`, `author`, `date`, `description` | Metadata; `title` drives `<title>`, the title block, OpenGraph, and nav/listing labels |
 | `format` | `html` (default), `deck`, or a `<name>-deck` variant |
 | `theme` | `light` / `dark`, a `.css`/`.scss` file, or an installed `_extensions/<name>/` bundle. Only an explicit `light` (or `default`) / `dark` forces that mode; unset (or a custom theme) follows the reader's OS `prefers-color-scheme`, falling back to light |
-| `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
+| `toc` | Forces the table of contents on or off for this page; leave it out and it is automatic (an article with enough headings gets one) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
 | `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section (rendered in a single built-in IEEE style) |
 | `page-layout` | `full` widens the content column (the full page width, good for listing indexes and wide tables/figures); omit it for the default centered reading width set by `--tali-maxw` |
-| `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
-| `css` | Stylesheet(s) wrapped in `<style>` and inlined |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
-| `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so it is never mistaken for a typo'd `css:`; delete it |
+| `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized so an author carrying it over from another tool is told the truth rather than nothing; delete it |
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; set `image-alt` whenever you set `image:` (an `image:` with no `image-alt:` warns; use `image-alt: ""` to declare it decorative) |
 | `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings) **and out of `check`**, which names what it held back; `preview` still shows it, badged, and lints it |
-| `prose-lint` | Opt-in prose linter: `true` enables the built-in rules (doubled words, weasel words), or `{ banned: [term, …] }` adds custom banned terms. Emits located, click-to-source warnings (code/math/links skipped); off by default |
 
 ### Code-cell options
 
@@ -68,10 +65,7 @@ description: "Notes on things"
 url: "https://example.com"
 favicon: favicon.svg
 logo: logo.svg           # brand image in the navbar (book: the topbar + chapter drawer)
-output: _site            # build output dir (default _site, or _book for a book)
-toc: true                # default table of contents for article pages
-css: custom.css
-head: head.html          # = include-in-header  (also: body-start, body-end)
+head: head.html          # raw markup for every page's <head> — the one escape hatch
 bibliography: refs.bib   # one .bib for every page (see below)
 
 nav:                     # a list is the left side; or { left: [...], right: [...] }
@@ -109,13 +103,11 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
 | `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. The same key a deck's front matter takes, so one name brands all three surfaces. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
 | `image` | Deprecated; the social-card image is now auto-generated per page |
-| `output` | Build output directory |
-| `toc` | Default table of contents for article pages |
-| `css`, `head`, `body-start`, `body-end` | Site-wide asset injection (a path, `{ text: … }` / `{ file: … }`, or a list) |
+| `head` | Raw markup injected into every page's `<head>`: a path, a `{ text: … }` / `{ file: … }` map, or a list of those. The **one** raw-injection hatch — analytics, a search-console `<meta>`, a custom stylesheet |
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
-| `mounts` | Mount other Taliesin projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. `path:` is relative to the site root and may climb at most one level, so a mount reaches a project *beside* this one and nowhere else; an absolute or further-climbing path is ignored with a warning. The static build skips mounts and prints the per-mount build command |
+| `mounts` | Mount other Taliesin projects under a URL prefix in **preview**: a map `{ docs: ../docs }`. The path is relative to the site root and may climb at most one level, so a mount reaches a project *beside* this one and nowhere else; an absolute or further-climbing path is ignored with a warning. The static build skips mounts and prints the per-mount build command |
 | `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged **under** each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
 | `python`, `r` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
 
@@ -273,7 +265,6 @@ A `listing:` block fills the page with one card per document found under
 listing:
   contents: posts          # directory to crawl (relative to this page); required
   type: grid               # grid (cards) | list (rows + thumbnail) | default (text rows)
-  sort: "date desc"        # date desc (default, newest first) | date asc (oldest first)
   max-items: 10            # cap the number of cards (omit for all)
   categories: true         # render a category filter row above the cards
   id: recent               # optional: fill a `::: {#recent}` block instead of appending
@@ -283,7 +274,6 @@ listing:
 |---|---|
 | `contents` | Directory to crawl, relative to the index page. Every `.tmd` under it with a `title:` becomes a card. Required |
 | `type` | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's image as a thumbnail beside the text; `default` (the fallback) is the same stacked layout without images, for a formal text list. Both `grid` and `list` show the `image:` thumbnail; `default` does not |
-| `sort` | `"date desc"` (the default) is newest-first; `"date asc"` is oldest-first. The sort key is each page's front-matter `date:` (ISO strings sort chronologically), with the file path as the tiebreak. Any value that isn't `asc` is treated as descending |
 | `max-items` | Cap the number of cards shown; omit it to list every match |
 | `categories` | `true` renders a filter row above the cards: one chip per category found across the listing (with a count), plus an "All" chip that clears the filter. Clicking a chip (or a card's category badge) filters the cards in the browser |
 | `id` | Fill an existing `::: {#id}` container with the listing instead of appending it to the page, so you can place prose around it |
@@ -321,7 +311,7 @@ my-site/
 ├── _extensions/         # `_`-prefixed ⇒ skipped: reusable theme bundles
 │   └── my-theme/
 ├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (gitignored)
-└── _site/               # build output (_book/ for a book; override with output:)
+└── _site/               # build output (_book/ for a book; elsewhere with build --out)
 ```
 
 Reserved names, all skipped by page discovery:
@@ -332,7 +322,7 @@ Reserved names, all skipped by page discovery:
 | `_includes/` | a convention for `{{< include >}}` partials; the `_` keeps them out of the page set (the leading `_` on the partial files themselves, e.g. `_intro.tmd`, is also enough) |
 | `_extensions/` | reusable theme bundles: a `_extensions/<name>/theme.css` selected by name from `theme:` |
 | `_freeze/` | the persistent execution cache, keyed by content hash; gitignore it |
-| `_site/` / `_book/` | build output (`build <dir>` writes here; override with `output:`) |
+| `_site/` / `_book/` | build output (`build <dir>` writes here; write elsewhere with `build --out <dir>`) |
 | anything `.`-prefixed | hidden files/dirs (`.git`, …) are skipped too |
 
 A `404.tmd` is special-cased the other way: it builds to `404.html` at the site root

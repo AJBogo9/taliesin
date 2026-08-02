@@ -52,34 +52,31 @@ pub(super) fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
     }
 }
 
-/// Document-level cell defaults from a front-matter `execute:` block:
+/// The document-level `cache:` default from a front-matter `execute:` block:
 ///
 /// ```yaml
 /// execute:
-///   echo: false
-///   include: false
 ///   cache: false
 /// ```
 ///
-/// Returns `(echo, include, cache)`, each defaulting to `true`. Per-cell `#|`
-/// options override these. (`eval`/`output`/`warning` are not yet honoured.)
-pub(super) fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) {
-    // Apply one `key: value` pair from an `execute:` mapping (shared by the block
-    // and the inline flow form).
-    fn apply_kv(k: &str, v: &str, echo: &mut bool, include: &mut bool, cache: &mut bool) {
-        // Off only for a recognized false word (`false`/`no`/`off`); everything else
-        // stays on. Coerces the YAML-1.1 words so `execute: {echo: no}` takes effect.
-        let on =
-            crate::frontmatter::yaml_bool_word(v.trim().trim_matches(['"', '\''])) != Some(false);
-        match k.trim() {
-            "echo" => *echo = on,
-            "include" => *include = on,
-            "cache" => *cache = on,
-            _ => {}
+/// Defaults to `true`; a per-cell `#| cache:` overrides it.
+///
+/// `echo:` and `include:` used to live here too and were retired on 2026-08-02. They were
+/// document-wide defaults for something every real document states per cell (`#| echo:`),
+/// and a default that silently suppresses every listing in a file reads worse than saying
+/// it on the cells you mean. `cache:` stays because it is genuinely a whole-document
+/// property: it is about the freeze cache, not about how any one cell reads.
+pub(super) fn detect_execute_cache(front_matter: &str) -> bool {
+    // Off only for a recognized false word (`false`/`no`/`off`); everything else stays on.
+    // Coerces the YAML-1.1 words so `execute: {cache: no}` takes effect.
+    fn apply_kv(k: &str, v: &str, cache: &mut bool) {
+        if k.trim() == "cache" {
+            *cache = crate::frontmatter::yaml_bool_word(v.trim().trim_matches(['"', '\'']))
+                != Some(false);
         }
     }
 
-    let (mut echo, mut include, mut cache) = (true, true, true);
+    let mut cache = true;
     let mut in_block = false;
     for line in front_matter.lines() {
         let indent = line.len() - line.trim_start().len();
@@ -90,10 +87,10 @@ pub(super) fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) 
             {
                 let rest = rest.trim();
                 if let Some(inner) = rest.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-                    // Flow form on one line: `execute: {echo: false, cache: false}`.
+                    // Flow form on one line: `execute: {cache: false}`.
                     for pair in inner.split(',') {
                         if let Some((k, v)) = pair.split_once(':') {
-                            apply_kv(k, v, &mut echo, &mut include, &mut cache);
+                            apply_kv(k, v, &mut cache);
                         }
                     }
                 } else if rest.is_empty() {
@@ -109,10 +106,10 @@ pub(super) fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) 
             break; // dedent ends the block
         }
         if let Some((k, v)) = t.split_once(':') {
-            apply_kv(k, v, &mut echo, &mut include, &mut cache);
+            apply_kv(k, v, &mut cache);
         }
     }
-    (echo, include, cache)
+    cache
 }
 
 /// A code cell whose source is suppressed (`#| echo: false` / `#| include: false`)

@@ -1,7 +1,10 @@
-//! Book-level `theorems:` (item 16 F-01): a `_site.yml` numbering policy is inherited by a
-//! chapter with no `theorems:` block of its own, and overridden by a chapter that declares
-//! one. Pins `corpus/theorem-book/` (alpha inherits `numbered: false`; beta overrides back
-//! to numbered).
+//! Per-chapter `theorems:` in a book. Pins `corpus/theorem-book/`.
+//!
+//! The book-wide `_site.yml theorems:` policy was retired on 2026-08-02, so a chapter's
+//! counter configuration is entirely its own. The property that replaces "inheritance
+//! works" is **no leak**: alpha declares `shared: [theorem, lemma]`, beta declares
+//! nothing, and beta must count each kind separately. That is the failure a shared
+//! `TheoremConfig` threaded through the site would reintroduce silently.
 
 mod common;
 use common::corpus_dir;
@@ -12,26 +15,45 @@ fn book() -> Site {
 }
 
 #[test]
-fn a_chapter_without_its_own_theorems_inherits_the_book_policy() {
+fn a_chapters_shared_counter_applies_and_is_chapter_scoped() {
     let alpha = book().render_page("alpha.tmd").expect("alpha renders");
-    // Book policy is `numbered: false`, so the theorem's number span is empty.
+    // One counter across both kinds, scoped to chapter 1.
     assert!(
-        alpha.contains(r#"<span class="tali-theorem-number"></span>"#),
-        "alpha inherits book numbered:false (empty number span):\n{alpha}"
+        alpha.contains(r#"<span class="tali-theorem-number">&nbsp;1.1</span>"#),
+        "the theorem opens the shared sequence at 1.1:\n{alpha}"
     );
     assert!(
-        !alpha.contains(r#"tali-theorem-number">&nbsp;"#),
-        "alpha theorem must carry no number"
+        alpha.contains(r#"<span class="tali-theorem-number">&nbsp;1.2</span>"#),
+        "the lemma CONTINUES that sequence at 1.2 rather than restarting:\n{alpha}"
     );
 }
 
 #[test]
-fn a_chapter_with_its_own_theorems_overrides_the_book_policy() {
+fn a_chapter_declaring_nothing_does_not_inherit_its_siblings_config() {
     let beta = book().render_page("beta.tmd").expect("beta renders");
-    // beta declares `numbered: true`, overriding the book, so its theorem is numbered and
-    // chapter-scoped (chapter 2 -> "Theorem 2.1").
-    assert!(
-        beta.contains(r#"<span class="tali-theorem-number">&nbsp;2.1</span>"#),
-        "beta overrides to numbered, chapter-scoped:\n{beta}"
+    // Independent counters: both kinds are 2.1 in chapter 2. If alpha's `shared:` leaked,
+    // the lemma would read 2.2 instead.
+    assert_eq!(
+        beta.matches(r#"<span class="tali-theorem-number">&nbsp;2.1</span>"#)
+            .count(),
+        2,
+        "theorem and lemma each count from 1 in their own chapter:\n{beta}"
     );
+    assert!(
+        !beta.contains(r#"<span class="tali-theorem-number">&nbsp;2.2</span>"#),
+        "a sibling chapter's `shared:` must not reach this one:\n{beta}"
+    );
+}
+
+/// Every theorem carries a number. The `numbered:` opt-outs are gone, so no corpus page
+/// and no config can produce the empty number span this book used to assert.
+#[test]
+fn no_chapter_renders_an_unnumbered_theorem() {
+    for page in ["alpha.tmd", "beta.tmd"] {
+        let html = book().render_page(page).expect("renders");
+        assert!(
+            !html.contains(r#"<span class="tali-theorem-number"></span>"#),
+            "{page} rendered an unnumbered theorem:\n{html}"
+        );
+    }
 }

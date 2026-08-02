@@ -2,7 +2,7 @@
 title: "Diagnostics: typo coverage"
 treme: darkly
 execute:
-  eccho: false
+  cach: true
 listing:
   contents: posts
   max-itemz: 3

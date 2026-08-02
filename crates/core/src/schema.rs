@@ -18,7 +18,7 @@ pub const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.js
 #[cfg(test)]
 mod generate {
     use crate::frontmatter::{
-        EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS, THEOREM_KEYS,
+        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, THEOREM_KEYS,
     };
     use crate::site::{NATIVE_KEYS, PUBLISH_KEYS};
     use serde_json::{Map, Value, json};
@@ -46,22 +46,15 @@ mod generate {
         })
     }
 
-    /// The `theorems:` config shape (`shared:` counter groups + a `numbered:` mode). Shared
-    /// by the per-document front-matter schema and the `_site.yml` book-level schema so both
-    /// describe the same key identically.
+    /// The `theorems:` config shape: `shared:` counter groups, and nothing else since the
+    /// `numbered:` mode was retired on 2026-08-02.
     fn theorems_schema() -> Value {
         closed_object(
             THEOREM_KEYS,
-            &[
-                (
-                    "shared",
-                    json!({ "type": "array", "items": { "type": "string" } }),
-                ),
-                (
-                    "numbered",
-                    json!({ "oneOf": [{ "type": "boolean" }, { "type": "string", "enum": ["unless-unique"] }] }),
-                ),
-            ],
+            &[(
+                "shared",
+                json!({ "type": "array", "items": { "type": "string" } }),
+            )],
         )
     }
 
@@ -85,24 +78,18 @@ mod generate {
         let listing = json!({
             "oneOf": [listing_item.clone(), { "type": "array", "items": listing_item }]
         });
-        let hero = closed_object(HERO_KEYS, &[]);
-        // prose-lint: `true` (built-in rules) or `{ banned: [strings] }`.
-        let prose_lint = json!({
-            "oneOf": [
-                boolean(),
-                closed_object(
-                    PROSE_LINT_KEYS,
-                    &[("banned", json!({ "type": "array", "items": { "type": "string" } }))],
-                )
-            ]
-        });
+        // hero: text + a list of `{ text, href, primary }` action buttons.
+        let hero_action = closed_object(HERO_ACTION_KEYS, &[("primary", boolean())]);
+        let hero = closed_object(
+            HERO_KEYS,
+            &[("actions", json!({ "type": "array", "items": hero_action }))],
+        );
         // theorems: `shared` is a list of kind names sharing one counter.
         let overrides = [
             ("toc", boolean()),
             ("execute", execute),
             ("listing", listing),
             ("hero", hero),
-            ("prose-lint", prose_lint),
             ("theorems", theorems_schema()),
             // An extension owns `format:`'s sub-keys, so leave it fully permissive.
             ("format", json!({})),
@@ -168,15 +155,7 @@ mod generate {
             "title": "Taliesin _site.yml",
             "type": "object",
             "additionalProperties": false,
-            "properties": properties(
-                NATIVE_KEYS,
-                &[
-                    ("toc", boolean()),
-                    ("chapters", chapters),
-                    ("publish", publish),
-                    ("theorems", theorems_schema()),
-                ],
-            ),
+            "properties": properties(NATIVE_KEYS, &[("chapters", chapters), ("publish", publish)]),
         })
     }
 

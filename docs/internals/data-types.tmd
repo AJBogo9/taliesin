@@ -204,10 +204,12 @@ the body the `full_render` message and the static `build` both emit.
 
 ### `PageIncludes`
 
-The already-resolved markup from the `include-in-header` / `include-before-body` /
-`include-after-body` / `css` front-matter keys (and the site-level `format: html:`).
-Each string is fully resolved: an inline `text:`, or a referenced file's contents,
-with `css` files wrapped in `<style>`, so the page template just drops it in.
+The already-resolved markup for the page template's three injection slots. `in_header`
+comes from the project's `_site.yml` `head:`, fully resolved (an inline `text:`, or a
+referenced file's contents) so the template just drops it in. `before_body` and
+`after_body` have no configured source since the raw-injection family was retired on
+2026-08-02; `before_body` is still written by the site chrome, which is where the
+draft-page banner comes from.
 
 ```rust
 struct PageIncludes {

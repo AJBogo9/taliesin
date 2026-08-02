@@ -280,6 +280,58 @@ The highest-value work in the document. Each item removes a *second mechanism fo
 
 Ships as a single commit with all `RETIRED_KEYS` entries, per "Batch the retirements".
 
+> **Status, 2026-08-02: Wave 2 is COMPLETE.** 17 keys retired, 2 validators added. What
+> executing it corrected in the list below, which a later wave must not re-derive:
+>
+> - **`_site.yml toc:` was NOT measured ceremony, and the spec's evidence measured one file
+>   of five.** The claim "`site/_site.yml` writes `toc: false`, already the default" is true
+>   of that file and false of the key: **5 of 17 configs set it, and 3 set `toc: true`**
+>   (`tech-blog`, `descent`, `analyst`) against a default of `false`. Cutting it as ceremony
+>   would have silently removed the sidebar TOC from three real sites. **Owner ruling: cut it
+>   anyway and make the heading-count auto-gate the default**, which is the "derive, don't
+>   declare" answer rather than the "nobody uses it" one. Measured after the change, building
+>   all five real projects with the old and new binaries: `tech-blog` 8→8, `descent` 1→1,
+>   `analyst` 2→2, `graphics3d` 0→0 — **the gate reproduces the opt-in exactly** — and
+>   `site/` 0→1 (`showcase.html` gains a rail it declined). One page changed in the entire
+>   repo. Before trusting an adoption number here, check every file, not the first one.
+> - **`hero.actions[]` cannot be cut; it is used on three real `site/` pages.** Read as the
+>   missing-validator item it is (like `chapters:`), not as a removal. A typo'd `hef:` used
+>   to render a button that goes nowhere under a green `check`.
+> - **`theorems:` config had 4 corpus documents + 1 `_site.yml`, not zero.** The spec's "one
+>   real use of one of eight kinds" measures theorem *environments*, not the config. **Owner
+>   ruling: cut `numbered:` (and the book-wide `_site.yml theorems:` that carried it), keep
+>   `shared:`**, which is what `corpus/course/mle.tmd` — the demand-probe pilot and a gallery
+>   exhibit — actually exercises. `corpus/theorem-book/` was **repurposed rather than
+>   deleted**: it now pins the property the retirement creates, that a chapter's `shared:`
+>   does NOT leak to a sibling chapter.
+> - **The `_site.yml` validator did not consult `RETIRED_KEYS` at all.** It had its own
+>   `did_you_mean`, so retiring six config keys without wiring it up would have answered
+>   `toc:` with "did you mean `logo`?" — a confident instruction to write something
+>   unrelated. The register is scoped `(scope, key, note)` precisely for this; `validate_keys`
+>   now routes through `unknown_key_message` under a `config key` scope.
+> - **A retired key trips EIGHT gates, not seven.** The eighth is
+>   `editor/vscode/schema/tali-site.schema.json`, a bundled copy of the crate's schema gated
+>   by the companion's own `node --test`. `cargo test --workspace` is green while it is stale;
+>   only `./tools/gates.sh` catches it.
+> - **The retired-key docs gate had to become scope-aware.** `stale_docs.rs` flattened the
+>   register's key column and matched any `key:` line, which fires on legitimate live usage
+>   the moment a name is retired in one scope and live in another — `toc:` and `theorems:`
+>   (gone from `_site.yml`, live in front matter), `image:` (gone from `hero:`, live at top
+>   level), `echo:` (gone from `execute:`, live as `#| echo:`). It now gates only keys **both**
+>   validators reject.
+> - **Cutting the raw-injection family created a real ordering defect, found only by running
+>   it.** With `head:` the sole route, the documented way to load a client enhancer moved from
+>   a body slot into `<head>` — which runs *earlier* than the inline enhancer registry, so
+>   `window.taliEnhancers.register(...)` threw at parse. The registry is now emitted in
+>   `<head>` ahead of `{include_in_header}`; its `if (window.taliEnhancers) return;` guard
+>   makes the later bundled copy no-op exactly as before. **Retiring the alternatives to a
+>   feature can break the survivor**, and no unit test asked the question.
+> - **Two smaller corrections the real binary surfaced.** The `hero.image` a11y lint kept
+>   telling authors to add `image-alt:` to a key that no longer exists (two contrary
+>   instructions on one line); it is gone. And `key_line` could not locate a key inside a flow
+>   mapping (`- { fil: a.tmd }`), which is how chapter entries are usually written, so the new
+>   `chapters:` diagnostic arrived without a line number.
+
 - **Raw-injection family, keep exactly one.** Eight keys at measured zero adoption across 218
   documents and 17 `_site.yml` files: `css`, `include-in-header`, `include-before-body`,
   `include-after-body` (front matter) and `css`, `head`, `body-start`, `body-end`

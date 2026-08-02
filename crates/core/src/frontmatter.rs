@@ -37,7 +37,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Output / format / theme
     "format",
     "theme",
-    "css",
     "page-layout",
     // Drafts: `draft: true` holds a page (or book chapter) out of the published build
     // (output, nav, listings); the live preview still shows it, badged.
@@ -45,10 +44,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Title block: `title-block-style: none` is honored (suppresses the visible
     // header); see `render::detect_title_block_hidden`.
     "title-block-style",
-    // Per-document head/body injection, honored by `render::resolve_doc_includes`.
-    "include-in-header",
-    "include-before-body",
-    "include-after-body",
     // Table of contents
     "toc",
     // Citations. `csl` is recognized but NOT honored; see UNSUPPORTED_KEYS.
@@ -71,20 +66,21 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Listings / project pages
     "listing",
     "hero",
-    // Prose lint (opt-in): `prose-lint: true | { banned: [...] }`; see `crate::prose`.
-    "prose-lint",
-    // Theorem environments (per-document numbering config; see render::TheoremConfig).
+    // Theorem environments (per-document shared-counter config; see render::TheoremConfig).
     "theorems",
 ];
 
 /// Keys taliesin RECOGNIZES but does not honor: it reads them, then ignores them.
 ///
-/// They stay in [`KNOWN_KEYS`] on purpose, and the reason is not politeness. `csl` is edit
-/// distance 1 from `css`, so dropping it would make the did-you-mean machinery answer a
-/// `csl:` key with "did you mean `css`?" — confidently telling the author to rename their
-/// citation-style key to a stylesheet key. That is worse than the silence it replaces, so
-/// the key is recognized and a dedicated diagnostic says the honest thing instead
-/// (`diagnostics::csl_recognized_but_unsupported`).
+/// They stay in [`KNOWN_KEYS`] on purpose, and the reason is not politeness. `csl` names a
+/// real thing an author brought from another tool, and the honest answer is "recognized,
+/// not honored" rather than either silence or a rename hint — so the key is recognized and
+/// a dedicated diagnostic says so (`diagnostics::csl_recognized_but_unsupported`).
+///
+/// This used to be argued from `css` being edit distance 1 away, which would have made a
+/// bare did-you-mean tell the author to rename their citation-style key to a stylesheet
+/// key. `css` was retired on 2026-08-02, so that specific collision is gone; the reason
+/// above is the one that survives it, and it was always the load-bearing half.
 ///
 /// Also the exclusion list for the editor vocabulary (`vocab::vocab`): an unsupported key
 /// must never be OFFERED as a completion. Recognizing what an author already wrote and
@@ -106,6 +102,134 @@ pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 /// `(scope, key, what to do instead)`, where `scope` is [`unknown_key_message`]'s `what`
 /// label, so a retired *sub*-key is only recognized in the map it actually lived in.
 pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
+    // --- The raw-injection family, retired 2026-08-02. Four front-matter keys and three
+    // `_site.yml` ones went; `_site.yml head:` is the survivor, kept deliberately as the
+    // one escape hatch a published tool needs (analytics, search-console verification,
+    // a custom stylesheet). Every note therefore points at the same successor.
+    (
+        "front-matter key",
+        "css",
+        "it was removed on 2026-08-02: per-document stylesheet injection had no users, and \
+         one escape hatch is enough. Put the rules in `_site.yml head:` (a `<style>` or a \
+         `<link>`), which applies site-wide, or use a `theme:` for colours",
+    ),
+    (
+        "front-matter key",
+        "include-in-header",
+        "it was removed on 2026-08-02: use `_site.yml head:`, which injects the same markup \
+         into `<head>` for the whole project. There is no per-document form any more",
+    ),
+    (
+        "front-matter key",
+        "include-before-body",
+        "it was removed on 2026-08-02 with no successor: nothing used it, and markup that \
+         must precede the content is content — write it in the document. Site-wide markup \
+         goes in `_site.yml head:`",
+    ),
+    (
+        "front-matter key",
+        "include-after-body",
+        "it was removed on 2026-08-02 with no successor: nothing used it, and markup that \
+         must follow the content is content — write it in the document. Site-wide markup \
+         goes in `_site.yml head:`",
+    ),
+    (
+        "front-matter key",
+        "prose-lint",
+        "it was removed on 2026-08-02 along with the linter it configured: it was opt-in \
+         and never opted into. The doubled-word, weasel-word and banned-phrase checks are \
+         gone; nothing replaces them, so delete the key",
+    ),
+    (
+        "execute key",
+        "echo",
+        "it was removed on 2026-08-02: the per-cell `#| echo: false` is what documents \
+         actually use, and a document-wide default that silently changes every cell reads \
+         worse than saying it on the cells you mean. Write `#| echo: false` in each cell",
+    ),
+    (
+        "execute key",
+        "include",
+        "it was removed on 2026-08-02 with no successor: it suppressed a cell's source AND \
+         its output, which `#| echo: false` plus simply not writing the cell already cover",
+    ),
+    (
+        "listing key",
+        "sort",
+        "it was removed on 2026-08-02: every listing that set it wrote `\"date desc\"`, \
+         which is what a listing already does. Newest first is the only order now, so \
+         delete the key",
+    ),
+    (
+        "hero key",
+        "image",
+        "it was removed on 2026-08-02: the hero banner is type, not a figure, and nothing \
+         set it. Put the image in the page body as a normal figure",
+    ),
+    (
+        "hero key",
+        "image-alt",
+        "it was removed on 2026-08-02 with `hero.image`, whose alt text it carried",
+    ),
+    (
+        "theorems key",
+        "numbered",
+        "it was removed on 2026-08-02: theorems are numbered, scoped to their book chapter \
+         automatically, and the un-numbering policies had no users. `shared:` (one counter \
+         across several kinds) is what survives the block",
+    ),
+    // --- `_site.yml`. Scope `config key` is what `site::config`'s validator labels a
+    // top-level key, so these are only recognized there.
+    (
+        "config key",
+        "css",
+        "it was removed on 2026-08-02: use `head:`, which takes the same markup and is the \
+         one raw-injection hatch the config keeps",
+    ),
+    (
+        "config key",
+        "body-start",
+        "it was removed on 2026-08-02 with no successor: nothing used it. Site-wide markup \
+         goes in `head:`",
+    ),
+    (
+        "config key",
+        "body-end",
+        "it was removed on 2026-08-02 with no successor: nothing used it. Site-wide markup \
+         goes in `head:`; a deferred script in `<head>` runs at the same point",
+    ),
+    (
+        "config key",
+        "output",
+        "it was removed on 2026-08-02: both projects that set it wrote the default. `build` \
+         writes `_site/` (`_book/` for a book), or wherever `--out` says",
+    ),
+    (
+        "config key",
+        "toc",
+        "it was removed on 2026-08-02 and the sidebar table of contents is now automatic: \
+         an article page with enough headings gets one. To force it on or off for a page, \
+         write `toc:` in that page's own front matter",
+    ),
+    (
+        "config key",
+        "theorems",
+        "it was removed on 2026-08-02 with the `numbered:` policy it carried book-wide. A \
+         chapter that shares counters across kinds says so in its own front matter: \
+         `theorems: { shared: [...] }`",
+    ),
+    (
+        "mounts entry key",
+        "at",
+        "the `- { at:, path: }` list form was removed on 2026-08-02. Write `mounts:` as a \
+         mapping of URL prefix to project directory instead: `mounts:\\n  docs: ../docs`",
+    ),
+    (
+        "mounts entry key",
+        "path",
+        "the `- { at:, path: }` list form was removed on 2026-08-02. Write `mounts:` as a \
+         mapping of URL prefix to project directory instead: `mounts:\\n  docs: ../docs`",
+    ),
     (
         "front-matter key",
         "datasets",
@@ -131,35 +255,36 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
-pub(crate) const EXECUTE_KEYS: &[&str] = &["echo", "include", "cache"];
+///
+/// One key, and that is the whole set on purpose: `echo`/`include` were document-wide
+/// defaults for something every real document says per cell (`#| echo:`), so they were
+/// retired on 2026-08-02 rather than kept as a second way to say it.
+pub(crate) const EXECUTE_KEYS: &[&str] = &["cache"];
 
 /// `listing:` sub-keys taliesin honors (see `site::frontmatter::parse_listing_spec`).
-pub(crate) const LISTING_KEYS: &[&str] =
-    &["contents", "id", "sort", "type", "max-items", "categories"];
+///
+/// No `sort:`. A listing is newest-first, which is what all four real listings wrote out
+/// longhand; see the `RETIRED_KEYS` entry.
+pub(crate) const LISTING_KEYS: &[&str] = &["contents", "id", "type", "max-items", "categories"];
 
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
-pub(crate) const HERO_KEYS: &[&str] = &[
-    "eyebrow",
-    "headline",
-    "lead",
-    "actions",
-    "image",
-    "image-alt",
-];
+///
+/// Text and links only: the banner is type, not a figure. `image`/`image-alt` were retired
+/// on 2026-08-02 unused.
+pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"];
 
-/// `prose-lint:` sub-keys taliesin honors (the mapping form; see `crate::prose::config`).
-pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
+/// The keys of one `hero.actions:` entry (`{ text, href, primary }`). A typo here used to
+/// be silent — the item parses, the button renders with no label or no link — which is the
+/// same failure shape the `chapters:` validator exists to prevent, so it warns.
+pub(crate) const HERO_ACTION_KEYS: &[&str] = &["text", "href", "primary"];
 
-/// `theorems:` sub-keys taliesin honors: `shared` (shared counters), `numbered`
-/// (whether/when to number). The VALUES of `numbered` are checked by
-/// [`validate_theorem_values`] so an unrecognized value warns rather than being silently
-/// ignored. Numbering *scope* is deliberately not a key: a theorem scopes to its numbered
-/// book chapter automatically, as every float does.
-pub(crate) const THEOREM_KEYS: &[&str] = &["shared", "numbered"];
-
-/// String values `theorems.numbered` honors besides a YAML bool; also the did-you-mean
-/// suggestion candidates.
-const THEOREM_NUMBERED: &[&str] = &["false", "unless-unique"];
+/// `theorems:` sub-keys taliesin honors: `shared` (draw one counter across several kinds).
+///
+/// Numbering itself is deliberately not a key: a theorem is numbered, and it scopes to its
+/// numbered book chapter automatically, as every float does. `numbered:` carried the
+/// policies for opting out of that and was retired on 2026-08-02 with its book-wide
+/// `_site.yml` counterpart.
+pub(crate) const THEOREM_KEYS: &[&str] = &["shared"];
 
 /// Validate a document's front matter against taliesin's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
@@ -198,14 +323,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_image_alt(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
-    validate_nested(
-        map,
-        "prose-lint",
-        "prose-lint key",
-        PROSE_LINT_KEYS,
-        block,
-        &mut out,
-    );
+    validate_hero_actions(map, block, &mut out);
     validate_nested(
         map,
         "theorems",
@@ -214,7 +332,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         block,
         &mut out,
     );
-    validate_theorem_values(map, block, &mut out);
     // `listing:` is one mapping or a sequence of mappings (cv.tmd).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
@@ -333,15 +450,10 @@ fn validate_image_alt(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warn
             block_key_span(block, "image"),
         ));
     }
-    if let Some(hero) = map.get("hero").and_then(|h| h.as_mapping())
-        && is_set(hero.get("image"))
-        && hero.get("image-alt").is_none()
-    {
-        out.push(located_span(
-            format!("hero image is missing alt text {HINT}"),
-            nested_key_span(block, "hero", "image"),
-        ));
-    }
+    // No `hero.image` arm: `image`/`image-alt` were retired from `hero:` on 2026-08-02, so a
+    // leftover `hero: { image: … }` already draws the retired-key diagnostic. Asking the
+    // author to add `image-alt:` to a key that no longer exists would be a second, contrary
+    // instruction on the same line.
 }
 
 fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
@@ -411,28 +523,33 @@ fn validate_child_keys(
     }
 }
 
-/// Value-level checks for `theorems:`. The parser silently ignores an unrecognized
-/// `numbered` value (rendering the OPPOSITE of intent — e.g. `numbered: never` stays
-/// numbered), so flag it with a did-you-mean rather than certifying it on a green check.
-/// Mirrors the accepted set in `render::fm_extract::parse_theorem_config`. `pub(crate)` so
-/// the `_site.yml` book-level `theorems:` path validates its `numbered:` value identically.
-pub(crate) fn validate_theorem_values(
-    map: &serde_yaml::Mapping,
-    block: &str,
-    out: &mut Vec<Warning>,
-) {
-    let Some(serde_yaml::Value::Mapping(thm)) = map.get("theorems") else {
+/// Validate each entry of `hero.actions:`, the list of buttons under a landing banner.
+///
+/// This vocabulary was unvalidated until 2026-08-02, and unlike a top-level key its typo
+/// is *silent and visible*: `hef:` renders a button that goes nowhere, `txt:` renders one
+/// with no label, and `check` stays green. That is the same failure shape as a typo'd
+/// chapter entry (`site::book`), and it earns the same diagnostic.
+///
+/// Located at the misspelled key when the `actions:` block is a flow-style list on one
+/// line (the form every real page uses, so the span usually lands); falls back to the
+/// `hero:` key otherwise.
+fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    let Some(serde_yaml::Value::Mapping(hero)) = map.get("hero") else {
         return;
     };
-    // `numbered` honors a YAML bool (true/false) or the string `unless-unique`.
-    if let Some(v) = thm.get("numbered")
-        && !(matches!(v, serde_yaml::Value::Bool(_)) || v.as_str() == Some("unless-unique"))
-    {
-        let line = nested_key_line(block, "theorems", "numbered");
-        out.push(located(
-            unknown_value_message("theorems numbered value", &value_label(v), THEOREM_NUMBERED),
-            line,
-        ));
+    let Some(serde_yaml::Value::Sequence(actions)) = hero.get("actions") else {
+        return;
+    };
+    for item in actions {
+        let Some(m) = item.as_mapping() else { continue };
+        for key in m.keys().filter_map(|k| k.as_str()) {
+            if !HERO_ACTION_KEYS.contains(&key) {
+                out.push(located_span(
+                    unknown_key_message("hero action key", key, HERO_ACTION_KEYS),
+                    block_key_span(block, key).or_else(|| block_key_span(block, "hero")),
+                ));
+            }
+        }
     }
 }
 
@@ -571,25 +688,6 @@ fn validate_page_layout_value(map: &serde_yaml::Mapping, block: &str, out: &mut 
     ));
 }
 
-/// A YAML scalar rendered for a diagnostic message (best-effort).
-fn value_label(v: &serde_yaml::Value) -> String {
-    match v {
-        serde_yaml::Value::String(s) => s.clone(),
-        serde_yaml::Value::Bool(b) => b.to_string(),
-        serde_yaml::Value::Number(n) => n.to_string(),
-        serde_yaml::Value::Null => "null".to_string(),
-        _ => "<value>".to_string(),
-    }
-}
-
-/// Like [`unknown_key_message`] but for an unrecognized VALUE.
-fn unknown_value_message(what: &str, value: &str, candidates: &[&'static str]) -> String {
-    match closest(value, candidates) {
-        Some(s) => format!("unknown {what} `{value}` (did you mean `{s}`?)"),
-        None => format!("unknown {what} `{value}`"),
-    }
-}
-
 /// The 1-based source line of the front matter's top-level `bibliography:` key, if
 /// present on its own line. Lets `.bib` diagnostics (a missing file, a duplicate
 /// key) point at the declaration instead of rendering as an unlocated warning.
@@ -616,13 +714,6 @@ pub(crate) fn block_key_span(block: &str, key: &str) -> Option<(u32, u32, u32)> 
         (line.len() == t.len() && key_matches(t, key))
             .then(|| (i as u32 + 2, 1, 1 + key.chars().count() as u32))
     })
-}
-
-/// The 1-based SOURCE-FILE line of an immediate child `key` under top-level
-/// `parent:` (best-effort). Scans from `parent:` to the next indent-0 key, matching
-/// `key:` at any indent (including a leading `- ` sequence item).
-fn nested_key_line(block: &str, parent: &str, key: &str) -> Option<u32> {
-    nested_key_span(block, parent, key).map(|(l, _, _)| l)
 }
 
 /// `(line, col, end_col)` of a nested child `key` under `parent:`, all 1-based. `col` follows
@@ -783,12 +874,6 @@ mod tests {
         assert_eq!(w[0].line, Some(2), "`treme` is on file line 2");
     }
 
-    #[test]
-    fn theorems_numbered_is_recognized() {
-        assert!(msgs("---\ntheorems:\n  numbered: false\n---\n").is_empty());
-        assert!(msgs("---\ntheorems:\n  numbered: unless-unique\n---\n").is_empty());
-    }
-
     /// `number-within` was removed when theorem numbers started scoping to a book chapter
     /// automatically. A doc that still carries it must be TOLD, not silently ignored: it
     /// is now an unknown `theorems:` key, which is the whole point of validating sub-keys
@@ -812,32 +897,29 @@ mod tests {
     }
 
     #[test]
-    fn theorems_flags_an_unrecognized_numbered_value() {
-        // A value the parser silently ignores (renders the OPPOSITE of intent) must warn,
-        // not pass a green check — `numbered` honors only a bool or `unless-unique`.
-        let m = msgs("---\ntheorems:\n  numbered: never\n---\n");
+    fn theorems_shared_is_the_whole_block() {
         assert!(
-            m.iter()
-                .any(|w| w.contains("numbered") && w.contains("never")),
-            "bad numbered value warns: {m:?}"
+            msgs("---\ntheorems:\n  shared: [theorem, lemma]\n---\n").is_empty(),
+            "`shared:` is the one honored sub-key"
         );
     }
 
+    /// `numbered:` was retired on 2026-08-02 with the book-wide `_site.yml theorems:`
+    /// policy. A leftover one must explain itself rather than be answered with `shared`.
     #[test]
-    fn theorems_accepts_every_valid_numbered_value() {
-        assert!(
-            msgs("---\ntheorems:\n  shared: [theorem, lemma]\n  numbered: unless-unique\n---\n")
-                .is_empty(),
-            "shared + unless-unique are valid"
-        );
-        assert!(
-            msgs("---\ntheorems:\n  numbered: false\n---\n").is_empty(),
-            "numbered: false (bool) is valid"
-        );
-        assert!(
-            msgs("---\ntheorems:\n  numbered: true\n---\n").is_empty(),
-            "numbered: true (bool) is valid"
-        );
+    fn theorems_numbered_is_retired_and_says_so() {
+        for value in ["false", "true", "unless-unique"] {
+            let m = msgs(&format!("---\ntheorems:\n  numbered: {value}\n---\n"));
+            let msg = m
+                .iter()
+                .find(|x| x.contains("`numbered`"))
+                .unwrap_or_else(|| panic!("`numbered: {value}` drew no diagnostic: {m:?}"));
+            assert!(
+                msg.contains("removed on 2026-08-02") && msg.contains("`shared:`"),
+                "must say it went and what survives: {msg}"
+            );
+            assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
+        }
     }
 
     #[test]
@@ -856,11 +938,31 @@ mod tests {
 
     #[test]
     fn flags_unknown_execute_child() {
-        let m = msgs("---\ntitle: X\nexecute:\n  eccho: false\n  cache: true\n---\n");
+        // `cache` is the only `execute:` sub-key left, so a typo of IT is what still draws a
+        // did-you-mean.
+        let m = msgs("---\ntitle: X\nexecute:\n  cach: true\n---\n");
         assert_eq!(
             m,
-            vec!["unknown execute key `eccho` (did you mean `echo`?)"]
+            vec!["unknown execute key `cach` (did you mean `cache`?)"]
         );
+    }
+
+    /// `echo:`/`include:` were retired from `execute:` on 2026-08-02. A leftover one must
+    /// say so and name the per-cell form, not be answered with a rename to `cache`.
+    #[test]
+    fn a_retired_execute_child_explains_itself() {
+        for (key, needle) in [("echo", "`#| echo: false`"), ("include", "no successor")] {
+            let m = msgs(&format!("---\ntitle: X\nexecute:\n  {key}: false\n---\n"));
+            let msg = m
+                .iter()
+                .find(|x| x.contains(&format!("`{key}`")))
+                .unwrap_or_else(|| panic!("no diagnostic for retired `{key}`: {m:?}"));
+            assert!(
+                msg.contains("removed on 2026-08-02") && msg.contains(needle),
+                "`{key}` must say it was removed and what to write: {msg}"
+            );
+            assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
+        }
     }
 
     #[test]
@@ -942,7 +1044,7 @@ mod tests {
     #[test]
     fn clean_doc_with_nested_blocks_has_no_warnings() {
         let w = validate_front_matter(
-            "---\ntitle: X\ntoc: true\nexecute:\n  echo: false\n  cache: true\nlisting:\n  contents: posts\n  type: grid\n---\n\nx\n",
+            "---\ntitle: X\ntoc: true\nexecute:\n  cache: true\nlisting:\n  contents: posts\n  type: grid\n---\n\nx\n",
         );
         assert!(w.is_empty(), "got: {w:?}");
     }
@@ -1205,22 +1307,25 @@ mod tests {
     fn csl_stays_recognized_because_dropping_it_would_mis_suggest_css() {
         // `csl:` is inert (nothing reads the value; references always render in the
         // built-in IEEE style), so the tempting cleanup is to drop it from KNOWN_KEYS and
-        // let the unknown-key lint speak. That is a TRAP, and this pins why: `css` is edit
-        // distance 1 from `csl`, so the did-you-mean would confidently tell the author to
-        // rename their citation-style key to a STYLESHEET key. Wrong advice is worse than
-        // the silence it replaces. `csl` therefore stays recognized, and
-        // `diagnostics::csl_recognized_but_unsupported` is what speaks.
-        assert_eq!(
-            levenshtein("csl", "css"),
-            1,
-            "the hazard is edit distance 1"
+        // let the unknown-key lint speak. It stays recognized anyway: `csl` names a real
+        // thing an author brought from another tool, and "recognized, not honored" (via
+        // `diagnostics::csl_recognized_but_unsupported`) is the honest answer where a bare
+        // unknown-key warning is not.
+        //
+        // This was ALSO argued from `css` being edit distance 1 away, which would have made
+        // the did-you-mean tell the author to rename a citation-style key to a stylesheet
+        // key. `css` was retired on 2026-08-02, so that collision is gone — and this asserts
+        // it is gone, so nobody re-derives the old rationale from a stale comment.
+        assert!(
+            !KNOWN_KEYS.contains(&"css"),
+            "`css` was retired; the edit-distance-1 collision no longer exists"
         );
         let without_csl: Vec<&'static str> =
             KNOWN_KEYS.iter().copied().filter(|k| *k != "csl").collect();
-        assert_eq!(
+        assert_ne!(
             closest("csl", &without_csl),
             Some("css"),
-            "dropping `csl` from KNOWN_KEYS makes the did-you-mean suggest `css`"
+            "`css` must not be a suggestion candidate any more"
         );
         // As shipped: recognized, so the unknown-key lint stays silent on it.
         assert!(
@@ -1260,7 +1365,7 @@ mod tests {
     #[test]
     fn honored_keys_do_not_warn() {
         let w = validate_front_matter(
-            "---\ntitle: X\ntitle-block-style: none\ninclude-in-header:\n  text: \"<meta>\"\n---\n",
+            "---\ntitle: X\ntitle-block-style: none\ntheme: dark\npage-layout: full\n---\n",
         );
         assert!(w.is_empty(), "honored keys must not warn, got: {w:?}");
     }
@@ -1274,17 +1379,18 @@ mod tests {
     }
 
     #[test]
-    fn prose_lint_key_is_recognized_and_nested_validated() {
+    fn prose_lint_key_is_retired_and_says_so() {
+        let w = validate_front_matter("---\ntitle: T\nprose-lint: true\n---\n");
+        let msg = &w
+            .iter()
+            .find(|x| x.message.contains("`prose-lint`"))
+            .expect("a retired key still warns")
+            .message;
         assert!(
-            validate_front_matter("---\ntitle: T\nprose-lint: true\n---\n").is_empty(),
-            "prose-lint should be a known top-level key"
+            msg.contains("removed on 2026-08-02") && msg.contains("nothing replaces them"),
+            "must say it went and that there is no successor: {msg}"
         );
-        let w = validate_front_matter("---\ntitle: T\nprose-lint:\n  bnned: [x]\n---\n");
-        assert!(
-            w.iter()
-                .any(|x| x.message.contains("bnned") && x.message.contains("banned")),
-            "nested prose-lint typo should be flagged, got: {w:?}"
-        );
+        assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
     }
 
     #[test]
@@ -1357,13 +1463,21 @@ mod tests {
             "a page with no `image:` at all has nothing to warn about"
         );
 
-        // The hero block carries its own image/alt pair.
-        let hero = warn_texts("---\ntitle: A page\nhero:\n  headline: Hi\n  image: h.png\n---\n");
-        assert_eq!(hero.len(), 1, "a `hero.image` with no alt must warn");
+        // `hero.image` was retired on 2026-08-02, so it draws the retired-key diagnostic and
+        // must NOT also draw an alt-text one: telling an author to add `image-alt:` to a key
+        // that no longer exists is a second, contrary instruction on the same line.
+        let src = "---\ntitle: A page\nhero:\n  headline: Hi\n  image: h.png\n---\n";
         assert!(
-            hero[0].contains("hero image"),
-            "the hero warning must name the hero: {}",
-            hero[0]
+            warn_texts(src).is_empty(),
+            "a retired `hero.image` must not draw an alt-text warning: {:?}",
+            warn_texts(src)
+        );
+        assert!(
+            validate_front_matter(src)
+                .iter()
+                .any(|w| w.message.contains("hero key `image`")
+                    && w.message.contains("removed on 2026-08-02")),
+            "it must still be diagnosed, as a retired key"
         );
     }
 

@@ -451,21 +451,45 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
     );
 }
 
-/// The retired front-matter keys, read out of `frontmatter.rs` rather than restated here,
-/// so retiring another key extends this gate automatically.
-fn retired_keys() -> Vec<String> {
+/// The body of a `const NAME: … = &[ … ];` block, as raw source text.
+fn const_block(src: &str, name: &str) -> String {
+    let (_, rest) = src
+        .split_once(&format!("{name}: &[&str] = &["))
+        .unwrap_or_else(|| panic!("{name} moved or changed shape — update this gate"));
+    rest.split("\n];").next().unwrap_or_default().to_string()
+}
+
+/// Every double-quoted string literal in `block`, in order.
+fn string_literals(block: String) -> Vec<String> {
+    block
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect()
+}
+
+/// The retired keys as `(scope, key)` pairs, read out of `frontmatter.rs` rather than
+/// restated here, so retiring another key extends this gate automatically.
+///
+/// **The scope is load-bearing and must not be flattened away.** `RETIRED_KEYS` is scoped
+/// because the same word can be retired in one place and live in another: `toc:` is gone
+/// from `_site.yml` but is still a front-matter key, `theorems:` likewise, `image:` is gone
+/// from `hero:` while the top-level `image:` is live, and `echo:` is gone from `execute:`
+/// while `#| echo:` is a live cell option. A gate that matched on the bare key would fire on
+/// every one of those legitimate examples.
+fn retired_keys() -> Vec<(String, String)> {
     let src = read("crates/core/src/frontmatter.rs");
     let (_, table) = src
         .split_once("RETIRED_KEYS: &[(&str, &str, &str)] = &[")
         .expect("RETIRED_KEYS moved or changed shape — update this gate, do not delete it");
     let table = table.split("\n];").next().unwrap_or_default();
-    // Each entry is (scope, key, note); the key is the second string literal.
+    // Each entry is (scope, key, note); the first two string literals are what we want.
     let mut keys = Vec::new();
     for entry in table.split("    (").skip(1) {
         let mut lits = entry.split('"').skip(1).step_by(2);
-        let _scope = lits.next();
-        if let Some(key) = lits.next() {
-            keys.push(key.to_string());
+        if let (Some(scope), Some(key)) = (lits.next(), lits.next()) {
+            keys.push((scope.to_string(), key.to_string()));
         }
     }
     keys
@@ -476,22 +500,67 @@ fn retired_keys() -> Vec<String> {
 /// A front-matter example inside the manual is read by no validator: `check` lints the
 /// corpus and the books' own front matter, never a YAML block quoted in prose. So the one
 /// surface where a reader learns the vocabulary is the one surface nothing checks.
+///
+/// Gated on the keys **both** validators reject: a top-level retirement (`front-matter key`
+/// or `config key`) that is not in `KNOWN_KEYS` and not in `NATIVE_KEYS`, matched at column
+/// 0. Anything narrower would be wrong, because a shipped example is prose — nothing tells
+/// this gate whether a given YAML block is front matter or a `_site.yml`. `toc:` and
+/// `theorems:` are exactly that case: retired from `_site.yml`, live in front matter, so a
+/// `toc: true` line in the manual is legitimate and must not fail.
+///
+/// Two residual gaps, both covered elsewhere rather than papered over here. A `toc:` shown
+/// inside a `_site.yml` example is not caught (`configuration.tmd` is the page that would
+/// carry one, and the `_site.yml` schema golden pins the real vocabulary). And a nested
+/// retirement (`hero key`, `execute key`, …) is not caught, since its key is indented and
+/// collides with live spellings elsewhere. `from-quarto.tmd` is what tells a reader about
+/// every retirement, and `quarto_migration_page.rs` gates that all of them are named there.
 #[test]
 fn shipped_docs_do_not_use_a_retired_front_matter_key() {
     let keys = retired_keys();
     assert!(
-        keys.iter().any(|k| k == "about"),
+        keys.iter()
+            .any(|(s, k)| s == "front-matter key" && k == "about"),
         "expected the retired `about:` key in RETIRED_KEYS, got {keys:?} — if it was \
          un-retired, this gate needs rewriting rather than deleting"
     );
     assert!(keys.len() >= 2, "only {} retired keys parsed", keys.len());
 
+    // The two live top-level vocabularies, read from the same consts the validators use.
+    let live_fm = string_literals(const_block(
+        &read("crates/core/src/frontmatter.rs"),
+        "KNOWN_KEYS",
+    ));
+    let live_cfg = string_literals(const_block(
+        &read("crates/core/src/site/config/mod.rs"),
+        "NATIVE_KEYS",
+    ));
+    assert!(
+        live_fm.contains(&"toc".to_string()) && !live_cfg.contains(&"toc".to_string()),
+        "this gate's premise is that a key can be live in one vocabulary and retired in the \
+         other; `toc` was the case it was written for (live_fm={live_fm:?})"
+    );
+
+    let top_level: Vec<&String> = keys
+        .iter()
+        .filter(|(scope, _)| scope == "front-matter key" || scope == "config key")
+        .map(|(_, key)| key)
+        .filter(|k| !live_fm.contains(k) && !live_cfg.contains(k))
+        .collect();
+    assert!(
+        top_level.len() >= 2,
+        "no unambiguously-retired top-level keys parsed out of {keys:?}"
+    );
+
     let mut hits = Vec::new();
     for (rel, text) in shipped_docs() {
         for (n, line) in text.lines().enumerate() {
-            let t = line.trim_start().trim_start_matches("- ");
-            for k in &keys {
-                if t.starts_with(&format!("{k}:")) {
+            // Column 0 only: an indented `toc:` is a sub-key of something else, and a
+            // top-level retirement says nothing about it.
+            if line.starts_with(char::is_whitespace) {
+                continue;
+            }
+            for k in &top_level {
+                if line.starts_with(&format!("{k}:")) {
                     hits.push(format!("{rel}:{}: {}", n + 1, line.trim()));
                 }
             }
@@ -499,8 +568,8 @@ fn shipped_docs_do_not_use_a_retired_front_matter_key() {
     }
     assert!(
         hits.is_empty(),
-        "shipped doc(s) show a retired front-matter key that the validator now rejects \
-         ({keys:?}):\n{}",
+        "shipped doc(s) show a retired top-level key that the validator now rejects \
+         ({top_level:?}):\n{}",
         hits.join("\n")
     );
 }

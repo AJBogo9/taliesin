@@ -75,8 +75,24 @@ Two more `format:` shapes to know:
 | `csl: apa.csl` | Recognised but **not** honoured. References always render in the built-in IEEE style; the `.csl` file is never parsed. |
 | `about:` | Removed on 2026-07-17. The landing banner is `hero:`, which takes different sub-keys (`eyebrow` / `headline` / `lead` / `actions`) — a rewrite, not a rename. |
 | `theorems: { number-within: … }` | Removed. Theorem numbers scope to a numbered book chapter automatically, so nothing replaces it: delete the key. |
+| `theorems: { numbered: … }` | Removed on 2026-08-02. Environments are numbered; `shared:` (one counter across several kinds) is the whole block now. |
+| `css:`, `include-in-header:`, `include-before-body:`, `include-after-body:` | Removed on 2026-08-02, along with `_site.yml`'s `css:`, `body-start:` and `body-end:`. One project-wide hatch replaces all seven: `_site.yml` `head:`, which injects markup into every page's `<head>`. For colours and type prefer a `theme:`. |
+| `execute: { echo: … }`, `execute: { include: … }` | Removed on 2026-08-02. Say it on the cells you mean: `#| echo: false` in the cell. `execute: { cache: … }` remains, because caching is genuinely a whole-document property. |
+| `listing: { sort: … }` | Removed on 2026-08-02. A listing is newest-first by `date`, which is what every listing that spelled it out was asking for. |
+| `hero: { image: … }`, `hero: { image-alt: … }` | Removed on 2026-08-02. The banner is type, not a figure; put the image in the page body as a normal figure. |
+| `prose-lint:` | Removed on 2026-08-02 with the linter it configured (doubled words, weasel words, `banned:`). Nothing replaces it: delete the key. |
 | `datasets:` | Removed on 2026-08-02. The annotations moved onto the invocation that uses them: `{{< dataset data/x.csv licence=CC0-1.0 source=… >}}`. There is no `path:`/`url:` any more, since the shortcode's own argument already names the file, so this is a move rather than a rename. |
 | `page-layout: article` (or `custom`, …) | Ignored. Taliesin uses the reading-width column by default and only `page-layout: full` widens it. |
+
+### `_site.yml` keys that were removed
+
+| You wrote | What happens |
+|---|---|
+| `output: _site` | Removed on 2026-08-02. `build` writes `_site/` (`_book/` for a book); use `build --out <dir>` to write elsewhere. |
+| `toc: true` | Removed on 2026-08-02. The sidebar table of contents is automatic: an article page with enough headings gets one. To force it for a page, write `toc:` in that page's own front matter. |
+| `css:`, `body-start:`, `body-end:` | Removed on 2026-08-02. Use `head:`, the one surviving raw-injection key. |
+| `theorems:` | Removed on 2026-08-02 with the book-wide numbering policy it carried. A chapter that shares counters says so itself: `theorems: { shared: [...] }`. |
+| `mounts: - { at:, path: }` | The list form was removed on 2026-08-02. Write `mounts:` as a mapping of URL prefix to project directory: `mounts:` / `  docs: ../docs`. |
 
 None of these is phrased as a did-you-mean on purpose. A did-you-mean is a
 mechanical rename, and a tool (or an agent) will apply it mechanically — but

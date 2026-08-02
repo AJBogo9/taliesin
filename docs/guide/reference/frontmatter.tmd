@@ -6,7 +6,7 @@ description: "Every top-level front-matter key, the closed vocabulary behind did
 Every `.tmd` document can open with a YAML **front-matter** block: a `---`
 fenced header that sets the document's metadata, output, and behaviour. This page
 is the full vocabulary, every top-level key Taliesin reads, plus the nested blocks
-(`execute:`, `listing:`, `hero:`, `prose-lint:`) and their children. For
+(`execute:`, `listing:`, `hero:`, `theorems:`) and their children. For
 project-wide settings (a site's navbar, footer, chapter order) see the
 [Configuration reference](configuration.tmd); for per-cell `#|` options see the
 [Cell-options reference](cell-options.tmd).
@@ -69,20 +69,20 @@ See [Slide decks](../using/formats.tmd#slide-decks).
 
 ### Raw-HTML includes
 
-Each of these injects trusted, verbatim markup. The value can be a path, a
-`{ text: … }` or `{ file: … }` map, or a list of those.
+There is no per-document raw-injection key. `css:`, `include-in-header:`,
+`include-before-body:` and `include-after-body:` were removed on 2026-08-02, along with
+the `_site.yml` `css:`, `body-start:` and `body-end:` beside them.
 
-| Key | Type | Meaning |
-|---|---|---|
-| `include-in-header` | include | Markup added inside `<head>` |
-| `include-before-body` | include | Markup added at the start of `<body>` |
-| `include-after-body` | include | Markup added at the end of `<body>` |
+What survives is one hatch, project-wide: `_site.yml`'s
+[`head:`](configuration.tmd), which injects markup into every page's `<head>`. That is
+where an analytics snippet, a search-console `<meta>`, or a custom stylesheet goes. For
+colours and type, prefer a [`theme:`](../using/theming.tmd) over raw CSS.
 
 ### Contents, bibliography, and citations
 
 | Key | Type | Meaning |
 |---|---|---|
-| `toc` | bool | `true` adds a live table of contents (and enables the Cmd-K search palette). No effect in a book chapter: a book navigates by its Chapters drawer |
+| `toc` | bool | Forces the table of contents on or off for this page. Leave it out and it is **automatic**: an article page with enough headings gets one. No effect in a book chapter: a book navigates by its Chapters drawer |
 | `bibliography` | string \| list | A `.bib` file (or list of them) enabling `[@key]` citations and an auto-generated References section |
 | `csl` | string | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so a `csl:` key is never mistaken for a typo'd `css:`; delete it |
 | `doi` | string | This page's own DOI, for the Google Scholar `citation_doi` tag. Write it however you copied it — `10.5281/zenodo.1234`, `https://doi.org/10.5281/…` and `doi:10.5281/…` all mean the same thing and are normalised to the bare form |
@@ -116,17 +116,11 @@ in their own sections below.
 | `listing` | map | Turns the page into an index: a card per document under `contents:`. See [`listing:`](#listing-an-index-page) |
 | `hero` | map | A hero banner at the top of a landing page (eyebrow, headline, lead, call-to-action buttons). See [`hero:`](#hero-a-landing-banner) |
 
-### Prose linting
-
-| Key | Type | Meaning |
-|---|---|---|
-| `prose-lint` | bool \| map | Opt-in prose linter. `true` enables the built-in rules; a `{ banned: [...] }` map adds custom banned terms. See [`prose-lint:`](#prose-lint-the-prose-linter) |
-
 ### Theorem environments
 
 | Key | Type | Meaning |
 |---|---|---|
-| `theorems` | map | Numbering for theorem environments: `shared:` (a list of kinds drawing on one counter) and `numbered:` (`true` / `false` / `unless-unique`). Numbering *scope* is deliberately not a key: an environment scopes to its numbered book chapter automatically. See [Theorems and proofs](../using/theorems.tmd) |
+| `theorems` | map | Counters for theorem environments. One sub-key, `shared:`, a list of kinds drawing on a single counter. Whether to number is not a key (they are numbered) and neither is the scope (an environment scopes to its numbered book chapter automatically). See [Theorems and proofs](../using/theorems.tmd) |
 
 ## `author:` (who wrote it) {#sec-authors}
 
@@ -286,14 +280,14 @@ that override these.
 ## `listing:` (an index page) {#listing-an-index-page}
 
 A `listing:` block crawls a directory and renders a card or row per document it
-finds, sorted and capped however you ask. It is how you build a blog index or a
-projects page.
+finds, newest first and capped however you ask. It is how you build a blog index or a
+projects page. There is no `sort:` key: a listing is always newest-first by `date`, which
+is what every listing that used to spell it out asked for.
 
 | Sub-key | Type | Default | Meaning |
 |---|---|---|---|
 | `contents` | string | (required) | A single directory to crawl for documents (one directory string, not a list or glob). Without it, there is nothing to list |
 | `id` | string | (none) | Fill a matching `::: {#id}` block in the page body instead of appending the listing to the end |
-| `sort` | string | `"date desc"` | Sort order. Listings only ever key on `date`: the order is descending **unless the value contains `asc`** (so `"date asc"` sorts oldest-first). A non-date key like `"title asc"` is not honored, it still sorts by date |
 | `type` | string | (list) | `grid` renders a card grid; anything else (or omitted) renders a stacked list |
 | `max-items` | int | (none) | Cap the number of items shown |
 | `categories` | bool | `false` | `true` renders a clickable category filter row above the listing |
@@ -305,7 +299,6 @@ page-layout: full
 listing:
   contents: posts        # crawl ./posts for documents
   type: grid             # grid of cards (vs. the default stacked list)
-  sort: "date desc"      # newest first ("date asc" for oldest first)
   max-items: 12
   categories: true       # show a category filter row
 ---
@@ -326,7 +319,15 @@ label, a headline, a lead paragraph, and a row of call-to-action buttons.
 | `eyebrow` | string | (none) | A small label above the headline |
 | `headline` | string | (falls back to `title`) | The large banner heading |
 | `lead` | string | (none) | A lead paragraph under the headline |
-| `actions` | list | (none) | A list of `{ text, href, primary }` buttons; `primary: true` styles the button as the prominent action (an item missing `text` or `href` is dropped) |
+| `actions` | list | (none) | A list of buttons, each `{ text, href, primary }`. An entry missing `text` or `href` is dropped, and a misspelled key in one is a warning |
+
+An `actions:` entry takes exactly three keys:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `text` | string | The button's visible label |
+| `href` | string | Where it goes (a `.tmd` path is rewritten to `.html`) |
+| `primary` | bool | `true` styles this as the filled, prominent button |
 
 ```yaml
 ---
@@ -341,36 +342,14 @@ hero:
 ---
 ```
 
-## `prose-lint:` (the prose linter) {#prose-lint-the-prose-linter}
-
-`prose-lint` is an opt-in linter that flags weak prose. It is **off by default**.
-Set it to `true` to enable the built-in rules (doubled words like "the the", and
-weasel words like "very", "really"), or give it a mapping with `banned:` to add
-your own terms.
-
-| Sub-key | Type | Meaning |
-|---|---|---|
-| `banned` | list | Words to flag wherever they appear in prose (case-insensitive) |
-
-```yaml
----
-title: "An edited post"
-prose-lint:
-  banned: [utilize, leverage, synergy]
----
-```
-
-Findings are located warnings (click-to-source) and skip code, math, links, and
-HTML, so only real prose is checked. `prose-lint: true` enables the built-in rules
-without any custom banned list.
-
 ## Closed vocabulary and "did you mean" {#closed-vocabulary}
 
 Taliesin's front-matter vocabulary is a **closed set**: the keys above are the only
 ones it reads. Anything else warns, with a "did you mean …" hint offered when an
 unknown key is within edit distance 2 of a known one, so `treme: dark` is caught and
 nudged toward `theme:`. The same closed-vocabulary check covers the immediate
-children of `execute:`, `listing:`, `hero:`, and `prose-lint:`.
+children of `execute:`, `listing:`, `hero:` (including each `actions:` entry), and
+`theorems:`.
 
 Two deliberate exceptions:
 
@@ -426,27 +405,18 @@ categories: [machine-learning, training]          # listing tags + filter chips
 format: html                                      # html (default) or deck
 theme: dark                                        # light / dark / file / extension (unspecified follows the OS)
 page-layout: full                                 # widen the column (default: reading width)
-css: extra.css                                     # inlined stylesheet(s)
 
 # --- Social / images ---
 image: cover.png                                   # listing-card image; social card on site/book builds
 image-alt: "A loss curve trending down"           # alt text for this post's listing card image
 
 # --- Contents / citations ---
-toc: true                                          # live TOC + Cmd-K search
+toc: true                                          # force the TOC on (otherwise automatic)
 bibliography: refs.bib                              # enables [@key] + References
 
-# --- Raw-HTML includes (trusted, verbatim) ---
-include-in-header: analytics.html                  # injected into <head>
-
-# --- Code execution defaults (cells' #| options override these) ---
+# --- Code execution defaults (a cell's #| cache overrides this) ---
 execute:
-  echo: false                                      # hide every source listing
   cache: true                                       # use the _freeze/ cache (default)
-
-# --- Prose linter (opt-in, off by default) ---
-prose-lint:
-  banned: [utilize, leverage]                       # flag these in prose
 
 # --- Drafts ---
 draft: false                                        # true: preview shows it, build excludes it

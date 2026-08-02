@@ -4,8 +4,6 @@
   "properties": {
     "author": {},
     "bibliography": {},
-    "body-end": {},
-    "body-start": {},
     "chapters": {
       "items": {
         "oneOf": [
@@ -72,7 +70,6 @@
       },
       "type": "array"
     },
-    "css": {},
     "description": {},
     "favicon": {},
     "footer": {},
@@ -80,7 +77,6 @@
     "logo": {},
     "mounts": {},
     "nav": {},
-    "output": {},
     "publish": {
       "additionalProperties": false,
       "properties": {
@@ -101,35 +97,7 @@
     },
     "python": {},
     "r": {},
-    "theorems": {
-      "additionalProperties": false,
-      "properties": {
-        "numbered": {
-          "oneOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "enum": [
-                "unless-unique"
-              ],
-              "type": "string"
-            }
-          ]
-        },
-        "shared": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
     "title": {},
-    "toc": {
-      "type": "boolean"
-    },
     "url": {}
   },
   "title": "Taliesin _site.yml",

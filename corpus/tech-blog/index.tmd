@@ -4,11 +4,13 @@ hero:
   eyebrow: "ML · STATISTICS · ALGORITHMS"
   headline: "Machine learning, worked out from first principles"
   lead: "Notes on concepts I'm working to understand, mostly statistics and the math underneath the models, built up from running code."
+  actions:
+    - { text: "Read the posts", href: "blog.tmd", primary: true }
+    - { text: "Projects", href: "projects.tmd" }
 toc: false
 listing:
   id: recent-posts
   contents: posts
-  sort: "date desc"
   max-items: 2
   type: grid
 ---

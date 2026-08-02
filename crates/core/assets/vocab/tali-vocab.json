@@ -321,10 +321,6 @@
         "name": "theme"
       },
       {
-        "description": "Extra CSS file(s) to include.",
-        "name": "css"
-      },
-      {
         "description": "Page width and layout mode.",
         "name": "page-layout"
       },
@@ -337,19 +333,7 @@
         "name": "title-block-style"
       },
       {
-        "description": "Raw HTML injected into `<head>`.",
-        "name": "include-in-header"
-      },
-      {
-        "description": "Raw HTML injected at the top of the body.",
-        "name": "include-before-body"
-      },
-      {
-        "description": "Raw HTML injected at the end of the body.",
-        "name": "include-after-body"
-      },
-      {
-        "description": "Show a table of contents.",
+        "description": "Force the table of contents on or off (otherwise it is automatic).",
         "name": "toc"
       },
       {
@@ -393,24 +377,12 @@
         "name": "hero"
       },
       {
-        "description": "Enable prose linting (`true` or `{ banned: [...] }`).",
-        "name": "prose-lint"
-      },
-      {
-        "description": "Theorem-environment numbering configuration.",
+        "description": "Theorem-environment counter configuration.",
         "name": "theorems"
       }
     ],
     "nested": {
       "execute": [
-        {
-          "description": "Show the cell's source code.",
-          "name": "echo"
-        },
-        {
-          "description": "Include the cell's output.",
-          "name": "include"
-        },
         {
           "description": "Persist the cell's output in `_freeze/`.",
           "name": "cache"
@@ -432,14 +404,20 @@
         {
           "description": "Call-to-action buttons.",
           "name": "actions"
+        }
+      ],
+      "hero.actions": [
+        {
+          "description": "The button's visible label.",
+          "name": "text"
         },
         {
-          "description": "Hero portrait image path.",
-          "name": "image"
+          "description": "Where the button links.",
+          "name": "href"
         },
         {
-          "description": "Alt text for the image.",
-          "name": "image-alt"
+          "description": "`true` styles this as the filled, primary button.",
+          "name": "primary"
         }
       ],
       "listing": [
@@ -450,10 +428,6 @@
         {
           "description": "Listing element id.",
           "name": "id"
-        },
-        {
-          "description": "Sort field and order.",
-          "name": "sort"
         },
         {
           "description": "Listing layout (`default` text rows, `grid` cards, `list` rows with thumbnails).",
@@ -468,20 +442,10 @@
           "name": "categories"
         }
       ],
-      "prose-lint": [
-        {
-          "description": "Words and phrases to flag.",
-          "name": "banned"
-        }
-      ],
       "theorems": [
         {
           "description": "Kinds that share one counter.",
           "name": "shared"
-        },
-        {
-          "description": "Whether or when to number (`true`, `false`, `unless-unique`).",
-          "name": "numbered"
         }
       ]
     }

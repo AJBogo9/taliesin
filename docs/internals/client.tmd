@@ -226,8 +226,8 @@ A registered enhancer runs:
   `window.taliEnhanceCode(root)`;
 - once on `DOMContentLoaded` in the static build;
 - once immediately when it registers *after* the page is already mounted (the
-  registry tracks a `mounted` flag, so an extension script loaded in
-  `include-after-body` still gets to run on the existing DOM).
+  registry tracks a `mounted` flag, so a deferred extension script loaded from
+  `_site.yml` `head:` still gets to run on the existing DOM).
 
 ::: {.callout-warning}
 ## Enhancers must be idempotent

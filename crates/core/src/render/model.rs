@@ -319,16 +319,16 @@ pub struct PageIncludes {
 /// again. `None` at a render entry point means "no project": a single `.tmd` invoked
 /// directly, which is byte-identical to the pre-existing behaviour.
 ///
-/// The two members are inherited by **different rules**, and the difference is deliberate:
-/// - `theorems` is a *fallback*. A chapter that declares its own `theorems:` block
-///   overrides this wholesale.
-/// - `bibliography` is a *layer*. A page's own `bibliography:` is merged on top of it, so a
-///   post can cite a shared key and still add or correct entries locally
-///   (`cite::Bibliography::overlay`).
+/// `bibliography` is inherited as a *layer*, not a fallback: a page's own `bibliography:`
+/// is merged on top of it, so a post can cite a shared key and still add or correct entries
+/// locally (`cite::Bibliography::overlay`).
+///
+/// It is the only member since the book-wide `theorems:` policy was retired on 2026-08-02
+/// (`shared:` is a per-chapter statement and needs no project-level fallback). The struct
+/// stays rather than collapsing to a bare `Vec<PathBuf>` for the reason above: the next
+/// project-wide key is then one field, not six widened signatures.
 #[derive(Debug, Clone, Default)]
 pub struct SiteDefaults {
-    /// Book-wide theorem-numbering policy (`theorems:` in `_site.yml`).
-    pub theorems: Option<super::TheoremConfig>,
     /// Readable absolute paths to the project-wide `.bib` file(s), already resolved
     /// against the site root by `Site::discover` — so the render pass neither re-derives
     /// "relative to what?" nor repeats a bad-path diagnostic once per page.

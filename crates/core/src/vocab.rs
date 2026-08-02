@@ -56,7 +56,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "Output format (for example `deck`); an extension owns its sub-keys.",
         ),
         ("theme", "Named theme or theme overrides."),
-        ("css", "Extra CSS file(s) to include."),
         ("page-layout", "Page width and layout mode."),
         (
             "draft",
@@ -66,16 +65,10 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "title-block-style",
             "`none` suppresses the visible title header.",
         ),
-        ("include-in-header", "Raw HTML injected into `<head>`."),
         (
-            "include-before-body",
-            "Raw HTML injected at the top of the body.",
+            "toc",
+            "Force the table of contents on or off (otherwise it is automatic).",
         ),
-        (
-            "include-after-body",
-            "Raw HTML injected at the end of the body.",
-        ),
-        ("toc", "Show a table of contents."),
         ("bibliography", "Path(s) to `.bib` file(s) for citations."),
         (
             "doi",
@@ -101,24 +94,17 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("hero", "Landing-page hero block configuration."),
-        (
-            "prose-lint",
-            "Enable prose linting (`true` or `{ banned: [...] }`).",
-        ),
-        ("theorems", "Theorem-environment numbering configuration."),
+        ("theorems", "Theorem-environment counter configuration."),
     ]
 }
 
 fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
     &[
         // execute:
-        ("echo", "Show the cell's source code."),
-        ("include", "Include the cell's output."),
         ("cache", "Persist the cell's output in `_freeze/`."),
         // listing:
         ("contents", "Glob(s) of pages to include."),
         ("id", "Listing element id."),
-        ("sort", "Sort field and order."),
         (
             "type",
             "Listing layout (`default` text rows, `grid` cards, `list` rows with thumbnails).",
@@ -126,21 +112,20 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("max-items", "Maximum entries shown."),
         ("categories", "Show a category filter."),
         // hero:
-        ("image", "Hero portrait image path."),
         ("eyebrow", "Small label above the headline."),
         ("headline", "Hero headline."),
         ("lead", "Hero lead paragraph."),
         ("actions", "Call-to-action buttons."),
-        // prose-lint:
-        ("banned", "Words and phrases to flag."),
+        // hero.actions[]:
+        ("href", "Where the button links."),
+        (
+            "primary",
+            "`true` styles this as the filled, primary button.",
+        ),
         // theorems:
         ("shared", "Kinds that share one counter."),
-        (
-            "numbered",
-            "Whether or when to number (`true`, `false`, `unless-unique`).",
-        ),
-        // shared across blocks (hero/listing reuse these):
-        ("image-alt", "Alt text for the image."),
+        // shared across blocks (hero.actions/listing reuse these):
+        ("text", "The button's visible label."),
         ("title", "A human-readable name for this entry."),
         ("description", "A one-line description of this entry."),
     ]
@@ -482,15 +467,15 @@ fn frontmatter_value_vocab() -> Value {
 /// Build the vocabulary JSON from the validator's consts.
 pub fn vocab() -> Value {
     use crate::frontmatter::{
-        EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS, THEOREM_KEYS,
+        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, THEOREM_KEYS,
         UNSUPPORTED_KEYS,
     };
     use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
 
     // A key taliesin recognizes but ignores (`csl:`) must not be OFFERED: completing it
-    // is the tool recommending a no-op. It stays in KNOWN_KEYS so the did-you-mean can't
-    // mis-suggest `css` (see `frontmatter::UNSUPPORTED_KEYS`), and
-    // `diagnostics::csl_recognized_but_unsupported` warns if an author writes it anyway.
+    // is the tool recommending a no-op. It stays in KNOWN_KEYS so an author who writes it
+    // is told the honest thing (see `frontmatter::UNSUPPORTED_KEYS`), via
+    // `diagnostics::csl_recognized_but_unsupported`.
     let offered: Vec<&str> = KNOWN_KEYS
         .iter()
         .copied()
@@ -505,7 +490,7 @@ pub fn vocab() -> Value {
                 "execute": named(EXECUTE_KEYS, nested_desc),
                 "listing": named(LISTING_KEYS, nested_desc),
                 "hero": named(HERO_KEYS, nested_desc),
-                "prose-lint": named(PROSE_LINT_KEYS, nested_desc),
+                "hero.actions": named(HERO_ACTION_KEYS, nested_desc),
                 "theorems": named(THEOREM_KEYS, nested_desc),
             }
         },
@@ -589,7 +574,7 @@ mod tests {
         }
         let v = vocab();
         check_named(&v["frontmatter"]["keys"], "frontmatter.keys");
-        for parent in ["execute", "listing", "hero", "prose-lint", "theorems"] {
+        for parent in ["execute", "listing", "hero", "hero.actions", "theorems"] {
             check_named(&v["frontmatter"]["nested"][parent], parent);
         }
         check_named(&v["cellOptions"], "cellOptions");

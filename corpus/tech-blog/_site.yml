@@ -5,8 +5,6 @@ description: Machine learning and statistics, worked out from first principles
 url: https://andreasbogossian.com
 favicon: bell-curve.svg
 logo: logo.svg          # brand image in the navbar (the `title:` above is its alt text)
-output: _site
-toc: true
 nav:
   left:
   - text: Blog

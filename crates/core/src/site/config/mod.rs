@@ -8,17 +8,22 @@
 //! url: "https://…"            # site URL
 //! favicon: favicon.svg
 //! logo: logo.svg             # brand image in the navbar / book topbar
-//! output: _site              # build output dir
-//! toc: true                 # right-rail "on this page" TOC (website only; inert in a book)
-//! css: custom.css
-//! head:  head.html           # include-in-header
-//! body-end: body.html        # include-after-body  (also: body-start)
+//! head: head.html            # raw markup for every page's <head> — the ONE escape hatch
 //! nav:                       # a list ⇒ left side; or { left: […], right: […] }
 //!   - { text: Blog, href: blog.tmd }
 //! footer:                    # a string ⇒ left text; or { left/center/right }
 //!   right: [{ icon: github, href: "…" }]
 //! chapters: [index.tmd, …]   # presence ⇒ a book (no `type:` needed)
+//! mounts:                    # URL prefix ⇒ another project's directory
+//!   docs: ../docs
 //! ```
+//!
+//! Six keys were retired on 2026-08-02: `output:` and `toc:` (both wrote what the tool
+//! already does — the build dir is `_site`/`_book`, and the sidebar TOC is decided per page
+//! by heading count), and `css:`/`body-start:`/`body-end:` (raw injection at zero adoption,
+//! folded into the surviving `head:`). `theorems:` went with the book-wide numbering policy.
+//! Each is in `frontmatter::RETIRED_KEYS` under the `config key` scope, so a stale one is
+//! answered with what to do instead rather than a did-you-mean.
 
 use super::*;
 use serde::Deserialize;
@@ -29,8 +34,6 @@ use serde::Deserialize;
 pub struct SiteConfig {
     /// `chapters:` present ⇒ a book (a centred reading column + chapter drawer, no navbar).
     pub is_book: bool,
-    /// `build` output dir (default `_site`, or `_book` for a book).
-    pub output_dir: Option<String>,
     pub title: Option<String>,
     /// `author:` as a scalar (`author: Ada`) or a sequence (`author: [Ada, Alan]`),
     /// normalized the same way a page's `author:` is (`frontmatter::string_list`). Held
@@ -47,15 +50,12 @@ pub struct SiteConfig {
     /// project needs exactly this one line. The same key name a deck's front matter
     /// already uses (`render::deck::deck_overlay_html`).
     pub logo: Option<String>,
-    /// `toc:` — the right-rail "on this page" table of contents. **Website only:** a
-    /// book's in-chapter outline is the chapter drawer, so `Site::page_toc` ignores this
-    /// for a book and `validate_toc_scope` tells the author the key is inert (item 76).
-    pub toc: Option<bool>,
-    pub css: Option<serde_yaml::Value>,
-    /// `head` → include-in-header; `body-start`/`body-end` → before/after body.
+    /// `head:` — raw markup injected into every page's `<head>`. The **one** raw-injection
+    /// hatch the tool keeps (analytics, a search-console `<meta>`, a custom stylesheet);
+    /// the per-document `css:`/`include-*` family and `body-start:`/`body-end:` were retired
+    /// on 2026-08-02 at zero adoption. Deliberately not a knob with a default to perfect: it
+    /// exists precisely for what the tool cannot anticipate.
     pub head: Option<serde_yaml::Value>,
-    pub body_start: Option<serde_yaml::Value>,
-    pub body_end: Option<serde_yaml::Value>,
     pub nav: Navbar,
     pub footer: Option<Footer>,
     /// Ordered chapter list (book only): a file name or `{ part, chapters }`.
@@ -71,14 +71,10 @@ pub struct SiteConfig {
     pub python: Option<String>,
     /// Project-pinned R interpreter (`r:` in `_site.yml`). `None` falls back to env/`R`.
     pub r: Option<String>,
-    /// Book-wide theorem-numbering policy (`theorems:` in `_site.yml`). `Some` only when the
-    /// config declares it; a chapter with no `theorems:` block of its own inherits it, a
-    /// chapter that declares one overrides it wholesale. `None` = no book-level policy.
-    pub theorems: Option<crate::render::TheoremConfig>,
     /// Project-wide `bibliography:` — `.bib` path(s) relative to the site root, shared by
-    /// every page. Unlike `theorems:` this is **not** an inherit-if-absent fallback: it is a
-    /// layer *under* each page's own `bibliography:`, so a post can cite a shared key and
-    /// still add or override entries locally (`Site::shared_bibliography`).
+    /// every page. It is a layer *under* each page's own `bibliography:`, so a post can
+    /// cite a shared key and still add or override entries locally
+    /// (`Site::shared_bibliography`).
     ///
     /// Empty = no shared bibliography, which is the pre-existing per-document-only world.
     pub bibliography: Vec<String>,
@@ -253,12 +249,17 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     // `_site.yml` now draws the unknown-key diagnostic instead of silently doing nothing.
     // A page's own front-matter `image:` is unaffected and still live (its listing/in-page
     // thumbnail); this set is `_site.yml` keys only.
-    "output",
-    "toc",
-    "css",
+    // No `output:`, retired 2026-08-02: both projects that set it wrote the default.
+    // No `toc:`, retired 2026-08-02: the sidebar TOC is now automatic on an article page
+    // with enough headings (`Site::page_toc`), and a page's own front-matter `toc:` still
+    // forces it either way. A site-wide switch in front of an auto-gate was a knob in
+    // front of a decision the page already makes.
+    //
+    // `head:` is the ONE raw-injection hatch that survives (analytics, search-console
+    // verification, a custom stylesheet) — a published tool needs exactly one, and the
+    // per-document `css:`/`include-*` family plus `body-start:`/`body-end:` went with the
+    // rest on 2026-08-02 at measured zero adoption.
     "head",
-    "body-start",
-    "body-end",
     "nav",
     "footer",
     "chapters",
@@ -266,7 +267,8 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "publish",
     "python",
     "r",
-    "theorems",
+    // No `theorems:`. The book-wide numbering policy went with front-matter
+    // `theorems.numbered` on 2026-08-02; `shared:` is per-chapter and stays there.
     "bibliography",
 ];
 
@@ -277,8 +279,6 @@ const NAV_SECTION_KEYS: &[&str] = &["left", "right"];
 const FOOTER_SECTION_KEYS: &[&str] = &["left", "center", "right"];
 /// The keys of a single nav/footer item (`{ text, href, icon }`).
 const NAV_ITEM_KEYS: &[&str] = &["text", "href", "icon"];
-/// The keys of a `mounts:` sequence entry (`{ at, path }`).
-const MOUNT_ITEM_KEYS: &[&str] = &["at", "path"];
 /// The keys of the `publish:` block (`{ provider, project, gate }`).
 pub(crate) const PUBLISH_KEYS: &[&str] = &["provider", "project", "gate"];
 
@@ -362,28 +362,56 @@ fn validate_url(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
     }
 }
 
-/// `toc:` configures the right-rail "on this page" table of contents, and a book no longer
-/// has one (item 76, owner ruling 2026-07-27): its in-chapter outline is the chapter
-/// drawer, which lists the current chapter to h3 where the rail listed h2 only. So the key
-/// is inert in a book — and every book in this repo shipped `toc: true`, which is exactly
-/// the "a shipped string says we do something we don't" class item 75 was about. Warn
-/// rather than fail: it is a stale line in a config that is otherwise correct, and deleting
-/// it is the whole fix. Conditioned on `chapters:` because that is what makes a book.
-fn validate_toc_scope(
-    value: &serde_yaml::Value,
-    warnings: &mut Vec<String>,
-    src: ConfigSource<'_>,
-) {
-    let is_book = value
-        .get("chapters")
-        .and_then(|v| v.as_sequence())
-        .is_some_and(|s| !s.is_empty());
-    if is_book && value.get("toc").is_some() {
-        warnings.push(format!(
-            "{} `toc:` has no effect in a book — a book's in-chapter outline is the \
-             chapter drawer, not a right-hand rail: delete the key",
-            src.at("toc")
-        ));
+/// The keys of one `chapters:` entry in its mapping form (`{ file, text }`), or of a part
+/// group (`{ part, chapters }`).
+const CHAPTER_ITEM_KEYS: &[&str] = &["file", "text", "part", "chapters"];
+
+/// Validate every entry of `chapters:`, at every nesting depth.
+///
+/// **This is the worst failure shape in the whole config surface, which is why it warns.**
+/// `site::book::push_chapter_entry` consumes an entry only when it is a bare path string or
+/// a mapping carrying `file:`. Anything else falls through to the part-group branch, which
+/// builds a header from a missing `part:` (so: an empty title) and then pops it again
+/// because it has no inner `chapters:`. A typo'd `fil: intro.tmd` therefore deletes the
+/// chapter — no page built, no nav entry, no diagnostic, `check` exits 0.
+///
+/// Recurses into `{ part:, chapters: }` groups because `push_group` does, and a typo nested
+/// one level down fails exactly the same way.
+fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
+    fn walk(list: &[serde_yaml::Value], warnings: &mut Vec<String>, src: ConfigSource<'_>) {
+        for item in list {
+            // A bare path string is the common form and always well-formed.
+            let Some(map) = item.as_mapping() else {
+                continue;
+            };
+            for k in map.keys().filter_map(|k| k.as_str()) {
+                if !CHAPTER_ITEM_KEYS.contains(&k) {
+                    warnings.push(format!(
+                        "{} unknown chapter key `{k}`{} — an entry taliesin cannot read as \
+                         a chapter (`file:`) or a part (`part:`) is DROPPED from the book \
+                         silently, so this is a missing chapter, not a cosmetic warning",
+                        src.at(k),
+                        did_you_mean(k, CHAPTER_ITEM_KEYS)
+                    ));
+                }
+            }
+            // A mapping that names neither a file nor a part is the silent-drop case even
+            // when every key it does carry is spelled correctly (e.g. a lone `text:`).
+            if !map.contains_key("file") && !map.contains_key("part") {
+                let first = map.keys().filter_map(|k| k.as_str()).next().unwrap_or("");
+                warnings.push(format!(
+                    "{} a `chapters:` entry names no `file:` and no `part:`, so it is \
+                     dropped from the book: give it a `file:`",
+                    src.at(first)
+                ));
+            }
+            if let Some(inner) = map.get("chapters").and_then(|v| v.as_sequence()) {
+                walk(inner, warnings, src);
+            }
+        }
+    }
+    if let Some(list) = value.get("chapters").and_then(|v| v.as_sequence()) {
+        walk(list, warnings, src);
     }
 }
 
@@ -394,41 +422,22 @@ fn parse_native(
 ) -> SiteConfig {
     validate_keys(value, warnings, src);
     validate_url(value, warnings);
-    validate_toc_scope(value, warnings, src);
+    validate_chapters(value, warnings, src);
     let str_of = |k: &str| value.get(k).and_then(|v| v.as_str()).map(str::to_string);
     let chapters = value
         .get("chapters")
         .and_then(|v| v.as_sequence())
         .cloned()
         .unwrap_or_default();
-    // Book-wide `theorems:` policy, inherited by any chapter without its own block. Validate
-    // the `numbered:` value like a per-document block (unlocated here: `parse_native` holds
-    // only the parsed value, not the raw text), then parse. Absent -> `None`, so the render
-    // fallback can tell "book set a policy" from "book said nothing".
-    let theorems = if value.get("theorems").is_some() {
-        if let Some(map) = value.as_mapping() {
-            let mut tw: Vec<crate::render::Warning> = Vec::new();
-            crate::frontmatter::validate_theorem_values(map, "", &mut tw);
-            warnings.extend(tw.into_iter().map(|w| w.message));
-        }
-        Some(crate::render::parse_theorem_config_value(value))
-    } else {
-        None
-    };
     SiteConfig {
         is_book: !chapters.is_empty(),
-        output_dir: str_of("output"),
         title: str_of("title"),
         authors: crate::author::parse(value.get("author")).0,
         description: str_of("description"),
         url: str_of("url"),
         favicon: str_of("favicon"),
         logo: str_of("logo"),
-        toc: value.get("toc").and_then(|v| v.as_bool()),
-        css: value.get("css").cloned(),
         head: value.get("head").cloned(),
-        body_start: value.get("body-start").cloned(),
-        body_end: value.get("body-end").cloned(),
         nav: nav_from(value.get("nav")),
         footer: footer_from(value.get("footer")),
         chapters,
@@ -436,12 +445,15 @@ fn parse_native(
         publish: publish_from(value.get("publish")),
         python: str_of("python"),
         r: str_of("r"),
-        theorems,
         bibliography: crate::site::frontmatter::string_list(value.get("bibliography")),
     }
 }
 
-/// Parse `mounts:` — a map `{ docs: ../docs }` or a sequence of `{ at, path }`.
+/// Parse `mounts:` — a map of URL prefix to project directory, `{ docs: ../docs }`.
+///
+/// One spelling. The `- { at:, path: }` sequence form said the same thing with two extra
+/// key names and was retired on 2026-08-02 unused; a leftover one now draws the
+/// `mounts entry key` diagnostic from [`validate_mounts`] rather than mounting nothing.
 fn mounts_from(v: Option<&serde_yaml::Value>) -> Vec<Mount> {
     match v {
         Some(serde_yaml::Value::Mapping(m)) => m
@@ -450,15 +462,6 @@ fn mounts_from(v: Option<&serde_yaml::Value>) -> Vec<Mount> {
                 Some(Mount {
                     at: k.as_str()?.trim_matches('/').to_string(),
                     path: val.as_str()?.to_string(),
-                })
-            })
-            .collect(),
-        Some(serde_yaml::Value::Sequence(seq)) => seq
-            .iter()
-            .filter_map(|it| {
-                Some(Mount {
-                    at: it.get("at")?.as_str()?.trim_matches('/').to_string(),
-                    path: it.get("path")?.as_str()?.to_string(),
                 })
             })
             .collect(),
@@ -499,6 +502,10 @@ fn key_line(text: &str, key: &str) -> Option<usize> {
     text.lines()
         .position(|l| {
             let t = l.trim_start().trim_start_matches("- ").trim_start();
+            // Also look inside a flow mapping: `- { file: a.tmd, text: A }` is how chapter
+            // and nav entries are usually written, and a diagnostic about one of those keys
+            // is worth a line number.
+            let t = t.strip_prefix('{').map_or(t, str::trim_start);
             // Match the key token exactly, not a prefix: `nav:` must not match `navigation:`.
             t.strip_prefix(key)
                 .is_some_and(|rest| rest.starts_with(':'))
@@ -515,10 +522,16 @@ fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: Con
         return;
     };
     let warn = |warnings: &mut Vec<String>, what: &str, key: &str, allowed: &[&'static str]| {
+        // Through `unknown_key_message`, not a bare did-you-mean: it consults
+        // `RETIRED_KEYS` first, so a key this config USED to honor is answered with what
+        // to do instead. Without it a retired `toc:` draws "did you mean `logo`?" — a
+        // confident instruction to write something unrelated. The `what` label is the
+        // register's scope column, so `config key` / `mounts entry key` entries are only
+        // consulted where they actually lived.
         warnings.push(format!(
-            "{} unknown {what} `{key}`{}",
+            "{} {}",
             src.at(key),
-            did_you_mean(key, allowed)
+            crate::frontmatter::unknown_key_message(what, key, allowed)
         ));
     };
     for (k, v) in map {
@@ -596,6 +609,13 @@ fn validate_items(
 
 /// Validate `mounts:` in its sequence form (`- { at, path }`); the mapping form
 /// (`{ prefix: path }`) has author-chosen keys, so it can't be checked.
+/// Flag a `mounts:` written in the retired `- { at:, path: }` sequence form.
+///
+/// `mounts_from` reads the mapping form only, so a leftover sequence mounts *nothing* and
+/// the pages it should have served 404 — a silent failure worth a diagnostic. Every key in
+/// such an entry is reported through the shared `unknown_key_message`, which finds `at` and
+/// `path` in `RETIRED_KEYS` under the `mounts entry key` scope and answers with the mapping
+/// form to write instead.
 fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
     let serde_yaml::Value::Sequence(seq) = v else {
         return;
@@ -603,13 +623,11 @@ fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>, src: Confi
     for item in seq {
         if let serde_yaml::Value::Mapping(m) = item {
             for k in m.keys().filter_map(|k| k.as_str()) {
-                if !MOUNT_ITEM_KEYS.contains(&k) {
-                    warnings.push(format!(
-                        "{} unknown mount key `{k}`{}",
-                        src.at(k),
-                        did_you_mean(k, MOUNT_ITEM_KEYS)
-                    ));
-                }
+                warnings.push(format!(
+                    "{} {}",
+                    src.at(k),
+                    crate::frontmatter::unknown_key_message("mounts entry key", k, &[])
+                ));
             }
         }
     }
@@ -723,28 +741,147 @@ mod config_tests {
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
     }
 
+    /// Every key this config retired on 2026-08-02 must answer with its REASON, not with a
+    /// did-you-mean. The register is scoped, so these only resolve as `config key`; the
+    /// wiring that makes that happen is `validate_keys`' use of `unknown_key_message`, and
+    /// without it `toc:` drew "did you mean `logo`?" — an instruction to write something
+    /// unrelated. One assertion per retired key, because a missing register entry is
+    /// silent by construction.
     #[test]
-    fn parses_book_level_theorems_and_its_absence() {
+    fn every_retired_config_key_explains_itself_instead_of_guessing() {
+        for (key, yaml, needle) in [
+            ("toc", "title: X\ntoc: true\n", "now automatic"),
+            ("output", "title: X\noutput: _site\n", "wrote the default"),
+            ("css", "title: X\ncss: extra.css\n", "use `head:`"),
+            (
+                "body-start",
+                "title: X\nbody-start: a.html\n",
+                "no successor",
+            ),
+            ("body-end", "title: X\nbody-end: a.html\n", "no successor"),
+            (
+                "theorems",
+                "title: X\ntheorems:\n  numbered: false\n",
+                "its own front matter",
+            ),
+        ] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            parse_native(&v, &mut w, ConfigSource(None));
+            let msg = w
+                .iter()
+                .find(|m| m.contains(&format!("`{key}`")))
+                .unwrap_or_else(|| panic!("retired `{key}:` drew no diagnostic at all: {w:?}"));
+            assert!(
+                msg.contains("removed on 2026-08-02"),
+                "`{key}:` must say it was removed, got: {msg}"
+            );
+            assert!(
+                msg.contains(needle),
+                "`{key}:` must say what to do instead ({needle:?}), got: {msg}"
+            );
+            assert!(
+                !msg.contains("did you mean"),
+                "a retired key must never be answered with a rename hint: {msg}"
+            );
+        }
+    }
+
+    /// `head:` is the survivor of the raw-injection family and must keep working.
+    #[test]
+    fn head_is_the_one_raw_injection_hatch_that_stays() {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
-            serde_yaml::from_str("title: X\ntheorems:\n  numbered: false\n").unwrap();
+            serde_yaml::from_str("title: X\nhead: |\n  <meta name=\"x\" content=\"y\">\n").unwrap();
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
-        assert!(
-            cfg.theorems.is_some(),
-            "a declared theorems: parses to Some"
-        );
-        assert!(
-            w.iter().all(|m| !m.contains("config key")),
-            "theorems is a recognized _site.yml key: {w:?}"
-        );
+        assert!(cfg.head.is_some(), "head: parses");
+        assert!(w.is_empty(), "head: is a recognized key: {w:?}");
+    }
 
-        let mut w2 = Vec::new();
-        let v2: serde_yaml::Value = serde_yaml::from_str("title: X\n").unwrap();
-        let cfg2 = parse_native(&v2, &mut w2, ConfigSource(None));
-        assert!(
-            cfg2.theorems.is_none(),
-            "an absent theorems: parses to None"
-        );
+    /// A `mounts:` left in the retired `- { at:, path: }` form mounts nothing, so it must
+    /// not be silent: `mounts_from` reads the mapping form only.
+    #[test]
+    fn a_retired_mounts_sequence_is_diagnosed_not_silently_ignored() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("title: X\nmounts:\n  - { at: docs, path: ../docs }\n").unwrap();
+        let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        assert!(cfg.mounts.is_empty(), "the sequence form mounts nothing");
+        for key in ["at", "path"] {
+            let msg = w
+                .iter()
+                .find(|m| m.contains(&format!("`{key}`")))
+                .unwrap_or_else(|| panic!("no diagnostic for `{key}`: {w:?}"));
+            assert!(
+                msg.contains("mapping of URL prefix"),
+                "`{key}` must name the form to write instead, got: {msg}"
+            );
+        }
+    }
+
+    /// The mapping form is the one spelling and stays clean.
+    #[test]
+    fn the_mounts_mapping_form_parses_without_warning() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("title: X\nmounts:\n  docs/guide: ../docs/guide\n").unwrap();
+        let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        assert_eq!(cfg.mounts.len(), 1);
+        assert_eq!(cfg.mounts[0].at, "docs/guide");
+        assert_eq!(cfg.mounts[0].path, "../docs/guide");
+        assert!(w.is_empty(), "the mapping form warns about nothing: {w:?}");
+    }
+
+    /// The silent-chapter-drop fix. `site::book::push_chapter_entry` consumes an entry only
+    /// when it is a string or carries `file:`; anything else becomes an empty part header
+    /// that `push_group` pops again, so the chapter vanishes with `check` exiting 0. Each
+    /// case below produced ZERO diagnostics before 2026-08-02.
+    #[test]
+    fn a_chapter_entry_that_would_be_dropped_is_diagnosed() {
+        for (yaml, needle) in [
+            // A typo'd `file:`.
+            (
+                "title: X\nchapters:\n  - { fil: intro.tmd }\n",
+                "unknown chapter key `fil`",
+            ),
+            // Correctly spelled keys that still name no chapter.
+            (
+                "title: X\nchapters:\n  - { text: Intro }\n",
+                "names no `file:` and no `part:`",
+            ),
+            // Nested one level down, inside a part group — `push_group` recurses, so this
+            // fails identically and must be caught identically.
+            (
+                "title: X\nchapters:\n  - part: One\n    chapters:\n      - { fil: a.tmd }\n",
+                "unknown chapter key `fil`",
+            ),
+        ] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            parse_native(&v, &mut w, ConfigSource(None));
+            assert!(
+                w.iter().any(|m| m.contains(needle)),
+                "expected {needle:?} for:\n{yaml}\ngot: {w:?}"
+            );
+            assert!(
+                w.iter()
+                    .any(|m| m.contains("DROPPED") || m.contains("dropped")),
+                "the diagnostic must say the chapter is lost, not just that a key is odd: {w:?}"
+            );
+        }
+    }
+
+    /// Both well-formed chapter shapes, and a part group, stay silent.
+    #[test]
+    fn well_formed_chapters_warn_about_nothing() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str(
+            "title: X\nchapters:\n  - intro.tmd\n  - { file: two.tmd, text: Second }\n  \
+             - part: Three\n    chapters:\n      - { file: a.tmd }\n",
+        )
+        .unwrap();
+        parse_native(&v, &mut w, ConfigSource(None));
+        assert!(w.is_empty(), "valid chapters warn about nothing: {w:?}");
     }
 
     #[test]
@@ -876,45 +1013,24 @@ mod config_tests {
         }
     }
 
+    /// The book-vs-website `toc:` diagnostic is gone with the key itself: `_site.yml toc:` was
+    /// retired on 2026-08-02 and the sidebar TOC is decided per page by `Site::page_toc`, which
+    /// already returns `false` for a book unconditionally. A book that still carries the key is
+    /// answered by the retired register (asserted above), not by a special book-scope rule.
     #[test]
-    fn toc_in_a_book_is_diagnosed_as_inert_and_left_alone_in_a_website() {
-        // Item 76 (2026-07-27) removed a book's right-rail TOC, which leaves `toc:` doing
-        // nothing in a book config. Every book in this repo shipped `toc: true`, so silence
-        // would leave a key that reads as configuring a surface that no longer exists —
-        // exactly the stale-string class item 75 was about. `chapters:` is what makes it a
-        // book, so that is the condition; a website is untouched.
+    fn a_book_carrying_the_retired_toc_key_gets_the_retirement_message() {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
             serde_yaml::from_str("toc: true\nchapters:\n  - a.tmd\n").unwrap();
-        let _ = parse_native(&v, &mut w, ConfigSource(None));
+        parse_native(&v, &mut w, ConfigSource(None));
+        let msg = w
+            .iter()
+            .find(|m| m.contains("`toc`"))
+            .unwrap_or_else(|| panic!("no diagnostic: {w:?}"));
+        assert!(msg.contains("now automatic"), "got: {msg}");
         assert!(
-            w.iter().any(|m| m.contains("toc:") && m.contains("book")),
-            "an inert `toc:` in a book must be diagnosed: {w:?}"
-        );
-        // `toc: false` is equally inert and equally worth deleting, so it warns too.
-        let mut w_false = Vec::new();
-        let v: serde_yaml::Value =
-            serde_yaml::from_str("toc: false\nchapters:\n  - a.tmd\n").unwrap();
-        let _ = parse_native(&v, &mut w_false, ConfigSource(None));
-        assert!(
-            w_false.iter().any(|m| m.contains("toc:")),
-            "`toc: false` in a book is inert too: {w_false:?}"
-        );
-        // A website (no `chapters:`) still honours it: no warning.
-        let mut w_site = Vec::new();
-        let v: serde_yaml::Value = serde_yaml::from_str("title: X\ntoc: true\n").unwrap();
-        let _ = parse_native(&v, &mut w_site, ConfigSource(None));
-        assert!(
-            !w_site.iter().any(|m| m.contains("toc:")),
-            "a website's `toc:` is live and must not warn: {w_site:?}"
-        );
-        // …and a book that says nothing about `toc:` gets no advice it did not earn.
-        let mut w_quiet = Vec::new();
-        let v: serde_yaml::Value = serde_yaml::from_str("chapters:\n  - a.tmd\n").unwrap();
-        let _ = parse_native(&v, &mut w_quiet, ConfigSource(None));
-        assert!(
-            !w_quiet.iter().any(|m| m.contains("toc:")),
-            "a book with no `toc:` must stay silent: {w_quiet:?}"
+            !msg.contains("has no effect in a book"),
+            "the old book-scope wording must not survive the key: {msg}"
         );
     }
 
@@ -1053,11 +1169,12 @@ mod config_tests {
             "footer section typo: {w:?}"
         );
 
-        // A `mounts:` sequence entry key typo drops the mount silently.
+        // A `mounts:` written in the retired sequence form mounts NOTHING, so every key in
+        // it is reported (see `a_retired_mounts_sequence_is_diagnosed_not_silently_ignored`
+        // for the message); here the point is that the shape is not accepted in silence.
         let w = cfg_warnings("mounts:\n  - att: /docs\n    path: ../docs\n");
         assert!(
-            w.iter()
-                .any(|w| w.contains("mount key `att`") && w.contains("`at`")),
+            w.iter().any(|w| w.contains("mounts entry key `att`")),
             "mount key typo: {w:?}"
         );
     }
@@ -1065,12 +1182,12 @@ mod config_tests {
     #[test]
     fn valid_nested_nav_footer_mounts_have_no_warnings() {
         // The real corpus shape: `{ left: [...], right: [...] }` with text/href items,
-        // a footer with left/center/right, and a mounts sequence — none may warn.
+        // a footer with left/center/right, and a `mounts:` mapping — none may warn.
         let w = cfg_warnings(concat!(
             "title: Site\n",
             "nav:\n  left:\n    - text: Blog\n      href: blog.tmd\n  right:\n    - icon: github\n      href: 'https://x'\n",
             "footer:\n  left:\n    - text: © 2026\n  center:\n    - text: mid\n  right:\n    - text: end\n",
-            "mounts:\n  - at: /docs\n    path: ../docs\n",
+            "mounts:\n  docs: ../docs\n",
         ));
         assert!(w.iter().all(|w| !w.contains("unknown")), "{w:?}");
     }

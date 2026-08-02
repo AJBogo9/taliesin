@@ -20,7 +20,7 @@ fn site_with_a_mount(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&mounted).unwrap();
     std::fs::write(
         site.join("_site.yml"),
-        "title: S\nmounts:\n  - at: manual\n    path: ../manual\n",
+        "title: S\nmounts:\n  manual: ../manual\n",
     )
     .unwrap();
     std::fs::write(

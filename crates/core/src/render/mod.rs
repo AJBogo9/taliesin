@@ -40,25 +40,19 @@ fn parse_options() -> Options<'static> {
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 mod doc_includes;
 pub use doc_includes::includes_from_parts;
-use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
 pub use fm_extract::is_reveal_doc;
-// `TheoremConfig` is public (an opaque handle) so the site search API can carry a book-level
-// policy through; `parse_theorem_config_value` stays crate-internal for the `_site.yml` parse.
+// `TheoremConfig` is public (an opaque handle) so the site search API can carry one through.
 pub use fm_extract::TheoremConfig;
-#[cfg(test)]
-use fm_extract::parse_theorem_config;
-pub(crate) use fm_extract::parse_theorem_config_value;
 use fm_extract::{
-    Numbered, detect_format, detect_title_block_hidden, detect_toc, extract_field,
-    theorem_config_with_fallback,
+    detect_format, detect_title_block_hidden, detect_toc, extract_field, parse_theorem_config,
 };
 mod cell_extract;
 pub use cell_extract::option_directive;
 use cell_extract::{
-    cell_flag_or, cell_option, code_fold, code_lang, detect_execute_defaults, hidden_cell,
+    cell_flag_or, cell_option, code_fold, code_lang, detect_execute_cache, hidden_cell,
     is_executable_fence, parse_js_opts, slice_lines, strip_cell_options,
 };
 mod cell_numbered;
@@ -254,11 +248,10 @@ pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
     let root = crate::includes::single_doc_root(base_dir);
     // A page of a project inherits its project-wide `bibliography:` even when invoked on its
     // own, so `preview post.tmd` and `preview <dir>` render the same document (see
-    // `site::shared_for_single_doc`). `theorems:` deliberately does NOT come along: a book's
-    // numbering policy scopes a chapter to its chapter number, which a document opened
-    // outside its book has no business claiming.
+    // `site::shared_for_single_doc`). It is the only thing inherited: since the book-wide
+    // `theorems:` policy was retired (2026-08-02) a document's theorem config is entirely
+    // its own front matter, so there is no project state to reproduce here.
     let site = SiteDefaults {
-        theorems: None,
         bibliography: crate::site::shared_for_single_doc(&root),
     };
     render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site))
@@ -554,7 +547,10 @@ fn render_internal_impl(
     let mut hide_title_block = false;
     let mut theme: Option<String> = None;
     let mut bib_paths: Vec<String> = Vec::new();
-    let mut includes = PageIncludes::default();
+    // Populated only by a project's `_site.yml head:` (merged in by `site::page_chrome`) and
+    // by the chrome's own draft banner; a document's front matter has had no include keys
+    // since the raw-injection family was retired on 2026-08-02.
+    let includes = PageIncludes::default();
     // Non-fatal render warnings (a missing `bibliography:`/`theme:` file, …),
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<Warning> = Vec::new();
@@ -562,16 +558,6 @@ fn render_internal_impl(
     // keys + the nested execute/listing/about/hero children); located warnings flow to
     // the dev panel as click-to-source diagnostics, the same channel as broken refs.
     warnings.extend(crate::frontmatter::validate_front_matter(src));
-    // Opt-in prose lint (front-matter `prose-lint:`): markdown-aware, diagnostic-only,
-    // located via map_origin like every other warning.
-    if let Some(cfg) =
-        crate::prose::config(crate::frontmatter::front_matter_block(src).unwrap_or(""))
-    {
-        for (line, msg) in crate::prose::lint(src, &cfg) {
-            let (file, mapped) = map_origin(origins, line);
-            warnings.push(Warning::new(msg).at(file, mapped as u32));
-        }
-    }
     // An unterminated `:::` fence drops its wrapper silently (the callout/columns never
     // form and the content renders unfenced) — surface it as a click-to-source warning.
     for open in unclosed_fences {
@@ -584,16 +570,13 @@ fn render_internal_impl(
             .at(file, mapped as u32),
         );
     }
-    // Document-level cell defaults from a front-matter `execute:` block; a cell's
-    // own `#| echo`/`#| include`/`#| cache` overrides these.
-    let mut exec_echo = true;
-    let mut exec_include = true;
+    // The document-level `execute: cache:` default; a cell's own `#| cache` overrides it.
+    // `echo`/`include` have no document-level form since 2026-08-02 — they are per-cell
+    // (`#| echo:`), which is where every real document already said them.
     let mut exec_cache = true;
-    // Default to the book-level policy (when the site passes one), so a chapter that
-    // starts straight into `#` with no front-matter still inherits it; a page that DOES
-    // carry front-matter re-derives via `theorem_config_with_fallback` below (its own
-    // `theorems:` wins, else the book).
-    let mut theorem_config = site.and_then(|s| s.theorems.clone()).unwrap_or_default();
+    // Per-document, with no project-level fallback to inherit: a chapter that starts
+    // straight into `#` with no front matter gets the default (each kind counts on its own).
+    let mut theorem_config = TheoremConfig::default();
     // Whether this render will emit a visible title block — and therefore demote every
     // body heading one level. Read from the front matter up front (not from the in-loop
     // `title`/`format`/`hide_title_block`, which are only set once the walk has passed
@@ -771,10 +754,8 @@ fn render_internal_impl(
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
-                includes = resolve_doc_includes(fm, base_dir, include_root);
-                (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
-                theorem_config =
-                    theorem_config_with_fallback(fm, site.and_then(|s| s.theorems.as_ref()));
+                exec_cache = detect_execute_cache(fm);
+                theorem_config = parse_theorem_config(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -802,8 +783,8 @@ fn render_internal_impl(
                             code: strip_cell_options(&cb.literal),
                             figure: None,
                             table: None,
-                            echo: cell_flag_or(&cb.literal, "echo", exec_echo),
-                            include: cell_flag_or(&cb.literal, "include", exec_include),
+                            echo: cell_flag_or(&cb.literal, "echo", true),
+                            include: cell_flag_or(&cb.literal, "include", true),
                             cache: cell_flag_or(&cb.literal, "cache", exec_cache),
                             fig_export: cell_option(&cb.literal, "fig-export").map(str::to_string),
                             js,
@@ -2919,18 +2900,6 @@ fn number_theorems(
     chapter: Option<u32>,
 ) {
     let mut counts: HashMap<String, u32> = HashMap::new();
-    // For `numbered: unless-unique`, a kind is numbered only if it occurs more than once;
-    // pre-count occurrences per counter-key.
-    let mut totals: HashMap<String, u32> = HashMap::new();
-    if config.numbered() == Numbered::UnlessUnique {
-        for b in blocks.iter() {
-            for (kind, _) in theorem_divs(&b.html) {
-                *totals
-                    .entry(config.counter_key(&kind).to_string())
-                    .or_insert(0) += 1;
-            }
-        }
-    }
     for b in blocks.iter_mut() {
         // Collect every theorem in this block up front; the number slots are then filled
         // left-to-right in the same order, so nested theorems interleave by document order.
@@ -2943,22 +2912,13 @@ fn number_theorems(
                 *c += 1;
                 *c
             };
-            // Whether to show a number: `numbered: false` never; `unless-unique` only when the
-            // kind occurs more than once; otherwise yes.
-            let show_number = match config.numbered() {
-                Numbered::Yes => true,
-                Numbered::No => false,
-                Numbered::UnlessUnique => totals.get(&key).copied().unwrap_or(0) > 1,
-            };
-            // A numbered book chapter scopes the number ("Theorem 2.3"); anywhere else it
-            // is flat ("Theorem 3"). Same rule, same helper, as every float — so a chapter
-            // cannot show "Figure 2.3" beside "Theorem 5". There is no opt-in: scoping is
-            // a property of being in a numbered chapter, which the renderer already knows.
-            let display = if !show_number {
-                String::new()
-            } else {
-                float_number(chapter, n as usize)
-            };
+            // A theorem is always numbered (the `numbered:` opt-outs were retired
+            // 2026-08-02). A numbered book chapter scopes the number ("Theorem 2.3");
+            // anywhere else it is flat ("Theorem 3"). Same rule, same helper, as every
+            // float — so a chapter cannot show "Figure 2.3" beside "Theorem 5". There is no
+            // opt-in: scoping is a property of being in a numbered chapter, which the
+            // renderer already knows.
+            let display = float_number(chapter, n as usize);
             // An unnumbered theorem leaves the slot empty (no &nbsp;) and is not a ref target.
             let slot = if display.is_empty() {
                 String::new()

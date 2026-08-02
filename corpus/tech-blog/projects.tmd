@@ -3,7 +3,6 @@ title: "Projects"
 title-block-style: none
 listing:
   contents: projects
-  sort: "date desc"
   type: grid
   categories: true
 page-layout: full
