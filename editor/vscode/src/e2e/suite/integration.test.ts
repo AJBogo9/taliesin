@@ -1256,6 +1256,34 @@ suite("Taliesin project surfaces", () => {
     }
   });
 
+  // What this pins, and what it deliberately does NOT. `showCollapseAll: true` is invisible
+  // to any extension API: VS Code stores it as the private context key
+  // `treeView.<id>.enableCollapseAll` and gates only the BUTTON's `when` clause on it
+  // (measured in 1.131.0's own `workbench.desktop.main.js`). The per-view
+  // `workbench.actions.treeView.<id>.collapseAll` command is registered for EVERY tree
+  // pane regardless — the first version of this test used its absence on the flat float
+  // view as a control and that control failed, which is how the option's invisibility was
+  // found. So the assertion below is the honest one: each view materialises as a real tree
+  // pane whose collapse action is live and runs. Whether the button is *shown* is in
+  // DETECTION-DEBT.md.
+  test("each sidebar view materialises as a tree pane with a live collapse action", async () => {
+    // The action is registered by the tree's own UI pane, not by `createTreeView`, so the
+    // views have to be revealed first — a view nothing ever focused has no pane at all.
+    for (const id of ["taliesin.outline", "taliesin.references", "taliesin.floats"]) {
+      await vscode.commands.executeCommand(`${id}.focus`);
+    }
+    const cmds = await vscode.commands.getCommands(true);
+    for (const id of ["taliesin.outline", "taliesin.references"]) {
+      const action = `workbench.actions.treeView.${id}.collapseAll`;
+      assert.ok(
+        cmds.includes(action),
+        `${id} never became a tree pane (no ${action}); collapse commands present were ` +
+          JSON.stringify(cmds.filter((c) => /collapseAll/i.test(c)))
+      );
+      await vscode.commands.executeCommand(action);
+    }
+  });
+
 
   // NOT a test that the task provider was accepted, because that cannot be observed here.
   // Measured in this host: with no folder open, `vscode.tasks.fetchTasks()` returns zero tasks

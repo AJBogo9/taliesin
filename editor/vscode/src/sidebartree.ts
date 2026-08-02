@@ -71,6 +71,13 @@ export interface TreeRow {
   path?: string;
   /** 0-based line to reveal. */
   line?: number;
+  /**
+   * Whether a row that HAS children starts shut. Absent means open, which is the right
+   * default for a heading inside the chapter you are editing and the wrong one for a whole
+   * book: every row used to be `Expanded`, and a twelve-chapter outline opened as several
+   * hundred lines. Ignored on a leaf.
+   */
+  collapsed?: boolean;
   children: TreeRow[];
 }
 
@@ -81,13 +88,17 @@ export interface TreeRow {
  * by `### C` is legal Markdown and common in real documents. A builder that insists on
  * consecutive levels drops C entirely, which is worse than showing it one level shallow.
  */
-export function outlineTree(reply: OutlineReply): TreeRow[] {
+export function outlineTree(reply: OutlineReply, activePath?: string): TreeRow[] {
   if (!reply) return [];
   return reply.pages.map((page) => {
     const root: TreeRow = {
       label: path.basename(page.path),
       path: page.path,
       line: 0,
+      // The page being edited opens; every other page in the book is one row until asked.
+      // The headings beneath it are left open, because an outline whose sections are all
+      // shut shows a filename and answers nothing.
+      collapsed: page.path !== activePath,
       children: [],
     };
     // Each entry is a row still open for children, with the heading level that opened it.
@@ -117,6 +128,8 @@ export function refsTree(reply: RefsReply): TreeRow[] {
     description: t.uses.length === 1 ? "1 use" : `${t.uses.length} uses`,
     path: t.definedIn ?? t.uses[0]?.path,
     line: t.definedLine ?? t.uses[0]?.line,
+    // The id and its use count are the answer; the list of use sites is the follow-up.
+    collapsed: true,
     children: t.uses.map((u) => ({
       label: `${path.basename(u.path)}:${u.line + 1}`,
       path: u.path,
@@ -126,9 +139,11 @@ export function refsTree(reply: RefsReply): TreeRow[] {
   });
   const resolved = targets.filter((t) => t.resolved).map(row);
   const dangling = targets.filter((t) => !t.resolved).map(row);
+  // Dangling is the half that wants doing something about, so it is the half that opens.
+  // Resolved is usually the long one and is usually fine, and its count says so already.
   return [
-    { label: `Resolved (${resolved.length})`, children: resolved },
-    { label: `Dangling (${dangling.length})`, children: dangling },
+    { label: `Resolved (${resolved.length})`, collapsed: true, children: resolved },
+    { label: `Dangling (${dangling.length})`, collapsed: false, children: dangling },
   ];
 }
 

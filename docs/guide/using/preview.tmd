@@ -168,10 +168,12 @@ gets them.
   project, so you can jump to a section six chapters away without first remembering which
   file it lives in.
 - **The Taliesin sidebar** adds three read-only views: **Outline**, the whole book as one
-  tree; **References**, every cross-reference target with what points at it, with dangling
-  ones grouped separately so a broken link is visible without running anything; and
-  **Figures & Tables**, the numbered-float index. Clicking a row navigates. Nothing in the
-  sidebar edits, and nothing reorders: the `.tmd` is the only editing surface.
+  tree, with the chapter you are editing open and the rest one row each; **References**,
+  every cross-reference target with what points at it, with dangling ones grouped
+  separately and open by default so a broken link is visible without running anything; and
+  **Figures & Tables**, the numbered-float index. The two nesting views carry VS Code's
+  **Collapse All** button. Clicking a row navigates. Nothing in the sidebar edits, and
+  nothing reorders: the `.tmd` is the only editing surface.
 - **Explorer badges** mark each `.tmd` with the worst problem `taliesin check` found in it,
   refreshed when you save. This is the one thing the squiggles cannot do for you: the
   language server only sees files you have opened, so a chapter you have not touched all

@@ -48,7 +48,9 @@ class RowProvider implements vscode.TreeDataProvider<TreeRow> {
     const item = new vscode.TreeItem(
       row.label,
       row.children.length
-        ? vscode.TreeItemCollapsibleState.Expanded
+        ? row.collapsed
+          ? vscode.TreeItemCollapsibleState.Collapsed
+          : vscode.TreeItemCollapsibleState.Expanded
         : vscode.TreeItemCollapsibleState.None
     );
     item.description = row.description;
@@ -81,8 +83,19 @@ export function registerSidebar(context: vscode.ExtensionContext): void {
     outline,
     refs,
     floats,
-    vscode.window.createTreeView("taliesin.outline", { treeDataProvider: outline }),
-    vscode.window.createTreeView("taliesin.references", { treeDataProvider: refs }),
+    // `showCollapseAll` on the two views that nest. The float index is flat by construction
+    // (`floatsTree` gives every row zero children), so a button there could never do
+    // anything, and one that cannot act is worse than none. VS Code registers a
+    // `workbench.actions.treeView.<id>.collapseAll` command per view that asks for it,
+    // which is what the e2e asserts — the option object itself is write-only from here.
+    vscode.window.createTreeView("taliesin.outline", {
+      treeDataProvider: outline,
+      showCollapseAll: true,
+    }),
+    vscode.window.createTreeView("taliesin.references", {
+      treeDataProvider: refs,
+      showCollapseAll: true,
+    }),
     vscode.window.createTreeView("taliesin.floats", { treeDataProvider: floats })
   );
 
@@ -99,7 +112,7 @@ export function registerSidebar(context: vscode.ExtensionContext): void {
         client.sendRequest<OutlineReply>("taliesin/projectOutline", { uri }),
         client.sendRequest<RefsReply>("taliesin/projectRefs", { uri }),
       ]);
-      outline.replace(outlineTree(outlineReply));
+      outline.replace(outlineTree(outlineReply, doc.fileName));
       floats.replace(floatsTree(outlineReply));
       refs.replace(refsTree(refsReply));
     } catch {

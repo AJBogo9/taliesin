@@ -159,3 +159,55 @@ test("a null reply, which the server sends outside a project, is an empty view",
     ["Resolved (0)", "Dangling (0)"]
   );
 });
+
+test("only the page being edited opens; the rest of the book stays one row each", () => {
+  // A whole book used to open fully expanded, which is what made the trees sprawl far
+  // enough to want a collapse-all button in the first place (item 196). The reader's
+  // question is "where am I in THIS chapter", so that is the one that opens.
+  const reply = {
+    root: "/r",
+    pages: [
+      { path: "/r/one.tmd", headings: [{ line: 0, level: 1, text: "One" }] },
+      { path: "/r/two.tmd", headings: [{ line: 0, level: 1, text: "Two" }] },
+    ],
+    floats: [],
+  };
+  const rows = outlineTree(reply, "/r/two.tmd");
+  assert.strictEqual(rows[0].collapsed, true, "the page not being edited starts collapsed");
+  assert.strictEqual(rows[1].collapsed, false, "the active page starts open");
+  // Headings inside the open page are NOT collapsed: an outline whose sections are all shut
+  // shows one line and answers nothing.
+  assert.strictEqual(rows[1].children[0].collapsed, undefined);
+});
+
+test("with no active page nothing is forced open, so a big book stays readable", () => {
+  const reply = {
+    root: "/r",
+    pages: [{ path: "/r/one.tmd", headings: [{ line: 0, level: 1, text: "One" }] }],
+    floats: [],
+  };
+  assert.strictEqual(outlineTree(reply).length, 1);
+  assert.strictEqual(outlineTree(reply)[0].collapsed, true);
+});
+
+test("the references view opens the half that needs attention and shuts the other", () => {
+  const rows = refsTree({
+    root: "/r",
+    targets: [
+      {
+        id: "fig-ok",
+        resolved: true,
+        definedIn: "/r/a.tmd",
+        definedLine: 3,
+        uses: [{ path: "/r/a.tmd", line: 9, col: 0 }],
+      },
+      { id: "fig-missing", resolved: false, definedIn: null, definedLine: null, uses: [{ path: "/r/a.tmd", line: 11, col: 0 }] },
+    ],
+  });
+  const [resolved, dangling] = rows;
+  assert.strictEqual(resolved.collapsed, true, "Resolved is the long, uninteresting half");
+  assert.strictEqual(dangling.collapsed, false, "Dangling is the actionable half");
+  // A target's own uses stay shut either way: the id is the answer, the use list is the
+  // follow-up question.
+  assert.strictEqual(dangling.children[0].collapsed, true);
+});

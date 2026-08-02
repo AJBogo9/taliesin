@@ -17,10 +17,11 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**194, 195 and 199 shipped 2026-08-02**, which closes the research-publishing cluster's last
-non-optional item and the first two of the six author-reported ones. **Next session: 196, 197,
-198 and 200 are what is left of the author-reported band** (196 and 197 are XS/S, 198 is a
-restyle, 200 is the sepia removal and the largest of the four), then 188, then the large swings.
+**194, 195, 196 and 199 shipped 2026-08-02**, which closes the research-publishing cluster's
+last non-optional item and three of the six author-reported ones. **Next session: 197, 198 and
+200 are what is left of the author-reported band** (197 is S and carries one open design
+question, 198 is a restyle, 200 is the sepia removal and the largest of the three), then 188,
+then the large swings.
 **188 is the only cluster item left, and it is the one previously marked "leave"** (lowest
 conviction, and the item still says so) — so the real choice after the band is 188 against the two
 large swings (164, 167), and **that cross-cluster ranking is an owner call that has not been
@@ -63,8 +64,8 @@ What 185/186/187 established, for whoever touches that area next:
   back to an author and would drop the entry silently when the two spellings drifted.
 
 - **P1 is a ranked build queue, not a menu.** Take from the top: the rest of the author-reported
-  reader/editor band filed 2026-08-01 (196, 197, 198, 200 — 195 and 199 shipped 2026-08-02; all XS
-  or S except 200, and each measured down to a small cause; **200 was ruled the day it was filed
+  reader/editor band filed 2026-08-01 (197, 198, 200 — 195, 196 and 199 shipped 2026-08-02; all
+  S except 200, and each measured down to a small cause; **200 was ruled the day it was filed
   and is a build now, not a question**), then 188, then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
@@ -164,15 +165,6 @@ Two conditions apply to every item here. **Each still owes a corpus pin doc** (a
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
-
-196. **The companion's three tree views have no collapse-all.** (XS, author-reported 2026-08-01.)
-     `sidebar.ts:84-86` builds all three with `treeDataProvider` alone; VS Code's built-in is
-     `showCollapseAll: true` on the `createTreeView` options. The reason it sprawls enough to want
-     one is a second line: every row with children is hardcoded `TreeItemCollapsibleState.Expanded`
-     (`sidebar.ts:51`), so a whole book opens fully expanded. **Decide both together**, since
-     defaulting deeper rows to `Collapsed` may remove the need for the button. Unlike a
-     `package.json` `contributes` enum, this one is a typed TS option, so `tsc` catches a
-     misspelling. Pin in the companion e2e: a unit test does not prove VS Code accepted the option.
 
 197. **The project outline is in path order while claiming reading order.** (S, author-reported
      2026-08-01, measured.) `lsp.rs:1043` builds the outline from `collect_pages` order, which is
@@ -716,6 +708,16 @@ branch are enough to find its commits.
   in the same function. **Do not extend click-to-close to the lightbox's video or mermaid box**: a
   `<video>` click belongs to the native control bar and `.tali-lb-svg` is a pannable scroller.
   Pinned by `crates/server/tests/reader_chrome_browser.rs`, the sixth `headless-js` test.
+- **2026-08-02 companion sidebar defaults** (196): `showCollapseAll` on Outline + References
+  (**not** the float index — it is flat by construction, and a button that cannot act is worse
+  than none), plus the collapsed defaults that were the real cause of the sprawl: the outline
+  opens the page you are editing and leaves every other page one row, and References opens
+  Dangling and shuts Resolved. **`showCollapseAll` is not observable from any extension API** —
+  VS Code keeps it as the private context key `treeView.<id>.enableCollapseAll` and registers
+  the per-view `collapseAll` COMMAND for every tree pane regardless, so a test asserting that
+  command's absence on a view that never asked for it FAILS. That gap is in
+  [DETECTION-DEBT.md](DETECTION-DEBT.md); the row states are plain data in `sidebartree.ts` and
+  are unit-tested.
 - **2026-08-01 margin sidenotes + structured authors** (183, 184): a `[^note]` renders beside the
   line that cites it and there is **no gathered endnote section** (one copy, or all four text
   projections report every note twice). **Do not re-file the print fragmentation** — an in-flow
