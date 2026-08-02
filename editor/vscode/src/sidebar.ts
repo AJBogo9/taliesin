@@ -1,4 +1,4 @@
-// The Taliesin sidebar: three read-only views over the project, fed entirely by the server.
+// The Taliesin sidebar: one read-only view over the project, fed entirely by the server.
 //
 // A `TreeView` is one of the few things LSP has no concept of, which is why this lives in
 // TypeScript at all. The tree *shapes* are pure functions in `sidebartree.ts`; this file is
@@ -12,14 +12,7 @@
 import * as vscode from "vscode";
 import { languageClient } from "./client";
 import { isSourceFile } from "./paths";
-import {
-  floatsTree,
-  outlineTree,
-  refsTree,
-  type OutlineReply,
-  type RefsReply,
-  type TreeRow,
-} from "./sidebartree";
+import { projectTree, type OutlineReply, type RefsReply, type TreeRow } from "./sidebartree";
 
 /** A `TreeDataProvider` over rows produced by one of the builders above. */
 class RowProvider implements vscode.TreeDataProvider<TreeRow> {
@@ -73,36 +66,25 @@ class RowProvider implements vscode.TreeDataProvider<TreeRow> {
   }
 }
 
-/** Register the three views and keep them in step with the active document. */
+/** Register the view and keep it in step with the active document. */
 export function registerSidebar(context: vscode.ExtensionContext): void {
-  const outline = new RowProvider(() => []);
-  const refs = new RowProvider(() => refsTree(null));
-  const floats = new RowProvider(() => []);
+  const project = new RowProvider(() => projectTree(null, null));
 
   context.subscriptions.push(
-    outline,
-    refs,
-    floats,
-    // `showCollapseAll` on the two views that nest. The float index is flat by construction
-    // (`floatsTree` gives every row zero children), so a button there could never do
-    // anything, and one that cannot act is worse than none. VS Code registers a
-    // `workbench.actions.treeView.<id>.collapseAll` command per view that asks for it,
-    // which is what the e2e asserts — the option object itself is write-only from here.
-    vscode.window.createTreeView("taliesin.outline", {
-      treeDataProvider: outline,
+    project,
+    // VS Code registers a `workbench.actions.treeView.<id>.collapseAll` command per view that
+    // asks for it, which is what the e2e asserts — the option object itself is write-only
+    // from here.
+    vscode.window.createTreeView("taliesin.project", {
+      treeDataProvider: project,
       showCollapseAll: true,
-    }),
-    vscode.window.createTreeView("taliesin.references", {
-      treeDataProvider: refs,
-      showCollapseAll: true,
-    }),
-    vscode.window.createTreeView("taliesin.floats", { treeDataProvider: floats })
+    })
   );
 
   const refresh = async (): Promise<void> => {
     const doc = vscode.window.activeTextEditor?.document;
     // A webview holding focus leaves `activeTextEditor` undefined, which is the normal state
-    // right after opening a preview; keep the last good tree rather than blanking the views.
+    // right after opening a preview; keep the last good tree rather than blanking the view.
     if (!doc || doc.uri.scheme !== "file" || !isSourceFile(doc.fileName)) return;
     const client = languageClient();
     if (!client) return; // the server may not have started yet, or failed to
@@ -112,15 +94,11 @@ export function registerSidebar(context: vscode.ExtensionContext): void {
         client.sendRequest<OutlineReply>("taliesin/projectOutline", { uri }),
         client.sendRequest<RefsReply>("taliesin/projectRefs", { uri }),
       ]);
-      outline.replace(outlineTree(outlineReply, doc.fileName));
-      floats.replace(floatsTree(outlineReply));
-      refs.replace(refsTree(refsReply));
+      project.replace(projectTree(outlineReply, refsReply, doc.fileName));
     } catch {
       // A request that fails (server restarting, document closed mid-flight) empties the
-      // views rather than leaving a tree that no longer matches the project.
-      outline.clear();
-      floats.clear();
-      refs.clear();
+      // view rather than leaving a tree that no longer matches the project.
+      project.clear();
     }
   };
 

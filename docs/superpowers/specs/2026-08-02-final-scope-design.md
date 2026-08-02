@@ -410,6 +410,37 @@ Ships as a single commit with all `RETIRED_KEYS` entries, per "Batch the retirem
 
 ### Wave 4: the LSP and companion long tail (~1,400 LOC)
 
+> **Status: DONE, 2026-08-03**, one commit. Measured: **1,459 lines removed**, 258 added, 26
+> files. Final `./tools/gates.sh` = **PASSED, 9/9 gates ran**; the ungated Extension Host e2e
+> was also run by hand: **41 passing, 0 failing**. Four things a later wave must not
+> re-derive:
+>
+> - **The math hover did not go blank, because the fallback was already the shipped path.**
+>   `math_image::data_uri` returned `None` on any host without Chrome, and the caller then
+>   used `math_preview::unicode_preview`. Cutting the rasterizer just makes that the only
+>   path. Verified by driving the real binary: hovering `$E = mc^2$` answers `### E=mc²`.
+> - **`selection_range` is TWO different things and only one was cut.** `DocumentSymbol` has
+>   a `selection_range` field (the heading line inside a section's full range) that
+>   `documentSymbol`, `workspace/symbol` and the CRLF tests all depend on. What went is the
+>   `textDocument/selectionRange` *request*: `resolve_selection_ranges`, `lsp_nav::
+>   selection_chain` and its two exclusive helpers (`word_span`, `paragraph_span`), the
+>   capability, and the wire test. A blind grep for the name would have broken the outline.
+> - **Deleting `math_image.rs` broke a gate, not a test.** `tools/gates.sh` named
+>   `a_real_browser_rasterizes_real_katex_into_a_data_uri` as one of ELEVEN canaries, and
+>   `gate_script.rs` asserts both that each canary still exists and that there are exactly
+>   eleven. Removing a browser-backed capability means removing its canary *and* decrementing
+>   that count. The other five browser canaries were renumbered in the comments.
+> - **The e2e suite was already red before this wave**, which is what "run by nothing
+>   automatically" buys: Wave 3 routed a dropped `.csv` from the dataset kind to the asset
+>   one, the asset kind answers with a `SnippetString`, and the test read it with `String(…)`
+>   — so it asserted against the literal `"[object Object]"`. Fixed here by reading `.value`.
+>   The product was correct throughout; only the test was wrong.
+>
+> **4.2 was not done here**: it shipped inside Wave 3, which pulled it forward to keep it one
+> logical change with 3.2. 4.6 is a fold, not a cut — every row and every tree builder
+> survives, one level deeper, and each group states its size so the two that start collapsed
+> still answer at a glance.
+
 The largest single investment in the tool (~11,300 LOC) and the surface no prior audit could
 see. Completion, hover, diagnostics, definition and document links are the editing
 experience and stay untouched. What goes:

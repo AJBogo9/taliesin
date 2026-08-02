@@ -184,3 +184,47 @@ export function floatsTree(reply: OutlineReply): TreeRow[] {
     children: [],
   }));
 }
+
+/**
+ * The three trees above as ONE view: an Outline group, a References group and a
+ * Figures & Tables group, in that order.
+ *
+ * Three separate views cost three activity-bar panes for one question ("what is in this
+ * project"), and the two below the first were the ones nobody scrolled to. Folding them keeps
+ * every row and every builder — this is a shape change, not a capability cut — and the order is
+ * the answer: the outline is what an author browses, so it is first and it is the only group
+ * that opens. A group's count rides in its description so the two shut ones still answer at a
+ * glance, which is what a collapsed view could never do.
+ */
+export function projectTree(
+  outline: OutlineReply,
+  refs: RefsReply,
+  activePath?: string
+): TreeRow[] {
+  const pages = outlineTree(outline, activePath);
+  const floats = floatsTree(outline);
+  // `refsTree` always returns its two group rows, even at zero; the count that belongs on the
+  // References group is the targets underneath them, not the two rows themselves.
+  const refRows = refsTree(refs);
+  const refCount = refRows.reduce((n, r) => n + r.children.length, 0);
+  return [
+    {
+      label: "Outline",
+      description: pages.length === 1 ? "1 page" : `${pages.length} pages`,
+      collapsed: false,
+      children: pages,
+    },
+    {
+      label: "References",
+      description: refCount === 1 ? "1 target" : `${refCount} targets`,
+      collapsed: true,
+      children: refRows,
+    },
+    {
+      label: "Figures & Tables",
+      description: floats.length === 1 ? "1 float" : `${floats.length} floats`,
+      collapsed: true,
+      children: floats,
+    },
+  ];
+}

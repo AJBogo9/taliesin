@@ -127,7 +127,6 @@ It holds open `.tmd` buffers warm and answers:
 | `inlayHint` | the resolved number beside a cross-reference, author-year beside a citation, line count beside an include. Range-scoped, so only the visible lines are scanned. A reference to an anchor on *another* page is valid but has no number here, and the hint is **omitted** rather than filled with a placeholder: a missing hint reads as "no information", a placeholder reads as a claim |
 | `foldingRange` | front matter, each heading down to the next of equal or shallower level, `:::` divs, code fences. Without this an editor folds `.tmd` by *indentation*, which is meaningless in a format where nesting is heading level and fences |
 | `documentHighlight` | the anchor under the cursor, its definition marked as a write and every reference as a read |
-| `selectionRange` | expand-selection by structure: word, then the enclosing inline construct, paragraph, `:::` div, section |
 | `workspaceSymbol` | Ctrl+T to any heading or cross-reference anchor **anywhere in the project**, not just the open file. Answered by a stat-validated walk of every page rather than a live index: the request fires on a gesture, so re-validating with one `stat` per page costs less than the file watching an index would need |
 
 Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
@@ -147,7 +146,6 @@ answered by the same server:
 | `taliesin/renameFileEdits` | the edits that keep a renamed or moved file's references correct: every `{{< include >}}`, `{{< embed >}}`, relative link and `_site.yml` entry pointing at it, plus the file's own outgoing relative references when it changed directory. A rename is a one-shot event, so this walks the project instead of maintaining an index, which is why it needs none of the parked project-index work. Both link spellings are handled, because a cross-page link is authored as `.html` while an include names the `.tmd` (`lsp_rename_file.rs`) |
 | `taliesin/projectOutline` | the whole book as a tree, grouped by page and in reading order — `chapters:` resolved from the same `Book` the drawer and prev/next use, with a page absent from that list sorted last and flagged `listed: false` so the client can name it rather than drop it — plus the numbered-float index. Not `workspace/symbol`: that method deliberately answers a *flat, queried* list, which is the wrong shape for a view the author browses rather than searches |
 | `taliesin/projectRefs` | every cross-reference target with the uses pointing at it, **dangling ones included**. The dangling half is why the server grew a full-document `xref_occurrences` scan beside the targeted `anchor_occurrences`: a reference whose target exists nowhere has an id no caller could have thought to ask for |
-| `taliesin/colorScheme` | a notification, not a request: the editor's light/dark scheme, because the rasterized math hover is a picture and cannot inherit the popup's text colour |
 
 `taliesin/sectionEdit` refuses rather than guesses. Moving past a shallower heading would
 re-parent the section, so it answers a JSON-RPC `RequestFailed` whose message names both

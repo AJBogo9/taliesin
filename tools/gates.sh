@@ -62,22 +62,17 @@ CANARY_KERNEL="kernel_executes_state_errors_and_interrupts_runaway_cell"
 CANARY_R="r_cells_execute_and_persist_state_across_cells"
 CANARY_NODE="only_a_textual_sink_becomes_a_live_region"
 CANARY_CHROME="read_run_js_reports_svg_produced_and_error_kinds"
-# A second browser-backed capability, and it fails independently of the first: the math
-# hover rasterizes a KaTeX page, so it can break on the screenshot/clip path while `{js}`
-# observation still works. Every other test in that module asserts a string and would stay
-# green with rasterizing entirely broken.
-CANARY_MATH_HOVER="a_real_browser_rasterizes_real_katex_into_a_data_uri"
-# A third browser-backed capability, independent of both: the reactive client. It is the
+# A second browser-backed capability, independent of the first: the reactive client. It is the
 # only thing that runs a `{glsl}` shader, the `animate` pump, the `point` pad, `tali.state`
 # and the numerics bundle at all — every other test of those five features asserts what Rust
 # EMITTED, and would stay green with the whole client runtime broken.
 CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
-# A fourth browser-backed capability, independent of the other three: the print track. It is
+# A third browser-backed capability, independent of the other two: the print track. It is
 # the only thing that drives paged.js through CDP, and every other print test asserts what
 # Rust EMITTED into the stylesheet — all of which stays green with pagination entirely
 # broken, including the failure mode that produces a plausible but truncated PDF.
 CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
-# A fifth browser-backed capability, independent of the other four: `{pyodide}` cells. It is
+# A fourth browser-backed capability, independent of the other three: `{pyodide}` cells. It is
 # the only thing that boots the vendored Pyodide runtime at all — every other test of item 158
 # asserts what Rust EMITTED (the script tag, the index `<meta>`, the vendored file list) and
 # would stay green with the whole 15.7 MiB runtime payload deleted.
@@ -90,7 +85,7 @@ CANARY_PYODIDE="a_pyodide_cell_boots_and_publishes_to_a_js_consumer"
 # green and one assertion shorter, which no summary line reveals).
 CANARY_PYODIDE_DELIVERY="a_single_file_build_degrades_a_pyodide_cell_to_visible_source"
 CANARY_PYODIDE_SITE="site_build_copies_the_pyodide_runtime_and_stamps_a_page_relative_index"
-# A sixth browser-backed capability, independent of the other five: the figure lightbox.
+# A fifth browser-backed capability, independent of the other four: the figure lightbox.
 # The whole viewer is built in JS, so nothing about it reaches the served HTML — every
 # other test of a figure asserts what Rust EMITTED and would stay green with the viewer's
 # open/close handlers inverted.
@@ -304,7 +299,6 @@ else
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
             "chrome:$CANARY_CHROME" \
-            "chrome (math hover):$CANARY_MATH_HOVER" \
             "chrome (reactive client):$CANARY_REACTIVE" \
             "chrome (print track):$CANARY_PRINT" \
             "chrome (pyodide):$CANARY_PYODIDE" \

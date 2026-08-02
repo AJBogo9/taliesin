@@ -45,8 +45,6 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // The anchor under the cursor and its other occurrences: a targeted single-id scan,
         // not a full-document tokenizer.
         document_highlight_provider: Some(OneOf::Left(true)),
-        // Expand-selection by document structure: word out to the enclosing section.
-        selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         // Replaces indentation-based folding, which is what `.tmd` gets without this and is
         // meaningless in a format where nesting is heading level and fences.
         folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
@@ -106,36 +104,6 @@ pub(crate) fn cmd_lsp(_args: &[String]) -> ExitCode {
 /// Complete the initialize handshake, then serve the message loop until `exit`.
 /// Takes the connection by value so it (and its channels) drop before the caller
 /// joins the stdio I/O threads.
-/// Is the editor on a dark colour scheme? Decides the ink of a rasterized math hover, which
-/// is the one answer this server gives that cannot adapt to the reader: text in a hover
-/// inherits the theme, an image does not.
-///
-/// Defaults to dark, matching both VS Code's default theme and Taliesin's own. The client
-/// sets it at `initialize` and updates it with `taliesin/colorScheme` when the user switches,
-/// so a hover never renders black ink onto a dark popup.
-static DARK_SCHEME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-
-pub(crate) fn dark_scheme() -> bool {
-    DARK_SCHEME.load(std::sync::atomic::Ordering::Relaxed)
-}
-
-/// Read `{ "colorScheme": "dark" | "light" }` out of a client's payload, leaving the current
-/// setting alone when the key is absent or unrecognized — an editor that says nothing must not
-/// be treated as having said "light".
-fn absorb_color_scheme(payload: Option<&serde_json::Value>) {
-    let Some(scheme) = payload
-        .and_then(|v| v.get("colorScheme"))
-        .and_then(|v| v.as_str())
-    else {
-        return;
-    };
-    match scheme {
-        "dark" => DARK_SCHEME.store(true, std::sync::atomic::Ordering::Relaxed),
-        "light" => DARK_SCHEME.store(false, std::sync::atomic::Ordering::Relaxed),
-        other => crate::log::warn(&format!("lsp: ignoring unknown colorScheme {other:?}")),
-    }
-}
-
 /// How long `didChange` edits are coalesced before diagnostics are published.
 ///
 /// `publish` runs a full render **plus** `site::anchors_defined_elsewhere_in_project`, which
@@ -156,8 +124,7 @@ fn run_with_debounce(
     debounce: std::time::Duration,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let caps = serde_json::to_value(server_capabilities())?;
-    let initialize_params = connection.initialize(caps)?;
-    absorb_color_scheme(initialize_params.get("initializationOptions"));
+    connection.initialize(caps)?;
     main_loop(&connection, debounce)?;
     Ok(())
 }
@@ -416,20 +383,9 @@ fn handle_notification(
         // diagnostics for a buffer that is gone.
         pending.forget(&p.text_document.uri);
         publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
-    } else if method == COLOR_SCHEME_METHOD {
-        // The editor switched theme. Only the rasterized math hover cares, and it caches by
-        // scheme, so this costs one re-render per expression per scheme and never a stale
-        // image. Nothing to publish: hovers are pulled, not pushed.
-        absorb_color_scheme(Some(&notif.params));
     }
     Ok(())
 }
-
-/// The client tells us the editor's colour scheme here, at `initialize` and whenever the user
-/// switches. Custom because LSP has no concept of a theme: it assumes every answer is text
-/// the editor will style itself, which stopped being true when the math hover became a
-/// picture.
-pub(crate) const COLOR_SCHEME_METHOD: &str = "taliesin/colorScheme";
 
 /// Answer a request from the open-buffer store. Only `textDocument/definition` is handled;
 /// any other request gets a `MethodNotFound` reply so the client never hangs waiting.
@@ -443,8 +399,7 @@ fn handle_request(
     use lsp_types::request::{
         CodeActionRequest, Completion, DocumentHighlightRequest, DocumentLinkRequest,
         DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
-        InlayHintRequest, PrepareRenameRequest, Rename, Request as _, SelectionRangeRequest,
-        WorkspaceSymbolRequest,
+        InlayHintRequest, PrepareRenameRequest, Rename, Request as _, WorkspaceSymbolRequest,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -468,15 +423,6 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(hints)?),
-            error: None,
-        }
-    } else if req.method == SelectionRangeRequest::METHOD {
-        let params: lsp_types::SelectionRangeParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(resolve_selection_ranges(
-                docs, &params,
-            ))?),
             error: None,
         }
     } else if req.method == DocumentHighlightRequest::METHOD {
@@ -752,56 +698,6 @@ fn handle_request(
     Ok(())
 }
 
-/// Resolve go-to-definition for the token under the cursor, or `None` when it points
-/// nowhere resolvable (an undefined xref, a cross-file ref, a missing include/bib).
-/// One nested `SelectionRange` per requested position: word → inline construct → paragraph →
-/// `:::` div → section, each the `parent` of the one below it.
-///
-/// A position with no chain still gets an entry, collapsed to the position itself: the
-/// response array is positional, so dropping one would silently shift every later cursor's
-/// answer onto the wrong cursor.
-fn resolve_selection_ranges(
-    docs: &std::collections::HashMap<lsp_types::Url, String>,
-    params: &lsp_types::SelectionRangeParams,
-) -> Vec<lsp_types::SelectionRange> {
-    use lsp_types::{Position, Range, SelectionRange};
-
-    let text = docs
-        .get(&params.text_document.uri)
-        .map(String::as_str)
-        .unwrap_or("");
-    params
-        .positions
-        .iter()
-        .map(|pos| {
-            let line = crate::lsp_pos::nth_line(text, pos.line as usize);
-            let cursor_char = crate::lsp_pos::utf16_to_char(line, pos.character as usize);
-            let chain = crate::lsp_nav::selection_chain(text, pos.line as usize, cursor_char);
-            // Built outermost-in, so each level can take the previous as its parent.
-            let mut parent: Option<Box<SelectionRange>> = None;
-            for &(sl, sc, el, ec) in chain.iter().rev() {
-                let (sline, eline) = (
-                    crate::lsp_pos::nth_line(text, sl as usize),
-                    crate::lsp_pos::nth_line(text, el as usize),
-                );
-                parent = Some(Box::new(SelectionRange {
-                    range: Range::new(
-                        Position::new(sl, crate::lsp_pos::char_to_utf16(sline, sc as usize) as u32),
-                        Position::new(el, crate::lsp_pos::char_to_utf16(eline, ec as usize) as u32),
-                    ),
-                    parent,
-                }));
-            }
-            *parent.unwrap_or_else(|| {
-                Box::new(SelectionRange {
-                    range: Range::new(*pos, *pos),
-                    parent: None,
-                })
-            })
-        })
-        .collect()
-}
-
 /// Every occurrence of the cross-reference anchor under the cursor, the definition marked
 /// `WRITE` and the references `READ`. Empty when the cursor is not on an anchor.
 ///
@@ -843,6 +739,8 @@ fn resolve_document_highlight(
         .collect()
 }
 
+/// Resolve go-to-definition for the token under the cursor, or `None` when it points
+/// nowhere resolvable (an undefined xref, a cross-file ref, a missing include/bib).
 fn resolve_definition(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     project: &mut crate::lsp_project::ProjectCache,
@@ -1274,20 +1172,15 @@ fn resolve_hover(
             end_line,
             end_char,
         } => {
-            // Prefer the real thing: a rasterized render of the SAME KaTeX output the
-            // document gets (`math_image`). It is unavailable in a build without the browser
-            // driver, on a host without Chrome, or on a timeout — and in every one of those
-            // cases the Unicode approximation still answers, so the hover never goes blank.
-            let body = match crate::math_image::data_uri(&latex, display, dark_scheme()) {
-                Some(uri) => format!("![{}]({uri})", alt_text(&latex)),
-                None => {
-                    let preview = taliesin_core::math_preview::unicode_preview(&latex, display)?;
-                    if preview.trim().is_empty() {
-                        return None;
-                    }
-                    format!("### {preview}")
-                }
-            };
+            // A Unicode approximation, which is honest about being one. Typeset math in a
+            // hover would mean rasterizing it in a browser, because VS Code's hover sanitizer
+            // drops the MathML KaTeX emits; the live preview already renders the real thing
+            // continuously, so the tooltip does not need to.
+            let preview = taliesin_core::math_preview::unicode_preview(&latex, display)?;
+            if preview.trim().is_empty() {
+                return None;
+            }
+            let body = format!("### {preview}");
             let kind = if display { "Display" } else { "Inline" };
             let to_pos = |l: usize, c: usize| {
                 let lt = crate::lsp_pos::nth_line(text, l);
@@ -1306,14 +1199,6 @@ fn resolve_hover(
         }
         Target::None => None,
     }
-}
-
-/// Alt text for a rasterized math hover: the expression's own source, minus the two
-/// characters that would close the markdown image early and leave a data URI spilled into the
-/// popup as text. It is what a screen reader announces and what shows if the image is ever
-/// dropped, so the source is the most useful thing it can carry.
-fn alt_text(latex: &str) -> String {
-    latex.replace(['[', ']'], "").replace(['\n', '\r'], " ")
 }
 
 /// Do two ranges touch? Used to scope code actions to the range the editor asked about.
@@ -3928,39 +3813,6 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
-    // A rasterized hover cannot inherit the popup's colour, so getting this wrong is not a
-    // cosmetic slip: it is light ink on a light theme, i.e. an empty-looking hover. Silence
-    // must therefore mean "keep what we have", never "assume light".
-    #[test]
-    fn the_colour_scheme_is_absorbed_only_when_the_client_actually_states_it() {
-        let restore = dark_scheme();
-
-        absorb_color_scheme(Some(&serde_json::json!({ "colorScheme": "light" })));
-        assert!(!dark_scheme(), "an explicit light scheme is taken");
-        absorb_color_scheme(Some(&serde_json::json!({ "colorScheme": "dark" })));
-        assert!(dark_scheme(), "and so is an explicit dark one");
-
-        // Every shape of "said nothing" leaves the setting alone.
-        for quiet in [
-            serde_json::json!({}),
-            serde_json::json!({ "colorScheme": "chartreuse" }),
-            serde_json::json!({ "colorScheme": 3 }),
-        ] {
-            absorb_color_scheme(Some(&quiet));
-            assert!(
-                dark_scheme(),
-                "unrecognized payload must not flip it: {quiet}"
-            );
-        }
-        absorb_color_scheme(None);
-        assert!(
-            dark_scheme(),
-            "a client that sends no options must not flip it"
-        );
-
-        DARK_SCHEME.store(restore, std::sync::atomic::Ordering::Relaxed);
-    }
-
     #[test]
     fn hover_on_math_previews_what_it_renders_as() {
         let (server, client) = Connection::memory();
@@ -4775,10 +4627,6 @@ mod tests {
         assert_eq!(
             caps["inlayHintProvider"], true,
             "the resolved number beside a cross-reference"
-        );
-        assert_eq!(
-            caps["selectionRangeProvider"], true,
-            "expand-selection by structure rather than by the editor's word heuristics"
         );
         assert_eq!(
             caps["documentHighlightProvider"], true,

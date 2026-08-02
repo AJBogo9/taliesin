@@ -1131,13 +1131,14 @@ watcher, no invalidation protocol and no architecture change. See 74 below for w
 
 ### Cluster E — AI-native editor surface
 
-85. **SHIPPED 2026-07-30, in two halves with different version floors.**
-    `contributes.languageModelTools` registers the **read-only** five (`check`, `read`, `symbols`,
-    `map`, `vocab`) and shipped at the existing floor. **`build` is deliberately withheld** even
-    though `taliesin mcp` offers it: it writes `_site/` and executes code cells, and a model
-    reaching for that unprompted is a surprise write plus a surprise kernel run. Pointing an agent
-    at the MCP server is an explicit act; an always-on editor tool is not, so the two surfaces
-    differ on purpose and a test pins the asymmetry.
+85. **SHIPPED 2026-07-30 in two halves; the first half was CUT again on 2026-08-03 (Wave 4.3).**
+    `contributes.languageModelTools` registered the **read-only** five (`check`, `read`, `symbols`,
+    `map`, `vocab`), a hand-maintained subset of the table `taliesin mcp` already exposed twenty
+    lines below it in the same file. The capability was never the problem; the second copy was.
+    **What survives is the MCP provider**, which is both the wider surface and the opt-in one —
+    it offers `build` precisely because pointing an agent at a server is a deliberate act, where
+    an always-on editor tool is not. A unit test and an e2e assertion now pin the *absence*, so a
+    re-added tool has to argue with them.
     `lm.registerMcpServerDefinitionProvider` needed **`engines.vscode: ^1.101.0` with
     `@types/vscode` re-pinned exactly to `1.101.0`**, measured the same way the 1.97 floor was:
     the API is absent from packed `@types/vscode@1.100.0` and present in `1.101.0`.

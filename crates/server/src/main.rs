@@ -35,7 +35,6 @@ mod lsp_outline;
 mod lsp_pos;
 mod lsp_project;
 mod lsp_rename_file;
-mod math_image;
 mod mcp;
 mod minify;
 mod pdf;
@@ -177,7 +176,6 @@ ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
      TALIESIN_JS_TIMEOUT (read --run {js} headless-Chrome settle seconds; default 10),
-     TALIESIN_MATH_IMAGE_TIMEOUT (lsp math-hover render seconds; default 10),
      TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,
      TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
      TALIESIN_NO_EXEC (=--no-exec, never run code cells),

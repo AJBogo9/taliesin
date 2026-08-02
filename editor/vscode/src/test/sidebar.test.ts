@@ -1,4 +1,4 @@
-// The sidebar's two tree builders, tested as pure functions.
+// The sidebar's tree builders, tested as pure functions.
 //
 // They are deliberately separate from the `TreeDataProvider` that wraps them: a provider needs
 // a VS Code host, and the shape of the tree is where the bugs are. `node --test` runs these
@@ -6,7 +6,7 @@
 // answer, which is whether VS Code accepted the view contributions.
 import { test } from "node:test";
 import assert from "node:assert";
-import { outlineTree, refsTree, floatsTree } from "../sidebartree";
+import { outlineTree, refsTree, floatsTree, projectTree } from "../sidebartree";
 
 test("the outline tree nests headings under their page and by level", () => {
   const rows = outlineTree({
@@ -280,4 +280,71 @@ test("a website has no chapter list, so no page can be missing from it", () => {
     rows.map((r) => r.label),
     ["a.tmd", "b.tmd"]
   );
+});
+
+// Wave 4.6 folded three views into one. What the fold must NOT do is lose a row: every builder
+// still runs and every row still hangs off its group, so this pins composition, not content.
+test("the project view carries all three trees as groups, outline first and open", () => {
+  const outline = {
+    root: "/r",
+    book: false,
+    pages: [{ path: "/r/a.tmd", listed: true, headings: [{ line: 0, level: 1, text: "A" }] }],
+    floats: [{ id: "fig-x", path: "/r/a.tmd", line: 4, title: "X", number: "1" }],
+  };
+  const refs = {
+    root: "/r",
+    targets: [
+      { id: "sec-a", resolved: true, definedIn: "/r/a.tmd", definedLine: 0, uses: [] },
+      { id: "sec-gone", resolved: false, definedIn: null, definedLine: null, uses: [] },
+    ],
+  };
+  const rows = projectTree(outline, refs, "/r/a.tmd");
+  assert.deepStrictEqual(
+    rows.map((r) => r.label),
+    ["Outline", "References", "Figures & Tables"],
+    "the outline is what an author browses, so it leads"
+  );
+  assert.strictEqual(rows[0].collapsed, false, "the outline group opens");
+  assert.strictEqual(rows[1].collapsed, true);
+  assert.strictEqual(rows[2].collapsed, true);
+  // Every row the three views used to show is still reachable, one level deeper.
+  assert.deepStrictEqual(rows[0].children, outlineTree(outline, "/r/a.tmd"));
+  assert.deepStrictEqual(rows[1].children, refsTree(refs));
+  assert.deepStrictEqual(rows[2].children, floatsTree(outline));
+});
+
+// A collapsed group that says nothing is the failure mode this fold could have introduced:
+// two of the three start shut, so their counts have to ride on the group row itself.
+test("each group states its size, because two of them start collapsed", () => {
+  const rows = projectTree(
+    {
+      root: "/r",
+      book: false,
+      pages: [{ path: "/r/a.tmd", listed: true, headings: [] }],
+      floats: [{ id: "fig-x", path: "/r/a.tmd", line: 4, title: "X", number: "1" }],
+    },
+    {
+      root: "/r",
+      targets: [
+        { id: "sec-a", resolved: true, definedIn: "/r/a.tmd", definedLine: 0, uses: [] },
+        { id: "sec-b", resolved: false, definedIn: null, definedLine: null, uses: [] },
+      ],
+    },
+    "/r/a.tmd"
+  );
+  assert.deepStrictEqual(
+    rows.map((r) => r.description),
+    ["1 page", "2 targets", "1 float"],
+    "singular and plural both, and the reference count is targets not group rows"
+  );
+});
+
+test("outside a project the view is three empty groups, not a throw", () => {
+  const rows = projectTree(null, null);
+  assert.deepStrictEqual(
+    rows.map((r) => r.description),
+    ["0 pages", "0 targets", "0 floats"]
+  );
+  assert.deepStrictEqual(rows[0].children, []);
+  assert.deepStrictEqual(rows[2].children, []);
 });

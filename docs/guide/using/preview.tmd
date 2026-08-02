@@ -167,22 +167,21 @@ gets them.
 - **Go to symbol in workspace** (`Ctrl+T`) reaches every heading and every anchor in the
   project, so you can jump to a section six chapters away without first remembering which
   file it lives in.
-- **The Taliesin sidebar** adds three read-only views: **Outline**, the whole book as one
-  tree in *reading* order (your `chapters:` list, not alphabetical), with the chapter you
-  are editing open and the rest one row each, and any page the book never named gathered
-  under **Unlisted** rather than quietly dropped; **References**,
-  every cross-reference target with what points at it, with dangling ones grouped
-  separately and open by default so a broken link is visible without running anything; and
-  **Figures & Tables**, the numbered-float index. The two nesting views carry VS Code's
-  **Collapse All** button. Clicking a row navigates. Nothing in the sidebar edits, and
-  nothing reorders: the `.tmd` is the only editing surface.
+- **The Taliesin sidebar** is one read-only view, **Project**, with three groups.
+  **Outline** leads and opens: the whole book as one tree in *reading* order (your
+  `chapters:` list, not alphabetical), with the chapter you are editing open and the rest
+  one row each, and any page the book never named gathered under **Unlisted** rather than
+  quietly dropped. **References** holds every cross-reference target with what points at
+  it, dangling ones grouped separately and open, so a broken link is visible without
+  running anything. **Figures & Tables** is the numbered-float index. Each group states
+  its size on its own row, so the two that start collapsed still answer at a glance, and
+  the view carries VS Code's **Collapse All** button. Clicking a row navigates. Nothing in
+  the sidebar edits, and nothing reorders: the `.tmd` is the only editing surface.
 - **Explorer badges** mark each `.tmd` with the worst problem `taliesin check` found in it,
   refreshed when you save. This is the one thing the squiggles cannot do for you: the
   language server only sees files you have opened, so a chapter you have not touched all
   week is invisible to it. Turn them off with `taliesin.explorerBadges` if you would rather
   not have `check` run on save.
-- **The status bar** shows whether a preview is running for this project and on which port,
-  plus the project's problem count. Click it to open or focus the preview.
 
 ### Build and check without leaving the editor
 
@@ -195,14 +194,14 @@ advice is not a defect.
 ::: {.callout-note}
 ## Taliesin's tools are available to AI in the editor
 
-The extension registers Taliesin's read-only commands as VS Code language-model tools, so a
-model working in your editor can run `check`, read what a page actually renders to, list a
-document's anchors, outline the project, or look up the accepted vocabulary. Reference one
-in a prompt with `#tali-check`, `#tali-read`, `#tali-symbols`, `#tali-map` or `#tali-vocab`.
+The extension advertises the `taliesin mcp` server to VS Code, so a model working in your
+editor can run `check`, read what a page actually renders to, list a document's anchors,
+outline the project, look up the accepted vocabulary, or build. You do not have to find the
+binary or hand-edit a JSON file: point your agent at the Taliesin server and it is there.
 
-`build` is deliberately **not** offered: it writes files and executes your code cells, which
-is not something to do on a model's hunch. The extension also advertises the `taliesin mcp`
-server to VS Code, so an agent you point at it explicitly gets the wider set.
+Pointing an agent at that server is a deliberate act, which is what makes offering `build`
+right: it writes files and runs your code cells, and that is a thing to opt into rather than
+something an editor should do on a hunch.
 :::
 
 ## The dev menu
