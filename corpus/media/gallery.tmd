@@ -18,18 +18,13 @@ zoom into one gallery: click any one, then step through the others with ← / �
 
 ## Side-by-side columns
 
-`::: {.columns}` with `.column` children (reveal.js muscle memory, dot-consistent with
-`.scrolly` / `.panel-tabset`) is the canonical column grid: a split lays out side by side
-rather than silently stacking. `{layout-ncol=N}` (used above) is the equivalent bare-attribute
-alias, and `::: {.columns ncol=N}` sets an explicit count. Widths are equal — a per-`.column`
-`width=` is not honoured (it warns):
+`{layout-ncol=N}` (used above) is the column grid, and the only spelling: a split lays
+out side by side rather than silently stacking. Each direct child block is one column, so
+there is no per-column fence to write and nothing to keep in step with the count. Widths
+are equal by construction:
 
-::: {.columns}
-::: {.column}
+::: {layout-ncol=2}
 The left column holds one idea.
-:::
 
-::: {.column}
 The right column holds the other, beside it.
-:::
 :::

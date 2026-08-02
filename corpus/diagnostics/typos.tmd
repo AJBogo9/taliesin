@@ -30,11 +30,9 @@ step's comma-only parser silently focuses to zero lines.
 :::
 
 ::: {.columns}
-::: {.column width="70%"}
-A reveal/Quarto `width=` a `.columns` grid silently equalizes.
-:::
-::: {.column width="30%"}
-Its sibling.
+::: {.column}
+`.columns` and `.column` were withdrawn on 2026-08-02: a leftover one must say it was
+REMOVED, not be answered with a did-you-mean pointing at a class that survived.
 :::
 :::
 

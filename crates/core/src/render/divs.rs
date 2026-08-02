@@ -164,8 +164,8 @@ pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<usize>) {
 /// Every class and every `key=` attribute written on a fenced div in `src`, in source
 /// order and with duplicates kept (the caller dedupes). For the feature-adoption report
 /// (`crate::features`), which asks what the AUTHOR wrote rather than which dispatch arm
-/// won: a div carrying both `layout-ncol=` and `.columns` reports both, though
-/// `layout-ncol` is tested first and shadows the class.
+/// won: a div carrying a feature class alongside an attribute that outranks it reports
+/// both, though only one of them shaped the HTML.
 ///
 /// Reuses [`scan_div_spans`] + [`parse_attrs`] rather than re-scanning, so a `:::` inside
 /// a fenced code block is not counted here either.
@@ -570,16 +570,6 @@ fn build_container(
     let data = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
     let concat = |inner: &[Block]| -> String { inner.iter().map(|b| b.html.as_str()).collect() };
 
-    // A `.column width=` is a reveal/Quarto habit the equal-width grid silently ignores — warn.
-    if let Some(w) = super::validate::validate_column_width(
-        &attrs.classes,
-        attrs.get("width"),
-        open_line,
-        file.clone(),
-    ) {
-        warnings.push(w);
-    }
-
     let html = if let Some(kind) = attrs.callout_kind() {
         // Validate the kind against taliesin's callout vocabulary (an unknown kind
         // warns, click-to-source, and still renders with its given class).
@@ -633,28 +623,6 @@ fn build_container(
             ),
         }
     } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {
-        let body = concat(&inner);
-        format!(
-            "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
-        )
-    } else if attrs.classes.iter().any(|c| c == "columns") {
-        // The dot-consistent canonical column grid (`layout-ncol` is the bare-attr alias):
-        // `::: {.columns}` with `.column` children, reveal muscle-memory. Lay out side-by-side
-        // via the native layout grid instead of silently stacking (the on-projector trap, DX5).
-        // `ncol=` overrides the column count (parity with `layout-ncol`); otherwise it's the
-        // count of direct `.column` children (fallback 2). Widths are equal (a `.column width=`
-        // warns, `validate_column_width`). A sanctioned canonical, so it renders silently.
-        let ncol = attrs
-            .get("ncol")
-            .and_then(|n| n.parse::<u32>().ok())
-            .filter(|n| *n > 0)
-            .unwrap_or_else(|| {
-                inner
-                    .iter()
-                    .filter(|b| b.html.trim_start().starts_with("<div class=\"column\""))
-                    .count()
-                    .max(2) as u32
-            });
         let body = concat(&inner);
         format!(
             "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"

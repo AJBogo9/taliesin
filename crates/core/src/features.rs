@@ -20,9 +20,10 @@
 //! changes `RenderedDoc`, the block model, or the four text projections.
 //!
 //! **What it reports is what the AUTHOR wrote**, which can differ from which dispatch arm
-//! won: a div carrying both `layout-ncol=` and `.columns` counts as both, because
-//! `layout-ncol` is tested first and shadows the class. For an adoption report that is the
-//! right answer, and it is stated here so it is not read later as a bug.
+//! won: a div carrying a feature class AND an attribute that outranks it in the dispatch
+//! chain counts as both, though only one of them shaped the HTML. For an adoption report
+//! that is the right answer (the author reached for both), and it is stated here so it is
+//! not read later as a bug.
 //!
 //! **The catalogue is read from the validator consts, never re-declared** — see
 //! [`catalogue`] for why `vocab.rs` is the wrong source.

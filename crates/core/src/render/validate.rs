@@ -78,8 +78,6 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "fade-out",
     "highlight",
     "notes",
-    "columns",
-    "column",
 ];
 
 /// Input control types `.input type=` recognizes.
@@ -160,6 +158,17 @@ pub(crate) fn validate_div_class(
         if known.contains(&c.as_str()) {
             return None;
         }
+        // A class we REMOVED is still unknown, so it still warns — but a removal and a
+        // misspelling are different mistakes and the author has to be told which one they
+        // made. Checked ahead of the did-you-mean, and unconditionally: once `.columns`
+        // and `.column` were both withdrawn nothing survived within edit distance 2 of
+        // either, so the search below would answer a retired class with SILENCE.
+        if let Some((_, note)) = RETIRED_DIV_CLASSES.iter().find(|(retired, _)| retired == c) {
+            return Some(
+                Warning::new(format!("unknown div class `{c}`: {note}"))
+                    .at(file.clone(), line as u32),
+            );
+        }
         closest(c, &known).map(|s| {
             Warning::new(format!("unknown div class `{c}` (did you mean `{s}`?)"))
                 .at(file.clone(), line as u32)
@@ -167,27 +176,33 @@ pub(crate) fn validate_div_class(
     })
 }
 
-/// Validate a `.column` div's `width=` (located, click-to-source). Column widths are ignored:
-/// a `.columns` grid lays its `.column` children out EQUAL-width, so a reveal/Quarto
-/// `::: {.column width="70%"}` habit silently does nothing. Warn and name the equal-width
-/// behaviour + the fixed-count knob. `None` when the div is not a `.column` or carries no
-/// non-empty `width=`. `line` is the 1-based source line of the opening fence.
-pub(crate) fn validate_column_width(
-    classes: &[String],
-    width: Option<&str>,
-    line: usize,
-    file: Option<String>,
-) -> Option<Warning> {
-    let width = width.map(str::trim).filter(|w| !w.is_empty())?;
-    (classes.iter().any(|c| c == "column")).then(|| {
-        Warning::new(format!(
-            "`.column width=\"{width}\"` is ignored: a `.columns` grid lays its columns out \
-             equal-width. Remove `width=`, or use `::: {{.columns ncol=N}}` (or `{{layout-ncol=N}}`) \
-             for a fixed column count."
-        ))
-        .at(file, line as u32)
-    })
-}
+/// Div classes taliesin USED to dispatch on, as `(class, what to do instead)`.
+///
+/// The div sibling of `frontmatter::RETIRED_KEYS`, and it exists for the same reason plus a
+/// sharper one: div classes are an OPEN vocabulary, so a withdrawn class does not merely get
+/// the wrong hint, it gets no diagnostic at all — it reads as a custom class the author
+/// styles themselves, and the page silently loses its layout.
+///
+/// **No entry is phrased as a did-you-mean, even where a successor exists**, exactly as
+/// `RETIRED_KEYS` documents: `codes::extract_suggestion` lifts that phrase into a structured
+/// fix an agent applies mechanically, and none of these are mechanical renames. Rewriting
+/// `::: {.columns}` + `.column` children as `{layout-ncol=N}` deletes the child fences and
+/// moves the declaration from the class to an attribute, so a blind rename would trade a
+/// warning for a document that is broken in a new way.
+pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
+    (
+        "columns",
+        "it was removed on 2026-08-02. `{layout-ncol=N}` was always the same grid and is \
+         now the only spelling, so the wrapper becomes `::: {layout-ncol=2}` and its \
+         `.column` children become plain blocks separated by a blank line",
+    ),
+    (
+        "column",
+        "it was removed on 2026-08-02 with `.columns`. Under `{layout-ncol=N}` each direct \
+         child block is already a column, so the child fences go away entirely rather than \
+         being renamed",
+    ),
+];
 
 /// Validate a fenced div that turned out EMPTY (no blocks between its `:::` fences). An empty
 /// GENERIC div is harmless (it's dropped), but an empty div that names a real feature — a
@@ -434,23 +449,6 @@ mod tests {
             validate_div_class(&div(&["fragment", "highlight"]), 5, None).is_none(),
             "the real `.highlight` effect is silent"
         );
-    }
-
-    #[test]
-    fn validate_column_width_warns_only_on_a_column_with_a_width() {
-        let div = |classes: &[&str]| classes.iter().map(|c| c.to_string()).collect::<Vec<_>>();
-        // PL3: a `.column width=` is silently equalized — warn, echoing the width + naming the fix.
-        let w = validate_column_width(&div(&["column"]), Some("70%"), 3, None)
-            .expect("`.column width=` warns");
-        assert!(
-            w.message.contains("width=\"70%\"") && w.message.contains("equal-width"),
-            "echoes the width + names the behaviour: {}",
-            w.message
-        );
-        // Silent: a `.column` with no width, an empty width, or a non-`.column` div with a width.
-        assert!(validate_column_width(&div(&["column"]), None, 3, None).is_none());
-        assert!(validate_column_width(&div(&["column"]), Some("  "), 3, None).is_none());
-        assert!(validate_column_width(&div(&["columns"]), Some("70%"), 3, None).is_none());
     }
 
     #[test]

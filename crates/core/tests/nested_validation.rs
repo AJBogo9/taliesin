@@ -19,6 +19,15 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown callout kind `importnat` (did you mean `important`?)",
         "unknown cell option `labl` (did you mean `label`?)",
         "unknown div class `fragmnet` (did you mean `fragment`?)",
+        // Retired, not misspelled: these two carry a REASON where the six above carry a
+        // rename hint, which is the whole distinction `RETIRED_DIV_CLASSES` exists to draw.
+        "unknown div class `columns`: it was removed on 2026-08-02. `{layout-ncol=N}` was \
+         always the same grid and is now the only spelling, so the wrapper becomes \
+         `::: {layout-ncol=2}` and its `.column` children become plain blocks separated by \
+         a blank line",
+        "unknown div class `column`: it was removed on 2026-08-02 with `.columns`. Under \
+         `{layout-ncol=N}` each direct child block is already a column, so the child fences \
+         go away entirely rather than being renamed",
     ];
     for e in expected {
         assert!(
@@ -26,7 +35,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
             "missing warning:\n  {e}\ngot:\n{msgs:#?}"
         );
     }
-    // No EXTRA "unknown ..." warnings beyond the five pinned ones.
+    // No EXTRA "unknown ..." warnings beyond the pinned ones.
     let unknown = doc
         .warnings
         .iter()
@@ -91,21 +100,28 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "empty-div warning is located + points at the shortcode: {empty:?}"
     );
 
-    // PL3: a `.column width=` (a reveal/Quarto habit) is silently equalized by the grid — it
-    // must warn, located. Two width'd columns → two warnings, both located.
-    let widths = || {
+    // `.columns`/`.column` were withdrawn on 2026-08-02. A leftover one must read as a
+    // REMOVAL and stay located, or the fixture's own claim (that every diagnostic here is
+    // click-to-source) stops holding for the class that needs it most: div classes are an
+    // open vocabulary, so the alternative to this warning is silence.
+    let retired = || {
         doc.warnings
             .iter()
-            .filter(|w| w.message.contains("equal-width"))
+            .filter(|w| w.message.contains("removed on 2026-08-02"))
     };
     assert_eq!(
-        widths().count(),
+        retired().count(),
         2,
-        "each `.column width=` warns: {msgs:#?}"
+        "both the `.columns` wrapper and its `.column` child warn: {msgs:#?}"
     );
     assert!(
-        widths().all(|w| w.line.is_some()),
-        "column-width warnings are located: {:?}",
-        widths().collect::<Vec<_>>()
+        retired().all(|w| w.line.is_some()),
+        "retired-class warnings are located: {:?}",
+        retired().collect::<Vec<_>>()
+    );
+    assert!(
+        retired().all(|w| !w.message.contains("did you mean")),
+        "a removal is never phrased as a rename: {:?}",
+        retired().collect::<Vec<_>>()
     );
 }

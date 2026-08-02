@@ -342,13 +342,6 @@ const DIV_ATTRIBUTES: &[DivAttribute] = &[
         probe: "simple",
     },
     DivAttribute {
-        name: "ncol",
-        description: "Column count for a `.columns` grid (default: the `.column` child count).",
-        value: "$1",
-        scope: &[DivScope::Class("columns")],
-        probe: "3",
-    },
-    DivAttribute {
         name: "layout-ncol",
         description: "Lay the div's content out as an N-column grid.",
         value: "$1",
@@ -815,8 +808,7 @@ mod tests {
                     || THEOREM_KINDS.contains(&class.as_str())
                     || CALLOUT_KINDS
                         .iter()
-                        .any(|k| class == format!("callout-{k}"))
-                    || class == "columns";
+                        .any(|k| class == format!("callout-{k}"));
                 assert!(
                     known,
                     "`{}=` is offered on `.{class}`, which is not a class the renderer knows",

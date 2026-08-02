@@ -536,28 +536,52 @@ fn layout_ncol_div_becomes_grid() {
 }
 
 #[test]
-fn columns_div_aliases_to_the_layout_grid() {
-    // Reveal muscle-memory `::: {.columns}` with `.column` children must lay out side-by-side
-    // (the native layout grid), not silently stack — the on-projector trap DX5 closes.
+fn a_retired_columns_div_says_removed_and_layout_ncol_still_works() {
+    // `.columns`/`.column` were withdrawn on 2026-08-02: two mechanisms for one job, and
+    // six weeks of daily writing adopted the other one. The diagnostic is the whole point
+    // of the removal — div classes are an OPEN vocabulary, so without a retired register a
+    // leftover `.columns` reads as a custom class and the page silently loses its layout.
     let doc = render_document(
         "::: {.columns}\n::: {.column}\nLeft\n:::\n\n::: {.column}\nRight\n:::\n:::\n",
     );
     let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
     assert!(
-        h.contains("tali-layout"),
-        "columns should become a layout grid: {h}"
+        !h.contains("tali-layout"),
+        "`.columns` no longer builds a grid: {h}"
+    );
+    let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
+    let columns = msgs
+        .iter()
+        .find(|m| m.contains("`columns`"))
+        .expect("a leftover `.columns` must warn, not be silent");
+    assert!(
+        columns.contains("removed") && columns.contains("layout-ncol"),
+        "it reads as a removal and names what replaced it: {columns}"
+    );
+    // NOT a did-you-mean: `codes::extract_suggestion` lifts that phrase into a fix an
+    // agent applies mechanically, and this rewrite deletes the child fences rather than
+    // renaming anything, so a mechanical rename would break the document differently.
+    assert!(
+        !msgs.iter().any(|m| m.contains("did you mean")),
+        "a removal must never be phrased as a rename: {msgs:?}"
     );
     assert!(
-        h.contains("repeat(2,"),
-        "two .column children -> 2 columns: {h}"
+        msgs.iter().any(|m| m.contains("`column`")),
+        "the child fences the author must delete are named too: {msgs:?}"
     );
-    // The alias is silent — no did-you-mean for the known `columns`/`column` classes.
+
+    // The control: the surviving spelling still lays out side by side, so this test
+    // cannot pass by the grid having broken everywhere.
+    let kept = render_document("::: {layout-ncol=2}\nLeft\n\nRight\n:::\n");
+    let kh: String = kept.blocks.iter().map(|b| b.html.as_str()).collect();
     assert!(
-        !doc.warnings
-            .iter()
-            .any(|w| w.message.contains("did you mean")),
-        "the columns alias must not warn: {:?}",
-        doc.warnings
+        kh.contains("tali-layout") && kh.contains("repeat(2,"),
+        "`{{layout-ncol=2}}` is still the two-column grid: {kh}"
+    );
+    assert!(
+        kept.warnings.is_empty(),
+        "and it is silent: {:?}",
+        kept.warnings
     );
 }
 
@@ -581,41 +605,6 @@ fn a_block_after_an_empty_div_stays_inside_its_own_container() {
         callout_at < body_at,
         "the body stays inside the callout container: {h}"
     );
-}
-
-#[test]
-fn columns_ncol_overrides_the_child_count() {
-    // PL3: `::: {.columns ncol=3}` gives the canonical dot-form parity with `layout-ncol` —
-    // the count comes from `ncol=`, not the number of `.column` children.
-    let doc = render_document("::: {.columns ncol=3}\n![](a.png)\n\n![](b.png)\n:::\n");
-    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
-    assert!(
-        h.contains("tali-layout") && h.contains("repeat(3,"),
-        "ncol= sets the count: {h}"
-    );
-}
-
-#[test]
-fn column_width_warns_because_columns_are_equal_width() {
-    // PL3: a reveal/Quarto `::: {.column width="70%"}` is silently equalized. Warn (located)
-    // instead of dropping the width without a word.
-    let doc = render_document(
-        "::: {.columns}\n::: {.column width=\"70%\"}\nL\n:::\n\n::: {.column width=\"30%\"}\nR\n:::\n:::\n",
-    );
-    let w = doc
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("equal-width"))
-        .expect("a `.column width=` must warn");
-    assert!(w.line.is_some(), "located: {w:?}");
-    assert!(
-        w.message.contains("width=\"70%\""),
-        "echoes the width: {}",
-        w.message
-    );
-    // The grid still renders (purely diagnostic).
-    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
-    assert!(h.contains("tali-layout"), "still renders the grid: {h}");
 }
 
 #[test]

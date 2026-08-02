@@ -492,7 +492,7 @@ pub(crate) struct NewOpts {
 
 /// The guided-tour deck body (everything after the front matter): one slide per deck feature,
 /// each with a one-line teaching sentence, demonstrating fragments / a pause / incremental /
-/// columns (the DX5 alias) / magic-move / speaker notes. A raw literal (not a format string),
+/// a `layout-ncol` split / magic-move / speaker notes. A raw literal (not a format string),
 /// so the many `::: {.feature}` braces and the ```code fences need no escaping. Kept in sync
 /// with `corpus/scaffold/deck-tour.tmd` by the drift-guard test in `new_cli.rs`.
 const TOUR_SLIDES: &str = r####"
@@ -526,14 +526,10 @@ This aside appears when you press forward.
 
 ## Show two things side by side
 
-::: {.columns}
-::: {.column}
+::: {layout-ncol=2}
 The left column: a claim beside its evidence, or a before beside an after.
-:::
 
-::: {.column}
-Writing `::: {.columns}` with `.column` children lays them out side by side.
-:::
+Writing `::: {layout-ncol=2}` lays each block inside it out side by side.
 :::
 
 ## Refactor code live

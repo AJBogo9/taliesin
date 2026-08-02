@@ -190,14 +190,6 @@
       "snippet": "appearance=\"${1|simple,minimal|}\""
     },
     {
-      "classes": [
-        "columns"
-      ],
-      "description": "Column count for a `.columns` grid (default: the `.column` child count).",
-      "name": "ncol",
-      "snippet": "ncol=\"$1\""
-    },
-    {
       "classes": [],
       "description": "Lay the div's content out as an N-column grid.",
       "name": "layout-ncol",

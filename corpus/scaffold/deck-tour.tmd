@@ -34,14 +34,10 @@ This aside appears when you press forward.
 
 ## Show two things side by side
 
-::: {.columns}
-::: {.column}
+::: {layout-ncol=2}
 The left column: a claim beside its evidence, or a before beside an after.
-:::
 
-::: {.column}
-Writing `::: {.columns}` with `.column` children lays them out side by side.
-:::
+Writing `::: {layout-ncol=2}` lays each block inside it out side by side.
 :::
 
 ## Refactor code live

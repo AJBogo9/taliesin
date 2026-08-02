@@ -274,8 +274,7 @@ fn new_deck_tour_scaffolds_a_guided_deck() {
     for feature in [
         "::: {.fragment}",
         "::: {.incremental}",
-        "::: {.columns}",
-        "::: {.column}",
+        "::: {layout-ncol=2}",
         "::: {.magic-move}",
         "::: {.notes}",
     ] {
