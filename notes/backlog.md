@@ -17,11 +17,10 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**194, 195, 196 and 199 shipped 2026-08-02**, which closes the research-publishing cluster's
-last non-optional item and three of the six author-reported ones. **Next session: 197, 198 and
-200 are what is left of the author-reported band** (197 is S and carries one open design
-question, 198 is a restyle, 200 is the sepia removal and the largest of the three), then 188,
-then the large swings.
+**194, 195, 196, 197 and 199 shipped 2026-08-02**, which closes the research-publishing
+cluster's last non-optional item and four of the six author-reported ones. **Next session: 198
+and 200 are what is left of the author-reported band** (198 is a restyle with a browser pin,
+200 is the sepia removal and the larger of the two), then 188, then the large swings.
 **188 is the only cluster item left, and it is the one previously marked "leave"** (lowest
 conviction, and the item still says so) — so the real choice after the band is 188 against the two
 large swings (164, 167), and **that cross-cluster ranking is an owner call that has not been
@@ -64,9 +63,9 @@ What 185/186/187 established, for whoever touches that area next:
   back to an author and would drop the entry silently when the two spellings drifted.
 
 - **P1 is a ranked build queue, not a menu.** Take from the top: the rest of the author-reported
-  reader/editor band filed 2026-08-01 (197, 198, 200 — 195, 196 and 199 shipped 2026-08-02; all
-  S except 200, and each measured down to a small cause; **200 was ruled the day it was filed
-  and is a build now, not a question**), then 188, then the large swings. **Read
+  reader/editor band filed 2026-08-01 (198, 200 — 195, 196, 197 and 199 shipped 2026-08-02;
+  each measured down to a small cause; **200 was ruled the day it was filed and is a build
+  now, not a question**), then 188, then the large swings. **Read
   [the survey](2026-07-31-research-publishing-survey.md) before starting anything in the cluster** —
   it records what Taliesin already leads on and what was deliberately rejected, **but it is a record
   of research, not a ruling**: 184 deliberately rejected the author-indexed affiliation shape the
@@ -165,18 +164,6 @@ Two conditions apply to every item here. **Each still owes a corpus pin doc** (a
 pinned by a target corpus document added in the same change) — but **do not grow `corpus/` past the
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
-
-197. **The project outline is in path order while claiming reading order.** (S, author-reported
-     2026-08-01, measured.) `lsp.rs:1043` builds the outline from `collect_pages` order, which is
-     `inputs.sort()` (`discovery.rs:19`), i.e. alphabetical by path. The docstring directly above it
-     (`lsp.rs:1039`) says "in reading order", which is untrue today, so **fix the comment in the same
-     change whichever way this lands.** The ordering data already exists and is already resolved:
-     `book: chapters:` in `_site.yml` becomes the reading order in `book.rs`, which is what the
-     sidebar and prev/next already use. Reading the outline top to bottom would then show what
-     follows what, which is the author's stated reason for wanting it. **One design question blocks
-     coding:** a page absent from `chapters:` currently still appears in the tree, and ordering by a
-     list it is not in would silently drop it. It needs an explicit home (an "Unlisted" group) or an
-     explicit rule. Non-book projects have no `chapters:` and must keep a defined fallback.
 
 198. **The mobile contents handle reads as a drag grip, not a button.** (S, author-reported
      2026-08-01. **Smaller than it was filed as**: the press-to-open button already exists.)
@@ -708,6 +695,18 @@ branch are enough to find its commits.
   in the same function. **Do not extend click-to-close to the lightbox's video or mermaid box**: a
   `<video>` click belongs to the native control bar and `.tali-lb-svg` is a pannable scroller.
   Pinned by `crates/server/tests/reader_chrome_browser.rs`, the sixth `headless-js` test.
+- **2026-08-02 the project outline is in reading order** (197): `taliesin/projectOutline` sorts
+  pages by `chapters:` as resolved from the same `Book` the drawer and prev/next use, and its
+  docstring (which claimed reading order while delivering path order) now describes what it
+  does. **The open design question was ruled in the build**: a page `chapters:` never names is
+  KEPT, sorted last, flagged `listed: false`, and gathered by the client under an `Unlisted`
+  group — ordering by a list must not be a way to disappear a page. A **website declares no
+  order**, so it reports `book: false`, keeps path order and marks every page listed; "not in
+  the list" and "there is no list" are different answers. **The native `_site.yml` schema is
+  FLAT** — `chapters:` is top level, and this file's own `book: chapters:` shorthand is how it
+  is written about, not in; a fixture using the nested form silently produces a website.
+  `_site.yml` is now stamped by `lsp_project`'s memo, or a `chapters:` edit would not
+  invalidate it.
 - **2026-08-02 companion sidebar defaults** (196): `showCollapseAll` on Outline + References
   (**not** the float index — it is flat by construction, and a button that cannot act is worse
   than none), plus the collapsed defaults that were the real cause of the sprawl: the outline

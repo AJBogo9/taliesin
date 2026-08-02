@@ -1037,13 +1037,29 @@ pub(crate) const PROJECT_OUTLINE_METHOD: &str = "taliesin/projectOutline";
 pub(crate) const PROJECT_REFS_METHOD: &str = "taliesin/projectRefs";
 
 /// The whole-book outline plus the numbered-float index, as the sidebar's TreeViews want it:
-/// grouped by page and in reading order, not flattened. `None` outside a project, which the
-/// client renders as an empty view.
+/// grouped by page and in **reading order** — `book: chapters:` as the drawer and prev/next
+/// resolve it — not the alphabetical path order the walk produces. `None` outside a project,
+/// which the client renders as an empty view.
+///
+/// A page the project walked but `chapters:` never named is **kept**, sorted after the
+/// chapters and flagged `listed: false`: ordering by a list a page is not in must not be a
+/// way to disappear it, and an orphan chapter is an authoring mistake worth seeing. A website
+/// declares no order at all, so it reports `book: false`, keeps path order, and marks every
+/// page listed — "not in the list" and "there is no list" are different answers.
 fn project_outline(
     project: &mut crate::lsp_project::ProjectCache,
     page: &std::path::Path,
 ) -> Option<serde_json::Value> {
     let scan = project.get(page)?;
+    let is_book = !scan.reading_order.is_empty();
+    let rank = |p: &std::path::Path| {
+        scan.reading_order
+            .iter()
+            .position(|c| c == p)
+            // Unlisted sorts after every chapter, keeping the walk's alphabetical order
+            // among themselves (the sort below is stable).
+            .unwrap_or(usize::MAX)
+    };
     let mut pages: Vec<serde_json::Value> = Vec::new();
     for h in &scan.headings {
         let path = h.path.to_string_lossy().into_owned();
@@ -1053,9 +1069,14 @@ fn project_outline(
             .find(|p| p["path"].as_str() == Some(path.as_str()))
         {
             Some(p) => p["headings"].as_array_mut()?.push(row),
-            None => pages.push(serde_json::json!({ "path": path, "headings": [row] })),
+            None => pages.push(serde_json::json!({
+                "path": path,
+                "listed": !is_book || rank(&h.path) != usize::MAX,
+                "headings": [row],
+            })),
         }
     }
+    pages.sort_by_key(|p| rank(std::path::Path::new(p["path"].as_str().unwrap_or(""))));
     let floats: Vec<serde_json::Value> = scan
         .anchors
         .iter()
@@ -1071,6 +1092,7 @@ fn project_outline(
         .collect();
     Some(serde_json::json!({
         "root": scan.root.to_string_lossy(),
+        "book": is_book,
         "pages": pages,
         "floats": floats,
     }))
@@ -2370,11 +2392,17 @@ mod tests {
     /// A project root with the given `(relative path, source)` pages, for the workspace-symbol
     /// tests. Returns the root.
     fn symbol_fixture(name: &str, pages: &[(&str, &str)]) -> std::path::PathBuf {
+        site_fixture(name, "title: t\n", pages)
+    }
+
+    /// Like [`symbol_fixture`] but with the project's own `_site.yml`, so a test can make it
+    /// a book (`book: chapters:`) rather than a flat website.
+    fn site_fixture(name: &str, config: &str, pages: &[(&str, &str)]) -> std::path::PathBuf {
         let root =
             std::env::temp_dir().join(format!("tali-lsp-wsym-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(root.join("_site.yml"), config).unwrap();
         for (rel, src) in pages {
             let p = root.join(rel);
             if let Some(parent) = p.parent() {
@@ -2424,6 +2452,97 @@ mod tests {
             };
             assert_eq!(n, expected, "wrong heading count for {}", p["path"]);
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_books_outline_is_in_reading_order_not_path_order() {
+        // The chapter list deliberately runs backwards through the alphabet, so path order
+        // (`collect_pages` sorts) and reading order disagree on every row. Without that a
+        // "reading order" assertion passes on an implementation that never left path order.
+        let root = site_fixture(
+            "bookorder",
+            "title: t\nchapters:\n  - zeta.tmd\n  - mid.tmd\n  - alpha.tmd\n",
+            &[
+                ("alpha.tmd", "# Alpha\n"),
+                ("mid.tmd", "# Mid\n"),
+                ("zeta.tmd", "# Zeta\n"),
+            ],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("alpha.tmd")).unwrap();
+
+        assert_eq!(out["book"], true, "a project with `chapters:` is a book");
+        let names: Vec<&str> = out["pages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                let full = p["path"].as_str().unwrap();
+                full.rsplit('/').next().unwrap()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec!["zeta.tmd", "mid.tmd", "alpha.tmd"],
+            "the outline follows `chapters:`; path order would be alpha, mid, zeta"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_page_missing_from_chapters_is_kept_and_marked_unlisted() {
+        // Ordering by a list a page is not in must not drop it: an orphan chapter is an
+        // authoring mistake worth SEEING, and a tree that silently omits it hides the one
+        // thing the author needs to know.
+        let root = site_fixture(
+            "bookorphan",
+            "title: t\nchapters:\n  - zeta.tmd\n",
+            &[("orphan.tmd", "# Orphan\n"), ("zeta.tmd", "# Zeta\n")],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("zeta.tmd")).unwrap();
+
+        let pages = out["pages"].as_array().unwrap();
+        let listed: Vec<(&str, bool)> = pages
+            .iter()
+            .map(|p| {
+                (
+                    p["path"].as_str().unwrap().rsplit('/').next().unwrap(),
+                    p["listed"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            vec![("zeta.tmd", true), ("orphan.tmd", false)],
+            "the chapters come first in their own order, then whatever is not in the list"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_website_declares_no_reading_order_and_keeps_path_order() {
+        // The defined fallback: no `chapters:` means no list to be missing from, so nothing
+        // is unlisted and the alphabetical walk order stands.
+        let root = symbol_fixture(
+            "siteorder",
+            &[("zeta.tmd", "# Zeta\n"), ("alpha.tmd", "# Alpha\n")],
+        );
+        let mut project = crate::lsp_project::ProjectCache::new();
+        let out = project_outline(&mut project, &root.join("alpha.tmd")).unwrap();
+
+        assert_eq!(out["book"], false);
+        let pages = out["pages"].as_array().unwrap();
+        let names: Vec<&str> = pages
+            .iter()
+            .map(|p| p["path"].as_str().unwrap().rsplit('/').next().unwrap())
+            .collect();
+        assert_eq!(names, vec!["alpha.tmd", "zeta.tmd"]);
+        assert!(
+            pages.iter().all(|p| p["listed"] == true),
+            "with no list declared, no page is out of it"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

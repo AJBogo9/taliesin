@@ -21,6 +21,12 @@ export interface OutlineHeading {
 /** One page and its headings, in reading order. */
 export interface OutlinePage {
   path: string;
+  /**
+   * Whether the book's `chapters:` names this page. Always true on a website, which declares
+   * no list to be missing from. Absent on a reply from an older server, which is read as
+   * listed: the fallback must not file every page as an orphan.
+   */
+  listed?: boolean;
   headings: OutlineHeading[];
 }
 
@@ -36,6 +42,8 @@ export interface OutlineFloat {
 /** The `taliesin/projectOutline` reply. `null` for a document outside any project. */
 export type OutlineReply = {
   root: string;
+  /** Whether the project declares a reading order (`chapters:`) at all. */
+  book?: boolean;
   pages: OutlinePage[];
   floats: OutlineFloat[];
 } | null;
@@ -90,7 +98,7 @@ export interface TreeRow {
  */
 export function outlineTree(reply: OutlineReply, activePath?: string): TreeRow[] {
   if (!reply) return [];
-  return reply.pages.map((page) => {
+  const rows = reply.pages.map((page) => {
     const root: TreeRow = {
       label: path.basename(page.path),
       path: page.path,
@@ -111,6 +119,24 @@ export function outlineTree(reply: OutlineReply, activePath?: string): TreeRow[]
     }
     return root;
   });
+  // Page ORDER is the server's: it resolves `chapters:` from the same `Book` the drawer and
+  // prev/next are built from, and a second opinion here is how two orderings drift apart.
+  // What is decided here is only the shape: a page the book never named gets a group of its
+  // own rather than sitting among the chapters as if it were one. Only on a book — a website
+  // declares no list, so nothing can be missing from it and grouping would file the whole
+  // site as misfiled.
+  if (!reply.book) return rows;
+  const orphans = rows.filter((_, i) => reply.pages[i].listed === false);
+  if (orphans.length === 0) return rows;
+  return [
+    ...rows.filter((_, i) => reply.pages[i].listed !== false),
+    {
+      label: `Unlisted (${orphans.length})`,
+      description: "not in the book's chapters",
+      collapsed: false,
+      children: orphans,
+    },
+  ];
 }
 
 /**

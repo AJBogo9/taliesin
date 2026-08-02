@@ -211,3 +211,73 @@ test("the references view opens the half that needs attention and shuts the othe
   // follow-up question.
   assert.strictEqual(dangling.children[0].collapsed, true);
 });
+
+test("a book's outline follows the server's order and does not re-sort it", () => {
+  // The server resolves `chapters:` (the same list the drawer and prev/next use) and sends
+  // the pages already ordered. The tree must not have an opinion of its own about order —
+  // two owners of "what follows what" is how they drift.
+  const rows = outlineTree({
+    root: "/r",
+    book: true,
+    pages: [
+      { path: "/r/zeta.tmd", listed: true, headings: [] },
+      { path: "/r/alpha.tmd", listed: true, headings: [] },
+    ],
+    floats: [],
+  });
+  assert.deepStrictEqual(
+    rows.map((r) => r.label),
+    ["zeta.tmd", "alpha.tmd"]
+  );
+});
+
+test("a page missing from the book's chapters gets a named home, not silence", () => {
+  const rows = outlineTree({
+    root: "/r",
+    book: true,
+    pages: [
+      { path: "/r/one.tmd", listed: true, headings: [] },
+      { path: "/r/orphan.tmd", listed: false, headings: [] },
+    ],
+    floats: [],
+  });
+  assert.deepStrictEqual(
+    rows.map((r) => r.label),
+    ["one.tmd", "Unlisted (1)"],
+    "an orphan chapter is an authoring mistake worth seeing, not a row to hide"
+  );
+  assert.strictEqual(rows[1].children[0].label, "orphan.tmd");
+  assert.strictEqual(rows[1].collapsed, false, "the group that needs attention opens");
+});
+
+test("a book with nothing unlisted grows no group row", () => {
+  const rows = outlineTree({
+    root: "/r",
+    book: true,
+    pages: [{ path: "/r/one.tmd", listed: true, headings: [] }],
+    floats: [],
+  });
+  assert.deepStrictEqual(
+    rows.map((r) => r.label),
+    ["one.tmd"],
+    "an empty group would report a problem the project does not have"
+  );
+});
+
+test("a website has no chapter list, so no page can be missing from it", () => {
+  // The defined fallback. `listed` is meaningless without a list, and grouping every page
+  // under `Unlisted` would tell a website author their whole site is misfiled.
+  const rows = outlineTree({
+    root: "/r",
+    book: false,
+    pages: [
+      { path: "/r/a.tmd", listed: true, headings: [] },
+      { path: "/r/b.tmd", listed: true, headings: [] },
+    ],
+    floats: [],
+  });
+  assert.deepStrictEqual(
+    rows.map((r) => r.label),
+    ["a.tmd", "b.tmd"]
+  );
+});

@@ -53,6 +53,12 @@ pub(crate) struct ProjectScan {
     pub anchors: Vec<ProjectAnchor>,
     pub headings: Vec<ProjectHeading>,
     pub uses: Vec<ProjectUse>,
+    /// The project's declared reading order — `_site.yml`'s top-level `chapters:` (the native
+    /// schema is flat; `book: chapters:` is how it is written ABOUT, not in) resolved into page
+    /// paths, parts flattened away. **Empty for a website**, which declares no order at all;
+    /// that is the difference between "not in the list" and "there is no list", and the
+    /// outline needs both. Drafts are included: you are editing them.
+    pub reading_order: Vec<PathBuf>,
 }
 
 /// What a page looked like when it was last walked: enough to notice an edit without
@@ -125,8 +131,12 @@ impl ProjectCache {
 }
 
 /// `(path, mtime, len)` for every page, in `collect_pages` order so two runs compare equal.
+///
+/// `_site.yml` is stamped alongside the pages because the scan now carries the book's reading
+/// order, which lives in that file and in no page. Without it, moving a chapter in `chapters:`
+/// would leave the outline showing the old order until some unrelated page happened to change.
 fn stamps_for(root: &Path) -> Vec<Stamp> {
-    let mut inputs = Vec::new();
+    let mut inputs = vec![root.join("_site.yml")];
     taliesin_core::site::collect_pages(root, &mut inputs);
     inputs
         .into_iter()
@@ -145,6 +155,21 @@ fn stamps_for(root: &Path) -> Vec<Stamp> {
 fn walk(root: &Path) -> ProjectScan {
     let mut inputs = Vec::new();
     taliesin_core::site::collect_pages(root, &mut inputs);
+    // The reading order comes from the one place that already resolves it — the same `Book`
+    // the drawer and prev/next are built from — rather than a second reading of `chapters:`
+    // that could disagree about nested parts or label overrides. `Include` because a draft
+    // chapter is one you are in the middle of writing, and dropping it from the outline hides
+    // exactly the page you have open.
+    let reading_order = taliesin_core::Site::discover_with(root, taliesin_core::DraftMode::Include)
+        .book
+        .map(|b| {
+            b.entries
+                .iter()
+                .filter(|e| e.part.is_none() && !e.url.is_empty())
+                .map(|e| root.join(&e.rel))
+                .collect()
+        })
+        .unwrap_or_default();
     let mut anchors = Vec::new();
     let mut headings = Vec::new();
     let mut uses = Vec::new();
@@ -195,6 +220,7 @@ fn walk(root: &Path) -> ProjectScan {
         anchors,
         headings,
         uses,
+        reading_order,
     }
 }
 

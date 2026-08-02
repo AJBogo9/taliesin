@@ -168,7 +168,9 @@ gets them.
   project, so you can jump to a section six chapters away without first remembering which
   file it lives in.
 - **The Taliesin sidebar** adds three read-only views: **Outline**, the whole book as one
-  tree, with the chapter you are editing open and the rest one row each; **References**,
+  tree in *reading* order (your `chapters:` list, not alphabetical), with the chapter you
+  are editing open and the rest one row each, and any page the book never named gathered
+  under **Unlisted** rather than quietly dropped; **References**,
   every cross-reference target with what points at it, with dangling ones grouped
   separately and open by default so a broken link is visible without running anything; and
   **Figures & Tables**, the numbered-float index. The two nesting views carry VS Code's
