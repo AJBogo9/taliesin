@@ -215,18 +215,6 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      additionally flip-gated** and overlaps 149's launch-presentation group in P3; do not build the
      same thing twice from both entries.
 
-205. **Take pyodide's 12.9 MB out of the binary.** (M. Feature-value audit, F3/C8.) `pyodide.rs`
-     `include_bytes!`s the vendored WASM runtime into every executable, and
-     `target/release/taliesin` is **101 MB**. The *page*-level conditionality is already correct and
-     must not be touched: `has_client_cells_of(body, "pyodide")` gates emission, the payload is
-     served as a route rather than inlined, and a reader without a `{pyodide}` cell pays nothing.
-     The cost is the **evaluation funnel** the premortem round ranked in its top three: everyone who
-     downloads Taliesin downloads a Python runtime for a capability one showcase page uses.
-     Download-on-first-use or a cargo feature flag; **whichever lands must keep the tool offline by
-     default** — a first-use download that fires without asking breaks the offline guarantee, so the
-     fallback when it is absent is the existing "renders as source" path, not a network call.
-     MPL-2.0 §3.4 means the `LICENSE` travels with the bytes wherever they end up.
-
 ### P2 — filed so it is not rediscovered as a defect
 
 Not worth a session on its own. Each is a record or a known cost, not a task.
@@ -359,7 +347,13 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      - **`cargo publish` will reject this workspace as-is:** `Cargo.toml:14` declares
        `taliesin-core = { path = "crates/core" }` with **no `version`** (re-measured 2026-08-01).
        Also blank: `keywords`, `categories`, `readme`, `homepage`, `documentation` in every manifest.
-       Watch `crates/core` = 7.3 MiB tracked against the 10 MiB `.crate` cap.
+       **The `.crate` size blocker is discharged (2026-08-02, Wave 0.3).** The filed
+       "`crates/core` = 7.3 MiB against the 10 MiB cap" was rot: the tracked tree is 24.2 MiB,
+       because the vendored pyodide payload is git-tracked. `crates/core/Cargo.toml` now carries
+       `exclude = ["assets/pyodide/*"]`, which is the only lever that shrinks a `.crate` (the new
+       cargo feature does not). Verified by running it: `cargo package -p taliesin-core` now
+       reports **248 files, 8.6 MiB (2.8 MiB compressed)**, against a 10 MiB cap. What remains
+       here is the manifest metadata above, and nothing else.
      - **Cold build: 2m11s, 268 crates, 2.6 GB peak RSS at `-j4`** for one ~38 MB binary (measured
        2026-07-28; the filed 2m59s was a different machine or job count, not a regression). The
        audience for a documentation tool is not the population that will install a Rust toolchain and
@@ -369,9 +363,14 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      repo is public, and each is small once it is.
      - **The README does not lead with the speed moat.** Measured 2026-08-01: Quarto appears **once**
        in the README (the earlier "zero times" is rot) and **none** of
-       `tools/live-edit-bench/RESULTS.md`'s numbers (cold 123,994.9 µs vs warm 28,425.1 µs, 83×
-       smaller payload) appear anywhere in it. The ruling says *lead with the moat*; it does not say
-       *name Quarto*.
+       `tools/live-edit-bench/RESULTS.md`'s numbers appear anywhere in it. The ruling says *lead
+       with the moat*; it does not say *name Quarto*. **Use the re-measured 2026-08-02 figures,
+       not the ones filed here originally** (cold 123,994.9 µs / warm 28,425.1 µs / 83× smaller
+       was a pre-`6cdbc218` measurement this note copied after it had already gone stale): cold
+       **135,010.4 µs** vs warm **13,403.9 µs**, payload **32 KB vs a 292 KB page, 9× smaller**,
+       53 `SetMeta` / 1 `Update`. The honest headline for a README is the op shape rather than the
+       ratio (54 of 55 ops are metadata-only patches totalling ~3.2 KB that never touch a DOM
+       node), since one fenced div carries 90% of the payload on its own.
      - **The GitHub repo is a dead first impression:** the description defines Taliesin in terms of
        Taliesin, `homepageUrl` empty, one topic ("rust"), zero releases, and the README's only image
        is the licence badge — while four screencasts demonstrating the moat sit committed in

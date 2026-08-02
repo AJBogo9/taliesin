@@ -358,7 +358,7 @@ async fn observe(browser: &Browser, dir: &Path, port: u16) -> Result<Run, String
 
 /// Rounds of the boot poll, and how long each waits. Two minutes in total.
 ///
-/// Generous on purpose: booting a 12.9 MB WASM CPython and then loading numpy is seconds even
+/// Generous on purpose: booting a 15.7 MiB WASM CPython and then loading numpy is seconds even
 /// warm, and varies with the disk cache and with how loaded the machine is. This asserts "it
 /// eventually works", never "it is fast" — there is no timing claim here to pin.
 const BOOT_ROUNDS: usize = 240;

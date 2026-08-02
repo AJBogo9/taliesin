@@ -84,6 +84,12 @@ fn blocks_lists_block_ids_and_sourcepos() {
 /// `registerLanguage` call, so a `contains("application/tali-pyodide")` here is a claim about
 /// the bundle and is true on a correctly degraded page. Measured on this document:
 /// `<script type="application/tali-pyodide"` occurs 0 times after the fix and 2 times before it.
+///
+/// Gated on the feature: it asserts that a wrapper which WAS emitted gets degraded. With the
+/// runtime compiled out no wrapper is emitted in the first place (the cell takes the
+/// `emit`-as-source arm at render time), so feature-off this test would pass without
+/// exercising the degrade path at all: green for the wrong reason.
+#[cfg(feature = "pyodide")]
 #[test]
 fn render_degrades_a_pyodide_cell_to_visible_source_like_a_single_file_build() {
     let dir = std::env::temp_dir().join(format!("tali-rbcli-{}-pyodide", std::process::id()));

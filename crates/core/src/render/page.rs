@@ -269,7 +269,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             };
             let framework_scripts = code_scripts_for(p.body, p.mode);
             // Inline + Preview: the same-origin route. Inline + Build: `""` — the single-file
-            // build cannot carry a 12.9 MB directory, so `degrade_pyodide_cells` is the build
+            // build cannot carry a 15.7 MiB directory, so `degrade_pyodide_cells` is the build
             // CLI's job, not this assembler's (it runs over the finished page HTML). Folded
             // onto `js_head_html` (like `katex_block` folds onto `style_block`) rather than
             // earning its own always-present template line, so a page with neither stays

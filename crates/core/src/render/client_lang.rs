@@ -62,6 +62,31 @@ pub fn client_lang(lang: &str) -> Option<&'static ClientLang> {
     CLIENT_LANGS.iter().find(|c| c.lang == lang)
 }
 
+/// False for a registered client language whose runtime was compiled out.
+///
+/// Today only `{pyodide}`, whose vendored payload sits behind the `pyodide` cargo feature.
+/// The language stays in [`CLIENT_LANGS`] either way (the registry, the diagnostics and the
+/// mime contract are deliberately feature-independent), and only its ability to *run* is
+/// gated. Without this, a feature-off build would still emit a live
+/// `<script type="application/tali-pyodide">` wrapper whose `indexURL` meta is absent: an
+/// empty husk that loads nothing, which is precisely the failure `degrade_pyodide_cells`
+/// exists to prevent.
+///
+/// The two callers AND this into the gates that decide whether a client cell becomes live
+/// markup, so a compiled-out cell falls to the same `emit`-as-source arm `--no-exec` uses.
+#[cfg(feature = "pyodide")]
+pub fn client_lang_runnable(_lang: &str) -> bool {
+    true
+}
+
+/// See the feature-on twin above. Two `#[cfg]` bodies rather than one body containing
+/// `cfg!(…)`: the single-body form collapses to a const-foldable condition that clippy
+/// flags, and the workspace builds under `-D warnings`.
+#[cfg(not(feature = "pyodide"))]
+pub fn client_lang_runnable(lang: &str) -> bool {
+    lang != "pyodide"
+}
+
 /// True if a rendered body carries a cell of any client-side language. Gates the shared
 /// `tali-js.js` runtime, which every registered language's enhancer registers into.
 pub fn has_client_cells(body: &str) -> bool {

@@ -278,7 +278,7 @@ async fn serve(
         // Registered before the static fallback, which would otherwise look for a file of
         // this name beside the document.
         .route(taliesin_core::PREVIEW_MERMAID_PATH, get(mermaid_lib_js))
-        // The vendored Pyodide runtime (12.9 MB): served as individual files rather than
+        // The vendored Pyodide runtime (15.7 MiB): served as individual files rather than
         // inlined, same reasoning as mermaid above but more so. Registered before the
         // static fallback for the same reason.
         .route(

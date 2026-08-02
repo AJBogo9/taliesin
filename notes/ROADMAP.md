@@ -121,9 +121,17 @@ already waits for.
   deterministic: cold full render, warm edit-above render+diff, emitted `BlockOp` payload
   vs full HTML, and DOM preservation asserted at the DIFF level (the open-`<details>`
   block below the edit gets a `SetMeta`, never an `Update`), not via a committed browser
-  harness. Headline on `corpus/posts/em-algorithm/index.qmd`: cold ~124 ms vs warm ~28 ms
-  (warm amortizes lazy syntax/KaTeX init), payload 3.2 KB vs 270 KB page (**83x smaller**),
-  54 `SetMeta` / 0 `Update`, DOM survives. Bin emits markdown + `RESULTS.json`; CI-safe
+  harness. Headline on `corpus/posts/em-algorithm/index.qmd` **as merged**: cold ~124 ms vs
+  warm ~28 ms (warm amortizes lazy syntax/KaTeX init), payload 3.2 KB vs 270 KB page (83x
+  smaller), 54 `SetMeta` / 0 `Update`, DOM survives. **⚠ Superseded: do not quote the 83x.**
+  Six days later `6cdbc218` (2026-06-30) made a multi-`data-sourcepos` block fall through to
+  a full `Update` so fenced divs' inner source positions stay accurate, which moved this
+  document's collapse callout from `SetMeta` to `Update` and grew the payload 10x. Nothing
+  regenerated `RESULTS.md` for five weeks. Re-measured 2026-08-02: cold ~135 ms vs warm
+  ~13 ms, payload **32 KB vs 292 KB page (9x smaller)**, 53 `SetMeta` / 1 `Update`, DOM still
+  survives for every single-`data-sourcepos` block (58 of 59 here). The one `Update` is 90%
+  of the payload. `regression.rs` now pins the op shape exactly and `RESULTS.json` is
+  committed, so this cannot drift again. Bin emits markdown + `RESULTS.json`; CI-safe
   regression gate asserts the invariants (not timings). The live browser proof + recording
   roll into `live-edit-hero-demo` (the `tools/record-demo` Playwright recorder already
   exists). *Invariant held: pure measurement; edits an in-memory copy, never source; reads

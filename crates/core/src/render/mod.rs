@@ -66,7 +66,9 @@ pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 mod client_lang;
 pub(crate) use client_lang::CLIENT_LANGS;
-pub use client_lang::{ClientLang, client_lang, has_client_cells, has_client_cells_of};
+pub use client_lang::{
+    ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,
+};
 mod deck;
 pub use deck::{
     DeckParts, ScriptSummary, assemble_deck_page, deck_client_script, deck_overlay_html,
@@ -1049,8 +1051,14 @@ fn render_internal_impl(
                     // `{bash}`/`{sql}`, reached for the same reason (nothing will emit the
                     // float). It falls through to the keeps-its-source arm below and warns
                     // like any other non-executing labelled cell.
-                    let emitted_at_render_time =
-                        lang == "mermaid" || (client_lang(&lang).is_some() && !no_exec_in_force());
+                    // `client_lang_runnable` is the same reasoning one step further: a
+                    // client language whose runtime was compiled out (`{pyodide}` without
+                    // the `pyodide` feature) also materializes nothing, so it must not burn
+                    // a figure number either.
+                    let emitted_at_render_time = lang == "mermaid"
+                        || (client_lang(&lang).is_some()
+                            && client_lang_runnable(&lang)
+                            && !no_exec_in_force());
                     if !(emitted_at_render_time || (executes_to_kernel(&lang) && include)) {
                         if let Some(a) = anchor {
                             warnings.push(if include {
@@ -1230,11 +1238,19 @@ fn render_internal_impl(
             .as_ref()
             .and_then(|c| client_lang(&c.lang).map(|spec| (c, spec)))
         {
-            if no_exec_in_force() {
+            if no_exec_in_force() || !client_lang_runnable(&c.lang) {
                 // `--no-exec`: a client-side cell is a code cell whose kernel is the
                 // browser, so it renders as source like a `{python}` cell with no kernel
                 // does (item 79). `emit` keeps the highlighted source and the block's
                 // id/sourcepos, so click-to-source and the incremental swap are unaffected.
+                //
+                // A language whose runtime was compiled out takes the identical arm, for
+                // the identical reason: nothing will run it, so emitting the live wrapper
+                // would leave a husk. Doing it here rather than as a post-pass over
+                // finished HTML also sidesteps `degrade_pyodide_cells`' documented lossy
+                // round-trip (it recovers the source by reversing an `</script` escape that
+                // cannot be reversed unambiguously): the wrapper is never emitted, so it
+                // never needs reversing.
                 emit(node, &attrs, &mut html);
             } else {
                 // Native interactive client-side cell (`{js}`, `{glsl}`): the matching

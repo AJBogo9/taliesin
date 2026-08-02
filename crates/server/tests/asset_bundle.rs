@@ -679,6 +679,11 @@ fn the_conditional_bundles_are_written_only_when_a_page_links_them() {
 /// The nested page is the point of the second assertion: `_assets/` is reached through a
 /// per-page relative prefix, so a chapter one directory down must resolve `../_assets/...`.
 /// A root-only test would pass with the depth arithmetic hardcoded to `""`.
+///
+/// Gated per-test, not per-file: this file's other asset assertions are feature-independent.
+/// There is no payload to copy when the runtime is compiled out. `tools/gates.sh` arms the
+/// feature and asserts this printed `... ok` by name.
+#[cfg(feature = "pyodide")]
 #[test]
 fn site_build_copies_the_pyodide_runtime_and_stamps_a_page_relative_index() {
     let root = std::env::temp_dir().join(format!("tali-ab-pyo-src-{}", std::process::id()));

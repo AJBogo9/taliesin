@@ -1,0 +1,14 @@
+{
+  "doc": "corpus/posts/em-algorithm/index.tmd",
+  "cold_render_ns": 135010358,
+  "warm_edit_ns": 13403911,
+  "diff_ns": 751653,
+  "op_count": 55,
+  "set_meta_count": 53,
+  "update_count": 1,
+  "insert_count": 1,
+  "remove_count": 0,
+  "full_html_bytes": 291691,
+  "edit_payload_bytes": 32303,
+  "dom_preserved": true
+}

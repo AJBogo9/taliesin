@@ -594,4 +594,54 @@ See @fig-scree.
         assert!(logo.documents.is_empty());
         assert!(fm.unused() > 0 && fm.used() == 2);
     }
+
+    /// The shortcode scan walks a line looking for `{{<`. It must advance by whole UTF-8
+    /// characters: advancing one *byte* at a time lands the cursor mid-codepoint on any
+    /// line that carries both a shortcode and a non-ASCII character, and the next
+    /// `line[i..]` slice panics. Ordinary prose triggers it (an arrow, an em dash, angle
+    /// quotes), and it aborted `taliesin features` on 3 of the 25 `docs/guide` pages
+    /// (`reference/cli.tmd`, `reference/frontmatter.tmd`, `using/preview.tmd`).
+    ///
+    /// Each case below is a real line from one of those pages, or a reduction of one.
+    #[test]
+    fn shortcode_scan_survives_non_ascii_on_the_same_line() {
+        let cases = [
+            // reference/cli.tmd:41: the arrow sits inside an inline code span.
+            "links resolve against the page registry (`.tmd`→`.html`), so a `{{< embed >}}` deck is left alone.",
+            // reference/frontmatter.tmd:57: an em dash before the shortcode.
+            "out of scope for `check`, ignored on an `{{< embed >}}` target",
+            // using/preview.tmd:131: angle quotes after the shortcode.
+            "an `{{< include >}}` reads `⟨42 lines⟩`.",
+            // The non-ASCII character immediately before, inside and after the braces.
+            "→{{< embed deck.tmd >}}",
+            "{{< embed deck.tmd >}}→",
+            "{{< video clip.mp4 >}} ⟨caption⟩",
+            // Multi-byte characters of every UTF-8 width, including an astral-plane emoji.
+            "é {{< embed deck.tmd >}} € 𝄞 🎉",
+        ];
+        for line in cases {
+            // The bug was a panic, so merely returning is the assertion that matters.
+            let _ = scan(line);
+        }
+
+        // Not just "does not panic": the shortcode is still *found* past the non-ASCII.
+        let f = scan("prose → more prose {{< embed deck.tmd >}}\n");
+        assert_eq!(
+            f.used
+                .get("shortcodes")
+                .map(|s| s.iter().collect::<Vec<_>>()),
+            Some(vec![&"embed".to_string()]),
+            "the embed after a non-ASCII char must still be detected: {:?}",
+            f.used
+        );
+
+        // And the inline-code discipline still holds around non-ASCII: a shortcode shown
+        // as an example in backticks is an example, not a use.
+        let f = scan("→ `{{< embed deck.tmd >}}` ←\n");
+        assert!(
+            !f.used.contains_key("shortcodes"),
+            "a backticked shortcode is an example, even next to non-ASCII: {:?}",
+            f.used
+        );
+    }
 }

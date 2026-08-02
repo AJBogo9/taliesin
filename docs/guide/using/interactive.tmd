@@ -292,7 +292,7 @@ would need a network fetch, which Taliesin does not do, so `import scipy` fails 
 Python's own traceback plus a note explaining that only the stdlib and NumPy ship
 with the page.
 
-A `{pyodide}` cell runs everywhere the output has room for the 12.9 MB runtime beside
+A `{pyodide}` cell runs everywhere the output has room for the 15.7 MiB runtime beside
 the page: `taliesin preview`, a portable folder (`taliesin build file.tmd --out
 <dir>`), a multi-page **site** build (`taliesin build <dir>`), and a slide deck in any
 of them. Each copies the runtime into `_assets/` next to what it built.

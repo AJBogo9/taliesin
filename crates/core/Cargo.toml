@@ -6,6 +6,36 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+# The vendored Pyodide payload is 15.7 MiB of git-tracked bytes, which puts this crate at
+# 24.2 MiB against crates.io's 10 MiB `.crate` cap. A cargo feature does NOT shrink a
+# `.crate` (only `exclude` does), so the two levers below are complementary, not
+# alternatives. Consequence, stated where it bites: a consumer of the PUBLISHED crate
+# cannot enable `pyodide`, because the files are absent and `include_bytes!` fails to
+# compile. That is a loud error, which is the intended failure shape.
+exclude = ["assets/pyodide/*"]
+
+[features]
+# Opt in to the vendored Pyodide WASM runtime (`{pyodide}` cells run in the reader's
+# browser). Off by default: it is 15.7 MiB of every build for a capability one showcase
+# page uses. Feature-off, `{pyodide}` stays a registered client language (the registry,
+# the diagnostics and the mime contract are feature-independent) and its cells render as
+# source, exactly as `TALIESIN_NO_EXEC=1` already renders them. Nothing here fetches
+# anything: the tool stays offline at build time and at render time either way.
+pyodide = []
+
+# Every test in this file asserts the feature-ON delivery path (the emitted wrapper, the
+# runtime index meta, the served/copied payload). Feature-off some of them do not merely
+# fail, they pass VACUOUSLY: `degrade_pyodide_cells` has no wrapper to degrade, so a test
+# that it strips one asserts nothing. That is why the whole target is gated rather than
+# left to "it still passes". `tools/gates.sh` arms the feature and asserts these printed
+# `... ok` BY NAME, so silently dropping them turns the gate red instead of green-and-empty.
+#
+# The one assertion from that file which is feature-INDEPENDENT (the version drift lock,
+# which reads `assets/pyodide/package.json` off disk) was moved to `tests/third_party.rs`
+# so it keeps running in a default build.
+[[test]]
+name = "pyodide"
+required-features = ["pyodide"]
 
 [dependencies]
 comrak = "0.52.0"

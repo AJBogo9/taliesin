@@ -32,9 +32,12 @@ pub const PYODIDE_DIR_NAME: &str = concat!("pyodide-", pyodide_version!());
 
 /// Same-origin path both dev servers serve the vendored runtime from. A route rather than an
 /// inline blob for the same reason `PREVIEW_MERMAID_PATH` is one, only more so: the page
-/// shell is re-served on every navigation, and this payload is 12.9 MB.
+/// shell is re-served on every navigation, and this payload is 15.7 MiB.
 pub const PREVIEW_PYODIDE_DIR: &str = concat!("/_taliesin/pyodide-", pyodide_version!(), "/");
 
+// Feature-gated with its only caller below: an uncalled `macro_rules!` is an
+// `unused_macros` warning, and the workspace builds under `-D warnings`.
+#[cfg(feature = "pyodide")]
 macro_rules! payload_file {
     ($name:literal) => {
         (
@@ -47,6 +50,14 @@ macro_rules! payload_file {
 /// The vendored payload as (filename, bytes), for the dev servers to route and the build to
 /// copy. `LICENSE` rides along: MPL-2.0 §3.4 forbids removing notices, so the licence travels
 /// with the bytes into every built site, not just the source tree.
+///
+/// **This is the only `include_bytes!` of the payload in the tree**, which is why gating it
+/// here gates all 15.7 MiB. Every consumer already handles the empty case through a contract
+/// that predates the feature: `pyodide_index_meta` returns `""` (its own doc names that as the
+/// degrade signal), `attach_pyodide_index` no-ops, the two dev-server routes `.find()` nothing
+/// and 404 with nothing linking them, and `build.rs` never calls `write_pyodide_payload`
+/// because `used.pyodide` is false. So none of them needs a feature-off branch.
+#[cfg(feature = "pyodide")]
 pub fn pyodide_payload() -> &'static [(&'static str, &'static [u8])] {
     &[
         payload_file!("pyodide.mjs"),
@@ -57,6 +68,13 @@ pub fn pyodide_payload() -> &'static [(&'static str, &'static [u8])] {
         payload_file!("numpy-2.4.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl"),
         payload_file!("LICENSE"),
     ]
+}
+
+/// Feature-off: no vendored bytes are compiled in, so there is nothing to serve or copy.
+/// The signature is unchanged so every call site compiles either way.
+#[cfg(not(feature = "pyodide"))]
+pub fn pyodide_payload() -> &'static [(&'static str, &'static [u8])] {
+    &[]
 }
 
 /// The `<meta>` the enhancer reads its `indexURL` from, or `""` when the page has no
@@ -92,7 +110,7 @@ fn has_pyodide_cell_markup(html: &str) -> bool {
 }
 
 /// Stamp the runtime index `<meta>` into an already-assembled page, for the one build path
-/// that renders inline but still has somewhere to put a 12.9 MB directory: `build
+/// that renders inline but still has somewhere to put a 15.7 MiB directory: `build
 /// <file.tmd> --out <dir>`.
 ///
 /// **Why this is a post-pass and not an asset mode.** A portable folder inlines its CSS/JS on

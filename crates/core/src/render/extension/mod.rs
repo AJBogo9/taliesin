@@ -99,6 +99,11 @@ pub(crate) fn shortcode_argument_names() -> Vec<String> {
 /// counted as a use: a fenced code block is literal, and so is an inline backtick span.
 /// This is what stops `docs/guide/reference/shortcodes.tmd` (which shows every shortcode
 /// in backticks and fences) from reading as the heaviest user of all of them.
+/// The per-line walk is [`each_shortcode`], shared with [`embed_targets`]. This function
+/// used to carry its own hand-copied copy of that loop, which advanced the cursor one
+/// *byte* at a time and so panicked mid-codepoint on any line holding both `{{<` and a
+/// non-ASCII character: ordinary prose, and it aborted `taliesin features` on 3 of the
+/// 25 `docs/guide` pages. Keep the single walker.
 pub(crate) fn scan_shortcodes(src: &str) -> Vec<(String, Vec<String>)> {
     let mut out = Vec::new();
     let mut in_code = false;
@@ -111,30 +116,12 @@ pub(crate) fn scan_shortcodes(src: &str) -> Vec<(String, Vec<String>)> {
         if in_code || !line.contains("{{<") {
             continue;
         }
-        let bytes = line.as_bytes();
-        let mut i = 0;
-        while i < line.len() {
-            if bytes[i] == b'`' {
-                let run = line[i..].bytes().take_while(|&c| c == b'`').count();
-                let ticks = &line[i..i + run];
-                match line[i + run..].find(ticks) {
-                    Some(rel) => i = i + run + rel + run,
-                    None => i += run,
-                }
-            } else if line[i..].starts_with("{{<") {
-                let Some(rel_end) = line[i + 3..].find(">}}") else {
-                    break; // unterminated on this line: the expander leaves it as written
-                };
-                let end = i + 3 + rel_end;
-                let toks = tokenize_args(line[i + 3..end].trim());
-                if let Some((name, args)) = toks.split_first() {
-                    out.push((name.clone(), args.to_vec()));
-                }
-                i = end + 3;
-            } else {
-                i += 1;
+        each_shortcode(line, |inner| {
+            let toks = tokenize_args(inner);
+            if let Some((name, args)) = toks.split_first() {
+                out.push((name.clone(), args.to_vec()));
             }
-        }
+        });
     }
     out
 }

@@ -287,7 +287,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     };
     // A single-doc build always inlines (`AssetMode::Inline`), so Build-mode Inline ships no
     // Pyodide runtime (`pyodide_index_meta` returns `""` — see `render/pyodide.rs`). What
-    // happens next depends on whether the output has room for a 12.9 MB directory, which only
+    // happens next depends on whether the output has room for a 15.7 MiB directory, which only
     // this caller knows:
     //
     //   * `build doc.tmd out.html` — one self-contained file, nowhere to put the runtime.

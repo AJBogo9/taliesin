@@ -2287,7 +2287,7 @@ mod protocol_contract {
     #[test]
     fn set_meta_message_matches_client_contract() {
         // `set_meta` is the click-to-source mechanism and the most-emitted op by far:
-        // live-edit-bench measures a real edit as 55 ops, 54 of them set_meta. It was
+        // live-edit-bench measures a real edit as 55 ops, 53 of them set_meta. It was
         // the one op with no shape test, so renaming a key here compiled, passed the
         // whole suite AND `tsc`, and silently degraded Ctrl-click to "opens at line 1"
         // for every line-shifted block. The client reads exactly these keys

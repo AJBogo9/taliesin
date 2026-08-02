@@ -356,7 +356,7 @@ const EXPLANATIONS: &[Explanation] = &[
         title: "a `{pyodide}` cell's source has an ambiguous `<\\/script`",
         cause: "The wrapper escapes a literal `</script` inside a `{pyodide}` cell's source \
                 to `<\\/script`, so it survives untouched inside the wrapping `<script>` \
-                element. The one output mode that cannot ship the 12.9 MB Pyodide runtime \
+                element. The one output mode that cannot ship the 15.7 MiB Pyodide runtime \
                 — a single-file `build file.tmd out.html` — degrades the cell to visible \
                 highlighted source by reversing that escape, and the reversal cannot tell \
                 a real `</script` apart from an author who typed the literal `<\\/script` \

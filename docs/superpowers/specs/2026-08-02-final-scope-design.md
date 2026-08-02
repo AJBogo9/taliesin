@@ -162,6 +162,33 @@ the default; `site/_site.yml` writes `toc: false`, already the default.
 
 Not scope work. These are correctness items that must not ship as they stand.
 
+> **Status: all three DONE, 2026-08-02.** Findings that change what the rest of this document
+> says, and which a later wave must not re-derive:
+>
+> - **0.1.** Diagnosed: the headline was *correct when measured* (2026-06-24) and the payload
+>   then regressed 10x **six days later**, deliberately, in `6cdbc218`, which made a
+>   multi-`data-sourcepos` block take a full `Update` so fenced divs' inner source positions
+>   stay accurate. `RESULTS.md` was never regenerated; its two later commits touched only prose
+>   and paths. Proved by reverting that one guard, which reproduces the old file's numbers
+>   byte-for-byte (`set_meta 54, update 0, payload 3231`). So it is neither "always wrong" nor a
+>   silent regression: it is a stale artifact of a real design change. **The honest figure is
+>   9x** (32,303 / 291,691), and one fenced div is 90% of the payload. Two further things the
+>   audit did not see: **eight** live citations, not four, including the User Guide
+>   (`docs/guide/using/choosing.tmd`) and a server test comment. Also, `RESULTS.md`'s prose claim
+>   that the *collapsible callout* survives via `SetMeta` was **false**, since that is precisely
+>   the block that now re-renders. Which means: **an opened `:::` collapse callout closes when
+>   an edit lands above it**, and any `{js}` cell inside such a div is torn down and re-mounted
+>   (`client.js:1712` `replaceWith` after `teardownJs`). That is a real user-visible cost of
+>   `6cdbc218`, is now stated wherever the claim is made, and is **not** fixed here: it is a
+>   design question, not a Wave 0 correctness item.
+> - **0.2.** Fixed as specified, by folding `scan_shortcodes` into `each_shortcode`. Failing
+>   tests written first and confirmed failing at `extension/mod.rs:124:27` on `'→'`.
+> - **0.3.** Landed, and it bought **2x what this document predicted** (see the row in "What
+>   this changes in numbers"). The design's test-gating list was incomplete in two files and
+>   wrong in one; corrections are recorded in
+>   [2026-08-02-pyodide-cargo-feature-design.md](2026-08-02-pyodide-cargo-feature-design.md)
+>   under "What this actually bought".
+
 | # | Item | Why it is Wave 0 |
 |---|---|---|
 | 0.1 | **Re-run the live-edit bench and fix the published number** | `RESULTS.md` claims "83x smaller"; `RESULTS.json` on the same machine gives `32,303 / 287,195` = **8.89x**, with `update_count 1` where the committed file says 0. `RESULTS.json` is gitignored (`.gitignore:58`) so nothing regenerates or gates it, and the regression test asserts only a 5x floor. The 83x figure is cited as fact in `ROADMAP.md:125`, `backlog.md:372`, `AUDITS.md:913` and the launch critique. Either the payload regressed 10x (an `Update` where a `SetMeta` used to be, exactly the property being sold) or the headline was always wrong. **Publishing a 10x-overstated benchmark is the single biggest launch risk in this document.** |
@@ -272,7 +299,7 @@ published tool whose config key works in preview but not in `build` is a support
 | | before | after |
 |---|---|---|
 | Rust LOC | ~131,000 | ~124,100 (**~6,900 out, 5.3%**) |
-| Binary | 75.6 MB | ~59 MB (**16 MB out**, download 32 MiB to ~23 MiB) |
+| Binary | 72.0 MiB | **40.7 MiB** (**31.3 MiB out, 43.5%**). *Corrected 2026-08-02 on execution: Wave 0.3 measured 2x the predicted saving, because the payload was embedded twice. The "~59 MB / 16 MB out" this row first carried was half the truth. Download unchanged by policy: the tarball stays the complete tool.* |
 | Top-level subcommands | 21 | **13** |
 | Front-matter + `_site.yml` keys | 73 | **~58** |
 | Dev servers | 2 | **1** |

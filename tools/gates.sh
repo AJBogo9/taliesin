@@ -80,8 +80,16 @@ CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
 # A fifth browser-backed capability, independent of the other four: `{pyodide}` cells. It is
 # the only thing that boots the vendored Pyodide runtime at all — every other test of item 158
 # asserts what Rust EMITTED (the script tag, the index `<meta>`, the vendored file list) and
-# would stay green with the whole 12.9 MB runtime payload deleted.
+# would stay green with the whole 15.7 MiB runtime payload deleted.
 CANARY_PYODIDE="a_pyodide_cell_boots_and_publishes_to_a_js_consumer"
+# Item 205 put the payload behind the `pyodide` cargo feature, which means the delivery tests
+# now VANISH from a default `cargo test` instead of failing. Two canaries, one per altitude,
+# because the two gating mechanisms fail differently: the first lives in a whole target gated
+# by `required-features` (dropping the feature silently unbuilds the file), the second is a
+# lone `#[cfg]`'d test inside an otherwise-ungated file (dropping the feature leaves the file
+# green and one assertion shorter, which no summary line reveals).
+CANARY_PYODIDE_DELIVERY="a_single_file_build_degrades_a_pyodide_cell_to_visible_source"
+CANARY_PYODIDE_SITE="site_build_copies_the_pyodide_runtime_and_stamps_a_page_relative_index"
 # A sixth browser-backed capability, independent of the other five: the figure lightbox.
 # The whole viewer is built in JS, so nothing about it reaches the served HTML — every
 # other test of a figure asserts what Rust EMITTED and would stay green with the viewer's
@@ -245,9 +253,15 @@ run_gate "cargo clippy -D warnings" clippy.log \
 # missing. That pairing is deliberate: forgetting the feature turns this gate RED
 # rather than shrinking the suite silently.
 #
+# `--features taliesin-server/pyodide` for exactly the same reason (item 205): the 15.7 MiB
+# vendored runtime is off by default, `crates/core/tests/pyodide.rs` declares the feature in
+# `required-features`, and four more tests are `#[cfg]`'d on it. `pyodide_browser` needs BOTH
+# features. The two `CANARY_PYODIDE_*` names above are what turn a dropped flag red.
+#
 # Between the two gates both configurations are covered: clippy (gate 2) runs with
-# DEFAULT features, i.e. the no-driver build, and this one compiles every target
-# with the driver on.
+# DEFAULT features, i.e. the no-driver, no-runtime build, which is the one that must also
+# compile the feature-OFF arms (`pyodide_feature_off.rs`); and this one compiles every
+# target with both on.
 # ---------------------------------------------------------------------------
 TEST_NAME="cargo test --workspace (all four gates)"
 if [ "$MISSING_INTERPRETERS" -gt 0 ] && [ "$ALLOW_MISSING" -eq 1 ]; then
@@ -263,7 +277,7 @@ else
         TALIESIN_REQUIRE_NODE=1 \
         TALIESIN_REQUIRE_CHROME=1 \
         run_gate "$TEST_NAME" test.log \
-        cargo test --workspace --features taliesin-server/headless-js -- --test-threads=1
+        cargo test --workspace --features taliesin-server/headless-js,taliesin-server/pyodide -- --test-threads=1
     test_rc=$?
 
     # Only assert on the output when cargo itself succeeded: a build failure produces a
@@ -294,6 +308,8 @@ else
             "chrome (reactive client):$CANARY_REACTIVE" \
             "chrome (print track):$CANARY_PRINT" \
             "chrome (pyodide):$CANARY_PYODIDE" \
+            "pyodide feature (delivery):$CANARY_PYODIDE_DELIVERY" \
+            "pyodide feature (site build):$CANARY_PYODIDE_SITE" \
             "chrome (lightbox):$CANARY_LIGHTBOX"; do
             what="${pair%%:*}"
             canary="${pair#*:}"

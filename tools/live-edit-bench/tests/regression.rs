@@ -75,16 +75,31 @@ fn warm_edit_payload_is_far_smaller_than_full_render() {
             "A freshly typed opening line.\n\nLet's start from a practical example.",
         )
     });
-    // The warm-edit payload is far below a full reload (here ~8x smaller). It is not
-    // the ~15-20x it once was: since the 2026-06-30 diff hardening, `:::` fenced divs
-    // (this doc's collapse callout) re-render as a full `Update` rather than a cheap
-    // `SetMeta`, so their whole html rides in the payload — the deliberate cost of
-    // keeping their inner `data-sourcepos` fresh. Still comfortably a >5x win.
+    // The warm-edit payload is far below a full reload (measured 9.03x on 2026-08-02).
+    // It is not the 83x this bench once published: since the 2026-06-30 diff hardening
+    // (`6cdbc218`), `:::` fenced divs (this doc's collapse callout) re-render as a full
+    // `Update` rather than a cheap `SetMeta`, so their whole html rides in the payload:
+    // the deliberate cost of keeping their inner `data-sourcepos` fresh. That one op is
+    // 90% of the payload. The floor is 8x rather than 5x so a repeat of that 10x shift
+    // fails here instead of silently invalidating `RESULTS.md`.
     assert!(
-        m.edit_payload_bytes * 5 < m.full_html_bytes,
+        m.edit_payload_bytes * 8 < m.full_html_bytes,
         "payload {} should be far below full html {} (ratio guard), metrics: {m:?}",
         m.edit_payload_bytes,
         m.full_html_bytes
+    );
+    // Pin the op SHAPE exactly. This is the gate that was missing: the 2026-06-30
+    // hardening moved `update_count` 0 -> 1 and grew the payload 10x, and because only
+    // a loose 5x ratio floor was asserted, nothing failed and `RESULTS.md` kept
+    // publishing the pre-hardening number for five weeks. Any future change to which
+    // blocks are `SetMeta`-eligible moves one of these counts and must be accompanied
+    // by regenerating `RESULTS.md` + `RESULTS.json`.
+    assert_eq!(
+        (m.insert_count, m.update_count, m.remove_count),
+        (1, 1, 0),
+        "op shape changed: exactly one Insert (the typed paragraph), one Update (the \
+         single multi-`data-sourcepos` block, the collapse callout) and no Removes. \
+         Regenerate RESULTS.md/RESULTS.json if this change is intended. metrics: {m:?}"
     );
     assert!(
         m.dom_preserved,

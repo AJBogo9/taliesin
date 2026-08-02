@@ -60,18 +60,29 @@ appears here.
 | Whole-project build, `corpus/tech-blog` (19 pages) | **0.56 s** | 29.5 ms/page, the heaviest project in the tree |
 | `preview` time-to-ready, single document | **1–5 ms** | Process start to a serving socket |
 | `preview` time-to-ready, 23-page book | **≈200 ms** | Discovery, nav, cross-reference registry, first render |
-| Warm edit: diff only | **0.7 ms** | The block diff for one keystroke-sized edit |
-| Warm edit: re-render + diff | **28 ms** | Against a 124 ms cold render of the same document |
-| Warm-edit payload | **3.2 KB** | Versus a 270 KB full page a reload would refetch |
+| Warm edit: diff only | **0.75 ms** | The block diff for one keystroke-sized edit |
+| Warm edit: re-render + diff | **13 ms** | Against a 135 ms cold render of the same document |
+| Warm-edit payload | **32 KB** | Versus a 292 KB full page a reload would refetch |
 
 *(Build and ready figures measured 2026-07-29, best of three, release build, warm
-`_freeze/` cache. The warm-edit rows come from `tools/live-edit-bench`, whose committed
-`RESULTS.md` labels them indicative — the numbers vary by machine; the **structural** rows
-it also records, the op counts and payload ratio, are gated by a regression test.)*
+`_freeze/` cache. The warm-edit rows come from `tools/live-edit-bench`, re-measured
+2026-08-02, best of twelve, release build; its committed `RESULTS.md` labels them
+indicative (the numbers vary by machine). The **structural** rows it also records, the op
+counts and payload bytes, are deterministic and gated by a regression test.)*
 
 The number that matters is not any single row: it is that the warm edit is a **diff**, so
-its cost tracks what you changed rather than how large the document is. A 3.2 KB patch to a
-270 KB page is not a faster full reload; it is a different operation.
+its cost tracks what you changed rather than how large the document is.
+
+That payload row deserves its detail, because the average hides the shape. The edit emits
+55 operations, and 54 of them (every shifted paragraph, heading, figure and code cell)
+are metadata-only patches that together weigh about **3.2 KB** and never touch a DOM node,
+so anything live in those blocks keeps running. The remaining 29 KB is a *single*
+operation: one `::: {.callout-note collapse="true"}` fenced div, which re-renders in full
+because its inner blocks each carry their own source position and those have to stay
+accurate for Ctrl-click. One block shape costs 90% of the payload; every other block shape
+costs bytes proportional to nothing but its own line number. The tradeoff is deliberate,
+and its one visible cost is that a collapse callout you have opened closes again when an
+edit lands above it.
 
 ## What Taliesin claims, and who asked for it {#sec-claims}
 

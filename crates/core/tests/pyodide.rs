@@ -61,7 +61,7 @@ fn a_build_of_a_python_page_ships_the_runtime_and_the_enhancer() {
     );
 }
 
-/// The single-file build is the one output path that cannot carry a 12.9 MB directory. The
+/// The single-file build is the one output path that cannot carry a 15.7 MiB directory. The
 /// cell degrades to VISIBLE SOURCE rather than to an empty div, which is what stripping the
 /// script alone would leave: the author's code is in the `<script>`, so removing it without
 /// re-emitting it silently deletes the content.
@@ -208,7 +208,7 @@ fn the_degradation_leaves_js_cells_running() {
     );
 }
 
-/// The index `<meta>` is the ONLY thing that tells the client enhancer where the 12.9 MB
+/// The index `<meta>` is the ONLY thing that tells the client enhancer where the 15.7 MiB
 /// runtime lives, and it resolves three different ways. Nothing tested it: the branch shipped
 /// with no assertion on `pyodide_index_meta` at all, while `pyodide_browser.rs`'s header
 /// claimed a sibling test covered it. A wrong URL here is invisible to every server-side test
@@ -283,38 +283,6 @@ fn bare_output_keeps_a_pyodide_cells_source_as_a_listing_not_an_empty_husk() {
 /// `Cache-Control: immutable`, so a reader who visited before the bump keeps the old runtime
 /// forever. Bumping one constant and not the other splits the preview route from the build's
 /// `_assets/` path. Nothing else in the suite reads upstream's version, so a wrong name here
-/// reaches the reader's browser as a 404 at boot and nowhere earlier.
-///
-/// Upstream's own `package.json` is the source of truth (it is vendored for exactly this and
-/// is not part of the served payload), the same anchor
-/// `third_party.rs::the_pyodide_version_and_licence_claims_match_the_vendored_runtime` uses
-/// for THIRD_PARTY.md.
-#[test]
-fn the_vendored_pyodide_version_is_locked_to_the_payload() {
-    let core = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let meta = std::fs::read_to_string(core.join("assets/pyodide/package.json"))
-        .expect("the vendored pyodide package.json should exist");
-    let anchor = "\"version\"";
-    let rest = &meta[meta.find(anchor).expect("a `version` field") + anchor.len()..];
-    let rest = &rest[rest.find('"').expect("a quoted value") + 1..];
-    let version = &rest[..rest.find('"').expect("a terminated value")];
-
-    assert_eq!(
-        PYODIDE_DIR_NAME,
-        format!("pyodide-{version}"),
-        "the version-stamped directory name must name the payload actually vendored under \
-         `assets/pyodide/` (package.json says `{version}`) — a stale name is served immutable"
-    );
-    // The derived form, pinned as a value rather than by construction: both constants are
-    // public API that the build (`_assets/<dir>/`) and both dev servers (the route) resolve
-    // independently, and a reader only ever sees the mismatch as a failed module import.
-    assert_eq!(
-        PREVIEW_PYODIDE_DIR,
-        format!("/_taliesin/{PYODIDE_DIR_NAME}/"),
-        "the preview route and the build's `_assets/` directory must name the same version"
-    );
-}
-
 /// Item 190a: a deck assembles its own page, and that shell never stamped the runtime index.
 ///
 /// The consequence was narrow and total: a `{pyodide}` cell on a slide rendered, its enhancer

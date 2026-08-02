@@ -54,8 +54,11 @@ Thumbs.db
 # subagent-driven-development scratch
 .superpowers/
 
-# live-edit benchmark runtime artifact (the committed snapshot is RESULTS.md)
-tools/live-edit-bench/RESULTS.json
+# NOTE: tools/live-edit-bench/RESULTS.json is deliberately NOT ignored. It was, until
+# 2026-08-02, and that is why a 10x payload regression on 2026-06-30 sat unnoticed for
+# five weeks while RESULTS.md kept publishing the pre-regression headline. Committing it
+# makes a regeneration show up as a reviewable diff. The three *_ns timing fields drift
+# per run; the structural fields do not, and regression.rs gates them.
 
 # ad-hoc Python kernel venv for local audits
 .venv-audit/

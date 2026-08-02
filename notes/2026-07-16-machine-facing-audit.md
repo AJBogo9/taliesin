@@ -261,8 +261,9 @@ pipe** converts the desync from one bad kernel into every kernel.
   `client.js:1026-1039` consumer). Both `protocol_contract` modules assert `update`/`insert`/
   `remove` and skip it. Renaming the `"sourcepos"` literal compiles, passes all 178 tests, passes
   `tsc`, and silently degrades Alt-click to "opens at line 1" for every line-shifted block, plus
-  wrong-file attribution for included blocks, plus dead reverse-sync. `live-edit-bench/RESULTS.md:23`
-  measures a real edit as **55 ops: 54 of them `set_meta`**. `// @ts-check` gives false comfort: it
+  wrong-file attribution for included blocks, plus dead reverse-sync. `live-edit-bench/RESULTS.md`
+  measures a real edit as **55 ops: 53 of them `set_meta`** (as filed: 54, from a `RESULTS.md`
+  snapshot that was already stale; re-measured 2026-08-02). `// @ts-check` gives false comfort: it
   validates `client.js` against its own typedef, which knows nothing of the Rust side.
 - The refill tests **re-implement the loop they claim to pin** (`warm_pool.rs:677`), with no error
   arm, so they structurally cannot express the bug. `refill()` itself has zero coverage.

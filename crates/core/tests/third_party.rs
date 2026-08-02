@@ -285,3 +285,42 @@ fn the_vendored_pyodide_payload_is_complete_and_carries_its_licence() {
         );
     }
 }
+
+/// The version-stamped directory name must name the payload actually vendored, or the runtime
+/// reaches the reader's browser as a 404 at boot and nowhere earlier.
+///
+/// Upstream's own `package.json` is the source of truth (it is vendored for exactly this and
+/// is not part of the served payload), the same anchor
+/// `the_pyodide_version_and_licence_claims_match_the_vendored_runtime` above uses for
+/// THIRD_PARTY.md.
+///
+/// **Lives here, not in `tests/pyodide.rs`, because it must run in a DEFAULT build.** That
+/// file is gated on the `pyodide` cargo feature; this assertion is not, because it compares
+/// two `const` strings against a file on disk and `assets/pyodide/` is git-tracked either way
+/// (the feature gates the `include_bytes!`, and `exclude` only affects a published `.crate`).
+/// A drift lock that stops running when the feature is off is a drift lock that does not run.
+#[test]
+fn the_vendored_pyodide_version_is_locked_to_the_payload() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let meta = std::fs::read_to_string(core.join("assets/pyodide/package.json"))
+        .expect("the vendored pyodide package.json should exist");
+    let anchor = "\"version\"";
+    let rest = &meta[meta.find(anchor).expect("a `version` field") + anchor.len()..];
+    let rest = &rest[rest.find('"').expect("a quoted value") + 1..];
+    let version = &rest[..rest.find('"').expect("a terminated value")];
+
+    assert_eq!(
+        taliesin_core::render::PYODIDE_DIR_NAME,
+        format!("pyodide-{version}"),
+        "the version-stamped directory name must name the payload actually vendored under \
+         `assets/pyodide/` (package.json says `{version}`); a stale name is served immutable"
+    );
+    // The derived form, pinned as a value rather than by construction: both constants are
+    // public API that the build (`_assets/<dir>/`) and both dev servers (the route) resolve
+    // independently, and a reader only ever sees the mismatch as a failed module import.
+    assert_eq!(
+        taliesin_core::render::PREVIEW_PYODIDE_DIR,
+        format!("/_taliesin/{}/", taliesin_core::render::PYODIDE_DIR_NAME),
+        "the preview route and the build's `_assets/` directory must name the same version"
+    );
+}
