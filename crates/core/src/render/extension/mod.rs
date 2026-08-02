@@ -69,6 +69,62 @@ pub(super) fn expand_shortcodes(
     (out, warnings)
 }
 
+/// Every built-in shortcode name the tool implements.
+///
+/// [`SHORTCODE_SPECS`] is NOT this list and must not be used as one: it holds only the
+/// shortcodes whose *arguments* `render_shortcode` lints. `input` and `dataset` are
+/// dispatched ahead of it in [`expand_in_line`], and `include` is resolved a whole pass
+/// earlier (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would
+/// report three of the five as not existing.
+pub(crate) const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "dataset", "include"];
+
+/// Every `{{< name args… >}}` written in `src`, as `(name, args)`, for the
+/// feature-adoption report (`crate::features`).
+///
+/// Applies the expander's own two skip rules so a shortcode shown as an EXAMPLE is not
+/// counted as a use: a fenced code block is literal, and so is an inline backtick span.
+/// This is what stops `docs/guide/reference/shortcodes.tmd` (which shows every shortcode
+/// in backticks and fences) from reading as the heaviest user of all of them.
+pub(crate) fn scan_shortcodes(src: &str) -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    let mut in_code = false;
+    for line in src.lines() {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            continue;
+        }
+        if in_code || !line.contains("{{<") {
+            continue;
+        }
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i < line.len() {
+            if bytes[i] == b'`' {
+                let run = line[i..].bytes().take_while(|&c| c == b'`').count();
+                let ticks = &line[i..i + run];
+                match line[i + run..].find(ticks) {
+                    Some(rel) => i = i + run + rel + run,
+                    None => i += run,
+                }
+            } else if line[i..].starts_with("{{<") {
+                let Some(rel_end) = line[i + 3..].find(">}}") else {
+                    break; // unterminated on this line: the expander leaves it as written
+                };
+                let end = i + 3 + rel_end;
+                let toks = tokenize_args(line[i + 3..end].trim());
+                if let Some((name, args)) = toks.split_first() {
+                    out.push((name.clone(), args.to_vec()));
+                }
+                i = end + 3;
+            } else {
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.
 /// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a

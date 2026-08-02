@@ -451,6 +451,20 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
     ("rust", "Highlighted only; not executed."),
 ];
 
+/// The cell languages taliesin recognizes, for [`crate::features`]'s catalogue. Unlike the
+/// div classes there is no offered/implemented split here, so this really is the whole set.
+pub(crate) fn cell_language_names() -> Vec<&'static str> {
+    CELL_LANGUAGES.iter().map(|(n, _)| *n).collect()
+}
+
+/// The fenced-div `key=` attributes taliesin reads, for [`crate::features`]'s catalogue.
+/// Sourced from the same table that drives the editor's completions, whose
+/// `div_attribute_classes_are_real` test already pins every entry to a class the renderer
+/// dispatches on.
+pub(crate) fn div_attribute_names() -> Vec<&'static str> {
+    DIV_ATTRIBUTES.iter().map(|a| a.name).collect()
+}
+
 fn cell_languages() -> Value {
     Value::Array(
         CELL_LANGUAGES

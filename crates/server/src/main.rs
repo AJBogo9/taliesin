@@ -92,6 +92,7 @@ fn main() -> ExitCode {
         Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
         Some("skim") => query::cmd_skim(&args),
+        Some("features") => query::cmd_features(&args),
         Some("check") => check::cmd_check(&args),
         Some("doctor") => doctor::cmd_doctor(&args),
         Some("mcp") => mcp::cmd_mcp(&args),
@@ -156,6 +157,7 @@ const COMMANDS: &[&str] = &[
     "doctor",
     "map",
     "skim",
+    "features",
     "mcp",
     "lsp",
     "init",
@@ -252,6 +254,8 @@ Inspect
                              {path, executed, cells, text}; a dir reads the book)
   skim   <dir> [--format human|json]  the book's skimmable layers as one linear
                              stream (numbered headings, opening sentences, captions)
+  features <file.tmd | dir> [--format human|json]  which constructs a document
+                             uses, and which constructs no document uses
   render <file.tmd>          render a full HTML page to stdout
                              (static; does NOT execute code cells)
   blocks <file.tmd>          list block ids + sourcepos (debug)
@@ -491,6 +495,28 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin skim . | less\n"
+        }
+        "features" => {
+            "taliesin features <file.tmd | dir> [--format human|json]\n\
+             \n\
+             Which constructs a document uses, and — the half that matters more — which\n\
+             constructs NO document uses. Every front-matter key, div class, callout and\n\
+             theorem kind, cell language, cell option, shortcode, input type and\n\
+             cross-reference kind taliesin implements, against the documents that write it.\n\
+             Parse-only: no kernel, no code execution, no render.\n\
+             \n\
+             The shape follows the target rather than a flag: a directory reports the\n\
+             adoption table (feature-first, zero rows included), a single file reports what\n\
+             that one document uses. The JSON is the same shape for both.\n\
+             \n\
+             Unlike map/skim/read a bare directory is fine — a project uses its own page\n\
+             order, any other directory is walked in path order.\n\
+             \n\
+             A report, not a gate: it exits 0 whatever it finds.\n\
+             \n\
+             Examples:\n\
+             \x20 taliesin features corpus\n\
+             \x20 taliesin features . --json | jq '.groups[].features[] | select(.documents == [])'\n"
         }
         "read" => {
             "taliesin read <file.tmd | dir> [--run] [--format human|json]\n\

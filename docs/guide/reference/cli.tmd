@@ -541,6 +541,45 @@ Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper scri
 that rebuilds it when the tool's sources change) so `taliesin preview <file>`
 works from anywhere.
 
+## `taliesin features`: what a document uses, and what nothing uses
+
+`features` answers two questions from one scan. Pointed at a single file it lists the
+constructs that document writes; pointed at a directory it lists **every construct
+Taliesin implements** against the documents that use it, zero rows included:
+
+```sh
+taliesin features post.tmd     # what does this document use
+taliesin features .            # the whole project, feature by feature
+taliesin features . --json     # the same table, for a script
+```
+
+The second half is the one worth having. Every front-matter key, div class, callout
+and theorem kind, cell language, cell option, shortcode, input type and
+cross-reference kind appears, so a capability nothing exercises shows up as a row
+reading `(no document)` rather than as an absence you would have to already suspect:
+
+```
+div classes                    18 known · 15 used · 3 unused
+  scrolly                         4
+  column-margin                   3  layout/escapes.tmd, layout/panels.tmd, refs/theorems.tmd
+  aside                           0  (no document)
+```
+
+A construct used by three or fewer documents names them inline, because that tail is
+usually what you are looking for. Above three you get the count, and `--json` always
+carries the full list.
+
+Two things it deliberately does not do. It **does not count a construct you merely
+wrote about**: a shortcode inside backticks or a fenced block is an example, and a
+front-matter key named in prose is not a key that page sets, so a reference page
+documenting thirty keys reports as using none of them. And it is a **report, not a
+gate**: it exits 0 whatever it finds, so it never fails a build.
+
+Unlike `map`, `skim` and `read`, a plain directory is fine. When the directory is a
+project it uses that project's own page order; anywhere else it walks the tree in
+path order. Like `render`, `blocks` and `symbols` it is parse-only and **never starts
+a kernel** or runs a cell.
+
 ## Machine-facing commands: `read`, `map`, `vocab`, `mcp`, `lsp`
 
 A second family of commands exists for *programs* rather than a human reader: an AI

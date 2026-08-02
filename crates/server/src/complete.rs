@@ -340,6 +340,7 @@ fn command_desc(cmd: &str) -> &'static str {
         "doctor" => "audit the environment for running code cells",
         "map" => "whole-project outline (pages, nav, xref)",
         "skim" => "the book's skimmable layers as one linear stream",
+        "features" => "which constructs are used, and which nothing uses",
         "mcp" => "stdio MCP server",
         "lsp" => "stdio LSP server (live diagnostics in any editor)",
         "init" => "scaffold a starter site",
@@ -464,6 +465,10 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--format", true, "human | json"),
             ("--json", false, "shorthand for --format json"),
         ],
+        "features" => &[
+            ("--format", true, "human | json"),
+            ("--json", false, "shorthand for --format json"),
+        ],
         "read" => &[
             ("--run", false, "execute cells + report produced output"),
             ("--format", true, "human | json"),
@@ -568,6 +573,9 @@ fn positional_kind(sub: &str) -> Option<PathKind> {
         "preview" | "build" | "check" => Some(PathKind::FileOrDir),
         "render" | "read" | "blocks" | "symbols" | "run" => Some(PathKind::File),
         "map" | "publish" | "init" => Some(PathKind::Dir),
+        // `features` takes either: a directory is the adoption table, a single file is
+        // "what does this document use". Its shape follows the target, so both complete.
+        "features" => Some(PathKind::FileOrDir),
         _ => None,
     }
 }
@@ -925,6 +933,7 @@ mod brain_tests {
             ("symbols", &["--format", "--json"][..]),
             ("map", &["--format", "--json"][..]),
             ("skim", &["--format", "--json"][..]),
+            ("features", &["--format", "--json"][..]),
             ("completions", &["--install"][..]),
             ("init", &["--template", "--yes"][..]),
         ] {

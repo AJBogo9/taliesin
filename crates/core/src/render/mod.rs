@@ -83,6 +83,10 @@ use deck::deck_theme_head;
 pub(crate) mod extension;
 pub use extension::embed_targets;
 mod divs;
+// The two source scanners `crate::features` reuses rather than re-implementing either
+// outside the renderer. Re-exported one by one instead of opening the whole module, whose
+// `group_divs` takes the private `FlatBlock`.
+pub(crate) use divs::{scan_code_fences, scan_div_attrs};
 /// The print/PDF track's page assembler (backlog 159): a SIBLING of `page`, so a normal
 /// page's bytes never move. Public because `taliesin pdf` in the server crate drives it.
 pub mod print;
@@ -94,8 +98,12 @@ use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 // Re-exported for the editor vocabulary dump (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
 pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
-// Only the `vocab.rs` drift test reads this outside `render`; the validator uses it directly.
-#[cfg(test)]
+// `crate::features` reads a cell's option KEYS off the fence body, reusing the validator's
+// own scan so the report and the did-you-mean can never disagree about what an option is.
+pub(crate) use validate::cell_option_keys;
+// The validator uses this directly; outside `render` it is read by the `vocab.rs` drift
+// test and by `crate::features`, whose catalogue must be the IMPLEMENTED set rather than
+// `vocab::DIV_CLASS_NAMES` (the offered-completions subset, which is 12 classes shorter).
 pub(crate) use validate::DIV_FEATURE_CLASSES;
 
 mod emit;

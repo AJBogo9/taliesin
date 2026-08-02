@@ -39,6 +39,13 @@ pub(crate) use render::XREF_LABELS;
 pub use render::is_xref_anchor;
 pub use render::process;
 pub(crate) use render::xref_prefix_for_label;
+
+/// The cross-reference kind prefixes an author can write after `@`, for
+/// [`crate::features`]'s catalogue. Reads [`XREF_LABELS`], the same table that decides what
+/// a reference renders as, so the report cannot list a kind the renderer will not resolve.
+pub(crate) fn xref_prefixes() -> Vec<&'static str> {
+    XREF_LABELS.iter().map(|(p, _)| *p).collect()
+}
 pub use validate::{validate_xrefs, validate_xrefs_known_elsewhere};
 
 /// A parsed BibTeX database.

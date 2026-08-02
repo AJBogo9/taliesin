@@ -1323,6 +1323,267 @@ fn thousands(n: usize) -> String {
     out
 }
 
+/// Every long flag `features` accepts (drives the unknown-flag did-you-mean).
+const FEATURES_FLAGS: &[&str] = &["--format", "--json"];
+
+/// `taliesin features <file.tmd | dir> [--format human|json]`: which constructs a document
+/// uses, and which constructs no document uses.
+///
+/// **The shape follows the target, deliberately, instead of taking a flag.** A directory is
+/// an inventory, so it reports feature-first (the adoption table, zero rows included); a
+/// single file is the question "what does this document use", so it reports document-first.
+/// The JSON is the SAME shape either way (a single file is a one-document project), so a
+/// consumer never has to branch on which target it was given.
+///
+/// **Unlike `read`/`map`/`skim` this accepts a bare directory**, and the divergence is the
+/// point: those project a document for a reader and want a project's page order, this
+/// inventories a tree for an auditor. `corpus/` is the single most useful target and has no
+/// `_site.yml` at its root, so requiring one would fail on the exact question the command
+/// exists to answer. When the directory IS a project, page order and draft handling come
+/// from `Site::discover` so the report matches what a build would produce.
+///
+/// A report, never a gate: a successful scan exits 0 whatever it found. Parse-only, no
+/// kernel, no render.
+pub(crate) fn cmd_features(args: &[String]) -> ExitCode {
+    let mut path: Option<&str> = None;
+    let mut format = "human";
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--format" => {
+                if let Some(v) = it.next() {
+                    format = v;
+                }
+            }
+            "--json" => format = "json",
+            s if s.starts_with("--") => {
+                log::error(&crate::serve::unknown_flag_error(s, FEATURES_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s => {
+                if path.is_none() {
+                    path = Some(s);
+                }
+            }
+        }
+    }
+    let Some(path) = path else {
+        return crate::usage_error("features");
+    };
+    if format != "human" && format != "json" {
+        log::error(&crate::serve::bad_format_error(Some(format)));
+        return ExitCode::FAILURE;
+    }
+    let target = Path::new(path);
+    let docs = match collect_feature_docs(target) {
+        Ok(d) => d,
+        Err(msg) => {
+            log::error(&msg);
+            return ExitCode::FAILURE;
+        }
+    };
+    if docs.is_empty() {
+        log::error(&format!("no .tmd documents found under {path}"));
+        return ExitCode::FAILURE;
+    }
+    let single_file = target.is_file();
+    let adoption = taliesin_core::features::Adoption::build(&docs);
+    if format == "json" {
+        println!("{}", features_json(path, &adoption));
+    } else if single_file {
+        print!("{}", features_document_human(&docs[0].0, &docs[0].1));
+    } else {
+        print!("{}", features_table_human(path, &adoption));
+    }
+    ExitCode::SUCCESS
+}
+
+/// The documents `features` will report, as `(label, scan)`.
+///
+/// A project reports in `chapters:`/nav order with drafts handled as a build handles them;
+/// a bare directory walks in sorted path order. A single `.tmd` file is a one-document
+/// project. Labels are relative to the target so the output is stable wherever it is run.
+fn collect_feature_docs(
+    target: &Path,
+) -> Result<Vec<(String, taliesin_core::features::DocFeatures)>, String> {
+    let read = |p: &Path| -> Result<String, String> {
+        std::fs::read_to_string(p).map_err(|e| crate::check::cannot_read(p, &e))
+    };
+    if target.is_file() {
+        let label = target.to_string_lossy().to_string();
+        return Ok(vec![(label, taliesin_core::features::scan(&read(target)?))]);
+    }
+    if !target.is_dir() {
+        return Err(format!(
+            "features: no such file or directory: {}",
+            target.display()
+        ));
+    }
+    // A project: use the site's own page order + draft policy, so the report and a build
+    // agree on which documents exist. `DraftMode::Include` because a draft is still a
+    // document whose feature use is real; excluding it would hide adoption mid-write.
+    if target.join("_site.yml").is_file() {
+        let site = taliesin_core::Site::discover_with(target, taliesin_core::DraftMode::Include);
+        if !site.pages.is_empty() {
+            return Ok(site
+                .pages
+                .iter()
+                .filter_map(|p| {
+                    let src = std::fs::read_to_string(&p.input).ok()?;
+                    Some((p.rel.clone(), taliesin_core::features::scan(&src)))
+                })
+                .collect());
+        }
+    }
+    let mut paths = Vec::new();
+    walk_tmd(target, &mut paths);
+    paths.sort();
+    Ok(paths
+        .iter()
+        .filter_map(|p| {
+            let src = std::fs::read_to_string(p).ok()?;
+            let label = p
+                .strip_prefix(target)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string();
+            Some((label, taliesin_core::features::scan(&src)))
+        })
+        .collect())
+}
+
+/// Every `.tmd` under `dir`, skipping build output and version-control noise. Build outputs
+/// hold generated copies of the very documents being counted, so walking them would double
+/// every number in the report.
+fn walk_tmd(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    const SKIP: &[&str] = &["_site", "_freeze", "target", "node_modules", ".git"];
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().to_string();
+        if p.is_dir() {
+            if !name.starts_with('.') && !SKIP.contains(&name.as_str()) {
+                walk_tmd(&p, out);
+            }
+        } else if p.extension().and_then(|s| s.to_str()) == Some("tmd") {
+            out.push(p);
+        }
+    }
+}
+
+/// The adoption table: every group, every catalogued construct, most-used first.
+///
+/// **A construct used by three or fewer documents names them inline.** That tail is the
+/// half the report exists for (a feature with one user is the question corpus-plus-roadmap
+/// asks), and needing a second command to see which document it was would put the answer
+/// one step further away than the problem deserves. Above three, the count alone; `--json`
+/// always carries the full list.
+fn features_table_human(path: &str, a: &taliesin_core::features::Adoption) -> String {
+    let mut s = format!("{path}, {} document(s)\n", a.documents);
+    for g in &a.groups {
+        s.push_str(&format!(
+            "\n{:<30} {} known · {} used · {} unused\n",
+            g.name,
+            g.known(),
+            g.used(),
+            g.unused()
+        ));
+        let mut features: Vec<&taliesin_core::features::FeatureAdoption> =
+            g.features.iter().collect();
+        features.sort_by(|x, y| {
+            y.documents
+                .len()
+                .cmp(&x.documents.len())
+                .then_with(|| x.name.cmp(&y.name))
+        });
+        for f in features {
+            let n = f.documents.len();
+            let detail = match n {
+                0 => "  (no document)".to_string(),
+                1..=3 => format!("  {}", f.documents.join(", ")),
+                _ => String::new(),
+            };
+            s.push_str(&format!("  {:<28} {:>4}{detail}\n", f.name, n));
+        }
+    }
+    let (unused, known) = a.unused_totals();
+    s.push_str(&format!(
+        "\n{unused} of {known} features are used by no document\n"
+    ));
+    s
+}
+
+/// The single-file view: what this one document uses, group by group. Groups it does not
+/// touch are omitted, because the denominator is a property of the tool, not of one page.
+fn features_document_human(label: &str, f: &taliesin_core::features::DocFeatures) -> String {
+    let mut s = format!("{label}\n");
+    for g in taliesin_core::features::catalogue() {
+        let Some(used) = f.used.get(g.slug) else {
+            continue;
+        };
+        let names: Vec<&str> = used.iter().map(String::as_str).collect();
+        s.push_str(&format!("\n  {:<24} {}\n", g.name, names.join(", ")));
+    }
+    s.push_str(&format!("\n{} feature(s) used\n", f.count()));
+    s
+}
+
+#[derive(serde::Serialize)]
+struct FeaturesJson<'a> {
+    path: &'a str,
+    documents: usize,
+    groups: Vec<FeatureGroupJson<'a>>,
+}
+
+#[derive(serde::Serialize)]
+struct FeatureGroupJson<'a> {
+    name: &'a str,
+    slug: &'a str,
+    known: usize,
+    used: usize,
+    unused: usize,
+    features: Vec<FeatureJson<'a>>,
+}
+
+#[derive(serde::Serialize)]
+struct FeatureJson<'a> {
+    name: &'a str,
+    /// Always present, empty for an unused feature: a consumer must be able to tell "no
+    /// document uses this" from "this is not a feature", and an omitted key cannot.
+    documents: &'a [String],
+}
+
+/// The machine form. Feature-first, which a consumer can invert to document-first; there is
+/// deliberately no second flag for the inverse.
+fn features_json(path: &str, a: &taliesin_core::features::Adoption) -> String {
+    let out = FeaturesJson {
+        path,
+        documents: a.documents,
+        groups: a
+            .groups
+            .iter()
+            .map(|g| FeatureGroupJson {
+                name: g.name,
+                slug: g.slug,
+                known: g.known(),
+                used: g.used(),
+                unused: g.unused(),
+                features: g
+                    .features
+                    .iter()
+                    .map(|f| FeatureJson {
+                        name: &f.name,
+                        documents: &f.documents,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    };
+    serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_string())
+}
+
 /// Every long flag `symbols` accepts (drives the unknown-flag did-you-mean).
 const SYMBOLS_FLAGS: &[&str] = &["--format", "--json"];
 
