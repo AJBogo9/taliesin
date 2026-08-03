@@ -85,11 +85,6 @@ CANARY_PYODIDE="a_pyodide_cell_boots_and_publishes_to_a_js_consumer"
 # green and one assertion shorter, which no summary line reveals).
 CANARY_PYODIDE_DELIVERY="a_single_file_build_degrades_a_pyodide_cell_to_visible_source"
 CANARY_PYODIDE_SITE="site_build_copies_the_pyodide_runtime_and_stamps_a_page_relative_index"
-# A fifth browser-backed capability, independent of the other four: the figure lightbox.
-# The whole viewer is built in JS, so nothing about it reaches the served HTML — every
-# other test of a figure asserts what Rust EMITTED and would stay green with the viewer's
-# open/close handlers inverted.
-CANARY_LIGHTBOX="clicking_the_enlarged_image_closes_the_lightbox"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -303,8 +298,7 @@ else
             "chrome (print track):$CANARY_PRINT" \
             "chrome (pyodide):$CANARY_PYODIDE" \
             "pyodide feature (delivery):$CANARY_PYODIDE_DELIVERY" \
-            "pyodide feature (site build):$CANARY_PYODIDE_SITE" \
-            "chrome (lightbox):$CANARY_LIGHTBOX"; do
+            "pyodide feature (site build):$CANARY_PYODIDE_SITE"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

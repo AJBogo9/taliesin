@@ -257,6 +257,20 @@ fn the_guard_detects_a_reintroduction() {
     );
 }
 
+/// The figure lightbox was deleted 2026-08-03 (visual minimalism pass): browsers
+/// open images in a new tab and pinch-zoom natively, and the viewer cost a
+/// permanently-armed capture-phase click handler on every figure.
+#[test]
+fn the_lightbox_is_gone_from_the_client_bundle() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in ["taliInitLightbox", "tali-lightbox", "__taliLightbox"] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships in the client bundle; the lightbox was deleted"
+        );
+    }
+}
+
 /// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is
 /// retired. This asserts the old spelling stays gone.
 ///
@@ -266,9 +280,9 @@ fn the_guard_detects_a_reintroduction() {
 /// works.
 ///
 /// `altKey` is NOT hunted. It is a legitimate DOM property, and several "no modifier is
-/// held" guards (`deck.js`, `code-enhance/07-keyboard.js`, `code-enhance/11-lightbox.js`)
-/// must keep testing it. Only the *names* of the retired gesture are hunted, which is also
-/// why this comment cannot spell it.
+/// held" guards (`deck.js`, `code-enhance/07-keyboard.js`) must keep testing it. Only the
+/// *names* of the retired gesture are hunted, which is also why this comment cannot spell
+/// it.
 #[test]
 fn the_alt_click_gesture_stays_retired() {
     // Assembled at runtime for the same reason `retired()` is: a guard holding its own

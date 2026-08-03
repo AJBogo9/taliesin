@@ -2000,7 +2000,7 @@ fn mermaid_url_for(mode: OutputMode) -> String {
 }
 
 /// The client enhancers: the `window.taliEnhancers` registry + built-ins (copy
-/// buttons, lightbox, link-preview, category-filter) in code-enhance.js, then the
+/// buttons, link-preview, category-filter) in code-enhance.js, then the
 /// self-registering mermaid module (which lazy-loads the mermaid library on first
 /// use). Emitted after the registry so it is defined when mermaid registers.
 /// Syntax highlighting arrives already done from the server. Callers invoke
@@ -2010,7 +2010,7 @@ pub fn code_scripts() -> String {
 }
 
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
-/// (copy buttons / lightbox / link-preview + the whole reader menu + skip-link and
+/// (copy buttons / link-preview + the whole reader menu + skip-link and
 /// keyboard a11y) rides on every non-bare page, since every page benefits. The
 /// DOM-specific enhancers (mermaid, `{js}`, walkthrough, tabset, scrolly) ship
 /// unconditionally in [`OutputMode::Preview`] (a doc can gain any construct on an
@@ -2145,7 +2145,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/08-copy-buttons.js"),
     include_str!("../../assets/js/code-enhance/09-register.js"),
     include_str!("../../assets/js/code-enhance/10-category-filter.js"),
-    include_str!("../../assets/js/code-enhance/11-lightbox.js"),
     include_str!("../../assets/js/code-enhance/12-link-preview.js"),
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),

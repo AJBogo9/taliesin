@@ -1,9 +1,8 @@
-// Register the built-ins through the public API. Lightbox / link-preview set
-// themselves up once (document-level), so they ignore `root`.
+// Register the built-ins through the public API. Link-preview sets itself up
+// once (document-level), so it ignores `root`.
 var reg = window.taliEnhancers;
 if (reg) {
   reg.register(taliCopyButtons);
-  reg.register(function () { taliInitLightbox(); });
   reg.register(function () { taliInitLinkPreview(); });
   reg.register(function () { taliInitReaderMenu(); });
   reg.register(function () { taliInitReaderPrefs(); });

@@ -3738,38 +3738,23 @@ fn video_flags_are_never_mistaken_for_the_source_path() {
 }
 
 #[test]
-fn the_inline_clip_and_the_lightbox_copy_agree_about_controls() {
+fn eighteen_media_stands_down_for_a_controls_clip() {
     // Item 73's other half, and the half no rendered page can show: the bundled browser
-    // code. Both surfaces have to tell the same story.
-    //
-    //  - The lightbox is the "watch it properly" affordance, so its ENLARGED copy carries
-    //    `controls` — a reader who opened it must be able to pause and scrub. (It had none
-    //    either, so a reader lost nothing by opening it and gained nothing.)
-    //  - A clip that already has native controls INLINE must keep its own clicks: the
-    //    lightbox delegates on `.tali-video video` in the capture phase with
-    //    `stopPropagation`, so without `:not([controls])` every press of native play/pause
-    //    or the scrubber would open the viewer instead, and the dblclick guard would
-    //    swallow double-click-to-fullscreen. It needs no lightbox anyway (native
-    //    fullscreen enlarges it), which is why the zoom-in cursor is excluded too.
-    //  - `18-media.js` must not wire such a clip: a hover that starts a narrated explainer,
-    //    or a pointer-leave that pauses one mid-sentence, fights the reader.
+    // code. A clip that already has native controls is handed to the BROWSER's own player,
+    // so:
+    //  - `18-media.js` must not wire it: a hover that starts a narrated explainer, or a
+    //    pointer-leave that pauses one mid-sentence, fights the reader operating the
+    //    native control bar.
     //  - base.css must drop the decorative ▶ badge there, or it stacks a dead play glyph on
     //    top of the browser's real one (nothing toggles `data-playing` on an unwired clip).
+    //
+    // The figure lightbox used to be the other half of this story (its enlarged copy had
+    // to agree about `controls` too), but it was deleted 2026-08-03 (visual minimalism
+    // pass) along with the whole viewer.
     assert!(
-        CODE_ENHANCE_JS.contains("<video class=\"tali-lb-video\" controls muted loop playsinline>"),
-        "the lightbox's enlarged copy must ship native controls"
+        CODE_ENHANCE_JS.contains("!el.querySelector('video[controls]')"),
+        "18-media.js must stand down for a `controls` clip"
     );
-    for needle in [
-        ".tali-video video:not([controls]){cursor:zoom-in}",
-        "t.closest('.tali-video video:not([controls])')",
-        ".tali-video video:not([controls])')",
-        "!el.querySelector('video[controls]')",
-    ] {
-        assert!(
-            CODE_ENHANCE_JS.contains(needle),
-            "the browser code must stand down for a `controls` clip, missing: {needle}"
-        );
-    }
     assert!(
         BASE_CSS.contains(".tali-video:has(video[controls])::after { content: none; }"),
         "the decorative play badge must not stack on the browser's own control bar"

@@ -1,24 +1,22 @@
-//! A browser test of the reader-facing page chrome: the figure lightbox's dismissal
-//! contract (item 195) and reading-progress/resume (item 199).
+//! A browser test of the reader-facing page chrome: reading-progress/resume (item 199)
+//! and the mobile contents handle (item 198).
 //!
 //! **Why a browser test.** Both features are built entirely in JS off the live DOM, so
 //! *nothing* about either reaches the served HTML — the Rust suite can only prove the
-//! enhancer scripts are bundled, which it would keep proving with the lightbox's handlers
-//! inverted or the resume path throwing on its first scroll.
+//! enhancer scripts are bundled, which it would keep proving with the resume path
+//! throwing on its first scroll.
 //!
-//! The trap this file is written against is vacuity. A "clicking the image closes it"
-//! probe passes just as well when the click landed on the **backdrop** instead, because
-//! the backdrop closes too and always has; so every close reading here is paired with a
-//! hit-test (`elementFromPoint` at the exact coordinate the click is dispatched to) and
-//! with the two things that must NOT close — the gallery's next button, which was already
-//! excluded, and a control click that must. The same rule governs the reading-progress
-//! half: "the progress bar is gone" is asserted beside a *positive* reading that the
-//! resume position it shared a function with is still being recorded and offered, because
-//! deleting the whole enhancer would satisfy the absence on its own.
+//! The trap this file is written against is vacuity. "The progress bar is gone" is
+//! asserted beside a *positive* reading that the resume position it shared a function
+//! with is still being recorded and offered, because deleting the whole enhancer would
+//! satisfy the absence on its own.
 //!
 //! Gated exactly like `deck_browser.rs` / `reactive_browser.rs`: no system Chrome → skip,
 //! unless `TALIESIN_REQUIRE_CHROME=1` turns the skip into a hard failure. One browser run
 //! serves every test here (a `OnceLock`).
+//!
+//! The figure lightbox's dismissal contract (item 195) that used to live here was deleted
+//! 2026-08-03 (visual minimalism pass) along with the whole viewer.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -64,8 +62,8 @@ fn have_chrome() -> bool {
     }
     assert!(
         std::env::var_os("TALIESIN_REQUIRE_CHROME").is_none(),
-        "TALIESIN_REQUIRE_CHROME=1 but no system Chrome found: the lightbox's dismissal \
-         contract and the resume position would both go untested"
+        "TALIESIN_REQUIRE_CHROME=1 but no system Chrome found: the resume position and \
+         the mobile contents handle would both go untested"
     );
     eprintln!("skipping: no system Chrome (set CHROME_PATH or install google-chrome/chromium)");
     false
@@ -74,28 +72,6 @@ fn have_chrome() -> bool {
 // ---------------------------------------------------------------------------
 // what one run observed
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, serde::Deserialize)]
-struct Shot {
-    /// Whether `#tali-lightbox` carries `.open` at the moment of the reading.
-    open: bool,
-    /// `getComputedStyle(#tali-lightbox img).cursor` — the affordance half of the item.
-    cursor: String,
-    /// What `document.elementFromPoint` reports at the coordinate the next click will be
-    /// dispatched to, as `tag#id.class`. The anti-vacuity guard: a "the image closed it"
-    /// reading is worthless unless the pointer was actually over the image.
-    #[serde(rename = "hitAtTarget")]
-    hit_at_target: String,
-    /// Whether the multi-image gallery controls are showing (gallery.tmd has three
-    /// figures). The control on the next-button reading below: a hidden button cannot
-    /// prove it was excluded from the close handler.
-    #[serde(rename = "hasGallery")]
-    has_gallery: bool,
-    /// The `src` of the currently-shown image, truncated. Stepping the gallery must
-    /// change it, or "still open after next" would also pass with the button inert.
-    #[serde(rename = "imgKey")]
-    img_key: String,
-}
 
 /// What `corpus/reader/long-read.tmd` reports across one scroll-and-revisit cycle.
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -142,15 +118,6 @@ struct Handle {
 }
 
 struct Run {
-    /// Immediately after clicking a figure image on the page.
-    opened: Shot,
-    /// After clicking the gallery's next button (must stay open, on a new image).
-    after_next: Shot,
-    /// After a real mouse click at the centre of the enlarged image.
-    after_image_click: Shot,
-    /// After re-opening and clicking the backdrop near the top-left corner. The
-    /// known-positive: it proves the dispatched-click mechanism closes at all.
-    after_backdrop_click: Shot,
     /// Reading progress + resume, on a long document.
     progress: Progress,
     /// The mobile contents handle: at rest, after a press, and after a second press.
@@ -172,9 +139,9 @@ fn run() -> &'static Result<Run, String> {
     })
 }
 
-/// Build one corpus document into a standalone page. `media/gallery.tmd` is three figure
-/// images, which makes it both the lightbox and the gallery fixture; `reader/long-read.tmd`
-/// is the deliberately-long scrolling fixture.
+/// Build one corpus document into a standalone page. `reader/long-read.tmd` is the
+/// deliberately-long scrolling fixture used by both the progress/resume and mobile-handle
+/// probes.
 fn build(dir: &Path, rel: &str, name: &str) -> Result<PathBuf, String> {
     let src = format!("{}/../../corpus/{rel}", env!("CARGO_MANIFEST_DIR"));
     let out = dir.join(name);
@@ -243,39 +210,7 @@ async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
     let progress = read_progress(browser, dir).await?;
     let handle = read_toc_handle(browser, dir).await?;
 
-    let page_path = build(dir, "media/gallery.tmd", "gallery.html")?;
-    let page = open(browser, &page_path).await?;
-
-    open_lightbox(&page).await?;
-    let opened = shot(&page).await?;
-
-    // Step the gallery. The nav buttons sit ON the backdrop and are excluded from the
-    // close handler by a `stopPropagation`; widening the close branch must not take that
-    // away, or a reader stepping through a gallery closes it on the second click.
-    click(&page, ".tali-lb-next").await?;
-    tokio::time::sleep(Duration::from_millis(150)).await;
-    let after_next = shot(&page).await?;
-
-    // The item's subject: a real click at the centre of the enlarged image.
-    let (cx, cy) = image_centre(&page).await?;
-    mouse_click(&page, cx, cy).await?;
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    let after_image_click = shot(&page).await?;
-
-    // The known-positive: the same mechanism, aimed at the backdrop.
-    open_lightbox(&page).await?;
-    mouse_click(&page, 8.0, 8.0).await?;
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    let after_backdrop_click = shot(&page).await?;
-
-    Ok(Run {
-        opened,
-        after_next,
-        after_image_click,
-        after_backdrop_click,
-        progress,
-        handle,
-    })
+    Ok(Run { progress, handle })
 }
 
 /// The mobile contents handle at a phone viewport: at rest, after one press, after a second.
@@ -487,110 +422,12 @@ async fn read_progress(browser: &Browser, dir: &Path) -> Result<Progress, String
     })
 }
 
-/// Load the built page and wait until the figures and the enhancer are both there.
-async fn open(browser: &Browser, path: &Path) -> Result<Page, String> {
-    let url = format!("file://{}", path.display());
-    let page = browser
-        .new_page("about:blank")
-        .await
-        .map_err(|e| format!("new page: {e}"))?;
-    page.goto(&url)
-        .await
-        .map_err(|e| format!("navigate {url}: {e}"))?;
-    for _ in 0..200 {
-        let ready: bool = read(
-            &page,
-            "function () { var i = document.querySelector('figure img'); \
-             return !!(i && i.complete && i.naturalWidth > 0 && window.__taliLightbox); }",
-        )
-        .await?;
-        if ready {
-            return Ok(page);
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    Err(format!("figures never finished loading at {url}"))
-}
-
-/// Click the first figure image and wait for the viewer to open.
-async fn open_lightbox(page: &Page) -> Result<(), String> {
-    click(page, "figure img").await?;
-    for _ in 0..60 {
-        let open: bool = read(
-            page,
-            "function () { var b = document.getElementById('tali-lightbox'); \
-             return !!(b && b.classList.contains('open')); }",
-        )
-        .await?;
-        if open {
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    Err("clicking a figure image never opened the lightbox".to_string())
-}
-
-/// One reading of the viewer, including a hit-test at the enlarged image's centre.
-async fn shot(page: &Page) -> Result<Shot, String> {
-    read(
-        page,
-        "function () {
-           var b = document.getElementById('tali-lightbox');
-           var img = b && b.querySelector('img');
-           var r = img ? img.getBoundingClientRect() : null;
-           var hit = r && r.width > 0
-             ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-             : null;
-           var name = hit
-             ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') +
-               (hit.className && hit.className.baseVal === undefined && hit.className
-                 ? '.' + String(hit.className).trim().split(/\\s+/).join('.')
-                 : '')
-             : 'none';
-           var src = img ? img.getAttribute('src') || '' : '';
-           return {
-             open: !!(b && b.classList.contains('open')),
-             cursor: img ? getComputedStyle(img).cursor : 'none',
-             hitAtTarget: name,
-             hasGallery: !!(b && b.classList.contains('has-gallery')),
-             imgKey: src.slice(-24),
-           };
-         }",
-    )
-    .await
-}
-
-/// Viewport coordinates of the enlarged image's centre, read at dispatch time.
-async fn image_centre(page: &Page) -> Result<(f64, f64), String> {
-    let pt: Vec<f64> = read(
-        page,
-        "function () {
-           var r = document.querySelector('#tali-lightbox img').getBoundingClientRect();
-           return [r.left + r.width / 2, r.top + r.height / 2];
-         }",
-    )
-    .await?;
-    match pt.as_slice() {
-        [x, y] => Ok((*x, *y)),
-        _ => Err("could not measure the enlarged image".to_string()),
-    }
-}
-
 async fn read<T: serde::de::DeserializeOwned>(page: &Page, script: &str) -> Result<T, String> {
     let res = tokio::time::timeout(Duration::from_secs(15), page.evaluate_function(script))
         .await
         .map_err(|_| "reading page state timed out".to_string())?
         .map_err(|e| format!("evaluate: {e}"))?;
     res.into_value().map_err(|e| format!("decode state: {e}"))
-}
-
-async fn click(page: &Page, selector: &str) -> Result<(), String> {
-    let script = format!(
-        "function () {{ var e = document.querySelector({selector:?}); if (!e) return false; e.click(); return true; }}"
-    );
-    let hit: bool = read(page, &script).await?;
-    hit.then_some(())
-        .ok_or_else(|| format!("no element matched {selector}"))
 }
 
 /// A trusted press/release pair at a viewport coordinate, the way a mouse sends one.
@@ -624,80 +461,6 @@ fn observed() -> &'static Run {
 // ---------------------------------------------------------------------------
 // the assertions
 // ---------------------------------------------------------------------------
-
-/// The enlarged image is the one element the reader is looking at, so it must both
-/// advertise dismissal and perform it. Before item 195 it was `cursor: default` and was
-/// explicitly excluded from the close handler.
-#[test]
-fn clicking_the_enlarged_image_closes_the_lightbox() {
-    if !have_chrome() {
-        return;
-    }
-    let r = observed();
-    assert!(
-        r.opened.open,
-        "clicking a figure image must open the viewer: {:?}",
-        r.opened
-    );
-    // The hit-test is what makes the reading below mean anything: the click coordinate
-    // has to be over the image and not over the backdrop, which closes regardless.
-    assert!(
-        r.after_next.hit_at_target.starts_with("img"),
-        "the click target must be the enlarged image itself, not {:?}",
-        r.after_next.hit_at_target
-    );
-    assert!(
-        !r.after_image_click.open,
-        "a click on the enlarged image must close the viewer: {:?}",
-        r.after_image_click
-    );
-    assert!(
-        !r.after_backdrop_click.open,
-        "control: a backdrop click still closes it: {:?}",
-        r.after_backdrop_click
-    );
-}
-
-/// `cursor: zoom-out` is the whole affordance: without it the element that dismisses the
-/// viewer looks like the one element that does nothing.
-#[test]
-fn the_enlarged_image_advertises_zoom_out() {
-    if !have_chrome() {
-        return;
-    }
-    let r = observed();
-    assert_eq!(
-        r.opened.cursor, "zoom-out",
-        "the enlarged image must advertise dismissal: {:?}",
-        r.opened
-    );
-}
-
-/// Widening the close branch must not swallow the gallery. The prev/next buttons live ON
-/// the backdrop and stay open by a `stopPropagation`; a reader stepping through three
-/// figures would otherwise lose the viewer on the first step.
-#[test]
-fn stepping_the_gallery_does_not_close_the_lightbox() {
-    if !have_chrome() {
-        return;
-    }
-    let r = observed();
-    assert!(
-        r.opened.has_gallery,
-        "corpus/media/gallery.tmd is a three-figure gallery, so the controls must show: {:?}",
-        r.opened
-    );
-    assert!(
-        r.after_next.open,
-        "the next button must not close the viewer: {:?}",
-        r.after_next
-    );
-    assert_ne!(
-        r.after_next.img_key, r.opened.img_key,
-        "control: the next button must actually step the gallery, or 'still open' is \
-         satisfied by an inert button"
-    );
-}
 
 /// Item 198: the bottom-centre contents handle on a phone must read as a button and behave
 /// like one. It was a 42x5 px grip with `cursor: grab`, no chevron, no visible label, and

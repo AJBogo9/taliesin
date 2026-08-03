@@ -159,13 +159,14 @@ fn every_canary_the_gate_script_names_still_exists() {
 
     assert_eq!(
         canaries.len(),
-        10,
+        9,
         "expected one canary per interpreter gate (python, R, node, chrome), plus the \
-         reactive client's own browser render, the print track's, the `{{pyodide}}` \
-         runtime's and the figure lightbox's, plus the two that guard the `pyodide` CARGO \
+         reactive client's own browser render, the print track's and the `{{pyodide}}` \
+         runtime's, plus the two that guard the `pyodide` CARGO \
          FEATURE (item 205): one for the whole target gated by `required-features`, one for \
          a lone `#[cfg]`'d test in an ungated file, which fail differently. The math \
-         hover's browser render was the eleventh until Wave 4.1 cut the rasterizer, got \
+         hover's browser render was the eleventh until Wave 4.1 cut the rasterizer, and the \
+         figure lightbox's was the tenth until the visual minimalism pass deleted it, got \
          {canaries:?}"
     );
 
