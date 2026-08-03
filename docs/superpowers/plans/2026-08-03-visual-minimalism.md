@@ -1240,19 +1240,36 @@ Settings row, still conformant."
   during execution. Task 3's implementer found all four still describe the mobile
   pull-up Contents sheet as current behaviour. No test catches prose drift, so
   these are invisible to every gate; they must be fixed by hand here.
-- Delete: `corpus/reader/hovercards.tmd` (a dedicated pin for a deleted feature)
-- Modify: `crates/core/tests/corpus.rs` if it names `hovercards.tmd`
+- **Rename (NOT delete): `corpus/reader/hovercards.tmd` → `corpus/reader/xref-targets.tmd`.**
+  Amended during execution. The plan originally said delete. Task 4's implementer found
+  that `crates/server/tests/map_cli.rs` pins this file's *structure* in 5+ places —
+  including a literal `vec!["hovercards.tmd"]` assertion — for an unrelated `taliesin map`
+  test that needs its specific anchor shapes (both anchor forms, plus a `fig-flow` cell
+  label). Task 4 already rewrote the prose so it no longer demonstrates hover cards
+  (title is now "Cross-reference targets"), but left the filename. A corpus doc named for
+  a deleted feature is exactly the stale artifact this pass exists to remove, so rename it
+  and update every reference in `map_cli.rs` (including the literal assertion value).
+  Do NOT delete it — that would break a test pinning surviving behaviour.
+- Modify: `crates/core/tests/corpus.rs` and `corpus/README.md` if either names `hovercards.tmd`
 
 **Interfaces:** Consumes every prior task. This is the documentation reconciliation.
 
-- [ ] **Step 1: Delete the corpus pin for the deleted feature**
+- [ ] **Step 1: Rename the stale corpus fixture**
 
 ```bash
-rm corpus/reader/hovercards.tmd
-rmdir corpus/reader 2>/dev/null || true
-grep -rn "hovercards" crates/core/tests/ corpus/README.md
+git mv corpus/reader/hovercards.tmd corpus/reader/xref-targets.tmd
+grep -rn "hovercards" crates/ corpus/ docs/ tools/
 ```
-Remove every reference the grep finds.
+Update every reference the grep finds. `crates/server/tests/map_cli.rs` is the important
+one: it names the path in 5+ places **and asserts a literal `vec!["hovercards.tmd"]`**,
+which must become `vec!["xref-targets.tmd"]`. Do not delete this fixture — `map_cli.rs`
+pins its anchor structure for a `taliesin map` test covering surviving behaviour.
+
+Then verify the pin still holds:
+```bash
+cargo test -p taliesin-server --test map_cli
+```
+Expected: PASS. A failure here means a reference was missed, not that the rename was wrong.
 
 - [ ] **Step 2: Trim `reading.tmd` and extend its removal register**
 
@@ -1284,8 +1301,9 @@ git commit -m "docs: reconcile the manual with the visual minimalism pass
 
 reading.tmd loses four sections and gains a record of what was removed and
 why, matching how the page already treats the sepia theme, focus mode,
-fullscreen and the progress bar. Deletes corpus/reader/hovercards.tmd, the
-pin for a deleted feature."
+fullscreen and the progress bar. Renames corpus/reader/hovercards.tmd to
+xref-targets.tmd — its prose no longer demonstrates hover cards, but
+map_cli.rs still pins its anchor structure."
 ```
 
 ### Task 17: Full-gate and three-viewport visual verification
