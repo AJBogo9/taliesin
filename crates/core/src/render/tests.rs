@@ -2600,17 +2600,6 @@ fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
     );
 }
 
-#[test]
-fn assembled_page_ships_anchor_links() {
-    let page = render_html_page("# Title\n\n## A section\n\nProse.\n", "doc");
-    // The anchor-copy-link enhancer reveals a `#` on each heading/float and copies its
-    // canonical deep link; taliInitAnchorLinks is its unique discriminator token.
-    assert!(
-        page.contains("taliInitAnchorLinks"),
-        "anchor copy-link enhancer not shipped in the assembled page"
-    );
-}
-
 /// Focus/reading mode **and page-level fullscreen are removed** (owner ruling 2026-07-28), and
 /// this pins that they stay removed. Focus mode hid `.tali-site-nav` / `.tali-site-footer` /
 /// `#TOC` and re-centred the column, but measured against a built book chapter it changed
@@ -6642,44 +6631,29 @@ fn search_kbd_badge_is_hidden_on_touch_at_any_width() {
 
 #[test]
 fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
-    // MOB-4: both controls sat at `opacity: 0`, revealed only by `:hover`/`:focus-visible`,
-    // with no `hover: none` fallback — so on a phone they were invisible (and copy-code is
-    // arguably MORE valuable there, with no easy selection across a scrolling `<pre>`).
+    // MOB-4: the control sat at `opacity: 0`, revealed only by `:hover`/`:focus-visible`, with
+    // no `hover: none` fallback — so on a phone it was invisible (and copy-code is arguably
+    // MORE valuable there, with no easy selection across a scrolling `<pre>`).
     let block =
         media_block(BASE_CSS, "(hover: none)").expect("base.css has no input-capability query");
     assert!(
         block.contains(".tali-copy"),
         "copy-code is still hover-only, so it is invisible on touch:\n{block}"
     );
-    assert!(
-        block.contains(".tali-anchor"),
-        "the heading anchor is still hover-only:\n{block}"
-    );
-    // Author ruling 2026-07-26: SHOW the anchor on touch, dimmed — not `display: none`, and
-    // not full strength (a `#` after every heading at full ink is noise on a phone).
-    assert!(
-        !block.contains(".tali-anchor { display: none"),
-        "the ruling was show-dimmed, not drop:\n{block}"
-    );
     // Presence is NOT enough, and this half of the test exists because presence passed while
-    // the fix did nothing. Both overrides and both `opacity: 0` declarations sit at (0,1,0),
-    // so the cascade is decided purely by source order. The block first landed beside the
-    // anchor rules — above `.tali-copy`'s own declaration — and browser measurement showed
-    // the anchor at 0.45 and copy still at 0. Assert the block comes LAST.
+    // the fix did nothing. Both the override and `.tali-copy`'s own `opacity: 0` declaration
+    // sit at (0,1,0), so the cascade is decided purely by source order. Assert the block
+    // comes LAST.
     let zero_copy = BASE_CSS
         .find(".tali-copy { position: absolute")
         .expect("no .tali-copy base declaration");
-    let zero_anchor = BASE_CSS
-        .find(".tali-anchor { position: relative")
-        .expect("no .tali-anchor base declaration");
     let gate = BASE_CSS
         .find("@media (hover: none) {")
         .expect("no capability block");
     assert!(
-        gate > zero_copy && gate > zero_anchor,
+        gate > zero_copy,
         "the capability block is above an `opacity: 0` of equal specificity, so the cascade \
-         silently discards it (gate at {gate}, .tali-copy at {zero_copy}, .tali-anchor at \
-         {zero_anchor})"
+         silently discards it (gate at {gate}, .tali-copy at {zero_copy})"
     );
 }
 
@@ -6722,9 +6696,9 @@ fn deck_copy_button_is_reachable_on_touch() {
         block.contains(".tali-deck .tali-copy { opacity: 1;"),
         "the reveal is not inside the capability block that precedes it:\n{block}"
     );
-    // The tap target grows by overlay (`.tali-anchor::after`'s idiom), because a 44px chip
-    // would blanket a short code block. 24px is the AA floor for an in-content affordance;
-    // the button itself measured 20.5x19.1, which fails it.
+    // The tap target grows by a centred overlay, because a 44px chip would blanket a short
+    // code block. 24px is the AA floor for an in-content affordance; the button itself
+    // measured 20.5x19.1, which fails it.
     assert!(
         block.contains(".tali-deck .tali-copy::after"),
         "no tap-target overlay: the visible chip measured 20.5x19.1, under the 24px AA \

@@ -420,3 +420,17 @@ fn hover_preview_cards_are_gone() {
         );
     }
 }
+
+/// Heading/figure `#` anchor links were deleted 2026-08-03. The TOC already
+/// emits deep links, and the fragment's own justification cited a "selection
+/// toolbar's text-fragment Share" that does not exist anywhere in the tree.
+#[test]
+fn heading_anchor_links_are_gone() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in ["taliInitAnchorLinks", "tali-anchor", "__taliAnchorLive"] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; anchor links were deleted"
+        );
+    }
+}

@@ -226,14 +226,9 @@
     return out;
   }
 
-  // A heading's own words, without the hover `#` permalink the anchor-links enhancer
-  // appends: reading `textContent` straight off the element put a trailing "#" in every
-  // single-doc palette row (the same strip `toc-spy.js` does for its mobile chip).
   /** @param {Element} h */
   function headingText(h) {
-    var clone = /** @type {HTMLElement} */ (h.cloneNode(true));
-    clone.querySelectorAll(".tali-anchor").forEach(function (a) { a.remove(); });
-    return (clone.textContent || "").trim();
+    return (h.textContent || "").trim();
   }
 
   /** @param {Element} h @param {Element | undefined} next */

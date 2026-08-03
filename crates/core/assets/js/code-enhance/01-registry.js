@@ -57,37 +57,6 @@ function taliCopyText(text, onOk, onFail) {
   else if (onFail) { onFail(); }
 }
 
-// Build the canonical absolute deep link to the in-page anchor `id`: this page's URL with
-// any existing #id / :~:text= dropped, then this id. Pure.
-/** @param {string} id */
-function taliAnchorUrl(id) {
-  var u = new URL(location.href);
-  u.hash = '';
-  return u.href + '#' + encodeURIComponent(id);
-}
-
-// Read a caption's visible text without the interactive chrome that taliInitAnchorLinks splices
-// in: the `#` permalink (a `.tali-anchor`, transiently `✓` mid-copy) lives inside the figcaption,
-// so a verbatim `.textContent` reads "Figure 1: No pooling.#". Clone-strip-read keeps the
-// read-only original intact. Returns '' for a missing node.
-// Clone a node, stripping interactive chrome that has no place in a read-only clone:
-// the heading/caption `#` permalink (taliInitAnchorLinks) and code copy buttons. Used by
-// `taliCleanCaptionText` below. Returns the clone.
-/** @param {Node} node @returns {Node} */
-function taliCloneStripped(node) {
-  var c = node.cloneNode(true);
-  if (c instanceof Element) {
-    c.querySelectorAll('.tali-anchor, .tali-copy').forEach(function (x) { x.remove(); });
-  }
-  return c;
-}
-/** @param {Node | null} [node] */
-function taliCleanCaptionText(node) {
-  if (!node) return '';
-  if (!node.cloneNode) return (node.textContent || '').trim();
-  return (taliCloneStripped(node).textContent || '').trim();
-}
-
 // Reader preference: are the single-key shortcuts (`f`, `?`, `/`) live? WCAG 2.1.4 (Character
 // Key Shortcuts) requires a way to turn character-key shortcuts off; this is that mechanism, and
 // it is why `f` can keep entering fullscreen directly. Default ON, so a reader who never opens

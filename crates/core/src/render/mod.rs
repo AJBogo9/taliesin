@@ -2133,7 +2133,6 @@ pub fn has_js_cells(body: &str) -> bool {
 // list stays complete + in load order (no separators — the fragments tile exactly).
 const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/01-registry.js"),
-    include_str!("../../assets/js/code-enhance/02-anchor-links.js"),
     include_str!("../../assets/js/code-enhance/04-focus-trap.js"),
     include_str!("../../assets/js/code-enhance/06-skip-link.js"),
     include_str!("../../assets/js/code-enhance/07-keyboard.js"),

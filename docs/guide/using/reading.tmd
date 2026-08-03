@@ -1,6 +1,6 @@
 ---
 title: "The reader experience"
-description: "What a built page gives its reader: theme, reading progress and resume, hover cross-reference cards, anchor links and keyboard access."
+description: "What a built page gives its reader: theme, reading progress and resume, hover cross-reference cards and keyboard access."
 ---
 
 A Taliesin page is not just rendered HTML, it is a reading surface. Every built
@@ -111,13 +111,6 @@ citation, or a footnote, pops a card showing the *target block itself* (the figu
 the equation, or the bibliography entry). You read
 the target without losing your place. The cards render the already-rendered content,
 so there is no re-execution, and table-of-contents links are excluded.
-
-## Anchor copy-links
-
-Hovering a heading or a numbered float (figure, table, listing) reveals a small
-`#`. Click it to copy the canonical deep link to that anchor. The `#` flashes to a
-check on success and announces "Link copied" for screen readers. It works in
-insecure contexts (a `--host` LAN preview, `file://`) through a clipboard fallback.
 
 ## No focus mode, and no fullscreen
 

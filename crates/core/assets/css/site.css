@@ -270,8 +270,8 @@
        to 19.2% of a landscape phone's viewport — trading an AA-passing target for permanent
        reading height on the device with the least of it, which is MOB-8's defect wearing a
        different hat. The overlay is centred and 44px tall, so it reaches into the row's
-       existing .6rem padding and the bar does not move. Same idiom base.css already uses on
-       `.tali-anchor::after`; `::before` because `::after` is taken (bold-width reservation).
+       existing .6rem padding and the bar does not move. `::before` because `::after` is
+       taken (bold-width reservation).
        Adjacent links can only overlap vertically here, and vertically they are alone. */
     .tali-nav-link { position: relative; }
     .tali-nav-link::before { content: ""; position: absolute; left: 0; right: 0;

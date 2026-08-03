@@ -79,7 +79,6 @@ h2:not(.tali-lof h2) {
 .tali-rmenu-toggle,
 .tali-rmenu-panel,
 .tali-repro,
-.tali-anchor,
 .skip-link {
   display: none !important;
 }

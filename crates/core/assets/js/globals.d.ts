@@ -63,8 +63,6 @@ interface Window {
   __taliMermaidLoading?: boolean;
 
   // --- install-once guards (each feature fragment sets its own) --------------
-  /** anchor-links (02) shared aria-live region element (announces "Link copied"). */
-  __taliAnchorLive?: HTMLElement;
   /** Keyboard entry point for the lightbox (11): open the viewer for a decorated
    *  image / mermaid element. Set once taliInitLightbox has run. */
   __taliLightboxOpen?: (el: Element) => void;

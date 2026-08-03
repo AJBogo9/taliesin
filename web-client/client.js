@@ -164,11 +164,10 @@
         if ((d.file || null) !== file) return false;
         return d.line >= from && (to === null || d.line < to);
       });
-      // `.tali-anchor` is the `#` copy-link the code-enhance pass injects into every
-      // heading at runtime. It is not part of the title, and it showed up glued to the end
-      // of every row.
+      // Strip screen-reader-only chrome before reading the title text, so it does not
+      // leak into the label.
       const label = /** @type {HTMLElement} */ (h.cloneNode(true));
-      label.querySelectorAll(".tali-anchor, .tali-sr-only").forEach((n) => n.remove());
+      label.querySelectorAll(".tali-sr-only").forEach((n) => n.remove());
       return {
         el: h,
         level,
