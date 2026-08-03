@@ -496,12 +496,6 @@ pub(crate) const STATUS_CSS: &str = "\
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
     .tali-cellerr:hover { border-color: #e5534b; } \
     @media (max-width: 60rem) { body.tali-toc-sheet #tali-controls.tali-dev { bottom: 2.4rem; } } \
-    /* The dev menu owns the bottom-left corner in preview; lift the reader \"Resume reading\" pill \
-       above it so the two never overlap (base.css anchors the pill at bottom:1rem, ~1rem below the \
-       dev button). Preview-only: a static build ships neither this rule nor the dev menu, so the \
-       pill stays at its natural bottom:1rem there. */ \
-    .tali-resume { bottom: 2.9rem; } \
-    @media (max-width: 60rem) { body.tali-toc-sheet .tali-resume { bottom: 4.7rem; } } \
     #tali-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
       display: flex; align-items: center; gap: 6px; \
       font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \

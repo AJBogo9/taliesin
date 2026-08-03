@@ -999,11 +999,23 @@ mod tests {
     }
 
     #[test]
-    fn js_preserves_non_ascii_on_real_shipping_asset() {
-        // Directly proves Finding 1 on a real asset that ships to readers: the reading-progress
-        // enhancer's string literals carry `·`, `→`, and `×`, which must survive minification
+    fn js_preserves_non_ascii_bytes_through_minification() {
+        // Directly proves Finding 1: `·`, `→`, and `×` must survive minification
         // byte-for-byte (the old `byte as char` path mojibake'd them into Latin-1 junk).
-        let src = include_str!("../../core/assets/js/code-enhance/15-reading-progress.js");
+        //
+        // These three runs are lifted verbatim from the reading-progress enhancer's resume
+        // pill, which shipped this exact non-ASCII text to readers until the feature was
+        // deleted 2026-08-03 (visual minimalism pass). Kept inline as a fixture now that the
+        // source file is gone: this test's job is the minifier's byte-preservation, not the
+        // reading-progress feature, so a synthetic snippet with the same bytes serves it
+        // just as well.
+        let src = "function initResume(pct) {\n  \
+                   var go = document.createElement('button');\n  \
+                   go.textContent = 'Resume reading · ' + pct + '% →';\n  \
+                   var x = document.createElement('button');\n  \
+                   x.textContent = '×';\n  \
+                   return go;\n\
+                   }\n";
         let out = minify_js(src);
         for run in ["Resume reading · ", "% →", "'×'"] {
             assert!(

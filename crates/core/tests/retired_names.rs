@@ -271,6 +271,26 @@ fn the_lightbox_is_gone_from_the_client_bundle() {
     }
 }
 
+/// Reading-position resume, the "Continue reading" pill, and the TOC read
+/// checkmarks were deleted 2026-08-03. This finishes the deletion begun on
+/// 2026-08-02, when the ambient top progress bar went for duplicating the
+/// native scrollbar: browsers restore scroll on reload and back-navigation.
+#[test]
+fn the_reading_position_features_are_gone() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in ["taliInitReadingProgress", "__taliProgress", "tali-resume"] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; reading-position tracking was deleted"
+        );
+    }
+    let css = taliesin_core::render::base_css();
+    assert!(
+        !css.contains("tali-resume"),
+        "the resume pill's CSS survives in base.css"
+    );
+}
+
 /// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is
 /// retired. This asserts the old spelling stays gone.
 ///

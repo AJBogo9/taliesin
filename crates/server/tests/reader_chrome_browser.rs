@@ -1,22 +1,18 @@
-//! A browser test of the reader-facing page chrome: reading-progress/resume (item 199)
-//! and the mobile contents handle (item 198).
+//! A browser test of the reader-facing page chrome: the mobile contents handle (item 198).
 //!
-//! **Why a browser test.** Both features are built entirely in JS off the live DOM, so
-//! *nothing* about either reaches the served HTML — the Rust suite can only prove the
-//! enhancer scripts are bundled, which it would keep proving with the resume path
-//! throwing on its first scroll.
-//!
-//! The trap this file is written against is vacuity. "The progress bar is gone" is
-//! asserted beside a *positive* reading that the resume position it shared a function
-//! with is still being recorded and offered, because deleting the whole enhancer would
-//! satisfy the absence on its own.
+//! **Why a browser test.** The handle is built entirely in JS off the live DOM, so
+//! *nothing* about it reaches the served HTML — the Rust suite can only prove the
+//! enhancer script is bundled, which it would keep proving with the handle's press
+//! behaviour broken.
 //!
 //! Gated exactly like `deck_browser.rs` / `reactive_browser.rs`: no system Chrome → skip,
 //! unless `TALIESIN_REQUIRE_CHROME=1` turns the skip into a hard failure. One browser run
 //! serves every test here (a `OnceLock`).
 //!
 //! The figure lightbox's dismissal contract (item 195) that used to live here was deleted
-//! 2026-08-03 (visual minimalism pass) along with the whole viewer.
+//! 2026-08-03 (visual minimalism pass) along with the whole viewer. Reading-position
+//! resume/progress (item 199) that used to live here was deleted the same day along with
+//! the enhancer that produced it.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -73,28 +69,6 @@ fn have_chrome() -> bool {
 // what one run observed
 // ---------------------------------------------------------------------------
 
-/// What `corpus/reader/long-read.tmd` reports across one scroll-and-revisit cycle.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct Progress {
-    /// Whether a `.tali-readbar` exists anywhere in the document. Item 199 deletes it.
-    #[serde(rename = "barPresent")]
-    bar_present: bool,
-    /// How far down the page the probe actually got. The control on everything below: a
-    /// document too short to scroll reports every reading as "nothing happened".
-    #[serde(rename = "scrolledFrac")]
-    scrolled_frac: f64,
-    /// The raw `tali-pos:<path>` record, `"<frac>|<block-id>"`. Written by `saveSoon`,
-    /// which calls the same `frac()` the deleted bar used — so a null here is exactly the
-    /// failure mode the deletion could cause and a string check could not see.
-    stored: Option<String>,
-    /// The resume pill's button text on a FRESH visit to the same page.
-    #[serde(rename = "resumeText")]
-    resume_text: Option<String>,
-    /// Uncaught page errors seen across the whole cycle. `onScroll` runs on every scroll
-    /// event, so a `ReferenceError` there is silent to every other reading in this file.
-    errors: Vec<String>,
-}
-
 /// One reading of the mobile contents handle.
 #[derive(Debug, Clone, serde::Deserialize)]
 struct Handle {
@@ -118,8 +92,6 @@ struct Handle {
 }
 
 struct Run {
-    /// Reading progress + resume, on a long document.
-    progress: Progress,
     /// The mobile contents handle: at rest, after a press, and after a second press.
     handle: Vec<Handle>,
 }
@@ -140,8 +112,7 @@ fn run() -> &'static Result<Run, String> {
 }
 
 /// Build one corpus document into a standalone page. `reader/long-read.tmd` is the
-/// deliberately-long scrolling fixture used by both the progress/resume and mobile-handle
-/// probes.
+/// deliberately-long scrolling fixture the mobile-handle probe runs against.
 fn build(dir: &Path, rel: &str, name: &str) -> Result<PathBuf, String> {
     let src = format!("{}/../../corpus/{rel}", env!("CARGO_MANIFEST_DIR"));
     let out = dir.join(name);
@@ -207,10 +178,9 @@ async fn drive(dir: &Path) -> Result<Run, String> {
 }
 
 async fn observe(browser: &Browser, dir: &Path) -> Result<Run, String> {
-    let progress = read_progress(browser, dir).await?;
     let handle = read_toc_handle(browser, dir).await?;
 
-    Ok(Run { progress, handle })
+    Ok(Run { handle })
 }
 
 /// The mobile contents handle at a phone viewport: at rest, after one press, after a second.
@@ -305,123 +275,6 @@ async fn handle_shot(page: &Page) -> Result<Handle, String> {
     .await
 }
 
-/// Scroll a long page halfway, let the position record settle, then arrive at the same
-/// page in a **fresh tab** (which has no scroll-restoration history, so the resume pill's
-/// "are we already roughly there" guard cannot suppress it).
-async fn read_progress(browser: &Browser, dir: &Path) -> Result<Progress, String> {
-    let path = build(dir, "reader/long-read.tmd", "long-read.html")?;
-    let url = format!("file://{}", path.display());
-
-    let first = browser
-        .new_page("about:blank")
-        .await
-        .map_err(|e| format!("new page: {e}"))?;
-    // Collect uncaught errors from the moment the enhancers run. `onScroll` fires
-    // constantly and swallows nothing, so this is where a broken deletion would show.
-    first
-        .evaluate_on_new_document(
-            "window.__taliErrors = []; \
-             window.addEventListener('error', function (e) { window.__taliErrors.push(String(e.message)); }); \
-             window.addEventListener('unhandledrejection', function (e) { window.__taliErrors.push(String(e.reason)); });",
-        )
-        .await
-        .map_err(|e| format!("install error hook: {e}"))?;
-    first
-        .goto(&url)
-        .await
-        .map_err(|e| format!("navigate {url}: {e}"))?;
-    for _ in 0..200 {
-        let ready: bool = read(
-            &first,
-            "function () { return !!(window.__taliProgress && document.querySelector('[data-block-id]')); }",
-        )
-        .await?;
-        if ready {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    let bar_present: bool = read(
-        &first,
-        "function () { return !!document.querySelector('.tali-readbar'); }",
-    )
-    .await?;
-
-    // Halfway down. `scroll-behavior` is forced to `auto` first: the stylesheet sets
-    // `smooth`, under which `scrollTo` only STARTS an animation, so reading the offset back
-    // on the next line measures the top of the page and every assertion below reads as a
-    // regression. Then a settle, then a wait that outlasts `saveSoon`'s 500 ms debounce.
-    read::<bool>(
-        &first,
-        "function () {
-           var h = document.documentElement;
-           h.style.scrollBehavior = 'auto';
-           var max = (h.scrollHeight || document.body.scrollHeight) - window.innerHeight;
-           window.scrollTo(0, Math.round(max * 0.5));
-           return max > 0;
-         }",
-    )
-    .await?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    let scrolled_frac: f64 = read(
-        &first,
-        "function () {
-           var h = document.documentElement;
-           var max = (h.scrollHeight || document.body.scrollHeight) - window.innerHeight;
-           var y = window.pageYOffset != null ? window.pageYOffset : h.scrollTop;
-           return max > 0 ? y / max : 0;
-         }",
-    )
-    .await?;
-    tokio::time::sleep(Duration::from_millis(900)).await;
-
-    // Every probe below returns a STRING, never `null`: a CDP result whose `value` is
-    // absent decodes as "No value found" rather than as `None`, which reads like a browser
-    // failure when it only means "the element is not there yet".
-    let stored: String = read(
-        &first,
-        "function () { try { return localStorage.getItem('tali-pos:' + location.pathname) || ''; } \
-         catch (e) { return ''; } }",
-    )
-    .await?;
-    let errors: Vec<String> =
-        read(&first, "function () { return window.__taliErrors || []; }").await?;
-
-    // A fresh tab, same URL: this is "close the tab partway through and come back", which
-    // is the sentence `corpus/reader/long-read.tmd` makes to the reader.
-    let second = browser
-        .new_page("about:blank")
-        .await
-        .map_err(|e| format!("new page: {e}"))?;
-    second
-        .goto(&url)
-        .await
-        .map_err(|e| format!("navigate {url}: {e}"))?;
-    let mut resume_text = None;
-    for _ in 0..80 {
-        let text: String = read(
-            &second,
-            "function () { var b = document.querySelector('.tali-resume-go'); \
-             return b ? b.textContent || '' : ''; }",
-        )
-        .await?;
-        if !text.is_empty() {
-            resume_text = Some(text);
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    Ok(Progress {
-        bar_present,
-        scrolled_frac,
-        stored: (!stored.is_empty()).then_some(stored),
-        resume_text,
-        errors,
-    })
-}
-
 async fn read<T: serde::de::DeserializeOwned>(page: &Page, script: &str) -> Result<T, String> {
     let res = tokio::time::timeout(Duration::from_secs(15), page.evaluate_function(script))
         .await
@@ -507,52 +360,4 @@ fn the_mobile_contents_handle_reads_and_behaves_as_a_toggle() {
         "a second press must close it again: {closed:?}"
     );
     assert_eq!(closed.expanded, "false");
-}
-
-/// Item 199: the top reading-progress bar is gone (it duplicates the native scrollbar),
-/// **and** the two unrelated features that shared `taliInitReadingProgress` with it — the
-/// block-anchored resume position and its pill — still work. Asserting the absence alone
-/// would be satisfied by deleting the whole enhancer, which is precisely what must not
-/// happen: `frac()` still feeds the position record.
-#[test]
-fn the_reading_bar_is_gone_but_the_resume_position_is_not() {
-    if !have_chrome() {
-        return;
-    }
-    let p = &observed().progress;
-    assert!(
-        p.scrolled_frac > 0.3,
-        "control: corpus/reader/long-read.tmd must be long enough to scroll, got {:?}",
-        p
-    );
-    assert!(
-        !p.bar_present,
-        "the top reading-progress bar was deleted (item 199): {p:?}"
-    );
-    let stored = p
-        .stored
-        .as_deref()
-        .unwrap_or_else(|| panic!("scrolling must still record a resume position: {p:?}"));
-    let (frac, block) = stored
-        .split_once('|')
-        .unwrap_or_else(|| panic!("a position record is `<frac>|<block-id>`, got {stored:?}"));
-    assert!(
-        frac.parse::<f64>().is_ok_and(|f| f > 0.04),
-        "the recorded fraction comes from the same frac() the bar used: {stored:?}"
-    );
-    assert!(
-        !block.is_empty(),
-        "the record must name the block to return to: {stored:?}"
-    );
-    assert!(
-        p.resume_text
-            .as_deref()
-            .is_some_and(|t| t.contains("Resume reading")),
-        "arriving again must still offer the way back: {p:?}"
-    );
-    assert!(
-        p.errors.is_empty(),
-        "the enhancer must not throw on scroll: {:?}",
-        p.errors
-    );
 }

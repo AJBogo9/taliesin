@@ -2148,7 +2148,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/12-link-preview.js"),
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
-    include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
     include_str!("../../assets/js/code-enhance/18-media.js"),
     include_str!("../../assets/js/code-enhance/19-book-outline.js"),
@@ -2198,6 +2197,12 @@ pub fn shared_site_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
 /// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
 pub fn katex_css() -> &'static str {
     KATEX_CSS
+}
+
+/// The base framework stylesheet (layout + reader chrome), for tests that need to
+/// assert a retired feature's CSS is gone without reaching into a full page render.
+pub fn base_css() -> &'static str {
+    BASE_CSS
 }
 
 /// The raw framework CSS a deck inlines in its main `<style>` (fonts + tokens + the deck

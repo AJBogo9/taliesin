@@ -52,21 +52,6 @@
   .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
   @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
-  /* Block-id-anchored resume (taliInitReadingProgress). The top reading-progress bar that
-     used to live here was deleted 2026-08-02: it duplicates the native scrollbar. */
-  .tali-resume { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
-    display: flex; align-items: stretch; background: var(--tali-bg);
-    border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius-md); overflow: hidden;
-    box-shadow: var(--tali-shadow-md); font: var(--tali-font-head); }
-  .tali-resume-go { border: 0; background: transparent; color: var(--tali-link); cursor: pointer;
-    font: inherit; font-size: .82rem; padding: .5rem .8rem; }
-  .tali-resume-go:hover { background: var(--tali-code-bg); }
-  .tali-resume-x { border: 0; border-left: 1px solid var(--tali-border-strong); background: transparent;
-    color: var(--tali-muted); cursor: pointer; font: inherit; font-size: 1rem; line-height: 1;
-    padding: 0 .6rem; }
-  .tali-resume-x:hover { color: var(--tali-fg); }
-  @media print { .tali-resume { display: none !important; } }
-
   /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
      CSS Custom Highlight API; search.js). Registered as an animatable colour so it can
      fade to transparent; the keyframes are per-theme because @keyframes can't read a var

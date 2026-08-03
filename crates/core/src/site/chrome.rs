@@ -359,18 +359,10 @@ impl Site {
         );
         // The `tali-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
         // inside the drawer panel rather than a left rail.
-        //
-        // `data-tali-book` is the book's **identity** for reader-local state (the
-        // book-scoped Continue pill). It is the landing page's href, relative here and
-        // resolved to an absolute path by the client, so every page of one book agrees
-        // and two books never collide. Deliberately NOT the title or `archive_name`: a
-        // rename would silently orphan every reader's position, and a book need not have
-        // a title at all (it can brand on `logo:` alone, or carry no brand), so neither
-        // has a stable value to key on.
-        s.push_str(&format!(
+        s.push_str(
             "<nav class=\"tali-book-sidebar\" data-tali-src=\"_site.yml\" \
-             data-tali-book=\"{up}index.html\" aria-label=\"Chapters\">"
-        ));
+             aria-label=\"Chapters\">",
+        );
         s.push_str("<div class=\"tali-book-sidebar-head\">");
         s.push_str(&self.book_brand_html(book.title.as_ref(), &up));
         s.push_str(

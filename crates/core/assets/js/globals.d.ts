@@ -80,5 +80,4 @@ interface Window {
   __taliKeyboard?: boolean;
   __taliSkipLink?: boolean;
   __taliReaderPrefs?: boolean;
-  __taliProgress?: boolean;
 }

@@ -6,7 +6,6 @@ if (reg) {
   reg.register(function () { taliInitLinkPreview(); });
   reg.register(function () { taliInitReaderMenu(); });
   reg.register(function () { taliInitReaderPrefs(); });
-  reg.register(function () { taliInitReadingProgress(); });
   reg.register(taliInitAnchorLinks);
   reg.register(function () { taliInitSkipLink(); });
   reg.register(function () { taliInitKeyboard(); });
