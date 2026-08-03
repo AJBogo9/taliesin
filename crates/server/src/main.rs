@@ -194,10 +194,33 @@ fn unknown_command_message(other: &str) -> String {
     if let Some((_, note)) = RETIRED_COMMANDS.iter().find(|(name, _)| *name == other) {
         return format!("`{other}` was removed: {note}");
     }
-    match taliesin_core::closest(other, COMMANDS) {
+    match taliesin_core::closest(other, COMMANDS).or_else(|| extended_command(other)) {
         Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
         None => format!("unknown command: `{other}`"),
     }
+}
+
+/// The command a typed name extends or abbreviates, for the cases edit distance cannot see.
+/// `taliesin preview-site .` is **five** edits from `preview`, so the distance-2 rule that
+/// catches `preveiw` answered the likelier mistake — a plausible longer spelling, the shape
+/// every other tool's `<verb>-<noun>` habit teaches — with silence.
+///
+/// Consulted only after [`taliesin_core::closest`] has declined, so no suggestion that
+/// already worked changes. Candidates are [`COMMANDS`], so a retired verb is never the
+/// answer here either (`serve-site` must not resolve to the `serve` that was cut).
+///
+/// Ambiguity yields nothing rather than a coin flip: `c` opens both `check` and
+/// `completions`, and picking one would teach a rule that is not real.
+fn extended_command(other: &str) -> Option<&'static str> {
+    if other.len() < 2 {
+        return None;
+    }
+    let mut hits = COMMANDS
+        .iter()
+        .copied()
+        .filter(|c| other.starts_with(c) || c.starts_with(other));
+    let first = hits.next()?;
+    hits.next().is_none().then_some(first)
 }
 
 /// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
@@ -768,6 +791,46 @@ mod dispatch_tests {
         }
         // And an ordinary typo still gets its did-you-mean.
         assert!(unknown_command_message("biuld").contains("did you mean `build`?"));
+    }
+
+    /// A name that EXTENDS or ABBREVIATES a command gets its did-you-mean. Measured:
+    /// `taliesin preview-site .` is **five** edits from `preview`, so the distance-2 rule
+    /// answered the likelier of the two mistakes with silence while `preveiw` (two edits)
+    /// was answered fine. A prefix relation is the stronger signal here, not the weaker one.
+    #[test]
+    fn a_name_that_extends_or_abbreviates_a_command_suggests_it() {
+        for (typed, want) in [
+            ("preview-site", "preview"),
+            ("build-site", "build"),
+            ("publish-site", "publish"),
+            ("prev", "preview"),
+            ("com", "completions"),
+        ] {
+            // The premise, measured rather than assumed: edit distance cannot see any of
+            // these. (`pre` and `co` are NOT in this list — both are two edits from `pdf`
+            // and `mcp` respectively, so `closest` answers them first and this rule never
+            // runs. That is deliberate: it only fills silence, it never overrides.)
+            assert_eq!(
+                taliesin_core::closest(typed, COMMANDS),
+                None,
+                "`{typed}` is supposed to be out of distance-2 reach"
+            );
+            let msg = unknown_command_message(typed);
+            assert!(
+                msg.contains(&format!("did you mean `{want}`?")),
+                "`{typed}` should suggest `{want}`: {msg}"
+            );
+        }
+        // One letter is not a signal, even though `read` and `run` both open with it.
+        assert_eq!(extended_command("r"), None);
+        // A name related to nothing still gets no suggestion.
+        assert!(!unknown_command_message("frobnicate").contains("did you mean"));
+        // A retired verb keeps its replacement note; this rule never overrides it.
+        assert!(unknown_command_message("dev").contains("preview"));
+        assert!(!unknown_command_message("dev").contains("did you mean"));
+        // A retired name is never itself the suggestion: candidates are COMMANDS, which
+        // excludes the cut verbs, so `serve-site` resolves to nothing rather than `serve`.
+        assert_eq!(extended_command("serve-site"), None);
     }
 }
 
