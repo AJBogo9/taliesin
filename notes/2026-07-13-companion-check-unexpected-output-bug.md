@@ -16,7 +16,7 @@ check produced unexpected output: {
       "kernel_pkg": "ipykernel",
       "kernel_pkg_ok": true,
       "lang": "python",
-      "path": "/home/bogo/Documents/school/…
+      "path": "/home/…/…
 ```
 
 (The blob is the CLI's JSON, truncated at 200 chars by the parser.)

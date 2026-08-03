@@ -14,7 +14,6 @@
       "Bash(tali render *)",
       "Bash(tali blocks *)",
       "Bash(tali serve *)",
-      "Bash(python3 scripts/corpus_diff.py *)",
       "mcp__chrome-devtools__navigate_page",
       "mcp__chrome-devtools__new_page",
       "mcp__chrome-devtools__select_page",

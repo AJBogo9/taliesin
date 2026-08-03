@@ -51,6 +51,13 @@ Thumbs.db
 .idea/
 *.swp
 
+# Per-machine agent settings. These carry absolute local paths and a personal
+# permission allowlist, so they must never be committed. Until 2026-08-03 only the
+# AUTHOR'S MACHINE-GLOBAL ignore (~/.config/git/ignore) covered this, which is
+# invisible in a clone: `corpus/tech-blog/.claude/settings.local.json` was one
+# `git add -f` — or one fresh clone on another machine — away from being published.
+**/.claude/settings.local.json
+
 # subagent-driven-development scratch
 .superpowers/
 
