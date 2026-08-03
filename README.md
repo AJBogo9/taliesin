@@ -25,9 +25,10 @@ and block model).
 Three things a stranger should know, each measured rather than asserted. The long version,
 with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosing.tmd).
 
-- **Your source stays yours.** Across the 125 documents / 11,427 lines of the project's own
-  corpus, **7.3% of lines carry any construct beyond plain CommonMark** — and all six of
-  those families are existing Pandoc/Quarto vocabulary, not invented here. Your writing is
+- **Your source stays yours.** Across the 133 documents / 11,534 lines of the project's own
+  corpus, **7.1% of lines carry any construct beyond plain CommonMark** — and all six of
+  those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
+  yourself with `python3 tools/portability-census.py`. Your writing is
   Markdown in your repository; built pages are static HTML that needs no runtime, and
   `taliesin read --format json` projects a document to structured text.
 - **Speed, in absolutes and with no multiplier.** A 15-page book builds in **0.25 s**

@@ -13,21 +13,26 @@ set of adjectives.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands. Here is the measurement.
 
-Across the **125 `.tmd` documents** in Taliesin's own corpus — **11,427 lines** of real
-writing, the largest sample that exists — **839 lines, 7.3%, carry any construct beyond
-plain CommonMark.** The other 92.7% is Markdown, and any Markdown tool reads it.
+Across the **133 `.tmd` documents** in Taliesin's own corpus — **11,534 lines** of real
+writing, the largest sample that exists — **823 lines, 7.1%, carry any construct beyond
+plain CommonMark.** The other 92.9% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
 |---|---:|---:|
-| Fenced div (`::: {.callout-note}`) | 252 | 2.2% |
-| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 245 | 2.1% |
-| Executable fence (` ```{python} `) | 164 | 1.4% |
-| Cell option (`#\| label: fig-x`) | 139 | 1.2% |
-| Citation / cross-reference (`[@key]`, `@fig-x`) | 123 | 1.1% |
-| Shortcode (`{{< include … >}}`) | 41 | 0.4% |
+| Fenced div (`::: {.callout-note}`) | 238 | 2.1% |
+| Executable fence (` ```{python} `) | 161 | 1.4% |
+| Citation / cross-reference (`[@key]`, `@fig-x`) | 132 | 1.1% |
+| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 131 | 1.1% |
+| Cell option (`#\| label: fig-x`) | 114 | 1.0% |
+| Shortcode (`{{< include … >}}`) | 47 | 0.4% |
 
-*(Measured 2026-07-29 over `corpus/**/*.tmd`; a line using two constructs is counted once
-in the total and once per family, so the family rows sum to more than the total.)*
+*(Measured 2026-08-03 over `corpus/**/*.tmd`; a line using two constructs is counted once
+in the total and once per family, so the family rows sum to more than the total.
+**Reproduce it with `python3 tools/portability-census.py`**, which is where these numbers
+come from and which spells out each family's definition. The script is committed for a
+reason: this table was first published in July as "measured rather than asserted" while
+the script that measured it was not, and by August its document and line counts no longer
+reproduced.)*
 
 **None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
 predates Taliesin, which means the 7.3% is not stranded either — it is the same syntax
