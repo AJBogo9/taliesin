@@ -68,12 +68,11 @@ function taliAnchorUrl(id) {
 
 // Read a caption's visible text without the interactive chrome that taliInitAnchorLinks splices
 // in: the `#` permalink (a `.tali-anchor`, transiently `✓` mid-copy) lives inside the figcaption,
-// so a verbatim `.textContent` reads "Figure 1: No pooling.#". Clone-strip-read (the same trick
-// the link-preview card's cleanClone uses) keeps the read-only original intact. Returns '' for
-// a missing node.
+// so a verbatim `.textContent` reads "Figure 1: No pooling.#". Clone-strip-read keeps the
+// read-only original intact. Returns '' for a missing node.
 // Clone a node, stripping interactive chrome that has no place in a read-only clone:
-// the heading/caption `#` permalink (taliInitAnchorLinks) and code copy buttons. Shared by
-// the lightbox caption reader and the link-preview card builder. Returns the clone.
+// the heading/caption `#` permalink (taliInitAnchorLinks) and code copy buttons. Used by
+// `taliCleanCaptionText` below. Returns the clone.
 /** @param {Node} node @returns {Node} */
 function taliCloneStripped(node) {
   var c = node.cloneNode(true);

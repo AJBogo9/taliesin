@@ -68,24 +68,3 @@ fn em_chapter_embeds_the_lecture_deck() {
         "the EM chapter embeds the lecture deck as an iframe: {em}"
     );
 }
-
-#[test]
-fn defined_blocks_enter_the_hover_index_sections_do_not() {
-    let idx = course().hover_index_json;
-    assert!(
-        idx.contains("\"thm-elbo\":\""),
-        "ELBO theorem is hover-indexed: {idx}"
-    );
-    assert!(
-        idx.contains("\"def-expectation\":\""),
-        "definition is hover-indexed: {idx}"
-    );
-    assert!(
-        !idx.contains("\"sec-em\":\""),
-        "section headings are not hover-indexed: {idx}"
-    );
-    assert!(
-        !idx.contains("</script"),
-        "raw </script must be neutralized: {idx}"
-    );
-}

@@ -6,7 +6,7 @@
 //! Why this is wider than `parallel_build_determinism.rs`. That suite proves the
 //! `--jobs 1` vs `--jobs N` *scheduling* invariant, but it only compares `.html` files.
 //! The outputs most exposed to a future ordering regression are the *aggregate* assets a
-//! single page never contains: `search-index.js`, `hover-index.js`, the Atom feed
+//! single page never contains: `search-index.js`, the Atom feed
 //! (`index.xml`), `sitemap.xml`, and the `og/*.png` social cards. Each is assembled by
 //! walking a collection (pages, xref targets, categories, discovered files) — so an
 //! accidental switch from a sorted structure to an unsorted `HashMap`/`HashSet`, or a
@@ -24,10 +24,10 @@
 //! Kernel-free by construction (no code cells), so it is fast and never depends on
 //! interpreter-side reproducibility (that is item 15's separate AP8-1 concern).
 //!
-//! Mutation-checked (per the backlog's "gate the gate" rule): deleting the `entries.sort_by`
-//! in `Site::build_hover_index` (`crates/core/src/site/mod.rs`) — the exact "unsorted map
-//! into output" shape this guards — makes `hover-index.js` diverge between the two builds
-//! and fails `outputs_are_byte_reproducible_across_separate_processes`.
+//! Mutation-checked (per the backlog's "gate the gate" rule): this shape was verified by
+//! deleting the deterministic `entries.sort_by` that once fed the cross-page hover index
+//! (`Site::build_hover_index`, deleted 2026-08-03 with the hover-preview feature) and
+//! confirming `outputs_are_byte_reproducible_across_separate_processes` failed.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -46,11 +46,10 @@ fn tmp_dir(name: &str) -> PathBuf {
 /// aggregate output path at once:
 /// - a `listing:` index over `posts/` with `categories: true` → listing cards + category
 ///   chips + the Atom feed (`index.xml`);
-/// - two content pages defining eight `.theorem`/`.definition` xref targets → the cross-page
-///   hover-snippet index (`hover-index.js`), whose entries are sorted from a `HashMap`;
 /// - anchored headings + prose on every page → the full-text search index
 ///   (`search-index.js`);
-/// - cross-page `@thm-…`/`@def-…` references → the xref registry resolved into each page;
+/// - two content pages defining eight `.theorem`/`.definition` xref targets, cross-page
+///   `@thm-…`/`@def-…` references → the xref registry resolved into each page;
 /// - a site `url:` → `sitemap.xml`, JSON-LD, and the `og/*.png` social cards.
 fn write_repro_site(root: &Path) {
     fs::create_dir_all(root.join("posts")).unwrap();
@@ -73,9 +72,8 @@ fn write_repro_site(root: &Path) {
     )
     .unwrap();
 
-    // Two content pages, four hover-indexable xref targets each (theorems + definitions,
-    // which are NOT headings, so they enter `hover-index.js`). Eight total makes the
-    // deterministic sort in `build_hover_index` load-bearing.
+    // Two content pages, four xref targets each (theorems + definitions), referenced
+    // cross-page below so the xref registry resolves all eight into the linking page.
     fs::write(
         root.join("concepts.tmd"),
         "---\ntitle: Concepts\ndescription: \"Core definitions and theorems for reproducible builds.\"\n---\n\n\
@@ -266,25 +264,6 @@ fn the_repro_site_populates_every_guarded_aggregate() {
         search.contains("window.TALIESIN_SEARCH_INDEX=[") && search.contains("Concepts"),
         "search-index.js is not a populated index"
     );
-
-    // Cross-page hover snippets: all eight non-heading xref targets, from a sorted HashMap.
-    let hover = text("hover-index.js");
-    for anchor in [
-        "thm-alpha",
-        "def-beta",
-        "thm-gamma",
-        "def-delta",
-        "thm-epsilon",
-        "def-zeta",
-        "thm-eta",
-        "def-theta",
-    ] {
-        assert!(
-            hover.contains(&format!("\"{anchor}\"")),
-            "hover-index.js is missing target `{anchor}` — the sort it relies on would be \
-             untested; hover index was:\n{hover}"
-        );
-    }
 
     // Listing → Atom feed + category chips; site url → sitemap + at least one OG card.
     assert!(

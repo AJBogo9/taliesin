@@ -2154,15 +2154,6 @@ async fn build_project_tree(
             Err(e) => log::warn(&format!("cannot write search-index.js: {e}")),
         }
     }
-    // Cross-page hover-preview snippet index, lazy-loaded by 12-link-preview.js (pages
-    // point at it via window.TALIESIN_HOVER_URL). Same file:// rationale as search-index.js.
-    if !site.hover_index_json.is_empty() {
-        let js = format!("window.TALIESIN_HOVER_INDEX={};", site.hover_index_json);
-        if let Err(e) = std::fs::write(out.join("hover-index.js"), js) {
-            log::warn(&format!("cannot write hover-index.js: {e}"));
-        }
-    }
-
     // Self-contained `404.html` at the site root: most static hosts serve it for
     // any unknown path (root-absolute links inside, so it works at any depth). But
     // honor an author's own `404.tmd` — it already rendered to `out/404.html` in the
@@ -2378,9 +2369,6 @@ async fn build_project_tree(
     keep.insert(PathBuf::from("404.html"));
     if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
         keep.insert(PathBuf::from("search-index.js"));
-    }
-    if !site.hover_index_json.is_empty() {
-        keep.insert(PathBuf::from("hover-index.js"));
     }
     keep.extend(seo_written.iter().cloned());
     keep.extend(manifest_written.iter().cloned());

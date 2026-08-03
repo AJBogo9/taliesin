@@ -8,8 +8,8 @@ title: "Interactive theorems"
 A continuous map of a compact convex set into itself has a fixed point.
 :::
 
-Hover @thm-fix to preview its statement; hovering the box reveals a `#` that copies a
-deep link to it.
+@thm-fix is referenceable from anywhere in the document; hovering the theorem box
+reveals a `#` that copies a deep link to it.
 
 ::: {.proof collapse="true"}
 Apply Brouwer's theorem to the simplex and pass to the limit.

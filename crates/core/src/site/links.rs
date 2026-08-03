@@ -84,8 +84,8 @@ pub fn rewrite_tmd_links(html: &str) -> String {
 
 /// Whether a link value must be left untouched by the site rewriters: an in-page anchor
 /// (`#`), protocol-relative (`//`), absolute-scheme (`://`), or a non-http special scheme
-/// (`data:`/`mailto:`/`tel:`/`vscode:`). Shared by `rewrite_one_href` and `hover::rebase_url`
-/// so the two URL rewriters can't silently diverge when a new scheme is added.
+/// (`data:`/`mailto:`/`tel:`/`vscode:`). Shared by every URL rewriter in the site pipeline
+/// so they can't silently diverge when a new scheme is added.
 pub(super) fn is_external_or_special(val: &str) -> bool {
     val.starts_with('#')
         || val.starts_with("//")
@@ -113,7 +113,7 @@ pub(super) fn rewrite_one_href(val: &str) -> String {
 /// Whether `needle` appears within a block's *leading element tag*. Quote-aware tag end,
 /// so a raw-HTML placeholder whose leading tag has a `>` inside an attribute value (e.g.
 /// `<div title="a > b" id="x">`) is handled. Shared by `block_tag_has_id` (specific id) and
-/// `hover::leading_tag_has_id` (any ` id="`).
+/// a leading tag already carrying an ` id="` attribute.
 pub(super) fn leading_tag_contains(html: &str, needle: &str) -> bool {
     match crate::render::tag_end(html) {
         Some(gt) => html[..gt].contains(needle),
@@ -123,8 +123,8 @@ pub(super) fn leading_tag_contains(html: &str, needle: &str) -> bool {
 
 pub(super) fn block_tag_has_id(html: &str, id: &str) -> bool {
     // Leading space so a real `id="x"` attribute matches but the `id="x"` *suffix* of
-    // `data-block-id="x"` does not (attributes are space-separated); mirrors
-    // `hover::leading_tag_has_id`.
+    // `data-block-id="x"` does not (attributes are space-separated); mirrors the same
+    // leading-tag-only check for any ` id="` attribute.
     leading_tag_contains(html, &format!(" id=\"{id}\""))
 }
 
@@ -401,7 +401,7 @@ mod tests {
         // the author id. `data-block-id="…"` ends in `id="…"`, so a bare `id="X"` needle
         // substring-matched it — a block whose content-hash id happened to equal the listing
         // id would falsely bind. A real `id` attribute is always space-separated, so match on
-        // the word boundary (mirrors `hover::leading_tag_has_id`).
+        // the word boundary (mirrors the same leading-tag-only check for any ` id="` attribute).
         assert!(block_tag_has_id(
             r#"<div id="intro" class="x">c</div>"#,
             "intro"

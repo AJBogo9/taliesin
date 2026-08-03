@@ -659,7 +659,6 @@ async fn serve(
             get(pyodide_asset),
         )
         .route("/search-index.js", get(search_index_js))
-        .route("/hover-index.js", get(hover_index_js))
         .route("/ws", get(ws_handler))
         .route(crate::serve::RUN_PATH, axum::routing::post(run_handler))
         .route(
@@ -874,26 +873,6 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         .into_response()
 }
 
-/// The cross-page hover-preview snippet index as a `hover-index.js` script (assigns
-/// `window.TALIESIN_HOVER_INDEX`), lazy-loaded by `12-link-preview.js` on the first
-/// cross-page hover. Served as JS (not JSON) so a `<script>` load works under file://.
-async fn hover_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
-    let json = { app.root.site.lock().hover_index_json.clone() };
-    let json = if json.is_empty() {
-        "{}".to_string()
-    } else {
-        json
-    };
-    (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "text/javascript; charset=utf-8",
-        )],
-        format!("window.TALIESIN_HOVER_INDEX={json};"),
-    )
-        .into_response()
-}
-
 /// Resolve a request to a page (rendered live) or a static asset under the root.
 async fn page_or_asset(
     State(app): State<Arc<SiteApp>>,
@@ -927,9 +906,9 @@ async fn page_or_asset(
     if let Some(page) = page {
         return Html(ensure_and_render_page(&app, project, &page)).into_response();
     }
-    // 2) The project's route-served search + hover indexes (not written to disk in
-    //    preview). For a mount these arrive as `/<prefix>/search-index.js`; without this
-    //    Cmd-K search on a mounted page would 404.
+    // 2) The project's route-served search index (not written to disk in preview). For a
+    //    mount this arrives as `/<prefix>/search-index.js`; without this Cmd-K search on a
+    //    mounted page would 404.
     if lookup == "search-index.js" {
         let j = project.site.lock().search_index_json.clone();
         let j = if j.is_empty() { "[]".to_string() } else { j };
@@ -939,18 +918,6 @@ async fn page_or_asset(
                 "text/javascript; charset=utf-8",
             )],
             format!("window.TALIESIN_SEARCH_INDEX={j};"),
-        )
-            .into_response();
-    }
-    if lookup == "hover-index.js" {
-        let j = project.site.lock().hover_index_json.clone();
-        let j = if j.is_empty() { "{}".to_string() } else { j };
-        return (
-            [(
-                axum::http::header::CONTENT_TYPE,
-                "text/javascript; charset=utf-8",
-            )],
-            format!("window.TALIESIN_HOVER_INDEX={j};"),
         )
             .into_response();
     }

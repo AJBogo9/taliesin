@@ -1470,59 +1470,6 @@ fn demo_book_logo_brands_both_the_topbar_and_the_chapter_drawer() {
 }
 
 #[test]
-fn demo_book_hover_index_indexes_definitions_but_not_sections() {
-    use taliesin_core::Site;
-    let site = Site::discover(&corpus_dir().join("demo-book"));
-    let idx = &site.hover_index_json;
-    // The theorem defined on methods.tmd is in the index with its rendered label…
-    assert!(
-        idx.contains("\"thm-kl\":\""),
-        "hover index missing thm-kl: {idx}"
-    );
-    assert!(
-        idx.contains("Theorem"),
-        "theorem snippet should carry its rendered label: {idx}"
-    );
-    // …but section headings are deliberately NOT hover-previewed (only definitional
-    // blocks — figures, theorems, tables, equations, listings — are), so a section
-    // anchor never enters the index even when referenced across chapters.
-    assert!(
-        !idx.contains("\"sec-methods\":\""),
-        "section headings must not be hover-previewed: {idx}"
-    );
-    assert!(
-        !idx.contains("\"sec-setup\":\""),
-        "section headings must not be hover-previewed: {idx}"
-    );
-    // `</script>` can't break the <script> wrapper the index is served inside.
-    assert!(
-        !idx.contains("</script"),
-        "raw </script must be neutralized"
-    );
-}
-
-#[test]
-fn demo_book_pages_point_at_hover_index_without_inlining_it() {
-    use taliesin_core::Site;
-    let site = Site::discover(&corpus_dir().join("demo-book"));
-    // results.tmd has cross-page refs but no TOC — the hover pointer must still ship.
-    let results = site.render_page("results.tmd").expect("results renders");
-    assert!(
-        results.contains("window.TALIESIN_HOVER_URL="),
-        "every page needs the hover-index pointer: {results}"
-    );
-    assert!(
-        results.contains("window.TALIESIN_SITE_ROOT="),
-        "hover needs the site root to resolve rebased asset URLs"
-    );
-    // The (potentially large) index itself is lazy-loaded, never inlined into a page.
-    assert!(
-        !results.contains("window.TALIESIN_HOVER_INDEX="),
-        "the index must not be inlined into the page body"
-    );
-}
-
-#[test]
 fn book_chapter_scopes_theorem_numbers() {
     use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));

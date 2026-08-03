@@ -109,100 +109,7 @@ export async function probeLightbox(page) {
   });
 }
 
-// 4. Cross-page hover-preview + the load-bearing safety property: a Ctrl-click
-// INSIDE the preview card must NOT fire click-to-source (source attrs stripped).
-export async function probeHover(page) {
-  const F = 'hover-preview';
-  return safe(F, 'hovering an xref opens a populated preview card', async () => {
-    await page.waitForSelector('a.tali-xref', { timeout: 8000 });
-
-    // The first `a.tali-xref` on the page is NOT a valid probe target, and picking it is
-    // why this probe failed for months while the feature worked. On `results.html` it is
-    // `methods.html#sec-methods`, a SECTION reference — and a section anchor is
-    // deliberately absent from the hover index (a heading's title is already the link
-    // text, so a card would add noise). The probe hovered the one link guaranteed to open
-    // nothing. Same shape as the click-to-source probe clicking the title block.
-    //
-    // So: pick a link whose target the feature actually previews, and cover BOTH paths —
-    // a same-page `#anchor` (cloned from this DOM) and a cross-page `page.html#anchor`
-    // (parsed from the served hover index).
-    const hoverAndOpen = async (selectorFn, label) => {
-      const box = await page.evaluate(selectorFn);
-      if (!box) return { [label]: 'no eligible link on the page' };
-      // Scroll it under the pointer first: `mouse.move` to a rect outside the viewport
-      // hovers nothing, and a link below the fold has exactly that rect.
-      await page.evaluate((sel) => {
-        document.querySelector(sel)?.scrollIntoView({ block: 'center' });
-      }, box.sel);
-      const at = await page.evaluate((sel) => {
-        const r = document.querySelector(sel).getBoundingClientRect();
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-      }, box.sel);
-      await page.mouse.move(at.x, at.y);
-      await page.waitForSelector('#tali-link-preview.open', { timeout: 4000 });
-      const detail = await page.evaluate(() => {
-        const card = document.querySelector('#tali-link-preview');
-        return {
-          populated: (card?.childElementCount || 0) > 0,
-          strippedSourceAttrs: !card?.querySelector(
-            '[data-block-id], [data-sourcepos], [data-source-file]',
-          ),
-        };
-      });
-      // Dismiss before the next hover, so the second assertion cannot pass on the first
-      // card still being open.
-      await page.mouse.move(1, 1);
-      await page.waitForFunction(
-        () => !document.querySelector('#tali-link-preview.open'),
-        { timeout: 4000 },
-      );
-      return { [label]: detail };
-    };
-
-    // Same-page: an `#anchor` xref whose target is not a heading.
-    const same = await hoverAndOpen(() => {
-      const links = [...document.querySelectorAll('a.tali-xref')];
-      const hit = links.find((a) => {
-        const href = a.getAttribute('href') || '';
-        if (href.charAt(0) !== '#' || href.length < 2) return false;
-        const t = document.getElementById(decodeURIComponent(href.slice(1)));
-        return !!t && !/^H[1-6]$/.test(t.tagName);
-      });
-      return hit ? { sel: `a.tali-xref[href="${hit.getAttribute('href')}"]` } : null;
-    }, 'samePage');
-
-    // Cross-page: the hover index is lazy-loaded on the first cross-page hover, so warm it
-    // by hovering any cross-page xref, then pick one whose anchor the index actually has.
-    await page.evaluate(() => {
-      const a = [...document.querySelectorAll('a.tali-xref')].find((x) => {
-        const h = x.getAttribute('href') || '';
-        return h.charAt(0) !== '#' && h.includes('#');
-      });
-      a?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-    });
-    await page.waitForFunction(() => !!window.TALIESIN_HOVER_INDEX, { timeout: 4000 });
-    const cross = await hoverAndOpen(() => {
-      const index = window.TALIESIN_HOVER_INDEX || {};
-      const hit = [...document.querySelectorAll('a.tali-xref')].find((a) => {
-        const href = a.getAttribute('href') || '';
-        if (href.charAt(0) === '#' || !href.includes('#')) return false;
-        return !!index[decodeURIComponent(href.slice(href.indexOf('#') + 1))];
-      });
-      return hit ? { sel: `a.tali-xref[href="${hit.getAttribute('href')}"]` } : null;
-    }, 'crossPage');
-
-    // A floor: "no eligible link" must read as a failure, not as a quiet pass. Without it
-    // a page that lost its xrefs would report green.
-    const detail = { ...same, ...cross };
-    const opened = (v) => v && typeof v === 'object' && v.populated;
-    if (!opened(detail.samePage) || !opened(detail.crossPage)) {
-      return fail(F, 'hovering an xref opens a populated preview card', detail);
-    }
-    return ok(F, 'hovering an xref opens a populated preview card', detail);
-  });
-}
-
-// 5. TOC scrollspy. Scroll down and expect an active TOC entry.
+// 4. TOC scrollspy. Scroll down and expect an active TOC entry.
 export async function probeToc(page) {
   const F = 'toc-scrollspy';
   return safe(F, 'scrolling marks an active TOC entry', async () => {
@@ -240,7 +147,7 @@ export async function probeToc(page) {
   });
 }
 
-// 6. Click-to-source. Ctrl-hover should light the affordance; Ctrl-click should
+// 5. Click-to-source. Ctrl-hover should light the affordance; Ctrl-click should
 // emit a `click_block` websocket frame. `cdpFrames` is an array the caller fills
 // from a CDP Network.webSocketFrameSent listener.
 export async function probeClickToSource(page, cdpFrames) {
@@ -284,7 +191,7 @@ export async function probeClickToSource(page, cdpFrames) {
   });
 }
 
-// 7. Forward search: `tali-cursor` MARKS always and SCROLLS only on `reveal: true`.
+// 6. Forward search: `tali-cursor` MARKS always and SCROLLS only on `reveal: true`.
 //
 // This is the behaviour change with the least natural coverage and the highest chance
 // of silently regressing: if `reveal` gating is lost, the preview goes back to yanking

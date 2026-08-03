@@ -403,3 +403,20 @@ fn the_alt_click_gesture_stays_retired() {
         offenders.join("\n")
     );
 }
+
+/// Hover cross-reference cards were deleted 2026-08-03: they fired on passive
+/// mouse movement, uninvited, over every citation and cross-reference.
+#[test]
+fn hover_preview_cards_are_gone() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in [
+        "taliInitLinkPreview",
+        "__taliLinkPreview",
+        "TALIESIN_HOVER_INDEX",
+    ] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; hover cards were deleted"
+        );
+    }
+}

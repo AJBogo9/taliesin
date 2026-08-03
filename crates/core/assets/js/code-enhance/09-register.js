@@ -1,9 +1,7 @@
-// Register the built-ins through the public API. Link-preview sets itself up
-// once (document-level), so it ignores `root`.
+// Register the built-ins through the public API.
 var reg = window.taliEnhancers;
 if (reg) {
   reg.register(taliCopyButtons);
-  reg.register(function () { taliInitLinkPreview(); });
   reg.register(function () { taliInitReaderMenu(); });
   reg.register(function () { taliInitReaderPrefs(); });
   reg.register(taliInitAnchorLinks);

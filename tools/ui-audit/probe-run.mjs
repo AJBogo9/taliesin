@@ -4,7 +4,7 @@
 // .work/probe-results.json.
 //
 // A live preview (not a static build) is required: click-to-source depends on
-// the preview-only window.TALIESIN_DOC + websocket, and search/hover indices are
+// the preview-only window.TALIESIN_DOC + websocket, and the search index is
 // served live too.
 //
 // Usage: node probe-run.mjs [--bin <taliesin>] [--out <dir>] [--only <feature>]
@@ -19,7 +19,6 @@ import {
   probeDeck,
   probeSearch,
   probeLightbox,
-  probeHover,
   probeToc,
   probeClickToSource,
   probeCursorSync,
@@ -61,11 +60,6 @@ const GROUPS = [
     target: 'corpus/analyst',
     kind: 'site',
     tasks: [{ feature: 'toc-scrollspy', nav: '/methods.html', run: probeToc }],
-  },
-  {
-    target: 'corpus/demo-book',
-    kind: 'site',
-    tasks: [{ feature: 'hover-preview', nav: '/results.html', run: probeHover }],
   },
 ];
 

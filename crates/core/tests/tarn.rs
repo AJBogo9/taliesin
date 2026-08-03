@@ -120,29 +120,6 @@ fn cross_page_section_refs_number_by_chapter() {
     );
 }
 
-#[test]
-fn the_figure_is_hover_indexed_but_section_and_api_headings_are_not() {
-    let idx = tarn().hover_index_json;
-    // Definitional floats (the figure) enter the hover index; section/API-entry headings
-    // do not (they are navigation, not hover-preview targets) -- same contract as demo-book.
-    assert!(
-        idx.contains("\"fig-dataflow\":\""),
-        "the figure is hover-indexed: {idx}"
-    );
-    assert!(
-        !idx.contains("\"fn-filter\":\""),
-        "API-entry headings are not hover-indexed: {idx}"
-    );
-    assert!(
-        !idx.contains("\"sec-lazy\":\""),
-        "section headings are not hover-indexed: {idx}"
-    );
-    assert!(
-        !idx.contains("</script"),
-        "raw </script must be neutralized: {idx}"
-    );
-}
-
 // --- SKIM-1 pins (the 2026-07-24 skimmability audit) ---------------------------
 //
 // corpus/tarn was grown to 12 numbered chapters across 3 parts + a nested part so the

@@ -9,7 +9,7 @@ only one of them touches the browser:
    every page and screenshots it across 3 viewports and 2 themes, dumping
    console/network/DOM logs. Deterministic, no agents, no tokens.
 2. **Probe** (`probe-run.mjs`): drives a live `taliesin preview` to exercise the
-   interactive features (deck nav, search, lightbox, hover-preview, TOC
+   interactive features (deck nav, search, lightbox, TOC
    scrollspy, click-to-source) on representative pages. No tokens.
 3. **Analyze, dedup, verify, report** (`audit.workflow.js`): a Claude Code
    *Workflow* fans analysis across the captured artifacts, clusters findings by

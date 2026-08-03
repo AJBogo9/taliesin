@@ -62,12 +62,6 @@ interface Window {
   /** In-flight guard so the mermaid bundle is fetched/initialised once. */
   __taliMermaidLoading?: boolean;
 
-  // --- link preview / hover cards (code-enhance/12-link-preview.js) ----------
-  /** URL of the lazy-loaded cross-page hover-card index. */
-  TALIESIN_HOVER_URL?: string;
-  /** Inlined hover-card index: a rendered-HTML snippet string keyed by target anchor id. */
-  TALIESIN_HOVER_INDEX?: Record<string, string>;
-
   // --- install-once guards (each feature fragment sets its own) --------------
   /** anchor-links (02) shared aria-live region element (announces "Link copied"). */
   __taliAnchorLive?: HTMLElement;
@@ -76,7 +70,6 @@ interface Window {
   __taliLightboxOpen?: (el: Element) => void;
   /** lightbox (11) document-level machinery has been installed (install-once guard). */
   __taliLightbox?: boolean;
-  __taliLinkPreview?: boolean;
   __taliKeyboard?: boolean;
   __taliSkipLink?: boolean;
   __taliReaderPrefs?: boolean;
