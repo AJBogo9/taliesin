@@ -145,12 +145,6 @@ pub struct Site {
     /// Project-wide cross-reference targets (`sec-`/`fig-`/… anchor → page + number),
     /// so a `@sec-x` on one page resolves to its section on another (the book case).
     pub xref_targets: HashMap<String, XrefTarget>,
-    /// The reverse of `xref_targets`: each cross-referenced anchor → the pages that
-    /// reference it (deduped, in page order), each with the sentence it makes the
-    /// reference in. Built during discovery from the same all-pages render as
-    /// `harvest_xref_numbers`; drives the quiet "Referenced by" backlink line injected
-    /// next to each target. Empty when nothing cross-references anything.
-    pub backlinks: HashMap<String, Vec<Backref>>,
     /// Site-wide `format: html:` includes (header/body/css), resolved once at
     /// discovery relative to the site root and merged ahead of each page's own.
     pub includes: render::PageIncludes,
@@ -206,8 +200,6 @@ pub use card::{
     CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec,
     deck_card_spec, render_card, uncovered_glyphs,
 };
-mod backlinks;
-pub use backlinks::Backref;
 mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
 mod book_toc;
@@ -217,7 +209,6 @@ mod llms;
 mod manifest;
 mod meta;
 mod search;
-mod sentences;
 mod seo;
 mod xref;
 pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
@@ -535,7 +526,6 @@ impl Site {
             pages,
             book,
             xref_targets,
-            backlinks: HashMap::new(),
             includes,
             bibliography,
             warnings,
@@ -1108,9 +1098,6 @@ impl Site {
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks));
-        // Reverse side of cross-refs: a quiet "Referenced by" line after each target
-        // this page defines that other pages reference.
-        self.attach_backlinks(blocks, &page.url);
         self.expand_page(page, blocks, warnings);
         // The whole-book Contents list, on the book landing page only.
         self.attach_book_toc(page, blocks);
@@ -1273,13 +1260,11 @@ impl Site {
         let mut discarded = Vec::new();
         let scanned = scan_xref_targets(&self.pages, &self.book, &mut discarded);
         let prev_targets = std::mem::replace(&mut self.xref_targets, scanned);
-        let prev_backlinks = self.backlinks.clone();
         let harvested = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.harvest_xref_numbers();
         }));
         if harvested.is_err() {
             self.xref_targets = prev_targets;
-            self.backlinks = prev_backlinks;
         }
     }
 
@@ -1298,24 +1283,11 @@ impl Site {
     /// count as cells (the same reason `xref::brace_id` reuses `parse_attrs`).
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
-    ///
-    /// The same all-pages render also builds the reverse index [`Site::backlinks`]
-    /// (anchor → referring pages) from each page's `data-tali-xref` markers — cite emits
-    /// that marker only for a reference whose target is on another page, so a marker is
-    /// by construction a cross-page reference. Riding this existing render keeps it to
-    /// no extra traversal.
     pub fn harvest_xref_numbers(&mut self) {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
         // (anchor, number, defining page url) — the url is needed because an anchor the
         // source-scan cannot see is *inserted* here, not just enriched.
         let mut updates: Vec<(String, String, String)> = Vec::new();
-        // (page url, that page's marker-bearing blocks) in site page order, so each
-        // target's referrer list comes out in document order. The *blocks* are kept, not
-        // just their anchors, because the citing sentence has to be read out of the
-        // resolved HTML ("Theorem 2.1", not cite's bare "Theorem") and the registry is
-        // not final until the enrichment loop below has run. Retaining a handful of
-        // block strings per page is what buys that ordering without a second render pass.
-        let mut per_page: Vec<(String, Vec<String>)> = Vec::new();
         let defaults = self.render_defaults();
         for page in &self.pages {
             let Ok(src) = std::fs::read_to_string(&page.input) else {
@@ -1328,13 +1300,6 @@ impl Site {
                 self.chapter_for(page),
                 Some(&defaults),
             );
-            let referring: Vec<String> = doc
-                .blocks
-                .iter()
-                .filter(|b| b.html.contains("data-tali-xref=\""))
-                .map(|b| b.html.clone())
-                .collect();
-            per_page.push((page.url.clone(), referring));
             for (anchor, number) in doc.xref_numbers {
                 // These three conditions gate an INSERT, not just an enrich, so each has
                 // to hold on its own rather than lean on the entry already existing:
@@ -1416,29 +1381,6 @@ impl Site {
                 }
             }
         }
-        // Second pass, now that the registry is final: resolve each referring block the
-        // way its own page will render it, and read the citing sentence out of that. It
-        // reuses `resolve_blocks`' rewriter rather than a private copy, so a backlink
-        // quotes exactly the text its referring page shows.
-        let per_page: Vec<backlinks::PageRefs> = per_page
-            .into_iter()
-            .map(|(url, htmls)| {
-                let up = "../".repeat(url.matches('/').count());
-                let refs = htmls
-                    .iter()
-                    .flat_map(|html| {
-                        let resolved =
-                            xref::rewrite_cross_refs(html, &self.xref_targets, &url, &up);
-                        xref::xref_markers_in(html)
-                            .into_iter()
-                            .map(|a| (a.to_string(), backlinks::citing_sentence(&resolved, a)))
-                            .collect::<Vec<_>>()
-                    })
-                    .collect();
-                (url, refs)
-            })
-            .collect();
-        self.backlinks = backlinks::build_backlink_index(&per_page, &self.xref_targets);
     }
 
     /// This page's book chapter number, if it is a numbered chapter (None for a

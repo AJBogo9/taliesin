@@ -489,22 +489,6 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   .tali-search-btn, .tali-nav-settings, .tali-nav-burger, .tali-book-drawer-btn, .tali-book-download { border: 1px solid CanvasText; }
 }
 
-/* Cross-reference backlinks: the quiet "Referenced by" line injected after a target
-   (figure / section / theorem / …) that other pages cross-reference. Near-monochrome
-   scholarly apparatus, not chrome — small, muted, and tight to its target. */
-.tali-backrefs {
-  margin: .3rem 0 1.1rem; font: .8rem/1.5 var(--tali-font-head); color: var(--tali-muted); }
-.tali-backref {
-  color: var(--tali-muted); text-decoration: none; border-bottom: 1px solid var(--tali-border); }
-.tali-backref:hover { color: var(--tali-link); border-bottom-color: currentColor; }
-/* The citing sentence beside a referrer: the proximal cue a bare page title cannot
-   carry. Italic (not a second colour) so it reads as a quotation from that page
-   without competing with the link it annotates. */
-.tali-backref-cite { font-style: italic; }
-@media (forced-colors: active) {
-  .tali-backref { border-bottom: 1px solid LinkText; }
-}
-
 /* Draft indicators (preview only — a built page/listing never contains a draft).
    The badge marks a draft's listing card + book-drawer entry; the banner tops a draft
    page. Muted, not alarming: a draft is a normal state, just not published. */

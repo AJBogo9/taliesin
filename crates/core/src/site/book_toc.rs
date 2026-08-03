@@ -15,7 +15,7 @@
 //! enforces it is `Site::page_toc`.
 //!
 //! It is a generated content block (`tali-book-toc`, no sourcepos) appended in
-//! `finish_blocks`, exactly like `attach_backlinks`/`attach_cite_this` — NOT a chrome
+//! `finish_blocks`, exactly like `attach_cite_this` — NOT a chrome
 //! slot, so it cannot collide with the drawer's `[data-tali-drawer-close]` markup. The
 //! class prefix is deliberately `tali-btoc-*`, never the drawer's `.tali-book-chapter`.
 

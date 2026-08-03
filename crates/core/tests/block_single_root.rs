@@ -9,7 +9,6 @@
 //! with what `build` publishes, which is the one thing the block model exists to
 //! prevent.
 //!
-//! `crates/core/src/site/backlinks.rs` already asserts this for its own emitter.
 //! This is the corpus-wide version, plus the round-trip that proves an edit to a
 //! multi-root construct arrives at the client as one swappable element.
 

@@ -594,9 +594,9 @@ Everything else about `read --run` is unaffected either way.
 
 `map` is the whole-project outline in one read-only call: every page in nav / chapter
 order (its path, URL, title, date, categories, layout), the nav and any `mounts:`, the
-cross-reference graph (each anchor, where it is defined, and its backlinks), and any
-embedded decks. It reuses site discovery, so it never starts a kernel, and it is how
-an agent plans an edit across a site without opening each file:
+cross-reference graph (each anchor and where it is defined), and any embedded decks.
+It reuses site discovery, so it never starts a kernel, and it is how an agent plans
+an edit across a site without opening each file:
 
 ```sh
 taliesin map . --format json | jq '.pages[].url'

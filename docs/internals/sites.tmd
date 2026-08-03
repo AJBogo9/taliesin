@@ -238,9 +238,8 @@ reference can point at a label defined on a page that has not been rendered yet:
    cannot drift; the same reason `brace_id` parses with the renderer's own `parse_attrs`.
    The registry is looser than the scan in one way, so the harvest re-applies
    `is_ref_anchor`: a Markdown-table caption registers any id, and a `{#my-table}` that no
-   `@`-reference can reach must not be advertised as a target. This pass also builds the
-   reverse index (`backlinks`) from the same render, and runs once from `discover`, so
-   `build`, `preview`, and `check` all resolve identically.
+   `@`-reference can reach must not be advertised as a target. It runs once from
+   `discover`, so `build`, `preview`, and `check` all resolve identically.
 
 3. **Rewrite during page render.** When a page is rendered, `cite::process` has already
    turned each `@sec-` reference into a bare-label link that carries a `data-tali-xref`
@@ -309,24 +308,7 @@ and therefore absent from search, without search needing any special case for ei
 same mechanism, read through the other discovery mode. See @sec-draft-filtering.)
 :::
 
-## Reading-form text {#sec-sentences}
-
-`sentences.rs` turns rendered HTML back into the words a person reads: `plain` flattens a
-fragment to prose, and `sentence_at` finds the sentence containing an offset in it. Its one
-consumer is `backlinks.rs`, which quotes the sentence a citing page wrote around its
-reference.
-
-It is a carve-out. Until 2026-08-03 these two lived inside a whole-project "layer-cake
-projection" that fed a `taliesin skim` verb and `map`'s per-page `words` and
-`headings`. The verb had no invocations and those two fields had no consumers, so the
-projection was retired — but the sentence splitter was pointed at by backlinks
-*deliberately*, to avoid a second "strip the tags and find a sentence" pass, so it outlives
-what it was built for.
-
-**Why a sentence splitter is not a one-liner.** A period ends a sentence only when what
-follows looks like a new one: not a decimal point (`3.14`), not an ellipsis, not an initial
-(`A. Turing`), and not a known abbreviation (`e.g.`). Splitting at `e.g.` would invent a
-two-word quote the author never wrote, attributed to them, under a backlink.
+## Word counts
 
 Word counts come from `prose::word_count` rather than from the rendered text, so the book
 nav, the LSP outline's `detail` and the page's own reading-time figure cannot report

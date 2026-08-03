@@ -61,9 +61,9 @@ no browser.
 
 `taliesin map <dir>` is the whole-project outline in one call: every page in nav /
 chapter order with its front matter, the nav and any `mounts:`, and the
-cross-reference graph (each anchor, where it is defined, and its backlinks). It is
-how an agent plans an edit across a site without opening each file, and it renders
-nothing, so it stays cheap on a large project.
+cross-reference graph (each anchor and where it is defined). It is how an agent
+plans an edit across a site without opening each file, and it renders nothing, so
+it stays cheap on a large project.
 
 ## The MCP server
 

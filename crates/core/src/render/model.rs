@@ -94,9 +94,9 @@ pub struct Block {
     pub id: String,
     /// Sourcepos as `startLine:startCol-endLine:endCol`, relative to `source_file`.
     ///
-    /// **Empty is a value, not a gap — read this before writing a new producer.** Ten
+    /// **Empty is a value, not a gap — read this before writing a new producer.** Nine
     /// call sites construct a `Block` that no line of `.tmd` produced (the References
-    /// section, the footnotes section, a book's generated TOC, backlinks, "cite this"),
+    /// section, the footnotes section, a book's generated TOC, "cite this"),
     /// and every one of them writes `String::new()` on purpose. It means "my content is
     /// gathered from lines scattered all over the document, so no single range is
     /// honest" — which is a different claim from "I forgot to thread the position

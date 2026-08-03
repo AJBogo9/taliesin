@@ -17,8 +17,6 @@ Module map:
                   site root, laid **under** each page's own; plus the site-wide unused-entry +
                   duplicate-key lints (unused must be site-wide, or every shared entry a page
                   ignores would fire)
-- `sentences.rs` reading-form text + sentence splitting (`plain`, `sentence_at`), read by
-                  `backlinks.rs` to quote the sentence around a reference
 - `book.rs` `meta.rs` `search.rs` `xref.rs`
 
 Conventions:

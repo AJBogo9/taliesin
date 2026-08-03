@@ -509,8 +509,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              The whole-project outline in one read-only call: the page list in nav /\n\
              chapter order (rel, url, title, date, categories, layout), nav + mounts, the\n\
-             cross-reference graph (each anchor → where it's defined + its backlinks), and\n\
-             embedded decks. Reuses site discovery; no kernel, no code execution.\n\
+             cross-reference graph (each anchor → where it's defined), and embedded\n\
+             decks. Reuses site discovery; no kernel, no code execution.\n\
              \n\
              A single .tmd is a project of one page, so `map <file>` answers \"what can I\n\
              cross-reference in this document\" — every `{#sec-…}` anchor and `#| label:`\n\

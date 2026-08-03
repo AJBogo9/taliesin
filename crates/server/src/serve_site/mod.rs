@@ -2147,10 +2147,7 @@ fn rebuild_project(
     // because `structural` re-discovers (replacing the whole `Site`) and that is one of the
     // two ways it moves. Both ways have to be compared against the same "before", or the
     // rebuild selection below silently doesn't apply to one of them.
-    let xrefs_before = {
-        let site = project.site.lock();
-        (site.xref_targets.clone(), site.backlinks.clone())
-    };
+    let targets_before = project.site.lock().xref_targets.clone();
 
     // A `.tmd` was created/removed: re-discover, and if the page set actually changed
     // (new/renamed/deleted page, not just an editor's save-via-rename of an existing
@@ -2269,33 +2266,19 @@ fn rebuild_project(
     // (a `git checkout`, or any editor that unlinks before writing) served "Figure 1.2" from
     // `intro.html` while the open `methods.html` tab sat on "Figure 1.1".
     //
-    // Referrers are unioned across BEFORE and AFTER, because `build_backlink_index` drops a
-    // marker whose anchor is not a known target: DELETING `{#fig-structure}` unlists its
-    // referrer from the new index, so an after-only read would never rebuild the one page
-    // whose link just went dead. Only on a real move, and only over pages already OPEN, so
-    // this adds a tab's worth of renders, never a site's.
-    // The selection is any-cross-page-ref, not this-anchor: a page referencing ANYTHING
-    // cross-page is rebuilt when ANY target moves. Rebuilds are idempotent (cells replay
-    // from their cumulative hashes, and the diff yields no ops for unchanged blocks), and
-    // over open tabs the precision is not worth an anchor-diff.
-    let (targets_before, backlinks_before) = xrefs_before;
+    // There is no reverse index to consult for which open tabs cross-reference the moved
+    // target (the "Referenced by" backlinks it drove were deleted 2026-08-04), so this
+    // rebuilds every open tab on a real move rather than only the referencing ones. Only on
+    // a real move, and only over pages already OPEN, so this adds at most a site's worth of
+    // renders to a warm preview, never a cold one. Rebuilds are idempotent (cells replay
+    // from their cumulative hashes, and the diff yields no ops for unchanged blocks), so the
+    // lost precision costs redundant renders, not correctness.
     let moved = {
         let site = project.site.lock();
         let moved = site.xref_targets != targets_before;
         if moved {
-            let referring: HashSet<&str> = site
-                .backlinks
-                .values()
-                .chain(backlinks_before.values())
-                .flatten()
-                .map(|r| r.url.as_str())
-                .collect();
             for rel in &open {
-                if !to_rebuild.contains(rel)
-                    && site
-                        .page(rel)
-                        .is_some_and(|p| referring.contains(p.url.as_str()))
-                {
+                if !to_rebuild.contains(rel) {
                     to_rebuild.push(rel.clone());
                 }
             }

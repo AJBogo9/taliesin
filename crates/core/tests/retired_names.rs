@@ -12,6 +12,9 @@
 
 use std::path::{Path, PathBuf};
 
+mod common;
+use common::corpus_dir;
+
 /// The retired token, assembled at runtime so this file can hunt for it without
 /// containing it as a literal (which would make the guard flag itself).
 fn retired() -> String {
@@ -521,4 +524,52 @@ fn the_code_visibility_pre_paint_api_is_gone_and_theme_survives() {
             "`{needle}` must survive — the theme picker is untouched by this pass"
         );
     }
+}
+
+/// The "Referenced by" backlink line was deleted 2026-08-04: it injected a
+/// reverse-reference into a target block that a linear reader never asked for.
+/// `sentences.rs` went with it — `backlinks.rs` was its only consumer.
+#[test]
+fn referenced_by_backlinks_are_gone() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/site");
+    for gone in ["backlinks.rs", "sentences.rs"] {
+        assert!(
+            !dir.join(gone).exists(),
+            "site/{gone} should have been deleted"
+        );
+    }
+    let css = taliesin_core::render::site_css();
+    assert!(
+        !css.contains("tali-backref"),
+        "the backref line's CSS (`.tali-backrefs`/`.tali-backref`/`.tali-backref-cite`) \
+         survives in site.css"
+    );
+}
+
+/// The backlink line is the REVERSE of cross-references (a target -> its referrers);
+/// `xref.rs` is the FORWARD direction (a `@thm-kl` -> its target) and must survive this
+/// deletion untouched. Rendered on the real `demo-book` fixture, where `results.tmd`
+/// cross-references `methods.tmd`'s `@thm-kl`.
+#[test]
+fn forward_xrefs_survive_the_backlink_deletion() {
+    let site = taliesin_core::Site::discover(&corpus_dir().join("demo-book"));
+    let methods = site.render_page("methods.tmd").expect("methods renders");
+    let results = site.render_page("results.tmd").expect("results renders");
+    for (name, page) in [("methods.html", &methods), ("results.html", &results)] {
+        assert!(
+            !page.contains("Referenced by"),
+            "{name} still carries a backlink line: {page}"
+        );
+        assert!(
+            !page.contains("tali-backref"),
+            "{name} still carries a backref class"
+        );
+    }
+    // The forward cross-reference from results.tmd to methods.tmd's theorem still
+    // resolves, with its number — this is `xref.rs`, which this deletion does not touch.
+    assert!(
+        results
+            .contains("<a href=\"methods.html#thm-kl\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
+        "the forward cross-reference to thm-kl must still resolve: {results}"
+    );
 }

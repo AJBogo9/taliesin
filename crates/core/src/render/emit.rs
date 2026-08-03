@@ -499,9 +499,8 @@ fn emit_cells<'a>(row: &'a AstNode<'a>, aligns: &[TableAlignment], tag: &str, ou
 /// rest (the id changes, so the op *looks* applied while the DOM keeps the old
 /// content), and `remove` strands roots 2..N in the page forever. That would make
 /// the preview disagree with what `build` publishes, which is the one thing the
-/// block model exists to prevent. `site/backlinks.rs` asserts the same invariant
-/// for its own emitter; `crates/core/tests/block_single_root.rs` asserts it for
-/// every document in the corpus.
+/// block model exists to prevent. `crates/core/tests/block_single_root.rs` asserts it
+/// for every document in the corpus.
 fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
     let lead = literal.trim_start();
     let injectable = !attrs.is_empty()

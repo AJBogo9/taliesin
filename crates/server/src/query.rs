@@ -776,7 +776,7 @@ struct ProjectMap {
     pages: Vec<PageEntry>,
     nav: NavMap,
     mounts: Vec<MountEntry>,
-    /// The cross-reference graph: each anchor → where it's defined + which pages cite it.
+    /// The cross-reference graph: each anchor → where it's defined.
     /// A `BTreeMap` so two runs of `map` diff to nothing.
     xref_targets: std::collections::BTreeMap<String, XrefEntry>,
     /// `{{< embed >}}`-referenced decks (built + served, but not pages/nav entries).
@@ -816,8 +816,6 @@ struct MountEntry {
 struct XrefEntry {
     url: String,
     number: String,
-    /// Urls of the pages that reference this anchor (the reverse edges), in page order.
-    backlinks: Vec<String>,
 }
 
 fn build_project_map(site: &taliesin_core::Site) -> ProjectMap {
@@ -837,14 +835,6 @@ fn build_project_map(site: &taliesin_core::Site) -> ProjectMap {
             XrefEntry {
                 url: target.url.clone(),
                 number: target.number.clone(),
-                // Urls only: the reverse index also carries each referrer's citing
-                // sentence now, but `map`'s JSON is a machine contract and a page url
-                // is what a consumer resolves against `pages`.
-                backlinks: site
-                    .backlinks
-                    .get(anchor)
-                    .map(|refs| refs.iter().map(|r| r.url.clone()).collect())
-                    .unwrap_or_default(),
             },
         );
     }
