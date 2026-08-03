@@ -8,5 +8,4 @@ if (reg) {
   reg.register(function () { taliInitKeyboard(); });
   reg.register(taliInitCategoryFilter);
   reg.register(function () { taliInitBookOutline(); });
-  reg.register(function () { taliInitCodeVisibility(); });
 }

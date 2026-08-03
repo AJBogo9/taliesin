@@ -29,14 +29,6 @@ interface Window {
     toggle: () => void;
   };
 
-  // --- reader show/hide code (code-enhance/20-code-visibility.js) --------------
-  /** Guard: the code-visibility UI is built once per document. */
-  __taliCodeVis?: boolean;
-  /** Set by the pre-paint bootstrap (render/theme.rs), NOT by the fragment: the
-   *  class has to land before the first frame or every listing renders and vanishes. */
-  taliSetCodeHidden?: (hidden: boolean) => void;
-  taliGetCodeHidden?: () => boolean;
-
   // --- {js} reactive runtime (tali-js.js) -------------------------------------
   /** Internal per-page state bag for the `{js}` runtime (cell registry, teardown
    *  handles, observers). Private to tali-js.js; typed loosely. */

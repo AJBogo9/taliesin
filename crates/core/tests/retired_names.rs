@@ -469,3 +469,56 @@ fn video_hover_play_is_gone_and_controls_default_on() {
          remaining play path: {html}"
     );
 }
+
+/// The reader show/hide-code toggle was deleted 2026-08-03. The author already
+/// decides per cell with `#| echo:`; a reader override of that presentation
+/// decision cost a permanent row in the Settings menu.
+#[test]
+fn the_code_visibility_toggle_is_gone() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in [
+        "taliInitCodeVisibility",
+        "taliSetCodeHidden",
+        "taliGetCodeHidden",
+    ] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; the toggle was deleted"
+        );
+    }
+}
+
+/// The toggle's needles above only prove the UI fragment is gone: `taliSetCodeHidden`/
+/// `taliGetCodeHidden` were STRINGS in that fragment (it merely referenced the pre-paint
+/// API by name), not their definition site. The definitions lived in `theme.rs`'s
+/// pre-paint bootstrap, which ships in every rendered page's `<head>`, not in
+/// `code_scripts()` — so this checks the actual page output and guards the half the
+/// fragment-only test above cannot see. The theme half of the same bootstrap
+/// (`taliSetTheme`/`taliGetThemeChoice`) must still be present: it is a separate
+/// feature and survives this pass untouched.
+#[test]
+fn the_code_visibility_pre_paint_api_is_gone_and_theme_survives() {
+    let doc = taliesin_core::render::render_document("hello\n");
+    let html = taliesin_core::render::render_doc_to_page(
+        &doc,
+        "t",
+        taliesin_core::render::OutputMode::Build,
+    );
+    for needle in [
+        "taliSetCodeHidden",
+        "taliGetCodeHidden",
+        "tali-code-hidden",
+        "tali:codevisibility",
+    ] {
+        assert!(
+            !html.contains(needle),
+            "`{needle}` still ships in the page's pre-paint bootstrap; the toggle was deleted"
+        );
+    }
+    for needle in ["taliSetTheme", "taliGetThemeChoice", "tali-theme"] {
+        assert!(
+            html.contains(needle),
+            "`{needle}` must survive — the theme picker is untouched by this pass"
+        );
+    }
+}

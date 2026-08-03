@@ -3959,12 +3959,12 @@ fn every_code_enhance_fragment_is_in_the_type_check_gate() {
     // The matcher must be able to say NO, or every assertion above is free.
     assert!(tsc_pattern_covers(
         "code-enhance/*.js",
-        "code-enhance/20-code-visibility.js"
+        "code-enhance/19-book-outline.js"
     ));
     assert!(!tsc_pattern_covers("code-enhance/*.js", "deck.js"));
     assert!(!tsc_pattern_covers(
         "*.js",
-        "code-enhance/20-code-visibility.js"
+        "code-enhance/19-book-outline.js"
     ));
     assert!(tsc_pattern_covers("*.min.js", "d3.min.js"));
     assert!(!tsc_pattern_covers("*.min.js", "deck.js"));
@@ -5136,33 +5136,6 @@ fn only_a_cells_source_listing_is_marked_for_the_reader_code_toggle() {
     assert!(
         !fence.contains("data-tali-cell"),
         "a plain fence is prose the author wrote to be read, not a cell: {fence}"
-    );
-}
-
-/// The reader's code preference is applied by a script that runs BEFORE the body parses.
-///
-/// This ordering is the whole reason the state lives in `theme_head` instead of in the
-/// enhancer fragment that draws its UI. Applied after paint, a reader who chose "hide"
-/// would watch every listing render and then be removed on each navigation — a
-/// content-sized layout shift, strictly worse than the colour flash that script already
-/// exists to prevent. Nothing about a passing enhancer test would notice the move, so the
-/// position is asserted here: the toggle must precede `<body>` in the emitted bytes.
-#[test]
-fn the_reader_code_preference_is_applied_before_the_body_parses() {
-    let doc = render_document("```{python}\nprint(1)\n```\n");
-    let html = render_doc_to_page(&doc, "t", OutputMode::Build);
-    let toggle = html
-        .find("tali-code-hidden")
-        .expect("the page applies the code-visibility class");
-    let body = html.find("<body").expect("the page has a body");
-    assert!(
-        toggle < body,
-        "the code-visibility bootstrap must run in <head>, before any listing exists \
-         (toggle at {toggle}, <body> at {body})"
-    );
-    assert!(
-        toggle < html.find("data-tali-cell=").expect("the page has a cell"),
-        "the class must be set before the first cell is parsed"
     );
 }
 
