@@ -55,21 +55,9 @@ web-client/     browser preview client (vanilla JS), the only client
 
 ## Install & prerequisites
 
-**Download a binary.** Every tagged release attaches a `.tar.gz` (with a `.sha256`
-next to it) for each supported platform — one download, no toolchain:
-
-| Platform | Target | Status |
-| --- | --- | --- |
-| Linux x86-64 | `x86_64-unknown-linux-gnu` | built and released |
-| macOS Apple silicon | `aarch64-apple-darwin` | built and released |
-| macOS Intel | `x86_64-apple-darwin` | built and released |
-| Windows | — | **not supported**: never built, never tested, no gate covers it. The process and kernel layer is Unix-only. |
-
-The tarball holds the `taliesin` binary plus `LICENSE` and `THIRD_PARTY.md`. Put the
-binary anywhere on your `PATH`.
-
-**Or build from source.** Taliesin is a Rust workspace (edition 2024); a recent stable
-toolchain (via [rustup](https://rustup.rs)) is all you need:
+**Build from source.** This is the only way to install Taliesin today, and it is the
+whole of it: Taliesin is a Rust workspace (edition 2024), so a recent stable toolchain
+(via [rustup](https://rustup.rs)) is all you need:
 
 ```sh
 git clone https://github.com/AJBogo9/taliesin && cd taliesin
@@ -77,8 +65,15 @@ cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
-**What that costs, measured, so it is not a surprise:** a cold release build compiles
-**252 crates in about 1m 40s** at `-j3`, and produces a single ~40 MB self-contained
+**Platforms.** Linux x86-64 (`x86_64-unknown-linux-gnu`) and macOS on both Apple silicon
+and Intel (`aarch64-apple-darwin`, `x86_64-apple-darwin`) are supported targets. Windows
+is **not supported**: never built, never tested, no gate covers it, and the process and
+kernel layer is Unix-only. There are no prebuilt binaries yet; when a release is tagged
+it will attach a `.tar.gz` per target with a `.sha256` beside it, holding the binary plus
+`LICENSE` and `THIRD_PARTY.md`.
+
+**What that costs, measured 2026-08-03, so it is not a surprise:** a cold release build
+compiles **305 crates in about 2m 34s** at `-j3`, and produces a single ~38 MB self-contained
 binary (it embeds KaTeX with its fonts, the syntax-highlighting definitions, and every
 bundled stylesheet and script, which is why rendered pages need no network). Nothing is
 fetched at runtime and there is no `node_modules`. Put `target/release/taliesin` on your
@@ -87,8 +82,9 @@ fetched at runtime and there is no `node_modules`. Put `target/release/taliesin`
 **One optional feature, off by default, because it is a third of the build.**
 `read --run-js` can drive a local headless Chrome to check whether a `{js}` cell actually
 painted a chart. Its browser driver is the single most expensive thing in the dependency
-graph: turning it on takes the same cold build from 1m 40s to **2m 30s** and 252 crates
-to 268 (measured on one machine at `-j3`, so treat the ratio as the durable part). Since
+graph: turning it on takes the same cold build from 2m 34s to **3m 35s**, 305 crates to
+321, and the binary from 38 MB to 47.7 MB (measured on one machine at `-j3`, so treat the
+ratio as the durable part: it has held at exactly +16 crates across a year of drift). Since
 it *also* needs a system Chrome at runtime and most people never invoke it, you only pay
 for it if you ask:
 
