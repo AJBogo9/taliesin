@@ -166,8 +166,8 @@ output folder is self-contained and you can copy or `rsync` it as-is. The walker
 name starts with `_` or `.` (so `_freeze/` and dotfiles stay out), `*_cache` /
 `*_files` working directories, and the output directory itself. A built-in
 `404.html` is emitted unless you supply your own `404.tmd`, and a `mounts:` entry
-is preview-only (the static build logs a warning with the command to build it
-separately). The full set of flags is in the [CLI reference](../reference/cli.tmd);
+is built too, into `<out>/<at>/`, so the links into it resolve in the deploy
+exactly as they do in the preview. The full set of flags is in the [CLI reference](../reference/cli.tmd);
 common build-and-deploy patterns live in [Recipes](recipes.tmd).
 
 ## Publish it

@@ -461,6 +461,31 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
     })
 }
 
+impl Resolved {
+    /// How this server is known to **other processes**: the root it answers
+    /// [`crate::serve::IDENTITY_PATH`] with, the incumbent it recognizes as itself, and the
+    /// name its session hint is filed under.
+    ///
+    /// It is *what this server serves*, which for an out-of-project document is that
+    /// document — it is a project of just that document — and **not** [`Resolved::root`],
+    /// the directory the document happens to sit in. The two genuinely differ: that
+    /// directory may hold unrelated `.tmd` files this server discovered nothing about and
+    /// would 404, so answering with it claims pages that are not there.
+    ///
+    /// Publishing the directory is what broke `taliesin run` when the single-document
+    /// server was folded in here. That server published the document (`serve/mod.rs`'s
+    /// `app.path`, pre-`e6a99ec4`) and [`crate::run_cmd`] still asks for the document, so a
+    /// run found no hint, started a session, and then could not find that one either: 45
+    /// seconds to report that a live server it had just spawned was not there.
+    /// `crates/server/tests/run_session_discovery.rs` pins both halves.
+    ///
+    /// `root` stays the filesystem base for serving assets and resolving includes; only
+    /// the identity moves.
+    fn session_key(&self) -> PathBuf {
+        self.scoped.clone().unwrap_or_else(|| self.root.clone())
+    }
+}
+
 /// What [`resolve_target`] worked out about the thing being previewed.
 struct Resolved {
     root: PathBuf,
@@ -516,12 +541,14 @@ async fn serve(
     let start = std::time::Instant::now();
     // Preview shows drafts inline (nav/listings/prev-next, badged); build/publish exclude
     // them. See `docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md`.
+    let resolved = resolve_target(target)?;
+    let session_key = resolved.session_key();
     let Resolved {
         root,
         site,
         scoped,
         doc,
-    } = resolve_target(target)?;
+    } = resolved;
     // Where to point the browser: a document target opens at its own page rather than at
     // the project's home, so `preview chapter-7.tmd` shows chapter 7.
     let focus = doc.as_deref().and_then(|f| focus_url(&site, f));
@@ -643,18 +670,18 @@ async fn serve(
         .route("/og-preview", get(og_card_preview))
         .fallback(page_or_asset)
         .with_state(app.clone());
-    let router = with_identity(router, &root);
+    let router = with_identity(router, &session_key);
     let router = with_lan_guard(router, token.clone());
     let router = with_host_guard(router, lan_ip);
 
-    let (listener, addr) = bind_with_fallback(port, expose, &root).await?;
+    let (listener, addr) = bind_with_fallback(port, expose, &session_key).await?;
     let port = addr.port();
     // Publish where this project's session is listening, so `taliesin run` attaches to
     // THIS server rather than starting a second one. A second server would mean a second
     // kernel set and a second `_freeze/` writer for one project, which is how stale output
     // gets published. Written after the bind, so the port recorded is the port we got
     // (`bind_with_fallback` may have stepped past a busy one).
-    crate::session::write_hint(&root, port);
+    crate::session::write_hint(&session_key, port);
     let local = format!("http://127.0.0.1:{port}");
     let network = expose
         .then(local_ip)
@@ -717,7 +744,7 @@ async fn serve(
     // Clean exit: retract the hint so the next `taliesin run` starts a session instead of
     // dialling a dead port. A SIGKILL skips this, which is exactly why a client proves the
     // hint with the identity handshake rather than trusting it.
-    crate::session::clear_hint(&root);
+    crate::session::clear_hint(&session_key);
     outcome
 }
 
@@ -2922,5 +2949,74 @@ mod project_tests {
         // guessing wrong there costs a wasted render, while guessing wrong the other way
         // would publish a page with its outputs missing.
         assert!(!PageDoc::default().cell_free);
+    }
+}
+
+#[cfg(test)]
+mod session_key_tests {
+    //! The two derivations of a session's key, pinned against each other.
+    //!
+    //! [`Resolved::session_key`] is what the server publishes; `session::session_key_for`
+    //! is what `taliesin run` looks up. They live in different modules and run in different
+    //! processes, and when they disagreed the symptom was a run waiting out its full start
+    //! timeout on a session that was up and answering. Nothing but this test connects them,
+    //! so it drives the real production expressions on both sides rather than restating
+    //! either rule.
+    use super::*;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tali-sesskey-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::canonicalize(&d).unwrap()
+    }
+
+    /// A document with no ancestor `_site.yml`: the case that broke. Both sides must
+    /// answer the *document*, not the directory it sits in.
+    #[test]
+    fn an_out_of_project_document_keys_on_itself_on_both_sides() {
+        let dir = tmp("loose");
+        let doc = dir.join("scratch.tmd");
+        std::fs::write(&doc, "---\ntitle: S\n---\n\nProse.\n").unwrap();
+
+        let served = resolve_target(Target::at(doc.clone())).unwrap();
+        assert_eq!(
+            served.session_key(),
+            doc,
+            "the server must publish the document it serves, not {}",
+            dir.display()
+        );
+        assert_eq!(
+            crate::session::session_key_for(&doc),
+            served.session_key(),
+            "`taliesin run` would look up a key the server never wrote"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A document inside a project keys on the *project*, so every page of a book shares
+    /// one session (one kernel set, one `_freeze/` writer) rather than one per chapter.
+    #[test]
+    fn a_document_inside_a_project_keys_on_the_project_on_both_sides() {
+        let dir = tmp("project");
+        std::fs::create_dir_all(dir.join("chapters")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: Book\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+        let ch = dir.join("chapters/ch9.tmd");
+        std::fs::write(&ch, "---\ntitle: Nine\n---\n\nProse.\n").unwrap();
+
+        let served = resolve_target(Target::at(ch.clone())).unwrap();
+        assert_eq!(served.session_key(), dir, "a page keys on its project root");
+        assert_eq!(
+            crate::session::session_key_for(&ch),
+            served.session_key(),
+            "the run client and the server must name the same session"
+        );
+
+        // And the project's own front door lands on that same key, so `preview <dir>` and
+        // `run <dir>/chapters/ch9.tmd` are one session, not two.
+        let whole = resolve_target(Target::at(dir.clone())).unwrap();
+        assert_eq!(whole.session_key(), dir);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

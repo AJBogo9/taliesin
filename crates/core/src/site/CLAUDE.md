@@ -25,5 +25,7 @@ Conventions:
 - Submodules use `use super::*`; expose an item to `mod.rs`/siblings via a `pub(crate) use`
   re-export in `mod.rs` (parents can't see a child's private items).
 - `mounts:` (config) serves another project (e.g. the docs book) under a URL prefix in
-  `preview` — rendered on request via `serve_site`'s `MountedSite`.
+  `preview` — rendered on request via `serve_site`'s `MountedSite` — and `build` recurses
+  into each one, writing it to `<out>/<at>/` **after** the parent (whose stale-output sweep
+  would otherwise delete it).
 - An `{{< embed >}}`-referenced deck is built/served but kept out of nav + search.

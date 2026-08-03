@@ -1165,37 +1165,6 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
     copied
 }
 
-/// Build a multi-page site: render every `.tmd` page with the shared chrome to
-/// `<out>/<page>.html` and mirror the project's non-source assets alongside, so
-/// the output directory is a deployable static site. `out_override` (the `--out`
-/// flag) wins over the config's `output-dir` (default `_site`).
-/// One warning line per `mounts:` entry: the static build does not wire mounts (only
-/// `preview` serves them), so a previewed site's `/<at>/` links 404 in the deploy. Each
-/// line gives the exact command to build that mount into `<out>/<at>/`. Empty when the
-/// site has no mounts. (Auto-building mounts is a deferred follow-up.)
-pub(crate) fn mount_warnings(
-    mounts: &[taliesin_core::site::Mount],
-    root: &Path,
-    out: &Path,
-) -> Vec<String> {
-    mounts
-        .iter()
-        .filter_map(|m| {
-            // A mount that fails containment (item 80) is not part of this site, so it gets
-            // no build recipe. `load_config` has already dropped it and warned; printing a
-            // `taliesin build /etc` recipe here would be the tool suggesting the escape.
-            let mroot = m.resolve(root).ok()?;
-            Some(format!(
-                "mount '/{}/' is preview-only and not in the static build (its links will 404). \
-                 Build it: taliesin build {} --out {}",
-                m.at,
-                mroot.display(),
-                out.join(&m.at).display(),
-            ))
-        })
-        .collect()
-}
-
 /// Concurrent page builds move an owned [`exec::Executor`] into a spawned task, so it must
 /// be `Send`. It is — its kernel handles are `tokio::process::{Child, Child*}` (all `Send`)
 /// and everything else is plain data — but assert it at compile time so a future field that
@@ -1704,11 +1673,42 @@ fn build_site(
     }
 }
 
+/// Build a multi-page site: render every `.tmd` page with the shared chrome to
+/// `<out>/<page>.html` and mirror the project's non-source assets alongside, so the output
+/// directory is a deployable static site — **and do the same for every project it
+/// `mounts:`**, into `<out>/<at>/`. `out_override` (the `--out` flag) wins over the config's
+/// `output-dir` (default `_site`).
+///
+/// A mount is served live by `preview` under its `at:` prefix. Until this existed the
+/// static build rendered the parent's own pages and nothing else, so a previewed site's
+/// mount links 404'd in the deploy and the fix was a shell script beside the site
+/// (`site/build.sh`, deleted with this) running one `build … --out <out>/<at>` per mount.
+/// A config key that works in `preview` and not in `build` is a support burden, and the
+/// warning that stood in for the feature was one nobody's CI acted on — which is how this
+/// project's own site shipped with its primary call-to-action 404ing (item 149).
+///
+/// `built` is the cycle guard: a mount may declare its own `mounts:`, so the walk is a
+/// graph, and `mounts: { self: . }` is a config typo away from an unbounded recursion that
+/// would fill the disk.
 async fn build_site_async(
     root: &Path,
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
+) -> SiteBuildOutcome {
+    // Seeded with the root itself, so `mounts: { self: . }` — a config typo away — is
+    // refused on sight rather than after one wasted pass.
+    let mut built = std::collections::HashSet::new();
+    built.insert(root.canonicalize().unwrap_or_else(|_| root.to_path_buf()));
+    build_project_tree(root, out_override, strict, jobs, &mut built).await
+}
+
+async fn build_project_tree(
+    root: &Path,
+    out_override: Option<&str>,
+    strict: bool,
+    jobs: Option<usize>,
+    built: &mut std::collections::HashSet<PathBuf>,
 ) -> SiteBuildOutcome {
     // Timed here rather than in `cmd_build`, so `publish` (which reaches the site build
     // through `run_site_build`) reports its build time too.
@@ -1802,24 +1802,6 @@ async fn build_site_async(
             ok: false,
             diagnostics,
         };
-    }
-
-    // `mounts:` are served live in `preview` but the static build doesn't wire them, so
-    // warn (with the per-mount build command) rather than ship 404'ing links silently.
-    //
-    // These COUNT toward `--strict` (item 149). The warning existed and was correct, and
-    // both automated gates blessed the deploy anyway — a warning no CI can act on is a
-    // warning that gets scrolled past, which is how this project's own site shipped with its
-    // primary call-to-action 404ing. A plain build still succeeds and still writes every page
-    // it can: previewing a site with mounts is a legitimate workflow, so the gate is opt-in.
-    for w in mount_warnings(&site.config.mounts, root, &out) {
-        log::warn(&w);
-        config_problems += 1;
-        diagnostics.push(crate::check::Diagnostic::new(
-            "_site.yml".to_string(),
-            None,
-            w,
-        ));
     }
 
     // Persistent execution cache, rooted at the project source (not the build
@@ -2494,10 +2476,69 @@ async fn build_site_async(
     } else {
         warn_nonstrict_problems(problems);
     }
-    SiteBuildOutcome {
+    let mut outcome = SiteBuildOutcome {
         ok: !strict_fail && !kernel_fail,
         diagnostics,
+    };
+
+    // Now the mounts, each into `<out>/<at>/`.
+    //
+    // ORDER IS LOAD-BEARING, and it is why this sits down here rather than beside the
+    // config: the parent's `sweep_stale` (above) deletes everything under `out` it did not
+    // itself write, and `_site/docs/guide/` is neither dot- nor underscore-prefixed nor a
+    // symlink, so a mount built *first* is silently swept away by the parent. Parent
+    // finished, mounts second, always.
+    //
+    // The obvious optimisation — exempt the mount prefixes from the sweep so their output
+    // is not deleted and rewritten every build — is deliberately NOT taken. Sweeping them
+    // is what makes a mount *removed* from `_site.yml` disappear from the deploy; an
+    // exemption would leave its pages behind forever, live and unreachable from the nav,
+    // which is the harder bug to notice. The cost is bounded (a delete plus a rewrite; the
+    // `_freeze/` cache means no cell re-executes), so correctness wins.
+    //
+    // `--strict` propagates unchanged. The shell script this replaces deliberately ran the
+    // mounts non-strict, but that carve-out existed to dodge the parent's own mount
+    // warnings, which this deletes; a mount is part of the artifact being written, so a
+    // problem in one is a problem with the deploy.
+    for m in &site.config.mounts {
+        // A mount that fails containment (item 80) is not part of this site: `load_config`
+        // has already dropped it and warned. Building it anyway would be the tool
+        // performing the escape the refusal exists to prevent.
+        let Ok(mroot) = m.resolve(root) else { continue };
+        let mroot = mroot.canonicalize().unwrap_or(mroot);
+        if !built.insert(mroot.clone()) {
+            // Already built in this walk: a diamond (two prefixes onto one project) is
+            // harmless duplication, a cycle is not, and neither needs a second pass.
+            log::warn(&format!(
+                "mount '/{}/' resolves to {}, already built in this run; skipping",
+                m.at,
+                mroot.display()
+            ));
+            continue;
+        }
+        let sub_out = out.join(&m.at);
+        let Some(sub_out_str) = sub_out.to_str() else {
+            log::warn(&format!(
+                "mount '/{}/': output path is not valid UTF-8, skipping",
+                m.at
+            ));
+            continue;
+        };
+        log::info(&format!("mount '/{}/' -> {}", m.at, sub_out.display()));
+        // Boxed because this is the recursive edge: a mount may itself declare `mounts:`,
+        // and a future that directly contains itself has no finite size.
+        let sub = Box::pin(build_project_tree(
+            &mroot,
+            Some(sub_out_str),
+            strict,
+            jobs,
+            built,
+        ))
+        .await;
+        outcome.diagnostics.extend(sub.diagnostics);
+        outcome.ok &= sub.ok;
     }
+    outcome
 }
 
 /// Pack every file under `out` (except the archive itself) into `out/<name>` as a ZIP, for
@@ -3335,38 +3376,6 @@ mod mirror_tests {
 
         let _ = fs::remove_dir_all(&base);
         let _ = fs::remove_dir_all(&out);
-    }
-
-    #[test]
-    fn mount_warnings_name_each_unwired_mount_with_a_build_command() {
-        use taliesin_core::site::Mount;
-        let root = Path::new("/proj/site");
-        let out = Path::new("/proj/site/_site");
-
-        let none = mount_warnings(&[], root, out);
-        assert!(none.is_empty(), "no mounts -> no warnings");
-
-        let ws = mount_warnings(
-            &[Mount {
-                at: "docs".into(),
-                path: "../docs".into(),
-            }],
-            root,
-            out,
-        );
-        assert_eq!(ws.len(), 1, "one warning per mount");
-        let w = &ws[0];
-        assert!(w.contains("docs"), "names the mount: {w}");
-        assert!(w.contains("404"), "explains the consequence: {w}");
-        assert!(
-            w.contains("build") && w.contains("--out"),
-            "gives the build command: {w}"
-        );
-        // the --out path is <out>/<at>
-        assert!(
-            w.contains(&out.join("docs").display().to_string()),
-            "points at <out>/<at>: {w}"
-        );
     }
 }
 

@@ -38,22 +38,21 @@ request, so content edits show on refresh).
 ## Build (single-tree: site at root, two docs books under /docs)
 
 ```sh
-./site/build.sh          # -> _site/ at the repo root
-./site/build.sh /tmp/out # or an explicit output directory
+taliesin build site --out _site   # the whole tree: this project + all 7 mounts
 ```
 
-**Use the script, not a bare `taliesin build site`.** `mounts:` is a *preview* feature: the
-static build renders this project's own pages and nothing else, so a plain build produces a
-tree whose Guide, Internals and every gallery link 404 — including the landing page's
-primary call to action. `build` warns about this (and, since item 149, `--strict` fails on
-it and `check` reports `TAL-MOUNT-PREVIEW`), but only the script produces a complete tree.
+One command, eight projects: the parent, then one per `mounts:` entry into `_site/<at>/`.
+There is nothing else to run and nothing to keep in step with `_site.yml`.
 
-It runs eight builds: the parent, then one per `mounts:` entry into `_site/<at>/`. **That
-order is load-bearing** — the parent build sweeps stale output, deleting anything under the
-output directory it did not itself write, so a mount built *first* is silently swept away.
-For the same reason, re-running `taliesin build site` on its own afterwards puts you back to
-the broken tree. `crates/server/tests/site_build_script.rs` fails the suite if the script
-and `_site.yml` ever disagree about the mount list.
+This used to need a shell script beside this file, because `mounts:` was a *preview*
+feature and a bare `taliesin build site` produced a tree whose Guide, Internals and gallery
+links 404'd — including the landing page's primary call to action (item 149). `build` walks
+the mounts itself now; the script and its `TAL-MOUNT-PREVIEW` diagnostic are both gone.
+
+**The parent is built before the mounts, and that order is load-bearing** — the parent build
+sweeps stale output, deleting anything under the output directory it did not itself write,
+so a mount built first would be silently swept away. `build` does this in the right order and
+`crates/server/tests/mount_static_build.rs` pins it by building twice into one directory.
 
 The `analyst` exhibit is the only one whose pages **execute**, and in two languages: it
 needs a python with `ipykernel` (`TALIESIN_PYTHON`) plus `pandas`/`matplotlib`, and an R

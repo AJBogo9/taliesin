@@ -120,6 +120,25 @@ pub(crate) fn project_root_for(target: &Path) -> PathBuf {
     taliesin_core::site::enclosing_site_root(&start).unwrap_or(start)
 }
 
+/// The key the session serving `file` is registered under: its enclosing `_site.yml`
+/// project, else the document itself.
+///
+/// This is the **client half of one contract**, and the server half is
+/// `serve_site::Resolved::session_key`. They are two derivations of one key, in two
+/// processes, with nothing in the type system holding them together — so when they
+/// disagree a run cannot find a session that is running perfectly well, waits out
+/// `SESSION_READY_TIMEOUT`, and blames the server. That is exactly what happened once
+/// (see the server-side doc comment), which is why this is a named function with a test
+/// asserting the two answers match rather than an `if` at the call site: an inline
+/// spelling is how the two drifted apart in the first place.
+///
+/// Note it is *not* [`project_root_for`]: a document with no ancestor `_site.yml` keys on
+/// itself, not on its directory. Its session is a project of just that document, and its
+/// neighbours in that directory are somebody else's.
+pub(crate) fn session_key_for(file: &Path) -> PathBuf {
+    taliesin_core::site::enclosing_site_root(file).unwrap_or_else(|| file.to_path_buf())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

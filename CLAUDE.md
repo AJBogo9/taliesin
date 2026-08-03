@@ -81,7 +81,9 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    (sentences.rs, read by backlinks.rs),
                    cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
-                   serves another project (e.g. the docs book) under a URL prefix in preview
+                   serves another project (e.g. the docs book) under a URL prefix in
+                   preview, and `build` recurses into each, parent first (its sweep
+                   would delete a mount built before it)
   assets/          bundled offline: css/ (base, dark, deck, site),
                    js/ (deck.js, code-enhance/ fragments, mermaid.js, tali-js.js,
                    scrolly.js, tabset.js, walkthrough.js + vendored

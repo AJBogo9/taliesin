@@ -146,21 +146,19 @@ async fn run(opts: Opts) -> ExitCode {
 
     // The session is keyed on the project when there is one, and on the document when
     // there is not — matching which server would serve it, so `run` and `preview` of the
-    // same thing land on ONE session rather than two.
-    let key: &Path = if root.join("_site.yml").exists() {
-        &root
-    } else {
-        &file
-    };
+    // same thing land on ONE session rather than two. Derived by `session_key_for` rather
+    // than spelled out here: this call site once carried its own version of the rule, and
+    // a change on the server side left the two answering different things.
+    let key = crate::session::session_key_for(&file);
 
     // `--interrupt` never starts a session. No session means nothing is running, which is the
     // answer; booting a kernel in order to interrupt it would take the full
     // `SESSION_READY_TIMEOUT` to accomplish nothing.
     if opts.interrupt {
-        return interrupt(key, &file, opts.quiet).await;
+        return interrupt(&key, &file, opts.quiet).await;
     }
 
-    let port = match attach_or_start(key, opts.quiet).await {
+    let port = match attach_or_start(&key, opts.quiet).await {
         Ok(p) => p,
         Err(e) => {
             crate::log::error(&e);

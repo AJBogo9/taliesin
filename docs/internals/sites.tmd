@@ -352,24 +352,35 @@ marketing site resolves its `/docs/guide` and `/docs/internals` links live. Unde
 websocket, no dev menu, and no click-to-source; to edit a mounted book with the full live
 loop, preview it directly (`preview docs/internals`) rather than through the mount.
 
-The static `build` does **not** auto-wire mounts: building the site emits each page and its
-own assets, but a `mounts:` sub-project is a separate project, so `build <site>` only
-*warns* (naming each mount and the exact command) rather than producing it. Build each mount
-yourself into the matching sub-path, e.g. `taliesin build docs/internals --out _site/docs/internals`,
-so the deployed `/docs/internals/` links resolve. (Auto-building mounts is a planned
-follow-up.)
+The static `build` wires mounts too: after finishing its own pages it runs a **full,
+independent build of each mounted project** into `<out>/<at>/`, so the deployed
+`/docs/internals/` links resolve exactly as the previewed ones do. One command builds the
+whole tree.
 
-The reason `build` stops at a warning rather than recursing is that a mounted project is a
-**genuinely separate project with its own build**: it has its own `_site.yml`, its own
-output mode (a book builds to `_book`, a website to `_site`), its own theme and execution
-needs, possibly its own kernel. Recursing would mean one `build` silently inheriting and
-overriding another project's configuration, the exact directory-cascade ambiguity the
-flat, no-cascade config model was designed to avoid. So `build` keeps each project's build
-explicit and independent, and tells you precisely which command to run for each mount
-instead of guessing. In preview the calculus is different: there is no output directory to
-get wrong, the mounted pages are rendered on request, and live mounting is what makes the
-marketing site's `/docs/guide` and `/docs/internals` links work in one `preview` session,
-so the live server takes on that convenience while the static build stays principled.
+This is a recursion, not an inheritance. Each mount is built by the same code path as a
+top-level `build`, reading its own `_site.yml`, its own theme, its own execution settings —
+nothing cascades down from the parent, which is what the flat, no-cascade config model is
+for. The parent contributes exactly one thing: the output directory, `<out>/<at>/`, which is
+the URL prefix the parent already committed to in its nav. `--strict` and the kernel
+requirement propagate, because a mount is part of the artifact being written.
+
+For a while `build` stopped at a warning here, on the argument that a separate project
+deserves an explicit command. What that produced in practice was a deploy whose primary call
+to action 404'd, a diagnostic (`TAL-MOUNT-PREVIEW`) written to describe the hole, and a shell
+script beside the site to fill it — three artifacts standing in for one recursion. A config
+key that works in `preview` and not in `build` is a bug with a rationale attached.
+
+**The order is load-bearing.** The parent is built first and the mounts second, because the
+parent's stale-output sweep deletes everything under the output directory it did not itself
+write, and `_site/docs/guide/` is not one of the dot-, underscore- or symlink-prefixed
+exemptions. A mount built first would be swept away by the parent, silently, on a green
+exit. The sweep is deliberately *not* taught to skip mount prefixes: sweeping them is what
+makes a mount deleted from `_site.yml` disappear from the deploy, and the cost of the
+delete-and-rewrite is bounded because `_freeze/` means no cell re-executes.
+
+A mount that resolves outside its containment boundary is not built, for the same reason it
+is not served: `load_config` has already refused it, and building it would perform the
+escape one step later.
 
 ::: {.callout-tip}
 Because a mounted page under `preview` is rendered as plain static output (no websocket, no

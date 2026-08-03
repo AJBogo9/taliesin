@@ -489,6 +489,20 @@ found anywhere in the audit.
 >   the project root it discovered (`serve_site/mod.rs:657`), i.e. that file's *directory*.
 >   Not fixed here (out of this wave's scope); it is what "`run`: pin 0 integration tests" in
 >   the catalogue buys.
+>
+>   **Fixed 2026-08-03, alongside Wave 6.** The diagnosis above was right and was confirmed
+>   by measurement rather than inspection: the spawned session's `/__taliesin` answered with
+>   the *directory*, and the hint file `run` polled for (the digest of the document path) was
+>   never written by anyone. The fix moved the **server**, not the client — a project of just
+>   one document now publishes that document as its identity, hint key and single-instance
+>   key, which is exactly what the deleted single-document server did (`serve/mod.rs`'s
+>   `app.path`) and is what makes `run_cmd`'s existing rule correct as written. Keying the
+>   client on the directory instead would have made a second loose `.tmd` in the same folder
+>   unrunnable: it would attach to a session scoped to the first document and get "not a page
+>   of this session's project". The two derivations are now named functions
+>   (`Resolved::session_key` and `session::session_key_for`) pinned against each other, plus
+>   `run`'s first two integration tests. Measured after the fix: cold run 1.8 s, warm run
+>   14 ms ("0 ran, 1 cached"), and a second loose document in the same directory runs.
 
 | Verb | Disposition |
 |---|---|
@@ -506,6 +520,36 @@ found anywhere in the audit.
 **`mounts:` is preview-only; the static build needs a shell script.** Fold the script into
 `build` so a mount builds. Filed here because the audit found it while measuring, and a
 published tool whose config key works in preview but not in `build` is a support burden.
+
+> **Status: DONE, 2026-08-03.** `build_site_async` recurses into each `mounts:` entry after
+> its own build, writing it to `<out>/<at>/`. Measured on this repo: `taliesin build site
+> --out …` produces all eight projects in 15 s, and every mount link in `index.html` and
+> `gallery.html` has a file behind it. Four things a later round should not re-derive:
+>
+> - **The fold is a net deletion of three artifacts, not just the script.** `site/build.sh`
+>   (64 lines), the `TAL-MOUNT-PREVIEW` diagnostic (a needle row, a catalogue entry, its
+>   `docs/DIAGNOSTICS.md` section), and `build::mount_warnings` all existed to describe a
+>   hole the recursion fills. `check.rs` consumed the same warning builder, so `check` was
+>   reporting it too; both channels are gone. A diagnostic that survives its defect sends
+>   the author to write the script the build already replaced.
+> - **The parent must be built before the mounts, and the sweep must NOT be taught to skip
+>   them.** `sweep_stale` deletes everything under the output it did not write, and a mount
+>   directory is not dot-, underscore- or symlink-exempt, so mounts-first silently deletes
+>   them on a green exit. Exempting the prefixes would fix the delete-and-rewrite cost but
+>   would also strand a mount *removed* from `_site.yml` in the deploy forever; the sweep is
+>   what makes removal work, so the cost stays.
+> - **`mounts:` is a graph, so the walk needs a cycle guard.** `mounts: { self: . }` is one
+>   plausible config line from an unbounded recursion. A visited set seeded with the root
+>   refuses it on sight.
+> - **`--strict` now propagates into mounts.** The shell script deliberately ran them
+>   non-strict, but that carve-out existed to dodge the parent's own mount warnings, which
+>   this deletes. `build --strict` on a site with mounts no longer fails merely for having
+>   them, which is what `strict_no_longer_fails_a_site_just_for_having_a_mount` pins.
+>
+> `site_build_script.rs` was **deleted** (it pinned a duplicated list that no longer exists)
+> and `mount_preview_is_gated.rs` **re-aimed** into `mount_static_build.rs`, which also
+> inherits the one claim the deleted file uniquely held: the parent-before-mounts order,
+> now pinned by building twice into one directory rather than by grepping a script.
 
 ---
 

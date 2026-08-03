@@ -258,14 +258,6 @@ A `{{< video clip.mp4 >}}` (or similar) names a local media file that does not e
 
 To fix: Correct the path or add the file. Remote media URLs are not checked.
 
-## TAL-MOUNT-PREVIEW
-
-**a mounted project that the static build does not contain**
-
-`_site.yml` declares a `mounts:` entry, which `taliesin preview` serves live under that URL prefix. The static build does NOT wire mounts: it renders this project's own pages and nothing else, so every link into the mounted prefix 404s in the deployed site. The failure is invisible while you work, because the preview is exactly where the link does work.
-
-To fix: Build each mounted project into the same output directory, at its `at:` prefix — the warning prints the exact command per mount. A shell script beside the site that runs the parent build plus one build per mount is the usual shape, so the whole deploy is one command. This is advice, severity `suggestion`, so it never fails `check` or `publish` unless you ask with `check --strict`; `build --strict` does fail on it, because there the 404 is a fact about the artifact just written.
-
 ## TAL-PROSE-BANNED
 
 **a term this document's own banned list forbids**
