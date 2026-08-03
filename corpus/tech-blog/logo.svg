@@ -16,7 +16,6 @@
   <!-- the bell-curve mark, the same glyph the favicon uses, scaled into the lockup -->
   <g class="mark" fill="none" stroke-width="3" stroke-linecap="round">
     <path d="M4 32 Q 8,32 10,28 Q 12,20 14,13 Q 16,5 20,3 Q 24,5 26,13 Q 28,20 30,28 Q 32,32 36,32"/>
-    <line x1="4" y1="32" x2="36" y2="32" stroke-width="1.5"/>
   </g>
   <text class="word" x="50" y="27" font-family="Georgia, serif" font-size="20" letter-spacing="-0.4">Andreas Bogossian</text>
 </svg>
