@@ -26,8 +26,8 @@ ranking that settled the cross-cluster call the previous session left open: the 
 audit's own order, 202 first as the instrument and 203/204 as the two cuts it measures.
 
 **What is left in P1 is 188, 164, 167, 56, 175(c), 174 and 170**, and no ranking among them has
-been made. 205 (pyodide's 12.9 MB out of the binary) was the runner-up in that call and is the
-obvious next pick if nothing else is pressing.
+been made. **205 has since shipped** (`crates/server/Cargo.toml:29`: `pyodide` is a non-default
+feature, so a default build carries none of the payload), which is why it is no longer named here.
 
 **`taliesin features <dir>` now exists, so do not re-derive an adoption table by grep.** It reads
 the validator consts, not `vocab.rs` (which is the *offered-completions* subset and would report a
@@ -144,7 +144,7 @@ anything client-side, and **delete the item from this file when it lands**.
 
 **The order below is NOT a priority order.** The band of cheap, ruled items drained on 2026-08-02,
 and the cross-cluster ranking made that day covered only 202/203/204, which have shipped. What
-remains is unranked: 188 vs 164 vs 167 vs 205 vs the residuals (56, 175(c), 174). Nothing here is
+remains is unranked: 188 vs 164 vs 167 vs the residuals (56, 175(c), 174). Nothing here is
 blocked on anything else, and the only standing order constraint is the author's **feature-first
 policy**: 170, the marketing site, stays last.
 
