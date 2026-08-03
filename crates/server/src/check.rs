@@ -1772,7 +1772,7 @@ mod tests {
             }
         }
         // projects (sites/books) are checked as dirs, mirroring `check <dir>`.
-        let mut targets: Vec<std::path::PathBuf> = ["bayesian-website", "demo-book", "tech-blog"]
+        let mut targets: Vec<std::path::PathBuf> = ["single-page-report", "demo-book", "tech-blog"]
             .iter()
             .map(|s| corpus.join(s))
             .collect();
@@ -1781,7 +1781,7 @@ mod tests {
             &corpus,
             &[
                 "diagnostics",
-                "bayesian-website",
+                "single-page-report",
                 "demo-book",
                 "tech-blog",
                 "_includes",
@@ -2124,7 +2124,7 @@ mod tests {
         // The load-bearing half: a correct site stays green. `tech-blog` is the only
         // corpus project with a real category vocabulary.
         let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
-        for proj in ["tech-blog", "bayesian-website", "demo-book"] {
+        for proj in ["tech-blog", "single-page-report", "demo-book"] {
             let diags = collect_diagnostics(&corpus.join(proj)).unwrap_or_default();
             let cats: Vec<_> = diags
                 .iter()

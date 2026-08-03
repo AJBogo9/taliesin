@@ -1,0 +1,24 @@
+One parameter, every region. The model is
+
+$\log y_i \sim \mathcal{N}(\beta, \sigma), \qquad \beta \sim \mathcal{N}(5, 1), \qquad \sigma \sim \text{half-}\mathcal{N}(1).$
+
+```r
+fit_complete <- brm(
+  log(ms) ~ 1,
+  data   = latency,
+  family = gaussian(),
+  prior  = c(prior(normal(5, 1), class = Intercept),
+             prior(normal(0, 1), class = sigma)),
+  chains = 4, iter = 2000, seed = 20260803
+)
+```
+
+**Convergence.** All $\hat{R} \le 1.01$, bulk and tail ESS above 1,500 on both
+parameters, zero divergent transitions. Nothing here is hard to sample: the posterior is
+two-dimensional and unimodal.
+
+**What it gets wrong.** The posterior predictive check is where this model fails, and it
+fails visibly rather than subtly. A single $\beta$ has to sit between the fastest and
+slowest regions, so the predictive distribution is too narrow in the middle and too thin
+in both tails. The model is not mis-sampled; it is mis-specified, and no amount of extra
+iterations repairs that.

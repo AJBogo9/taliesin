@@ -1,0 +1,26 @@
+Leave-one-out cross-validation ranks the three fits:
+
+| Model | elpd_loo difference | SE of difference | Parameters |
+|---|---:|---:|---:|
+| Partial pooling | 0.0 | — | 7 |
+| No pooling | −1.8 | 2.4 | 6 |
+| Complete pooling | −214.6 | 21.3 | 2 |
+
+Complete pooling is decisively worse and the gap is many times its standard error, which
+is the quantitative form of the mis-specification its predictive check showed.
+
+Partial and no pooling are statistically indistinguishable on elpd — a difference of
+$1.8$ against a standard error of $2.4$ is no difference at all. That result is easy to
+misread as "the hierarchy bought nothing", and it is worth being precise about why it
+did not:
+
+- **Predictive accuracy is not the reason to pool.** With five groups and four of them
+  well-observed, the two models make nearly identical predictions for 96% of the data.
+  LOO weights every observation equally, so the 90 observations where they disagree
+  cannot move the total much.
+- **The interval width is the reason to pool.** The partial-pooling posterior for
+  `ap-south` is 38% narrower than the no-pooling one, and it is narrower without being
+  wrong: it still covers the generator's true value for that region.
+
+The honest summary is that partial pooling costs nothing and buys a usable estimate for
+the group that needed one, which is the trade this comparison was set up to expose.

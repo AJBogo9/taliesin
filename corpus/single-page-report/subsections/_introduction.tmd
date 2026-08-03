@@ -1,0 +1,20 @@
+A request that is fast in one region and slow in another is the ordinary shape of a
+distributed service, and the ordinary mistake is to report one number for all of them.
+This report fits three models to the same synthetic latency sample and asks which of
+them earns the summary it produces.
+
+The data are generated, not collected: a fixed set of regions, a fixed per-region mean
+drawn around a global mean, and a log-normal response time per request. Everything the
+report claims is therefore checkable against the generator, which is the point — the
+question here is what each modelling choice does to an answer whose truth is known.
+
+The three candidates differ in one respect only:
+
+- **Complete pooling.** One latency parameter for every region.
+- **No pooling.** An independent parameter per region, with nothing shared.
+- **Partial pooling.** A per-region parameter drawn from a common distribution whose
+  own parameters are estimated alongside them [@gelman2007multilevel].
+
+The last of those is the hierarchical model, and the reason to prefer it is not that
+it fits best in-sample but that it estimates a sparse region without pretending the
+other regions are irrelevant to it.

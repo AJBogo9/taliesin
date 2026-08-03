@@ -1,0 +1,28 @@
+One parameter per region, estimated independently:
+
+$\log y_i \sim \mathcal{N}(\beta_{r[i]}, \sigma), \qquad \beta_j \sim \mathcal{N}(5, 1) \ \text{ for each } j.$
+
+```r
+fit_none <- brm(
+  log(ms) ~ 0 + region,
+  data   = latency,
+  family = gaussian(),
+  prior  = c(prior(normal(5, 1), class = b),
+             prior(normal(0, 1), class = sigma)),
+  chains = 4, iter = 2000, seed = 20260803
+)
+```
+
+**Convergence.** Clean again — $\hat{R} \le 1.01$ throughout, no divergences. Adding four
+parameters costs nothing in sampling difficulty because they are conditionally
+independent given $\sigma$.
+
+**What it gets wrong.** The failure is concentrated in one region. `us-east`, with 510
+observations, gets a posterior interval about $0.04$ wide on the log scale; `ap-south`,
+with 90, gets one nearly $2.4$ times wider. That is arithmetically correct and
+practically useless: the model has been told that knowing four regions' latencies says
+nothing whatsoever about the fifth, which is false by construction here and implausible
+in any real deployment.
+
+This is the specific defect partial pooling exists to fix, and the model comparison below
+measures how much of it is actually recovered.

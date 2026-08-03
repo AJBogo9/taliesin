@@ -14,7 +14,7 @@ const DIAG_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/diag-typo
 const COMPLETE_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/complete.tmd");
 const MATH_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/math.tmd");
 const PATHS_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/paths.tmd");
-const INCLUDE_DOC = path.join(REPO_ROOT, "corpus/bayesian-website/index.tmd");
+const INCLUDE_DOC = path.join(REPO_ROOT, "corpus/single-page-report/index.tmd");
 const TALIESIN_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
 // A real multi-chapter book from the corpus rather than a minted fixture: the corpus is the
 // regression net, and `demo-book` already carries the shape this needs (five chapters, one

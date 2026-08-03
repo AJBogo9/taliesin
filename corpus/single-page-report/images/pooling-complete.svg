@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 145" width="360" height="145" role="img" aria-labelledby="t">
+  <title id="t">Complete pooling: one shared parameter feeding every region's observations.</title>
+  <g fill="none" stroke="#888888" stroke-width="1.5">
+    <rect x="152" y="8" width="60" height="30" rx="4"/>
+    <rect x="8" y="103" width="60" height="30" rx="4"/>
+    <rect x="80" y="103" width="60" height="30" rx="4"/>
+    <rect x="152" y="103" width="60" height="30" rx="4"/>
+    <rect x="224" y="103" width="60" height="30" rx="4"/>
+    <rect x="296" y="103" width="56" height="30" rx="4"/>
+    <line x1="182" y1="38" x2="38" y2="103"/>
+    <line x1="182" y1="38" x2="110" y2="103"/>
+    <line x1="182" y1="38" x2="182" y2="103"/>
+    <line x1="182" y1="38" x2="254" y2="103"/>
+    <line x1="182" y1="38" x2="324" y2="103"/>
+  </g>
+  <g fill="#888888" font-family="serif" font-size="15" text-anchor="middle">
+    <text x="182" y="28">β</text>
+    <text x="38" y="123">y₁</text>
+    <text x="110" y="123">y₂</text>
+    <text x="182" y="123">y₃</text>
+    <text x="254" y="123">y₄</text>
+    <text x="324" y="123">y₅</text>
+  </g>
+</svg>

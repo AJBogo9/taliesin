@@ -1,0 +1,45 @@
+---
+title: "Pooling Models for Regional Service Latency"
+bibliography: references.bib
+toc: true
+execute:
+  cache: true
+---
+
+# Introduction
+{{< include subsections/_introduction.tmd >}}
+
+# Data Description
+{{< include subsections/_data-description.tmd >}}
+
+# Data Modeling
+{{< include subsections/_data-modeling.tmd >}}
+
+# Complete pooling (non-hierarchical model)
+{{< include subsections/_complete-pooling-model.tmd >}}
+
+# No pooling (non-hierarchical model)
+{{< include subsections/_no-pooling-model.tmd >}}
+
+# Partial pooling (hierarchical model)
+{{< include subsections/_partial-pooling-model.tmd >}}
+
+# Model comparison
+
+{{< include subsections/_model-comparison.tmd >}}
+
+# Discussion
+
+The three fits differ only in how much they let one region's data speak for another,
+and that single knob explains every difference in the tables above. Complete pooling
+buys precision by asserting a homogeneity the data do not support; no pooling buys
+honesty about heterogeneity at the cost of unusable intervals in the sparse regions;
+partial pooling is the compromise that the comparison scores best.
+
+Two limits are worth stating. The synthetic generator draws a single latency
+distribution per region with no time trend, so nothing here exercises a
+seasonally-varying effect. And the region count is small enough that the group-level
+scale is itself weakly identified, which is exactly the regime where the prior on
+that scale matters most.
+
+# References

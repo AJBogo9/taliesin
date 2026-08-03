@@ -171,7 +171,7 @@ enum Scan {
     /// followed by `=`, `>` or `/`, i.e. sit in real attribute position.
     ///
     /// Both halves are load-bearing. Without the first, `id="data-modeling"` matches
-    /// (the slug of a `# Data Modeling` heading in `corpus/bayesian-website/`).
+    /// (the slug of a `# Data Modeling` heading in `corpus/single-page-report/`).
     /// Without the second, ordinary prose matches: "the canonical data-figure loop"
     /// in `corpus/recipes/csv-figure.tmd` and "data-vs-model push-pull" in
     /// `corpus/posts/born-machines.tmd` both sit after a space.

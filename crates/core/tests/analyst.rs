@@ -25,7 +25,7 @@ fn readout() -> String {
 }
 
 /// The load-bearing new shape: `{python}` and `{r}` cells in ONE document. Every other
-/// corpus doc is single-language (the R docs under `bayesian-website/`, the Python posts
+/// corpus doc is single-language (the R cells under `single-page-report/`, the Python posts
 /// under `posts/`), so per-language executor routing had no document that mixed them.
 #[test]
 fn one_document_carries_both_python_and_r_cells() {

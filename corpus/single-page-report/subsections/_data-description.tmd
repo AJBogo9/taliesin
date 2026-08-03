@@ -1,0 +1,71 @@
+```{r}
+#| label: setup
+#| include: false
+
+library(dplyr)
+library(ggplot2)
+
+set.seed(20260803)
+
+regions <- c("eu-north", "eu-west", "us-east", "us-west", "ap-south")
+region_mean <- setNames(rnorm(length(regions), mean = 5.1, sd = 0.35), regions)
+n_per_region <- c(420, 380, 510, 240, 90)
+
+latency <- do.call(rbind, lapply(seq_along(regions), function(i) {
+  data.frame(
+    region = regions[i],
+    ms = rlnorm(n_per_region[i], meanlog = region_mean[regions[i]], sdlog = 0.45)
+  )
+}))
+```
+
+The sample holds `r nrow(latency)` requests across five regions. The counts are
+deliberately unbalanced: `ap-south` carries fewer than a fifth of the observations of
+`us-east`, which is the asymmetry the three models are being asked to handle.
+
+```{r}
+#| label: fig-latency-by-region
+#| fig-cap: "Latency distribution by region"
+
+ggplot(latency, aes(x = region, y = ms)) +
+  geom_boxplot(outlier.alpha = 0.2) +
+  scale_y_log10() +
+  labs(x = NULL, y = "response time (ms, log scale)") +
+  theme_minimal()
+```
+
+Plotted on a log scale the per-region distributions are close to symmetric, which is
+the first evidence that a log-normal response is the right observation model rather
+than a normal one on the raw milliseconds.
+
+```{r}
+#| label: fig-sample-sizes
+#| fig-cap: "Observations per region"
+
+ggplot(latency, aes(x = region)) +
+  geom_bar() +
+  labs(x = NULL, y = "requests") +
+  theme_minimal()
+```
+
+The imbalance matters because a no-pooling fit spends exactly as much prior on
+`ap-south` as on `us-east` and therefore reports a much wider interval for it. Whether
+that width is honest or merely wasteful is the question the model comparison settles.
+
+```{r}
+#| label: fig-region-means
+#| fig-cap: "Observed mean log-latency per region"
+
+latency |>
+  group_by(region) |>
+  summarise(mean_log = mean(log(ms))) |>
+  ggplot(aes(x = region, y = mean_log)) +
+  geom_point(size = 3) +
+  labs(x = NULL, y = "mean log(ms)") +
+  theme_minimal()
+```
+
+The observed region means sit in a band roughly $0.9$ wide on the log scale. Taken as a
+$\pm 2\sigma$ range that implies a group-level standard deviation near
+$\sigma \approx 0.22$, which is the quantity the hierarchical model estimates rather
+than assumes.

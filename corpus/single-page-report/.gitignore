@@ -1,0 +1,11 @@
+# Build outputs
+*.pdf
+*.html
+_site/
+
+# R specific
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+.RDataTmp

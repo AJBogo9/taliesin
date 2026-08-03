@@ -18,7 +18,7 @@ export const SITE_UNITS = [
   { slug: 'site', source: 'site', kind: 'website' },
   { slug: 'docs-guide', source: 'docs/guide', kind: 'book' },
   { slug: 'docs-internals', source: 'docs/internals', kind: 'book' },
-  { slug: 'bayesian-website', source: 'corpus/bayesian-website', kind: 'website' },
+  { slug: 'single-page-report', source: 'corpus/single-page-report', kind: 'website' },
   { slug: 'demo-book', source: 'corpus/demo-book', kind: 'book' },
   { slug: 'tech-blog', source: 'corpus/tech-blog', kind: 'website' },
 ];

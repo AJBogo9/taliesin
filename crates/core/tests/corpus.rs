@@ -483,7 +483,7 @@ fn includes_are_resolved_with_origin_files() {
     );
 
     // the single-page report pulls in subsections; every subsection contributes blocks
-    let book = corpus_dir().join("bayesian-website");
+    let book = corpus_dir().join("single-page-report");
     let bsrc = fs::read_to_string(book.join("index.tmd")).unwrap();
     let bdoc = taliesin_core::render_document_with_includes(&bsrc, &book);
     assert!(!bdoc.body_html().contains("{{< include"));
@@ -786,10 +786,10 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
 
 #[test]
 fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
-    // bayesian-website is a single-page website (no `chapters:`), assembled from
+    // single-page-report is a single-page website (no `chapters:`), assembled from
     // `subsections/` includes — not a book; the assertions below exercise TOC,
     // heading anchors, and document-order figure numbering on that one page.
-    let dir = corpus_dir().join("bayesian-website");
+    let dir = corpus_dir().join("single-page-report");
     let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
     let page = taliesin_core::render_html_page_with_includes(&src, &dir, "report");
 

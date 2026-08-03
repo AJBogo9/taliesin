@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 210" width="360" height="210" role="img" aria-labelledby="t">
+  <title id="t">Partial pooling: one global parameter feeding five per-region parameters, each feeding its own observations.</title>
+  <g fill="none" stroke="#888888" stroke-width="1.5">
+    <rect x="130" y="8" width="100" height="30" rx="4"/>
+    <rect x="8" y="88" width="60" height="30" rx="4"/>
+    <rect x="80" y="88" width="60" height="30" rx="4"/>
+    <rect x="152" y="88" width="60" height="30" rx="4"/>
+    <rect x="224" y="88" width="60" height="30" rx="4"/>
+    <rect x="296" y="88" width="56" height="30" rx="4"/>
+    <rect x="8" y="168" width="60" height="30" rx="4"/>
+    <rect x="80" y="168" width="60" height="30" rx="4"/>
+    <rect x="152" y="168" width="60" height="30" rx="4"/>
+    <rect x="224" y="168" width="60" height="30" rx="4"/>
+    <rect x="296" y="168" width="56" height="30" rx="4"/>
+    <line x1="180" y1="38" x2="38" y2="88"/>
+    <line x1="180" y1="38" x2="110" y2="88"/>
+    <line x1="180" y1="38" x2="182" y2="88"/>
+    <line x1="180" y1="38" x2="254" y2="88"/>
+    <line x1="180" y1="38" x2="324" y2="88"/>
+    <line x1="38" y1="118" x2="38" y2="168"/>
+    <line x1="110" y1="118" x2="110" y2="168"/>
+    <line x1="182" y1="118" x2="182" y2="168"/>
+    <line x1="254" y1="118" x2="254" y2="168"/>
+    <line x1="324" y1="118" x2="324" y2="168"/>
+  </g>
+  <g fill="#888888" font-family="serif" font-size="15" text-anchor="middle">
+    <text x="180" y="28">μ, σ</text>
+    <text x="38" y="108">β₁</text>
+    <text x="110" y="108">β₂</text>
+    <text x="182" y="108">β₃</text>
+    <text x="254" y="108">β₄</text>
+    <text x="324" y="108">β₅</text>
+    <text x="38" y="188">y₁</text>
+    <text x="110" y="188">y₂</text>
+    <text x="182" y="188">y₃</text>
+    <text x="254" y="188">y₄</text>
+    <text x="324" y="188">y₅</text>
+  </g>
+</svg>

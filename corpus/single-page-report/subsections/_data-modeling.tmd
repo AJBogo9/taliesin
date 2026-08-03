@@ -1,0 +1,53 @@
+All three models share one observation model — log-latency is normal around a
+region-specific mean — and differ only in where that mean comes from.
+
+## Hierarchical models
+![Partial pooling: per-region parameters drawn from a common distribution](images/pooling-partial.svg){#fig-model-hierarchical width=50% fig-align="center"}
+
+A hierarchy is a grouping the data already has and the model is allowed to use. Here it
+is the region; in other settings it is the customer, the sensor, or the calendar month.
+The structure in @fig-model-hierarchical says that each $\beta_j$ is itself drawn from
+$\mathcal{N}(\mu, \sigma)$, and that $\mu$ and $\sigma$ are estimated rather than fixed.
+
+The practical consequence is the one worth naming: a group with few observations is
+pulled toward the global mean in proportion to how little it says on its own, so a
+sparse region gets a usable estimate instead of a wide one [@gelman2007multilevel].
+
+## Non-hierarchical models
+::: {layout-ncol=2}
+![No pooling: one independent parameter per region](images/pooling-none.svg){#fig-model-no-pooling}
+
+![Complete pooling: one parameter shared by every region](images/pooling-complete.svg){#fig-model-complete-pooling}
+:::
+
+The two non-hierarchical alternatives sit at either end of that behaviour.
+@fig-model-no-pooling fits each region alone and shares nothing, so `ap-south` is
+estimated from its 90 observations and no others. @fig-model-complete-pooling shares
+everything and estimates one parameter, so `ap-south` is estimated from all of the data
+and none of it is about `ap-south`.
+
+## Prior selection
+
+### Global mean
+The generator's global mean sits near $\log(160) \approx 5.1$ on the log scale, and a
+report that pretends not to know the order of magnitude of its own latencies is being
+coy rather than careful. A $\mathcal{N}(5, 1)$ prior on $\mu$ covers roughly 20 ms to
+1,100 ms at two standard deviations, which is wide enough to be weakly informative and
+narrow enough to keep the sampler out of absurd territory.
+
+### Observation scale
+The within-region spread on the log scale is close to $0.45$. A half-normal prior with
+scale $1$ on the observation standard deviation is conservative against that: its mean
+is $\sqrt{2/\pi} \approx 0.80$, comfortably above the value the data support, so the
+prior is not doing the fitting.
+
+### Group-level scale
+This is the only prior that changes the answer. From @fig-region-means the region means
+span about $0.9$ on the log scale; read as a $\pm 2\sigma$ range that gives
+
+$\sigma \approx \frac{0.9}{4} \approx 0.22.$
+
+A half-normal prior with scale $0.5$ puts most of its mass below $1$ while leaving room
+for more heterogeneity than the data show. With five groups the likelihood constrains
+$\sigma$ weakly, so this choice is revisited in the sensitivity check
+[@gelman2013bda].
