@@ -84,6 +84,13 @@ impl Icons {
     pub fn ships_bundled(&self) -> bool {
         !self.author_supplied && self.favicon.is_none()
     }
+
+    /// Whether a 192px PNG really lands at the output root — the author's own pair, or the
+    /// bundled set. False for the `favicon:`-only project, which ships no raster icon at
+    /// all, and is why [`manifest_head_at`] must ask before claiming an `apple-touch-icon`.
+    pub fn has_png_192(&self) -> bool {
+        self.author_supplied || self.ships_bundled()
+    }
 }
 
 /// The PNG dimensions in `path`, read straight out of the IHDR chunk (the first chunk a PNG
@@ -248,7 +255,12 @@ fn manifest_json_for(cfg: &SiteConfig, dir_name: &str, icons: &Icons, start_url:
 
 /// The `<head>` block that makes a page installable, relative to a page at `depth`
 /// directories below the output root. `apple-touch-icon` reuses the 192px asset (iOS
-/// scales it) rather than shipping a fourth size.
+/// scales it) rather than shipping a fourth size, and is emitted only when `has_png_192`
+/// says that asset is really written: a project that declared a `favicon:` but no
+/// `icon-*.png` pair ships no raster icon by design, and claiming one there put a 404 on
+/// every page of the marketing site. iOS ignores an SVG `apple-touch-icon`, so pointing it
+/// at the `favicon:` mark instead would be a link that resolves and still does nothing —
+/// the manifest already carries that mark, and omitting is the honest option.
 ///
 /// Emits NO `<meta name="theme-color">`. The pre-paint theme bootstrap
 /// (`render::theme::theme_head`) already creates one and keeps it in lockstep with the
@@ -256,11 +268,16 @@ fn manifest_json_for(cfg: &SiteConfig, dir_name: &str, icons: &Icons, start_url:
 /// sourcing the colour from its own `BG` map. A static `prefers-color-scheme` pair here
 /// would be strictly worse (OS-only) AND inert: the bootstrap runs earlier in the head, so
 /// its media-less meta comes first in tree order and wins.
-fn manifest_head_at(depth: usize, name: &str) -> String {
+fn manifest_head_at(depth: usize, name: &str, has_png_192: bool) -> String {
     let up = "../".repeat(depth);
+    let touch_icon = if has_png_192 {
+        format!("<link rel=\"apple-touch-icon\" href=\"{up}{ICON_192}\" />")
+    } else {
+        String::new()
+    };
     format!(
         "<link rel=\"manifest\" href=\"{up}manifest.webmanifest\" />\
-         <link rel=\"apple-touch-icon\" href=\"{up}{ICON_192}\" />\
+         {touch_icon}\
          <meta name=\"apple-mobile-web-app-title\" content=\"{label}\" />",
         label = esc(&short_name(name)),
     )
@@ -297,7 +314,11 @@ impl Site {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
         let depth = page.url.matches('/').count();
-        manifest_head_at(depth, app_name(&self.config, &dir))
+        manifest_head_at(
+            depth,
+            app_name(&self.config, &dir),
+            self.manifest_icons().has_png_192(),
+        )
     }
 }
 
@@ -561,12 +582,12 @@ mod tests {
     /// order) and would duplicate a hex the bootstrap's `BG` map single-sources.
     #[test]
     fn the_install_head_leaves_theme_color_to_the_theme_bootstrap() {
-        assert!(!manifest_head_at(0, "X").contains("theme-color"));
+        assert!(!manifest_head_at(0, "X", true).contains("theme-color"));
     }
 
     #[test]
     fn manifest_head_is_depth_relative_and_escapes_the_label() {
-        let head = manifest_head_at(2, "Ada & Co: Notes");
+        let head = manifest_head_at(2, "Ada & Co: Notes", true);
         assert!(
             head.contains("href=\"../../manifest.webmanifest\""),
             "{head}"
@@ -574,7 +595,52 @@ mod tests {
         assert!(head.contains("href=\"../../icon-192.png\""), "{head}");
         assert!(head.contains("content=\"Ada &amp; Co\""), "{head}");
 
-        let root = manifest_head_at(0, "X");
+        let root = manifest_head_at(0, "X", true);
         assert!(root.contains("href=\"manifest.webmanifest\""), "{root}");
+    }
+
+    /// A project that declared a `favicon:` but no `icon-*.png` pair ships NO raster icon:
+    /// `ships_bundled` is false precisely so the bundled mark is not written over the
+    /// author's brand. The install head must not then claim one, because the file is not
+    /// there — measured on the marketing site (`site/_site.yml` declares
+    /// `favicon: favicon.svg`), where all five pages requested `icon-192.png` and every
+    /// request returned 404. `corpus/tech-blog` is the second project with the same shape.
+    #[test]
+    fn a_favicon_only_project_does_not_claim_an_apple_touch_icon() {
+        let favicon_only = Icons {
+            author_supplied: false,
+            maskable: false,
+            favicon: Some(FaviconIcon {
+                src: "favicon.svg".into(),
+                mime: "image/svg+xml",
+                sizes: None,
+            }),
+        };
+        // The premise: this is exactly the project whose PNGs are deliberately not written.
+        assert!(!favicon_only.ships_bundled());
+        assert!(!favicon_only.has_png_192());
+        let head = manifest_head_at(0, "X", favicon_only.has_png_192());
+        assert!(
+            !head.contains("apple-touch-icon"),
+            "no PNG is shipped, so nothing may link one: {head}"
+        );
+        // The manifest itself is always written, so its link stays either way.
+        assert!(head.contains("manifest.webmanifest"), "{head}");
+
+        // Both routes that DO put a 192px PNG at the root still claim it.
+        let bundled = Icons {
+            author_supplied: false,
+            maskable: false,
+            favicon: None,
+        };
+        assert!(bundled.ships_bundled() && bundled.has_png_192());
+        assert!(manifest_head_at(0, "X", bundled.has_png_192()).contains("apple-touch-icon"));
+        let authored = Icons {
+            author_supplied: true,
+            maskable: false,
+            favicon: None,
+        };
+        assert!(authored.has_png_192());
+        assert!(manifest_head_at(0, "X", authored.has_png_192()).contains("apple-touch-icon"));
     }
 }
