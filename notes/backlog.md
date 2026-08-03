@@ -324,6 +324,25 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
        (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
        `oss-*` items to "whenever the repo actually flips public". Fix the losing document or the
        next session follows it.
+     - **Phase 1 RAN 2026-08-03** — findings in
+       [2026-07-28-public-flip-audit.md](2026-07-28-public-flip-audit.md), 61 findings over the ten
+       dimensions. **D2's verdict is `--replace-text` across all history, not a link-repair commit**:
+       seven restatements of the purged docs' commercial conclusions exist ONLY in history, where a
+       commit on top cannot reach them. Two of the seven sit at paths already absent from `HEAD`
+       (`todo.md`, `2026-07-02-tmd-editor-grammar-plan.md`) and are cheaper to add to
+       `--invert-paths` than to string-match. D4 (secrets) and D8 (tone) came back **empty**, with
+       what was searched enumerated so an empty dimension is distinguishable from an unrun one.
+       The reversible half was applied the same day (see the audit's remediation section); what is
+       left on this item is the irreversible half only.
+     - **ORDERING CONSTRAINT, measured 2026-08-03: the flip must come BEFORE the tag.**
+       `release.yml` triggers solely on `tags: ["v*"]` **and both its jobs are guarded on
+       `github.event.repository.private != true`** (`:27`, `:41`), so tagging while private builds
+       nothing and produces no release — silently. Meanwhile `README.md:59-66` marks three platforms
+       "built and released" against **zero** releases (`git tag -l 'v*'` is empty locally and on the
+       remote). Owner ruled 2026-08-03 that the audience is **strangers evaluating a product**, so
+       this is a launch blocker rather than cosmetic, and the resolution is flip-then-tag, not
+       softening the table. Sequence: flip public → push a `v*` tag → verify the release assets
+       exist → only then is the README true.
      - **`git grep -Il "/home/bogo"` → 11 files** (measured 2026-07-28), against a former line in
        this file claiming the tracked paths were scrubbed. The 2026-07-17 scrub was scoped to four
        paths under `docs/superpowers/*`; low impact (the username is public via git author metadata)
