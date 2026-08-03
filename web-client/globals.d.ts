@@ -80,8 +80,6 @@ interface Window {
   };
   /** (Re)collects `#TOC` links and runs the scrollspy (shared toc-spy.js). */
   taliInitTocSpy?: () => void;
-  /** Per-scroll hook the shared scrollspy calls (preview flashes the mobile label). */
-  taliTocScrollHook?: () => void;
 
   // --- Cmd-K search palette (search.js) ---
   /** Install-once guard so the palette wires its global listeners a single time. */

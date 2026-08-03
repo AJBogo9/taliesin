@@ -307,6 +307,52 @@ fn the_reading_position_features_are_gone() {
     );
 }
 
+/// The floating mobile "Contents" pill was deleted 2026-08-03: it duplicated
+/// the topbar, which is already sticky and already carries Chapters. It went as a
+/// whole feature, not just the button: the pull-up sheet it opened (backdrop, drag
+/// gestures, `tali-toc-sheet`/`tali-toc-open` body-class wiring) had nothing else to
+/// drive it, so `#TOC` reverts to its in-flow mobile layout unconditionally.
+#[test]
+fn the_mobile_contents_pill_is_gone() {
+    let page = taliesin_core::render::render_html_page(
+        "---\ntitle: T\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
+        "f",
+    );
+    for needle in [
+        "tali-toc-handle",
+        "tali-toc-backdrop",
+        "tali-toc-sheet",
+        "tali-toc-open",
+        "tali-toc-cur",
+    ] {
+        assert!(
+            !page.contains(needle),
+            "the mobile Contents pill's `{needle}` still ships in the page shell"
+        );
+    }
+    // `code_scripts()` never bundled toc-spy.js (it is inlined separately, only on TOC
+    // pages), so a needle against it would pass vacuously whether or not the pill's
+    // leftover chip-write/scroll-hook code was cut from the file. Pin the script itself.
+    for needle in ["taliTocScrollHook", "tali-toc-cur"] {
+        assert!(
+            !taliesin_core::render::TOC_SPY_JS.contains(needle),
+            "`{needle}` still ships in toc-spy.js; the mobile pill's leftover hook survives \
+             in the scrollspy it was deleted out of"
+        );
+    }
+    let css = taliesin_core::render::base_css();
+    for needle in [
+        "tali-toc-handle",
+        "tali-toc-backdrop",
+        "tali-toc-sheet",
+        "tali-toc-open",
+        "tali-toc-cur",
+        "tali-show-label",
+    ] {
+        assert!(!css.contains(needle), "`{needle}` CSS survives in base.css");
+    }
+}
+
 /// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is
 /// retired. This asserts the old spelling stays gone.
 ///

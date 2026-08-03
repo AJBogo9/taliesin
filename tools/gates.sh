@@ -236,8 +236,7 @@ run_gate "cargo clippy -D warnings" clippy.log \
 #
 # `--features taliesin-server/headless-js` because the browser driver is OFF by
 # default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
-# `read_run_js` / `print_pdf` / `deck_browser` / `reactive_browser` / `pyodide_browser` /
-# `reader_chrome_browser`
+# `read_run_js` / `print_pdf` / `deck_browser` / `reactive_browser` / `pyodide_browser`
 # declare it in `required-features` — so without this
 # flag cargo would quietly skip building them and the chrome canary below would go
 # missing. That pairing is deliberate: forgetting the feature turns this gate RED

@@ -86,15 +86,6 @@
     Array.prototype.forEach.call(toc.getElementsByTagName("li"), function (li) {
       li.classList.toggle("tali-toc-expanded", open.indexOf(li) !== -1);
     });
-    var chip = document.getElementById("tali-toc-cur"); // mobile pull-up handle label
-    if (chip && cur) {
-      // Strip the hover `#` permalink the anchor-links enhancer appends to a heading,
-      // so the chip reads "Section title", not "Section title#".
-      var h = /** @type {HTMLElement} */ (cur.heading.cloneNode(true));
-      var anchors = h.querySelectorAll(".tali-anchor");
-      for (var ai = 0; ai < anchors.length; ai++) anchors[ai].remove();
-      chip.textContent = (h.textContent || "").trim();
-    }
     if (cur) {
       // keep the active link in view when the TOC is its own scroll area
       var lr = cur.link.getBoundingClientRect();
@@ -105,7 +96,6 @@
   }
 
   function onScroll() {
-    if (window.taliTocScrollHook) window.taliTocScrollHook(); // preview's mobile-label flash
     if (raf) return;
     raf = requestAnimationFrame(function () {
       raf = 0;

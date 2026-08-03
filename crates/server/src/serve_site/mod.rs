@@ -1137,23 +1137,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     } else {
         ("tali-site-main", "", "")
     };
-    // The mobile pull-up sheet ships here for the same reason it ships in both static
-    // builds and the single-document preview: below 60rem an "on this page" TOC that is
-    // not a sheet strands at the very bottom of the chapter. This assembler was the one
-    // that never got a copy, so a site preview stayed a desktop sidebar at phone width
-    // (PP-2) — and `preview <dir>` is how the books are written, so a book's phone
-    // reading experience was the one thing its author could not see while writing it.
-    // `client.js` already ships here and wires the sheet off `#tali-toc-handle`; it was
-    // only ever missing the chrome to wire.
-    //
-    // Body-level, not beside `<nav id="TOC">`: the handle and backdrop are `position:
-    // fixed`, and the site layouts nest the TOC inside `.tali-site-main` /
-    // `.tali-book-inner`, either of which could acquire a containing block.
-    let toc_sheet = if toc {
-        taliesin_core::TOC_SHEET_MARKUP
-    } else {
-        ""
-    };
     let main_cls = if chrome.wide {
         format!("{base_cls} tali-wide")
     } else {
@@ -1231,18 +1214,9 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         ),
     };
 
-    // The live body: the site chrome + the mountable `#tali-root`, plus the TOC sheet
-    // chrome and the dev-menu mount. The websocket client drives everything after first
-    // paint.
-    let body = format!("{layout}\n{toc_sheet}<div id=\"tali-controls\"></div>");
-    // A preview sets `tali-toc-sheet` server-side; only a static build defers it to
-    // `toc-sheet.js` (so a JS-off build still degrades to the in-flow TOC). Matches what
-    // the single-document preview does with the same client.
-    let body_class = if toc {
-        format!("{body_class} tali-toc-sheet")
-    } else {
-        body_class.to_string()
-    };
+    // The live body: the site chrome + the mountable `#tali-root`, plus the dev-menu
+    // mount. The websocket client drives everything after first paint.
+    let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let boot = protocol::boot_id();
     // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
@@ -2871,69 +2845,16 @@ mod project_tests {
     }
 
     #[test]
-    fn a_site_preview_page_gets_the_same_mobile_toc_sheet_a_build_of_it_gets() {
-        // PP-2 (2026-07-26 path-parity audit): `body.tali-toc-sheet` was set in the
-        // single-doc preview, the standalone build and the site build, and NOT in
-        // `preview <dir>` — so at phone width a site preview left the TOC as a desktop
-        // sidebar and the handle never appeared. `preview <dir>` is how the dogfooded
-        // books are written, which made a book's phone reading experience the one thing
-        // its author could not see while writing it.
-        //
-        // The chrome is needled as the whole shared const: every page inlines the entire
-        // CSS payload, so `tali-toc-handle` as a bare substring is present on pages that
-        // emit no handle (it is a selector in there).
-        //
-        // Measured on a WEBSITE, not on the book this test first used: since item 76 a book
-        // has no rail and therefore no sheet, so a book page would assert the absence PP-2
-        // was about and the pin would invert into its own negative control.
-        let with_toc = corpus_preview_page("tech-blog", "posts/KL-divergence/index.tmd");
-        assert!(
-            with_toc.contains(taliesin_core::TOC_SHEET_MARKUP),
-            "a TOC chapter's site preview must emit the shared sheet chrome"
-        );
-        assert!(
-            with_toc.contains("tali-toc-sheet"),
-            "and opt the body into sheet mode, as the other three paths do"
-        );
-        // Not beside `<nav id=\"TOC\">`, which the site layouts nest inside
-        // `.tali-site-main` / `.tali-book-inner`: the handle and backdrop are `position:
-        // fixed` and either wrapper could acquire a containing block.
-        let sheet_at = with_toc.find(taliesin_core::TOC_SHEET_MARKUP).unwrap();
-        let controls_at = with_toc.find("id=\"tali-controls\"").unwrap();
-        let inner_close = with_toc.find("</main>").unwrap();
-        assert!(
-            sheet_at > inner_close && sheet_at < controls_at,
-            "sheet chrome must sit at body level (after the content wrapper, beside the \
-             dev-menu mount), got sheet@{sheet_at} main-close@{inner_close} controls@{controls_at}"
-        );
-    }
-
-    #[test]
-    fn a_page_below_the_toc_threshold_gets_no_sheet_chrome() {
-        // The gate is the page's own `toc`, not the command: this project article has two
-        // headings, below `MIN_TOC_HEADINGS`, so it earns no TOC and must earn no sheet
-        // either. Without this the test above passes on a shell that emits the chrome
-        // unconditionally. Same website as above, so the two differ only in the page.
-        let without =
-            corpus_preview_page("tech-blog", "projects/iphone-premium-analysis/index.tmd");
-        assert!(
-            !without.contains(taliesin_core::TOC_SHEET_MARKUP),
-            "a page with no TOC must not ship a handle that opens an empty sheet"
-        );
-        // And the book half of the same guarantee: a book chapter has no rail at all
-        // (item 76), so however long it is it must not ship sheet chrome for a sheet that
-        // would open empty.
+    fn a_book_chapter_preview_gets_no_toc_rail() {
+        // A book chapter has no rail at all (item 76), however long it is — the preview's
+        // own assembler, not just the static build's, must honor that.
         let chapter = corpus_preview_page("tarn", "install.tmd");
-        assert!(
-            !chapter.contains(taliesin_core::TOC_SHEET_MARKUP),
-            "a book chapter has no TOC, so no sheet: {chapter}"
-        );
         // The exact emitted mount, not `id="TOC"`: `client.js` is inlined verbatim and its
         // own source comments name the element, so the short needle matches on a page that
         // mounts nothing.
         assert!(
             !chapter.contains("<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>"),
-            "…and no rail nav in the preview either: {chapter}"
+            "book chapter still ships a rail nav in the preview: {chapter}"
         );
         assert!(
             !chapter.contains("window.TALIESIN_TOC = true;"),

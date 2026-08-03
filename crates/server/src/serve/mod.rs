@@ -495,7 +495,6 @@ pub(crate) const STATUS_CSS: &str = "\
       border-left: 3px solid #e5534b; border-radius: 6px; padding: .3rem .5rem; \
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
     .tali-cellerr:hover { border-color: #e5534b; } \
-    @media (max-width: 60rem) { body.tali-toc-sheet #tali-controls.tali-dev { bottom: 2.4rem; } } \
     #tali-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
       display: flex; align-items: center; gap: 6px; \
       font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \
@@ -782,26 +781,6 @@ mod protocol_contract {
         assert!(
             CLIENT_JS.contains("window.taliOpenPageSource"),
             "client.js must expose window.taliOpenPageSource for the command palette"
-        );
-    }
-
-    /// PA-B3, the preview's half. The mobile TOC sheet is a dimming modal, so Tab belongs
-    /// inside it — the same shared trap the lightbox and Cmd-K use. The preview keeps its own
-    /// copy of the sheet (it rebuilds the TOC live), so the static build's `toc-sheet.js` fix
-    /// does not reach it; `render::tests` pins that copy. The trap must be released when a
-    /// resize turns the sheet back into the desktop sidebar, or Tab stays confined to a panel
-    /// nobody opened.
-    #[test]
-    fn client_js_traps_focus_in_the_mobile_toc_sheet() {
-        // The bare name is also in the feature-detect guard and the comment, so pin the CALL
-        // (deleting it left `contains("taliFocusTrap")` passing — found by mutation).
-        assert!(
-            CLIENT_JS.contains("taliFocusTrap(tocEl, f)"),
-            "the preview's TOC sheet must reuse the shared modal focus trap"
-        );
-        assert!(
-            CLIENT_JS.contains("if (!isSheetMode()) dropTocTrap()"),
-            "the preview's TOC sheet must release the trap on a resize out of sheet mode"
         );
     }
 

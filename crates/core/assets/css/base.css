@@ -1047,84 +1047,22 @@
            color: var(--tali-muted); text-decoration: none; }
   #TOC a:hover { color: var(--tali-fg); }
   #TOC a.tali-toc-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
-  /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
-  #tali-toc-handle, #tali-toc-backdrop { display: none; }
   @media (max-width: 60rem) {
     /* keep the fixed control bar / diagnostics from covering the last line */
     body { padding-bottom: 2.75rem; }
-    /* sheet pages lift the control bar above the bottom TOC handle, so clear more */
-    body.tali-toc-sheet { padding-bottom: 4.4rem; }
-    /* Static export (no JS): stack the TOC above the content. Keep it a grid so
-       the minmax(0,1fr) track clamps <main> to the viewport, and `order` lifts
-       the TOC (which follows <main> in the DOM) up instead of stranding it at the
-       bottom. The live preview opts out via .tali-toc-sheet and uses the sheet. */
-    /* Both collapse paths below leave one full-width column and no rail in the way, so the
+    /* Stack the TOC above the content. Keep it a grid so the minmax(0,1fr) track
+       clamps <main> to the viewport, and `order` lifts the TOC (which follows <main>
+       in the DOM) up instead of stranding it at the bottom. */
+    /* This collapse leaves one full-width column and no rail in the way, so the
        left-growing override above no longer describes anything: hand the escapes back to
        the shared page-centred formula. */
     body.has-toc > main :is(.column-page, .column-screen) {
       --tali-escape-room: 100vw;
       margin-left: calc(50% - var(--tali-escape-w) / 2);
       margin-right: calc(50% - var(--tali-escape-w) / 2); }
-    body.has-toc:not(.tali-toc-sheet) { grid-template-columns: minmax(0, 1fr); max-width: var(--tali-maxw); gap: 0; }
-    body.has-toc:not(.tali-toc-sheet) > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
+    body.has-toc { grid-template-columns: minmax(0, 1fr); max-width: var(--tali-maxw); gap: 0; }
+    body.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
            border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
-
-    /* Live preview: a quiet pull-up handle opens the TOC as a bottom sheet. */
-    body.has-toc.tali-toc-sheet { display: block; max-width: var(--tali-maxw); }
-    /* the nav becomes the sheet: off-screen until .tali-toc-open slides it up */
-    body.tali-toc-sheet #TOC { position: fixed; inset: auto 0 0 0; z-index: 10001; margin: 0;
-      max-height: 72vh; padding: .25rem .6rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
-      background: var(--tali-bg); border-radius: var(--tali-radius-lg) var(--tali-radius-lg) 0 0; box-shadow: 0 -8px 30px var(--tali-edge-shadow);
-      overflow: auto; overscroll-behavior: contain;
-      transform: translateY(100%); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
-    body.tali-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
-      margin: .15rem auto .6rem; border-radius: var(--tali-radius-sm); background: var(--tali-border); }
-    body.tali-toc-sheet #TOC a { padding-top: .45rem; padding-bottom: .45rem; }
-    /* the pull-up sheet shows the full tree (you tap any entry to navigate) */
-    body.tali-toc-sheet #TOC ul ul { display: block; }
-    body.tali-toc-sheet.tali-toc-open #TOC { transform: translateY(0); }
-    /* dim backdrop behind the open sheet */
-    body.tali-toc-sheet #tali-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
-      background: var(--tali-scrim); opacity: 0; pointer-events: none; transition: opacity var(--tali-dur-slow); }
-    body.tali-toc-sheet.tali-toc-open #tali-toc-backdrop { opacity: 1; pointer-events: auto; }
-    /* The contents handle: a labelled TOGGLE, not a grabber. It used to be a bare 42x5 px
-       grip with `cursor: grab` and `display: none` while open, which said "drag me from the
-       bottom edge" and offered no press-again-to-close (item 198). Dragging it up still
-       works; the chevron and the word are what say a press works too. */
-    body.tali-toc-sheet #tali-toc-handle { display: flex; flex-direction: row; align-items: center;
-      position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
-      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1rem; gap: .4rem;
-      min-height: 32px; box-sizing: border-box;
-      border: 0; border-radius: var(--tali-radius-lg); background: color-mix(in srgb, var(--tali-bg) 72%, transparent);
-      -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: var(--tali-shadow-sm);
-      cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none; }
-    /* Open: it stays mounted as the close affordance, and has to sit ABOVE the sheet
-       (z-index 10001) and its backdrop (10000) or a press lands on the backdrop instead. The
-       sheet's bottom padding grows to match, so nothing in the list hides underneath it. */
-    body.tali-toc-sheet.tali-toc-open #tali-toc-handle { z-index: 10002; }
-    body.tali-toc-sheet.tali-toc-open #TOC { padding-bottom: calc(3.6rem + env(safe-area-inset-bottom, 0px)); }
-    /* The chevron: two borders of a rotated square, so no glyph and no font dependency. It
-       points UP at rest (pull/press up to open) and flips down when the sheet is open. Its
-       partner is the word beside it, so it carries no meaning on its own (aria-hidden). */
-    #tali-toc-handle .tali-toc-chev { width: 7px; height: 7px; margin-top: 3px;
-      border-left: 2px solid var(--tali-muted); border-top: 2px solid var(--tali-muted);
-      transform: rotate(45deg); transition: transform var(--tali-dur-slow), margin var(--tali-dur-slow); }
-    body.tali-toc-open #tali-toc-handle .tali-toc-chev { transform: rotate(-135deg); margin-top: -3px; }
-    /* The label is text, so it answers to the text contrast floor rather than the 3:1
-       non-text one the old grip was tuned against. */
-    #tali-toc-handle .tali-toc-label { font: 600 13px ui-sans-serif, system-ui, sans-serif;
-      line-height: 1; color: var(--tali-muted); }
-    /* current-section chip: hidden at rest, flashes in while scrolling, then fades */
-    #tali-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
-      transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis; font: 600 12px ui-sans-serif, system-ui, sans-serif;
-      color: var(--tali-muted); background: var(--tali-bg); border: 1px solid var(--tali-border);
-      padding: .2rem .55rem; border-radius: var(--tali-radius-md); box-shadow: var(--tali-shadow-sm);
-      opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
-    #tali-toc-handle.tali-show-label #tali-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
-    @keyframes taliPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
-      50% { bottom: calc(1.3rem + env(safe-area-inset-bottom, 0px)); } }
-    body.tali-toc-sheet #tali-toc-handle.tali-hint { animation: taliPeekHint 1.15s ease-in-out 2; }
     /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
        minmax(0,1fr), not 1fr: the 0 floor lets wide children (figures/images) shrink
        to the column instead of forcing their intrinsic width and overflowing the page. */
@@ -1163,8 +1101,8 @@
      Outputs, figures and tables are untouched: hiding the code is not hiding the results. */
   html.tali-code-hidden [data-tali-cell] { display: none; }
 
-  /* honor reduced-motion: collapse transitions/animations (the TOC sheet slide,
-     the handle hint bounce, fades) to near-instant, and drop smooth scrolling */
+  /* honor reduced-motion: collapse transitions/animations (fades) to near-instant,
+     and drop smooth scrolling */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
       transition-duration: .001ms !important; scroll-behavior: auto !important; }
@@ -1243,10 +1181,10 @@
       --tali-bg: #fff; --tali-fg: #111; --tali-muted: #555; --tali-border: #ccc;
       --tali-code-bg: #f5f5f5; --tali-link: #0645ad; --tali-accent: #0645ad;
     }
-    #tali-controls, #tali-diagnostics, #tali-toc-handle, #tali-toc-backdrop, .tali-copy { display: none !important; }
+    #tali-controls, #tali-diagnostics, .tali-copy { display: none !important; }
     body { max-width: none !important; margin: 0 !important; }
     body.has-toc { display: grid !important; grid-template-columns: 1fr !important; gap: 0 !important; }
-    body.tali-toc-sheet #TOC, body.has-toc > #TOC {
+    body.has-toc > #TOC {
       position: static !important; transform: none !important; order: -1 !important;
       max-height: none !important; overflow: visible !important; z-index: auto !important;
       background: transparent !important; box-shadow: none !important; border-radius: 0 !important;

@@ -135,9 +135,9 @@ pub(crate) use theme::theme_head;
 mod page;
 use page::page_from_doc;
 pub use page::{
-    PageParts, SiteCtx, TOC_SHEET_MARKUP, assemble_html_page, favicon_link,
-    html_page_from_doc_in_site, html_page_from_doc_in_site_external, render_deck_to_page_external,
-    render_doc_to_page, render_doc_to_page_external, title_with_site_suffix,
+    PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
+    html_page_from_doc_in_site_external, render_deck_to_page_external, render_doc_to_page,
+    render_doc_to_page_external, title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -2068,18 +2068,13 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
 /// `window.taliInitTocSpy()` after each TOC rebuild. Emitted only on TOC pages.
 pub const TOC_SPY_JS: &str = include_str!("../../../../web-client/toc-spy.js");
 
-/// Mobile pull-up TOC sheet for static builds (self-inits on load). The live preview
-/// drives its own copy from client.js, so this ships only in the static build path
-/// (`toc_scripts`), never the preview, to avoid double-wiring the sheet.
-pub const TOC_SHEET_JS: &str = include_str!("../../../../web-client/toc-sheet.js");
-
-/// The scripts that only make sense with an on-page TOC: the scrollspy and the mobile
-/// TOC sheet. **Does not include [`search_scripts`]** — Cmd-K is a whole-book affordance
+/// The scripts that only make sense with an on-page TOC: the scrollspy.
+/// **Does not include [`search_scripts`]** — Cmd-K is a whole-book affordance
 /// and its button renders on every page, so gating it on this page's heading count made
 /// the palette advertise itself and then come up empty on any chapter under
 /// `MIN_TOC_HEADINGS` (the preview injects unconditionally, so the author never saw it).
 pub fn toc_scripts() -> String {
-    format!("<script>{TOC_SPY_JS}</script>\n<script>{TOC_SHEET_JS}</script>")
+    format!("<script>{TOC_SPY_JS}</script>")
 }
 
 /// The Cmd-K palette runtime. Ships wherever the palette's button ships, independently
@@ -2271,7 +2266,6 @@ pub fn core_enhance_js() -> String {
         TABSET_JS,
         SCROLLY_JS,
         TOC_SPY_JS,
-        TOC_SHEET_JS,
         SEARCH_JS,
     ]
     .join("\n;\n")

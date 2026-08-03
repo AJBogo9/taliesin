@@ -74,8 +74,6 @@ h2:not(.tali-lof h2) {
 /* (1) Live-only chrome: no meaning on paper, and must not consume layout space. */
 #tali-controls,
 #tali-diagnostics,
-#tali-toc-handle,
-#tali-toc-backdrop,
 #tali-search,
 .tali-copy,
 .tali-rmenu-toggle,

@@ -28,7 +28,7 @@ headless-js = ["dep:chromiumoxide"]
 # policy as `headless-js`: a DOWNLOADED binary is the complete tool.
 pyodide = ["taliesin-core/pyodide"]
 
-# All six need the driver to compile at all, so Cargo skips them unless the feature is on.
+# All five need the driver to compile at all, so Cargo skips them unless the feature is on.
 # `tools/gates.sh` passes `--features headless-js` and then asserts these tests
 # printed `... ok` BY NAME, so silently dropping the feature turns the gate red.
 [[test]]
@@ -51,10 +51,6 @@ required-features = ["headless-js"]
 [[test]]
 name = "pyodide_browser"
 required-features = ["headless-js", "pyodide"]
-
-[[test]]
-name = "reader_chrome_browser"
-required-features = ["headless-js"]
 
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }

@@ -864,35 +864,6 @@ fn labelled_mermaid_becomes_numbered_referenceable_figure() {
 }
 
 #[test]
-fn static_toc_page_ships_the_mobile_pull_up_sheet() {
-    // A static TOC page opts into the mobile pull-up sheet (markup + body class + the
-    // toc-sheet.js enhancer) so its "on this page" TOC is a bottom sheet on narrow
-    // screens instead of stranding at the page bottom.
-    let html = render_html_page(
-        "---\ntitle: T\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
-        "f",
-    );
-    assert!(
-        html.contains("id=\"tali-toc-handle\""),
-        "sheet handle markup missing"
-    );
-    assert!(
-        html.contains("id=\"tali-toc-backdrop\""),
-        "sheet backdrop markup missing"
-    );
-    assert!(
-        !TOC_SHEET_JS.is_empty() && toc_scripts().contains(TOC_SHEET_JS),
-        "toc-sheet.js enhancer not bundled on TOC pages"
-    );
-    // Progressive enhancement: the enhancer (not the server) opts the body into the sheet,
-    // so a no-JS page keeps its in-flow TOC layout.
-    assert!(
-        TOC_SHEET_JS.contains("classList.add(\"tali-toc-sheet\")"),
-        "toc-sheet.js should add the tali-toc-sheet class at runtime"
-    );
-}
-
-#[test]
 fn static_page_has_no_dead_click_to_source_outline() {
     // A built/rendered static page is a read-only view with no editor bridge, so it must
     // NOT ship the click-to-source click handler (it drew a `.tali-hl` outline on every
@@ -5383,6 +5354,11 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
 /// carry three drifted black alphas: the mobile TOC sheet (base, .42), the book drawer (site,
 /// .38), and the deck share modal (deck, .55). Folded to one token; no raw scrim literal survives
 /// (each literal string was unique to its own backdrop rule). PA-F2.
+///
+/// **base.css dropped out of the per-sheet loop 2026-08-03**, visual minimalism pass: its only
+/// two dimmed-overlay surfaces, the lightbox and the mobile TOC sheet, were both deleted (the
+/// second in the same pass that added this note), and nothing else in base.css is a full-screen
+/// modal backdrop. The token itself still single-sources site.css and deck.css.
 #[test]
 fn overlay_backdrops_share_the_scrim_token() {
     assert_eq!(
@@ -5390,20 +5366,12 @@ fn overlay_backdrops_share_the_scrim_token() {
         1,
         "--tali-scrim must be defined exactly once, in tokens.css :root"
     );
-    for (sheet, css) in [
-        ("base.css", BASE_CSS),
-        ("site.css", SITE_CSS),
-        ("deck.css", super::deck::DECK_CSS),
-    ] {
+    for (sheet, css) in [("site.css", SITE_CSS), ("deck.css", super::deck::DECK_CSS)] {
         assert!(
             css.contains("var(--tali-scrim)"),
             "{sheet}'s overlay backdrop must reference var(--tali-scrim)"
         );
     }
-    assert!(
-        !BASE_CSS.contains("rgba(0, 0, 0, .42)"),
-        "base.css still ships the raw .42 TOC-sheet scrim; route it through --tali-scrim"
-    );
     assert!(
         !SITE_CSS.contains("rgba(0, 0, 0, .38)"),
         "site.css still ships the raw .38 book-drawer scrim; route it through --tali-scrim"
@@ -6234,44 +6202,6 @@ fn a_light_dismiss_popover_closes_when_focus_tabs_out() {
             "{what} must treat a null relatedTarget as \"not a dismissal\""
         );
     }
-}
-
-/// PA-B3: the mobile TOC sheet is a dimming modal over the page, so Tab belongs inside it —
-/// the shared trap the lightbox and Cmd-K already use. It must also RELEASE on leaving sheet
-/// mode: a trap held over a resize would confine Tab to the desktop sidebar, which nobody
-/// opened. (The preview has its own copy of the sheet in `client.js`, which lives in the
-/// server crate; `serve::tests` pins that half.)
-#[test]
-fn the_mobile_toc_sheet_traps_focus() {
-    // `contains("taliFocusTrap")` is not enough: the feature-detect guard and the comment
-    // both mention it, so that needle survived deleting the call itself (mutation-caught).
-    assert!(
-        TOC_SHEET_JS.contains("taliFocusTrap(toc, f)"),
-        "the static build's TOC sheet must reuse the shared modal focus trap"
-    );
-    assert!(
-        TOC_SHEET_JS.contains("isSheetMode()"),
-        "it must only trap while the TOC IS a sheet"
-    );
-}
-
-/// PA-B9: the static build's pull-up handle read "Conclusion (read)". `toc-sheet.js` set the
-/// label from the TOC *link*, which carries the visually-hidden " (read)" that `toc-spy.js`
-/// appends to a finished section; toc-spy sets the same label from the *heading* and strips
-/// the hover permalink. `toc_scripts()` always emits both, so there is one owner, not two.
-#[test]
-fn the_pull_up_handle_label_has_exactly_one_owner() {
-    assert!(
-        !TOC_SHEET_JS.contains("cur.textContent"),
-        "the sheet must not write the handle label; toc-spy.js owns it"
-    );
-    assert!(
-        TOC_SPY_JS.contains("chip.textContent"),
-        "toc-spy.js is the owner, so it must still write the label"
-    );
-    // Both ship together on every TOC page, which is what makes single ownership safe.
-    let scripts = toc_scripts();
-    assert!(scripts.contains(TOC_SPY_JS) && scripts.contains(TOC_SHEET_JS));
 }
 
 #[test]

@@ -461,27 +461,6 @@ fn bare_theme_css(default_mode: &str) -> String {
 /// to call them after a mount).
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.taliEnhanceCode&&window.taliEnhanceCode(document.body);});</script>";
 
-/// Mobile pull-up-sheet chrome for a TOC page: a dim backdrop + a grabber handle (with a
-/// current-section chip). Body-level and `position: fixed`, revealed by CSS only at the
-/// sheet breakpoint (`<= 60rem`).
-///
-/// **The one copy.** Every assembler that can put a TOC on a page emits *this* string:
-/// the two static builds here, the single-document preview and the site preview. It was
-/// hand-copied at two of those four and absent from the third, so `preview <dir>` — the
-/// command the dogfooded books are written with — served no sheet chrome at all and a
-/// book's phone reading experience was the one thing its author could not see while
-/// writing it (PP-2, 2026-07-26 path-parity audit).
-///
-/// Two runtimes drive it, which is how the gap survived (each looked complete alone):
-/// `toc-sheet.js` in a static build, `client.js` in either preview. They differ in one
-/// place only — a build lets `toc-sheet.js` add `tali-toc-sheet` to the body at runtime,
-/// so the TOC still degrades to the in-flow layout with JS off, while a preview (which
-/// cannot render without its client anyway) sets that class server-side.
-pub const TOC_SHEET_MARKUP: &str = "<div id=\"tali-toc-backdrop\"></div>\n\
-     <button id=\"tali-toc-handle\" type=\"button\" aria-label=\"Contents\">\
-     <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-chev\" aria-hidden=\"true\"></span>\
-     <span class=\"tali-toc-label\">Contents</span></button>\n";
-
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     html_page_inner(doc, fallback_title, None, mode, AssetMode::Inline)
 }
@@ -704,7 +683,7 @@ fn html_page_inner(
     // wrapper, footer) so the footer sits at the bottom of short pages and the
     // chrome lines up with the reading column. The `has-toc` grid moves onto the
     // wrapper, leaving the body free to be the flex shell.
-    let mut body_content = match site {
+    let body_content = match site {
         // Book: a centred reading column (content + optional TOC) under a sticky topbar;
         // the chapter list is an off-canvas drawer, with prev/next-chapter under the column.
         Some(s) if s.book_sidebar.is_some() => {
@@ -739,15 +718,6 @@ fn html_page_inner(
         }
         None => content,
     };
-    // On a TOC page, ship the mobile pull-up-sheet chrome so the "on this page" TOC can
-    // become a bottom sheet on narrow screens instead of stranding at the very bottom of
-    // the chapter. Progressive enhancement: the handle/backdrop are hidden by default and
-    // `toc-sheet.js` ADDS `tali-toc-sheet` to the body at runtime, then wires the drag/tap
-    // — so with JS off the TOC still degrades to the in-flow layout (never off-screen and
-    // unreachable). Desktop is unaffected (the sheet CSS lives in the `<= 60rem` query).
-    if !toc.is_empty() {
-        body_content.push_str(TOC_SHEET_MARKUP);
-    }
     // Site-level `format: html:` includes (from `_site.yml`) apply to every page
     // first; the page's own front-matter includes follow.
     let mut includes = match site {

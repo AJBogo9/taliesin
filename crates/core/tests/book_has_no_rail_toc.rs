@@ -7,11 +7,13 @@
 //! scrollspy ("you are here" while reading); the ruling accepts that.
 //!
 //! **The removal is book-scoped, and that scope is the thing this file pins.** A website
-//! page and a single document keep the rail, keep `toc-spy.js` and keep the shared mobile
-//! sheet (`TOC_SHEET_MARKUP` is the one copy all four assemblers emit — re-forking it
-//! would revert the 2026-07-26 path-parity batch). So a change that deletes the rail
-//! everywhere passes half of this file and fails the other half, and a change that
-//! forgets books entirely fails the first half.
+//! page and a single document keep the rail and keep `toc-spy.js`. (The mobile floating
+//! "Contents" pill that used to ride along with the rail — `TOC_SHEET_MARKUP`, one copy
+//! all four assemblers emitted — was itself deleted 2026-08-03, visual minimalism pass:
+//! it duplicated the topbar. That is a separate, non-book-scoped removal; this file no
+//! longer has anything to pin about it.) So a change that deletes the rail everywhere
+//! passes half of this file and fails the other half, and a change that forgets books
+//! entirely fails the first half.
 
 mod common;
 use common::corpus_dir;
@@ -46,24 +48,20 @@ fn a_long_book_chapter_renders_no_right_rail_toc() {
     }
 }
 
-/// The rail's two runtimes go with it: the scrollspy that lit it up and the mobile
-/// bottom-sheet chrome that made it reachable on a phone. Neither has anything to drive.
+/// The rail's runtime goes with it: the scrollspy that lit it up, and the skip-to-TOC
+/// link that pointed at it. Neither has anything to drive. (The mobile floating
+/// "Contents" pill that used to ride along with the rail on any page, book or not, was
+/// deleted separately 2026-08-03 — see the module doc — so it is not this test's to pin.)
 #[test]
-fn a_book_chapter_ships_neither_the_scrollspy_nor_the_mobile_toc_sheet() {
+fn a_book_chapter_ships_no_scrollspy_or_toc_skip_link() {
     let install = tarn().render_page("install.tmd").expect("install renders");
-    // Every needle here is a full emitted tag, never a bare class or id: the page inlines
-    // the whole CSS+JS payload, so `tali-skip-toc` alone matches `base.css`'s
-    // `.tali-skip-toc:focus` rule on a page that renders no skip link at all.
-    for needle in [
-        "<div id=\"tali-toc-backdrop\">",
-        "<button id=\"tali-toc-handle\"",
-        "<a class=\"tali-skip tali-skip-toc\"",
-    ] {
-        assert!(
-            !install.contains(needle),
-            "book chapter still ships TOC chrome ({needle}): {install}"
-        );
-    }
+    // A full emitted tag, never a bare class or id: the page inlines the whole CSS+JS
+    // payload, so `tali-skip-toc` alone matches `base.css`'s `.tali-skip-toc:focus` rule
+    // on a page that renders no skip link at all.
+    assert!(
+        !install.contains("<a class=\"tali-skip tali-skip-toc\""),
+        "book chapter still ships the skip-to-TOC link: {install}"
+    );
     // `toc-spy.js` is inlined verbatim, so pin a distinctive line of its own source. The
     // guard above it fails loudly if that line is ever edited away, rather than letting
     // this quietly become an assertion about nothing.
@@ -106,9 +104,11 @@ fn an_explicit_page_level_toc_true_does_not_reinstate_the_rail_in_a_book() {
 
 /// The negative control, and the reason this file exists rather than a one-line deletion:
 /// the removal is **book-scoped**. `corpus/tech-blog` is a website (no `chapters:`), so a
-/// long post keeps its rail, its scrollspy and its sheet.
+/// long post keeps its rail and its scrollspy. (Its mobile "Contents" pill is gone too,
+/// but that removal is global, not book-scoped — see the module doc — so it is not part
+/// of this negative control.)
 #[test]
-fn a_website_page_keeps_its_rail_toc_scrollspy_and_sheet() {
+fn a_website_page_keeps_its_rail_toc_and_scrollspy() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
     let post = site
         .render_page("posts/KL-divergence/index.tmd")
@@ -122,11 +122,7 @@ fn a_website_page_keeps_its_rail_toc_scrollspy_and_sheet() {
         "…and its two-column layout: {post}"
     );
     assert!(
-        post.contains("id=\"tali-toc-handle\""),
-        "…and the shared mobile TOC sheet: {post}"
-    );
-    assert!(
         post.contains("tali-toc-active"),
-        "…and the scrollspy that drives both: {post}"
+        "…and the scrollspy that drives it: {post}"
     );
 }
