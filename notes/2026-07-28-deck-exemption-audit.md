@@ -82,7 +82,7 @@ alt-less `<img>` and one malformed `$$`):
 | `taliesin check <deck.tmd>` | all 6 reported |
 
 **Why it matters more than it looks.** `check` is the pass an agent runs first on an unknown project
-(the [due-diligence round](2026-07-27-due-diligence-audit.md) names it as such), `--strict` is the
+(the due-diligence round names it as such), `--strict` is the
 only build-side gate, and the deck is the artifact most likely to be *presented to an audience*. A
 broken image on a slide is seen by a room, not by one reader scrolling past.
 

@@ -352,10 +352,10 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
        2026-07-25.)*
 
 102. **Decide what to do about constructs that render elsewhere and silently do not here.** (Ruling.)
-     Detail in [adoption friction](2026-07-27-adoption-friction-audit.md).
+     Detail in the adoption-friction round.
 
 103. **Clear the name in software classes before the flip.** (Ruling, legal not code.) Trademark
-     search in the relevant classes; the name is the retained optionality per the product stance.
+     search in the relevant classes.
 
 148. **Distribution: the binary channel has a mechanism but no artifact; the package managers are
      untouched.** `.github/workflows/release.yml` builds Linux x86-64, macOS arm64 and macOS x86-64

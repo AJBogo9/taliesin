@@ -14,4 +14,3 @@ root.
 | `native-rewrite.md` | The completed predecessor initiative (native engine, dropped the legacy compat layer). |
 | `AUDITS.md` | Consolidated historical audit reports. |
 | `FEATURE-IDEAS.md` | A research-backed pool of candidate features that feeds the backlog. |
-| `FUNDING-RESEARCH.md`, `STARTUP-PLAN.md` | Funding / commercial working notes. |

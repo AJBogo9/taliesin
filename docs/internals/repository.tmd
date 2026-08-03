@@ -142,7 +142,6 @@ in `notes/` so the root stays uncluttered:
 | `notes/native-rewrite.md` | The completed predecessor initiative (native engine, dropped the legacy compat layer). |
 | `notes/AUDITS.md` | Consolidated historical audit reports. |
 | `notes/FEATURE-IDEAS.md` | A research-backed pool of candidate features that feeds the backlog. |
-| `notes/FUNDING-RESEARCH.md`, `notes/STARTUP-PLAN.md` | Funding/commercial working notes. |
 
 ## Build, config, and what git ignores
 

@@ -226,8 +226,8 @@ during generation. Filter in step 4, never in step 2.
 but the author land a change?
 
 **Why novel here.** The 2026-07-17 security round covered supply chain, secrets and the `--host`
-token design. It did not cover continuity, handover or contributor mechanics. `FUNDING-RESEARCH.md`
-exists, so an external technical review is a live possibility rather than a hypothetical.
+token design. It did not cover continuity, handover or contributor mechanics. Planning notes
+exist, so an external technical review is a live possibility rather than a hypothetical.
 
 **Method.** Run a standard technical due-diligence checklist against the repository: architecture and
 documentation quality, technical-debt quantification and whether deferred maintenance shows a
