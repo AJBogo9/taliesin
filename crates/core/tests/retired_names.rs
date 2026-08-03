@@ -297,6 +297,14 @@ fn the_reading_position_features_are_gone() {
     for needle in ["tali-resume", "tali-toc-read"] {
         assert!(!css.contains(needle), "`{needle}` CSS survives in base.css");
     }
+    // The Continue-reading pill's server-emitted slot lived in `site.css` (book chrome),
+    // not `base.css` (reader chrome) — a different stylesheet the checks above never
+    // reach, which is exactly how its `.tali-book-continue*` rules survived one fix round
+    // as dead CSS after the emitter that used them was deleted.
+    assert!(
+        !taliesin_core::render::site_css().contains("tali-book-continue"),
+        "the Continue-reading pill's CSS survives in site.css"
+    );
 }
 
 /// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is

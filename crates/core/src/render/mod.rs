@@ -2205,6 +2205,12 @@ pub fn base_css() -> &'static str {
     BASE_CSS
 }
 
+/// The site-chrome stylesheet (nav, book chrome, listings, TOC), for tests that need
+/// to assert a retired feature's CSS is gone without reaching into a full page render.
+pub fn site_css() -> &'static str {
+    SITE_CSS
+}
+
 /// The raw framework CSS a deck inlines in its main `<style>` (fonts + tokens + the deck
 /// stylesheet). A deck's sheet is not the page's: it is `deck.css` instead of
 /// base + dark + site chrome, so a deck inside a `build <dir>` cannot link `app.<hash>.css`
