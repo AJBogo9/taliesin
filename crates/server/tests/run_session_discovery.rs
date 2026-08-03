@@ -21,6 +21,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::{Duration, Instant};
 
 /// Mirrors `run_cmd::SESSION_READY_TIMEOUT`. A run that attaches must be nowhere near
@@ -38,16 +39,28 @@ fn tmp_dir(name: &str) -> PathBuf {
     dir
 }
 
-/// A port nothing else in this binary is using. Same reasoning as
-/// `preview_single_instance.rs`: above the default preview port so a developer's own
-/// server cannot collide, below the ephemeral range so the kernel never hands it out.
-fn free_port() -> u16 {
-    for p in 26_000..26_400 {
+/// A port to *ask* a session to bind. Above the default preview port so a developer's own
+/// server cannot collide, below the ephemeral range so the kernel never hands it out as an
+/// outbound source port, and shifted per test so two tests in this binary do not both start
+/// at the bottom of the range.
+///
+/// **The returned port is peeked, never acquired** — `TcpListener::bind` here binds and
+/// immediately releases, so the session may still lose the race and walk to the next free
+/// port (`bind_with_fallback`). That is exactly what happened when these tests first ran in
+/// parallel: both asked for 26000, one got it, the other fell back to 26001, and the test
+/// that had assumed 26000 probed its sibling's session and read the wrong document back.
+/// So nothing here may assume the session is on the port it asked for; find it through
+/// [`HintDir::session`] instead, which is the session's own record of where it landed.
+/// (`preview_single_instance.rs` documents this same hazard at length.)
+fn asked_port() -> u16 {
+    static NEXT: AtomicU16 = AtomicU16::new(0);
+    let base = 26_000 + NEXT.fetch_add(32, Ordering::SeqCst);
+    for p in base..base + 32 {
         if TcpListener::bind(("127.0.0.1", p)).is_ok() {
             return p;
         }
     }
-    panic!("no free port");
+    panic!("no free port near {base}");
 }
 
 /// Minimal loopback GET. The crate has no HTTP client dependency and this needs one
@@ -71,17 +84,6 @@ fn identity(port: u16) -> Option<serde_json::Value> {
     // A bound socket answers from the listen backlog before the handlers are installed,
     // so "it connected" is not "it is up"; a `pid` in the body is.
     (!v["pid"].is_null()).then_some(v)
-}
-
-fn wait_until_ready(port: u16, dur: Duration) -> bool {
-    let deadline = Instant::now() + dur;
-    while Instant::now() < deadline {
-        if identity(port).is_some() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    false
 }
 
 /// A spawned session, always reaped: a leaked dev server holds a port and a kernel
@@ -123,6 +125,29 @@ impl HintDir {
             .collect()
     }
 
+    /// Wait for a session to register here, and return `(port, identity)` for it.
+    ///
+    /// This — not the port the test *asked* for — is how a test finds its session. The
+    /// hint file is the session's own record of the port it actually bound, so a fallback
+    /// walk past a busy port cannot desynchronise the test from the process it spawned.
+    /// The directory is private to this test, so whatever registers in it is ours.
+    ///
+    /// Waiting on the identity reply rather than on the file's existence also settles the
+    /// readiness question: a bound socket accepts from the listen backlog before the
+    /// handlers are installed, so a `pid` in the body is the first honest "it is up".
+    fn session(&self, dur: Duration) -> Option<(u16, serde_json::Value)> {
+        let deadline = Instant::now() + dur;
+        while Instant::now() < deadline {
+            for port in self.ports() {
+                if let Some(id) = identity(port) {
+                    return Some((port, id));
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        None
+    }
+
     /// SIGKILL any session registered here other than `keep` (the child the test owns and
     /// reaps itself).
     fn reap_strays(&self, keep: u32) {
@@ -155,13 +180,12 @@ fn a_run_attaches_to_the_session_already_serving_an_out_of_project_document() {
     // needed to reach it.
     let doc = dir.join("scratch.tmd");
     fs::write(&doc, "---\ntitle: Scratch\n---\n\nProse.\n").unwrap();
-    let port = free_port();
 
     let session = Session(
         taliesin()
             .arg("preview")
             .arg(&doc)
-            .arg(port.to_string())
+            .arg(asked_port().to_string())
             .arg("--__session")
             .env("XDG_RUNTIME_DIR", &hints.0)
             .stdout(Stdio::null())
@@ -169,10 +193,9 @@ fn a_run_attaches_to_the_session_already_serving_an_out_of_project_document() {
             .spawn()
             .expect("spawn session"),
     );
-    assert!(
-        wait_until_ready(port, Duration::from_secs(30)),
-        "the session never came up on {port}"
-    );
+    let (port, _) = hints
+        .session(Duration::from_secs(30))
+        .expect("the session never registered a reachable port");
 
     let t0 = Instant::now();
     let out = taliesin()
@@ -218,13 +241,12 @@ fn a_session_for_an_out_of_project_document_identifies_as_that_document() {
     // A sibling this session does NOT serve: it is what makes the directory the wrong
     // answer rather than merely a broader one.
     fs::write(dir.join("other.tmd"), "---\ntitle: Other\n---\n\nProse.\n").unwrap();
-    let port = free_port();
 
     let _session = Session(
         taliesin()
             .arg("preview")
             .arg(&doc)
-            .arg(port.to_string())
+            .arg(asked_port().to_string())
             .arg("--__session")
             .env("XDG_RUNTIME_DIR", &hints.0)
             .stdout(Stdio::null())
@@ -232,12 +254,10 @@ fn a_session_for_an_out_of_project_document_identifies_as_that_document() {
             .spawn()
             .expect("spawn session"),
     );
-    assert!(
-        wait_until_ready(port, Duration::from_secs(30)),
-        "the session never came up on {port}"
-    );
+    let (port, json) = hints
+        .session(Duration::from_secs(30))
+        .expect("the session never registered a reachable port");
 
-    let json = identity(port).expect("identity");
     assert_eq!(
         json["root"].as_str().map(Path::new),
         Some(fs::canonicalize(&doc).unwrap().as_path()),
