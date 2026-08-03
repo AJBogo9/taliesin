@@ -230,7 +230,7 @@ fn render_shortcode(inner: &str) -> Option<String> {
             .filter(|p| url_scheme(p).is_none())
             .map(|p| embed_html(&p, embed_title(args).as_deref()));
     }
-    // `{{< video clip.mp4 [controls] [audio] [captions=clip.vtt] [dark=clip-dark.mp4]
+    // `{{< video clip.mp4 [controls=false] [audio] [captions=clip.vtt] [dark=clip-dark.mp4]
     // [poster=…] [caption="…"] >}}` — a framed screencast (never autoplaying: playback is
     // user-initiated, see `video_html`), authored in Markdown so a page needs no raw
     // `<video>` HTML. With `dark=`, the light clip plays on a light page and the dark clip
@@ -258,37 +258,42 @@ fn render_shortcode(inner: &str) -> Option<String> {
     None
 }
 
-/// How a `{{< video >}}` plays back: a three-step ladder, not independent switches, so the
-/// incoherent combinations cannot be authored at all.
+/// How a `{{< video >}}` plays back. Native controls are the DEFAULT (2026-08-03, visual
+/// minimalism pass): hover-play and the click-to-lightbox touch path were both deleted, so
+/// the browser's own control bar is the reader's only remaining way to start a clip at all.
 ///
-/// * [`Playback::Preview`] (the default) — the silent screencast: muted, looping, no control
-///   bar. Playback is the `18-media.js` hover/focus preview plus the lightbox on click.
-/// * [`Playback::Controls`] (`controls`) — a long silent clip a reader needs to *scrub*:
-///   native controls (scrubber, keyboard, fullscreen, PiP), still muted + looping, and the
-///   hover-preview/lightbox wiring stands down (the browser's own bar owns the clicks).
+/// * [`Playback::Controls`] (the default, or an explicit bare `controls`) — muted, looping,
+///   native controls (scrubber, keyboard, fullscreen, PiP).
+/// * [`Playback::Bare`] (`controls=false`) — muted, looping, no control bar at all: the
+///   author's explicit opt-out for a purely decorative clip with no reader-facing play
+///   affordance.
 /// * [`Playback::Sound`] (`audio`) — a narrated explainer: native controls, and neither
 ///   `muted` nor `loop` (narration you cannot hear is pointless; narration that restarts
 ///   itself is hostile).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Playback {
-    Preview,
     Controls,
+    Bare,
     Sound,
 }
 
 /// Read the playback ladder off a `{{< video >}}`'s arguments.
 ///
-/// `audio` implies `controls` (unmuted media with no pause/volume control is a WCAG 1.4.2
+/// `audio` forces `controls` (unmuted media with no pause/volume control is a WCAG 1.4.2
 /// failure), and so does `captions=` (a `<track default>` with no control bar shows captions
-/// the reader cannot turn off). That is why these are one ladder and not three booleans:
-/// two of the eight flag combinations are incoherent, and neither can be spelled here.
+/// the reader cannot turn off) — both win over an explicit `controls=false`, so neither
+/// incoherent combination can be authored at all. `controls=false` is otherwise the one way
+/// to opt out of the new default; a bare `controls` is still accepted (redundant now, but
+/// harmless) so content written before the default flipped is unaffected.
 fn playback_mode(args: &[String]) -> Playback {
     if shortcode_flag(args, "audio") {
         Playback::Sound
-    } else if shortcode_flag(args, "controls") || shortcode_named(args, "captions").is_some() {
-        Playback::Controls
+    } else if shortcode_named(args, "controls").as_deref() == Some("false")
+        && shortcode_named(args, "captions").is_none()
+    {
+        Playback::Bare
     } else {
-        Playback::Preview
+        Playback::Controls
     }
 }
 
@@ -433,8 +438,11 @@ const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
 const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 2] = [
     ("embed", &["title"], &[]),
     (
+        // `controls` is both a bare flag (`VIDEO_FLAGS`, redundant now it is the default)
+        // AND a named key (`controls=false`, the opt-out) — the two spellings coexist
+        // deliberately so pre-existing `{{< video … controls >}}` content still validates.
         "video",
-        &["dark", "poster", "caption", "captions"],
+        &["dark", "poster", "caption", "captions", "controls"],
         &VIDEO_FLAGS,
     ),
 ];
@@ -668,13 +676,13 @@ fn input_shortcode(
 
 /// The HTML for a `{{< video >}}`: a framed `<video>` with an optional caption. Playback is
 /// **never** `autoplay` — an autoplaying loop beside body text is a WCAG 2.2.2 ("Pause,
-/// Stop, Hide") failure — and the [`Playback`] ladder decides how the reader starts it: the
-/// default silent screencast is muted + looping and driven by the `18-media.js`
-/// hover/focus/lightbox enhancer, while `controls`/`audio` hand the clip to the browser's own
-/// player (scrubber, keyboard, volume, fullscreen, PiP — no player library, and no restyling
-/// of controls the browser already ships). `captions=` adds a caption `<track>`. With a
-/// `dark` source, both clips are emitted and CSS shows the one matching `html[data-theme]`.
-/// Raw-HTML, passed through.
+/// Stop, Hide") failure — and the [`Playback`] ladder decides how the reader starts it: by
+/// default the clip is muted + looping with native `controls` (the browser's own player —
+/// scrubber, keyboard, volume, fullscreen, PiP — no player library, and no restyling of
+/// controls the browser already ships), `controls=false` opts out of the control bar
+/// entirely, and `audio` unmutes/unloops and forces controls back on. `captions=` adds a
+/// caption `<track>`. With a `dark` source, both clips are emitted and CSS shows the one
+/// matching `html[data-theme]`. Raw-HTML, passed through.
 fn video_html(
     src: &str,
     dark: Option<&str>,
@@ -690,7 +698,7 @@ fn video_html(
     // hear a muted narration, and a lecture that silently restarts itself is hostile).
     // `controls` hands playback to the browser's native player.
     let (silent_attrs, controls_attr) = match playback {
-        Playback::Preview => (" muted loop", ""),
+        Playback::Bare => (" muted loop", ""),
         Playback::Controls => (" muted loop", " controls"),
         Playback::Sound => ("", " controls"),
     };

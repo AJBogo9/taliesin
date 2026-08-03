@@ -1,9 +1,9 @@
 //! Corpus pin for the `{{< video >}}` playback ladder (`corpus/media/screencast.tmd`).
 //!
-//! The shortcode used to give a reader no player controls at all: no play/pause, no
-//! scrubber, no volume, and a hard-coded `muted`, which made a narrated clip impossible
-//! (backlog item 73). `controls` and `audio` fix that with the browser's own player rather
-//! than a 50-150 KB player library, so what has to stay pinned is the exact emitted tag.
+//! Native `controls` became the DEFAULT 2026-08-03 (visual minimalism pass): hover-play
+//! and the click-to-lightbox touch path were both deleted, so the browser's own control
+//! bar is the reader's only way to start a clip at all. `controls=false` is the escape
+//! hatch for a deliberately non-interactive decorative clip, and `audio` still narrates.
 //!
 //! Two traps this file is written around:
 //!
@@ -11,10 +11,9 @@
 //!    payload, and both mention `controls`, so a page-wide `contains("controls")` passes on
 //!    a page that renders no video at all. Every assertion here needles a complete
 //!    `<video …></video>` tag.
-//! 2. **A one-sided assertion.** Asserting only that the opt-in tag *gains* `controls`
-//!    leaves "emit `controls` unconditionally" green, which would silently replace the
-//!    hover-preview screencast the marketing site is built on. The default clip is pinned
-//!    as an exact tag too, so both directions are held.
+//! 2. **A one-sided assertion.** Asserting only that the default clip carries `controls`
+//!    would leave the `controls=false` escape hatch unpinned, and a regression that started
+//!    ignoring it would ship silently. Both directions are held.
 
 mod common;
 use common::corpus_dir;
@@ -26,29 +25,16 @@ fn page() -> String {
 }
 
 #[test]
-fn the_default_clip_is_a_silent_screencast_with_no_control_bar() {
-    let h = page();
-    assert!(
-        h.contains(
-            "<video src=\"tour.mp4\" muted loop playsinline preload=\"metadata\" tabindex=\"0\" \
-             aria-label=\"The default: a silent screencast, started by the reader.\"></video>"
-        ),
-        "the default stays the bare hover-preview screencast — no controls, still muted + \
-         looping, still labelled: {h}"
-    );
-}
-
-#[test]
-fn the_controls_flag_gives_the_reader_the_browsers_own_player() {
+fn the_default_clip_gets_native_controls() {
     let h = page();
     assert!(
         h.contains(
             "<video src=\"tour.mp4\" muted loop controls playsinline preload=\"metadata\" \
-             tabindex=\"0\" aria-label=\"With `controls`: the browser's own player, still \
-             silent.\"></video>"
+             tabindex=\"0\" aria-label=\"The default: native controls, muted and looping \
+             until the reader presses play.\"></video>"
         ),
-        "`controls` emits the native control bar (scrubber, keyboard, fullscreen, PiP) while \
-         the clip stays a silent screencast: {h}"
+        "with hover-play and the lightbox both deleted, native `controls` is the reader's \
+         only play path and must ship by default: {h}"
     );
 }
 
@@ -62,6 +48,20 @@ fn the_audio_flag_unmutes_unloops_and_carries_its_caption_track() {
              <track kind=\"captions\" src=\"tour.vtt\" label=\"Captions\" default></video>"
         ),
         "a narrated clip: controls, no `muted`, no `loop`, and a caption track (WCAG 1.2.2): {h}"
+    );
+}
+
+#[test]
+fn controls_false_opts_the_clip_out_of_the_control_bar() {
+    let h = page();
+    assert!(
+        h.contains(
+            "<video src=\"tour.mp4\" muted loop playsinline preload=\"metadata\" \
+             tabindex=\"0\" aria-label=\"With `controls=false`: no control bar at \
+             all.\"></video>"
+        ),
+        "an explicit `controls=false` is honoured — the DEFAULT flipped, the escape hatch \
+         did not: {h}"
     );
 }
 

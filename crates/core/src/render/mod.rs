@@ -2142,7 +2142,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
-    include_str!("../../assets/js/code-enhance/18-media.js"),
     include_str!("../../assets/js/code-enhance/19-book-outline.js"),
     include_str!("../../assets/js/code-enhance/20-code-visibility.js"),
 );

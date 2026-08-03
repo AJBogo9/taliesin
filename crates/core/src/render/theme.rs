@@ -274,9 +274,9 @@ pub fn theme_head(default_mode: &str) -> String {
   // so the theme-hidden variant is never fetched. Promote `data-src`->`src` on the
   // now-VISIBLE variant (downloading it only when it is actually shown, so `preload`
   // can render its first frame as a still); pause the hidden one. Playback itself is
-  // user-initiated by the `18-media.js` enhancer (never autoplay — WCAG 2.2.2), which
-  // re-applies the figure's pinned state to the visible clip on this same event. Runs on
-  // load + on every theme change, so switching themes fetches the other clip lazily.
+  // never autoplay (WCAG 2.2.2): native `controls` (the default, see extension/mod.rs)
+  // is the reader's play affordance. Runs on load + on every theme change, so switching
+  // themes fetches the other clip lazily.
   function syncThemeVideos(){{
     var vids = document.querySelectorAll(".tali-video video");
     for (var i = 0; i < vids.length; i++) {{

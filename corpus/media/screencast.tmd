@@ -2,31 +2,30 @@
 title: "Screencasts and narrated video"
 ---
 
-A `{{< video >}}` has one default and two opt-in steps up from it. The default is the
-silent screencast: muted, looping, and started by the reader (hover, keyboard focus, or a
-click that opens it enlarged). Nothing about it autoplays.
+A `{{< video >}}` gets the browser's own control bar by default: play/pause, a
+scrubber, volume, keyboard, native fullscreen, and picture-in-picture, for one
+attribute Taliesin adds automatically. The clip stays muted and looping until the
+reader presses play. Nothing about it autoplays.
 
-{{< video tour.mp4 caption="The default: a silent screencast, started by the reader." >}}
-
-## When the reader needs to scrub
-
-A long clip needs a scrubber. `controls` hands playback to the browser's own player, so the
-reader gets play/pause, a timeline they can drag back five seconds, speed, keyboard, native
-fullscreen, and picture-in-picture. The clip is still silent and still loops; the hover
-preview and the click-to-enlarge stand down, because the control bar now owns those clicks.
-
-{{< video tour.mp4 controls caption="With `controls`: the browser's own player, still silent." >}}
+{{< video tour.mp4 caption="The default: native controls, muted and looping until the reader presses play." >}}
 
 ## When the clip is narrated
 
-`audio` is the narrated explainer: it drops `muted` (you cannot hear a muted narration) and
-`loop` (a lecture that silently restarts itself is hostile), and it implies `controls`,
-because sound with no way to pause or lower it is a failure of its own. `captions=` adds a
-caption track for the narration, which is why it also implies `controls`: a track that shows
-by default needs a control bar to switch it off.
+`audio` drops `muted` (you cannot hear a muted narration) and `loop` (a lecture that
+silently restarts itself is hostile). `captions=` adds a caption track for the
+narration, shown by default.
 
 {{< video tour.mp4 audio captions=tour.vtt caption="With `audio` and `captions=`: a narrated explainer." >}}
 
-Flag order is free, so the source path can come last:
+## Opting out of the control bar
+
+`controls=false` ships a clip with no control bar at all — and, since nothing
+autoplays, no way for the reader to start it either. A deliberate, rare choice for a
+purely decorative frame, not a default.
+
+{{< video tour.mp4 controls=false caption="With `controls=false`: no control bar at all." >}}
+
+Flag order is free, so a bare `controls` (redundant now, but still accepted) can come
+before the path:
 
 {{< video controls tour.mp4 caption="The flags are not paths, so this still plays `tour.mp4`." >}}

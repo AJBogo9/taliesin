@@ -434,3 +434,38 @@ fn heading_anchor_links_are_gone() {
         );
     }
 }
+
+/// Video hover-play (pointerenter/focusin play, pointerleave/focusout pause, plus the
+/// document-level single-active-player coordinator) was deleted 2026-08-03: playing on
+/// passive pointerenter is motion the reader did not request (WCAG 2.2.2 territory).
+/// The figure lightbox (the touch play path) was already deleted the same day, so
+/// native `controls` is now the ONLY way a reader can start a `{{< video >}}` clip —
+/// it must ship on by default.
+#[test]
+fn video_hover_play_is_gone_and_controls_default_on() {
+    let js = taliesin_core::render::code_scripts();
+    // Needles unique to 18-media.js (checked against every other bundled script):
+    // function/attribute names, not the generic pointer-event names that
+    // plot.umd.min.js also carries.
+    for needle in ["reduceMotion", "visibleVideo", "data-media-wired"] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; the video hover-play enhancer (18-media.js) survives"
+        );
+    }
+
+    let html = taliesin_core::render::render_document_with_includes(
+        "{{< video clip.mp4 >}}\n",
+        std::path::Path::new("."),
+    )
+    .body_html();
+    assert!(
+        html.contains(
+            "<video src=\"clip.mp4\" muted loop controls playsinline preload=\"metadata\" \
+             tabindex=\"0\" aria-label=\"Screencast\"></video>"
+        ),
+        "a bare {{{{< video >}}}} must emit the native `controls` attribute on the tag \
+         itself — with hover-play and the lightbox both deleted it is the only \
+         remaining play path: {html}"
+    );
+}

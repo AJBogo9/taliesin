@@ -3502,13 +3502,15 @@ An inline example `{{< embed inline.tmd >}}` stays literal.\n\
 }
 
 #[test]
-fn video_shortcode_emits_a_framed_user_started_screencast() {
-    // `{{< video clip.mp4 >}}` — a silent, looping screencast authored in Markdown so a page
-    // needs no raw `<video>` HTML. B7: it is NEVER `autoplay` (a live WCAG 2.2.2 "Pause, Stop,
-    // Hide" failure); playback is user-initiated (hover/focus/tap) by the `18-media.js`
-    // enhancer. The element stays `muted loop playsinline`, carries `preload="metadata"` so
-    // the first frame renders as a still while paused, and is keyboard-reachable (`tabindex`
-    // + an `aria-label`). A single source has no light/dark split.
+fn video_shortcode_emits_a_framed_native_controls_screencast() {
+    // `{{< video clip.mp4 >}}` — a screencast authored in Markdown so a page needs no raw
+    // `<video>` HTML. B7: it is NEVER `autoplay` (a live WCAG 2.2.2 "Pause, Stop, Hide"
+    // failure). 2026-08-03 (visual minimalism pass): hover-play and the lightbox (the touch
+    // play path) were both deleted, so native `controls` ship by DEFAULT — it is the only
+    // play path left. The element stays `muted loop playsinline`, carries
+    // `preload="metadata"` so the first frame renders as a still while paused, and is
+    // keyboard-reachable (`tabindex` + an `aria-label`). A single source has no light/dark
+    // split.
     let doc = render_document_with_includes("{{< video clip.mp4 >}}\n", std::path::Path::new("."));
     let h = doc.body_html();
     assert!(h.contains("<figure class=\"tali-video\""), "frame: {h}");
@@ -3533,25 +3535,43 @@ fn video_shortcode_emits_a_framed_user_started_screencast() {
         !h.contains("tali-video-light"),
         "a single source has no theme split: {h}"
     );
-    // Item 73: `controls` is opt-in, so the DEFAULT screencast keeps the bare frame the
-    // hover-preview + lightbox model depends on. Needled against the whole emitted tag,
-    // not the page: a substring search for "controls" hits the inlined CSS/JS on any page.
+    // Needled against the whole emitted tag, not the page: a substring search for
+    // "controls" hits the inlined CSS/JS on any page.
+    assert!(
+        h.contains(
+            "<video src=\"clip.mp4\" muted loop controls playsinline preload=\"metadata\" \
+             tabindex=\"0\" aria-label=\"Screencast\"></video>"
+        ),
+        "the default clip carries native `controls` — it is the only remaining play path: {h}"
+    );
+}
+
+#[test]
+fn video_controls_false_opts_out_of_the_control_bar() {
+    // The escape hatch: an author can still ship a clip with no control bar at all. Since
+    // nothing autoplays, that clip has no reader-facing play affordance whatsoever — a
+    // deliberate, rare choice, which is why it takes an explicit `controls=false` rather
+    // than the DEFAULT (which flipped the other way in this pass).
+    let doc = render_document_with_includes(
+        "{{< video clip.mp4 controls=false >}}\n",
+        std::path::Path::new("."),
+    );
+    let h = doc.body_html();
     assert!(
         h.contains(
             "<video src=\"clip.mp4\" muted loop playsinline preload=\"metadata\" \
              tabindex=\"0\" aria-label=\"Screencast\"></video>"
         ),
-        "the default clip is the exact silent-screencast tag, with no controls: {h}"
+        "`controls=false` must be honoured — the default flipped, the opt-out did not: {h}"
     );
+    assert!(!h.contains("autoplay"), "still never autoplay: {h}");
 }
 
 #[test]
-fn video_controls_flag_emits_the_browsers_own_player() {
-    // Item 73: the shortcode gave a reader NO player controls at all — no play/pause, no
-    // scrubber (you could not go back five seconds), no volume, no speed. `controls` emits
-    // the native control bar, which is also native keyboard, fullscreen and PiP, for one
-    // attribute and no player library. The clip stays a silent screencast otherwise
-    // (`muted loop`), and it is still never `autoplay`.
+fn video_bare_controls_flag_is_still_accepted() {
+    // Pre-existing content spelled the (now redundant) opt-in as a bare `controls` flag.
+    // It must keep validating and rendering exactly like the new default, not warn or
+    // break, so a document written before the default flipped is unaffected.
     let doc = render_document_with_includes(
         "{{< video clip.mp4 controls >}}\n",
         std::path::Path::new("."),
@@ -3562,18 +3582,17 @@ fn video_controls_flag_emits_the_browsers_own_player() {
             "<video src=\"clip.mp4\" muted loop controls playsinline preload=\"metadata\" \
              tabindex=\"0\" aria-label=\"Screencast\"></video>"
         ),
-        "the whole emitted tag must carry `controls` (a bare page-wide search for the word \
-         hits the inlined CSS/JS instead): {h}"
+        "a bare `controls` flag still renders the native control bar: {h}"
     );
-    assert!(!h.contains("autoplay"), "still never autoplay: {h}");
 }
 
 #[test]
-fn video_audio_flag_unmutes_unloops_and_implies_controls() {
+fn video_audio_flag_unmutes_unloops_and_forces_controls() {
     // Item 73: `muted` was hard-coded, which made a narrated explainer impossible. `audio`
     // drops `muted` AND `loop` (narration that silently restarts itself is hostile) and
-    // implies `controls` — unmuted media with no pause/volume affordance is a WCAG 1.4.2
-    // failure, so the ladder makes that combination unspellable.
+    // forces `controls` — unmuted media with no pause/volume affordance is a WCAG 1.4.2
+    // failure, so the ladder makes that combination unspellable (even with an explicit
+    // `controls=false`, tested below).
     let doc =
         render_document_with_includes("{{< video talk.mp4 audio >}}\n", std::path::Path::new("."));
     let h = doc.body_html();
@@ -3584,14 +3603,26 @@ fn video_audio_flag_unmutes_unloops_and_implies_controls() {
         ),
         "narrated: controls, no muted, no loop, and named a Video not a Screencast: {h}"
     );
+
+    let overridden = render_document_with_includes(
+        "{{< video talk.mp4 audio controls=false >}}\n",
+        std::path::Path::new("."),
+    );
+    let o = overridden.body_html();
+    assert!(
+        o.contains("<video src=\"talk.mp4\" controls playsinline"),
+        "`audio` wins over an explicit `controls=false` — unmuted with no pause control is \
+         a WCAG 1.4.2 failure: {o}"
+    );
 }
 
 #[test]
-fn video_captions_arg_emits_a_track_and_implies_controls() {
+fn video_captions_arg_emits_a_track_and_forces_controls() {
     // Item 73: `captions=` is the only way to satisfy WCAG 1.2.2 for the narration `audio`
-    // makes possible — no default can invent a caption file. It implies `controls` for the
-    // same reason `audio` does: a `<track default>` with no control bar shows captions the
-    // reader cannot switch off.
+    // makes possible — no default can invent a caption file. It forces `controls` for the
+    // same reason `audio` does, and for the same reason wins over an explicit
+    // `controls=false`: a `<track default>` with no control bar shows captions the reader
+    // cannot switch off.
     let doc = render_document_with_includes(
         "{{< video talk.mp4 audio captions=talk.vtt >}}\n",
         std::path::Path::new("."),
@@ -3613,7 +3644,17 @@ fn video_captions_arg_emits_a_track_and_implies_controls() {
              tabindex=\"0\" aria-label=\"Screencast\">\
              <track kind=\"captions\" src=\"demo.vtt\" label=\"Captions\" default></video>"
         ),
-        "captions= on its own implies controls, so the track can be turned off: {s}"
+        "captions= on its own forces controls, so the track can be turned off: {s}"
+    );
+    // And an explicit `controls=false` cannot suppress the bar a default caption track needs.
+    let overridden = render_document_with_includes(
+        "{{< video demo.mp4 captions=demo.vtt controls=false >}}\n",
+        std::path::Path::new("."),
+    );
+    let o = overridden.body_html();
+    assert!(
+        o.contains("<video src=\"demo.mp4\" muted loop controls playsinline"),
+        "`captions=` wins over an explicit `controls=false`: {o}"
     );
 }
 
@@ -3635,30 +3676,6 @@ fn video_flags_are_never_mistaken_for_the_source_path() {
     assert!(
         !h.contains("src=\"controls\"") && !h.contains("src=\"audio\""),
         "a flag must never become the source: {h}"
-    );
-}
-
-#[test]
-fn eighteen_media_stands_down_for_a_controls_clip() {
-    // Item 73's other half, and the half no rendered page can show: the bundled browser
-    // code. A clip that already has native controls is handed to the BROWSER's own player,
-    // so:
-    //  - `18-media.js` must not wire it: a hover that starts a narrated explainer, or a
-    //    pointer-leave that pauses one mid-sentence, fights the reader operating the
-    //    native control bar.
-    //  - base.css must drop the decorative ▶ badge there, or it stacks a dead play glyph on
-    //    top of the browser's real one (nothing toggles `data-playing` on an unwired clip).
-    //
-    // The figure lightbox used to be the other half of this story (its enlarged copy had
-    // to agree about `controls` too), but it was deleted 2026-08-03 (visual minimalism
-    // pass) along with the whole viewer.
-    assert!(
-        CODE_ENHANCE_JS.contains("!el.querySelector('video[controls]')"),
-        "18-media.js must stand down for a `controls` clip"
-    );
-    assert!(
-        BASE_CSS.contains(".tali-video:has(video[controls])::after { content: none; }"),
-        "the decorative play badge must not stack on the browser's own control bar"
     );
 }
 
@@ -3942,10 +3959,13 @@ fn every_code_enhance_fragment_is_in_the_type_check_gate() {
     // The matcher must be able to say NO, or every assertion above is free.
     assert!(tsc_pattern_covers(
         "code-enhance/*.js",
-        "code-enhance/18-media.js"
+        "code-enhance/20-code-visibility.js"
     ));
     assert!(!tsc_pattern_covers("code-enhance/*.js", "deck.js"));
-    assert!(!tsc_pattern_covers("*.js", "code-enhance/18-media.js"));
+    assert!(!tsc_pattern_covers(
+        "*.js",
+        "code-enhance/20-code-visibility.js"
+    ));
     assert!(tsc_pattern_covers("*.min.js", "d3.min.js"));
     assert!(!tsc_pattern_covers("*.min.js", "deck.js"));
 }
