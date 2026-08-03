@@ -1,15 +1,19 @@
-//! Read-only query subcommands: `render`, `blocks`, `schema`, `vocab`, `symbols`.
+//! Read-only query subcommands: `read`, `map`, `features`, `schema`, `vocab`.
 //!
-//! **What:** one-shot, side-effect-light commands — `render` dumps a full HTML page to
-//! stdout (static, no kernel), `blocks` lists the block model (a debugging aid), `schema`
-//! emits the bundled JSON Schemas for editor autocomplete, `vocab` emits the bundled
-//! editor vocabulary, and `symbols` lists a document's cross-reference targets.
+//! **What:** one-shot, side-effect-light commands — `read` projects a document to plain
+//! text, `map` outlines a project (or, on a single `.tmd`, that one document's
+//! cross-reference targets), `features` inventories what a tree uses, `schema` emits the
+//! bundled JSON Schemas for editor autocomplete, and `vocab` emits the bundled editor
+//! vocabulary.
 //!
-//! **How to use:** `main()` dispatches each to the `cmd_*` fns here.
+//! **How to use:** `main()` dispatches each to the `cmd_*` fns here. The `*_json` fns
+//! beside them are the same collections without the CLI wrapper, which is what
+//! [`crate::mcp`] serves — including `symbols_json`, whose CLI verb was retired in Wave 5
+//! while its MCP tool stayed.
 //!
 //! **Depends on:** [`taliesin_core`] for rendering + the bundled schemas, and
-//! [`crate::log`] for the no-execution warning. No code execution, no kernel — `symbols`
-//! in particular is called from an editor's completion request and must never start one.
+//! [`crate::log`] for the no-execution warning. No code execution, no kernel — an editor
+//! may call `map`/`symbols_json` on a keystroke, so neither may ever start one.
 
 use crate::headless_js::JsOutcome;
 // Only the real `observe_js` reaches the module itself; the no-feature stub needs the
@@ -23,73 +27,6 @@ use std::process::ExitCode;
 // The enclosing-`_site.yml` walk lives in core: the standalone link checker needs the same
 // walk to recognize a link into an enclosing site's `mounts:`, so there is one owner, not two.
 use taliesin_core::site::enclosing_site_root;
-
-pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
-    let Some(path) = path else {
-        return crate::usage_error("render");
-    };
-    if let Some(msg) = directory_rejection(path, "render renders a single .tmd file") {
-        log::error(&msg);
-        return ExitCode::FAILURE;
-    }
-    match std::fs::read_to_string(path) {
-        Ok(src) => {
-            let p = Path::new(path);
-            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
-            let base = p.parent().unwrap_or_else(|| Path::new("."));
-            // Guard the render: a panic in core rendering becomes a located error +
-            // non-zero exit, not a raw abort (this one-shot has no async loop to absorb it).
-            let rendered = crate::serve::guarded(|| {
-                let doc = taliesin_core::render_single_doc(&src, base);
-                // `render` is a static, one-shot HTML dump: unlike `build`/`preview` it
-                // never starts a kernel, so kernel-executed cells (python/r) emit as
-                // source with empty output blocks — broken `@fig-` refs, no plots. Warn
-                // loudly so the empty output isn't mistaken for a render bug. (`{js}` cells
-                // run in the browser, so they're fine here.)
-                let kernel_cells = doc
-                    .blocks
-                    .iter()
-                    .filter(|b| {
-                        b.cell
-                            .as_ref()
-                            .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
-                    })
-                    .count();
-                if kernel_cells > 0 {
-                    log::warn(&format!(
-                        "render does not execute code cells ({kernel_cells} kernel cell{} emitted \
-                         as source; figures/outputs will be empty). Use `build` or `preview` to \
-                         run them.",
-                        if kernel_cells == 1 { "" } else { "s" }
-                    ));
-                }
-                taliesin_core::render_doc_to_page(&doc, stem, taliesin_core::OutputMode::Build)
-            });
-            match rendered {
-                Ok(html) => {
-                    // `render` is a single self-contained page in Build + Inline asset mode,
-                    // exactly like `build <file> out.html`, so it hits the one output path that
-                    // cannot carry the 15.7 MiB Pyodide runtime: `pyodide_index_meta` returns
-                    // `""` here and the enhancer has no index URL to boot from. Degrade the same
-                    // way `build.rs` does, or the page ships a live `{pyodide}` wrapper whose
-                    // only possible outcome is an error box. A no-op (byte-identical) when the
-                    // document has no `{pyodide}` cells.
-                    let html = taliesin_core::degrade_pyodide_cells(&html);
-                    print!("{html}");
-                    ExitCode::SUCCESS
-                }
-                Err(panic) => {
-                    log::error(&format!("render panicked on {path}: {panic}"));
-                    ExitCode::FAILURE
-                }
-            }
-        }
-        Err(e) => {
-            log::error(&crate::check::cannot_read(Path::new(path), &e));
-            ExitCode::FAILURE
-        }
-    }
-}
 
 /// `taliesin read <file.tmd>`: a plain-text projection of the rendered document, for an
 /// agent (or a blind author) reading what it made without a browser. Parse-only and
@@ -660,53 +597,6 @@ fn js_cell_result(id: String, outcome: &JsOutcome) -> CellResult {
     }
 }
 
-pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
-    let Some(path) = path else {
-        return crate::usage_error("blocks");
-    };
-    if let Some(msg) =
-        directory_rejection(path, "blocks lists the block model of a single .tmd file")
-    {
-        log::error(&msg);
-        return ExitCode::FAILURE;
-    }
-    match std::fs::read_to_string(path) {
-        Ok(src) => {
-            let p = Path::new(path);
-            let base = p.parent().unwrap_or_else(|| Path::new("."));
-            // Guard the render so a panic becomes a clean error + non-zero exit.
-            let doc = match crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base)) {
-                Ok(doc) => doc,
-                Err(panic) => {
-                    log::error(&format!("render panicked on {path}: {panic}"));
-                    return ExitCode::FAILURE;
-                }
-            };
-            eprintln!("title: {:?}", doc.title);
-            eprintln!("{} block(s)\n", doc.blocks.len());
-            println!(
-                "{:<16}  {:<14}  {:<22}  preview",
-                "id", "sourcepos", "source-file"
-            );
-            for b in &doc.blocks {
-                let file = b.source_file.as_deref().unwrap_or("(primary)");
-                println!(
-                    "{:<16}  {:<14}  {:<22}  {}",
-                    b.id,
-                    b.sourcepos,
-                    file,
-                    preview(&b.html)
-                );
-            }
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            log::error(&crate::check::cannot_read(Path::new(path), &e));
-            ExitCode::FAILURE
-        }
-    }
-}
-
 /// Emit the bundled JSON Schemas for taliesin's YAML config (document front matter +
 /// `_site.yml`) so an editor's YAML language server can validate them. With `--out <dir>`
 /// it writes two files there; otherwise it prints both to stdout. The strings are the
@@ -769,6 +659,27 @@ pub(crate) fn cmd_vocab() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// The `Site` a `map` target describes: a directory is the project rooted there, a single
+/// `.tmd` is a project of just that document (scoped before decks, cross-references and the
+/// search index are computed, so the map is built from the one page rather than filtered
+/// afterwards). One owner, so the CLI verb and the MCP tool cannot answer the same path
+/// differently.
+/// A target that is neither a directory nor a readable file is a mistyped path, not an
+/// empty project. Answering it with "no .tmd pages found under intro.tdm" would drop the
+/// near-miss suggestion every other file-taking front door gives (`missing_input_suggests`
+/// pins that), so probe it first and report it the same way they do.
+fn discover_map_target(target: &Path) -> Result<taliesin_core::Site, String> {
+    if target.is_dir() {
+        return Ok(taliesin_core::Site::discover(target));
+    }
+    // `File::open` rather than `exists()`: a path that is there but unreadable deserves the
+    // permission error verbatim, not a did-you-mean over its siblings.
+    if let Err(e) = std::fs::File::open(target) {
+        return Err(crate::check::cannot_read(target, &e));
+    }
+    Ok(taliesin_core::Site::discover_single(target))
+}
+
 /// The cross-reference-target JSON for a single `.tmd` file (the `symbols` tool's output),
 /// reusing `collect_symbols`. Parse-only, no kernel.
 pub(crate) fn symbols_json(path: &str) -> Result<String, String> {
@@ -785,13 +696,10 @@ pub(crate) fn symbols_json(path: &str) -> Result<String, String> {
     Ok(serde_json::to_string_pretty(&collect_symbols(&doc)).unwrap_or_else(|_| "[]".to_string()))
 }
 
-/// The whole-project outline JSON for a directory (the `map` tool's output), reusing
-/// `Site::discover` + `build_project_map`. No kernel.
+/// The whole-project outline JSON for a project or one document (the `map` tool's output),
+/// reusing [`discover_map_target`] + `build_project_map`. No kernel.
 pub(crate) fn map_json(path: &str) -> Result<String, String> {
-    if !Path::new(path).is_dir() {
-        return Err(format!("map expects a project directory: {path}"));
-    }
-    let site = taliesin_core::Site::discover(Path::new(path));
+    let site = discover_map_target(Path::new(path))?;
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {path}"));
     }
@@ -1023,10 +931,17 @@ fn map_human(m: &ProjectMap) -> String {
 /// Every long flag `map` accepts (drives the unknown-flag did-you-mean).
 const MAP_FLAGS: &[&str] = &["--format", "--json"];
 
-/// `taliesin map <dir> [--format human|json]`: the whole-project outline in one read-only
-/// call (pages in order, nav, mounts, the cross-reference graph, embedded decks). Reuses
-/// `Site::discover` — no kernel, no code execution. `map`'s customer is usually an agent
-/// orienting in a project; `--format json` is the machine form.
+/// `taliesin map <file.tmd | dir> [--format human|json]`: the whole-project outline in one
+/// read-only call (pages in order, nav, mounts, the cross-reference graph, embedded decks).
+/// Reuses `Site::discover` — no kernel, no code execution. `map`'s customer is usually an
+/// agent orienting in a project; `--format json` is the machine form.
+///
+/// **A single `.tmd` is a project of one document** (`Site::discover_single`, the same
+/// scoping `preview <file>` uses), so `map post.tmd` answers "what can I cross-reference
+/// in here" — which is the whole of what the retired `symbols` verb did, in the shape a
+/// caller already parses for a directory. Parse-only either way: an editor may call this
+/// on a keystroke, so it must never start a kernel, and it doesn't need to (a cell's
+/// `label:` is registered while the block model is built, long before the cell would run).
 pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
     let mut path: Option<&str> = None;
     let mut format = "human";
@@ -1059,14 +974,13 @@ pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let target = Path::new(path);
-    if !target.is_dir() {
-        log::error(&format!(
-            "map describes a project directory (an _site.yml + .tmd pages); `{path}` is not a \
-             directory. Use `symbols` or `read` for a single file."
-        ));
-        return ExitCode::FAILURE;
-    }
-    let site = taliesin_core::Site::discover(target);
+    let site = match discover_map_target(target) {
+        Ok(site) => site,
+        Err(e) => {
+            log::error(&e);
+            return ExitCode::FAILURE;
+        }
+    };
     if site.pages.is_empty() {
         log::error(&format!("no .tmd pages found under {path}"));
         return ExitCode::FAILURE;
@@ -1342,150 +1256,4 @@ fn features_json(path: &str, a: &taliesin_core::features::Adoption) -> String {
             .collect(),
     };
     serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_string())
-}
-
-/// Every long flag `symbols` accepts (drives the unknown-flag did-you-mean).
-const SYMBOLS_FLAGS: &[&str] = &["--format", "--json"];
-
-/// `taliesin symbols <file.tmd> [--format human|json]`: list the document's
-/// cross-reference targets, for an editor's `@`-completion.
-///
-/// **Parse-only, like `render` and `blocks`.** An editor calls this on a keystroke, so it
-/// must never start a kernel. It doesn't need to: a cell's `label:` is registered while
-/// the block model is built, long before the cell would run, so a `#| label: fig-scree`
-/// figure resolves here with no Python in sight.
-pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
-    let mut path: Option<&str> = None;
-    let mut format = "human";
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--format" => {
-                if let Some(v) = it.next() {
-                    format = v;
-                }
-            }
-            // `--json`: clig.dev shorthand for `--format json`.
-            "--json" => format = "json",
-            s if s.starts_with("--") => {
-                log::error(&crate::serve::unknown_flag_error(s, SYMBOLS_FLAGS));
-                return ExitCode::FAILURE;
-            }
-            s => {
-                if path.is_none() {
-                    path = Some(s);
-                }
-            }
-        }
-    }
-    let Some(path) = path else {
-        return crate::usage_error("symbols");
-    };
-    if format != "human" && format != "json" {
-        log::error(&crate::serve::bad_format_error(Some(format)));
-        return ExitCode::FAILURE;
-    }
-    if let Some(msg) = directory_rejection(
-        path,
-        "symbols lists the cross-reference targets of a single .tmd file",
-    ) {
-        log::error(&msg);
-        return ExitCode::FAILURE;
-    }
-    let src = match std::fs::read_to_string(path) {
-        Ok(src) => src,
-        Err(e) => {
-            log::error(&crate::check::cannot_read(Path::new(path), &e));
-            return ExitCode::FAILURE;
-        }
-    };
-    let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
-    // Guard the render so a panic becomes a clean error + non-zero exit, never a raw
-    // abort inside the editor's completion request.
-    let doc = match crate::serve::guarded(|| taliesin_core::render_single_doc(&src, base)) {
-        Ok(doc) => doc,
-        Err(panic) => {
-            log::error(&format!("render panicked on {path}: {panic}"));
-            return ExitCode::FAILURE;
-        }
-    };
-    let symbols = collect_symbols(&doc);
-    if format == "json" {
-        // JSON to stdout only, so it pipes cleanly.
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&symbols).unwrap_or_else(|_| "[]".to_string())
-        );
-    } else {
-        for s in &symbols {
-            println!("{:<28}  {:<5}  {}", s.id, s.kind, s.number);
-        }
-    }
-    ExitCode::SUCCESS
-}
-
-/// `render` and `blocks` each render a single `.tmd` file. Handed a directory (a project
-/// root), `read_to_string` would fail with a bare "Is a directory" OS error; instead build
-/// a clear diagnostic that points at the directory-aware subcommands. Returns the message,
-/// or `None` when `path` is not a directory (so the caller proceeds to read it). Split out
-/// so it's unit-testable without spawning the binary.
-fn directory_rejection(path: &str, lead: &str) -> Option<String> {
-    Path::new(path).is_dir().then(|| {
-        format!(
-            "{lead}, but {path} is a directory. For a multi-page project, \
-             use `taliesin build {path}` or `taliesin preview {path}`."
-        )
-    })
-}
-
-/// A short, single-line, tag-free preview of a block's HTML.
-fn preview(html: &str) -> String {
-    let mut s = String::new();
-    let mut in_tag = false;
-    for ch in html.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            c if !in_tag => s.push(if c == '\n' { ' ' } else { c }),
-            _ => {}
-        }
-        if s.chars().count() >= 64 {
-            s.push('…');
-            break;
-        }
-    }
-    s.trim().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // `CARGO_MANIFEST_DIR` is always a directory; its `Cargo.toml` is always a file. Using
-    // them keeps the test independent of the working directory `cargo test` runs from.
-    const A_DIRECTORY: &str = env!("CARGO_MANIFEST_DIR");
-    const A_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
-
-    #[test]
-    fn a_directory_is_rejected_with_a_helpful_message() {
-        let msg = directory_rejection(A_DIRECTORY, "render renders a single .tmd file")
-            .expect("a directory must be rejected");
-        assert!(msg.contains("is a directory"), "message was: {msg}");
-        // The message must steer the user to the directory-aware subcommands.
-        assert!(msg.contains("taliesin build"), "message was: {msg}");
-        assert!(msg.contains("taliesin preview"), "message was: {msg}");
-        // ...and carry the caller's lead clause so render vs blocks reads correctly.
-        assert!(
-            msg.starts_with("render renders a single .tmd file"),
-            "message was: {msg}"
-        );
-    }
-
-    #[test]
-    fn a_regular_file_is_not_rejected() {
-        assert!(
-            directory_rejection(A_FILE, "blocks lists the block model of a single .tmd file")
-                .is_none()
-        );
-    }
 }

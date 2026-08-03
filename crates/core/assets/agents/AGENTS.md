@@ -26,7 +26,7 @@ Three read-only commands describe what Taliesin accepts, so an agent never has t
 
 - `taliesin vocab` -> every closed-set construct (front-matter keys, cell options, callout/theorem kinds, div classes, cross-reference prefixes) as JSON.
 - `taliesin schema` -> the JSON Schema for front matter and `_site.yml`.
-- `taliesin symbols <file>` -> the headings, figures, and cross-reference targets in a document.
+- `taliesin map <file-or-dir>` -> a project outline; on a single file, the headings, figures, and cross-reference targets in that document.
 
 ## Build and publish
 

@@ -7,24 +7,22 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 
 | Command | Effect |
 |---|---|
-| `preview <file.tmd> [port]` | Live preview server (default port 4321; aliases `dev`, `serve`). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
+| `preview <file.tmd> [port]` | Live preview server (default port 4321). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
 | `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload) |
 | `run <file.tmd> [--cell N \| --line L \| --all] [--quiet] [--interrupt]` | Execute code cells **in the terminal**, against this project's warm session. No browser; outputs are cached so a later `build` re-executes nothing. Ctrl-C (or `--interrupt` from elsewhere) stops the run and keeps the kernel |
 | `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
+| `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
 | `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run] [--init]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload. `--init` runs the one-time Cloudflare setup instead of deploying |
-| `render <file.tmd>` | Render a one-shot full HTML page to stdout (static; does **not** execute code cells) |
 | `read <file.tmd> [--run]` | Project the document to plain text (agent-readable). Static by default; `--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is available, observes each `{js}` chart (`[js: produced, <svg W×H>]`), reporting what every cell produced (`--format json` for structured per-cell results) |
-| `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 | `vocab` | Emit the editor autocomplete vocabulary as JSON (the companion consumes it) |
 | `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, `AGENTS.md`, and a `.taliesin/` holding the editor JSON schemas. `--template site\|book` adds that starter's pages; refuses to overwrite |
 | `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
-| `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
-| `map <dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning) |
+| `map <file.tmd\|dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning). A single file is a project of one page, so this also lists that document's cross-reference targets (what you can write after `@`) |
 | `mcp` | Run a stdio **MCP server** exposing check/read/symbols/map/vocab/build tools |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics in any LSP editor (Neovim, Helix, Zed, VS Code) |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
@@ -335,7 +333,6 @@ without adding 2.5 MB to every page it re-serves.)
     taliesin pdf paper.tmd                    # → paper.pdf, A4
     taliesin pdf paper.tmd --paper letter     # US Letter (or a5)
     taliesin pdf paper.tmd -o out/final.pdf   # somewhere else
-    taliesin pdf paper.tmd --keep-html        # keep the paginated HTML to inspect
 
 This is a **paged rendering of the built HTML**, not a second output format. The same
 document the preview serves is laid out into pages by a local headless Chrome, so there is
@@ -464,72 +461,55 @@ any other document, so a front-matter key the validator would reject cannot surv
 scaffold. A slug must be lowercase letters, digits and hyphens (it becomes the page's URL),
 and like `init`, `new` refuses to overwrite an existing file.
 
-## Inspecting a document: `render`, `blocks`, and `symbols`
+## Inspecting a document: `build --stdout` and `map`
 
-Three commands print to a terminal instead of starting a server, which is handy for
+Two ways to look at a document in a terminal instead of a browser, which is handy for
 piping, diffing, and debugging.
 
-`render` writes one complete, self-contained HTML page to **stdout**. It is the
-non-interactive twin of a single-file `build`, so you can redirect or pipe it:
+`build --stdout` writes one complete, self-contained HTML page to **stdout** instead of
+to a file, so you can redirect or pipe it:
 
 ```sh
-taliesin render post.tmd > post.html
-taliesin render post.tmd | grep -c data-block-id   # count emitted blocks
+taliesin build post.tmd --stdout > post.html
+taliesin build post.tmd --stdout | grep -c data-block-id   # count emitted blocks
 ```
 
-Unlike `build` and `preview`, `render` **never starts a kernel**: `{python}` and
-`{r}` cells emit as highlighted source with an empty output block (no plots, and any
-`@fig-` reference to a computed figure dangles), so it warns when it sees kernel cells:
+It is an ordinary build, so it runs the document's code cells. Add `--no-exec` for the
+static dump — highlighted source with an empty output block, no plots, and any `@fig-`
+reference to a computed figure left dangling:
 
-```text
-warn: render does not execute code cells (2 kernel cells emitted as source;
-      figures/outputs will be empty). Use `build` or `preview` to run them.
+```sh
+taliesin build post.tmd --stdout --no-exec > post.html
 ```
 
-`{js}` cells are fine, since they run in the browser. Use `build`/`preview` when you
-need the executed outputs.
+`{js}` cells are unaffected either way, since they run in the browser.
 
-`blocks` is a debug view of the block model: for each block it prints the
-content-hash id, the `line:col-line:col` sourcepos, the origin file (`(primary)` or
-an `{{< include >}}`d path), and a 64-character text preview of the rendered HTML.
-It does not execute anything. The shape is one aligned row per block:
+The page carries the same `data-block-id` + `data-sourcepos` attributes that drive
+click-to-source and incremental updates, so this is the way to confirm a block carries
+the source map you expect (and, via `data-source-file`, which `{{< include >}}`d file it
+came from) without opening the browser dev tools.
 
-```text
-title: Some("Hello")
-3 block(s)
+`map` describes a whole project — pages in order, nav, mounts, the cross-reference graph
+— and a single `.tmd` is a project of one page. So `map <file>` is how you list every
+cross-reference target a document defines: the anchors you can write after `@`, each with
+the number Taliesin resolved for it.
 
-id                sourcepos       source-file             preview
-a1b2c3d4e5f6a7b8  1:1-1:14        (primary)               Hello
-0f9e8d7c6b5a4039  3:1-5:32        (primary)               A short paragraph that introduces…
-7c6b5a4039f0e1d2  7:1-9:3         _includes/note.tmd      Note: included from another file
+```sh
+taliesin map post.tmd --format json | jq '.xref_targets | keys'
 ```
 
-This is the same `data-block-id` + `data-sourcepos` that drive click-to-source and
-incremental updates, so `blocks` is the way to confirm a block carries the source map
-you expect (and which file it came from) without opening the browser dev tools.
-
-`symbols` lists every cross-reference target the document defines: the anchors you can
-write after `@`, each with the number Taliesin resolved for it.
-
 ```text
-$ taliesin symbols post.tmd
-fig-scree                     fig    1
-sec-why                       sec    1
-tbl-summary                   tbl    1
+["fig-scree", "sec-why", "tbl-summary"]
 ```
 
 The point is that it sees **both** ways an anchor can be written: the brace form
 (`## Why it works {#sec-why}`) and the cell form (`#| label: fig-scree`). A regex over
 the source can only find the first, which is why the VS Code companion asks the binary
-instead of guessing: `--format json` is what feeds its `@`-completion.
+instead of guessing.
 
-```sh
-taliesin symbols post.tmd --format json | jq '.[].id'
-```
-
-Like `render` and `blocks`, it renders in memory and **never starts a kernel**, so an
-editor can call it while you type. A cell's `label:` is registered when the block model
-is built, long before the cell would run.
+It renders in memory and **never starts a kernel**, so an editor can call it while you
+type. A cell's `label:` is registered when the block model is built, long before the cell
+would run.
 
 `--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
 the printed LAN URL and QR (`?t=…`, then a `tali_token` cookie); a fresh token is
@@ -576,7 +556,7 @@ gate**: it exits 0 whatever it finds, so it never fails a build.
 
 Unlike `map` and `read`, a plain directory is fine. When the directory is a
 project it uses that project's own page order; anywhere else it walks the tree in
-path order. Like `render`, `blocks` and `symbols` it is parse-only and **never starts
+path order. Like `map` and `check` it is parse-only and **never starts
 a kernel** or runs a cell.
 
 ## Machine-facing commands: `read`, `map`, `vocab`, `mcp`, `lsp`
@@ -591,7 +571,7 @@ the per-command reference.
 `read` projects the rendered document to structured **plain text**: headings, the
 resolved `Figure N` / cross-reference numbers, callouts, fenced code, and math as
 raw TeX. It is what an agent "sees" without a browser or any HTML, a *view* of the
-document, not a new output format. Static by default (like `render`, it does not run
+document, not a new output format. Static by default (it does not run
 code cells), so kernel cells show as source:
 
 ```sh
@@ -672,8 +652,6 @@ See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 | `TALIESIN_CELL_TIMEOUT` | Optional per-cell **wall-clock** cap in seconds, **off by default**. Set it to bound a cell's total runtime regardless of how much it prints (`0` disables). A streaming runaway is already caught by the output caps, so this is for bounding cost, not for safety |
 | `TALIESIN_RENDER_TIMEOUT` | Per-render wall-clock cap in seconds (default 30; `0` disables it). Rendering is not execution: it never legitimately takes seconds, so this is a watchdog against a pathological document, not a budget to tune. A render that exceeds it is abandoned with a located diagnostic instead of hanging the preview |
 | `TALIESIN_JS_TIMEOUT` | How long `read --run` waits for a page's `{js}` cells to settle in headless Chrome, in seconds (default 10). Separate from `TALIESIN_CELL_TIMEOUT` so a long kernel budget doesn't also stretch the browser wait |
-| `TALIESIN_HOST` | Same as `--host` (expose on the LAN) |
-| `TALIESIN_OPEN` | Same as `--open` (launch a browser) |
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |

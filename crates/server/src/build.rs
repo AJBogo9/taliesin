@@ -58,6 +58,10 @@ struct BuildArgs<'a> {
     /// "executable cells but no kernel" build failure.
     no_exec: bool,
     jobs: Option<usize>,
+    /// `--stdout`: write the page to stdout instead of to a file. Single-document only —
+    /// the one-shot HTML dump the retired `render` verb used to be (`build <f> --stdout
+    /// --no-exec` is exactly what `render <f>` did).
+    stdout: bool,
     /// `--format json` emits the build's static-lint diagnostics as `{diagnostics:[...]}`
     /// to stdout (for an agent/CI) instead of only the human log. Default `"human"`.
     format: &'a str,
@@ -73,6 +77,7 @@ const BUILD_FLAGS: &[&str] = &[
     "--format",
     "--json",
     "--no-exec",
+    "--stdout",
 ];
 
 /// Output-path extensions that name a format Taliesin does not produce (DX11). `build`
@@ -121,6 +126,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut strict = false;
     let mut bare = false;
     let mut no_exec = false;
+    let mut stdout = false;
     let mut jobs_result: Result<Option<usize>, String> = Ok(None);
     let mut format: &str = "human";
     let mut it = args[2..].iter();
@@ -158,6 +164,10 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             // which is a poor thing to make someone reach for now that a missing kernel
             // *fails* the build. This is that failure's opt-out.
             "--no-exec" => no_exec = true,
+            // `--stdout`: the page to stdout rather than to a file. This is the whole of what
+            // the `render` verb was, minus a second code path — pair it with `--no-exec` for
+            // `render`'s static, kernel-free dump.
+            "--stdout" => stdout = true,
             // An unrecognized `--flag` is a hard error with a did-you-mean, not silently
             // dropped (a typo'd `--stict` would otherwise build without the intended flag).
             s if s.starts_with("--") => {
@@ -185,6 +195,27 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     if let Some(msg) = non_html_output_error(positionals.get(1).copied()) {
         return Err(msg);
     }
+    // `--stdout` says "the page goes to stdout"; each of these says "the page goes
+    // somewhere else", and `--format json` says "the diagnostics go to stdout". Silently
+    // letting one win would either lose the page or interleave two streams on one fd, so
+    // the contradiction is a loud error naming both spellings.
+    if stdout {
+        if let Some(other) = out_dir
+            .map(|d| format!("--out {d}"))
+            .or_else(|| positionals.get(1).map(|o| format!("`{o}`")))
+        {
+            return Err(format!(
+                "error: --stdout writes the page to stdout, but {other} writes it to a file. \
+                 Pick one."
+            ));
+        }
+        if format == "json" {
+            return Err(
+                "error: --stdout and --format json both write to stdout. Use one or the other."
+                    .to_string(),
+            );
+        }
+    }
     Ok(BuildArgs {
         path,
         out_html: positionals.get(1).copied(),
@@ -193,6 +224,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
         bare,
         no_exec,
         jobs,
+        stdout,
         format,
     })
 }
@@ -213,6 +245,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         bare,
         no_exec,
         jobs,
+        stdout,
         format,
     } = match parse_build_args(args) {
         Ok(p) => p,
@@ -238,6 +271,15 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
                 "--bare builds a single document, not a site (a site's navigation + \
                  search need JavaScript)",
             );
+            return ExitCode::FAILURE;
+        }
+        // A site is many pages; there is no one page to put on stdout. Reject rather than
+        // pick a page (the same shape as `--bare`, and for the same reason).
+        if stdout {
+            log::error(&format!(
+                "--stdout writes one page, but {path} is a project of many. Name a single \
+                 .tmd file, or build the site to a directory."
+            ));
             return ExitCode::FAILURE;
         }
         return build_site(Path::new(path), out_dir, strict, jobs, json);
@@ -324,6 +366,14 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         println!("{}", crate::check::diagnostics_json(&diagnostics));
     }
 
+    // `--stdout`: the page IS the output, so nothing is written and nothing is copied
+    // beside it (an asset the page references stays where the author put it — a stdout
+    // dump has no directory of its own to populate). The human log is already on stderr,
+    // so the HTML pipes cleanly.
+    if stdout {
+        print!("{html}");
+        return finalize_build(true, strict, problems, kernel_failure.as_deref());
+    }
     if let Some(dir) = out_dir {
         let wrote = build_dir(&html, base, Path::new(dir), started);
         return finalize_build(wrote, strict, problems, kernel_failure.as_deref());

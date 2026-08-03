@@ -276,7 +276,7 @@ exact source line. So adding one is two steps, in order.
      and consulted while planning what re-runs. Add your read there if the option changes
      *whether or how* a cell runs.
 
-A render-only option needs no kernel and shows up immediately in `render`/`check`; an
+A render-only option needs no kernel and shows up immediately in `build`/`check`; an
 execution option only takes effect under `preview`/`build` with a live kernel. Pin the new
 option with a corpus document that uses it (the corpus is the spec), and `check` will keep
 it from regressing into an unknown-key warning.

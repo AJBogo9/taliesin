@@ -27,7 +27,6 @@ pub(crate) fn cmd_pdf(args: &[String]) -> ExitCode {
     let mut src: Option<String> = None;
     let mut out: Option<String> = None;
     let mut paper = Paper::default();
-    let mut keep_html = false;
 
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -54,7 +53,6 @@ pub(crate) fn cmd_pdf(args: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             },
-            "--keep-html" => keep_html = true,
             s if s.starts_with('-') => {
                 crate::log::error(&format!("unknown flag `{s}`"));
                 return ExitCode::FAILURE;
@@ -70,13 +68,13 @@ pub(crate) fn cmd_pdf(args: &[String]) -> ExitCode {
     let Some(src) = src else {
         return crate::usage_error("pdf");
     };
-    run(Path::new(&src), out.map(PathBuf::from), paper, keep_html)
+    run(Path::new(&src), out.map(PathBuf::from), paper)
 }
 
 /// Without the browser driver there is nothing to render with. Degrade the same way
 /// `read --run-js` does: a named, actionable message, never a panic and never an empty file.
 #[cfg(not(feature = "headless-js"))]
-fn run(_src: &Path, _out: Option<PathBuf>, _paper: Paper, _keep_html: bool) -> ExitCode {
+fn run(_src: &Path, _out: Option<PathBuf>, _paper: Paper) -> ExitCode {
     crate::log::error(
         "`taliesin pdf` needs the browser driver, which this binary was built without. \
          Rebuild with `--features headless-js`. (Released binaries and the `taliesin` \
@@ -86,7 +84,7 @@ fn run(_src: &Path, _out: Option<PathBuf>, _paper: Paper, _keep_html: bool) -> E
 }
 
 #[cfg(feature = "headless-js")]
-fn run(src: &Path, out: Option<PathBuf>, paper: Paper, keep_html: bool) -> ExitCode {
+fn run(src: &Path, out: Option<PathBuf>, paper: Paper) -> ExitCode {
     use taliesin_core::render::print::print_page_from_doc;
 
     if src.is_dir() {
@@ -160,11 +158,9 @@ fn run(src: &Path, out: Option<PathBuf>, paper: Paper, keep_html: bool) -> ExitC
 
     let result = rt.block_on(paginate_to_pdf(&page));
 
-    if keep_html {
-        crate::log::info(&format!("kept the paginated HTML at {}", page.display()));
-    } else {
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+    // The paginated HTML is an intermediate, so the temp dir always goes. (`--keep-html`
+    // kept it for inspection until Wave 5; nothing but its own --help ever mentioned it.)
+    let _ = std::fs::remove_dir_all(&dir);
 
     match result {
         Ok(bytes) => match std::fs::write(&out, &bytes) {

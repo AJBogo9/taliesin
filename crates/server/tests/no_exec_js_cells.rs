@@ -7,8 +7,8 @@
 //! `crates/core` contained zero references to the variable, so every browser-side channel
 //! ran with the flag on.
 //!
-//! **What this file pins and what it cannot.** `render` is the one-shot form of the exact
-//! emitter `preview` serves (both land in `render_document*`), so a `{js}` cell that renders
+//! **What this file pins and what it cannot.** `build --stdout` is the one-shot form of the
+//! exact emitter `preview` serves (both land in `render_document*`), so a `{js}` cell that renders
 //! as inert source here renders as inert source there. What no automated test in this repo
 //! can currently reach is the live socket: there is no `reqwest`/`TcpListener` harness for
 //! the bin crate (a deliberate gap, backlog Tier 3). That half was verified by hand on
@@ -27,14 +27,17 @@ use std::process::Command;
 
 fn render(path: &str, no_exec: bool) -> String {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_taliesin"));
-    cmd.arg("render").arg(path);
+    // `--stdout` is the page on stdout, the one-shot form the retired `render` verb was.
+    // The `--no-exec` FLAG is deliberately not passed: `TALIESIN_NO_EXEC` is what this file
+    // tests, and the baseline row needs a run with neither, or it passes vacuously.
+    cmd.arg("build").arg(path).arg("--stdout");
     if no_exec {
         cmd.env("TALIESIN_NO_EXEC", "1");
     }
-    let out = cmd.output().expect("run taliesin render");
+    let out = cmd.output().expect("run taliesin build --stdout");
     assert!(
         out.status.success(),
-        "render must still succeed under the flag: {}",
+        "the build must still succeed under the flag: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     String::from_utf8_lossy(&out.stdout).into_owned()

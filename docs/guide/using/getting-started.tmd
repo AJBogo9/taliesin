@@ -67,12 +67,10 @@ the defaults work, and the only ones most projects ever set are the kernel paths
 | `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell **wall-clock** cap in seconds, off by default; bounds total runtime regardless of output |
 | `TALIESIN_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
 | `TALIESIN_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
-| `TALIESIN_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
-| `TALIESIN_HOST` | unset | When set, expose the preview on the LAN; same as `--host` |
 | `TALIESIN_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
 | `TALIESIN_MERMAID_URL` | the vendored copy | Point the Mermaid loader at a different copy of the library (a relative path next to the site, or an absolute one). Diagrams are already offline without it |
 
-`TALIESIN_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
+`TALIESIN_*` variables that have a `--flag` equivalent (`--no-exec`)
 are read on the same run; the flag and the variable mean the same thing, so use
 whichever fits (the variable is handy in CI). The kernel paths come up most; the
 rest are situational.

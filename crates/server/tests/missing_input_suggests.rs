@@ -10,10 +10,19 @@
 use std::fs;
 use std::process::Command;
 
-/// Every subcommand whose first positional is a single `.tmd` file. Kept as a list because
-/// an integration test cannot reach the bin crate's `COMMANDS`; the floor below is what
-/// stops the list quietly shrinking to one.
-const FILE_COMMANDS: &[&str] = &["build", "check", "render", "read", "blocks", "symbols"];
+/// Every subcommand whose first positional is a single `.tmd` file *and* which routes a
+/// missing one through `check::cannot_read`. Kept as a list because an integration test
+/// cannot reach the bin crate's `COMMANDS`; the floor below is what stops the list quietly
+/// shrinking to one.
+///
+/// Wave 5 changed both ends of this list: `render`, `blocks` and `symbols` are gone, and
+/// `map` joined it when it learned to take a single file (its own "no .tmd pages found
+/// under intro.tdm" would have been a silent downgrade, which is how this gate earned its
+/// keep). Measured 2026-08-03, the front doors that take a path and still do NOT suggest:
+/// `features` ("features: no such file or directory"), `run` ("no such file") and `pdf`.
+/// They are a pre-existing gap, not a Wave 5 regression, and are listed here so the next
+/// reader sees the omission is known rather than assuming this list is exhaustive.
+const FILE_COMMANDS: &[&str] = &["build", "check", "read", "map"];
 
 #[test]
 fn every_file_front_door_suggests_the_near_miss() {
@@ -23,7 +32,7 @@ fn every_file_front_door_suggests_the_near_miss() {
     fs::write(dir.join("intro.tmd"), "---\ntitle: T\n---\n\nHi.\n").unwrap();
 
     assert!(
-        FILE_COMMANDS.len() >= 6,
+        FILE_COMMANDS.len() >= 4,
         "the list of front doors under test must not silently shrink"
     );
     for cmd in FILE_COMMANDS {

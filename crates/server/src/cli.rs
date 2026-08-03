@@ -1,16 +1,16 @@
-//! Front-door subcommands: `init` (scaffold a starter site) and `serve`/`preview`/`dev`
-//! (launch the live preview server).
+//! Front-door subcommands: `init` (scaffold a starter site), `new` (scaffold one document)
+//! and `preview` (launch the live preview server).
 //!
 //! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd` +
-//! `AGENTS.md`, the agent onramp);
-//! `serve` parses the preview flags (`--open`/`--host`/`--no-exec`/port) and dispatches
-//! to the single-doc or multi-page server.
+//! `AGENTS.md`, the agent onramp); `cmd_serve` parses the preview flags
+//! (`--open`/`--host`/`--no-exec`/port) and starts the dev server.
 //!
-//! **How to use:** `main()` dispatches `init` and `serve`/`preview`/`dev` to `cmd_init` /
-//! `cmd_serve` here.
+//! **How to use:** `main()` dispatches `init`, `new` and `preview` to `cmd_init` /
+//! `cmd_new` / `cmd_serve` here. The `serve`/`dev` spellings of `preview` were retired in
+//! Wave 5, which is why `cmd_serve` keeps a name its verb no longer has.
 //!
-//! **Depends on:** [`crate::serve`] + [`crate::serve_site`] (the two server entry points)
-//! and [`crate::log`].
+//! **Depends on:** [`crate::serve_site`] (the dev server), [`crate::serve`] (its shared
+//! plumbing + CLI error helpers) and [`crate::log`].
 
 use crate::{interactive, log, serve, serve_site};
 use std::path::{Path, PathBuf};
@@ -485,84 +485,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 pub(crate) struct NewOpts {
     /// `--draft`: mark the scaffold `draft: true`, holding it out of the published build.
     pub(crate) draft: bool,
-    /// `--tour`: scaffold a *guided* deck (one slide per feature, each explained) instead of
-    /// the bare starter. Deck-only; `cmd_new` rejects it on any other kind.
-    pub(crate) tour: bool,
 }
-
-/// The guided-tour deck body (everything after the front matter): one slide per deck feature,
-/// each with a one-line teaching sentence, demonstrating fragments / a pause / incremental /
-/// a `layout-ncol` split / magic-move / speaker notes. A raw literal (not a format string),
-/// so the many `::: {.feature}` braces and the ```code fences need no escaping. Kept in sync
-/// with `corpus/scaffold/deck-tour.tmd` by the drift-guard test in `new_cli.rs`.
-const TOUR_SLIDES: &str = r####"
-## Welcome to your deck
-
-Every `##` heading starts a new slide. Use the arrow keys or swipe to move
-between them; press `?` for the key sheet and `s` for speaker view.
-
-- Edit this file and the preview re-renders the slide you changed
-- Delete these tour slides when you write your own
-
-## Reveal one thing at a time
-
-Put a pause wherever you want to stop and talk.
-
-. . .
-
-Then keep going. A whole block can wait for its own step:
-
-::: {.fragment}
-This aside appears when you press forward.
-:::
-
-## Build a list step by step
-
-::: {.incremental}
-- First this point
-- then this one
-- and finally this
-:::
-
-## Show two things side by side
-
-::: {layout-ncol=2}
-The left column: a claim beside its evidence, or a before beside an after.
-
-Writing `::: {layout-ncol=2}` lays each block inside it out side by side.
-:::
-
-## Refactor code live
-
-::: {.magic-move}
-```python
-def area(r):
-    return 3.14 * r * r
-```
-
-```python
-import math
-
-def area(r):
-    return math.pi * r ** 2
-```
-:::
-
-The first version morphs into the second as you step forward.
-
-## Speak from notes only you can see
-
-Press `s` for speaker view: your notes, a timer, and the upcoming slide.
-
-::: {.notes}
-Only the presenter sees this. Put your talking points here.
-:::
-
-## Make it yours
-
-Replace these slides with your talk. Each `##` starts a slide; a single `#`
-starts a new section you drop into with the down arrow.
-"####;
 
 /// The files a `taliesin new <kind> <slug>` writes, as `(project-relative path, contents)`.
 ///
@@ -671,20 +594,8 @@ pub(crate) fn new_files(
             ),
         ),
         NewKind::Deck => {
-            // `--tour` scaffolds a guided deck (one slide per feature, each explained);
-            // otherwise the bare starter. The front matter is interpolated, then the constant
-            // `TOUR_SLIDES` is appended (a raw literal, so its `:::` braces need no escaping).
-            let body = if opts.tour {
-                format!(
-                    "---\n\
-                     title: \"{title}\"\n{draft}\
-                     subtitle: \"A guided tour of Taliesin decks\"\n\
-                     format: deck\n\
-                     ---\n{TOUR_SLIDES}"
-                )
-            } else {
-                format!(
-                    "---\n\
+            let body = format!(
+                "---\n\
                      title: \"{title}\"\n{draft}\
                      subtitle: \"A subtitle\"\n\
                      format: deck\n\
@@ -698,8 +609,7 @@ pub(crate) fn new_files(
                      ## The second slide\n\
                      \n\
                      Each `##` heading starts a new slide.\n"
-                )
-            };
+            );
             (PathBuf::from(format!("{slug}.tmd")), body)
         }
         // Paper is handled by the early return above (it writes two files).
@@ -741,8 +651,6 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             },
             // `--draft` marks the scaffold `draft: true` (held out of the published build).
             "--draft" => opts.draft = true,
-            // `--tour` scaffolds a guided deck (deck-only; rejected below on other kinds).
-            "--tour" => opts.tour = true,
             // `-y`/`--yes` skips the interactive wizard (use it for scripts at a TTY).
             "-y" | "--yes" => yes = true,
             s if s.starts_with("--") => {
@@ -778,13 +686,6 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         }
         None => return new_usage(),
     };
-
-    // `--tour` scaffolds a *deck* tour; on any other kind it has no meaning. Reject it
-    // (a friendly error, not a silent no-op) before writing anything.
-    if opts.tour && kind != NewKind::Deck {
-        log::error("--tour scaffolds a guided deck; use it with `new deck <slug>`");
-        return ExitCode::FAILURE;
-    }
 
     let slug: String = match positional.get(1) {
         Some(s) => (*s).to_string(),
@@ -882,7 +783,7 @@ fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
 }
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft", "--tour", "--yes"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft", "--yes"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).
@@ -906,11 +807,20 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
     }
 }
 
-/// Every long flag `preview`/`serve`/`dev` accepts (drives the unknown-flag did-you-mean).
+/// Every long flag `preview` accepts (drives the unknown-flag did-you-mean).
 /// `--help`/`-h` are intercepted by `main()` before this parser runs, so they aren't here.
-const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec", "--port", "--headless"];
+///
+/// [`SESSION_FLAG`] is deliberately absent: it is internal, not offered and not documented.
+const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec", "--port"];
 
-/// What `preview`/`serve`/`dev` parsed out of argv, before any environment or IO.
+/// The hidden flag `taliesin run` passes when it starts a session for itself. Underscore-
+/// prefixed like the `__complete` subcommand, and for the same reason: it is a seam between
+/// two of this binary's own commands, never something a person types. It was `--headless`,
+/// a documented `preview` flag, until Wave 5 — where its whole user-facing life was one
+/// line in one `--help` page and zero invocations.
+pub(crate) const SESSION_FLAG: &str = "--__session";
+
+/// What `preview` parsed out of argv, before any environment or IO.
 #[derive(Debug, PartialEq)]
 pub(crate) struct ServeArgs<'a> {
     pub path: &'a str,
@@ -942,11 +852,11 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
             "--open" => open = true,
             "--host" => expose = true,
             "--no-exec" => no_exec = true,
-            // `--headless`: a SESSION rather than a preview you are watching. Same server,
-            // same kernels, same `_freeze/` — it just skips the console chrome (screen
-            // clear, banner, QR) that a background process has nobody to show. Started by
-            // `taliesin run` when no session is up.
-            "--headless" => headless = true,
+            // A SESSION rather than a preview you are watching. Same server, same kernels,
+            // same `_freeze/` — it just skips the console chrome (screen clear, banner, QR)
+            // that a background process has nobody to show. Passed by `taliesin run` when
+            // no session is up; see [`SESSION_FLAG`].
+            s if s == SESSION_FLAG => headless = true,
             "--port" => {
                 flag_port = Some(
                     it.next()
@@ -990,8 +900,11 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let open = parsed.open || std::env::var_os("TALIESIN_OPEN").is_some();
-    let expose = parsed.expose || std::env::var_os("TALIESIN_HOST").is_some();
+    // `--open` and `--host` are flags and only flags. The `TALIESIN_OPEN`/`TALIESIN_HOST`
+    // env vars that also set them were retired in Wave 5: a second spelling for a flag is
+    // not worth its documentation, and an exported `TALIESIN_HOST` silently changed the
+    // network exposure of every preview in that shell.
+    let (open, expose) = (parsed.open, parsed.expose);
     // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`. Two readers, one owner
     // (`taliesin_core::render::no_exec_in_force`): `exec::Executor` skips the kernel, and the
     // render pass leaves a `{js}` cell as source, since a `{js}` cell is a code cell whose

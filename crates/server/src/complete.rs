@@ -327,15 +327,12 @@ struct Completion {
 /// `every_command_has_a_description`).
 fn command_desc(cmd: &str) -> &'static str {
     match cmd {
-        "render" => "render a full HTML page to stdout",
         "read" => "project the document to plain text",
         "build" => "build self-contained HTML (a dir builds the site)",
         "run" => "execute code cells in the terminal (warm session, no browser)",
         "pdf" => "typeset, paginated PDF rendered from the built HTML",
-        "blocks" => "list block ids + sourcepos (debug)",
         "schema" => "emit JSON Schemas for editor autocomplete",
         "vocab" => "emit editor autocomplete vocabulary as JSON",
-        "symbols" => "list the doc's cross-reference targets",
         "check" => "list located diagnostics (non-zero if any)",
         "doctor" => "audit the environment for running code cells",
         "map" => "whole-project outline (pages, nav, xref)",
@@ -344,9 +341,7 @@ fn command_desc(cmd: &str) -> &'static str {
         "lsp" => "stdio LSP server (live diagnostics in any editor)",
         "init" => "scaffold a starter site",
         "new" => "scaffold one document",
-        "serve" => "live preview server (alias of preview)",
         "preview" => "live preview server",
-        "dev" => "live preview server (alias of preview)",
         "publish" => "build + deploy to Cloudflare Pages",
         "help" => "show this help",
         "completions" => "print a shell completion script",
@@ -354,18 +349,10 @@ fn command_desc(cmd: &str) -> &'static str {
     }
 }
 
-/// Resolve preview's aliases so flag/positional tables are keyed by one canonical name.
-fn canonical(sub: &str) -> &str {
-    match sub {
-        "dev" | "serve" => "preview",
-        other => other,
-    }
-}
-
 /// `(flag, takes_a_value, description)` per canonical subcommand. Single source of truth
 /// for flag completion; `flag_table_covers_help` guards it against the CLI help text.
 fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
-    match canonical(sub) {
+    match sub {
         "preview" => &[
             (
                 "--host",
@@ -379,11 +366,6 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 "render code cells as source, never run them",
             ),
             ("--port", true, "port to serve on"),
-            (
-                "--headless",
-                false,
-                "run as a background session: no console chrome, no browser",
-            ),
         ],
         "run" => &[
             (
@@ -403,14 +385,14 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
         "pdf" => &[
             ("--out", true, "write the PDF here (default <name>.pdf)"),
             ("--paper", true, "page size: a4 (default), letter, or a5"),
-            (
-                "--keep-html",
-                false,
-                "keep the intermediate paginated HTML for inspection",
-            ),
         ],
         "build" => &[
             ("--out", true, "write a portable folder to <dir>"),
+            (
+                "--stdout",
+                false,
+                "write the page to stdout instead of to a file",
+            ),
             (
                 "--strict",
                 false,
@@ -442,20 +424,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 false,
                 "mark the scaffold draft: true (held out of the build)",
             ),
-            (
-                "--tour",
-                false,
-                "deck only: scaffold a guided, self-explaining deck",
-            ),
             ("--json", false, "print a json receipt"),
             ("--format", true, "human | json (alias for --json)"),
             ("--yes", false, "skip the interactive prompt"),
         ],
         "schema" => &[("--out", true, "output dir")],
-        "symbols" => &[
-            ("--format", true, "human | json"),
-            ("--json", false, "shorthand for --format json"),
-        ],
         "map" => &[
             ("--format", true, "human | json"),
             ("--json", false, "shorthand for --format json"),
@@ -482,11 +455,6 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 "--require-kernel",
                 false,
                 "also fail if a used language's kernel isn't ready",
-            ),
-            (
-                "--stdin",
-                false,
-                "lint the buffer piped on stdin (unsaved edits)",
             ),
         ],
         "completions" => &[(
@@ -564,13 +532,13 @@ impl PathKind {
 
 /// The first positional's path type, or `None` when the subcommand takes no path.
 fn positional_kind(sub: &str) -> Option<PathKind> {
-    match canonical(sub) {
+    match sub {
         "preview" | "build" | "check" => Some(PathKind::FileOrDir),
-        "render" | "read" | "blocks" | "symbols" | "run" => Some(PathKind::File),
-        "map" | "publish" | "init" => Some(PathKind::Dir),
-        // `features` takes either: a directory is the adoption table, a single file is
-        // "what does this document use". Its shape follows the target, so both complete.
-        "features" => Some(PathKind::FileOrDir),
+        "read" | "run" => Some(PathKind::File),
+        "publish" | "init" => Some(PathKind::Dir),
+        // `features` and `map` take either: a directory is the whole project, a single file
+        // is that one document. Their shape follows the target, so both complete.
+        "features" | "map" => Some(PathKind::FileOrDir),
         _ => None,
     }
 }
@@ -711,7 +679,7 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
     // 3. Value of the flag immediately before the cursor.
     if let Some(prev) = prior.last() {
         if prev.as_str() == "--format" {
-            let vals: &[&str] = if canonical(sub) == "build" {
+            let vals: &[&str] = if sub == "build" {
                 &["json"]
             } else {
                 &["human", "json"]
@@ -719,12 +687,12 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
             return enumerated(cur, vals);
         }
         // `check --explain <TAB>` offers the closed, drift-locked set of diagnostic codes.
-        if prev.as_str() == "--explain" && canonical(sub) == "check" {
+        if prev.as_str() == "--explain" && sub == "check" {
             let codes = taliesin_core::diagnostics::codes::all_codes();
             return enumerated(cur, &codes);
         }
         // `init --template <TAB>` offers the three starters.
-        if prev.as_str() == "--template" && canonical(sub) == "init" {
+        if prev.as_str() == "--template" && sub == "init" {
             return enumerated(cur, &["basic", "site", "book"]);
         }
         // Other value-taking flags (--out/--dir/--jobs/--port/--project-name): let the
@@ -746,7 +714,7 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
     }
     // `completions` offers the shell kinds until one is chosen, so it also fires after
     // `completions --install` (where an interleaved flag pushed prior.len() past 1).
-    if canonical(sub) == "completions"
+    if sub == "completions"
         && !cur.starts_with('-')
         && positionals_seen("completions", &prior[1..]) == 0
     {
@@ -891,17 +859,18 @@ mod brain_tests {
         }
         // "Non-empty" is satisfied by one constant string for every command, which is what
         // the list would look like if the lookup stopped looking anything up. So assert the
-        // lines actually distinguish: each command's is its own, bar preview's two aliases,
-        // which share one on purpose.
+        // lines actually distinguish: every command's is its own. (Until Wave 5 the
+        // `dev`/`serve` aliases shared preview's line; with the aliases gone, no two may.)
         let mut by_desc: std::collections::BTreeMap<&str, Vec<&str>> =
             std::collections::BTreeMap::new();
         for c in crate::COMMANDS {
             by_desc.entry(command_desc(c)).or_default().push(c);
         }
         for (desc, cmds) in &by_desc {
-            assert!(
-                cmds.len() == 1 || cmds.iter().all(|c| matches!(*c, "dev" | "serve")),
-                "`{desc}` is shared by {cmds:?}; only preview's aliases may share a line"
+            assert_eq!(
+                cmds.len(),
+                1,
+                "`{desc}` is shared by {cmds:?}; each command needs its own line"
             );
         }
     }
@@ -913,7 +882,9 @@ mod brain_tests {
             assert!(got.contains(&f.to_string()), "preview offers {f}: {got:?}");
         }
         let got = values(&["build", "--"]);
-        for f in ["--out", "--strict", "--bare", "--jobs", "--format"] {
+        for f in [
+            "--out", "--stdout", "--strict", "--bare", "--jobs", "--format",
+        ] {
             assert!(got.contains(&f.to_string()), "build offers {f}: {got:?}");
         }
     }
@@ -925,7 +896,6 @@ mod brain_tests {
     fn each_subcommand_offers_its_own_flags() {
         for (sub, expected) in [
             ("schema", &["--out"][..]),
-            ("symbols", &["--format", "--json"][..]),
             ("map", &["--format", "--json"][..]),
             ("features", &["--format", "--json"][..]),
             ("completions", &["--install"][..]),
@@ -972,10 +942,17 @@ mod brain_tests {
         assert_eq!(positionals_seen("build", &args(&["a", "b"])), 2);
     }
 
+    /// A retired verb completes nothing: `dev`/`serve` used to be routed to preview's
+    /// table by `canonical()`, and leaving that mapping behind would keep offering flags
+    /// for a command the binary no longer dispatches.
     #[test]
-    fn flags_are_offered_through_aliases() {
-        // `dev` and `serve` share preview's flags.
-        assert!(values(&["dev", "--"]).contains(&"--host".to_string()));
+    fn retired_aliases_offer_nothing() {
+        for retired in ["dev", "serve", "render", "blocks", "symbols"] {
+            assert!(
+                values(&[retired, "--"]).is_empty(),
+                "`{retired}` is retired but still completes flags"
+            );
+        }
     }
 
     #[test]
@@ -1100,14 +1077,15 @@ mod brain_tests {
     #[test]
     fn dir_only_subcommands_hide_tmd_files() {
         let dir = fixture("dironly");
-        let got = path_values(&dir, &["map", ""]);
+        // `publish` deploys a project, so a single document is never the target.
+        let got = path_values(&dir, &["publish", ""]);
         assert!(
             !got.contains(&"index.tmd".to_string()),
-            "map offers no .tmd file: {got:?}"
+            "publish offers no .tmd file: {got:?}"
         );
         assert!(
             got.contains(&"site/".to_string()),
-            "map still offers a site dir: {got:?}"
+            "publish still offers a site dir: {got:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1153,12 +1131,12 @@ mod brain_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The file-only subcommands: their positional table row is one arm of a match, and
-    /// losing it silently drops path completion for four commands at once.
+    /// The file-taking subcommands: their positional table row is one arm of a match, and
+    /// losing it silently drops path completion for several commands at once.
     #[test]
     fn file_positional_subcommands_offer_documents() {
         let dir = fixture("filekind");
-        for sub in ["render", "read", "blocks", "symbols"] {
+        for sub in ["read", "run", "map", "features"] {
             let got = path_values(&dir, &[sub, ""]);
             assert!(
                 got.contains(&"index.tmd".to_string()),

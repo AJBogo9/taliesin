@@ -90,8 +90,9 @@ what `check` enforces:
   callout and theorem kinds, div classes, cross-reference prefixes) as JSON.
 - `taliesin schema` emits the JSON Schema for front matter and `_site.yml` (the same
   schemas that power [editor autocomplete](../reference/configuration.tmd)).
-- `taliesin symbols <file>` lists a document's headings, figures, and other
-  cross-reference targets.
+- `taliesin map <file>` lists a document's headings, figures, and other
+  cross-reference targets (a single file is a project of one page); on a directory it
+  outlines the whole project.
 
 ## The `AGENTS.md` onramp
 

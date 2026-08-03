@@ -1,9 +1,8 @@
 //! taliesin — dev server & CLI entry point.
 //!
-//!   - `taliesin preview <file.tmd> [port]` live preview server (aliases: dev, serve)
-//!   - `taliesin build  <file.tmd> [out]`   render a self-contained HTML file
-//!   - `taliesin render <file.tmd>`         one-shot full HTML page to stdout
-//!   - `taliesin blocks <file.tmd>`         list block ids + sourcepos (debugging)
+//!   - `taliesin preview <file.tmd> [port]`  live preview server
+//!   - `taliesin build  <file.tmd> [out]`    render a self-contained HTML file
+//!   - `taliesin build  <file.tmd> --stdout` the same page, to stdout
 
 mod build;
 mod build_budget;
@@ -71,7 +70,6 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match args.get(1).map(String::as_str) {
-        Some("render") => query::cmd_render(args.get(2)),
         Some("read") => query::cmd_read(&args),
         Some("build") => {
             runtime_dirs::sweep_stale_runtime_dirs();
@@ -79,7 +77,6 @@ fn main() -> ExitCode {
         }
         Some("pdf") => pdf::cmd_pdf(&args),
         Some("publish") => publish::cmd_publish(&args),
-        Some("blocks") => query::cmd_blocks(args.get(2)),
         // `run` needs the same stale-runtime-dir sweep `build`/`preview` do: it may be
         // the thing that starts the session that owns the kernels.
         Some("run") => {
@@ -88,7 +85,6 @@ fn main() -> ExitCode {
         }
         Some("schema") => query::cmd_schema(&args),
         Some("vocab") => query::cmd_vocab(),
-        Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
         Some("features") => query::cmd_features(&args),
         Some("check") => check::cmd_check(&args),
@@ -97,8 +93,7 @@ fn main() -> ExitCode {
         Some("lsp") => lsp::cmd_lsp(&args),
         Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
-        // `preview`/`dev` are vite-style aliases for the live server.
-        Some("serve" | "preview" | "dev") => {
+        Some("preview") => {
             runtime_dirs::sweep_stale_runtime_dirs();
             cli::cmd_serve(&args)
         }
@@ -129,28 +124,21 @@ fn main() -> ExitCode {
         // An unrecognized command is an error (non-zero), not a silent success.
         // Suggest the nearest valid command (reusing core's Levenshtein helper).
         Some(other) => {
-            let hint = match taliesin_core::closest(other, COMMANDS) {
-                Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
-                None => format!("unknown command: `{other}`"),
-            };
-            log::error(&hint);
+            log::error(&unknown_command_message(other));
             usage();
             ExitCode::FAILURE
         }
     }
 }
 
-/// Every subcommand name (aliases included), for the unknown-command did-you-mean.
+/// Every subcommand name, for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "render",
     "read",
     "build",
     "run",
     "pdf",
-    "blocks",
     "schema",
     "vocab",
-    "symbols",
     "check",
     "doctor",
     "map",
@@ -159,13 +147,58 @@ const COMMANDS: &[&str] = &[
     "lsp",
     "init",
     "new",
-    "serve",
     "preview",
-    "dev",
     "publish",
     "help",
     "completions",
 ];
+
+/// Subcommands that used to exist, and the one line that says what replaced them.
+///
+/// The same job [`taliesin_core::RETIRED_KEYS`] does for front matter, for the same reason:
+/// a did-you-mean over the *surviving* names answers a retired verb with either silence or
+/// a wrong command, and both are worse than nothing when the person typing it is following
+/// an older page. Measured on the Wave 5 cuts: `render`, `blocks`, `symbols` and `serve`
+/// are all further than edit distance 2 from every survivor, so they got silence — while
+/// **`dev` is two edits from `new`**, so `taliesin dev .` answered a request for the preview
+/// server by suggesting the command that *scaffolds files*.
+///
+/// Retired names are deliberately NOT in [`COMMANDS`]: they must not be suggested for a
+/// typo of something else, only recognized when typed exactly.
+const RETIRED_COMMANDS: &[(&str, &str)] = &[
+    (
+        "render",
+        "`build <file.tmd> --stdout --no-exec` writes the same page to stdout",
+    ),
+    (
+        "blocks",
+        "the block model is an editor concern now — `taliesin lsp` publishes it, \
+         and `build --stdout` shows the emitted `data-block-id`s",
+    ),
+    (
+        "symbols",
+        "`map <file.tmd>` lists the same cross-reference targets \
+         (a single document is a project of one page)",
+    ),
+    ("serve", "use `preview`"),
+    ("dev", "use `preview`"),
+    (
+        "skim",
+        "`read` projects a document to plain text; `map` outlines a project",
+    ),
+];
+
+/// The error for a command that is not one of [`COMMANDS`]: the retired-verb note when the
+/// name is one this tool used to have, otherwise a did-you-mean within edit distance 2.
+fn unknown_command_message(other: &str) -> String {
+    if let Some((_, note)) = RETIRED_COMMANDS.iter().find(|(name, _)| *name == other) {
+        return format!("`{other}` was removed: {note}");
+    }
+    match taliesin_core::closest(other, COMMANDS) {
+        Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
+        None => format!("unknown command: `{other}`"),
+    }
+}
 
 /// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
 /// diff it against the variables the code actually reads: `TALIESIN_MERMAID_URL` shipped
@@ -176,7 +209,7 @@ ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
      TALIESIN_JS_TIMEOUT (read --run {js} headless-Chrome settle seconds; default 10),
-     TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,
+     TALIESIN_NO_CLEAR,
      TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
      TALIESIN_NO_EXEC (=--no-exec, never run code cells),
      TALIESIN_MERMAID_URL (override the url the live preview lazy-loads mermaid from)
@@ -197,7 +230,7 @@ COMMANDS:
 Author
   init   [dir]               scaffold a starter site you can preview right away
                              (writes _site.yml + index.tmd; default: current dir)
-  new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--tour] [--json]
+  new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--json]
                              scaffold one document, correct on its first save
 
 Preview & build
@@ -206,8 +239,8 @@ Preview & build
                              project's warm session; no browser, outputs cached
                              so a later build re-executes nothing
   preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]
-                             live preview server (aliases: dev, serve;
-                             a dir previews the whole SITE with nav + hot reload;
+                             live preview server (a dir previews the whole SITE
+                             with nav + hot reload;
                              default port 4321 (or [port] / --port <N>), replacing
                              this project's own running preview and stepping past
                              anyone else's;
@@ -216,16 +249,17 @@ Preview & build
                              --no-exec renders code cells as source,
                              kernel and {js} alike, but does not strip raw
                              HTML: see `Documents you did not write`)
-  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]
+  build  <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]
                              render a self-contained HTML file (a dir builds the
                              whole SITE to _site/); default <name>.html beside
                              the source; --out <dir> writes a portable folder;
+                             --stdout writes the page to stdout instead of a file;
                              --strict exits non-zero on a cell error or located
                              warning; --bare emits zero-JS, CSS-only single-doc
                              HTML; --jobs <N> caps parallel page renders (site
                              build); --no-exec renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
-  pdf    <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]
+  pdf    <file.tmd> [-o out.pdf] [--paper a4|letter|a5]
                              a typeset, paginated PDF rendered FROM the built
                              HTML: running heads, folios, cross-refs that name
                              their page (\"Figure 3 (p. 12)\") and an automatic
@@ -243,17 +277,15 @@ Inspect
                              (--explain <CODE> prints a diagnostic code's cause + fix)
   doctor [dir] [--format human|json]  audit the environment for running code cells
                              (interpreters, ipykernel/IRkernel, active conda/venv)
-  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph
+  map   <file.tmd | dir> [--format human|json]  whole-project outline: pages, nav,
+                             xref graph (a single file is a project of one page,
+                             so it lists that document's @-reference targets)
   read   <file.tmd | dir> [--run] [--format human|json]  project the document to plain
                              text (agent-readable; --run executes cells + reports
                              produced figures/output; --format json emits
                              {path, executed, cells, text}; a dir reads the book)
   features <file.tmd | dir> [--format human|json]  which constructs a document
                              uses, and which constructs no document uses
-  render <file.tmd>          render a full HTML page to stdout
-                             (static; does NOT execute code cells)
-  blocks <file.tmd>          list block ids + sourcepos (debug)
-  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets
 
 Editor & agent
   schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)
@@ -283,16 +315,15 @@ fn usage() {
 }
 
 /// Focused help for one subcommand (synopsis + its flags + a one-line example), or
-/// `None` for a name with no dedicated page (the caller falls back to `usage()`).
-/// Aliases (`dev`/`serve`) resolve to their canonical command's help. Kept as a flat
-/// match over the canonical name to mirror the hand-rolled `usage()` style; printed by
-/// `main()` when `--help`/`-h` follows a known subcommand.
+/// `None` for a name with no dedicated page (the caller falls back to `usage()`). Kept as
+/// a flat match to mirror the hand-rolled `usage()` style; printed by `main()` when
+/// `--help`/`-h` follows a known subcommand.
 fn subcommand_help(cmd: &str) -> Option<&'static str> {
     let text = match cmd {
-        "preview" | "dev" | "serve" => {
+        "preview" => {
             "taliesin preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]\n\
              \n\
-             Live preview server (aliases: dev, serve). A file previews one document; a\n\
+             Live preview server. A file previews one document; a\n\
              directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
              Default port 4321. Re-previewing a project replaces its own running\n\
              preview, so there is only ever one; a port held by anything else falls\n\
@@ -305,8 +336,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --open      launch the default browser at the preview URL\n\
              \x20 --no-exec   render code cells as source ({python}/{r} and {js} alike),\n\
              \x20             never executing them. Not an HTML sanitizer\n\
-             \x20 --headless  run as a background SESSION: no console chrome, no browser.\n\
-             \x20             What `taliesin run` starts for you when none is up\n\
              \n\
              Example:\n\
              \x20 taliesin preview index.tmd --open\n\
@@ -347,13 +376,16 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin run analysis.tmd --interrupt\n"
         }
         "build" => {
-            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
+            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
              \n\
              Flags:\n\
              \x20 --out <dir>  write a portable folder (<dir>/index.html + copied assets)\n\
+             \x20 --stdout     write the page to stdout instead of to a file (single\n\
+             \x20              document only). With --no-exec this is the one-shot,\n\
+             \x20              kernel-free HTML dump the `render` verb used to be\n\
              \x20 --strict     exit non-zero on a cell error or located warning (CI gate)\n\
              \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
              \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
@@ -365,10 +397,11 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin build post.tmd --strict\n\
-             \x20 taliesin build . --jobs 4\n"
+             \x20 taliesin build . --jobs 4\n\
+             \x20 taliesin build post.tmd --stdout --no-exec > post.html\n"
         }
         "pdf" => {
-            "taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5] [--keep-html]\n\
+            "taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5]\n\
              \n\
              Render a typeset, paginated PDF *from the built HTML* — the same HTML the\n\
              preview serves, laid out into pages. Running heads, folios, cross-references\n\
@@ -381,14 +414,13 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Flags:\n\
              \x20 -o, --out <path>  write the PDF here (default: <name>.pdf)\n\
              \x20 --paper <size>    a4 (default), letter, or a5\n\
-             \x20 --keep-html       keep the intermediate paginated HTML for inspection\n\
              \n\
              Example:\n\
              \x20 taliesin pdf paper.tmd --paper letter\n"
         }
         "check" => {
             "taliesin check <file.tmd | dir> [--format human|json] [--errors-only|--strict]\n\
-             \x20                            [--require-kernel] [--stdin] [--explain <CODE>]\n\
+             \x20                            [--require-kernel] [--explain <CODE>]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
              ERROR or WARNING is found (a CI / pre-publish gate). A SUGGESTION is advice:\n\
@@ -410,10 +442,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --strict         also fail on suggestions (the strictest gate)\n\
              \x20 --require-kernel also fail if a used language's Jupyter kernel isn't ready\n\
              \x20                  (interpreter + ipykernel/IRkernel); off by default\n\
-             \x20 --stdin          lint the buffer piped on stdin as if it were <file.tmd>,\n\
-             \x20                  not the last-saved file (unsaved edits; the editor on-type\n\
-             \x20                  path). The path gives the base dir + reported location;\n\
-             \x20                  the interpreter probe is skipped (environment: []).\n\
              \x20 --explain <CODE> expand a diagnostic code (e.g. TAL-XREF-UNREF) into its\n\
              \x20                  cause + canonical fix, rustc-style; bare lists every code.\n\
              \x20                  Honours --format json. Needs no file.\n\
@@ -421,18 +449,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example:\n\
              \x20 taliesin check . --format json | jq\n\
              \x20 taliesin check src/ --errors-only --require-kernel\n\
-             \x20 taliesin check post.tmd --stdin --format json < buffer.tmd\n\
              \x20 taliesin check --explain TAL-FM-KEY\n"
-        }
-        "render" => {
-            "taliesin render <file.tmd>\n\
-             \n\
-             Render a full HTML page to stdout (one-shot). Static: it does NOT execute\n\
-             code cells, so kernel cells emit as source with empty outputs. Use build or\n\
-             preview to run them.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin render post.tmd > post.html\n"
         }
         "mcp" => {
             "taliesin mcp\n\
@@ -465,15 +482,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 cmd = { \"taliesin\", \"lsp\" }\n"
         }
         "map" => {
-            "taliesin map <dir> [--format human|json]\n\
+            "taliesin map <file.tmd | dir> [--format human|json]\n\
              \n\
              The whole-project outline in one read-only call: the page list in nav /\n\
              chapter order (rel, url, title, date, categories, layout), nav + mounts, the\n\
              cross-reference graph (each anchor → where it's defined + its backlinks), and\n\
              embedded decks. Reuses site discovery; no kernel, no code execution.\n\
              \n\
+             A single .tmd is a project of one page, so `map <file>` answers \"what can I\n\
+             cross-reference in this document\" — every `{#sec-…}` anchor and `#| label:`\n\
+             with the number Taliesin resolved for it, under `xref_targets`.\n\
+             \n\
              Example:\n\
-             \x20 taliesin map . --format json | jq '.pages[].url'\n"
+             \x20 taliesin map . --format json | jq '.pages[].url'\n\
+             \x20 taliesin map post.tmd --format json | jq '.xref_targets | keys'\n"
         }
         "features" => {
             "taliesin features <file.tmd | dir> [--format human|json]\n\
@@ -541,7 +563,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin vocab | jq .cellOptions\n"
         }
         "new" => {
-            "taliesin new [post|page|deck|paper] [slug] [--dir <root>] [--draft] [--tour] [--json] [-y]\n\
+            "taliesin new [post|page|deck|paper] [slug] [--dir <root>] [--draft] [--json] [-y]\n\
              \n\
              Scaffold one document that is correct on its first save: it renders, and\n\
              `taliesin check` passes on it with no diagnostics. A post lands in\n\
@@ -555,37 +577,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
              \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
-             \x20 --tour         (deck only) scaffold a guided deck: one slide per feature, explained\n\
              \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
              \x20 --format human|json  the long spelling of --json\n\
              \x20 -y, --yes      skip the interactive prompt (for scripts run at a terminal)\n\
              \n\
              Example:\n\
              \x20 taliesin new post my-first-post --draft\n"
-        }
-        "symbols" => {
-            "taliesin symbols <file.tmd> [--format human|json]\n\
-             \n\
-             List the document's cross-reference targets: every anchor you can name after\n\
-             `@`, whether it was written as a brace anchor (`{#sec-why}`) or as a cell\n\
-             label (`#| label: fig-scree`), with the number Taliesin resolved for it.\n\
-             Static: renders in memory and never runs a code cell, so an editor can call\n\
-             it while you type.\n\
-             \n\
-             Flags:\n\
-             \x20 --format human|json   json feeds the companion's @-completion\n\
-             \n\
-             Example:\n\
-             \x20 taliesin symbols post.tmd --format json | jq '.[].id'\n"
-        }
-        "blocks" => {
-            "taliesin blocks <file.tmd>\n\
-             \n\
-             List the document's block ids + sourcepos + source file + a short preview\n\
-             (a debugging aid for the block model). Does NOT execute code cells.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin blocks post.tmd\n"
         }
         "init" => {
             "taliesin init [dir] [--template basic|site|book] [--json] [-y]\n\
@@ -688,7 +685,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
 ///
 /// Not `lines().next()`: a synopsis too long for one line wraps onto an indented continuation,
 /// and reading only the first line silently truncated it. `check`'s wrapped continuation is
-/// where `--require-kernel`/`--stdin`/`--explain` lived.
+/// where `--require-kernel`/`--explain` lived.
 pub(crate) fn command_synopsis(cmd: &str) -> Option<String> {
     let help = subcommand_help(cmd)?;
     let joined = help
@@ -732,6 +729,45 @@ mod dispatch_tests {
         assert_eq!(taliesin_core::closest("innit", COMMANDS), Some("init"));
         // Something far from every command yields no suggestion (not a wild guess).
         assert_eq!(taliesin_core::closest("frobnicate", COMMANDS), None);
+    }
+
+    /// A retired verb answers with what replaced it, and is never itself suggested.
+    ///
+    /// The measurement that made this a register rather than a comment: with `dev` merely
+    /// deleted, `taliesin dev .` fell through to the did-you-mean, and `dev` is exactly two
+    /// edits from `new` — so a request to *preview* a project was answered with the command
+    /// that *scaffolds files into it*. The other four cuts got silence, which is only
+    /// marginally better for someone following an older page.
+    #[test]
+    fn a_retired_command_names_its_replacement_instead_of_guessing() {
+        // The bad suggestion this register exists to prevent is still one edit-distance
+        // lookup away, so assert the register wins rather than trusting it to.
+        assert_eq!(taliesin_core::closest("dev", COMMANDS), Some("new"));
+        assert!(
+            unknown_command_message("dev").contains("preview"),
+            "`dev` must point at preview, not at `new`: {}",
+            unknown_command_message("dev")
+        );
+        assert!(
+            !unknown_command_message("dev").contains("did you mean"),
+            "the retired note replaces the did-you-mean, it does not follow it"
+        );
+        assert!(unknown_command_message("render").contains("--stdout"));
+        assert!(unknown_command_message("symbols").contains("map"));
+        // A retired name is not a live command, or `main()` would dispatch it and the
+        // `--help`/COMMANDS gates would demand a page for it.
+        for (name, note) in RETIRED_COMMANDS {
+            assert!(
+                !COMMANDS.contains(name),
+                "`{name}` is retired but still listed in COMMANDS"
+            );
+            assert!(
+                !note.is_empty(),
+                "`{name}` retired with no replacement note"
+            );
+        }
+        // And an ordinary typo still gets its did-you-mean.
+        assert!(unknown_command_message("biuld").contains("did you mean `build`?"));
     }
 }
 
@@ -1077,10 +1113,11 @@ mod cli_microcopy_tests {
         }
     }
 
-    /// Names in `COMMANDS` that are an alias of another command, or not a command at all.
-    /// `subcommand_help_covers_documented_commands` skips them: `dev`/`serve` resolve to
-    /// `preview`'s help, and `help` is the help system rather than an entry in it.
-    const ALIASES_AND_META: &[&str] = &["dev", "serve", "help"];
+    /// Names in `COMMANDS` that are not a subcommand with a page of its own.
+    /// `subcommand_help_covers_documented_commands` skips them: `help` is the help system
+    /// rather than an entry in it. (The `dev`/`serve` aliases that used to live here were
+    /// retired in Wave 5 — one spelling, so there is nothing to resolve.)
+    const ALIASES_AND_META: &[&str] = &["help"];
 
     /// Every subcommand is listed in `taliesin --help`, and everything listed there is a
     /// real subcommand. The command half of the same link `env_help_lists_every_runtime_env_var`
@@ -1093,10 +1130,9 @@ mod cli_microcopy_tests {
     /// exists, which it did.
     #[test]
     fn commands_help_lists_every_subcommand() {
-        // Aliases are named inside `preview`'s entry as prose ("aliases: dev, serve") rather
-        // than getting a line of their own, and `help` is documented on the trailing
-        // `help, --version` line — both are listed, just not as `  <name> ` entries.
-        const LISTED_IN_PROSE: &[&str] = &["dev", "serve", "help"];
+        // `help` is documented on the trailing `help, --version` line: listed, just not as
+        // a `  <name> ` entry of its own.
+        const LISTED_IN_PROSE: &[&str] = &["help"];
         // A command's entry opens its line: two spaces, the name, then a space. Matching the
         // bare name anywhere would pass on a mention inside another command's description
         // (`preview`'s text names `--no-exec`, `read`'s names `--run`), which is exactly the
@@ -1166,45 +1202,44 @@ mod cli_microcopy_tests {
                 "`{cmd}` help should show a `taliesin …` example: {help}"
             );
         }
-        // Aliases resolve to the canonical (preview) help.
-        assert_eq!(subcommand_help("dev"), subcommand_help("preview"));
-        assert_eq!(subcommand_help("serve"), subcommand_help("preview"));
-        // An unrecognized command has no focused help (falls back to top-level usage).
+        // An unrecognized command has no focused help (falls back to top-level usage), and
+        // a *retired* one has none either: `dev`/`serve` are not spellings of `preview` any
+        // more, they are names the tool no longer answers to.
         assert!(subcommand_help("frobnicate").is_none());
+        for (retired, _) in RETIRED_COMMANDS {
+            assert!(
+                subcommand_help(retired).is_none(),
+                "`{retired}` was retired but still has a focused --help page"
+            );
+        }
         // `--jobs` is documented in build help.
         let build_help = subcommand_help("build").unwrap();
         assert!(
             build_help.contains("--jobs"),
             "build help must document --jobs: {build_help}"
         );
-        // PL15: `new` help documents `--draft`/`--tour` (the scaffold advertises `--draft`).
+        // PL15: `new` help documents `--draft` (the scaffold advertises it).
         let new_help = subcommand_help("new").unwrap();
         assert!(
-            new_help.contains("--draft") && new_help.contains("--tour"),
-            "new help must document --draft + --tour: {new_help}"
+            new_help.contains("--draft"),
+            "new help must document --draft: {new_help}"
         );
         // PL15: the missing-positional `usage:` one-liners derive from the `--help` synopsis, so
         // they can't drift — the derived `new` synopsis carries the new flags, and the `build`
         // synopsis carries `--format json` (the flag its old hand-written one-liner had dropped).
         assert!(
-            command_synopsis("new").is_some_and(|s| s.contains("--draft") && s.contains("--tour")),
-            "the derived `new` usage synopsis must carry --draft/--tour"
+            command_synopsis("new").is_some_and(|s| s.contains("--draft")),
+            "the derived `new` usage synopsis must carry --draft"
         );
         assert!(
             command_synopsis("build").is_some_and(|s| s.contains("--format json")),
             "the derived `build` usage synopsis must carry --format json"
         );
         // A synopsis too long for one line wraps onto an indented continuation, and reading
-        // only the first line dropped it: `check`'s `--require-kernel`/`--stdin`/`--explain`
-        // live there, so `check` with no path advertised two of its seven flags.
+        // only the first line dropped it: `check`'s `--require-kernel`/`--explain` live
+        // there, so `check` with no path advertised two of its flags.
         let check_synopsis = command_synopsis("check").expect("check synopsis");
-        for flag in [
-            "--errors-only",
-            "--strict",
-            "--require-kernel",
-            "--stdin",
-            "--explain",
-        ] {
+        for flag in ["--errors-only", "--strict", "--require-kernel", "--explain"] {
             assert!(
                 check_synopsis.contains(flag),
                 "the derived `check` synopsis must carry {flag} from its wrapped continuation: \

@@ -272,7 +272,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 
 | Path | Responsibility |
 |---|---|
-| `main.rs` | CLI: the `preview` / `build` / `render` / `blocks` / `check` / `schema` / `init` subcommands. |
+| `main.rs` | CLI: the `preview` / `build` / `check` / `map` / `schema` / `init` subcommands, plus the retired-verb register. |
 | `protocol.rs` | The shared websocket message contract (both servers + the client), defined once so they can't drift. |
 | `serve/mod.rs` | Single-document websocket server + file watcher (incl. the `--host` LAN token guard). One `DocState` + one `Executor`. Its `rebuild` runs the re-render → execute → diff path. |
 | `serve_site/mod.rs` | Multi-page site/book server (per-page `PageState`, a per-page `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |

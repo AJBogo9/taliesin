@@ -350,7 +350,7 @@ async fn spawn_session(key: &Path) -> Result<u16, String> {
     std::process::Command::new(&exe)
         .arg("preview")
         .arg(key)
-        .arg("--headless")
+        .arg(crate::cli::SESSION_FLAG)
         .current_dir(&cwd)
         // Inherited stderr would interleave the server's own console output with this
         // run's, which is the output the author is actually reading.

@@ -121,8 +121,7 @@ language runs against its own warm kernel:
 | `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell wall-clock cap in seconds, off by default. Set it to bound total runtime regardless of output; `0` disables it. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
 
-(See `taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,
-`TALIESIN_NO_EXEC`, `TALIESIN_NO_CLEAR`.)
+(See `taliesin --help` for the rest: `TALIESIN_NO_EXEC`, `TALIESIN_NO_CLEAR`.)
 
 **Quick start.** Scaffold a starter site and preview it:
 

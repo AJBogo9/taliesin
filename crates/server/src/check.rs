@@ -285,8 +285,8 @@ fn collect_file_diagnostics(
     collect_file_diagnostics_from_src(path, &src, scope)
 }
 
-/// Lint an already-in-hand source buffer as if it were the file at `path` — the seam
-/// `--stdin` uses to lint an editor buffer (unsaved edits) instead of the last-saved file.
+/// Lint an already-in-hand source buffer as if it were the file at `path` — the seam the
+/// LSP uses to lint an editor buffer (unsaved edits) instead of the last-saved file.
 /// `path` supplies the base dir (relative includes/assets/links) + the reported location;
 /// the file on disk is never read. `collect_file_diagnostics` is just this with the buffer
 /// read from disk first.
@@ -327,8 +327,9 @@ fn collect_file_diagnostics_from_src(
 }
 
 /// Lint an in-memory editor buffer as if it were the file at `path`, returning the
-/// diagnostics directly (the `--stdin` seam, minus the stdin plumbing). Used by the
-/// `lsp` server on every `didOpen`/`didChange`. The buffer path can't fail to render,
+/// diagnostics directly. Used by the `lsp` server on every `didOpen`/`didChange`. This is
+/// the whole of what the retired `check --stdin` was for: the CLI grew that flag before
+/// `taliesin lsp` existed, and once the LSP owned on-type diagnostics nothing invoked it. The buffer path can't fail to render,
 /// but a hypothetical error surfaces as one line-1 diagnostic (parity with the
 /// companion's check-error handling) rather than vanishing.
 pub(crate) fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
@@ -756,8 +757,8 @@ pub(crate) fn check_json(target: &Path) -> String {
 /// the target *as typed* gives `docs/guide/sub/page.tmd:5:` — the tsc/cargo convention, and
 /// what a problem-matcher resolving against the invocation directory needs.
 ///
-/// `root` is `None` for the single-file and `--stdin` paths, which already report the path as
-/// given; re-rooting those onto their own directory would double the prefix. `check .` keeps
+/// `root` is `None` for the single-file path, which already reports the path as
+/// given; re-rooting it onto its own directory would double the prefix. `check .` keeps
 /// printing a bare `sub/page.tmd`, so every existing grep of that output still matches.
 ///
 /// The JSON format is deliberately untouched: its consumer passed the root itself and resolves
@@ -951,33 +952,7 @@ const CHECK_FLAGS: &[&str] = &[
     "--errors-only",
     "--strict",
     "--require-kernel",
-    "--stdin",
 ];
-
-/// Lint an editor buffer read from stdin as if it were the file at `target` (`--stdin`).
-/// `target` is used only for the base dir (relative includes/assets/links) + the reported
-/// location; the on-disk file is never read, so unsaved edits are linted (the on-type
-/// path). A directory has no single buffer, so `--stdin` + a directory is rejected.
-fn collect_stdin_diagnostics(target: &Path) -> Result<Vec<Diagnostic>, String> {
-    if target.is_dir() {
-        return Err(format!(
-            "--stdin lints one file's buffer; {} is a directory",
-            target.display()
-        ));
-    }
-    let src =
-        std::io::read_to_string(std::io::stdin()).map_err(|e| format!("cannot read stdin: {e}"))?;
-    // `None`: `--stdin` reports no Environment section (it is the every-keystroke path), so
-    // there is nothing to fill.
-    crate::serve::guarded(|| collect_file_diagnostics_from_src(target, &src, None))
-        .map_err(|panic| {
-            format!(
-                "render panicked on stdin buffer for {}: {panic}",
-                target.display()
-            )
-        })
-        .and_then(|r| r)
-}
 
 /// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
@@ -992,8 +967,6 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     // promotes a missing kernel for a used language from informational to a failure.
     let mut floor = Floor::Warnings;
     let mut require_kernel = false;
-    // `--stdin`: lint the editor buffer piped on stdin, not the last-saved file (E2 on-type).
-    let mut stdin = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -1007,7 +980,6 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             "--errors-only" => floor = Floor::Errors,
             "--strict" => floor = Floor::All,
             "--require-kernel" => require_kernel = true,
-            "--stdin" => stdin = true,
             // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next
             // token as the code only when it isn't itself a flag, so `--explain --format json`
             // is the index in JSON (code = None), not "code = `--format`".
@@ -1060,20 +1032,15 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         return crate::usage_error("check");
     };
     let target = Path::new(path);
-    // Filled in by the site path; stays empty for a single file and for `--stdin`, neither
-    // of which has a published-set notion to hold anything back from.
+    // Filled in by the site path; stays empty for a single file, which has no published-set
+    // notion to hold anything back from.
     let mut scope = CheckScope::default();
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
-    let collected = if stdin {
-        // The buffer path is already guarded inside collect_stdin_diagnostics.
-        collect_stdin_diagnostics(target)
-    } else {
-        crate::serve::guarded(|| collect_diagnostics(target, &mut scope))
-            .map_err(|panic| format!("render panicked on {path}: {panic}"))
-            .and_then(|r| r)
-    };
+    let collected = crate::serve::guarded(|| collect_diagnostics(target, &mut scope))
+        .map_err(|panic| format!("render panicked on {path}: {panic}"))
+        .and_then(|r| r);
     let diags = match collected {
         Ok(d) => d,
         // Honour `--format json` on the error path too: a human stderr line would
@@ -1092,11 +1059,6 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     // is the separate decision `ProbePolicy` carries (item 122). PL14 tied the two together and
     // so bought its "no spawn on every keystroke" win by going silent — a document whose only
     // code cell could not run printed "no problems found", exit 0, while `build` warned twice.
-    //
-    // `--stdin` (the on-type buffer path) is the one caller that still reports nothing: it is
-    // the LSP's every-keystroke validator, whose consumer is a diagnostics list with no surface
-    // for an environment note. The JSON still carries `environment: []`, so a consumer parses
-    // it identically.
     let policy = if require_kernel {
         ProbePolicy::Always
     } else if format == "json" {
@@ -1107,11 +1069,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         // The default human run: name it, never spawn it.
         ProbePolicy::Never
     };
-    let environment = if stdin {
-        Vec::new()
-    } else {
-        collect_environment(target, &scope, policy)
-    };
+    let environment = collect_environment(target, &scope, policy);
     // `--errors-only` drops warnings from what is shown AND from the exit decision.
     let diags = at_severity_floor(diags, floor);
     let kernel_fail = kernel_gate_fails(&environment, require_kernel);
@@ -1688,13 +1646,17 @@ mod tests {
     }
 
     #[test]
-    fn stdin_buffer_is_linted_instead_of_the_on_disk_file() {
-        // E2: `check --stdin` lints the editor buffer piped on stdin, not the last-saved
-        // file, so real-time on-type diagnostics see unsaved edits. The disk file is CLEAN
-        // (no typo); the buffer carries the `titel:` typo. The diagnostic must come from the
-        // buffer, and it must still locate to the real file path (for click-to-source) and
-        // resolve the base dir from it (so relative includes/assets still work).
-        let dir = tmp("check-stdin");
+    fn an_editor_buffer_is_linted_instead_of_the_on_disk_file() {
+        // E2: the buffer seam lints what the editor has, not the last-saved file, so
+        // real-time on-type diagnostics see unsaved edits. The disk file is CLEAN (no typo);
+        // the buffer carries the `titel:` typo. The diagnostic must come from the buffer,
+        // and it must still locate to the real file path (for click-to-source) and resolve
+        // the base dir from it (so relative includes/assets still work).
+        //
+        // This pins `collect_file_diagnostics_from_src`, which SURVIVED the `--stdin` cut:
+        // `taliesin lsp` calls it through `buffer_diagnostics` on every didOpen/didChange.
+        // The retired flag was one of two callers, and the test is named for the other now.
+        let dir = tmp("check-buffer");
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
         let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";

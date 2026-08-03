@@ -58,7 +58,7 @@ anywhere. To execute code cells you also point it at a Jupyter kernel: see
 [Executable content](using/code.tmd#code-cells).
 
 ```sh
-# live preview, updating as you save (aliases: dev, serve)
+# live preview, updating as you save
 cargo run -p taliesin-server -- preview post.tmd 4321
 
 # build a self-contained HTML file (code cells are executed)

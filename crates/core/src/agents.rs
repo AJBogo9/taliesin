@@ -139,8 +139,8 @@ pub fn agents_md() -> String {
     );
     s.push_str("- `taliesin schema` -> the JSON Schema for front matter and `_site.yml`.\n");
     s.push_str(
-        "- `taliesin symbols <file>` -> the headings, figures, and cross-reference targets in \
-         a document.\n\n",
+        "- `taliesin map <file-or-dir>` -> a project outline; on a single file, the headings, \
+         figures, and cross-reference targets in that document.\n\n",
     );
 
     // Pillar 4 — build/publish.

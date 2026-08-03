@@ -87,7 +87,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    scrolly.js, tabset.js, walkthrough.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
-  src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
+  src/main.rs      the subcommand dispatch + COMMANDS + RETIRED_COMMANDS (a verb that
+                   was cut names its replacement instead of a did-you-mean)
   src/cli.rs       CLI arg parsing + subcommand dispatch
   src/serve/       the dev server's SHARED layer, not a server: HTTP/asset plumbing,
                    port binding + the single-instance probe, security.rs's LAN/host/
@@ -159,14 +160,14 @@ corpus/          the real .tmd docs (the spec); cargo test renders them all
 ## Commands
 
 ```sh
-cargo run -p taliesin-server -- preview <file.tmd> [port]      # live preview (aliases: dev, serve)
+cargo run -p taliesin-server -- preview <file.tmd> [port]      # live preview
 cargo run -p taliesin-server -- preview <file.tmd> --host      # + expose on LAN with a phone QR code
 cargo run -p taliesin-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
 cargo run -p taliesin-server -- build  <file.tmd> [out.html]   # self-contained HTML file (default <name>.html)
 cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
-cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full page to stdout
-cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
+cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
+cargo run -p taliesin-server -- map    <file.tmd | dir>        # project outline; a file lists its @-reference targets
 cargo run -p taliesin-server -- features <file.tmd | dir>      # what a document uses; and what NO document uses
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)

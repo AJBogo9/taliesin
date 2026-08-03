@@ -224,20 +224,19 @@ before you save or render. It is parse-only: **no kernel, no code execution**, a
 **read-only** (the single-editing-surface invariant holds, the server never writes to
 your source).
 
-The server reuses the exact seam the CLI uses. `check --stdin` already lints an editor
-buffer via `check::buffer_diagnostics`, a thin wrapper over the in-memory
-`collect_file_diagnostics_from_src`; the LSP server calls the same function on every
-edit, then projects each `check::Diagnostic` to an LSP one with `Diagnostic::to_lsp`
+The server reuses the exact seam `check` uses. `check::buffer_diagnostics` lints an
+editor buffer in memory, a thin wrapper over `collect_file_diagnostics_from_src`; the
+LSP server calls it on every edit, then projects each `check::Diagnostic` to an LSP one with `Diagnostic::to_lsp`
 (1-based line/column → 0-based range; a precise `[col, end_col)` span when the validator
 located a token, else the whole line; `severity`, the stable `TAL-*` `code`, and a
 `codeDescription` link to the diagnostics catalog). So the squiggles are byte-for-byte
 the same findings `check` and the render path emit, one source of truth.
 
 ```{mermaid}
-%%| fig-cap: "One buffer-linting seam feeds the CLI gate, the on-type companion path, and the LSP server."
+%%| fig-cap: "One buffer-linting seam feeds the batch gate and the LSP server alike."
 flowchart LR
   seam["check::buffer_diagnostics<br/>(in-memory render + validators)"]
-  seam --> cli["taliesin check --stdin"]
+  seam --> cli["taliesin check<br/>(the batch gate, from disk)"]
   seam --> lsp["taliesin lsp<br/>(didOpen / didChange → publishDiagnostics)"]
   lsp --> ed["Neovim · Helix · Zed · VS Code"]
 ```

@@ -458,7 +458,37 @@ Launching a browser and maintaining a disk cache to put a picture in a tooltip, 
 expression the live preview already renders continuously, is the clearest single overreach
 found anywhere in the audit.
 
-### Wave 5: the CLI, 21 verbs to 13 (~250 LOC)
+### Wave 5: the CLI, 21 verbs to 17 (~250 LOC)
+
+> **Status: DONE, 2026-08-03**, one commit. Measured: **1,222 lines removed**, 729 added, 31
+> files. Four corrections a later wave must not re-derive:
+>
+> - **The header's "to 13" was arithmetic, not a plan, and it is corrected to 17.** Every
+>   disposition in the table below was executed in full; they *sum* to four cuts from the
+>   verb list (`render`, `blocks`, `symbols`, plus `skim` already gone in Wave 3.3) and two
+>   alias removals, which is 21 → 17, not 13. Nothing was skipped to land on 17 and nothing
+>   further is proposed to reach 13: the eight verbs that would have to go to get there were
+>   never named, and every survivor is `keep` or better in the catalogue. **The "Top-level
+>   subcommands 21 → 13" row in "What this changes in numbers" is likewise wrong and is
+>   corrected to 21 → 17.** Counted at `71dbb6e1` as `COMMANDS` minus `help` and the two
+>   aliases: 20 before this wave, 17 after.
+> - **The cuts needed a `RETIRED_COMMANDS` register, on measured evidence.** Four of the five
+>   retired names sit further than edit distance 2 from every survivor and so got silence —
+>   but **`dev` is exactly two edits from `new`**, so a bare deletion answered "preview this
+>   project" with a suggestion to run the command that *scaffolds files into it*. The register
+>   is consulted before the did-you-mean and carries `skim` too (Wave 3 left it silent).
+> - **`preview --headless` folded to a hidden `--__session` flag, not to nothing.** `taliesin
+>   run` spawns the session itself and needs a way to say so; underscore-prefixing follows the
+>   `__complete` precedent, keeps it out of `SERVE_FLAGS`, the completion table and every help
+>   page, and leaves the flag-documentation gate honest.
+> - **`taliesin run` cannot start a session, and was already broken at `71dbb6e1`.** Verified
+>   by stashing this wave, rebuilding, and reproducing with `--headless`: the session process
+>   comes up and serves, but `attach_or_start` never detects it and gives up after 45 s. The
+>   likely cause is a Wave 1 leftover — `run` keys the port hint on the *file* for a document
+>   with no `_site.yml` (`run_cmd.rs:150`), while the now-single server writes the hint under
+>   the project root it discovered (`serve_site/mod.rs:657`), i.e. that file's *directory*.
+>   Not fixed here (out of this wave's scope); it is what "`run`: pin 0 integration tests" in
+>   the catalogue buys.
 
 | Verb | Disposition |
 |---|---|
@@ -485,7 +515,7 @@ published tool whose config key works in preview but not in `build` is a support
 |---|---|---|
 | Rust LOC | ~131,000 | ~124,100 (**~6,900 out, 5.3%**) |
 | Binary | 72.0 MiB | **40.7 MiB** (**31.3 MiB out, 43.5%**). *Corrected 2026-08-02 on execution: Wave 0.3 measured 2x the predicted saving, because the payload was embedded twice. The "~59 MB / 16 MB out" this row first carried was half the truth. Download unchanged by policy: the tarball stays the complete tool.* |
-| Top-level subcommands | 21 | **13** |
+| Top-level subcommands | 21 | **17**. *Corrected 2026-08-03 on execution: the "13" this row first carried did not follow from Wave 5's own disposition table, which removes four verbs and two aliases. See the Wave 5 status note.* |
 | Front-matter + `_site.yml` keys | 73 | **~58** |
 | Dev servers | 2 | **1** |
 
