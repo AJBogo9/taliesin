@@ -284,11 +284,19 @@ fn the_reading_position_features_are_gone() {
             "`{needle}` still ships; reading-position tracking was deleted"
         );
     }
-    let css = taliesin_core::render::base_css();
+    // The TOC read checkmarks lived in toc-spy.js, not the code-enhance bundle: the
+    // scrollspy that file also carries (`tali-toc-active`) SURVIVES this pass (item T2,
+    // structural), so this checks the specific script rather than folding it into the
+    // `js` bundle check above, which never contained toc-spy.js in the first place and
+    // would pass vacuously either way.
     assert!(
-        !css.contains("tali-resume"),
-        "the resume pill's CSS survives in base.css"
+        !taliesin_core::render::TOC_SPY_JS.contains("tali-toc-read"),
+        "the TOC read-tracking class still ships in toc-spy.js"
     );
+    let css = taliesin_core::render::base_css();
+    for needle in ["tali-resume", "tali-toc-read"] {
+        assert!(!css.contains(needle), "`{needle}` CSS survives in base.css");
+    }
 }
 
 /// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is

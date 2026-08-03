@@ -1047,15 +1047,6 @@
            color: var(--tali-muted); text-decoration: none; }
   #TOC a:hover { color: var(--tali-fg); }
   #TOC a.tali-toc-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
-  /* Read-state: a section the reader has scrolled through gets a trailing ✓ and recedes
-     a touch. Distinct from .tali-toc-active (the current section). Reader-side: toc-spy.js
-     stores the read set in the reader's own localStorage; the source is never touched. */
-  /* The trailing check mark is the read cue. `opacity: .62` also faded the LABEL to 2.55-3.37:1,
-     so a finished section became the hardest entry in the TOC to read. */
-  #TOC a.tali-toc-read { color: var(--tali-muted); }
-  #TOC a.tali-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--tali-link);
-    font-size: .82em; opacity: .85; }
-  #TOC a.tali-toc-read.tali-toc-active { color: var(--tali-fg); } /* current + finished: full strength */
   /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
   #tali-toc-handle, #tali-toc-backdrop { display: none; }
   @media (max-width: 60rem) {
