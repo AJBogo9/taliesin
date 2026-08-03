@@ -295,6 +295,26 @@ fn scan_cells(
                 out.add("cell-options", key);
             }
         }
+        // An option may also be written as a FENCE ATTRIBUTE (`{.python code-line-numbers=…}`)
+        // instead of a `#|` body line, and the renderer reads both spellings (see
+        // `emit.rs::line_number_spec`). Reading only the body made `code-line-numbers` report
+        // as used by nobody, because the fence attribute is the ONLY spelling the documents
+        // that use it write (`corpus/deck.tmd`, `docs/guide/demo.tmd`).
+        //
+        // Splitting on whitespace is enough to recover the key even when a quoted value
+        // contains spaces: the key is always attached to the token that opens the pair, and
+        // the leftover fragments match no catalogued option. The leading `.` of `{.python}`
+        // is stripped so the language is never read as an option name.
+        for tok in info.split([' ', '\t', '{', '}']) {
+            let key = tok
+                .split_once('=')
+                .map(|(k, _)| k)
+                .unwrap_or(tok)
+                .trim_start_matches('.');
+            if known_opts.contains(key) {
+                out.add("cell-options", key);
+            }
+        }
     }
 }
 
@@ -310,9 +330,15 @@ fn scan_shortcode_uses(
             continue;
         }
         out.add("shortcodes", &name);
+        // An argument is `key=value` OR a bare flag that takes no value (`{{< video
+        // tour.mp4 controls >}}`). Reading only the `=` form meant `video.controls` and
+        // `video.audio` could never be reported used by any document however many wrote
+        // them — a vacuous "unused", which is the one column this report exists for.
+        // A positional argument (the source path) yields no catalogued name and is dropped
+        // by the membership check below, as before.
         for key in args
             .iter()
-            .filter_map(|a| a.split_once('=').map(|(k, _)| k))
+            .map(|a| a.split_once('=').map(|(k, _)| k).unwrap_or(a.as_str()))
         {
             let qualified = format!("{name}.{key}");
             if known_args.contains(&qualified) {
@@ -537,6 +563,51 @@ See @fig-scree.
         assert_eq!(got("shortcode-args"), ["video.poster"]);
         assert_eq!(got("input-types"), ["slider"]);
         assert_eq!(got("xref-kinds"), ["fig"]);
+    }
+
+    /// A shortcode argument written as a BARE FLAG is a use. `{{< video >}}`'s `controls`
+    /// and `audio` take no value, so a scan that reads only `key=value` pairs can never
+    /// report them however many documents write them — an "unused" that is vacuous rather
+    /// than measured. `corpus/media/screencast.tmd` writes both, on purpose, and the
+    /// report still called them unused, which is exactly the input a cut decision reads.
+    #[test]
+    fn a_bare_flag_shortcode_argument_counts_as_a_use() {
+        let f = scan("---\ntitle: T\n---\n\n{{< video tour.mp4 controls >}}\n");
+        let args = f.used.get("shortcode-args").unwrap();
+        assert!(
+            args.contains("video.controls"),
+            "a bare flag is a use of that argument: {args:?}"
+        );
+        // The valued form keeps working, and a flag written BEFORE the path still counts
+        // (the flags are not positional).
+        let f = scan("---\ntitle: T\n---\n\n{{< video audio tour.mp4 captions=t.vtt >}}\n");
+        let args = f.used.get("shortcode-args").unwrap();
+        assert!(
+            args.contains("video.audio") && args.contains("video.captions"),
+            "bare and valued arguments are both uses: {args:?}"
+        );
+    }
+
+    /// A cell option written as a FENCE ATTRIBUTE is a use. `code-line-numbers` is read by
+    /// the renderer from either spelling (`emit.rs::line_number_spec`), but the scan read
+    /// only the `#|` body lines — so the deck idiom `{.python code-line-numbers="1|2-3"}`,
+    /// which is the ONLY spelling `corpus/deck.tmd` and `docs/guide/demo.tmd` use, reported
+    /// as nobody using the feature at all.
+    #[test]
+    fn a_fence_attribute_cell_option_counts_as_a_use() {
+        let f =
+            scan("---\ntitle: T\n---\n\n```{.python code-line-numbers=\"1|2-3\"}\nx = 1\n```\n");
+        let opts = f.used.get("cell-options").unwrap();
+        assert!(
+            opts.contains("code-line-numbers"),
+            "a fence-attribute option is a use: {opts:?}"
+        );
+        // A word in the info string that is not a catalogued option is not invented as one,
+        // and the language itself is never mistaken for an option.
+        assert!(
+            !opts.contains("python") && opts.len() == 1,
+            "only catalogued options are counted: {opts:?}"
+        );
     }
 
     /// A key named only in prose is not a use. This is the audit's recorded trap, and it is
