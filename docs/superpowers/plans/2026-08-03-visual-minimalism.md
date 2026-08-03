@@ -144,7 +144,7 @@ In `crates/server/tests/reader_chrome_browser.rs`, delete these three tests and 
 cargo build -p taliesin-core
 cargo test -p taliesin-core --test retired_names the_lightbox_is_gone
 cargo test -p taliesin-core --test gate_script
-cargo test -p taliesin-core --test render
+cargo test -p taliesin-core --lib
 ```
 Expected: all PASS. In particular `code_enhance_bundle_matches_fragments_in_order` must pass — if it fails you deleted the file but not the `include_str!` line (or vice versa).
 
@@ -225,7 +225,7 @@ Delete `the_reading_bar_is_gone_but_the_resume_position_is_not` (~755) and the `
 ```bash
 cargo build -p taliesin-core
 cargo test -p taliesin-core --test retired_names
-cargo test -p taliesin-core --test render
+cargo test -p taliesin-core --lib
 ```
 Expected: PASS.
 
@@ -1235,6 +1235,11 @@ Settings row, still conformant."
 - Modify: `docs/guide/using/reading.tmd` — delete lines 49–67 (Code), 92–105 (Reading progress), 107–113 (Hover cards), 115–120 (Anchor copy-links); fix the image-viewer clause at 171–172; rewrite the `description:` at line 3 (it names three deleted features)
 - Modify: `docs/internals/client.tmd` (the enhancer list)
 - Modify: `docs/guide/reference/shortcodes.tmd` (video controls)
+- Modify: **`docs/guide/using/preview.tmd`, `docs/guide/using/formats.tmd`,
+  `docs/guide/reference/configuration.tmd`, `docs/guide/reference/cli.tmd`** — added
+  during execution. Task 3's implementer found all four still describe the mobile
+  pull-up Contents sheet as current behaviour. No test catches prose drift, so
+  these are invisible to every gate; they must be fixed by hand here.
 - Delete: `corpus/reader/hovercards.tmd` (a dedicated pin for a deleted feature)
 - Modify: `crates/core/tests/corpus.rs` if it names `hovercards.tmd`
 
