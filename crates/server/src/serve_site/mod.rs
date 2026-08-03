@@ -2105,6 +2105,31 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     });
 }
 
+/// Which of the `open` pages actually cite one of `moved_anchors`, read from each open
+/// page's already-cached rendered blocks (`PageState.doc.blocks`) via
+/// [`taliesin_core::site::xref_anchors_in`] — no re-render, no project-wide reverse index.
+/// A page with no live state (closed, or a race with its own first render) is skipped, not
+/// force-included: it has no cached blocks to consult and isn't being served regardless.
+///
+/// Extracted out of [`rebuild_project`] so this selection — the replacement for the
+/// deleted "Referenced by" reverse index — is unit-testable on its own, independent of the
+/// watcher/lock/async machinery around it.
+fn pages_citing_a_moved_anchor(
+    pages: &HashMap<String, PageState>,
+    open: &[String],
+    moved_anchors: &HashSet<String>,
+) -> Vec<String> {
+    open.iter()
+        .filter(|rel| {
+            pages.get(rel.as_str()).is_some_and(|ps| {
+                let referenced = taliesin_core::site::xref_anchors_in(&ps.doc.blocks);
+                moved_anchors.iter().any(|a| referenced.contains(a))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 /// Rebuild one project's affected pages from a batch of changed files (already filtered
 /// to this project by [`dispatch_changes`]): a `_site.yml` change (or a `.tmd`
 /// added/removed that changes the page set) re-discovers this project's site and reloads
@@ -2266,25 +2291,44 @@ fn rebuild_project(
     // (a `git checkout`, or any editor that unlinks before writing) served "Figure 1.2" from
     // `intro.html` while the open `methods.html` tab sat on "Figure 1.1".
     //
-    // There is no reverse index to consult for which open tabs cross-reference the moved
-    // target (the "Referenced by" backlinks it drove were deleted 2026-08-04), so this
-    // rebuilds every open tab on a real move rather than only the referencing ones. Only on
-    // a real move, and only over pages already OPEN, so this adds at most a site's worth of
-    // renders to a warm preview, never a cold one. Rebuilds are idempotent (cells replay
-    // from their cumulative hashes, and the diff yields no ops for unchanged blocks), so the
-    // lost precision costs redundant renders, not correctness.
-    let moved = {
+    // There is no project-wide reverse index anymore (the "Referenced by" backlinks it
+    // drove were deleted 2026-08-04), so this diffs the registry PER ANCHOR — which
+    // targets actually moved (renumbered, moved to a different page, inserted, or
+    // removed), not "the registry changed somewhere" — and asks each OPEN page's own
+    // already-rendered blocks whether it cites one of them, via `xref_anchors_in`. That
+    // reads `PageState.doc.blocks`, already in memory: no re-render, no revived
+    // site-wide index, scoped to exactly the pages that were open. It works on a
+    // FINISHED page's blocks (post cross-ref resolution, where a resolved cross-page
+    // marker is gone) because `cite` always emits `href="#{anchor}"` and the
+    // site-level rewrite only ever changes the prefix before `#`, never the anchor
+    // itself — same-page, resolved cross-page, and still-unresolved links all recover
+    // the same way. `moved_anchors` empty <=> the two registries are equal, so `moved`
+    // means exactly what the old `site.xref_targets != targets_before` check meant.
+    let moved_anchors: HashSet<String> = {
         let site = project.site.lock();
-        let moved = site.xref_targets != targets_before;
-        if moved {
-            for rel in &open {
-                if !to_rebuild.contains(rel) {
-                    to_rebuild.push(rel.clone());
-                }
+        site.xref_targets
+            .iter()
+            .filter(|(anchor, target)| targets_before.get(anchor.as_str()) != Some(*target))
+            .map(|(anchor, _)| anchor.clone())
+            .chain(
+                targets_before
+                    .keys()
+                    .filter(|anchor| !site.xref_targets.contains_key(anchor.as_str()))
+                    .cloned(),
+            )
+            .collect()
+    };
+    let moved = !moved_anchors.is_empty();
+    if moved {
+        // Never held alongside `site.lock()` above (the established lock order in this
+        // file: release `site` before taking `pages`).
+        let pages = project.pages.lock();
+        for rel in pages_citing_a_moved_anchor(&pages, &open, &moved_anchors) {
+            if !to_rebuild.contains(&rel) {
+                to_rebuild.push(rel);
             }
         }
-        moved
-    };
+    }
     // The Cmd-K index is GLOBAL — one `search-index.js` for every tab — so the per-page
     // refresh below, keyed on the open tabs being rebuilt, cannot keep it true: a renumbered
     // figure would go stale in the fragments of every page nobody happens to have open, and
@@ -2820,6 +2864,90 @@ mod project_tests {
         // guessing wrong there costs a wasted render, while guessing wrong the other way
         // would publish a page with its outputs missing.
         assert!(!PageDoc::default().cell_free);
+    }
+
+    fn page_state_with_blocks(html: &str) -> PageState {
+        PageState {
+            doc: PageDoc {
+                blocks: vec![Block {
+                    id: "x".into(),
+                    sourcepos: String::new(),
+                    source_file: None,
+                    html: html.into(),
+                    cell: None,
+                }],
+                ..Default::default()
+            },
+            tx: tokio::sync::broadcast::channel(4).0,
+        }
+    }
+
+    /// The regression this pins: deleting the "Referenced by" reverse index (2026-08-04)
+    /// must not widen a moved-anchor rebuild to every open tab. `pages_citing_a_moved_anchor`
+    /// is what `rebuild_project` now consults instead — this drives it directly with two
+    /// open pages, one that cites the moved anchor and one that cites nothing cross-page,
+    /// and asserts the referrer is selected and the bystander is not.
+    ///
+    /// **What this does and does not cover:** this pins the selection function in
+    /// isolation (real `PageState`/`HashMap` shapes, hand-built blocks) — it does NOT
+    /// drive `rebuild_project` itself or a live websocket session end to end (no test
+    /// harness for that exists in this bin crate; see `project_tests`' own note on
+    /// `only_a_resolvable_page_key_gets_a_page_state` for the same gap). The two are
+    /// wired together by four lines at the call site (lock `pages`, call this, push what
+    /// it returns) with no further logic of its own to hide a defect.
+    #[test]
+    fn pages_citing_a_moved_anchor_selects_the_referrer_not_the_bystander() {
+        let mut pages = HashMap::new();
+        pages.insert(
+            "results.tmd".to_string(),
+            page_state_with_blocks(
+                r##"<p>It also leans on <a href="methods.html#thm-kl" class="tali-xref">Theorem&nbsp;2.1</a>.</p>"##,
+            ),
+        );
+        pages.insert(
+            "summary.tmd".to_string(),
+            page_state_with_blocks("<p>No cross-page reference here at all.</p>"),
+        );
+        let open = vec!["results.tmd".to_string(), "summary.tmd".to_string()];
+        let moved_anchors = HashSet::from(["thm-kl".to_string()]);
+
+        let selected = pages_citing_a_moved_anchor(&pages, &open, &moved_anchors);
+
+        assert_eq!(
+            selected,
+            vec!["results.tmd".to_string()],
+            "only the page citing the moved anchor should be rebuilt"
+        );
+    }
+
+    /// A page that cites SOME cross-page anchor, just not the one that moved, must also
+    /// stay off the rebuild list — the old reverse index rebuilt on ANY cross-page
+    /// reference when ANY target moved; the replacement is scoped to the anchor that
+    /// actually moved.
+    #[test]
+    fn pages_citing_a_moved_anchor_ignores_a_page_that_cites_a_different_anchor() {
+        let mut pages = HashMap::new();
+        pages.insert(
+            "results.tmd".to_string(),
+            page_state_with_blocks(
+                r##"<p>See <a href="methods.html#sec-setup" class="tali-xref">Section&nbsp;2.1</a>.</p>"##,
+            ),
+        );
+        let open = vec!["results.tmd".to_string()];
+        let moved_anchors = HashSet::from(["thm-kl".to_string()]);
+
+        assert!(pages_citing_a_moved_anchor(&pages, &open, &moved_anchors).is_empty());
+    }
+
+    /// A `rel` with no live state (closed, or a not-yet-first-rendered race) is skipped
+    /// rather than force-included — it has no cached blocks to consult.
+    #[test]
+    fn pages_citing_a_moved_anchor_skips_a_rel_with_no_page_state() {
+        let pages: HashMap<String, PageState> = HashMap::new();
+        let open = vec!["ghost.tmd".to_string()];
+        let moved_anchors = HashSet::from(["thm-kl".to_string()]);
+
+        assert!(pages_citing_a_moved_anchor(&pages, &open, &moved_anchors).is_empty());
     }
 }
 

@@ -340,6 +340,47 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
     .iter()
     .any(|p| id.starts_with(p))
 }
+/// Every anchor a page's ALREADY-RENDERED blocks cite, on this page or another, resolved
+/// or not — read back off the `#anchor` fragment of each `class="tali-xref"` link's
+/// `href`. `cite` always emits `href="#{anchor}"` at single-page render time
+/// (`cite::render::xref_anchor_link`), and the site-level rewrite
+/// ([`rewrite_one_xref`]) only ever changes the PREFIX before `#` (to
+/// `{page}.html#{anchor}`, once a cross-page target resolves) — it never touches the
+/// anchor itself. So this one needle recovers the full reference, whether it stayed
+/// same-page, resolved cross-page, or is still an unresolved marker, from blocks a page
+/// already carries — no re-render, no project-wide reverse index.
+///
+/// Built for the live preview ([`crate::site`]'s server-side consumer,
+/// `serve_site::rebuild_project`): when a cross-reference target moves, this tells it
+/// which of the OPEN pages actually cite the moved anchor, rather than rebuilding every
+/// open tab or reviving the deleted `backlinks` reverse index.
+pub fn xref_anchors_in(blocks: &[Block]) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    for b in blocks {
+        let mut rest = b.html.as_str();
+        while let Some(i) = rest.find("<a ") {
+            rest = &rest[i..];
+            let Some(tag_end) = rest.find('>') else {
+                break;
+            };
+            let tag = &rest[..tag_end];
+            if tag.contains("class=\"tali-xref\"")
+                && let Some(hs) = tag.find("href=\"")
+            {
+                let val_start = hs + "href=\"".len();
+                if let Some(hend) = tag[val_start..].find('"') {
+                    let href = &tag[val_start..val_start + hend];
+                    if let Some(hash) = href.rfind('#') {
+                        out.insert(href[hash + 1..].to_string());
+                    }
+                }
+            }
+            rest = &rest[tag_end + 1..];
+        }
+    }
+    out
+}
+
 /// Resolve every cross-page xref marker in `blocks` against `targets`, as seen from
 /// `current_url`. The ONE definition of "apply the registry to a rendered page", shared by
 /// the page-render path ([`super::Site::resolve_cross_refs`]) and the search index
@@ -654,5 +695,75 @@ mod tests {
                 "cite prefix `{prefix}` is not a recognized ref anchor"
             );
         }
+    }
+
+    fn block(html: &str) -> Block {
+        Block {
+            id: "x".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: html.into(),
+            cell: None,
+        }
+    }
+
+    /// `xref_anchors_in` reads back what a page cites from its ALREADY-RENDERED blocks —
+    /// same-page, cross-page, or still-unresolved alike — because `cite` always emits
+    /// `href="#{anchor}"` and the site-level rewrite only ever changes the prefix before
+    /// `#`, never the anchor. This is the live preview's replacement for the deleted
+    /// `backlinks` reverse index: given a moved anchor, it tells the preview which OPEN
+    /// pages actually cite it, from blocks already in memory.
+    #[test]
+    fn xref_anchors_in_reads_same_page_cross_page_and_unresolved_alike() {
+        let blocks = [
+            // Same-page resolved (no page prefix before `#`).
+            block(r##"<a href="#thm-local" class="tali-xref">Theorem&nbsp;1</a>"##),
+            // Cross-page resolved (the site-level rewrite prefixed the page).
+            block(
+                r#"<p>see <a href="../methods.html#sec-methods" class="tali-xref">Chapter&nbsp;2</a></p>"#,
+            ),
+            // Still unresolved (cite's own marker survives — the anchor is not yet known).
+            block(
+                r##"<a href="#fig-ghost" class="tali-xref" data-tali-xref="fig-ghost">Figure</a>"##,
+            ),
+        ];
+        let got = xref_anchors_in(&blocks);
+        assert_eq!(
+            got,
+            std::collections::HashSet::from([
+                "thm-local".to_string(),
+                "sec-methods".to_string(),
+                "fig-ghost".to_string(),
+            ])
+        );
+    }
+
+    /// An ordinary link that merely happens to share an anchor id (an author's own
+    /// hand-written `[jump](other.html#fig-x)`, say) must NOT count as a citation — only
+    /// `class="tali-xref"` links are cite's own cross-reference markup.
+    #[test]
+    fn xref_anchors_in_ignores_a_non_xref_link_to_the_same_fragment() {
+        let blocks = [block(r#"<a href="other.html#fig-x">jump</a>"#)];
+        assert!(xref_anchors_in(&blocks).is_empty());
+    }
+
+    /// Two links to the same anchor across different blocks dedup to one entry (it's a
+    /// membership test at the call site, not a count).
+    #[test]
+    fn xref_anchors_in_dedups_repeated_citations() {
+        let blocks = [
+            block(r##"<a href="#thm-kl" class="tali-xref">Theorem&nbsp;2.1</a>"##),
+            block(r##"<p>again, <a href="#thm-kl" class="tali-xref">Theorem&nbsp;2.1</a></p>"##),
+        ];
+        assert_eq!(
+            xref_anchors_in(&blocks),
+            std::collections::HashSet::from(["thm-kl".to_string()])
+        );
+    }
+
+    #[test]
+    fn xref_anchors_in_is_empty_for_blocks_with_no_xref_links() {
+        let blocks = [block("<p>Nothing here.</p>")];
+        assert!(xref_anchors_in(&blocks).is_empty());
     }
 }

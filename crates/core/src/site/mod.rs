@@ -215,6 +215,7 @@ pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
 use xref::scan_xref_targets;
 pub use xref::{
     ScannedAnchor, XrefTarget, anchors_defined_elsewhere_in_project, scan_page_anchors,
+    xref_anchors_in,
 };
 mod config;
 mod frontmatter;
