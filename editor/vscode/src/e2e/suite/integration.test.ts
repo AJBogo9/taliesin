@@ -1022,11 +1022,11 @@ suite("Taliesin authoring gestures", () => {
     // Select "manual".
     editor.selection = new vscode.Selection(new vscode.Position(0, 8), new vscode.Position(0, 14));
 
-    await vscode.env.clipboard.writeText("https://taliesin.dev/guide");
+    await vscode.env.clipboard.writeText("https://taliesin.sh/guide");
     await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
 
     await until(() => opened.getText().includes("]("), "the link paste to apply");
-    assert.match(opened.getText(), /\[manual\]\(https:\/\/taliesin\.dev\/guide\)/);
+    assert.match(opened.getText(), /\[manual\]\(https:\/\/taliesin\.sh\/guide\)/);
   });
 
   test("pasting a BibTeX entry cites it and appends it to the .bib", async () => {

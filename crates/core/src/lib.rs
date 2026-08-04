@@ -51,17 +51,16 @@ pub use frontmatter::{closest, closest_of};
 pub use includes::single_doc_root;
 pub use render::{
     AssetMode, Block, DeckParts, DocFormat, ExecOutput, ExternalAssets, FONT_FILES, OutputMode,
-    PREVIEW_MERMAID_PATH, PREVIEW_PYODIDE_DIR, PYODIDE_DIR_NAME, PageParts, RenderedDoc, SEARCH_JS,
-    ScriptSummary, TOC_SPY_JS, assemble_deck_page, assemble_html_page, attach_pyodide_index,
-    classify_exec_output, code_scripts, core_enhance_js, deck_client_script, deck_overlay_html,
-    deck_shared_css, deck_shared_css_linked_fonts, deck_shared_js, deck_slide_blocks,
-    degrade_pyodide_cells, escape_attr, favicon_link, has_mermaid, html_escape,
+    PREVIEW_MERMAID_PATH, PageParts, RenderedDoc, SEARCH_JS, ScriptSummary, TOC_SPY_JS,
+    assemble_deck_page, assemble_html_page, classify_exec_output, code_scripts, core_enhance_js,
+    deck_client_script, deck_overlay_html, deck_shared_css, deck_shared_css_linked_fonts,
+    deck_shared_js, deck_slide_blocks, escape_attr, favicon_link, has_mermaid, html_escape,
     html_page_from_doc_in_site_external, js_cell_libs_js, katex_css, mermaid_bundle_js,
-    mermaid_min_js, pyodide_payload, render_deck_to_page_external, render_doc_to_page,
-    render_doc_to_page_external, render_document, render_document_scoped_with_site,
-    render_document_with_includes, render_document_with_includes_scoped, render_html_page,
-    render_html_page_with_includes, render_single_doc, script_summary, shared_site_css,
-    shared_site_css_linked_fonts, slides_html, title_with_site_suffix,
+    mermaid_min_js, render_deck_to_page_external, render_doc_to_page, render_doc_to_page_external,
+    render_document, render_document_scoped_with_site, render_document_with_includes,
+    render_document_with_includes_scoped, render_html_page, render_html_page_with_includes,
+    render_single_doc, script_summary, shared_site_css, shared_site_css_linked_fonts, slides_html,
+    title_with_site_suffix,
 };
 pub use site::{DraftMode, Page, Site};
 

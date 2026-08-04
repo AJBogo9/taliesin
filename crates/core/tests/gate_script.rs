@@ -159,18 +159,16 @@ fn every_canary_the_gate_script_names_still_exists() {
 
     assert_eq!(
         canaries.len(),
-        10,
+        7,
         "expected one canary per interpreter gate (python, R, node, chrome), plus the \
-         reactive client's own browser render, the print track's and the `{{pyodide}}` \
-         runtime's, plus the two that guard the `pyodide` CARGO \
-         FEATURE (item 205): one for the whole target gated by `required-features`, one for \
-         a lone `#[cfg]`'d test in an ungated file, which fail differently. The math \
-         hover's browser render was the eleventh until Wave 4.1 cut the rasterizer, and the \
-         figure lightbox's was the tenth until the visual minimalism pass deleted it. Plus the \
-         `#| trace: true` debug harness's own live-kernel proof, independent of the plain \
-         python-kernel canary (that one only proves a kernel runs; this one proves the \
-         settrace harness runs inside it and embeds a trace blob), got \
-         {canaries:?}"
+         reactive client's own browser render, the print track's, and the `#| trace: true` \
+         debug harness's own live-kernel proof. That last one is independent of the plain \
+         python-kernel canary: that canary only proves a kernel runs, this one proves the \
+         settrace harness runs inside it and embeds a trace blob. The math hover's browser \
+         render was the eleventh until Wave 4.1 cut the rasterizer, the figure lightbox's \
+         was the tenth until the visual minimalism pass deleted it, and the `{{pyodide}}` \
+         runtime's plus its two cargo-feature guards were the seventh through ninth until \
+         that language was withdrawn, got {canaries:?}"
     );
 
     let sources: Vec<String> = rust_sources()

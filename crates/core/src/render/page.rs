@@ -290,18 +290,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // Never a deck: `page_from_doc` dispatches `DocFormat::Reveal` to
             // `deck::deck_page_from_doc` before this assembler ever runs.
             let framework_scripts = code_scripts_for(p.body, p.mode, false);
-            // Inline + Preview: the same-origin route. Inline + Build: `""` — the single-file
-            // build cannot carry a 15.7 MiB directory, so `degrade_pyodide_cells` is the build
-            // CLI's job, not this assembler's (it runs over the finished page HTML). Folded
-            // onto `js_head_html` (like `katex_block` folds onto `style_block`) rather than
-            // earning its own always-present template line, so a page with neither stays
-            // byte-identical to before this existed.
-            let pyodide_meta = pyodide_index_meta(p.body, p.mode, None);
-            let js_head_html = if pyodide_meta.is_empty() {
-                js_head_html
-            } else {
-                format!("{js_head_html}\n{pyodide_meta}")
-            };
             (style_block, katex_block, js_head_html, framework_scripts)
         }
         AssetMode::External(a) => {
@@ -365,12 +353,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                     } else {
                         String::new()
                     };
-                    let pyodide = if has_client_cells_of(p.body, "pyodide") {
-                        format!("\n<script>{PYODIDE_JS}</script>")
-                    } else {
-                        String::new()
-                    };
-                    format!("\n<script>{TALIESIN_JS}</script>{glsl}{pyodide}")
+                    format!("\n<script>{TALIESIN_JS}</script>{glsl}")
                 } else {
                     String::new()
                 };
@@ -386,20 +369,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 "<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}",
                 a.app_js
             );
-            // External: link the shared `_assets/<PYODIDE_DIR_NAME>/` directory the build
-            // copies verbatim. `base` is the same page-relative `../` climb `a.app_js` was
-            // built from (`asset_href`'s depth prefix) — recovered here by trimming the
-            // `_assets/...` suffix off it, rather than threading a second depth parameter
-            // through `ExternalAssets` for one caller. Folded onto `js_head_html` (see the
-            // Inline arm) rather than a dedicated template line, for the same byte-identity
-            // reason.
-            let base = a.app_js.split_once("_assets/").map_or("", |(rel, _)| rel);
-            let pyodide_meta = pyodide_index_meta(p.body, p.mode, Some(base));
-            let js_head_html = if pyodide_meta.is_empty() {
-                js_head_html
-            } else {
-                format!("{js_head_html}\n{pyodide_meta}")
-            };
             (style_block, katex_block, js_head_html, framework_scripts)
         }
     };
@@ -591,15 +560,7 @@ fn html_page_inner(
     // `<script type="application/tali-js">` in the body, so strip those (the cell is
     // inert without its browser runtime; the build warns separately).
     let body = if mode == OutputMode::Bare {
-        // Degrade `{pyodide}` BEFORE stripping, or the source is deleted outright (item 158).
-        // A `{js}` cell's source is inert-but-expendable in bare output; a `{pyodide}` cell's
-        // Python lives INSIDE the `<script>` the strip removes, so stripping first left two
-        // empty `<div class="cell tali-pyodide-cell">` husks and the author's code appeared
-        // nowhere in the artifact — with no warning, because `warn_bare_exclusions` counts
-        // only `{js}`. Degrading first yields a visible highlighted listing, which is both
-        // the right answer for "no browser runtime ships" and still zero `<script>`, so the
-        // strip's contract below is untouched.
-        strip_tali_js_scripts(&degrade_pyodide_cells(&body))
+        strip_tali_js_scripts(&body)
     } else {
         body
     };

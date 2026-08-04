@@ -68,7 +68,7 @@ jobs:
         # The browser driver is off by default (24% of a clean release build), and the
         # two browser test binaries declare it in `required-features`, so without this
         # flag cargo skips building them and TALIESIN_REQUIRE_CHROME guards nothing.
-        run: cargo test --workspace --features taliesin-server/headless-js,taliesin-server/pyodide
+        run: cargo test --workspace --features taliesin-server/headless-js
       # Deliberately DEFAULT features, so the no-driver build (what a plain `cargo
       # install` produces) is the configuration this lints. The step above compiles
       # every target with the driver on, so between them both are covered.

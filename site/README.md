@@ -8,8 +8,9 @@ Pages: `index.tmd` (landing), `features.tmd`, `formats.tmd`, plus `demo.tmd` (th
 showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
 `_site.yml` (native flat schema). There is intentionally no stylesheet.
 
-> Placeholders to update before going live: `url:` and the GitHub links in
-> `_site.yml` (currently `https://taliesin.dev` and `github.com/AJBogo9/taliesin`).
+> Placeholder to update before going live: the GitHub links in `_site.yml`
+> (currently `github.com/AJBogo9/taliesin`). `url:` is now the registered
+> `https://taliesin.sh`.
 
 ## How it's authored (all framework features)
 

@@ -26,8 +26,8 @@ ranking that settled the cross-cluster call the previous session left open: the 
 audit's own order, 202 first as the instrument and 203/204 as the two cuts it measures.
 
 **What is left in P1 is 188, 164, 167, 56, 175(c), 174 and 170**, and no ranking among them has
-been made. **205 has since shipped** (`crates/server/Cargo.toml:29`: `pyodide` is a non-default
-feature, so a default build carries none of the payload), which is why it is no longer named here.
+been made. **205 is moot**: `{pyodide}` was withdrawn entirely on 2026-08-04, so there is no
+payload left to take out of the binary.
 
 **`taliesin features <dir>` now exists, so do not re-derive an adoption table by grep.** It reads
 the validator consts, not `vocab.rs` (which is the *offered-completions* subset and would report a
@@ -286,7 +286,7 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      `${(f)...}` array form with a known-positive control row — the first attempt returned an
      all-zero table because zsh does not word-split unquoted parameters) and ask: has any **real**
      document set `doi:`/`links:`/`venue:`/`award:` (185/186/187); does anything beyond
-     `docs/guide/using/interactive.tmd` use `{pyodide}` or `{glsl}` or `num`; has `pdf` been invoked
+     `docs/guide/using/interactive.tmd` use `{glsl}` or `num`; has `pdf` been invoked
      once outside a test? A still-empty column is not automatically a cut — it is the trigger to
      price one. **Front-matter adoption must be counted inside the YAML block**, not grepped from
      body text, or the reference page that documents a key reads as a page that uses it.
@@ -369,11 +369,10 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
        `taliesin-core = { path = "crates/core" }` with **no `version`** (re-measured 2026-08-01).
        Also blank: `keywords`, `categories`, `readme`, `homepage`, `documentation` in every manifest.
        **The `.crate` size blocker is discharged (2026-08-02, Wave 0.3).** The filed
-       "`crates/core` = 7.3 MiB against the 10 MiB cap" was rot: the tracked tree is 24.2 MiB,
-       because the vendored pyodide payload is git-tracked. `crates/core/Cargo.toml` now carries
-       `exclude = ["assets/pyodide/*"]`, which is the only lever that shrinks a `.crate` (the new
-       cargo feature does not). Verified by running it: `cargo package -p taliesin-core` now
-       reports **248 files, 8.6 MiB (2.8 MiB compressed)**, against a 10 MiB cap. What remains
+       "`crates/core` = 7.3 MiB against the 10 MiB cap" was rot: the tracked tree was 24.2 MiB
+       because the vendored pyodide payload was git-tracked, and an `exclude` discharged it
+       (2026-08-02). That payload was **deleted outright** on 2026-08-04, so the crate is under
+       the cap on its own bytes with no `exclude` carrying it. What remains
        here is the manifest metadata above, and nothing else.
      - **Cold build: 2m11s, 268 crates, 2.6 GB peak RSS at `-j4`** for one ~38 MB binary (measured
        2026-07-28; the filed 2m59s was a different machine or job count, not a regression). The
@@ -400,9 +399,6 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      - **Still absent: a code of conduct and GitHub issue templates**, both only worth doing once the
        repo is public. (`CONTRIBUTING.md` with the inbound relicensing grant and the platform matrix
        both shipped 2026-07-28.)
-     - **`taliesin.dev` resolves to nothing** (registered; NS + SPF + a google-site-verification TXT,
-       zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
-       `site/README.md:11-12` already flags it as a placeholder.
      - **The name** (surfaced, not a task): TALIESIN is a live registered mark of the Frank Lloyd
        Wright Foundation (Reg. 4150375). Software is outside the recited goods so legal risk is low;
        the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are both
@@ -647,22 +643,23 @@ branch are enough to find its commits.
   list marker** (an inline `<li>` has none). A pre-existing rail collision was fixed with it: on the
   two TOC grid modes any right-margin float, `.column-margin` included, drew on the rail's rows.
   Method lessons in [LESSONS.md](LESSONS.md); five of the two items' filed claims were false.
-- **2026-08-01 pyodide residuals + layout escapes** (190, 191, 181): a `{pyodide}` cell runs in
-  **every** delivery mode with room for the runtime. **Do not re-file 191** (already fixed
-  2026-07-31 by `49d592c5`; only the pin was missing). `pyodide.js` resolves against
-  `document.baseURI` — a page-relative `_assets/…` is a **bare module specifier**, which broke the
-  ROOT page of every site build while nested pages worked. There are **FIVE container modes, not
-  three** (single-doc `body`, `body.has-toc`, `.tali-site-main`, `.tali-site-main.has-toc`,
-  `.tali-book-main`). **Do not "simplify" the two TOC grids back to page-centred** — the rail is
-  text with no background, so an escape grows LEFT there, right edge flush to the prose.
-  `overflow-x: clip`, never `hidden` (which makes `<html>` a scroll container and kills every
-  sticky element).
-- **2026-07-31 Pyodide cells** (158): a `{pyodide}` fence runs Python in the reader's browser off a
-  vendored offline Pyodide + NumPy, in `preview` and a **site** build only; every single-document
-  output degrades it to a listing. **`publish` is deliberately NOT on the cell `api`** (it is
-  `setup()`'s fourth argument — a masking shield leaked through `Object.getPrototypeOf`), and
-  **all cells share ONE interpreter with a global `setStdout`**, so execution is FIFO-serialized
-  page-wide. Do not "tidy" either back. Residuals are item 190.
+- **2026-08-04 `{pyodide}` WITHDRAWN** (MVP scope pass): client-side Python and its vendored
+  15.7 MiB Pyodide+NumPy payload are **deleted**: runtime, enhancer, both cargo features, the
+  corpus pin, the guide section, three `gates.sh` canaries and ~1,570 LOC of tests. **Do not
+  re-add it.** The ruling was not size (item 205's cargo feature had already made a default build
+  pay nothing): it was that the payload can only ever ship the stdlib + NumPy, since the tool does
+  no network fetch, so the one workload that justifies a WASM CPython (`scipy`/`sklearn`) was
+  designed out, leaving work `{js}` already does at zero marginal bytes. Adoption at withdrawal:
+  author 0 / manual 1 / pin 1, and the marketing site never mentioned it. A withdrawn **cell
+  language** needs a `RETIRED_CELL_LANGS` entry (`diagnostics/code_lang.rs`) for the same reason a
+  div class needs `RETIRED_DIV_CLASSES`: fence languages are an OPEN vocabulary, so without one an
+  author gets the generic "check the spelling", which is *wrong*: the spelling was right and the
+  capability is gone.
+- **2026-08-01 layout escapes** (181): there are **FIVE container modes, not three** (single-doc
+  `body`, `body.has-toc`, `.tali-site-main`, `.tali-site-main.has-toc`, `.tali-book-main`). **Do
+  not "simplify" the two TOC grids back to page-centred** — the rail is text with no background, so
+  an escape grows LEFT there, right edge flush to the prose. `overflow-x: clip`, never `hidden`
+  (which makes `<html>` a scroll container and kills every sticky element).
 - **2026-07-31 print/PDF track** (159): `taliesin pdf` renders a typeset PDF *from the built HTML*
   via paged.js + CDP. **paged.js is load-bearing, not a fallback** (Chrome 150 implements `@page`
   margin boxes and `counter(page)` but NOT `string-set` or `target-counter()`, measured), it

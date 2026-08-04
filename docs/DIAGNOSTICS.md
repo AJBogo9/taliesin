@@ -74,6 +74,14 @@ A `#|` / `//|` option line on a code cell uses a key Taliesin does not recognize
 
 To fix: Correct the option to a known one (the message suggests the nearest, e.g. `labl` -> `label`), or remove it. See the cell-options reference.
 
+## TAL-CELL-RETIRED
+
+**a retired cell language**
+
+The cell names a language Taliesin used to run and has since withdrawn. It is not a typo, so the spelling advice the generic unknown-language warning gives would be wrong: the capability is gone. The cell now renders as an ordinary unhighlighted block, and nothing executes it.
+
+To fix: Port the cell to the replacement the message names. Severity is `warning`, the same an unrecognized language token gets: a plain `build` still succeeds and writes the page, while `check` and `build --strict` report it and exit non-zero, so an unmigrated document does not silently ship as if nothing changed.
+
 ## TAL-CHECK
 
 **an uncatalogued diagnostic**
@@ -281,14 +289,6 @@ To fix: Delete the duplicate. If the repetition is deliberate (a quoted stutter,
 The opt-in prose lint (`prose-lint:` in front matter) found one of a small closed list of hedges — `very`, `simply`, `obviously`, `basically` and friends. They read as emphasis but carry no information, and `obviously` additionally tells a reader who did not find it obvious that they should have.
 
 To fix: Cut the word and read the sentence again; it almost always survives unchanged. This is advice, not a defect: it is severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
-
-## TAL-PYODIDE-ESCAPE
-
-**a `{pyodide}` cell's source has an ambiguous `<\/script`**
-
-The wrapper escapes a literal `</script` inside a `{pyodide}` cell's source to `<\/script`, so it survives untouched inside the wrapping `<script>` element. The one output mode that cannot ship the 15.7 MiB Pyodide runtime — a single-file `build file.tmd out.html` — degrades the cell to visible highlighted source by reversing that escape, and the reversal cannot tell a real `</script` apart from an author who typed the literal `<\/script` themselves: both produce the identical `<\/script` in the rendered HTML, so in that one artifact the author's own backslash is silently dropped.
-
-To fix: Nothing to change unless you ship this exact page as a single self-contained file: preview and every other build mode ship the real Pyodide runtime and never reverse the escape, so the source stays exact there. This is advice, severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`. If a single-file build of this page matters, avoid writing the literal sequence `<\/script` verbatim in the cell's source.
 
 ## TAL-REACTIVE
 

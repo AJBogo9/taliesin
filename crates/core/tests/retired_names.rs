@@ -949,3 +949,98 @@ fn character_key_shortcuts_and_their_offswitch_are_gone() {
         "the Settings menu's generic section-mounting API must survive; Theme still uses it"
     );
 }
+
+/// `{pyodide}` was withdrawn on 2026-08-04 (MVP scope pass): a vendored 15.7 MiB
+/// CPython/WASM runtime that could only ever ship the stdlib plus NumPy, since the tool
+/// does no network fetch, which is exactly the workload `{js}` already covers at zero
+/// marginal bytes. Adoption at withdrawal was author 0 / manual 1 / pin 1.
+///
+/// **Fence languages are an OPEN vocabulary**, so this needs the same kind of retirement
+/// register `RETIRED_KEYS` gives front matter and `RETIRED_DIV_CLASSES` gives fenced divs.
+/// Without one an author who leaves a `{pyodide}` cell in a document does not get silence
+/// (the generic `TAL-CODE-LANG` arm still fires) but gets something arguably worse: advice
+/// to "check the spelling", when the spelling was right and the capability is gone. This
+/// pins the specific note instead, through the full render pipeline rather than by reading
+/// the const, so it is the diagnostic an author actually sees.
+#[test]
+fn a_leftover_pyodide_cell_is_told_it_was_withdrawn_not_that_it_is_a_typo() {
+    let lang = format!("{}{}", "pyo", "dide");
+    assert!(
+        taliesin_core::diagnostics::retired_cell_lang(&lang).is_some(),
+        "`{lang}` must have a RETIRED_CELL_LANGS entry or an author is told to check the spelling"
+    );
+
+    let doc = taliesin_core::render::render_document_with_includes(
+        &format!("intro\n\n```{{{lang}}}\nimport numpy as np\n```\n"),
+        Path::new("."),
+    );
+    let ws = taliesin_core::diagnostics::validate_code_languages(&doc.blocks);
+    let w = ws
+        .iter()
+        .find(|w| w.message.contains("was removed"))
+        .unwrap_or_else(|| panic!("expected a retirement warning, got {:?}", ws));
+    // **The severity, which is the half a unit test alone missed.** Classified, this message
+    // is TAL-CELL-RETIRED/WARNING. Unclassified it falls through to `(GENERIC, ERROR)` and
+    // fails `check`, `build --strict` and `publish` on a document that merely has not been
+    // migrated — measured by running `taliesin check` on a leftover cell, which reported
+    // `error[TAL-CHECK]` before the classifier row existed. Asserting the pair (not just that
+    // a diagnostic fired) is what makes this fail for that regression.
+    assert_eq!(
+        taliesin_core::diagnostics::codes::classify(&w.message),
+        (
+            "TAL-CELL-RETIRED",
+            taliesin_core::diagnostics::codes::WARNING
+        ),
+        "a retired cell language must not fall through to the generic error: {}",
+        w.message
+    );
+    // The replacement must be NAMED. A retirement note that only says "gone" leaves the
+    // author with a broken document and no next step, which is the whole reason the
+    // register carries a note rather than a bare list of withdrawn spellings.
+    assert!(
+        w.message.contains("`{js}`") && w.message.contains("`{python}`"),
+        "the note must name both replacements: {}",
+        w.message
+    );
+    // Located, like every other member of this family: an unlocated warning cannot be
+    // clicked back to the offending fence.
+    assert_eq!(w.line, Some(3), "points at the fence, not the doc start");
+    // The generic spelling advice must NOT also fire: two warnings for one cell, one of
+    // them actively wrong, is the state this register exists to prevent.
+    assert!(
+        !w.message.contains("check the spelling"),
+        "the retirement note must REPLACE the generic unknown-language advice: {}",
+        w.message
+    );
+    assert_eq!(
+        ws.len(),
+        1,
+        "exactly one warning per withdrawn cell: {ws:?}"
+    );
+}
+
+/// The runtime's bytes, its enhancer and its corpus pin must all be gone from the tree,
+/// not merely unreferenced. 15.7 MiB of vendored WASM that no code path can reach is the
+/// failure shape this catches: `cargo test` stays green while the payload still ships.
+#[test]
+fn the_vendored_browser_python_runtime_is_gone_from_the_tree() {
+    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let lang = format!("{}{}", "pyo", "dide");
+    for gone in [
+        core.join(format!("assets/{lang}")),
+        core.join(format!("assets/js/{lang}.js")),
+        core.join(format!("src/render/{lang}.rs")),
+        repo_root().join(format!("corpus/reactive/{lang}.tmd")),
+    ] {
+        assert!(
+            !gone.exists(),
+            "`{}` survives the withdrawal",
+            gone.display()
+        );
+    }
+    // The language is out of the registry, so no emitter can produce a live wrapper for it.
+    assert!(
+        taliesin_core::render::client_lang(&lang).is_none(),
+        "`{lang}` is still a registered client language"
+    );
+}

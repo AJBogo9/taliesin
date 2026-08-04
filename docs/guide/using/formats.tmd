@@ -259,8 +259,8 @@ their presence makes it a book (no `type:` needed), optionally grouped into
 navigation, and resolves cross-references across chapters. *These very docs are
 such a book*: open **Chapters** and press <kbd>Cmd/Ctrl-K</kbd> to search.
 
-Each chapter also shows its **prose length in words**, in the drawer and in the landing
-page's Contents, so the cost of opening a chapter is visible where that decision is
+Each chapter also shows its **prose length in words** in the drawer, so the cost of
+opening a chapter is visible where that decision is
 made. It is a word count and not a reading time on purpose: the count excludes fenced
 code and math, so a code-heavy chapter is understated, and a minutes label would carry
 that error into a promise about your time. Includes are resolved first, so a chapter

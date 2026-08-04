@@ -654,10 +654,6 @@ async fn serve(
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
         .route(taliesin_core::PREVIEW_MERMAID_PATH, get(mermaid_lib_js))
-        .route(
-            &format!("{}{{file}}", taliesin_core::PREVIEW_PYODIDE_DIR),
-            get(pyodide_asset),
-        )
         .route("/search-index.js", get(search_index_js))
         .route("/ws", get(ws_handler))
         .route(crate::serve::RUN_PATH, axum::routing::post(run_handler))
@@ -823,37 +819,6 @@ async fn mermaid_lib_js() -> impl IntoResponse {
         ],
         taliesin_core::mermaid_min_js(),
     )
-}
-
-/// Serve one file of the vendored Pyodide payload. Immutable caching is safe because the
-/// version is in the PATH: a Pyodide bump changes the directory name, so a reader never sees
-/// a stale mix of old wasm and new loader.
-async fn pyodide_asset(
-    axum::extract::Path(file): axum::extract::Path<String>,
-) -> impl IntoResponse {
-    let Some((_, bytes)) = taliesin_core::pyodide_payload()
-        .iter()
-        .find(|(name, _)| *name == file)
-    else {
-        return axum::http::StatusCode::NOT_FOUND.into_response();
-    };
-    let ct = match () {
-        _ if file.ends_with(".wasm") => "application/wasm",
-        _ if file.ends_with(".mjs") => "text/javascript; charset=utf-8",
-        _ if file.ends_with(".json") => "application/json; charset=utf-8",
-        _ => "application/octet-stream",
-    };
-    (
-        [
-            (axum::http::header::CONTENT_TYPE, ct),
-            (
-                axum::http::header::CACHE_CONTROL,
-                "public, max-age=31536000, immutable",
-            ),
-        ],
-        bytes.to_vec(),
-    )
-        .into_response()
 }
 
 async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {

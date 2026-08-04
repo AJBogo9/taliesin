@@ -200,7 +200,6 @@ pub use card::{
 };
 mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
-mod book_toc;
 mod feed;
 mod llms;
 mod manifest;
@@ -1092,8 +1091,6 @@ impl Site {
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks));
         self.expand_page(page, blocks, warnings);
-        // The whole-book Contents list, on the book landing page only.
-        self.attach_book_toc(page, blocks);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub
@@ -2524,7 +2521,7 @@ pub(crate) mod tests {
     /// must answer the bare preview URL with that document. This pins the fact the routing
     /// depends on: the one page's URL is NOT `index.html`, so a root request that falls
     /// through to the usual lookup finds nothing and serves the 404 page — for the one
-    /// document the author asked to see. (Caught by `pyodide_browser.rs`, which previews a
+    /// document the author asked to see. (Caught by a browser test that previews a
     /// `.tmd` and fetches `/`; a gate that only `tools/gates.sh` runs.)
     #[test]
     fn a_single_document_project_has_no_index_page_to_answer_the_root_with() {

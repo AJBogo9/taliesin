@@ -158,7 +158,7 @@ The drawer's markup is a flat chapter list, with no further client-side hydratio
 ::: {.callout-note}
 ## A chapter's **nav label** and its **page title** are different things
 
-A book chapter's label — in the drawer, the landing Contents and the Cmd-K outline —
+A book chapter's label — in the drawer and the Cmd-K outline —
 resolves `text:` → first `# H1` → front-matter `title:` → the file stem. Its `<title>`
 and social metadata come from the document's own `title:`. So a chapter that sets both
 a `title:` and a different opening `# H1` deliberately shows two names, and that is the
