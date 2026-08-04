@@ -199,6 +199,13 @@ fn main_loop(
     // all of those fire on a user gesture, so re-validating with one `stat` per page is
     // cheaper than the file watching an index would need. See `lsp_project`.
     let mut project = crate::lsp_project::ProjectCache::new();
+    // Off unless `TALIESIN_LSP_TRACE` names a file. See `lsp_trace`: this is the FV-5
+    // instrument, and the one line below is how you can tell it is actually armed rather
+    // than finding out after a week that the editor never inherited the variable.
+    let mut trace = crate::lsp_trace::Trace::from_env();
+    if let Some(p) = trace.armed() {
+        crate::log::info(&format!("lsp: capability trace armed → {}", p.display()));
+    }
     loop {
         // Block outright when nothing is owed, so an idle server costs nothing; wait only as
         // long as the open window when a publish is pending.
@@ -224,6 +231,9 @@ fn main_loop(
         };
         match msg {
             Message::Request(req) => {
+                // Before the shutdown branch below, so the tally sees every dispatched
+                // method including the one that ends the session.
+                trace.record(&req.method);
                 // Once `shutdown` arrives the session is over, and the exit code is a
                 // statement about how it ended. `handle_shutdown` replies, then waits up to
                 // 30s for the `exit` notification, and returns `Err` if anything *else*
@@ -297,6 +307,7 @@ fn main_loop(
             // is then gone, and `connection.receiver` ends this loop on its own.
             Message::Notification(notif) => {
                 let method = notif.method.clone();
+                trace.record(&method);
                 match crate::serve::guarded(|| {
                     handle_notification(connection, &mut docs, &mut pending, debounce, notif)
                 }) {

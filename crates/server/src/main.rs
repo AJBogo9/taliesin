@@ -34,6 +34,7 @@ mod lsp_outline;
 mod lsp_pos;
 mod lsp_project;
 mod lsp_rename_file;
+mod lsp_trace;
 mod mcp;
 mod minify;
 mod pdf;
