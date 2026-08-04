@@ -38,6 +38,34 @@
   /** @type {Record<string, {frames: any[], idx: number}>} */
   var registry = {}; // name -> { frames, idx }
 
+  // `tali.frame(name)` (tali-js.js) and `window.taliDebug.current`/`.frames` below hand
+  // author `{js}` cell source a LIVE reference into this registry, on purpose (a copy on
+  // every call would be the wrong cost: a trace can hold up to 5000 frames, and a view
+  // cell re-runs on every step). A live reference an author can also WRITE through is a
+  // real hole, not a hypothetical one: `tali.frame('sort').line = 99` or
+  // `tali.frame('sort').locals.a.push(1)` would permanently corrupt that frame for every
+  // later view and every other cell reading it, since there is only ever one object per
+  // frame, shared by everyone who asks.
+  //
+  // `Object.freeze` is shallow (freezing a frame would still leave `frame.locals`
+  // writable), so this walks every array/object the parsed JSON contains, recursively,
+  // ONCE per block, right after `JSON.parse`, rather than on every read: freezing is the
+  // cheap direction (paid once for the whole trace) where a defensive clone would be paid
+  // on every reactive re-run of every view cell built on `tali.frame`.
+  /** @param {any} v @returns {any} */
+  function deepFreeze(v) {
+    if (v === null || typeof v !== 'object' || Object.isFrozen(v)) return v;
+    Object.freeze(v);
+    if (Array.isArray(v)) {
+      for (var i = 0; i < v.length; i++) deepFreeze(v[i]);
+    } else {
+      Object.keys(v).forEach(function (k) {
+        deepFreeze(v[k]);
+      });
+    }
+    return v;
+  }
+
   /** @param {Element} root @returns {{frames: any[], truncated: boolean, cap: number}} */
   function readTrace(root) {
     // Inside `.tali-debug` first (keeps this future-proof for a JS-side trace producer
@@ -47,12 +75,12 @@
     var el =
       root.querySelector('script.tali-debug-trace') ||
       (root.nextElementSibling && root.nextElementSibling.querySelector('script.tali-debug-trace'));
-    if (!el) return { frames: [], truncated: false, cap: 0 };
+    if (!el) return deepFreeze({ frames: [], truncated: false, cap: 0 });
     try {
-      return JSON.parse(el.textContent || '{}');
+      return deepFreeze(JSON.parse(el.textContent || '{}'));
     } catch (e) {
       console.error('tali-debug: unparseable trace', e);
-      return { frames: [], truncated: false, cap: 0 };
+      return deepFreeze({ frames: [], truncated: false, cap: 0 });
     }
   }
 
@@ -372,13 +400,17 @@
   }
 
   window.taliDebug = {
-    /** Every recorded frame for a named `.debug` block. Read-only: nothing outside this
-     * file may mutate the array it returns. @param {string} n */
+    /** Every recorded frame for a named `.debug` block. Read-only: the array and every
+     * frame (and every value nested inside a frame) came through `deepFreeze` above, so
+     * a write attempt through the returned reference is a no-op in sloppy-mode caller
+     * code and throws in strict-mode caller code (both are `Object.freeze`'s ordinary
+     * behaviour); it is never silently accepted as a real mutation of stepper state.
+     * @param {string} n */
     frames: function (n) {
       return registry[n] ? registry[n].frames : [];
     },
     /** The frame the stepper is currently sitting on, or `null` before any `.debug` block
-     * named `n` has mounted. @param {string} n */
+     * named `n` has mounted. Frozen the same way `frames` is. @param {string} n */
     current: function (n) {
       var r = registry[n];
       return r ? r.frames[r.idx] : null;

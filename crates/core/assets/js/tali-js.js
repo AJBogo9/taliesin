@@ -385,6 +385,9 @@
       // handed verbatim to author cell source as `tali`, so anything reachable here is
       // author-callable. A writable frame setter would let a cell drive the stepper that
       // re-runs it, creating exactly the feedback edge `buildGraph` never cycle-checked.
+      // The object this returns is also deep-frozen (debug.js's `deepFreeze`), so a cell
+      // cannot reach back through the RETURNED frame to mutate stepper state either:
+      // "no setter" alone would still leave `tali.frame('x').locals.a.push(1)` open.
       /** @param {string} n */
       frame: function (n) {
         return window.taliDebug ? window.taliDebug.current(n) : null;
