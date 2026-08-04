@@ -472,6 +472,28 @@ pub(crate) fn validate_nested_debug(line: u32, file: Option<String>) -> Warning 
     .at(file, line)
 }
 
+/// Warn on a SECOND `::: {.debug name="…"}` on the same page reusing a `name=` an
+/// earlier `.debug` block already claimed. `debug.js`'s registry keys `tali.frame(name)`
+/// by that one string and stamps `data-debug-name`/`[data-tali-input]` from it too, so two
+/// blocks sharing a name overwrite each other's registry entry (whichever mounted or
+/// re-captured LAST wins) and their hidden inputs fight over the same reactive-graph edge
+/// and the same URL fragment. Purely diagnostic — both divs still render and step
+/// independently; only the shared name is broken. `line` is the 1-based source line of
+/// the DUPLICATE (the second) `.debug` block's own opening fence, the same "locate the
+/// duplicate, keep the first" convention `register_xref`'s own warning uses.
+pub(crate) fn validate_duplicate_debug_name(
+    name: &str,
+    line: usize,
+    file: Option<String>,
+) -> Warning {
+    Warning::new(format!(
+        "duplicate `.debug` name \u{201c}{name}\u{201d}: another `.debug` block on this \
+         page already uses it, and `tali.frame(\"{name}\")` plus the hidden reactive \
+         input both collide between the two"
+    ))
+    .at(file, line as u32)
+}
+
 /// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
 /// so it would render no tabs. `line` is the 1-based source line of the opening fence.
 /// Purely diagnostic — the div still renders its content.
@@ -921,6 +943,24 @@ mod tests {
             validate_debug(1, true, false, 3, None).is_empty(),
             "an unnamed .debug is legal (it just cannot be addressed from a view cell)"
         );
+    }
+
+    /// `validate_duplicate_debug_name` names both the colliding name and the two things
+    /// that actually break: `tali.frame(name)` and the hidden reactive input, and locates
+    /// on the DUPLICATE (the caller's job is to pass the second block's own line, kept
+    /// separate from the first's).
+    #[test]
+    fn duplicate_debug_name_warning_names_the_collision_and_locates_the_duplicate() {
+        let w = validate_duplicate_debug_name("sort", 12, Some("a.tmd".into()));
+        assert!(w.message.contains("sort"), "{}", w.message);
+        assert!(w.message.contains("tali.frame"), "{}", w.message);
+        assert!(
+            w.message.contains("reactive input"),
+            "must call out the SECOND collision, not just the registry: {}",
+            w.message
+        );
+        assert_eq!(w.line, Some(12));
+        assert_eq!(w.file.as_deref(), Some("a.tmd"));
     }
 
     #[test]

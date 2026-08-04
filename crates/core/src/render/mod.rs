@@ -8,7 +8,7 @@
 use crate::includes::LineOrigin;
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 mod model;
@@ -621,6 +621,13 @@ fn render_internal_impl(
         })
         .collect();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
+    // Every named `::: {.debug name="…"}` seen so far, so a SECOND block reusing the
+    // same name can warn rather than silently colliding: two named debug blocks share
+    // one `tali.frame(name)` registry slot and one `[data-tali-input]` bridge (see
+    // `validate_duplicate_debug_name`), and the collision is otherwise invisible until a
+    // reader actually steps the wrong one. Document-scoped (one per render call), the
+    // same scope `id_counts`/`xref_registry` already use for this class of problem.
+    let mut debug_names: HashSet<String> = HashSet::new();
     // Heading anchor slugs (deduped) and the cross-reference number registry
     // (figures + equations), both used for `@sec-x`/`@fig-x`/`@eq-x` and the TOC.
     let mut heading_slugs: HashMap<String, u32> = HashMap::new();
@@ -1330,7 +1337,14 @@ fn render_internal_impl(
         });
     }
 
-    let mut blocks = group_divs(flat, &spans, origins, &mut id_counts, &mut warnings);
+    let mut blocks = group_divs(
+        flat,
+        &spans,
+        origins,
+        &mut id_counts,
+        &mut debug_names,
+        &mut warnings,
+    );
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings, chapter);

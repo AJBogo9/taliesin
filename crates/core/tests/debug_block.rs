@@ -268,3 +268,62 @@ fn a_debug_div_nested_inside_another_div_warns_that_its_traced_cell_is_dropped()
         ok.blocks
     );
 }
+
+/// Two `.debug` blocks sharing one `name=` collide silently in `debug.js`: the second
+/// block's `registry[name] = ...` overwrites the first's (`mount`/`recapture`), so
+/// `tali.frame(name)` in a downstream view cell reads whichever block ran last, and both
+/// blocks' `[data-tali-input]` bridges fight over the same reactive-graph edge and the
+/// same URL fragment. This project treats a silent collision as an authoring mistake, so
+/// it must warn rather than stay quiet.
+#[test]
+fn a_duplicate_debug_name_on_one_page_warns_and_locates_the_second_block() {
+    let src = "---\ntitle: T\n---\n\n\
+        ::: {.debug name=\"sort\"}\n\
+        ```{python}\n#| trace: true\na = [2, 1]\n```\n:::\n\n\
+        ::: {.debug name=\"sort\"}\n\
+        ```{python}\n#| trace: true\nb = [3, 1]\n```\n:::\n";
+    let d = doc(src);
+    let w = d
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("duplicate") && w.message.contains("sort"))
+        .unwrap_or_else(|| panic!("no duplicate-name warning in {:?}", d.warnings));
+    // Located on the SECOND block's own opening fence (line 12), not the first's (line
+    // 5): the same "locate the duplicate, keep the first" convention the duplicate
+    // cross-reference-label warning already uses.
+    assert_eq!(w.line, Some(12), "{w:?}");
+
+    // Only ONE such warning: the first definition is not itself flagged.
+    let count = d
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("duplicate") && w.message.contains("sort"))
+        .count();
+    assert_eq!(count, 1, "{:?}", d.warnings);
+
+    // Two DIFFERENTLY-named `.debug` blocks must stay silent.
+    let ok = doc("---\ntitle: T\n---\n\n\
+         ::: {.debug name=\"a\"}\n\
+         ```{python}\n#| trace: true\nx = 1\n```\n:::\n\n\
+         ::: {.debug name=\"b\"}\n\
+         ```{python}\n#| trace: true\ny = 1\n```\n:::\n");
+    assert!(
+        !ok.warnings.iter().any(|w| w.message.contains("duplicate")),
+        "{:?}",
+        ok.warnings
+    );
+
+    // Two UNNAMED `.debug` blocks are unaddressable but not a name COLLISION, so they
+    // must not warn about a duplicate name either.
+    let unnamed = doc("---\ntitle: T\n---\n\n\
+         ::: {.debug}\n```{python}\n#| trace: true\nx = 1\n```\n:::\n\n\
+         ::: {.debug}\n```{python}\n#| trace: true\ny = 1\n```\n:::\n");
+    assert!(
+        !unnamed
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("duplicate `.debug`")),
+        "{:?}",
+        unnamed.warnings
+    );
+}

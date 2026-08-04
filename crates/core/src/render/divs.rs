@@ -323,6 +323,7 @@ pub(crate) fn group_divs(
     spans: &[DivSpan],
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
+    debug_names: &mut HashSet<String>,
     warnings: &mut Vec<Warning>,
 ) -> Vec<Block> {
     struct Open<'a> {
@@ -389,7 +390,14 @@ pub(crate) fn group_divs(
         while let Some(top) = stack.last() {
             if top.span.close < next_start {
                 let done = stack.pop().unwrap();
-                let container = build_container(done.span, done.inner, origins, counts, warnings);
+                let container = build_container(
+                    done.span,
+                    done.inner,
+                    origins,
+                    counts,
+                    debug_names,
+                    warnings,
+                );
                 push_block(&mut stack, &mut result, container);
             } else {
                 break;
@@ -398,7 +406,14 @@ pub(crate) fn group_divs(
     }
     // Close anything still open (e.g. unterminated div at EOF).
     while let Some(done) = stack.pop() {
-        let container = build_container(done.span, done.inner, origins, counts, warnings);
+        let container = build_container(
+            done.span,
+            done.inner,
+            origins,
+            counts,
+            debug_names,
+            warnings,
+        );
         push_block(&mut stack, &mut result, container);
     }
     // A traced cell that never made it into a `.debug` div: every div type folds its
@@ -570,6 +585,7 @@ fn build_container(
     mut inner: Vec<Block>,
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
+    debug_names: &mut HashSet<String>,
     warnings: &mut Vec<Warning>,
 ) -> Block {
     let attrs = parse_attrs(&span.attrs);
@@ -689,6 +705,21 @@ fn build_container(
             file.clone(),
         ) {
             warnings.push(w);
+        }
+        // Two `.debug` blocks sharing one `name=` overwrite each other's
+        // `tali.frame(name)` registry entry AND fight over one `[data-tali-input]`
+        // bridge (`debug.js`'s `registry`/`mount`): a silent collision this project
+        // treats as an authoring mistake, not a supported pattern. First definition
+        // wins (kept in `debug_names`), the SECOND is the one located, matching
+        // `register_xref`'s "keep first, warn on the duplicate" rule.
+        if let Some(n) = name {
+            if !debug_names.insert(n.to_string()) {
+                warnings.push(super::validate::validate_duplicate_debug_name(
+                    n,
+                    open_line,
+                    file.clone(),
+                ));
+            }
         }
         let hidden = match name {
             Some(n) => format!(
