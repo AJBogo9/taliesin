@@ -719,10 +719,7 @@ impl Site {
     /// Build the chrome (navbar, footer, post-nav) for a page, with links
     /// resolved relative to that page's depth. Shared by the static build and the
     /// live preview so both render identical navigation.
-    /// `downloads` emits the book topbar's offline-download link (the `<book>.zip` a build
-    /// writes). Only the static build passes `true`: the archive is a build artifact, so a
-    /// live-preview topbar must not link a file that isn't there.
-    pub fn page_chrome(&self, page: &Page, downloads: bool) -> SiteCtx {
+    pub fn page_chrome(&self, page: &Page) -> SiteCtx {
         let depth = page.url.matches('/').count(); // links are relative to the page
         // Same resolution `logo:` uses (`chrome::site_asset_href`): climb to the site root
         // for a project-relative path, leave a site-absolute or external one as written.
@@ -779,7 +776,7 @@ impl Site {
             } else {
                 self.listing_backlink_html(page, depth)
             },
-            book_sidebar: book.then(|| self.sidebar_html(page, depth, downloads)),
+            book_sidebar: book.then(|| self.sidebar_html(page, depth)),
             wide: page.page_layout.as_deref() == Some("full"),
             includes,
             favicon,
@@ -845,7 +842,7 @@ impl Site {
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
         // Inline single-file page build: no `_assets/`, and no book archive alongside it.
-        let ctx = self.page_chrome(page, false);
+        let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
         (rewrite_tmd_links(&html), warnings)
@@ -862,9 +859,7 @@ impl Site {
         doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
-        // The multi-page build path: a book emits `<book>.zip` at its output root, so this
-        // is the one place the offline-download link is wired.
-        let mut ctx = self.page_chrome(page, self.is_book());
+        let mut ctx = self.page_chrome(page);
         // Same reasoning for the install head (`manifest.webmanifest` + the iOS icon/label +
         // the theme-colour pair): the manifest is a build artifact, and a live preview that
         // emitted it would let Chrome install `localhost`, leaving the reader an app that

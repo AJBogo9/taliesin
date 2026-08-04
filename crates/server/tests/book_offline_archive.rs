@@ -1,12 +1,15 @@
 //! A book build emits a single `<book>.zip` at its output root (the offline "read this
-//! book" download), and every book page links it from the topbar. The archive is the whole
-//! self-contained output packed into one file — a delivery wrapper, not a new output format.
+//! book" download). The archive is the whole self-contained output packed into one file —
+//! a delivery wrapper, not a new output format. The topbar's link to it was deleted
+//! 2026-08-04 (visual minimalism pass, task 11), but `write_book_archive` (`build.rs`)
+//! still runs for every book build, so the archive itself still ships; this test now pins
+//! only that it is a valid, self-consistent ZIP.
 
 use std::fs;
 use std::process::Command;
 
 #[test]
-fn book_build_emits_a_valid_archive_and_a_topbar_download_link() {
+fn book_build_emits_a_valid_archive() {
     let dir = std::env::temp_dir().join(format!("tali-book-zip-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("sub")).unwrap();
@@ -40,8 +43,6 @@ fn book_build_emits_a_valid_archive_and_a_topbar_download_link() {
     // `archive_name()` slugs the title: "My Guide" → "my-guide.zip".
     let zip_path = out.join("my-guide.zip");
     let zip = fs::read(&zip_path).unwrap_or_default();
-    let index = fs::read_to_string(out.join("index.html")).unwrap_or_default();
-    let nested = fs::read_to_string(out.join("sub/two.html")).unwrap_or_default();
     let _ = fs::remove_dir_all(&dir);
 
     assert!(res.status.success(), "build failed: {stderr}");
@@ -62,14 +63,5 @@ fn book_build_emits_a_valid_archive_and_a_topbar_download_link() {
     assert!(
         !zip.windows(12).any(|w| w == b"my-guide.zip"),
         "archive must not pack itself"
-    );
-    // Every book page links the archive from the topbar, relative to its own depth.
-    assert!(
-        index.contains("class=\"tali-book-download\" href=\"my-guide.zip\""),
-        "root page missing the offline-download link"
-    );
-    assert!(
-        nested.contains("class=\"tali-book-download\" href=\"../my-guide.zip\""),
-        "nested page's download link must be depth-relative"
     );
 }

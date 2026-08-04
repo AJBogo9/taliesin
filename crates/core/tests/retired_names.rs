@@ -633,3 +633,16 @@ fn the_book_drawer_outline_is_gone() {
         assert!(!css.contains(needle), "`{needle}` CSS survives in site.css");
     }
 }
+
+/// The book topbar's offline-download button was deleted 2026-08-04 (visual minimalism
+/// pass, task 11): one more permanent control in the topbar for an action a reader rarely
+/// wants. The `<book>.zip` build step itself (`write_book_archive` in `build.rs`) still
+/// runs for every book build — only the topbar link to it is gone.
+#[test]
+fn the_book_download_button_is_gone() {
+    let css = taliesin_core::render::site_css();
+    assert!(
+        !css.contains("tali-book-download"),
+        "its CSS survives in site.css"
+    );
+}

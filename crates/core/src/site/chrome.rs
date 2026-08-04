@@ -311,7 +311,7 @@ impl Site {
     /// list is summoned, not a permanent rail. (Returned together from one method because
     /// the page assembler threads a single `book_sidebar` string; the topbar is `.tali-book-
     /// topbar`, never the website `.tali-site-nav`.)
-    pub(super) fn sidebar_html(&self, current: &Page, depth: usize, downloads: bool) -> String {
+    pub(super) fn sidebar_html(&self, current: &Page, depth: usize) -> String {
         let Some(book) = &self.book else {
             return String::new();
         };
@@ -335,20 +335,6 @@ impl Site {
         // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
         // focus / shortcuts). The gear replaces the old light/dark toggle that lived here.
         s.push_str(&search_button());
-        // Offline download: the whole book as one `<book>.zip` (a build artifact, so the link
-        // is emitted only for the static build — see `page_chrome`'s `downloads`). A plain
-        // `<a download>` fits the "no server at read time" architecture.
-        if downloads {
-            s.push_str(&format!(
-                "<a class=\"tali-book-download\" href=\"{up}{name}\" download \
-                 title=\"Download this book to read offline\" \
-                 aria-label=\"Download this book to read offline\">\
-                 <svg width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='currentColor' \
-                 stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>\
-                 <path d='M8 2v8m0 0L5 7m3 3 3-3M3 13h10'/></svg></a>",
-                name = esc(&self.archive_name()),
-            ));
-        }
         s.push_str(&settings_button());
         s.push_str("</div></header>");
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
@@ -758,8 +744,8 @@ mod tests {
         let home = site.page("index.tmd").unwrap().clone();
         let _ = std::fs::remove_dir_all(&root);
         // The project-relative case is unchanged: still climbs out per page depth.
-        assert_eq!(site.page_chrome(&home, false).favicon, "icon.svg");
-        assert_eq!(site.page_chrome(&deep, false).favicon, "../icon.svg");
+        assert_eq!(site.page_chrome(&home).favicon, "icon.svg");
+        assert_eq!(site.page_chrome(&deep).favicon, "../icon.svg");
 
         for (written, expect_deep) in [
             ("/brand.svg", "/brand.svg"),
@@ -781,7 +767,7 @@ mod tests {
             let deep = site.page("posts/deep.tmd").unwrap().clone();
             let _ = std::fs::remove_dir_all(&root);
             assert_eq!(
-                site.page_chrome(&deep, false).favicon,
+                site.page_chrome(&deep).favicon,
                 expect_deep,
                 "`favicon: {written}` must survive a nested page unprefixed"
             );

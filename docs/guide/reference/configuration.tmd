@@ -181,8 +181,8 @@ come back to it without hunting for a bookmark:
 | Firefox on desktop | Manifests are ignored. Nothing breaks; there is simply no install button |
 
 Installing changes how a reader *returns* to your site. It does **not** make the site work
-offline. For offline reading, a book build also emits a `<book>.zip` that readers download
-from the topbar and keep.
+offline. For offline reading, a book build also emits a `<book>.zip` at its output root
+that a reader can save and keep.
 
 Nothing to configure: the app name comes from `title:`, the label from the part of it
 before the first colon ("Taliesin: The User Guide" becomes "Taliesin"), and the scope from

@@ -275,9 +275,9 @@ chapters:
 ```
 
 Building a book also drops a single `<book>.zip` at the output root (named from the
-title) and adds a download button to the topbar, so a reader can grab the whole book
-and read it offline as one file. The built pages are already self-contained, so the
-zip is just a convenient wrapper; there is nothing to configure.
+title), so a reader can grab the whole book and read it offline as one file. The built
+pages are already self-contained, so the zip is just a convenient wrapper; there is
+nothing to configure.
 
 ## Multi-page websites
 

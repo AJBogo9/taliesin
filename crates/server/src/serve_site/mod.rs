@@ -1089,8 +1089,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
             ),
         }
     };
-    // Live preview: no book archive on disk, so no offline-download link (it would 404).
-    let chrome = { project.site.lock().page_chrome(page, false) };
+    let chrome = { project.site.lock().page_chrome(page) };
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);
