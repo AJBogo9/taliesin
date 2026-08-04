@@ -42,10 +42,10 @@ return bubble(shuffle(tali.value("n")));
 ```{js}
 //| input: sort
 const f = tali.frame("sort");
-const written = new Set((f && f.changed.a && f.changed.a.writes) || []);
+const written = new Set((f.changed.a && f.changed.a.writes) || []);
 const row = document.createElement("div");
 row.style.cssText = "display:flex;gap:.4rem;align-items:center;font-family:monospace;";
-(f ? f.locals.a : []).forEach((v, i) => {
+(f.locals.a || []).forEach((v, i) => {
   const chip = document.createElement("span");
   chip.textContent = String(v);
   chip.style.cssText =

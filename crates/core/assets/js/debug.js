@@ -43,6 +43,28 @@
   /** @type {Record<string, {frames: any[], idx: number}>} */
   var registry = {}; // name -> { frames, idx }
 
+  // The stand-in `tali.frame(n)` returns before a named `.debug` block has mounted (the
+  // trace hasn't landed yet, or nothing is named `n` at all). Same shape as a real frame
+  // (`drain` below), just empty, so a view cell reads `f.locals.a` / `f.changed.a` on the
+  // FIRST render exactly like it does on every later one: the only idiom an author ever
+  // needs is the same `(f.locals.a || [])` fallback they already need for a variable the
+  // algorithm hasn't assigned yet, not a second, null-specific guard. Returning `null`
+  // here (the first shipped version of this feature) forced every view cell to check `f`
+  // itself before touching anything on it — ceremony this project's own "perfect the
+  // default" convention says to design away rather than merely document. Frozen once, at
+  // module load: it is a single shared singleton (never mutated, so `Object.freeze`
+  // without `deepFreeze`'s recursion is enough — every value inside is already empty).
+  var EMPTY_FRAME = Object.freeze({
+    line: null,
+    event: null,
+    depth: 0,
+    func: '',
+    locals: Object.freeze({}),
+    changed: Object.freeze({}),
+    stack: Object.freeze([]),
+    stdout: '',
+  });
+
   // `tali.frame(name)` (tali-js.js) and `window.taliDebug.current`/`.frames` below hand
   // author `{js}` cell source a LIVE reference into this registry, on purpose (a copy on
   // every call would be the wrong cost: a trace can hold up to 5000 frames, and a view
@@ -813,6 +835,22 @@
     var playing = false;
     var timer = /** @type {number | null} */ (null);
     var speed = 1;
+    // `apply` below only publishes to the bridge on a VALUE change, which is the right
+    // rule step-to-step (a re-render every 260ms of Play should not spam a downstream
+    // cell when the index didn't move) — but it means the very FIRST publish, always
+    // index 0 against a bridge whose server-rendered value is already the string "0",
+    // compares equal and is silently skipped. Left alone, a `{js}` view cell reading
+    // `tali.frame(name)` (which ran once already, during the page's initial reactive
+    // pass, before THIS mount even started, and so saw the empty stand-in frame) would
+    // never hear that the real frame 0 landed, unless the reader manually steps at
+    // least once first — the same "before this block has mounted" gap `tali.frame`'s
+    // empty-frame fallback exists for, just persisting past mount instead of ending at
+    // it. `forcePublish` overrides the equality check exactly once per mount and once
+    // per re-capture (set again at the top of `recapture` below, for the identical
+    // reason: a freshly captured trace's own frame 0 is new data even when the bridge's
+    // STRING value happens not to change, e.g. the reader was already sitting at index
+    // 0 when the input that triggered the re-capture fired).
+    var forcePublish = true;
     if (name) registry[name] = { frames: frames, idx: 0 };
     // The call stack is worth a row only if some frame in the WHOLE trace ever recursed
     // or called into a nested function; computed once, not per-frame.
@@ -853,9 +891,10 @@
       renderStage(stage, f, frames);
       bar.sync(idx, frames.length, f);
       // Publish LAST, so a view cell that re-runs synchronously reads a settled registry.
-      if (bridge && bridge.value !== String(idx)) {
+      if (bridge && (forcePublish || bridge.value !== String(idx))) {
         bridge.value = String(idx);
         bridge.dispatchEvent(new Event('input', { bubbles: true }));
+        forcePublish = false;
       }
     }
 
@@ -986,6 +1025,10 @@
     // what keeps a re-capture from flashing the whole block or losing focus.
     /** @param {{frames: any[], truncated: boolean, cap: number}} newTrace */
     function recapture(newTrace) {
+      // A freshly captured trace's own frame 0 is new data even when the bridge's
+      // STRING value happens not to change (see `forcePublish`'s declaration above);
+      // force the publish below's next `apply(0)` to fire regardless.
+      forcePublish = true;
       // Stop any in-flight play loop FIRST: it closes over `frames` by reference, so
       // if it fired again after `frames` is reassigned below it would step through
       // the wrong array (or past its new, possibly shorter, end).
@@ -1039,11 +1082,12 @@
     frames: function (n) {
       return registry[n] ? registry[n].frames : [];
     },
-    /** The frame the stepper is currently sitting on, or `null` before any `.debug` block
-     * named `n` has mounted. Frozen the same way `frames` is. @param {string} n */
+    /** The frame the stepper is currently sitting on, or the shared `EMPTY_FRAME` before
+     * any `.debug` block named `n` has mounted (never `null`; see `EMPTY_FRAME` above).
+     * Frozen the same way `frames` is. @param {string} n */
     current: function (n) {
       var r = registry[n];
-      return r ? r.frames[r.idx] : null;
+      return r ? r.frames[r.idx] : EMPTY_FRAME;
     },
   };
 

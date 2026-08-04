@@ -2669,9 +2669,9 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
 /// The needle is debug.js's own file-header text (the same one
 /// `build_mode_content_gates_separate_enhancers` uses below), not the bare string
 /// `"window.taliDebug"`: `tali-js.js` (a different, always-on-in-Preview enhancer)
-/// legitimately mentions `window.taliDebug` in its own defensive `tali.frame` guard
-/// (`return window.taliDebug ? window.taliDebug.current(n) : null`), so that broader
-/// needle would false-positive on every deck regardless of this fix.
+/// legitimately mentions `window.taliDebug` in its own `tali.frame` fallback
+/// (`return window.taliDebug ? window.taliDebug.current(n) : EMPTY_DEBUG_FRAME`), so
+/// that broader needle would false-positive on every deck regardless of this fix.
 #[test]
 fn a_debug_block_inside_a_deck_degrades_to_a_plain_code_block() {
     let src = "---\nformat: deck\n---\n\n## Slide\n\n::: {.debug name=\"d\"}\n```{python}\n#| trace: true\na = [2, 1]\n```\n:::\n";

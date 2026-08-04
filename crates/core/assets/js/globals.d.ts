@@ -64,7 +64,8 @@ interface Window {
   taliDebug?: {
     /** Every recorded frame for a named block (`[]` before it mounts). */
     frames: (n: string) => any[];
-    /** The frame the stepper currently sits on (`null` before it mounts). */
+    /** The frame the stepper currently sits on: an empty, frame-shaped stand-in
+     *  (never `null`) before it mounts. */
     current: (n: string) => any;
   };
 }

@@ -32,6 +32,18 @@
   "use strict";
   var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
+  // Mirrors debug.js's own `EMPTY_FRAME` (same shape, same reasoning: `tali.frame(n)`
+  // never returns `null`, even in the edge case debug.js has not run yet — e.g. a page
+  // whose only `.debug` block was removed by a live-diff edit after this closure formed).
+  // Kept as a second literal, not an import: the two files share no module system, and
+  // this one is reached only on that edge case, never on the common path (debug.js's own
+  // EMPTY_FRAME answers every ordinary "not mounted yet" read).
+  var EMPTY_DEBUG_FRAME = Object.freeze({
+    line: null, event: null, depth: 0, func: "",
+    locals: Object.freeze({}), changed: Object.freeze({}),
+    stack: Object.freeze([]), stdout: "",
+  });
+
   /**
    * A client-side cell language: given the cell's source, its scope api, its parsed
    * `//|` options and the language-only hooks, return the thing that runs it. `run` is
@@ -388,9 +400,16 @@
       // The object this returns is also deep-frozen (debug.js's `deepFreeze`), so a cell
       // cannot reach back through the RETURNED frame to mutate stepper state either:
       // "no setter" alone would still leave `tali.frame('x').locals.a.push(1)` open.
+      //
+      // Never returns `null`: before the named block has mounted this hands back a
+      // frame-shaped empty stand-in (debug.js's `EMPTY_FRAME`, or `EMPTY_DEBUG_FRAME`
+      // above on the one edge debug.js hasn't run at all), so `f.locals.a` / `f.changed.a`
+      // read safely on the very first render with no `if (f)` ceremony — the same
+      // `(f.locals.a || [])` fallback a view cell already needs for a variable the
+      // algorithm hasn't reached yet covers "not mounted yet" too, for free.
       /** @param {string} n */
       frame: function (n) {
-        return window.taliDebug ? window.taliDebug.current(n) : null;
+        return window.taliDebug ? window.taliDebug.current(n) : EMPTY_DEBUG_FRAME;
       },
       defines: r.defines,
       /** @param {string | string[]} names @param {() => void} cb */
