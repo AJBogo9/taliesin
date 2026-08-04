@@ -1,0 +1,198 @@
+---
+title: "Algorithm debug mode"
+description: "How a `::: {.debug}` block turns a real run into a steppable trace: why reads are computed rather than traced, the frame-ordering rule, and the two capture adapters that feed one shared frame shape."
+---
+
+A `::: {.debug}` block ([user guide](../guide/using/debug.tmd)) looks like one feature
+from the reading side, forward/back/scrub through a recorded run, but it is built from
+two genuinely different capture paths that agree on one wire format. This chapter is
+about the parts of that agreement, and the two capture paths, that are not obvious from
+reading the widget alone.
+
+## One frame shape, two producers
+
+Both capture paths agree to hand the client a `{frames, truncated, cap}` value: `frames`
+is an array of
+
+```json
+{ "line": 4, "event": "line", "depth": 1, "func": "bubble",
+  "locals": { "a": [5, 2, 8], "i": 0, "j": 0 },
+  "changed": { "a": { "writes": [0, 1], "reads": [] } },
+  "stack": [{ "func": "bubble", "line": 4 }],
+  "stdout": "" }
+```
+
+per recorded step. `debug.js`'s `mount`/`renderStage`/`renderVars`/`diffLocals`-reading
+code never asks which adapter produced a frame; it only ever reads this shape.
+
+```{mermaid}
+flowchart LR
+  py["#| trace: true\n(Python cell)"] -->|sys.settrace, at build time| harness["trace_py.rs harness"]
+  harness -->|Output::Rich JSON blob| shared["one {frames, truncated, cap}\nshape"]
+  js["//\| trace: true\n({js} generator)"] -->|drain(), in the reader's browser| adapter["debug.js's JS adapter"]
+  adapter --> shared
+  shared --> mount["debug.js mount()\ntransport + cursor + vars + stage"]
+```
+
+**The Python path runs once, at build time**, under `sys.settrace`, and ships its
+recording as static JSON. **The JS path runs in the reader's browser**, once per capture,
+and can re-run: a traced `{js}` cell's own `//| input:` names make it re-capture (see
+[the hidden-input bridge](#the-hidden-input-bridge-shared-with-scrolly)), which is the
+whole reason the JS adapter exists over the Python one, the reader can change an input
+and watch a fresh trace.
+
+## Why the trace rides as an `Output::Rich` blob
+
+`trace_py.rs`'s harness does not add a new output kind. It runs the author's code under
+`sys.settrace`, builds the frame list, and calls IPython's own
+`display(HTML('<script type="application/json" class="tali-debug-trace">…</script>'))`,
+the same `display_data` mechanism a matplotlib figure or a `pandas` `DataFrame` uses. From
+[the execution chapter](execution.tmd#from-a-kernel-message-to-html)'s own mapping, a
+`display_data` message becomes `Output::Rich(html)`, an ordinary rendered-HTML output the
+executor already knows how to splice after a cell and the freeze cache already knows how
+to key and store.
+
+That is the entire reason `freeze.rs` needed zero changes for this feature: a trace is,
+from the cache's point of view, indistinguishable from a `<img class="tali-fig">` or a
+`<pre class="tali-stream">`. The [cumulative-hash cache](execution.tmd#the-persistent-cache-freeze)
+stores it, restores it on an unchanged rebuild, and busts it exactly when the traced
+cell's own code (or anything upstream of it) changes, all for free. Toggling `#| trace:
+true` on an already-cached cell changes that cell's code as the cache sees it (the
+directive line is part of what gets hashed), so it busts the key and re-runs rather than
+replaying a plain, untraced output under a traced request.
+
+## Why `reads` are statically derived, not traced
+
+`sys.settrace` observes **bindings**: a `line`/`call`/`return`/`exception` event, and the
+frame's locals at that moment. It has no event for "this expression was evaluated",
+so `a[j] > a[j + 1]` produces no signal at all, nothing is assigned, from the tracer's
+perspective the line might as well not have subscripted anything. `writes` can still be
+computed indirectly (diff this frame's locals against the previous frame's), but `reads`
+structurally cannot: there is nothing to diff against, because reading never mutates
+anything trace can see.
+
+The harness works around this **statically**, once, before the code ever runs:
+
+- Parse the cell's source with `ast.parse`.
+- Walk every `Subscript` node whose target is a plain `Name` (`a[j]`, not
+  `self.a[j]` or `f()[j]`) and whose context is `Load`, an assignment target
+  (`a[j] = …`) parses to the identical node shape with `ctx=Store`, and excluding it is
+  what stops a pure write from reporting itself as a read of the slot it is about to
+  overwrite.
+- Keep only a **whitelisted index expression**: a `Name`, a literal, `+`/`-`/`*` over
+  those, or a unary minus. Anything else (a function call, an attribute access) is
+  dropped, a read that cannot be evaluated safely and deterministically is not guessed
+  at, it is simply not reported.
+
+At trace time, `reads_for(line, locals)` re-evaluates each whitelisted index expression
+for the current line against that frame's own live locals, sandboxed (`eval` with an
+emptied `__builtins__`, so it can only ever do arithmetic over names already bound in
+this frame) and wraps a caught exception (an index expression that referenced a name not
+yet bound on this particular line) as simply "no read to report" rather than a crash.
+
+One case earns special handling: `a[0] += 5` also parses its target as a `Subscript`
+with `ctx=Store`, but unlike a plain assignment it genuinely reads the slot first
+(read-modify-write). The harness collects every `AugAssign` target by node identity up
+front so this one `Store`-context `Subscript` is treated as a real read, without
+loosening the exclusion for every other assignment target.
+
+## The frame-ordering rule
+
+`sys.settrace`'s `line` event fires **before** that line executes. The harness records
+one frame per such event, so a frame's own `line` is always the line about to run, never
+the line that just ran, and a frame's `changed` (diffed against the *previous* frame's
+locals) describes what running the *previous* line did. This is easy to get backwards
+when reading the JSON cold, so it is worth making concrete. Traced verbatim:
+
+```python
+x = 1
+x = 2
+```
+
+produces
+
+| frame | `line` | `locals` | `changed` |
+| --- | --- | --- | --- |
+| 0 | 1 (`x = 1`, about to run) | `{}` | `{}` (nothing has run yet) |
+| 1 | 2 (`x = 2`, about to run) | `{x: 1}` | `{x: {from: null, to: 1}}` (line 1 just ran) |
+
+Frame 0's `locals` is empty precisely because `x = 1` has not executed yet when frame 0 is
+recorded, and frame 1's `changed` describes line 1's effect, not line 2's, because line 2
+has likewise not executed yet. The client's line cursor (`focusLine`, reusing the
+`.tali-hl-ln-hl` contract highlighting already ships for static code) highlights
+`frame.line` unmodified; the variables panel's changed-value tint reads `frame.changed`
+unmodified. Neither remaps anything, so this ordering is load-bearing all the way to the
+DOM: get it backwards in a future adapter and the cursor will sit one line ahead of what
+the reader believes just executed.
+
+## The hidden-input bridge shared with `.scrolly`
+
+A `.debug` block with `name="…"` gets one extra element server-side, a hidden
+`<input type="hidden" class="tali-debug-input" data-tali-input="…">`. That is not a
+bespoke reactive primitive invented for this feature: it is the exact same bridge
+`.scrolly` already uses for `data-scrolly-state` (`scrolly.js`'s own comment names it
+directly), a `data-tali-input`-tagged element whose `value` `registerInput`
+(`tali-js.js`) already watches, publishing it as a reactive input the moment its `input`
+event fires. Stepping the debugger, then, is just another way a `data-tali-input` element
+changes value; a `{js}` cell downstream reacts with an ordinary `//| input: name`, no new
+graph edge type, no code in `tali-js.js` aware that `.debug` exists at all.
+
+`debug.js`'s `apply(i)` writes the bridge **last**, after the line cursor, the variables
+panel and the stage have all been re-rendered, so a view cell that re-runs synchronously
+off that `input` event reads an already-settled `window.taliDebug` registry rather than
+one mid-update.
+
+That publish is gated on a value change (`bridge.value !== String(idx)`), which is right
+step-to-step, a re-render that lands on the same index should not spam a downstream cell,
+but it has one sharp edge worth knowing if you touch this code: the very **first**
+publish, always index 0, compares against the bridge's own server-rendered initial value,
+which is also the string `"0"`. Left alone, that comparison is equal, so the first publish
+is silently skipped, and a view cell that already ran once (as part of the page's initial,
+document-order reactive pass, which runs before *any* enhancer's own mount, `.debug`'s
+included) never hears that real data landed at all, until the reader manually steps.
+`mount`/`recapture` track this with an explicit `forcePublish` flag rather than folding it
+into the value comparison, so the ordinary step-to-step skip (a `Play` tick that lands on
+an unchanged index) stays intact.
+
+## The yield scanner's refuse-rather-than-guess contract
+
+The JS adapter's traced source needs a line stamped onto every `yield`, so the client
+knows which source line a captured step belongs to, the *displayed* code is never
+rewritten (a reader must never see a synthetic call in code they wrote), so the stamp
+rides in a separate `data-tali-js-src` attribute instead: `stamp_yields`
+(`crates/core/src/render/yield_scan.rs`) rewrites `yield EXPR` to
+`yield __at(LINE, EXPR)` in that hidden copy only, and `tali-js.js`'s `__at` records the
+line and passes the value through unchanged.
+
+Getting this wrong output is worse than getting it absent: `__at`-wrapping a `yield`
+that only *looks* like a real one (one built inside a string, a comment, a regex
+literal, or an unterminated string that swallows the rest of the file) would either
+inject a genuine syntax error into an author's cell or silently invent a step the source
+never intended. `stamp_yields` is a byte-level lexer state machine (`Code`, `Single`,
+`Double`, `Template`, `LineComment`, `BlockComment`, `Regex`) precisely so it can tell a
+real, top-level `yield` apart from a `yield` mentioned inside any of those. When it hits
+a case it cannot resolve confidently, an unterminated string or block comment, `Regex`
+inside an unterminated string, and so on, it returns `None` rather than a best guess.
+
+The caller's fallback (`emit.rs`) is deliberately visible, not silent: `stamp_yields(&literal).unwrap_or_else(|| literal.clone())`
+ships the **original, unstamped** source when scanning refuses. The cell still runs, it
+is still valid JavaScript, the widget still mounts and steps, only the line cursor stays
+parked rather than tracking a `yield` the scanner could not locate confidently. A
+mis-scoped scanner can produce a *worse cursor*, never a *corrupted program*: the one
+thing this contract forbids is inventing a `yield` that was not there. The scanner
+extends this same discipline one level down, inside a yielded expression itself
+`expr_end` tracks string/template literals and bracket depth but deliberately not
+comments or regex, a documented simplification given the project's realistic corpus of
+short snapshot yields (`yield { a, i, j }`), rather than a scan sophisticated enough to
+reintroduce the same "confidently wrong" risk the whole state machine exists to avoid.
+
+## Where to read next
+
+- [Code execution & the kernel](execution.tmd) covers the executor, the warm kernel, and
+  the `_freeze/` cache this feature reuses unmodified.
+- [Rendering](rendering.tmd#interactive-cells-js) covers the `{js}` reactive graph
+  (`buildGraph`, `scheduleFrom`) that `//| input:` and the hidden-input bridge both sit on
+  top of.
+- The [user guide's debug-mode page](../guide/using/debug.tmd) covers the same feature
+  from the authoring side: the minimal block, `name=`, taking over the picture, and the
+  JS generator form.
