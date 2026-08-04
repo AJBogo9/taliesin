@@ -489,9 +489,23 @@ fn traced_python_records_a_line_per_step_with_locals_and_writes() {
     let writes = swapped["changed"]["a"]["writes"].as_array().unwrap();
     assert_eq!(writes.len(), 2, "a swap writes two slots: {writes:?}");
 
-    // `reads` cannot come from settrace; they come from the per-line Subscript scan.
-    let compare = frames.iter().find(|f| f["line"] == 3).expect("line 3 frame");
-    let _ = compare; // the read set is asserted in the unit test below, where indices are fixed
+    // `reads` cannot come from settrace at all; they come from the per-line Subscript
+    // scan. Line 3 is `if a[i] > a[i+1]:` with i == 0, so the derived read set is
+    // exactly {0, 1}. This is the assertion that proves the static derivation runs:
+    // without it the whole `reads` half of the frame contract is untested.
+    let compare = frames
+        .iter()
+        .find(|f| f["line"] == 3 && f["locals"]["i"] == 0)
+        .expect("a frame sitting on the comparison line with i == 0");
+    let mut reads: Vec<i64> = compare["changed"]["a"]["reads"]
+        .as_array()
+        .expect("the comparison line must report derived reads on `a`")
+        .iter()
+        .map(|v| v.as_i64().unwrap())
+        .collect();
+    reads.sort();
+    assert_eq!(reads, vec![0, 1], "`a[i] > a[i+1]` with i == 0 reads slots 0 and 1");
+
     assert_eq!(t["truncated"], false);
 }
 
