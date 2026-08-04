@@ -153,6 +153,28 @@ pinned by a target corpus document added in the same change) — but **do not gr
 pin a feature needs**. And **promotion is not a design**: several were parked with an open design
 question, not just for lack of demand. Those say so; brainstorm before coding.
 
+210. **A code cell inside ANY fenced div never executes.** (S-M, a real correctness defect, found
+     2026-08-04 while building `::: {.debug}`.) `build_container` in `render/divs.rs` returns
+     `Block { cell: None }` for every div kind, and `Executor::run_through` only scans **top-level**
+     blocks for `Some(cell)`. So a `{python}`/`{r}`/`{js}` cell nested in a `.callout-note`, a
+     `layout-ncol` grid, a `.panel-tabset`, a `.column-page` or a theorem environment is dead
+     source: it renders, and it never runs. Pre-existing on main for as long as those two pieces
+     have coexisted; nothing caught it because no corpus document put an executable cell inside a
+     div until `.debug` did. **Fixed for `.debug` only** (the `debug_cell` field, `divs.rs`), which
+     is why 211 is filed separately. The general fix is a block-model question, not a patch: a
+     `Block` carries at most one `Cell`, so a container holding two cells cannot represent both.
+     Decide whether `Block` grows a `Vec<Cell>` or whether containers stop folding their children,
+     then pin it with a corpus doc that puts a cell inside a callout and a tabset.
+
+211. **`.column-page` overflows the page by up to ~74px in the 750-1350px viewport band.** (S,
+     pre-existing, measured 2026-08-04 at 900x1440 and isolated by `git stash` to prove this branch
+     did not cause it.) The escape math lives in `assets/css/base.css` (the `--tali-escape-w` /
+     `--tali-escape-room` pair). It affects **all** `.column-page` content sitewide. Filed as P1
+     rather than P2 because `::: {.debug}` now applies `.column-page` server-side by **default**, so
+     what used to need opt-in wide content is now reachable on every debug page. Verify at the three
+     project viewports (390x844, 1440x900, **900x1440**: the forgotten portrait band is where it
+     shows).
+
 188. **Results gallery + image-comparison slider.** (M, lowest conviction in the cluster. Survey §6.)
      Evidenced need, rejected mechanism: every project page shows N result figures and reaches for a
      carousel, which hides n-1 of them behind a timer. Build `::: {.gallery}` over
@@ -220,6 +242,19 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
 ### P2 — filed so it is not rediscovered as a defect
 
 Not worth a session on its own. Each is a record or a known cost, not a task.
+
+212. **`::: {.debug}` nested inside another div warns instead of working.** (Blocked on 210, not a
+     task until it lands.) A located warning fires and the guide documents the limitation, which was
+     the deliberate choice over propagation: `Block` carries one `Cell`, so propagating could only
+     ever rescue the **first** `.debug` per wrapper and would keep failing silently on the second,
+     which is exactly the two-algorithms-in-a-`.panel-tabset` case an author reaches for first.
+     Fixing 210 properly fixes this; do not patch it separately.
+
+213. **The debug block's `@media print` rules were never verified in a real print preview.** (XS.)
+     `assets/css/debug.css` hides the transport and the variables panel and collapses to one column,
+     which is the right intent (a reader cannot step a sheet of paper), but nothing has actually
+     rendered it to paper. Worst case is a cosmetic artifact on an opt-in widget, which is why this
+     is P2 and not P1. Check it the next time anything else touches the print track.
 
 131. **The cold-build cliff: 3,981 ms vs 789 ms warm.** (LOW, and probably correct as-is.) Kernel
      *variable* state is never cached — the property that makes the cache trustworthy — so a cold
@@ -601,6 +636,29 @@ in [LESSONS.md](LESSONS.md) — look there rather than re-expanding this list. A
 branch are enough to find its commits.
 
 ### Shipped
+
+- **2026-08-04 `::: {.debug}`, algorithm debug mode** (not a backlog item; requested directly).
+  A `#| trace: true` `{python}` cell is recorded with `sys.settrace` in the warm kernel at build
+  time; a `//| trace: true` `{js}` cell returns a generator drained client-side and **re-captured**
+  when a `//| input:` control changes. One frame contract, two capture adapters, shared chrome in
+  `assets/js/debug.js`: transport, a line cursor reusing `.tali-hl-ln-hl`, variables, call stack,
+  stdout, four **closed-set** auto data views (numeric array → bars, other array/string → boxes,
+  2-D → grid, in-range integer → labelled pointer caret), fullscreen, `.column-page` by default.
+  Pinned by `corpus/debug/{sorting,leetcode,dp,custom-view}.tmd`; `site/showcase.tmd` shows binary
+  search. **The step index publishes into a hidden `[data-tali-input]`, the same bridge `.scrolly`
+  uses**. Stepping is a reactive input driven by a counter instead of scroll position, so no new
+  reactive machinery. Load-bearing facts, all learned the hard way: the trace blob lands as a
+  **SIBLING** of `.tali-debug` (the executor splices output as the next top-level block, never back
+  inside the serialized composite div); `reads` **cannot** come from `settrace` and are derived by a
+  per-line `Subscript` scan (an `AugAssign` target counts as a read, a plain `Store` target does
+  not); a `line` event fires **before** that line runs, so `frame.line` is the line about to run and
+  `frame.changed` describes what the previous one did; the trace rides as an `Output::Rich` blob so
+  `_freeze` needed **no** change, but the traced flag had to be folded into the cache key or
+  toggling `trace:` replays the old untraced output. `yield_scan.rs` refuses rather than guesses:
+  a missed stamp costs a cursor position, an invented one would corrupt the cell. **`yield*` was
+  the case the five adversarial tests missed** and it shipped broken through a whole-branch review;
+  it now refuses that site. Non-finite floats must not reach `json.dumps` (bare `Infinity` is not
+  JSON, and the widget vanished silently on any Dijkstra or DP cell using `float('inf')`).
 
 - **2026-08-02 the adoption report and the two cuts it measures** (202, 203, 204, plus 201 and
   207's policy half): `taliesin features <file|dir>` reports what a document uses and what nothing
