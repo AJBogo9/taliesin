@@ -1,0 +1,61 @@
+---
+title: "A custom view, wired by hand"
+description: "The same stepper, captured client-side in JavaScript this time, with an author-written picture standing in for the automatic bars."
+---
+
+Every other page in this exhibit takes the picture Taliesin draws automatically. This one
+takes it over. Two cells cooperate:
+
+- the traced cell below is a `{js}` generator, not `{python}` this time; each `yield` is
+  one recorded step, captured entirely in the browser with no kernel involved,
+- a second, ordinary `{js}` cell reads the stepper's current step with `tali.frame()` and
+  draws its own picture instead of asking for the automatic bars.
+
+{{< input name="n" type="slider" min="5" max="8" step="1" value="6" label="array size" >}}
+
+::: {.debug name="sort"}
+```{js}
+//| trace: true
+//| input: n
+
+function shuffle(count) {
+  const a = Array.from({ length: count }, (_, i) => i + 1);
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function* bubble(a) {
+  for (let i = 0; i < a.length; i++)
+    for (let j = 0; j < a.length - i - 1; j++) {
+      yield { a, i, j };
+      if (a[j] > a[j + 1]) [a[j], a[j + 1]] = [a[j + 1], a[j]];
+    }
+}
+
+return bubble(shuffle(tali.value("n")));
+```
+:::
+
+```{js}
+//| input: sort
+const f = tali.frame("sort");
+const written = new Set((f && f.changed.a && f.changed.a.writes) || []);
+const row = document.createElement("div");
+row.style.cssText = "display:flex;gap:.4rem;align-items:center;font-family:monospace;";
+(f ? f.locals.a : []).forEach((v, i) => {
+  const chip = document.createElement("span");
+  chip.textContent = String(v);
+  chip.style.cssText =
+    "min-width:1.8rem;text-align:center;padding:.35rem .2rem;border-radius:999px;" +
+    (written.has(i) ? "background:#f97316;color:#fff;" : "background:#334155;color:#e2e8f0;");
+  row.appendChild(chip);
+});
+return row;
+```
+
+Move the slider and the trace re-captures at the new size: `//| input: n` on the traced
+cell is what tells the stepper to re-run itself when the input changes, the same
+mechanism any other reactive `{js}` cell uses.

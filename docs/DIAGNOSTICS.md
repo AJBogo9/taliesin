@@ -122,6 +122,14 @@ A `.columns` grid lays its `.column` children out in EQUAL columns, so a per-col
 
 To fix: Remove the `width=` (the columns are equal), or set an explicit column count with `::: {.columns ncol=N}` or `::: {layout-ncol=N}`. Variable-width columns are not supported.
 
+## TAL-DEBUG-TRACE
+
+**a `::: {.debug}` div and its `trace:` option disagree**
+
+`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and `trace:` only means something on a cell inside one of those divs. Four mistakes land here: a `.debug` with no `#| trace: true` (or `//| trace: true`) cell to step through, a `.debug` with more than one (only the first is ever stepped), `#| trace: true` on a cell that never made it into a `.debug` div at all (it still runs, and its full trace still gets recorded, for a script tag no widget will ever read), and a `trace:` value that is neither `true` nor `false`, which the same literal match that decides whether to trace at all silently treats as absent.
+
+To fix: Mark exactly one cell inside the `.debug` div `#| trace: true`, remove `trace:` from a cell that is not meant to be stepped, and spell the value `true` or `false`.
+
 ## TAL-DIV-CLASS
 
 **a misspelled or retired feature div class**

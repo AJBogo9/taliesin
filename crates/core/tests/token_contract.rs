@@ -21,6 +21,8 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-block-id",
     "data-code-lines",
     "data-cw-lines",
+    "data-debug-inputs",
+    "data-debug-name",
     "data-inputs",
     "data-name",
     "data-scrolly-name",
@@ -31,8 +33,10 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-state",
     "data-tali-cell",
     "data-tali-input",
+    "data-tali-js-src",
     "data-tali-out",
     "data-tali-theorem-kind",
+    "data-tali-trace",
     "data-tali-xref",
     "data-target",
     "data-viewof",
@@ -134,6 +138,15 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
 /// because "nothing selects on this" is otherwise indistinguishable from "the
 /// rename moved the emitter and forgot the consumer".
 const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
+    (
+        "data-tali-trace",
+        "build-time only: divs.rs's is_traced_cell and exec.rs's CellRef.traced both scan for \
+         it as a Rust string needle; debug.js finds a block's own trace off `script.tali-debug-\
+         trace` (a class, not this attribute) and never needs to ask \"was THIS cell the traced \
+         one\" from the DOM. First reachable from a rendered corpus doc now that corpus/debug/ \
+         exists (Task 7); the same fact was already recorded once in \
+         BROWSER_SELECTED_DATA_ATTRS's own comment on this name.",
+    ),
     (
         "data-tali-theorem-kind",
         "build-time only: render/mod.rs:2188 scans for it as a Rust string needle while numbering theorems",

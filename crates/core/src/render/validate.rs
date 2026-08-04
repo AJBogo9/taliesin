@@ -126,6 +126,37 @@ pub(crate) fn validate_cell_options(
         .collect()
 }
 
+/// Validate a `trace:` cell option's VALUE. [`validate_cell_options`] above already
+/// covers the KEY (a typo/unknown option name); this is the separate question of whether
+/// the value taliesin actually reads is well-formed. `cell_option`/`JsOpts::trace`
+/// (`cell_extract.rs`) match the raw value against the literal string `"true"` and treat
+/// anything else — `false`, but also a typo like `yes`/`True`/`1` — as "not traced",
+/// which is silent by construction: an author who writes `#| trace: yes` gets a plain,
+/// unstepped code block with no explanation at all. `false` is the other legal spelling
+/// (an explicit opt-out) and does not warn; every other value does. `fence_line` is the
+/// 1-based source line of the cell's opening fence, matching [`validate_cell_options`].
+pub(crate) fn validate_trace_value(
+    literal: &str,
+    fence_line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    for (i, line) in literal.lines().enumerate() {
+        let opt = super::option_directive(line)?;
+        let Some((k, v)) = opt.split_once(':') else {
+            continue;
+        };
+        if k.trim() != "trace" {
+            continue;
+        }
+        let v = v.trim().trim_matches(['"', '\'']);
+        return (v != "true" && v != "false").then(|| {
+            Warning::new(format!("`trace:` expects `true` or `false`, not `{v}`"))
+                .at(file, (fence_line + 1 + i) as u32)
+        });
+    }
+    None
+}
+
 /// Validate a callout kind (the `<kind>` in `.callout-<kind>`) against
 /// [`CALLOUT_KINDS`]. `line` is the 1-based source line of the div's opening fence.
 pub(crate) fn validate_callout_kind(
@@ -340,6 +371,22 @@ pub(crate) fn validate_debug(
         );
     }
     out
+}
+
+/// Warn on a traced cell (`#| trace: true` / `//| trace: true`) that never made it into a
+/// `.debug` div's own composite block — a stray `#| trace: true` on an ordinary showcase
+/// cell, or one folded into some OTHER div type (a callout, say). The cell's full trace
+/// still runs (real kernel work for Python, a real client-side capture for JS) for a
+/// `<script>` blob no `.tali-debug` container will ever exist to read back: work for
+/// nothing, with no explanation. `html` is the already-rendered block's full HTML (a
+/// `.debug` div's OWN composite block carries both the trace marker, from its embedded
+/// code panel, AND its own `tali-debug` class, so this only fires when the marker shows
+/// up WITHOUT that class alongside it).
+pub(crate) fn validate_stray_trace(html: &str, line: u32, file: Option<String>) -> Option<Warning> {
+    (html.contains("data-tali-trace=\"1\"") && !html.contains("class=\"tali-debug")).then(|| {
+        Warning::new("`#| trace: true` has no effect outside a `::: {.debug}` div".to_string())
+            .at(file, line)
+    })
 }
 
 /// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
@@ -791,5 +838,45 @@ mod tests {
             validate_debug(1, true, false, 3, None).is_empty(),
             "an unnamed .debug is legal (it just cannot be addressed from a view cell)"
         );
+    }
+
+    #[test]
+    fn a_non_boolean_trace_value_warns_by_name() {
+        let w = validate_trace_value("#| trace: yes\na = 1\n", 10, Some("a.tmd".into()))
+            .expect("a non-boolean value must warn");
+        assert!(
+            w.message.contains("yes") && w.message.contains("true") && w.message.contains("false"),
+            "must name the bad value and both legal ones: {}",
+            w.message
+        );
+        assert_eq!(w.line, Some(11), "the trace: line itself, not the fence");
+
+        // Both legal spellings are silent.
+        assert!(validate_trace_value("#| trace: true\na = 1\n", 1, None).is_none());
+        assert!(validate_trace_value("#| trace: false\na = 1\n", 1, None).is_none());
+        // No `trace:` option at all is silent (nothing to validate).
+        assert!(validate_trace_value("#| echo: false\na = 1\n", 1, None).is_none());
+        assert!(validate_trace_value("a = 1\n", 1, None).is_none());
+    }
+
+    #[test]
+    fn a_traced_cell_outside_debug_warns_that_trace_has_no_effect() {
+        // A bare traced cell, no div at all.
+        let html = "<pre data-tali-trace=\"1\"><code>a = 1</code></pre>";
+        let w = validate_stray_trace(html, 5, Some("a.tmd".into())).expect("must warn");
+        assert!(w.message.contains("no effect"), "{}", w.message);
+        assert_eq!(w.line, Some(5));
+
+        // Folded into some OTHER div (a callout): still stray.
+        let html = "<div class=\"callout callout-note\"><pre data-tali-trace=\"1\"><code>a = 1</code></pre></div>";
+        assert!(validate_stray_trace(html, 1, None).is_some());
+
+        // Claimed by a real `.debug` div (the container's own composite html carries
+        // both markers): silent.
+        let html = "<div class=\"tali-debug column-page\"><div class=\"dbg-code\"><pre data-tali-trace=\"1\"><code>a = 1</code></pre></div></div>";
+        assert!(validate_stray_trace(html, 1, None).is_none());
+
+        // No trace marker at all: silent.
+        assert!(validate_stray_trace("<pre><code>a = 1</code></pre>", 1, None).is_none());
     }
 }

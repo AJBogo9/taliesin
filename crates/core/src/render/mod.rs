@@ -808,6 +808,15 @@ fn render_internal_impl(
                     start_line,
                     file.clone(),
                 ));
+                // A malformed `trace:` VALUE (`validate_cell_options` above only checks the
+                // KEY): `#| trace: yes`/`True`/`1` is silently treated as "not traced" by
+                // `cell_option`'s literal `"true"` match, which would otherwise leave an
+                // author's `.debug` block rendering an unstepped code panel with no warning.
+                if let Some(w) =
+                    validate::validate_trace_value(&cb.literal, start_line, file.clone())
+                {
+                    warnings.push(w);
+                }
             }
             // `emit_client_cell` escapes a literal `</script` in the author's source to
             // `<\/script` so it survives inside the `<script>` element. A single-file

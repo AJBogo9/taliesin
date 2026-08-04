@@ -57,3 +57,57 @@ An unknown type has no control to build:
 And a `select` with no options renders an empty menu:
 
 {{< input name="c" type="select" label="channel" >}}
+
+## A `.debug` with no traced cell
+
+`::: {.debug}` needs exactly one cell marked `#| trace: true` (or `//| trace: true` for a
+`{js}` generator) to know what to step through. Without one, the panel shows the code but
+never becomes a stepper.
+
+::: {.debug}
+```{python}
+a = [3, 1, 2]
+```
+:::
+
+## A `.debug` with more than one traced cell
+
+Only the first traced cell in a `.debug` div is ever stepped; a second one is silently
+ignored otherwise, so this warns rather than picking one without saying so.
+
+::: {.debug}
+```{python}
+#| trace: true
+a = [3, 1, 2]
+```
+
+```{python}
+#| trace: true
+b = [4, 5, 6]
+```
+:::
+
+## `#| trace: true` outside a `.debug` div
+
+`trace:` only has an effect inside a `.debug` div, where its recorded steps become the
+panel's step data. Elsewhere, the cell still runs and its full trace still gets recorded
+and shipped as a dead `<script>` blob no widget will ever read: real work, spent for
+nothing.
+
+```{python}
+#| trace: true
+a = [3, 1, 2]
+```
+
+## A non-boolean `trace:` value
+
+`trace:` only recognizes `true` and `false`. Any other value falls through the same
+literal match that decides whether to run the tracer at all, so a typo like `yes` quietly
+renders a plain, unstepped code block instead of the stepper the author asked for.
+
+::: {.debug}
+```{python}
+#| trace: yes
+a = [3, 1, 2]
+```
+:::

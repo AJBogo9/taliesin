@@ -128,9 +128,30 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("has no code block to show", "TAL-DIV-PARTS", WARNING),
     ("has no sticky stage", "TAL-DIV-PARTS", WARNING),
     ("has no `.step` divs", "TAL-DIV-PARTS", WARNING),
+    // `.debug`'s own "missing the part it needs" message: no code block at all to become
+    // the stepped panel. Same family as the three rows above (a `.code-walkthrough`/
+    // `.scrolly` reporting the identical shape of mistake), different wording only
+    // because a debugger "steps through" where a walkthrough "shows".
+    (
+        "has no code block to step through",
+        "TAL-DIV-PARTS",
+        WARNING,
+    ),
     // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
     // which a step's own comma-only parser silently focuses to zero lines.
     ("step separator", "TAL-STEP-LINES", WARNING),
+    // `::: {.debug}`'s `trace:` mechanism, misused four ways: a `.debug` with no traced
+    // cell, one with more than one (only the first is ever stepped), `#| trace: true` on
+    // a cell that never made it into a `.debug` div at all (the trace still runs, for a
+    // `<script>` blob nothing will ever read), and a `trace:` value that is neither
+    // `true` nor `false` (silently treated as absent by the same literal match that
+    // decides whether to trace at all). One family: every one of these is the same
+    // authoring mistake — the tracer and the `.debug` div disagreeing about what to step —
+    // just caught at a different point.
+    ("has no traced cell", "TAL-DEBUG-TRACE", WARNING),
+    ("more than one traced cell", "TAL-DEBUG-TRACE", WARNING),
+    ("has no effect outside a", "TAL-DEBUG-TRACE", WARNING),
+    ("`trace:` expects", "TAL-DEBUG-TRACE", WARNING),
     // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
     // which is dropped and renders nothing.
     ("no content between the", "TAL-EMPTY-DIV", WARNING),
@@ -493,6 +514,22 @@ const EXPLANATIONS: &[Explanation] = &[
                 the step silently focuses zero lines.",
         fix: "Use comma-separated ranges within the step (`lines=\"3-5,8\"`), and express \
               multiple reveal states as separate `.step` blocks — one per pipe group.",
+    },
+    Explanation {
+        code: "TAL-DEBUG-TRACE",
+        title: "a `::: {.debug}` div and its `trace:` option disagree",
+        cause: "`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and \
+                `trace:` only means something on a cell inside one of those divs. Four \
+                mistakes land here: a `.debug` with no `#| trace: true` (or `//| trace: \
+                true`) cell to step through, a `.debug` with more than one (only the first \
+                is ever stepped), `#| trace: true` on a cell that never made it into a \
+                `.debug` div at all (it still runs, and its full trace still gets recorded, \
+                for a script tag no widget will ever read), and a `trace:` value that is \
+                neither `true` nor `false`, which the same literal match that decides \
+                whether to trace at all silently treats as absent.",
+        fix: "Mark exactly one cell inside the `.debug` div `#| trace: true`, remove `trace:` \
+              from a cell that is not meant to be stepped, and spell the value `true` or \
+              `false`.",
     },
     Explanation {
         code: "TAL-INPUT-TYPE",
@@ -936,6 +973,46 @@ mod tests {
              (GENERIC, ERROR): {}",
             warning.message
         );
+    }
+
+    #[test]
+    fn every_debug_trace_diagnostic_classifies_as_the_named_family_not_the_generic_error() {
+        // All five `::: {.debug}`/`trace:` diagnostics (the div's own three, plus the two
+        // `trace:`-value diagnostics that live outside `validate_debug`) previously matched
+        // no TABLE needle at all and fell through to `(GENERIC, ERROR)`: a page with a
+        // `.debug` authoring slip failed `build --strict`/`publish` outright, the same class
+        // of defect `a_pyodide_escape_ambiguity_classifies_as_a_suggestion_not_the_generic_error`
+        // closed for `{pyodide}`. Produced by the real render path (not copied literals), so
+        // this can't drift from the shipped messages.
+        let no_traced_cell =
+            crate::render::render_document("::: {.debug}\n```{python}\na = 1\n```\n:::\n");
+        let two_traced = crate::render::render_document(
+            "::: {.debug}\n```{python}\n#| trace: true\na = 1\n```\n\n```{python}\n#| trace: true\nb = 2\n```\n:::\n",
+        );
+        let stray = crate::render::render_document("```{python}\n#| trace: true\na = 1\n```\n");
+        let bad_value = crate::render::render_document("```{python}\n#| trace: yes\na = 1\n```\n");
+        let cases: &[(&str, &str)] = &[
+            ("has no traced cell", "no traced cell"),
+            ("more than one traced cell", "more than one"),
+            ("has no effect outside a", "stray trace"),
+            ("`trace:` expects", "bad value"),
+        ];
+        for (doc, (needle, label)) in [&no_traced_cell, &two_traced, &stray, &bad_value]
+            .into_iter()
+            .zip(cases)
+        {
+            let w = doc
+                .warnings
+                .iter()
+                .find(|w| w.message.contains(*needle))
+                .unwrap_or_else(|| panic!("{label}: no warning containing {needle:?} in {doc:?}"));
+            assert_eq!(
+                classify(&w.message),
+                ("TAL-DEBUG-TRACE", WARNING),
+                "{label}: {}",
+                w.message
+            );
+        }
     }
 
     #[test]

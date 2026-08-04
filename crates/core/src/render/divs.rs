@@ -401,6 +401,20 @@ pub(crate) fn group_divs(
         let container = build_container(done.span, done.inner, origins, counts, warnings);
         push_block(&mut stack, &mut result, container);
     }
+    // A traced cell that never made it into a `.debug` div: every div type folds its
+    // inner blocks into ONE composite top-level `Block` (this function's own loop above,
+    // via `build_container`), so a stray `#| trace: true` — bare, or nested inside some
+    // OTHER div — is still findable as a top-level `result` entry whose html carries the
+    // trace marker without the `.debug` container's own class alongside it.
+    for b in &result {
+        if let Some(w) = super::validate::validate_stray_trace(
+            &b.html,
+            sourcepos_start_line(&b.sourcepos),
+            b.source_file.clone(),
+        ) {
+            warnings.push(w);
+        }
+    }
     result
 }
 
