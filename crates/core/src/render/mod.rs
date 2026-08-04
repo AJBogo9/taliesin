@@ -107,6 +107,11 @@ use emit::emit;
 // emit_children is re-exported so the sibling figure module reaches it via `super`.
 pub(crate) use emit::emit_children;
 pub(crate) use emit::safe_url;
+// The build-time `yield X` -> `yield __at(N, X)` scanner for a traced `{js}` debug
+// cell; `emit.rs` is the only caller. See the module doc for the refuse-rather-than-
+// guess contract.
+mod yield_scan;
+use yield_scan::stamp_yields;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // Intrinsic `width`/`height` + loading hints on local raster images. A post-emission pass
