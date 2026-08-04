@@ -403,8 +403,8 @@ pub(crate) fn group_divs(
     }
     // A traced cell that never made it into a `.debug` div: every div type folds its
     // inner blocks into ONE composite top-level `Block` (this function's own loop above,
-    // via `build_container`), so a stray `#| trace: true` — bare, or nested inside some
-    // OTHER div — is still findable as a top-level `result` entry whose html carries the
+    // via `build_container`), so a stray `#| trace: true` (bare, or nested inside some
+    // OTHER div) is still findable as a top-level `result` entry whose html carries the
     // trace marker without the `.debug` container's own class alongside it.
     for b in &result {
         if let Some(w) = super::validate::validate_stray_trace(
@@ -997,6 +997,20 @@ fn build_container(
         let body = concat(&inner);
         format!("<div class=\"{class}\"{id_attr}{data}>{body}</div>")
     };
+
+    // A `.debug` folded into THIS container loses the traced cell it hoisted onto its own
+    // block a moment ago: `Block` carries at most one `Cell`, and this composite is about
+    // to carry either its own (`.debug`) or none. Either way the nested one is gone and
+    // the trace never runs. See `validate_nested_debug` for why this warns instead of
+    // propagating the cell upward.
+    for b in &inner {
+        if b.cell.is_some() && b.html.contains("class=\"tali-debug") {
+            warnings.push(super::validate::validate_nested_debug(
+                sourcepos_start_line(&b.sourcepos),
+                b.source_file.clone(),
+            ));
+        }
+    }
 
     Block {
         id,

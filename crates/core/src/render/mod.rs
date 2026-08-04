@@ -800,7 +800,7 @@ fn render_internal_impl(
             // Validate this code cell's `#|` options against taliesin's vocabulary
             // (a typo or a legacy key becomes a located, click-to-source warning;
             // the cell still renders unchanged).
-            if cell.is_some()
+            if let Some(traced_cell) = cell.as_ref()
                 && let NodeValue::CodeBlock(cb) = &data.value
             {
                 warnings.extend(validate::validate_cell_options(
@@ -808,6 +808,18 @@ fn render_internal_impl(
                     start_line,
                     file.clone(),
                 ));
+                // `#| trace: true` on a language with no stepping adapter. Everything
+                // downstream of here is language-blind (the `data-tali-trace` attribute,
+                // `.debug`'s traced-cell count), so without this an `{r}` cell counted as
+                // the div's traced cell and was handed the PYTHON harness to parse.
+                if let Some(w) = validate::validate_trace_language(
+                    &traced_cell.lang,
+                    &cb.literal,
+                    start_line,
+                    file.clone(),
+                ) {
+                    warnings.push(w);
+                }
                 // A malformed `trace:` VALUE (`validate_cell_options` above only checks the
                 // KEY): `#| trace: yes`/`True`/`1` is silently treated as "not traced" by
                 // `cell_option`'s literal `"true"` match, which would otherwise leave an

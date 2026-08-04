@@ -174,3 +174,21 @@ small screen or with a wide picture, a many-column DP grid, a long array of bars
 would otherwise be cramped beside the code panel. The button's label flips to **Collapse**
 while active, and the Escape key (or the browser's own fullscreen exit) leaves it the same
 way any fullscreen element exits.
+
+## What a `.debug` block cannot be nested inside
+
+Keep the `::: {.debug}` fence at the top level of the page. It cannot live inside another
+fenced div, so a `.debug` wrapped in a callout, a `.panel-tabset` or a `.column-page` will
+not run its traced cell: the wrapping container folds the debug block into its own markup
+before the cell has run, and the trace never happens. The result is a code panel with no
+stepper at all.
+
+Taliesin does not let that pass quietly. A nested `.debug` warns (`TAL-DEBUG-TRACE`, run
+`taliesin check --explain TAL-DEBUG-TRACE` for the full note) at the inner fence's own
+line, so the dev panel points at the line you have to move. Two algorithms side by side
+are written as two top-level `.debug` blocks, each with its own `name=`, rather than as
+two tabs of one tabset.
+
+The same top-level rule is why `#| trace: true` on a cell that is not inside any `.debug`
+div warns as well: the trace would run, cost real kernel time, and produce a recording
+nothing on the page would ever read.

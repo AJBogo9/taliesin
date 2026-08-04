@@ -164,6 +164,21 @@ pub(crate) fn kernel_lang(lang: &str) -> Option<&'static str> {
     }
 }
 
+/// Whether a cell block may be run under the `#| trace: true` harness. Two conditions,
+/// and the language one is load-bearing: `trace_py::wrap_traced` splices the author's code
+/// into a **Python** harness, while everything upstream of here is language-blind
+/// (`emit.rs` stamps `data-tali-trace="1"` on any cell carrying the option, and `divs.rs`
+/// counts any such cell as the `.debug` div's traced one). Without the `python` check an
+/// `{r}` cell was handed `def _tali_debug_run(_src):` to parse and the reader got
+/// `Error in parse(text = input): <text>:2:5: unexpected input` where a stepper belonged.
+/// `{js}` (the only other language `trace:` supports) is captured in the browser and never
+/// reaches this executor, so `{r}` was the sole reachable hole. The author-facing half of
+/// this fix is `render::validate::validate_trace_language`, which says so at the source
+/// line, so this gate is silent only because the warning is not.
+fn is_traced(lang: &str, html: &str) -> bool {
+    lang == "python" && html.contains("data-tali-trace=\"1\"")
+}
+
 /// A code cell pulled out of the block list, with what the engine needs to run
 /// it and to build its output block.
 struct CellRef {
@@ -187,6 +202,8 @@ struct CellRef {
     /// (Task 1 stamped only the `<pre>` attribute), and `divs.rs`'s own
     /// `is_traced_cell` already reads the same attribute for the same reason, so
     /// this mirrors that precedent instead of inventing a second channel for one bit.
+    ///
+    /// **Python only**, gated by [`is_traced`] above (see its doc comment for why).
     traced: bool,
 }
 
@@ -578,7 +595,7 @@ impl Executor {
                     table: c.table.clone(),
                     include: c.include,
                     cache: c.cache,
-                    traced: b.html.contains("data-tali-trace=\"1\""),
+                    traced: is_traced(lang, &b.html),
                 });
             }
         }
@@ -1706,6 +1723,31 @@ mod tests {
                 "must name the env var: {msg}"
             );
         }
+    }
+
+    /// Only a `{python}` cell is ever handed [`crate::trace_py::wrap_traced`]'s harness.
+    ///
+    /// `wrap_traced` splices the author's code into a **Python** program, and the marker it
+    /// keys off is stamped by `emit.rs` for any language at all. Dropping the `lang` half of
+    /// [`is_traced`] therefore does not fail loudly, it feeds `def _tali_debug_run(_src):`
+    /// to whatever kernel the cell belongs to: reproduced against a live IRkernel as
+    /// `Error in parse(text = input): <text>:2:5: unexpected input` (see
+    /// `crates/server/tests/r_kernel.rs`, which pins the same fix end to end).
+    #[test]
+    fn only_a_python_cell_is_ever_wrapped_in_the_python_trace_harness() {
+        let marked = r#"<pre data-tali-cell="r" data-tali-trace="1"><code>x &lt;- 1</code></pre>"#;
+        assert!(
+            is_traced("python", marked),
+            "a marked python cell is the whole point of the feature"
+        );
+        assert!(
+            !is_traced("r", marked),
+            "an `{{r}}` cell must never be handed the python harness"
+        );
+        assert!(
+            !is_traced("python", "<pre><code>x = 1</code></pre>"),
+            "an unmarked cell is not traced whatever its language"
+        );
     }
 
     /// The render pass reserves a `@fig-`/`@tbl-` number only for a lang core believes

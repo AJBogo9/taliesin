@@ -255,3 +255,73 @@ fn an_executed_figure_carries_no_alt_text_beside_its_caption() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An `{r}` cell marked `#| trace: true` must run as ORDINARY R, and the author must be
+/// told the option does nothing here.
+///
+/// The bug this pins, reproduced against this same live IRkernel: `emit.rs` stamps
+/// `data-tali-trace="1"` for any language, `divs.rs` counted the R cell as the `.debug`
+/// div's one traced cell, and `exec.rs` derived `traced` from that attribute without
+/// consulting `lang`, so the R kernel was handed `crates/server/src/trace_py.rs`'s PYTHON
+/// harness to parse. The page rendered
+/// `Error in parse(text = input): <text>:2:5: unexpected input / 2: def _` where a stepper
+/// belonged, and `taliesin check` reported zero diagnostics about any of it.
+///
+/// Both halves are asserted here because either one alone leaves a bad outcome: without
+/// the executor gate the cell breaks, and without the diagnostic the option silently does
+/// nothing. `{python}` and `{js}` are the documented trace languages
+/// (`docs/guide/reference/cell-options.tmd`).
+#[test]
+fn an_r_cell_marked_traced_runs_as_plain_r_and_is_diagnosed_rather_than_fed_the_python_harness() {
+    let Some(program) = r_program() else { return };
+    let dir = tmp_dir("trace");
+    let doc = dir.join("doc.tmd");
+    std::fs::write(
+        &doc,
+        "---\ntitle: R trace probe\n---\n\n\
+         ::: {.debug name=\"s\"}\n\
+         ```{r}\n#| trace: true\nx <- 6 * 7\ncat(\"answer\", x, \"\\n\")\n```\n:::\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", doc.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_R", &program)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run build");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let html = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        !html.contains("_tali_debug_run"),
+        "the python harness must never be sent to the R kernel: {html}"
+    );
+    assert!(
+        !html.contains("unexpected input"),
+        "the reader must not get an R parse error out of a `.debug` div: {html}"
+    );
+    assert!(
+        html.contains("answer 42"),
+        "the cell must simply run as ordinary R: {html}"
+    );
+
+    // And `taliesin check` must name the mistake, in the TAL-DEBUG-TRACE family.
+    let check = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["check", doc.to_str().unwrap()])
+        .output()
+        .expect("run check");
+    let report = format!(
+        "{}{}",
+        String::from_utf8_lossy(&check.stdout),
+        String::from_utf8_lossy(&check.stderr)
+    );
+    assert!(
+        report.contains("TAL-DEBUG-TRACE") && report.contains("cannot step a"),
+        "`check` must report the unsupported trace language, not stay silent: {report}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

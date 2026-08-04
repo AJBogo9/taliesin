@@ -140,18 +140,22 @@ const TABLE: &[(&str, &str, &str)] = &[
     // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
     // which a step's own comma-only parser silently focuses to zero lines.
     ("step separator", "TAL-STEP-LINES", WARNING),
-    // `::: {.debug}`'s `trace:` mechanism, misused four ways: a `.debug` with no traced
+    // `::: {.debug}`'s `trace:` mechanism, misused six ways: a `.debug` with no traced
     // cell, one with more than one (only the first is ever stepped), `#| trace: true` on
     // a cell that never made it into a `.debug` div at all (the trace still runs, for a
-    // `<script>` blob nothing will ever read), and a `trace:` value that is neither
-    // `true` nor `false` (silently treated as absent by the same literal match that
-    // decides whether to trace at all). One family: every one of these is the same
-    // authoring mistake — the tracer and the `.debug` div disagreeing about what to step —
-    // just caught at a different point.
+    // `<script>` blob nothing will ever read), a `trace:` value that is neither `true` nor
+    // `false` (silently treated as absent by the same literal match that decides whether
+    // to trace at all), `trace:` on a language with no stepping adapter, and a `.debug`
+    // nested inside a wrapping div, whose traced cell is folded away before the executor
+    // can see it. One family: every one of these is the same authoring mistake (the tracer
+    // and the `.debug` div disagreeing about what to step), just caught at a different
+    // point.
     ("has no traced cell", "TAL-DEBUG-TRACE", WARNING),
     ("more than one traced cell", "TAL-DEBUG-TRACE", WARNING),
     ("has no effect outside a", "TAL-DEBUG-TRACE", WARNING),
     ("`trace:` expects", "TAL-DEBUG-TRACE", WARNING),
+    ("cannot step a", "TAL-DEBUG-TRACE", WARNING),
+    ("nested inside another div", "TAL-DEBUG-TRACE", WARNING),
     // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
     // which is dropped and renders nothing.
     ("no content between the", "TAL-EMPTY-DIV", WARNING),
@@ -463,16 +467,18 @@ const EXPLANATIONS: &[Explanation] = &[
     Explanation {
         code: "TAL-DIV-PARTS",
         title: "a feature div is missing a part it needs",
-        cause: "A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not the \
-                part that makes it work: a tabset builds its tabs from `##` headings, a \
-                walkthrough pins a code block in its sticky panel, and a scrolly needs both \
-                a sticky stage (a figure or `{js}` cell) and `.step` divs to scroll past it. \
-                The container still renders, just half-formed — a tab strip with no tabs, an \
-                empty sticky panel, a scroller that drives nothing. Distinct from \
-                TAL-EMPTY-DIV, which is a feature div with no content at all.",
+        cause: "A `.panel-tabset`, `.code-walkthrough`, `.scrolly` or `.debug` has content \
+                but not the part that makes it work: a tabset builds its tabs from `##` \
+                headings, a walkthrough pins a code block in its sticky panel, a scrolly \
+                needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to \
+                scroll past it, and a debugger needs a code block to step through. The \
+                container still renders, just half-formed: a tab strip with no tabs, an \
+                empty sticky panel, a scroller that drives nothing, a stepper with nothing \
+                to step. Distinct from TAL-EMPTY-DIV, which is a feature div with no \
+                content at all.",
         fix: "Add the missing part named in the message: `##` headings inside the tabset, a \
-              fenced code block inside the walkthrough, or a stage and `.step` blocks inside \
-              the scrolly.",
+              fenced code block inside the walkthrough or the `.debug` div, or a stage and \
+              `.step` blocks inside the scrolly.",
     },
     Explanation {
         code: "TAL-CELL-OPTION",
@@ -519,17 +525,23 @@ const EXPLANATIONS: &[Explanation] = &[
         code: "TAL-DEBUG-TRACE",
         title: "a `::: {.debug}` div and its `trace:` option disagree",
         cause: "`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and \
-                `trace:` only means something on a cell inside one of those divs. Four \
-                mistakes land here: a `.debug` with no `#| trace: true` (or `//| trace: \
-                true`) cell to step through, a `.debug` with more than one (only the first \
-                is ever stepped), `#| trace: true` on a cell that never made it into a \
-                `.debug` div at all (it still runs, and its full trace still gets recorded, \
-                for a script tag no widget will ever read), and a `trace:` value that is \
-                neither `true` nor `false`, which the same literal match that decides \
-                whether to trace at all silently treats as absent.",
-        fix: "Mark exactly one cell inside the `.debug` div `#| trace: true`, remove `trace:` \
-              from a cell that is not meant to be stepped, and spell the value `true` or \
-              `false`.",
+                `trace:` only means something on a `{python}` or `{js}` cell inside one of \
+                those divs, at the top level of the document. Six mistakes land here: a \
+                `.debug` with no `#| trace: true` (or `//| trace: true`) cell to step \
+                through, a `.debug` with more than one (only the first is ever stepped), \
+                `#| trace: true` on a cell that never made it into a `.debug` div at all (it \
+                still runs, and its full trace still gets recorded, for a script tag no \
+                widget will ever read), a `trace:` value that is neither `true` nor `false`, \
+                which the same literal match that decides whether to trace at all silently \
+                treats as absent, `trace:` on a cell in a language with no stepping adapter \
+                (an `{r}` cell cannot be recorded), and a `.debug` nested inside another \
+                fenced div, whose traced cell is folded into the wrapper's own HTML before \
+                the executor can find anything to run.",
+        fix: "Mark exactly one `{python}` or `{js}` cell inside the `.debug` div \
+              `#| trace: true`, spell the value `true` or `false`, remove `trace:` from a \
+              cell that is not meant to be stepped, and keep the `.debug` div itself at the \
+              top level rather than inside a callout, a `.panel-tabset` or any other \
+              `:::` container.",
     },
     Explanation {
         code: "TAL-INPUT-TYPE",

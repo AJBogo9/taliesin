@@ -146,3 +146,125 @@ fn a_traced_cell_with_no_inputs_emits_no_inputs_attribute() {
         "no //| input: means nothing to declare:\n{out}"
     );
 }
+
+/// The whole document, so a test can read `warnings` (and a block's `cell`) rather than
+/// only the emitted HTML the `render` helper above keeps.
+fn doc(src: &str) -> taliesin_core::RenderedDoc {
+    taliesin_core::render_document_with_includes(src, Path::new("."))
+}
+
+/// `#| trace: true` on a language taliesin cannot step must SAY so, at the option's own
+/// line.
+///
+/// Everything between the fence and the executor is language-blind: `emit.rs` stamps
+/// `data-tali-trace="1"` on any cell carrying the option, and the `.debug` branch counts
+/// any such cell as its one traced cell. Reproduced against a live IRkernel before fixing
+/// (see `crates/server/tests/r_kernel.rs`): an `{r}` cell in a `.debug` div was handed the
+/// PYTHON harness's source to parse and rendered `Error in parse(text = input):
+/// <text>:2:5: unexpected input`, while `taliesin check` reported **zero** diagnostics,
+/// because as far as the div was concerned it had found exactly the one traced cell it
+/// wanted. A raw parse error from another language's kernel is worse than silence, and
+/// this project does not ship silence either.
+#[test]
+fn a_trace_option_on_a_language_that_cannot_be_stepped_is_diagnosed_at_its_own_line() {
+    let d = doc("---\ntitle: T\n---\n\n::: {.debug name=\"s\"}\n\
+         ```{r}\n#| trace: true\nx <- c(3, 1)\n```\n:::\n");
+    let w = d
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("cannot step a"))
+        .unwrap_or_else(|| panic!("no `cannot step` warning in {:?}", d.warnings));
+    assert!(
+        w.message.contains("`{r}`")
+            && w.message.contains("`{python}`")
+            && w.message.contains("`{js}`"),
+        "the message must name the offending language AND the supported set: {}",
+        w.message
+    );
+    // Located on the `#| trace: true` line itself (line 6 is the fence, 7 the option), so
+    // click-to-source lands on the option the author has to delete.
+    assert_eq!(w.line, Some(7), "{w:?}");
+
+    // A `{python}` or `{js}` cell must stay silent, or the warning is worthless.
+    for lang in ["python", "js"] {
+        let ok = doc(&format!(
+            "---\ntitle: T\n---\n\n::: {{.debug name=\"s\"}}\n\
+             ```{{{lang}}}\n#| trace: true\nx = 1\n```\n:::\n"
+        ));
+        assert!(
+            !ok.warnings
+                .iter()
+                .any(|w| w.message.contains("cannot step a")),
+            "`{{{lang}}}` is a supported trace language: {:?}",
+            ok.warnings
+        );
+    }
+
+    // `trace: false` on an unsupported language is not a mistake, it is the default said
+    // out loud. Only the value that actually turns tracing on warns.
+    let off = doc("---\ntitle: T\n---\n\n::: {.debug name=\"s\"}\n\
+         ```{r}\n#| trace: false\nx <- 1\n```\n:::\n");
+    assert!(
+        !off.warnings
+            .iter()
+            .any(|w| w.message.contains("cannot step a")),
+        "{:?}",
+        off.warnings
+    );
+}
+
+/// A `.debug` nested inside ANY other fenced div loses its traced cell, and must say so.
+///
+/// A fenced div's composite block folds its children's HTML into one string and carries at
+/// most one `Cell`; `.debug` works only because it hoists its traced cell onto its own
+/// container. A wrapping div folds THAT container away in turn and carries no cell, so the
+/// executor never runs the trace: reproduced as zero trace blobs, zero warnings, and a
+/// dead code panel. `validate_stray_trace` cannot catch it, because the wrapper's own HTML
+/// carries the `tali-debug` class and the trace marker alike.
+#[test]
+fn a_debug_div_nested_inside_another_div_warns_that_its_traced_cell_is_dropped() {
+    for wrapper in [".callout-note", ".panel-tabset", ".column-page"] {
+        let src = format!(
+            "---\ntitle: T\n---\n\n::: {{{wrapper}}}\n\n\
+             ::: {{.debug name=\"s\"}}\n\
+             ```{{python}}\n#| trace: true\na = 1\n```\n:::\n\n:::\n"
+        );
+        let d = doc(&src);
+        let w = d
+            .warnings
+            .iter()
+            .find(|w| w.message.contains("nested inside another div"))
+            .unwrap_or_else(|| panic!("{wrapper}: no nesting warning in {:?}", d.warnings));
+        // Located on the INNER `.debug` fence (line 7), not the wrapper's (line 5): the
+        // line the author has to move is the one click-to-source should open.
+        assert_eq!(w.line, Some(7), "{wrapper}: {w:?}");
+        // And the reason the warning is needed: the top-level block the executor scans
+        // carries no cell at all, so the trace genuinely never runs.
+        let top = d
+            .blocks
+            .iter()
+            .find(|b| b.html.contains("tali-debug"))
+            .expect("the wrapper block");
+        assert!(
+            top.cell.is_none(),
+            "{wrapper}: a wrapping container cannot carry the nested cell, which is \
+             exactly why this warns: {top:?}"
+        );
+    }
+
+    // A top-level `.debug` is the supported shape and must stay silent.
+    let ok = doc("---\ntitle: T\n---\n\n::: {.debug name=\"s\"}\n\
+         ```{python}\n#| trace: true\na = 1\n```\n:::\n");
+    assert!(
+        !ok.warnings
+            .iter()
+            .any(|w| w.message.contains("nested inside another div")),
+        "{:?}",
+        ok.warnings
+    );
+    assert!(
+        ok.blocks.iter().any(|b| b.cell.is_some()),
+        "a top-level `.debug` still hands the executor its traced cell: {:?}",
+        ok.blocks
+    );
+}

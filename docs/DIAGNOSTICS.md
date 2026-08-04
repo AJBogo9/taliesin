@@ -126,9 +126,9 @@ To fix: Remove the `width=` (the columns are equal), or set an explicit column c
 
 **a `::: {.debug}` div and its `trace:` option disagree**
 
-`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and `trace:` only means something on a cell inside one of those divs. Four mistakes land here: a `.debug` with no `#| trace: true` (or `//| trace: true`) cell to step through, a `.debug` with more than one (only the first is ever stepped), `#| trace: true` on a cell that never made it into a `.debug` div at all (it still runs, and its full trace still gets recorded, for a script tag no widget will ever read), and a `trace:` value that is neither `true` nor `false`, which the same literal match that decides whether to trace at all silently treats as absent.
+`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and `trace:` only means something on a `{python}` or `{js}` cell inside one of those divs, at the top level of the document. Six mistakes land here: a `.debug` with no `#| trace: true` (or `//| trace: true`) cell to step through, a `.debug` with more than one (only the first is ever stepped), `#| trace: true` on a cell that never made it into a `.debug` div at all (it still runs, and its full trace still gets recorded, for a script tag no widget will ever read), a `trace:` value that is neither `true` nor `false`, which the same literal match that decides whether to trace at all silently treats as absent, `trace:` on a cell in a language with no stepping adapter (an `{r}` cell cannot be recorded), and a `.debug` nested inside another fenced div, whose traced cell is folded into the wrapper's own HTML before the executor can find anything to run.
 
-To fix: Mark exactly one cell inside the `.debug` div `#| trace: true`, remove `trace:` from a cell that is not meant to be stepped, and spell the value `true` or `false`.
+To fix: Mark exactly one `{python}` or `{js}` cell inside the `.debug` div `#| trace: true`, spell the value `true` or `false`, remove `trace:` from a cell that is not meant to be stepped, and keep the `.debug` div itself at the top level rather than inside a callout, a `.panel-tabset` or any other `:::` container.
 
 ## TAL-DIV-CLASS
 
@@ -142,9 +142,9 @@ To fix: Correct the class to the one the message suggests, or — for a retired 
 
 **a feature div is missing a part it needs**
 
-A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not the part that makes it work: a tabset builds its tabs from `##` headings, a walkthrough pins a code block in its sticky panel, and a scrolly needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to scroll past it. The container still renders, just half-formed — a tab strip with no tabs, an empty sticky panel, a scroller that drives nothing. Distinct from TAL-EMPTY-DIV, which is a feature div with no content at all.
+A `.panel-tabset`, `.code-walkthrough`, `.scrolly` or `.debug` has content but not the part that makes it work: a tabset builds its tabs from `##` headings, a walkthrough pins a code block in its sticky panel, a scrolly needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to scroll past it, and a debugger needs a code block to step through. The container still renders, just half-formed: a tab strip with no tabs, an empty sticky panel, a scroller that drives nothing, a stepper with nothing to step. Distinct from TAL-EMPTY-DIV, which is a feature div with no content at all.
 
-To fix: Add the missing part named in the message: `##` headings inside the tabset, a fenced code block inside the walkthrough, or a stage and `.step` blocks inside the scrolly.
+To fix: Add the missing part named in the message: `##` headings inside the tabset, a fenced code block inside the walkthrough or the `.debug` div, or a stage and `.step` blocks inside the scrolly.
 
 ## TAL-DUP-ID
 

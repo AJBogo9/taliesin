@@ -130,7 +130,7 @@ pub(crate) fn validate_cell_options(
 /// covers the KEY (a typo/unknown option name); this is the separate question of whether
 /// the value taliesin actually reads is well-formed. `cell_option`/`JsOpts::trace`
 /// (`cell_extract.rs`) match the raw value against the literal string `"true"` and treat
-/// anything else — `false`, but also a typo like `yes`/`True`/`1` — as "not traced",
+/// anything else (`false`, but also a typo like `yes`/`True`/`1`) as "not traced",
 /// which is silent by construction: an author who writes `#| trace: yes` gets a plain,
 /// unstepped code block with no explanation at all. `false` is the other legal spelling
 /// (an explicit opt-out) and does not warn; every other value does. `fence_line` is the
@@ -153,6 +153,61 @@ pub(crate) fn validate_trace_value(
             Warning::new(format!("`trace:` expects `true` or `false`, not `{v}`"))
                 .at(file, (fence_line + 1 + i) as u32)
         });
+    }
+    None
+}
+
+/// The cell languages `trace:` can actually step, and the whole set. `{python}` is
+/// recorded server-side by the `sys.settrace` harness (`crates/server/src/trace_py.rs`);
+/// `{js}` is captured in the browser by draining a generator (`assets/js/debug.js`).
+/// Nothing else has an adapter, and `docs/guide/reference/cell-options.tmd` documents
+/// exactly this pair.
+pub(crate) const TRACE_LANGS: &[&str] = &["python", "js"];
+
+/// Validate that a `#| trace: true` cell is in a language taliesin can step. Everything
+/// upstream of the executor is language-blind: `emit.rs` stamps `data-tali-trace="1"` on
+/// any cell carrying the option, and `divs.rs` counts any such cell as the `.debug` div's
+/// traced one. An `{r}` cell (the only *reachable* miss: `{js}` never reaches the
+/// executor, and no other language is in the trace path at all) therefore used to be fed
+/// the PYTHON harness's source to its own kernel, and the reader got
+/// `Error in parse(text = input): <text>:2:5: unexpected input` where a stepper should be
+/// while `taliesin check` reported nothing at all, because the `.debug` div was perfectly
+/// satisfied that it had found its one traced cell. The executor now refuses to wrap a
+/// non-Python cell; this is the half that tells the author why. A malformed VALUE is
+/// [`validate_trace_value`]'s job, so only the literal `true` (the same match `emit.rs`
+/// makes) warns here. `fence_line` is the 1-based source line of the cell's opening fence,
+/// matching [`validate_cell_options`].
+pub(crate) fn validate_trace_language(
+    lang: &str,
+    literal: &str,
+    fence_line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    if TRACE_LANGS.contains(&lang) {
+        return None;
+    }
+    for (i, line) in literal.lines().enumerate() {
+        let opt = super::option_directive(line)?;
+        let Some((k, v)) = opt.split_once(':') else {
+            continue;
+        };
+        if k.trim() != "trace" {
+            continue;
+        }
+        if v.trim().trim_matches(['"', '\'']) != "true" {
+            return None;
+        }
+        let supported = TRACE_LANGS
+            .iter()
+            .map(|l| format!("`{{{l}}}`"))
+            .collect::<Vec<_>>()
+            .join(" and ");
+        return Some(
+            Warning::new(format!(
+                "`trace:` cannot step a `{{{lang}}}` cell; only {supported} can be stepped"
+            ))
+            .at(file, (fence_line + 1 + i) as u32),
+        );
     }
     None
 }
@@ -374,7 +429,7 @@ pub(crate) fn validate_debug(
 }
 
 /// Warn on a traced cell (`#| trace: true` / `//| trace: true`) that never made it into a
-/// `.debug` div's own composite block — a stray `#| trace: true` on an ordinary showcase
+/// `.debug` div's own composite block: a stray `#| trace: true` on an ordinary showcase
 /// cell, or one folded into some OTHER div type (a callout, say). The cell's full trace
 /// still runs (real kernel work for Python, a real client-side capture for JS) for a
 /// `<script>` blob no `.tali-debug` container will ever exist to read back: work for
@@ -387,6 +442,34 @@ pub(crate) fn validate_stray_trace(html: &str, line: u32, file: Option<String>) 
         Warning::new("`#| trace: true` has no effect outside a `::: {.debug}` div".to_string())
             .at(file, line)
     })
+}
+
+/// Warn on a `::: {.debug}` nested inside any OTHER fenced div, whose traced cell is
+/// dropped on the floor.
+///
+/// A fenced div's composite `Block` folds its children's HTML into one string and can
+/// carry at most ONE `Cell`. `.debug` exploits that by hoisting its traced cell onto its
+/// own container (see `build_container`), which is what makes the cell reachable by the
+/// executor at all. A wrapping div then folds THAT container away in turn and carries no
+/// cell, so the trace never runs: the reader gets a dead code panel with an empty
+/// transport bar. `validate_stray_trace` cannot catch it, because the wrapper's HTML
+/// carries the `tali-debug` class and the trace marker alike.
+///
+/// This warns rather than propagating the cell up. Propagation is one line, but it can
+/// only ever rescue ONE `.debug` per wrapper, and the motivating case is exactly the one
+/// it cannot serve: two algorithms side by side in a `.panel-tabset`, where the first tab
+/// would quietly work and the second would quietly not. A rule that fixes half the cases
+/// and silently drops the other half is worse than the honest warning, so the limitation
+/// is stated here, in `docs/guide/using/debug.tmd`, and in the TAL-DEBUG-TRACE
+/// explanation. `line` is the 1-based source line of the nested `.debug`'s own opening
+/// fence, not the wrapper's.
+pub(crate) fn validate_nested_debug(line: u32, file: Option<String>) -> Warning {
+    Warning::new(
+        "a `.debug` nested inside another div cannot run its traced cell; move it to the \
+         top level"
+            .to_string(),
+    )
+    .at(file, line)
 }
 
 /// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
