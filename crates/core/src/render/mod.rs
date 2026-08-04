@@ -142,11 +142,6 @@ pub use page::{
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
 use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
-mod pyodide;
-pub use pyodide::{
-    PREVIEW_PYODIDE_DIR, PYODIDE_DIR_NAME, attach_pyodide_index, degrade_pyodide_cells,
-    pyodide_index_meta, pyodide_payload,
-};
 
 /// Render a `.tmd` source string into the `RenderedDoc` block model: the parse
 /// step only (no code execution, no page chrome). The dev server diffs these
@@ -804,31 +799,6 @@ fn render_internal_impl(
                     file.clone(),
                 ));
             }
-            // `emit_client_cell` escapes a literal `</script` in the author's source to
-            // `<\/script` so it survives inside the `<script>` element. A single-file
-            // `build` later reverses that escape (`degrade_pyodide_cells`) to recover the
-            // source for a `{pyodide}` cell — the one output path that can't ship the
-            // Pyodide runtime — but the reversal can't tell a real `</script` from an
-            // author-typed literal `<\/script`: both produce the same `<\/script` in the
-            // HTML. Warn HERE, while the real source is still in hand (that call site only
-            // ever sees rendered HTML), rather than let the reversal silently eat the
-            // backslash.
-            if let Some(c) = cell.as_ref()
-                && c.lang == "pyodide"
-                && c.code.contains("<\\/script")
-            {
-                warnings.push(
-                    Warning::new(
-                        "this `{pyodide}` cell's source contains the literal sequence \
-                         `<\\/script`: a single-file `build` degrades `{pyodide}` cells to \
-                         visible source by reversing an escape it applies to a real \
-                         `</script`, and cannot distinguish this literal from one — the \
-                         backslash will be silently dropped in that output"
-                            .to_string(),
-                    )
-                    .at(file.clone(), start_line as u32),
-                );
-            }
             (
                 sp.start.line,
                 sourcepos,
@@ -999,9 +969,8 @@ fn render_internal_impl(
                     // float). It falls through to the keeps-its-source arm below and warns
                     // like any other non-executing labelled cell.
                     // `client_lang_runnable` is the same reasoning one step further: a
-                    // client language whose runtime was compiled out (`{pyodide}` without
-                    // the `pyodide` feature) also materializes nothing, so it must not burn
-                    // a figure number either.
+                    // client language whose runtime is unavailable in this build also
+                    // materializes nothing, so it must not burn a figure number either.
                     let emitted_at_render_time = lang == "mermaid"
                         || (client_lang(&lang).is_some()
                             && client_lang_runnable(&lang)
@@ -1191,13 +1160,11 @@ fn render_internal_impl(
                 // does (item 79). `emit` keeps the highlighted source and the block's
                 // id/sourcepos, so click-to-source and the incremental swap are unaffected.
                 //
-                // A language whose runtime was compiled out takes the identical arm, for
-                // the identical reason: nothing will run it, so emitting the live wrapper
-                // would leave a husk. Doing it here rather than as a post-pass over
-                // finished HTML also sidesteps `degrade_pyodide_cells`' documented lossy
-                // round-trip (it recovers the source by reversing an `</script` escape that
-                // cannot be reversed unambiguously): the wrapper is never emitted, so it
-                // never needs reversing.
+                // A language whose runtime is unavailable in this build takes the identical
+                // arm, for the identical reason: nothing will run it, so emitting the live
+                // wrapper would leave a husk. Doing it here rather than as a post-pass over
+                // finished HTML also means the wrapper is never emitted, so no later stage
+                // has to recover the author's source back out of a `<script>` element.
                 emit(node, &attrs, &mut html);
             } else {
                 // Native interactive client-side cell (`{js}`, `{glsl}`): the matching
@@ -2047,7 +2014,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{pyodide_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{walk_s}{tabset_s}{scrolly_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
@@ -2055,7 +2022,6 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         },
         talijs_s = gate(has_client_cells(body), TALIESIN_JS),
         glsl_s = gate(has_client_cells_of(body, "glsl"), GLSL_JS),
-        pyodide_s = gate(has_client_cells_of(body, "pyodide"), PYODIDE_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
@@ -2103,10 +2069,6 @@ const NUMERICS_JS: &str = include_str!("../../assets/js/numerics.js");
 /// from the same reactive graph. Registers into `tali-js.js`'s language registry, so it is
 /// gated on `{glsl}` cells being present rather than shipping with every `{js}` page.
 const GLSL_JS: &str = include_str!("../../assets/js/glsl.js");
-/// `{pyodide}` cells: boots the vendored Pyodide runtime lazily and runs Python in the
-/// reader's browser. Registers into `tali-js.js`'s language registry, so it is gated on
-/// `{pyodide}` cells being present rather than shipping with every `{js}` page.
-const PYODIDE_JS: &str = include_str!("../../assets/js/pyodide.js");
 
 /// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot + the
 /// first-party numerics global. Emit only when a page actually has `{js}` cells (gated on

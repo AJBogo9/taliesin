@@ -38,14 +38,62 @@ fn fence_languages(html: &str) -> Vec<&str> {
     out
 }
 
+/// Cell languages that Taliesin once ran and has since withdrawn: `(lang, what to do
+/// instead)`.
+///
+/// **Why this register has to exist.** Fence languages are an *open* vocabulary (anything
+/// syntect knows is legal), so a withdrawn one does not get a did-you-mean; it falls to the
+/// generic "unknown code language" arm below. That message is actively misleading here: it
+/// says "check the spelling", when the spelling was right and the *capability* is gone. This
+/// is the same job `RETIRED_KEYS` does for front matter and `RETIRED_DIV_CLASSES` does for
+/// fenced divs; see this repo's CLAUDE.md on why a withdrawn vocabulary item needs one.
+///
+/// `pyodide` ran Python in the reader's browser on a vendored 15.7 MiB CPython/WASM build.
+/// It was withdrawn because the payload could only ever carry the stdlib plus NumPy (the
+/// tool does no network fetch), which is exactly the workload `{js}` already covers at zero
+/// marginal bytes.
+/// The note is the REMEDY only. `validate_code_languages` prefixes the fixed lead-in
+/// "is a retired cell language", which is what `diagnostics::codes` needles to classify the
+/// family: without a stable phrase every entry here would have to be added to that table by
+/// hand, and one that was forgotten would fall through to `(GENERIC, ERROR)` and fail
+/// `check`/`build --strict`/`publish` on a document whose only sin is being out of date.
+pub const RETIRED_CELL_LANGS: &[(&str, &str)] = &[(
+    "pyodide",
+    "it ran Python in the reader's browser and was removed along with its vendored runtime. \
+     Use `{js}` for computation that runs in the reader's browser, or `{python}` for \
+     computation that runs against a kernel at build time",
+)];
+
+/// The retirement note for a [`RETIRED_CELL_LANGS`] entry, or `None` if `lang` was never
+/// retired.
+pub fn retired_cell_lang(lang: &str) -> Option<&'static str> {
+    RETIRED_CELL_LANGS
+        .iter()
+        .find(|(l, _)| *l == lang)
+        .map(|(_, note)| *note)
+}
+
 /// Warn on any fenced code block whose language will not be highlighted.
 ///
 /// Tokens that render plain on purpose (`text`, `console`, `output`, …) are
-/// accepted by [`known_language`] and never warn.
+/// accepted by [`known_language`] and never warn. A *withdrawn* language is warned
+/// about too, but with its own note rather than the generic spelling advice: see
+/// [`RETIRED_CELL_LANGS`].
 pub fn validate_code_languages(blocks: &[Block]) -> Vec<Warning> {
     let mut out = Vec::new();
     for b in blocks {
         for lang in fence_languages(&b.html) {
+            // Retired first: a withdrawn language may still be a syntect-known token (as
+            // `pyodide` is not, but a future one could be), and the specific note must win
+            // over both the generic arm and silence.
+            if let Some(note) = retired_cell_lang(lang) {
+                let w = Warning::new(format!("`{{{lang}}}` is a retired cell language: {note}"));
+                out.push(match start_line(&b.sourcepos) {
+                    Some(l) => w.at(b.source_file.clone(), l),
+                    None => w,
+                });
+                continue;
+            }
             if known_language(lang) {
                 continue;
             }

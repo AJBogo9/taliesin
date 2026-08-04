@@ -32,13 +32,13 @@ pub struct ClientLang {
 
 /// The registered client-side cell languages.
 ///
-/// **Deliberately short.** `{sql}`/DuckDB and `{ts}`/esbuild stay cut until a corpus
-/// document needs one (each is a multi-MB vendored payload and its own licence question);
-/// `{glsl}` earned its place by needing neither — WebGL is a browser API, so the whole
-/// language costs one small enhancer and no vendored bytes. `{pyodide}` is the one entry
-/// that DID pay the multi-MB price, which is why it is delivered as a served directory
-/// rather than inlined, and why it is a separate fence from the kernel-backed `{python}`
-/// rather than a mode on it: the two sets below must stay disjoint.
+/// **Deliberately short, and every entry must earn its bytes.** `{sql}`/DuckDB and
+/// `{ts}`/esbuild stay cut until a corpus document needs one (each is a multi-MB vendored
+/// payload and its own licence question); `{glsl}` earned its place by needing neither,
+/// because WebGL is a browser API, so the whole language costs one small enhancer and no
+/// vendored bytes. `{pyodide}` was the one entry that DID pay the multi-MB price (a CPython
+/// WASM build) and it was **withdrawn**: see [`crate::diagnostics::RETIRED_CELL_LANGS`] for
+/// what an author who still has one gets told, and `notes/backlog.md` for the ruling.
 pub(crate) const CLIENT_LANGS: &[ClientLang] = &[
     ClientLang {
         lang: "js",
@@ -50,11 +50,6 @@ pub(crate) const CLIENT_LANGS: &[ClientLang] = &[
         mime: "application/tali-glsl",
         class: "tali-glsl-cell",
     },
-    ClientLang {
-        lang: "pyodide",
-        mime: "application/tali-pyodide",
-        class: "tali-pyodide-cell",
-    },
 ];
 
 /// The registry entry for a fence language, or `None` for a kernel/highlight-only one.
@@ -62,29 +57,15 @@ pub fn client_lang(lang: &str) -> Option<&'static ClientLang> {
     CLIENT_LANGS.iter().find(|c| c.lang == lang)
 }
 
-/// False for a registered client language whose runtime was compiled out.
+/// False for a registered client language whose runtime is unavailable in this build.
 ///
-/// Today only `{pyodide}`, whose vendored payload sits behind the `pyodide` cargo feature.
-/// The language stays in [`CLIENT_LANGS`] either way (the registry, the diagnostics and the
-/// mime contract are deliberately feature-independent), and only its ability to *run* is
-/// gated. Without this, a feature-off build would still emit a live
-/// `<script type="application/tali-pyodide">` wrapper whose `indexURL` meta is absent: an
-/// empty husk that loads nothing, which is precisely the failure `degrade_pyodide_cells`
-/// exists to prevent.
-///
-/// The two callers AND this into the gates that decide whether a client cell becomes live
-/// markup, so a compiled-out cell falls to the same `emit`-as-source arm `--no-exec` uses.
-#[cfg(feature = "pyodide")]
-pub fn client_lang_runnable(_lang: &str) -> bool {
-    true
-}
-
-/// See the feature-on twin above. Two `#[cfg]` bodies rather than one body containing
-/// `cfg!(…)`: the single-body form collapses to a const-foldable condition that clippy
-/// flags, and the workspace builds under `-D warnings`.
-#[cfg(not(feature = "pyodide"))]
+/// Every registered language runs on browser APIs alone today, so this is unconditionally
+/// true. It is kept as a named seam rather than inlined because it is the gate the emitter
+/// ANDs into "should this cell become live markup", and the alternative to a compiled-out
+/// runtime emitting a live wrapper is an empty husk that loads nothing. A future language
+/// with an optional payload wires in here and nowhere else.
 pub fn client_lang_runnable(lang: &str) -> bool {
-    lang != "pyodide"
+    client_lang(lang).is_some()
 }
 
 /// True if a rendered body carries a cell of any client-side language. Gates the shared

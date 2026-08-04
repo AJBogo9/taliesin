@@ -17,10 +17,6 @@ const OWN_JS: &[&str] = &[
     // it stays the curated set a document actually needs.
     "glsl.js",
     "numerics.js",
-    // `pyodide.js` is taliesin's own enhancer — a registration against tali-js.js. The
-    // VENDORED Pyodide runtime it loads lives in `assets/pyodide/` and is attributed by
-    // `the_vendored_pyodide_payload_is_complete_and_carries_its_licence`.
-    "pyodide.js",
 ];
 
 fn third_party_md() -> String {
@@ -183,144 +179,13 @@ fn the_pagedjs_version_claim_matches_the_vendored_library() {
 #[test]
 fn removed_deps_are_not_listed() {
     let doc = third_party_md();
-    for gone in ["reveal.js", "highlight.js"] {
+    // `Pyodide` covers the whole withdrawn stack: the vendored CPython/WASM runtime went
+    // with it, and so did NumPy's wheel and the CPython build inside it. Listing all three
+    // keeps a half-reverted re-vendor (bytes back, attribution stale, or the reverse) red.
+    for gone in ["reveal.js", "highlight.js", "Pyodide", "NumPy", "CPython"] {
         assert!(
             !doc.contains(gone),
             "THIRD_PARTY.md still lists removed dependency `{gone}`"
         );
     }
-}
-
-/// Pyodide is vendored for `{pyodide}` cells (backlog 158): a CPython + NumPy stack compiled
-/// to WebAssembly, so client-side Python runs with no kernel and no network.
-///
-/// **The version and the licence are both READ from upstream's own `package.json`**, never
-/// asserted as literals, so re-vendoring a new Pyodide without updating THIRD_PARTY.md goes
-/// red. The minified `pyodide.mjs` is deliberately not the source: its only version
-/// occurrence is `var Y="…"`, and `Y` is a build artifact that changes between releases, so
-/// a test anchored there would break on a re-vendor that was otherwise correct.
-///
-/// `package.json` is vendored for exactly this reason and is NOT part of the browser
-/// payload — `pyodide_payload()` does not serve it.
-#[test]
-fn the_pyodide_version_and_licence_claims_match_the_vendored_runtime() {
-    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let meta = std::fs::read_to_string(core.join("assets/pyodide/package.json"))
-        .expect("the vendored pyodide package.json should exist");
-
-    /// Pull a string value out of upstream's package.json by key.
-    fn field<'a>(meta: &'a str, key: &str) -> &'a str {
-        let anchor = format!("\"{key}\"");
-        let at = meta
-            .find(&anchor)
-            .unwrap_or_else(|| panic!("pyodide package.json should carry a `{key}` field"));
-        let rest = &meta[at + anchor.len()..];
-        let open = rest
-            .find('"')
-            .expect("a quoted value should follow the key");
-        let rest = &rest[open + 1..];
-        let close = rest.find('"').expect("the value should be terminated");
-        &rest[..close]
-    }
-
-    let version = field(&meta, "version");
-    let licence = field(&meta, "license");
-    assert!(
-        version.split('.').count() == 3 && version.starts_with(char::is_numeric),
-        "expected an x.y.z pyodide version from package.json, got `{version}`"
-    );
-
-    let doc = third_party_md();
-    assert!(
-        doc.contains(version),
-        "THIRD_PARTY.md claims a different Pyodide version than the vendored runtime \
-         (package.json says `{version}`)"
-    );
-    assert!(
-        doc.contains(licence),
-        "THIRD_PARTY.md claims a different Pyodide licence than upstream declares \
-         (package.json says `{licence}`)"
-    );
-}
-
-/// Every file under `assets/pyodide/` is vendored third-party code, and the directory MUST
-/// carry the upstream licence text beside it — MPL-2.0 §3.4 forbids removing notices, and the
-/// `pyodide-core` tarball ships no LICENSE of its own, so this is the only copy there is.
-///
-/// The completeness half matters as much as the attribution half: `pyodide.mjs` resolves its
-/// siblings by fixed name at runtime, so a payload missing one file fails in the reader's
-/// browser with a 404 and no server-side symptom at all.
-#[test]
-fn the_vendored_pyodide_payload_is_complete_and_carries_its_licence() {
-    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dir = core.join("assets/pyodide");
-    for required in [
-        "pyodide.mjs",
-        "pyodide.asm.mjs",
-        "pyodide.asm.wasm",
-        "python_stdlib.zip",
-        "pyodide-lock.json",
-        "numpy-2.4.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl",
-        "LICENSE",
-        // Provenance only: upstream's package.json, not part of the served browser payload.
-        "package.json",
-    ] {
-        assert!(
-            dir.join(required).is_file(),
-            "the vendored Pyodide payload is missing `{required}` — the runtime resolves its \
-             siblings by fixed name, so this fails only in the reader's browser"
-        );
-    }
-    let licence = std::fs::read_to_string(dir.join("LICENSE")).expect("LICENSE readable");
-    assert!(
-        licence.contains("Mozilla Public License Version 2.0"),
-        "assets/pyodide/LICENSE should be the MPL-2.0 text"
-    );
-    let doc = third_party_md();
-    for claim in ["Pyodide", "NumPy", "CPython"] {
-        assert!(
-            doc.contains(claim),
-            "THIRD_PARTY.md must attribute `{claim}` — it is redistributed inside \
-             assets/pyodide/"
-        );
-    }
-}
-
-/// The version-stamped directory name must name the payload actually vendored, or the runtime
-/// reaches the reader's browser as a 404 at boot and nowhere earlier.
-///
-/// Upstream's own `package.json` is the source of truth (it is vendored for exactly this and
-/// is not part of the served payload), the same anchor
-/// `the_pyodide_version_and_licence_claims_match_the_vendored_runtime` above uses for
-/// THIRD_PARTY.md.
-///
-/// **Lives here, not in `tests/pyodide.rs`, because it must run in a DEFAULT build.** That
-/// file is gated on the `pyodide` cargo feature; this assertion is not, because it compares
-/// two `const` strings against a file on disk and `assets/pyodide/` is git-tracked either way
-/// (the feature gates the `include_bytes!`, and `exclude` only affects a published `.crate`).
-/// A drift lock that stops running when the feature is off is a drift lock that does not run.
-#[test]
-fn the_vendored_pyodide_version_is_locked_to_the_payload() {
-    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let meta = std::fs::read_to_string(core.join("assets/pyodide/package.json"))
-        .expect("the vendored pyodide package.json should exist");
-    let anchor = "\"version\"";
-    let rest = &meta[meta.find(anchor).expect("a `version` field") + anchor.len()..];
-    let rest = &rest[rest.find('"').expect("a quoted value") + 1..];
-    let version = &rest[..rest.find('"').expect("a terminated value")];
-
-    assert_eq!(
-        taliesin_core::render::PYODIDE_DIR_NAME,
-        format!("pyodide-{version}"),
-        "the version-stamped directory name must name the payload actually vendored under \
-         `assets/pyodide/` (package.json says `{version}`); a stale name is served immutable"
-    );
-    // The derived form, pinned as a value rather than by construction: both constants are
-    // public API that the build (`_assets/<dir>/`) and both dev servers (the route) resolve
-    // independently, and a reader only ever sees the mismatch as a failed module import.
-    assert_eq!(
-        taliesin_core::render::PREVIEW_PYODIDE_DIR,
-        format!("/_taliesin/{}/", taliesin_core::render::PYODIDE_DIR_NAME),
-        "the preview route and the build's `_assets/` directory must name the same version"
-    );
 }

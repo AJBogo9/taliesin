@@ -36,7 +36,7 @@ pub use a11y::validate_a11y;
 pub use anchors::validate_internal_anchors;
 pub use assets::validate_local_assets;
 pub use bibliography::{bare_citation_key_not_rendered, citations_without_bibliography};
-pub use code_lang::validate_code_languages;
+pub use code_lang::{RETIRED_CELL_LANGS, retired_cell_lang, validate_code_languages};
 pub use headings::validate_duplicate_heading_ids;
 pub use links::validate_link_text_collisions;
 pub use links::validate_local_links;

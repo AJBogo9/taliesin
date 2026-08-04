@@ -62,15 +62,8 @@ jobs:
       # takes the tarball did not pay that cost and cannot re-enable it without rebuilding.
       # (It still needs a system Chrome at runtime; without one `read --run-js` reports
       # `skipped`, exactly as before.)
-      #
-      # `--features taliesin-server/pyodide` for the same policy (item 205): the 15.7 MiB
-      # vendored Pyodide runtime is off by default so a source build is ~16 MiB lighter, but
-      # the tarball stays the complete tool. It costs the downloader ~8.8 MiB compressed of a
-      # ~32 MiB download; shrinking THAT would need a sidecar asset and a new absent-payload
-      # failure mode, which was considered and rejected. Without the feature a `{pyodide}`
-      # cell renders as source, the same degradation `TALIESIN_NO_EXEC=1` already produces.
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server --features taliesin-server/headless-js,taliesin-server/pyodide
+        run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server --features taliesin-server/headless-js
       # The tarball carries the licence and the third-party notices next to the binary:
       # Taliesin is AGPL-3.0 and vendors third-party assets, so a bare binary would be a
       # distribution without the terms it is distributed under.

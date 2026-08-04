@@ -2524,7 +2524,7 @@ pub(crate) mod tests {
     /// must answer the bare preview URL with that document. This pins the fact the routing
     /// depends on: the one page's URL is NOT `index.html`, so a root request that falls
     /// through to the usual lookup finds nothing and serves the 404 page — for the one
-    /// document the author asked to see. (Caught by `pyodide_browser.rs`, which previews a
+    /// document the author asked to see. (Caught by a browser test that previews a
     /// `.tmd` and fetches `/`; a gate that only `tools/gates.sh` runs.)
     #[test]
     fn a_single_document_project_has_no_index_page_to_answer_the_root_with() {

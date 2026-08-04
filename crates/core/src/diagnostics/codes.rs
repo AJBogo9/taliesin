@@ -62,15 +62,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     // TAL-CITE-BIB. Also ahead of `broken link`, whose needle it contains as a substring
     // ("ambiguous link text" does not, but a link whose TEXT is "broken link" would).
     ("ambiguous link text", "TAL-LINK-TEXT", SUGGESTION),
-    // A `{pyodide}` cell whose source contains a literal `<\/script`: the escape a
-    // single-file `build` reverses to recover the source cannot tell that literal apart
-    // from a real `</script`, so it silently drops the author's backslash. SUGGESTION
-    // because it bites in exactly one output mode (single-file `build`; preview and every
-    // other build ship the real runtime and never reverse the escape), so a project that
-    // never emits a single file is not broken. Its needle (`<\/script`) is a symbol
-    // sequence no other diagnostic message could plausibly contain, so unlike the rows
-    // below its position is not load-bearing.
-    ("<\\/script", "TAL-PYODIDE-ESCAPE", SUGGESTION),
     // Opt-in prose lint (`prose-lint:`) — style advice, so SUGGESTION, and ahead of every
     // catalogued family on purpose: the needles below include ones as generic as
     // `("math", …)`, and a weasel-word message naming a word that contains a generic needle
@@ -200,6 +191,14 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("citations are present", "TAL-CITE-BIB", WARNING),
     ("bibliography", "TAL-CITE-BIB", WARNING),
     ("math", "TAL-MATH", WARNING),
+    // Ahead of `unknown code language` only for clarity; the two needles cannot both match,
+    // since the retirement arm returns before the generic one is reached. WARNING, not ERROR,
+    // so it lands at exactly the severity of the generic unknown-language case it replaces.
+    // Measured 2026-08-04 on a leftover `{pyodide}` cell: unclassified it fell through to
+    // `(GENERIC, ERROR)`; classified, a plain `build` exits 0 and `--strict` exits 1, which is
+    // byte-for-byte what a ```pyton typo already does. The point of the row is that parity,
+    // not an exemption — a located WARNING fails `--strict` either way.
+    ("is a retired cell language", "TAL-CELL-RETIRED", WARNING),
     ("unknown code language", "TAL-CODE-LANG", WARNING),
 ];
 
@@ -322,25 +321,6 @@ const EXPLANATIONS: &[Explanation] = &[
               label that disagrees with the visible text breaks voice control (WCAG 2.5.3, \
               Label in Name). This is advice, severity `suggestion`, so it never fails \
               `check`, `build --strict` or `publish` unless you ask with `check --strict`.",
-    },
-    Explanation {
-        code: "TAL-PYODIDE-ESCAPE",
-        title: "a `{pyodide}` cell's source has an ambiguous `<\\/script`",
-        cause: "The wrapper escapes a literal `</script` inside a `{pyodide}` cell's source \
-                to `<\\/script`, so it survives untouched inside the wrapping `<script>` \
-                element. The one output mode that cannot ship the 15.7 MiB Pyodide runtime \
-                — a single-file `build file.tmd out.html` — degrades the cell to visible \
-                highlighted source by reversing that escape, and the reversal cannot tell \
-                a real `</script` apart from an author who typed the literal `<\\/script` \
-                themselves: both produce the identical `<\\/script` in the rendered HTML, \
-                so in that one artifact the author's own backslash is silently dropped.",
-        fix: "Nothing to change unless you ship this exact page as a single self-contained \
-              file: preview and every other build mode ship the real Pyodide runtime and \
-              never reverse the escape, so the source stays exact there. This is advice, \
-              severity `suggestion`, so it never fails `check`, `build --strict` or \
-              `publish` unless you ask with `check --strict`. If a single-file build of \
-              this page matters, avoid writing the literal sequence `<\\/script` verbatim \
-              in the cell's source.",
     },
     Explanation {
         code: "TAL-PROSE-WEASEL",
@@ -719,6 +699,19 @@ const EXPLANATIONS: &[Explanation] = &[
         fix: "Use a recognized language tag, or leave the info string empty for an \
               unhighlighted block.",
     },
+    Explanation {
+        code: "TAL-CELL-RETIRED",
+        title: "a retired cell language",
+        cause: "The cell names a language Taliesin used to run and has since withdrawn. It \
+                is not a typo, so the spelling advice the generic unknown-language warning \
+                gives would be wrong: the capability is gone. The cell now renders as an \
+                ordinary unhighlighted block, and nothing executes it.",
+        fix: "Port the cell to the replacement the message names. Severity is `warning`, the \
+              same an unrecognized language token gets: a plain `build` still succeeds and \
+              writes the page, while `check` and `build --strict` report it and exit \
+              non-zero, so an unmigrated document does not silently ship as if nothing \
+              changed.",
+    },
 ];
 
 /// The [`Explanation`] for `code`, case-insensitively (`tal-fm-key` == `TAL-FM-KEY`), or
@@ -908,34 +901,6 @@ mod tests {
         // No replacement exists, so no structured suggestion may be lifted: an agent must
         // not be handed a fix to apply.
         assert_eq!(extract_suggestion(&csl[0].message), None);
-    }
-
-    #[test]
-    fn a_pyodide_escape_ambiguity_classifies_as_a_suggestion_not_the_generic_error() {
-        // Task-4 fix round 2. This warning previously matched no TABLE needle, so it fell
-        // through to `(GENERIC, ERROR)`: a literal `<\/script` inside a `{pyodide}` cell's
-        // Python string failed `build --strict` and `publish` for a cosmetic limitation of
-        // one output mode (single-file `build`; preview and every other build are
-        // unaffected). Pins BOTH the code and the severity — a test that only checked a
-        // diagnostic fired would pass even with the severity wrong, which is the exact
-        // defect this closes. Produced by the real render path (not a copied literal), so
-        // this can't drift from the shipped message.
-        let doc = crate::render::render_document_with_includes(
-            "```{pyodide}\nx = \"literal <\\/script> marker\"\n```\n",
-            std::path::Path::new("."),
-        );
-        let warning = doc
-            .warnings
-            .iter()
-            .find(|w| w.message.contains("<\\/script"))
-            .expect("the pyodide-escape warning fired");
-        assert_eq!(
-            classify(&warning.message),
-            ("TAL-PYODIDE-ESCAPE", SUGGESTION),
-            "must classify as the named family at SUGGESTION, not fall through to \
-             (GENERIC, ERROR): {}",
-            warning.message
-        );
     }
 
     #[test]

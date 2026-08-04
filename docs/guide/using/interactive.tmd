@@ -210,56 +210,6 @@ numbered, cross-referenceable figure. It participates in the same reactive graph
 `//| name:` and `//| input:` mean exactly what they mean for `{js}`, and `check` reports a
 dangling input in a shader the same way.
 
-## Python in the browser: `{pyodide}`
-
-A `{pyodide}` cell runs Python in the reader's browser: no Jupyter kernel, nothing
-executed at build time. It is a separate fence from `{python}`, not a mode on it:
-`{python}` runs against a warm kernel at build time, and the two never share state,
-even side by side on the same page.
-
-The runtime (Pyodide plus NumPy) is vendored and loads lazily: a cell starts fetching
-it once the cell comes within about a screen of the viewport, so a reader who stays
-well away from every `{pyodide}` cell downloads none of it. A cell near the top of a
-page therefore starts loading as soon as the page opens, without any scrolling.
-
-````markdown
-```{pyodide}
-#| name: samples
-import numpy as np
-rng = np.random.default_rng(0)
-rng.normal(size=500).tolist()
-```
-````
-
-A cell's last expression is its published value; `#| name:` puts that value into the
-same reactive graph a `{js}` or `{glsl}` cell publishes into, so a `{js}` cell
-downstream reads it with `tali.get(...)`. The value is `null` until the runtime has
-finished its first run, so a consumer should guard on that. `#| input:` works the
-same way in reverse: the named values are injected into the Python namespace before
-the cell runs, so the source reads them directly by name. A name is `None` until the
-value it refers to has actually arrived, so guard on that the same way a `{js}`
-consumer does. A name that is not a valid
-Python identifier (`my-slider`, say) still re-runs the cell but is *not* injected,
-because it cannot be spelled in Python source; the same rule `{glsl}` applies to a
-name that is not a valid uniform. `print` output is shown above the returned value,
-in the same order a `{python}` cell uses.
-
-Only the Python standard library and NumPy are available. Installing anything else
-would need a network fetch, which Taliesin does not do, so `import scipy` fails with
-Python's own traceback plus a note explaining that only the stdlib and NumPy ship
-with the page.
-
-A `{pyodide}` cell runs everywhere the output has room for the 15.7 MiB runtime beside
-the page: `taliesin preview`, a portable folder (`taliesin build file.tmd --out
-<dir>`), a multi-page **site** build (`taliesin build <dir>`), and a slide deck in any
-of them. Each copies the runtime into `_assets/` next to what it built.
-
-The one exception is a **single self-contained `.html` file**, which by definition has
-no beside: `taliesin build file.tmd out.html` and `taliesin build file.tmd --stdout`
-degrade a
-`{pyodide}` cell to a visible, highlighted source listing rather than ship a cell that
-could only ever show an error.
-
 ## Scrollytelling: `::: {.scrolly}`
 
 A `.scrolly` container pins a visual stage while a column of `.step` scenes scrolls

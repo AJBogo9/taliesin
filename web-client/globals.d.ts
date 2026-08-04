@@ -30,7 +30,7 @@ interface Window {
   /** Client-side cell runtime API (defined by tali-js.js): teardown a removed cell
    *  subtree, reset the whole runtime on a full re-mount (to avoid leaking WebGL
    *  contexts / RAF loops across edits + reconnects), and register a client-side cell
-   *  LANGUAGE. `registerLanguage` is the seam `glsl.js`/`pyodide.js` mount on: the
+   *  LANGUAGE. `registerLanguage` is the seam `glsl.js` mounts on: the
    *  `mime` must match the `<script type>` that language's `render/client_lang.rs`
    *  entry emits. `hooks` is the fourth argument tali-js.js's own `TaliLangSetup`
    *  typedef declares (language-only; never placed on `api`, which author cell

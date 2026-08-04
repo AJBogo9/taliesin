@@ -22,13 +22,8 @@ path = "src/main.rs"
 [features]
 default = []
 headless-js = ["dep:chromiumoxide"]
-# Passthrough so the workspace-root spelling matches `headless-js`: both are
-# `--features taliesin-server/<name>`. See `crates/core/Cargo.toml` for what it gates
-# (15.7 MiB of vendored WASM, 21.8% of the binary). Released tarballs turn it on, same
-# policy as `headless-js`: a DOWNLOADED binary is the complete tool.
-pyodide = ["taliesin-core/pyodide"]
 
-# All five need the driver to compile at all, so Cargo skips them unless the feature is on.
+# All four need the driver to compile at all, so Cargo skips them unless the feature is on.
 # `tools/gates.sh` passes `--features headless-js` and then asserts these tests
 # printed `... ok` BY NAME, so silently dropping the feature turns the gate red.
 [[test]]
@@ -46,11 +41,6 @@ required-features = ["headless-js"]
 [[test]]
 name = "reactive_browser"
 required-features = ["headless-js"]
-
-# Needs BOTH: a browser to drive, and the runtime it drives compiled in.
-[[test]]
-name = "pyodide_browser"
-required-features = ["headless-js", "pyodide"]
 
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }

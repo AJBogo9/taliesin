@@ -509,8 +509,8 @@
         // Publish a value that arrived AFTER this cell's `run()` resolved, and re-run the
         // cells that consume it. The shared wrapper publishes a cell's RETURN value and the
         // scheduler orders everything, which is correct for a synchronous language; a
-        // language whose value is genuinely asynchronous (`{pyodide}`: boot a runtime, then
-        // execute) has no such moment.
+        // language whose value is genuinely asynchronous (one that must boot a runtime
+        // before it can execute) has no such moment.
         //
         // A FOURTH ARGUMENT rather than a method on `api`, and that is the whole safety
         // design: `api` is handed verbatim to author cell source as `tali` (see the

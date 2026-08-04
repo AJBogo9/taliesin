@@ -4208,9 +4208,8 @@ fn cell_output_is_bounded_and_the_bound_lifts_in_print() {
         "cell output must not be hidden with until-found"
     );
     assert!(
-        css.contains(".tali-output > pre, .tali-output > table, .tali-output img, .tali-pyodide-stdout {\n      max-height: none; overflow: visible; }"),
-        "print lifts every output bound, including the {{pyodide}} cell's own \
-         --tali-output-max-bounded stdout pane"
+        css.contains(".tali-output > pre, .tali-output > table, .tali-output img {\n      max-height: none; overflow: visible; }"),
+        "print lifts every --tali-output-max-bounded output pane"
     );
 }
 

@@ -40,11 +40,10 @@ const SHADER: &str = "```{glsl}\nvoid main() { gl_FragColor = vec4(1.0); }\n```\
 fn every_registered_mime_is_looked_up_by_the_client_runtime() {
     let runtime = include_str!("../assets/js/tali-js.js");
     let glsl = include_str!("../assets/js/glsl.js");
-    let pyodide = include_str!("../assets/js/pyodide.js");
-    for lang in ["js", "glsl", "pyodide"] {
+    for lang in ["js", "glsl"] {
         let spec = client_lang(lang).expect("registered");
         assert!(
-            runtime.contains(spec.mime) || glsl.contains(spec.mime) || pyodide.contains(spec.mime),
+            runtime.contains(spec.mime) || glsl.contains(spec.mime),
             "`{}` is registered server-side as `{}` but no client file registers that mime",
             spec.lang,
             spec.mime
@@ -57,7 +56,7 @@ fn every_registered_mime_is_looked_up_by_the_client_runtime() {
 /// `exec.rs` without `exec.rs` having to know it exists.
 #[test]
 fn client_langs_never_reach_a_kernel() {
-    for lang in ["js", "glsl", "pyodide"] {
+    for lang in ["js", "glsl"] {
         assert!(client_lang(lang).is_some(), "{lang} should be registered");
         assert!(
             !executes_to_kernel(lang),
@@ -226,19 +225,13 @@ fn bare_output_strips_every_client_language_not_just_js() {
         "baseline: a shader emits a script"
     );
 
-    // `mut` + a conditional push rather than a literal list: with the runtime compiled out a
-    // `{pyodide}` cell emits no wrapper anywhere, so the pyodide row would assert nothing
-    // about `--bare` in particular, green for a reason unrelated to what this test names.
-    #[allow(unused_mut)]
-    let mut cases: Vec<(&str, &str)> = vec![
+    let cases: [(&str, &str); 2] = [
         ("glsl", SHADER),
         (
             "js",
             "```{js}\nreturn document.createElement(\"p\");\n```\n",
         ),
     ];
-    #[cfg(feature = "pyodide")]
-    cases.push(("pyodide", PY));
 
     for (label, src) in cases {
         let out = page(src);
@@ -333,103 +326,5 @@ fn a_name_published_by_a_shader_satisfies_a_js_consumer() {
     assert!(
         msgs.is_empty(),
         "a cross-language edge should resolve: {msgs:?}"
-    );
-}
-
-// Only the feature-gated assertions below render this, and an unused const is a
-// `dead_code` warning under the workspace's `-D warnings`.
-#[cfg(feature = "pyodide")]
-const PY: &str = "```{pyodide}\n#| name: xs\nimport numpy as np\nnp.arange(3).tolist()\n```\n";
-
-/// The wrapper contract is language-agnostic, and `{pyodide}` is the first client language
-/// whose comment marker is `#` rather than `//`. `option_directive` already accepts all three
-/// markers (`#`, `//`, `%%`), so the reactive options parse with no parser change — this is
-/// the test that says so, because a silent failure here is a cell that mounts and publishes
-/// nothing.
-///
-/// Gated per-test rather than per-file: this file's other assertions are about `{js}` and
-/// `{glsl}` and must keep running in a default build. Asserting an emitted `{pyodide}` wrapper
-/// only makes sense when the runtime that wrapper loads was compiled in.
-#[cfg(feature = "pyodide")]
-#[test]
-fn a_pyodide_cell_emits_the_shared_wrapper_with_hash_bar_options() {
-    let h = render(PY).body_html();
-    assert!(
-        h.contains("<script type=\"application/tali-pyodide\""),
-        "its own mime: {h}"
-    );
-    assert!(
-        h.contains("class=\"cell tali-pyodide-cell\"") && h.contains("class=\"tali-js-out\""),
-        "the SAME wrapper shape a `{{js}}` cell uses: {h}"
-    );
-    assert!(
-        h.contains("data-name=\"xs\""),
-        "`#| name:` parsed through the shared directive parser: {h}"
-    );
-    assert!(
-        h.contains("np.arange(3)"),
-        "author source rides verbatim: {h}"
-    );
-}
-
-/// The whole reason `{pyodide}` is a separate fence rather than a mode on `{python}`: the
-/// kernel-backed language must be completely unaffected. A `{python}` cell on the same page
-/// still goes to the executor, and a `{pyodide}` cell never does.
-/// The registry half runs in EVERY build, feature or no feature. That is not incidental: the
-/// `pyodide` cargo feature gates only the runtime's *bytes* and a cell's ability to run, and
-/// the promise that the language stays registered and stays off the kernel path is exactly
-/// what must not drift when the payload is compiled out. Only the emitted-markup half below
-/// is gated.
-#[test]
-fn pyodide_and_python_stay_disjoint_on_one_page() {
-    assert!(client_lang("pyodide").is_some());
-    assert!(!executes_to_kernel("pyodide"));
-    assert!(client_lang("python").is_none());
-    assert!(executes_to_kernel("python"));
-    // Feature-off, `{pyodide}` is registered but not runnable; feature-on, both hold.
-    assert_eq!(
-        taliesin_core::render::client_lang_runnable("pyodide"),
-        cfg!(feature = "pyodide"),
-        "the runtime's availability is exactly the cargo feature"
-    );
-    assert!(
-        taliesin_core::render::client_lang_runnable("js"),
-        "`{{js}}` needs no vendored payload and is runnable in every build"
-    );
-
-    #[cfg(feature = "pyodide")]
-    pyodide_and_python_stay_disjoint_in_the_emitted_markup();
-}
-
-/// The emitted-markup half of the test above, split out so the registry assertions keep
-/// running when the runtime is compiled out (feature-off there is deliberately no wrapper to
-/// count, so these assertions would not merely fail, they would be meaningless).
-#[cfg(feature = "pyodide")]
-fn pyodide_and_python_stay_disjoint_in_the_emitted_markup() {
-    let both = render(&format!("{PY}\n```{{python}}\nx = 1\n```\n")).body_html();
-    assert!(
-        both.contains("application/tali-pyodide"),
-        "the browser cell emits its wrapper: {both}"
-    );
-    // The real claim, asserted positively: the page carries exactly ONE client-cell
-    // wrapper — the `{pyodide}` one. Counting rather than probing for an absent literal is
-    // what makes this fail for the regression it names: if `{python}` were ever added to
-    // CLIENT_LANGS this becomes 2, whatever mime spelling that change happened to pick.
-    assert_eq!(
-        both.matches("<script type=\"application/tali-").count(),
-        1,
-        "exactly one client-cell wrapper (the `{{pyodide}}` one) should be emitted: {both}"
-    );
-    // The known-positive half: the `{python}` cell is still on the page as an ordinary
-    // kernel cell, source visible. Without this row the count above could pass because the
-    // Python cell vanished entirely, which is a different bug wearing the same green.
-    // `data-tali-cell="python"` rather than the literal source `"x = 1"`: server-side
-    // syntax highlighting splits the source into `<span>`-wrapped tokens
-    // (`<span ...>x</span> <span ...>=</span> <span ...>1</span>`), so the literal
-    // substring never appears in the rendered HTML — asserting it would fail on a
-    // correctly-rendering page, not on the regression this row exists to catch.
-    assert!(
-        both.contains("data-tali-cell=\"python\""),
-        "the `{{python}}` cell must still render as an ordinary kernel cell: {both}"
     );
 }

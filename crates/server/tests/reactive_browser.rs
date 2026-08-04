@@ -19,9 +19,10 @@
 //! unless `TALIESIN_REQUIRE_CHROME=1` turns the skip into a hard failure. One browser run
 //! serves every test here (a `OnceLock`).
 //!
-//! `api.publish` (item 158) is exercised by `pyodide_browser.rs`, not here: it is the
-//! asynchronous-value hook, and no language in this file produces one. A test asserting it
-//! exists without a language driving it would pass with `scheduleFrom` deleted.
+//! `api.publish` (the asynchronous-value hook) is NOT exercised here, and deliberately so:
+//! no language in this file produces an asynchronous value. Its only driver was `{pyodide}`,
+//! withdrawn along with its runtime, so the hook is currently unexercised. A test asserting
+//! it exists without a language driving it would pass with `scheduleFrom` deleted.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

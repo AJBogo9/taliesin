@@ -362,10 +362,6 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
         "glsl",
         "Fragment shader drawn to a live canvas in the reader's browser (no kernel).",
     ),
-    (
-        "pyodide",
-        "Python cell, run in the reader's browser via a vendored WebAssembly runtime (no kernel).",
-    ),
     ("mermaid", "Diagram rendered at build time."),
     ("bash", "Highlighted only; not executed."),
     ("sql", "Highlighted only; not executed."),

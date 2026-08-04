@@ -35,11 +35,6 @@
       "name": "glsl"
     },
     {
-      "description": "Python cell, run in the reader's browser via a vendored WebAssembly runtime (no kernel).",
-      "executes": false,
-      "name": "pyodide"
-    },
-    {
       "description": "Diagram rendered at build time.",
       "executes": false,
       "name": "mermaid"
