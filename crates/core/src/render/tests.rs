@@ -2611,6 +2611,17 @@ fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
 /// **A DECK keeps its own fullscreen** — see the sibling test below. The removed page-level
 /// implementation always early-returned on `.tali-deck`, so the two never shared code; a change
 /// that rips fullscreen out of `deck.js` too passes this test and fails that one.
+///
+/// **`::: {.debug}` is a second, narrower exception**, added 2026-08-04: its Expand control
+/// (`toggleExpand` in debug.js) fullscreens the WIDGET element itself, never
+/// `document.documentElement`, so it is not the page-level fullscreen the ruling removed, the
+/// same distinction that already lets the deck keep its own. It earned the exception because a
+/// stepped algorithm visualization (code panel plus a live data view) needs screen real estate
+/// the roughly-70ch reading column cannot give it; the project owner requested it explicitly for
+/// that reason. Because `debug.js` ships unconditionally in `OutputMode::Preview` (any live-diff
+/// edit can add a `.debug` block without a reload), the assertion below runs in `Build` mode
+/// instead, where the `body.contains("tali-debug")` gate is real and a debug-free page genuinely
+/// omits the needle.
 #[test]
 fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     let page = render_html_page("# Title\n\nProse to read.\n", "doc");
