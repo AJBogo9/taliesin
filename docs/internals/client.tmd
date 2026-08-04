@@ -20,7 +20,7 @@ The client is four files, each shipped as one `<script>` with no bundling:
 | `web-client/client.js` | Mounts the render, applies ops, reverse sync, click-to-source, the dev menu. Type-checked (`// @ts-check`). |
 | `web-client/search.js` | The Cmd-K command palette. |
 | `web-client/toc-spy.js` | The table-of-contents scrollspy. |
-| `crates/core/assets/js/code-enhance/` | The enhancer registry plus the built-in enhancers (copy buttons, reader menu, lightbox, …). |
+| `crates/core/assets/js/code-enhance/` | The enhancer registry plus the built-in enhancers (copy buttons, reader menu, keyboard, …). |
 
 `client.js` is the only one that talks to the websocket. The other three are
 self-contained features that ride along beside it, and the static `build` ships
@@ -254,9 +254,9 @@ indistinguishable from core's. The notable ones:
   library from the vendored copy — inlined into a static build, served same-origin in
   preview, so neither path touches the network. `TALIESIN_MERMAID_URL` overrides the
   loader URL in either mode.
-- The **reader menu** and its features (theme / text-size / spacing prefs, focus
-  mode, reading position + resume), the **image lightbox**, the
-  **keyboard shortcuts** layer, and the **skip link**.
+- The **reader menu** and its Theme control, the **keyboard** layer (the chapter
+  `←`/`→` shortcuts; the `?`/`/` character-key shortcuts and their WCAG 2.1.4
+  off-switch were retired), and the **skip link**.
 
 `window.taliEnhanceCode(root)` is the single entry point every caller (live client,
 static build) uses to run the whole list.

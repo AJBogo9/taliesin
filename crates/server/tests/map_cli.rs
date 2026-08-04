@@ -116,7 +116,7 @@ fn map_excludes_drafts_and_surfaces_mounts() {
 /// `symbols` verb: `xref_targets` on one file is exactly "what can I write after `@` in
 /// this document".
 ///
-/// The fixture is `corpus/reader/hovercards.tmd`, which carries both shapes an anchor can
+/// The fixture is `corpus/reader/xref-targets.tmd`, which carries both shapes an anchor can
 /// take: a brace anchor (`## Why it works {#sec-why}`) and a *cell* label
 /// (`%%| label: fig-flow`). The companion's completion once harvested only the first with a
 /// `/\{#([\w-]+)\}/` regex, so cell-labeled figures, tables and listings — the majority of
@@ -124,7 +124,7 @@ fn map_excludes_drafts_and_surfaces_mounts() {
 /// already builds is what keeps the two from drifting.
 #[test]
 fn map_of_one_file_lists_cell_labeled_and_brace_anchored_targets() {
-    let m = map_json(&corpus("reader/hovercards.tmd"));
+    let m = map_json(&corpus("reader/xref-targets.tmd"));
     let pages: Vec<&str> = m["pages"]
         .as_array()
         .unwrap()
@@ -133,7 +133,7 @@ fn map_of_one_file_lists_cell_labeled_and_brace_anchored_targets() {
         .collect();
     assert_eq!(
         pages,
-        vec!["hovercards.tmd"],
+        vec!["xref-targets.tmd"],
         "a single file is a project of exactly that page: {pages:?}"
     );
 
@@ -154,13 +154,18 @@ fn map_of_one_file_lists_cell_labeled_and_brace_anchored_targets() {
 }
 
 /// Reading one document must not boot a Jupyter kernel: an editor may call this on a
-/// keystroke. `hovercards.tmd`'s `fig-flow` is a *cell* label and resolves with no Python
+/// keystroke. `xref-targets.tmd`'s `fig-flow` is a *cell* label and resolves with no Python
 /// in sight — a cell's `label:` is registered while the block model is built, long before
 /// the cell would run.
 #[test]
 fn map_of_one_file_is_parse_only() {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
-        .args(["map", &corpus("reader/hovercards.tmd"), "--format", "json"])
+        .args([
+            "map",
+            &corpus("reader/xref-targets.tmd"),
+            "--format",
+            "json",
+        ])
         .env("TALIESIN_PYTHON", "/nonexistent/python")
         .env("TALIESIN_R", "/nonexistent/R")
         .output()
@@ -211,7 +216,7 @@ fn an_anchor_that_cannot_be_referenced_is_not_a_target() {
 #[test]
 fn an_unknown_format_is_a_hard_error_with_a_did_you_mean() {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
-        .args(["map", &corpus("reader/hovercards.tmd"), "--formt", "json"])
+        .args(["map", &corpus("reader/xref-targets.tmd"), "--formt", "json"])
         .output()
         .expect("run");
     let err = String::from_utf8_lossy(&out.stderr);

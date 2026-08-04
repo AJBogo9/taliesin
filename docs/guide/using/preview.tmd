@@ -288,12 +288,9 @@ their own box instead of stretching the page; type and spacing tighten on narrow
 screens; in-page links scroll smoothly; and everything honours
 `prefers-reduced-motion`.
 
-On a phone the table of contents becomes a **pull-up sheet**: a labelled
-**Contents** button at the bottom edge that you press to open and press again to
-close (or drag up, if you would rather), with the current section flashing in
-above it as you scroll. It stays put while the sheet is open, so the way in is
-also the way out. It is keyboard- and screen-reader-friendly (Enter/Space to
-toggle, Escape to close).
+On a phone the table of contents drops the sticky sidebar and appears inline,
+after the article, rather than floating alongside it — there is no separate
+button or sheet to open.
 
 To see it on a real device, start the server with `--host`:
 

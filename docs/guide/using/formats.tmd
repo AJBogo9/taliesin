@@ -249,9 +249,9 @@ automatically alongside the page. Here is this manual's own feature deck:
 
 A **page** with `toc: true` gains a table of contents built from its heading anchors
 and rebuilt live as you edit, with the current section highlighted as you scroll (a
-scrollspy). On a wide screen it's a sticky sidebar; on a phone it collapses into a
-pull-up sheet. A **book** has no such rail: its Chapters drawer lists every chapter
-instead.
+scrollspy). On a wide screen it's a sticky sidebar; on a phone it appears inline,
+after the article. A **book** has no such rail: its Chapters drawer lists every
+chapter instead.
 
 A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:`:
 their presence makes it a book (no `type:` needed), optionally grouped into

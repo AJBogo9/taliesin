@@ -75,10 +75,11 @@ Independent of the table above, the reading experience is deliberately adjustabl
 because these are personal preferences rather than document configuration:
 
 - **Theme** (auto / light / dark), with contrast verified in each.
-- **Text size and line spacing.**
-- **Focus mode**, which removes surrounding chrome.
 - **`prefers-reduced-motion`** is honoured for every animation and for
   JavaScript-initiated scrolling, not only for CSS transitions.
+
+There is deliberately no text-size, line-spacing, or focus-mode control: see
+[The reader experience](../using/reading.tmd) for why.
 
 ## Reporting a barrier
 

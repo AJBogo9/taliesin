@@ -220,7 +220,7 @@ ships less JavaScript without losing any feature. `--bare` goes further for a
 single document: it ships **no** `<script>` at all and themes purely with CSS (a forced
 `theme:` is hard-coded; otherwise it follows the OS via `prefers-color-scheme`).
 Server-rendered math still works; `{js}` cells, Mermaid rendering, and the
-copy/lightbox/reader controls are dropped (each warned, never silently). A slide deck or
+copy/reader controls are dropped (each warned, never silently). A slide deck or
 a `<dir>` site is refused (their navigation needs JavaScript). A `build` skips code
 execution only through the `TALIESIN_NO_EXEC=1` environment variable, not a `--no-exec`
 flag.
@@ -316,8 +316,8 @@ A `--out <dir>` build (single doc, site, or book) is a **self-contained folder**
 `index.html` straight from disk (`file://`), or zip the folder and send it. Everything
 the reader needs is copied in and works with no server and no network, **offline**:
 navigation and prev/next, the Cmd-K search across the whole book, all math (rendered to
-KaTeX at build time with the fonts inlined), the reading enhancers (theme toggle,
-reading position and resume, the mobile pull-up table of contents), and any `{js}` cells (the
+KaTeX at build time with the fonts inlined), the reading enhancers (theme toggle, the
+table of contents and its scrollspy), and any `{js}` cells (the
 `d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is *not* shipped into
 a build (it belongs to the live preview), so a reader never gets a dead outline.
 

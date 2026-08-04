@@ -1,6 +1,6 @@
 ---
 title: "Rich writing"
-description: "The prose surface: typography, offline math, diagrams, figures and lightbox, callouts, citations, sidenotes and raw HTML passthrough."
+description: "The prose surface: typography, offline math, diagrams, figures, callouts, citations, sidenotes and raw HTML passthrough."
 bibliography: ../references.bib
 ---
 
@@ -73,7 +73,7 @@ $$
 ## Diagrams
 
 A `{mermaid}` code block renders client-side with mermaid.js, loaded lazily the
-first time a diagram appears, and like figures they are **click-to-zoom**.
+first time a diagram appears.
 Diagrams-from-code is a first-class feature, not an afterthought; the colours are
 CSS-driven, so they follow the theme. Adding `%%| label: fig-…` and `%%| fig-cap:`
 turns a diagram into a numbered, captioned figure you can cross-reference, just
@@ -119,19 +119,18 @@ stateDiagram-v2
   Respawned --> Idle: re-run all cells
 ```
 
-## Figures, captions, and lightbox
+## Figures and captions
 
 A standalone image with a `{#fig-…}` attribute, or a code cell tagged with
-`#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`; clicking it
-opens a full-screen **lightbox** (click the enlarged image again, the backdrop,
-`Esc` or the `×` to dismiss it), and `@fig-` cross-references resolve to its
-number. @fig-scree is drawn by a matplotlib cell that sets *no* theme colours:
+`#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`, and `@fig-`
+cross-references resolve to its number. @fig-scree is drawn by a matplotlib cell
+that sets *no* theme colours:
 inline figures default to a transparent background with neutral-grey axes, so they
 track the light/dark theme on their own.
 
 ```{python}
 #| label: fig-scree
-#| fig-cap: "Variance explained per principal component. Click to zoom."
+#| fig-cap: "Variance explained per principal component."
 #| echo: false
 import matplotlib.pyplot as plt
 

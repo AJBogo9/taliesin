@@ -3,10 +3,8 @@ title: "A longer read"
 toc: true
 ---
 
-This page is deliberately long. It exists to be scrolled, so your position is remembered as
-you move down it: close the tab partway through and a *Resume reading* pill brings you back to
-the exact block you left, anchored to that block's content hash rather than a raw scroll
-offset, so it survives a re-render or a change of window size.
+This page is deliberately long. It exists to be scrolled, so the point is orientation: how a
+reader keeps their bearings on a page with no chapter breaks to lean on.
 
 ## On length
 
@@ -19,15 +17,13 @@ reader already knows, and a second bar painted along the top says the same coars
 twice while moving in the corner of your eye. So this page adds nothing to it. What is worth
 adding is the part the scrollbar genuinely cannot do, which is the next two sections.
 
-## On memory
+## On the table of contents
 
-The second thing a long read owes its reader is memory. Reading is rarely done in one sitting.
-You stop to think, to eat, to sleep, and you come back. A tool that forgets where you were
-punishes the very act of returning, which is the act most worth encouraging. The browser's
-native scroll restoration is unreliable and coarse; it remembers a pixel offset that means
-nothing after the layout reflows on a different screen. Anchoring to a block's identity is
-exact, and it is the kind of thing Taliesin can do that a plain web page cannot, because every
-block already carries a stable, content-derived id.
+The second thing a long read owes its reader is a live answer to "where am I", not just a
+scrollbar. With `toc: true`, the section you are in highlights in the table of contents as you
+scroll, so a glance at the rail says where you are without you doing the arithmetic yourself.
+That is the whole trick: no memory of a past visit required, just an honest, current answer
+every time you look up.
 
 ## On estimates
 
@@ -40,27 +36,20 @@ pretends to a precision it does not have.
 ## On restraint
 
 The danger with reading aids is that they crowd the page. A progress bar that pulses, a
-counter that jumps, a pill that nags: each one steals attention from the words, which is the
-opposite of the point. The right amount of chrome is the least amount that still answers the
-reader's two quiet questions, *where am I* and *can I come back*, and then gets out of the
-way. The first question the browser's own scrollbar already answers, which is why there is no
-progress bar here to answer it twice; the second gets a small number and a pill that appears
-once and then dismisses itself.
+counter that jumps: each one steals attention from the words, which is the opposite of the
+point. The right amount of chrome is the least amount that still answers the reader's quiet
+question, *where am I*, and then gets out of the way. The browser's own scrollbar already
+answers it, which is why there is no progress bar here to answer it twice, and the table of
+contents above answers it a second, more specific way: which section, not just how far down
+the pixels run.
 
 ## A middle section
 
 Here is more prose so the page is genuinely long. The measure of a reading surface is not how
 much it can show but how little it asks. Every control is a small tax on attention. The ones
 worth keeping are the ones a reader would miss if they were gone, and would not think about
-while they were there. Orientation and memory pass that test. They are invisible until needed
-and obvious the moment they are.
-
-## Another section
-
-The same logic that makes the live editor fast, a stable block model with content-hash ids,
-is what makes the reader's position durable. The architecture that was built for the author
-pays the reader too. That is the recurring shape of Taliesin's best features: one structural
-idea, the identified block, cashed in two directions at once.
+while they were there. Orientation passes that test: it is invisible until needed and obvious
+the moment it is.
 
 ## On finishing
 
@@ -72,6 +61,5 @@ with confetti, just with the honest absence of anywhere further to go.
 
 ## The end
 
-There is nothing after this heading except the satisfaction of having arrived. If your
-position was saved on the way down, reloading this page should offer to bring you back to
-wherever you were, not here.
+There is nothing after this heading except the satisfaction of having arrived, and the table
+of contents above should agree: this last section, highlighted, with nowhere further to go.

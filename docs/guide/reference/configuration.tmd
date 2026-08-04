@@ -150,9 +150,8 @@ HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 **Table of contents.** A site-wide `toc: true` shows the right-hand "on this page"
 list only on pages with **at least three headings**, so a short page doesn't get a
 near-empty rail. To override the auto-gate, set `toc:` in a page's own front matter:
-an explicit `toc: true` / `toc: false` always wins. On narrow screens the list becomes
-a pull-up sheet (a handle at the bottom of the screen: tap or drag it up) instead of a
-sidebar.
+an explicit `toc: true` / `toc: false` always wins. On narrow screens the list appears
+inline after the article instead of floating as a sidebar.
 
 `toc:` is a **website** key. A book has no right-hand rail: the Chapters drawer is its
 navigation instead, so a second, shallower list beside the text earned nothing. Writing

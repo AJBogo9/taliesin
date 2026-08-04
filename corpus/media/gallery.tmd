@@ -2,8 +2,8 @@
 title: "An image gallery"
 ---
 
-Every figure is click-to-zoom, and a multi-image page becomes a navigable gallery:
-open one and step through the rest with the ← / → arrow keys.
+A multi-image page becomes a gallery with `layout-ncol`: a row of figures, each still a
+normal, numbered, captioned, cross-referenceable figure in its own right.
 
 ::: {layout-ncol=3}
 ![No pooling.](fit-b.png){#fig-no-pooling}
@@ -13,8 +13,8 @@ open one and step through the rest with the ← / → arrow keys.
 ![Hierarchical (partial pooling).](fit-a.png){#fig-hierarchical}
 :::
 
-The three fits above (@fig-no-pooling, @fig-complete-pooling, and @fig-hierarchical)
-zoom into one gallery: click any one, then step through the others with ← / →.
+The three fits above (@fig-no-pooling, @fig-complete-pooling, and @fig-hierarchical) sit
+side by side, in the order they were written, and each keeps its own caption and number.
 
 ## Side-by-side columns
 
