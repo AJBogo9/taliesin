@@ -112,6 +112,98 @@ fn traced_python_records_a_line_per_step_with_locals_and_writes() {
     assert_eq!(t["truncated"], false);
 }
 
+/// Regression pin for the freeze cache blind-spotting `#| trace: true`. `compute_outputs`
+/// used to hash `cell.code` alone; `#| trace: true` is a directive line
+/// `strip_cell_options` already strips out of `cell.code` before it is ever hashed or
+/// executed, so toggling the flag left the cumulative hash unchanged. A cell already
+/// cached UNTRACED then reported a cache hit on the traced re-run and silently replayed
+/// the old, trace-free output: a `.debug` block that finds no trace, with no error, in
+/// the primary authoring workflow (edit a cell, add `#| trace: true`, expect a trace).
+///
+/// Runs with the freeze cache ACTIVE (no `TALIESIN_NO_CACHE`) end to end through the real
+/// `build` CLI, twice, against the SAME file path and the SAME `_freeze/` directory, so
+/// this proves the on-disk cache key itself discriminates rather than only in-memory
+/// per-process state.
+#[test]
+fn toggling_trace_on_a_cached_cell_busts_the_key_instead_of_replaying_the_old_output() {
+    let Some(py) = python_or_skip() else { return };
+
+    let dir = std::env::temp_dir().join(format!("tali-debug-cachebust-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("t.tmd");
+
+    let untraced = "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\nx = 1\nprint(x)\n```\n:::\n";
+    fs::write(&src, untraced).unwrap();
+
+    // Run 1: no trace flag, freeze cache ACTIVE (no TALIESIN_NO_CACHE). This is the run
+    // that must populate `_freeze/t.json`.
+    let out1 = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_PYTHON", &py)
+        .output()
+        .expect("build must run");
+    assert!(
+        out1.status.success(),
+        "first (untraced) build failed: {}",
+        String::from_utf8_lossy(&out1.stderr)
+    );
+    let html1 = String::from_utf8_lossy(&out1.stdout).into_owned();
+    assert!(
+        extract_trace(&html1).is_none(),
+        "the untraced run must not emit a trace blob"
+    );
+
+    // Confirm the cache was actually populated by run 1, not just assumed: read
+    // `_freeze/t.json` back and check it holds a real entry, and that the cached value
+    // itself is the untraced output (no trace blob baked into what got persisted).
+    let freeze_path = dir.join("_freeze").join("t.json");
+    let freeze_bytes = fs::read(&freeze_path)
+        .unwrap_or_else(|e| panic!("run 1 must have written {}: {e}", freeze_path.display()));
+    let on_disk: serde_json::Value =
+        serde_json::from_slice(&freeze_bytes).expect("_freeze/t.json must be valid JSON");
+    let entries = on_disk["entries"]
+        .as_array()
+        .expect("_freeze/t.json must have an entries array");
+    assert!(
+        !entries.is_empty(),
+        "run 1 must have cached at least one cell, got {} entries",
+        entries.len()
+    );
+    assert!(
+        entries.iter().all(|e| !e["v"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("tali-debug-trace")),
+        "the entry cached by the untraced run must not itself hold a trace blob"
+    );
+
+    // Run 2: SAME file, SAME freeze dir, only `#| trace: true` added. `strip_cell_options`
+    // removes that directive line before it reaches the hashed/executed code, so the
+    // cell's `code` text is byte-identical between the two runs; only `traced` differs.
+    let traced = "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\nx = 1\nprint(x)\n```\n:::\n";
+    fs::write(&src, traced).unwrap();
+
+    let out2 = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_PYTHON", &py)
+        .output()
+        .expect("build must run");
+    assert!(
+        out2.status.success(),
+        "second (traced) build failed: {}",
+        String::from_utf8_lossy(&out2.stderr)
+    );
+    let html2 = String::from_utf8_lossy(&out2.stdout).into_owned();
+    assert!(
+        extract_trace(&html2).is_some(),
+        "toggling `#| trace: true` on a cell already cached untraced must still produce \
+         a trace blob instead of replaying the cached untraced output"
+    );
+}
+
 fn extract_trace(html: &str) -> Option<String> {
     let open = "<script type=\"application/json\" class=\"tali-debug-trace\">";
     let start = html.find(open)? + open.len();

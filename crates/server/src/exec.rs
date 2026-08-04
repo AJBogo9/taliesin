@@ -661,8 +661,25 @@ impl Executor {
             Some((_, program)) => interp_id(lang, &program).await,
             None => lang.to_string(),
         };
-        let code_refs: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
-        let hashes = freeze::cumulative_hashes(&interp, &code_refs);
+        // A traced cell's hash key folds in a marker so toggling `#| trace: true` busts
+        // the cache. `strip_cell_options` already stripped that directive line out of
+        // `c.code` itself (it isn't code the kernel runs), so without this a cell whose
+        // UNTRACED output is already cached would silently replay it instead of
+        // re-tracing: same `c.code`, same key, `known(i)` reports a hit, and the wrap in
+        // the execute loop below never runs because the cell never re-executes at all.
+        // Only a traced cell's key changes, so an existing all-untraced cache stays hit.
+        let code_refs: Vec<String> = cells
+            .iter()
+            .map(|c| {
+                if c.traced {
+                    format!("{}\n#| trace: true", c.code)
+                } else {
+                    c.code.clone()
+                }
+            })
+            .collect();
+        let code_ref_strs: Vec<&str> = code_refs.iter().map(String::as_str).collect();
+        let hashes = freeze::cumulative_hashes(&interp, &code_ref_strs);
 
         // A cell is "known" (restorable without running) when its output is on disk
         // and it isn't opted out (`#| cache: false` always re-executes). A forced
