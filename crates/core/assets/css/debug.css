@@ -4,21 +4,40 @@
    and appends `.dbg-vars` + `.dbg-transport` at the end, so this file positions all five by
    grid-area rather than by source order.
 
-   Two columns wide, `.dbg-code` spanning them full-height on the left (sticky, like the
-   code-walkthrough's `.cw-stage`) with the observation panels stacked on the right; one
-   column on a narrow viewport, code first. `.dbg-stage` holds `renderStage`'s bars/boxes/
-   grid/pointer-caret views (further down this file); `:empty` still collapses it to
-   nothing on a frame whose locals earn no picture at all. */
+   Mobile-first: one column, code first, below 900px (the container is already
+   `.column-page`, set server-side by divs.rs, so even the narrow layout gets the wider-
+   than-prose reading measure). At 900px and up, `.dbg-code` becomes a narrow left column
+   (sticky, like the code-walkthrough's `.cw-stage`) with the observation panels stacked in
+   the wide column on the right: a code panel and a data view were never going to split
+   evenly, the data view is the part that needs the room. `.dbg-stage` holds
+   `renderStage`'s bars/boxes/grid/pointer-caret views (further down this file); `:empty`
+   still collapses it to nothing on a frame whose locals earn no picture at all. */
 .tali-debug {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas:
-    "code  views"
-    "code  vars"
-    "code  stage"
-    "trans trans";
+  /* `minmax(0, 1fr)`, not a bare `1fr`: a grid track's default minimum width is its
+     content's intrinsic (un-shrinkable) width, so without the explicit `0` floor a wide
+     `.dbg-stage` view (a many-column DP grid) would keep the whole `.tali-debug` box, and
+     with it the page body, from ever narrowing below that content's natural width. This
+     was latent since Task 3 (which always left `.dbg-stage` empty) and only surfaced once
+     Task 4 put real width-bearing content there. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "code" "trans" "vars" "stage" "views";
   gap: 1rem 1.75rem;
   margin: 1.6rem 0;
+}
+@media (min-width: 900px) {
+  .tali-debug {
+    /* The code column is a CAP (22rem), not a share of the box: `.dbg-code` already
+       carries `overflow: auto` (below), which is what lets this track shrink toward its
+       `0` floor instead of forcing the box wide when the viewport is tight, the same
+       automatic-minimum-size mechanism the `minmax(0, 1fr)` comment above relies on. */
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    grid-template-areas:
+      "code  views"
+      "code  vars"
+      "code  stage"
+      "trans trans";
+  }
 }
 .tali-debug > .dbg-code { grid-area: code; }
 .tali-debug > .dbg-views { grid-area: views; }
@@ -30,26 +49,41 @@
    click), so the ring only needs to answer "where did keyboard focus land", never "where do
    I tab to next". */
 .tali-debug:focus-visible { outline: var(--tali-focus); outline-offset: var(--tali-focus-offset); }
-@media (max-width: 60rem) {
-  .tali-debug {
-    /* `minmax(0, 1fr)`, not a bare `1fr`: a grid track's default minimum width is its
-       content's intrinsic (un-shrinkable) width, so without the explicit `0` floor a wide
-       `.dbg-stage` view (a many-column DP grid) would keep the whole `.tali-debug` box,
-       and with it the page body, from ever narrowing below that content's natural width.
-       This was latent since Task 3 (which always left `.dbg-stage` empty) and only
-       surfaced once Task 4 put real width-bearing content there; the two-column rule above
-       already had the `minmax(0, ...)` floor, this one just needs to match it. */
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "code" "trans" "vars" "stage" "views";
-  }
+
+/* Full screen (debug.js's `toggleExpand`, the deck.js `toggleFullscreen` pattern reused
+   verbatim): the code column widens a little (context stays legible up close) and the box
+   gets real padding plus its own opaque background, since a fullscreen element otherwise
+   paints straight over whatever the page happened to have underneath it. Both the columns
+   AND the areas are repeated here (not just the columns): a phone can request fullscreen
+   too, under the 900px breakpoint above, and without restating the areas the box would
+   still be carrying the single-column area strings from the unqualified rule, leaving the
+   whole second column empty instead of holding the data view. `.dbg-overlay` is the
+   fallback class for a browser or embedding context (a sandboxed iframe, a
+   permissions-policy block) where the real Fullscreen API is unavailable or throws;
+   `toggleExpand` in debug.js picks whichever one actually works. */
+.tali-debug:fullscreen, .tali-debug.dbg-overlay {
+  grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
+  grid-template-areas:
+    "code  views"
+    "code  vars"
+    "code  stage"
+    "trans trans";
+  margin: 0;
+  padding: 1.5rem;
+  background: var(--tali-bg);
 }
+/* The real Fullscreen API already sizes and positions its element via the UA stylesheet;
+   only the class-toggle fallback needs to be told to cover the viewport itself. */
+.tali-debug.dbg-overlay { position: fixed; inset: 0; z-index: 100; overflow: auto; }
 
 .dbg-code { position: sticky; top: .5rem; align-self: start; max-height: 70vh; overflow: auto; }
 .dbg-code pre { margin: 0; }
-@media (max-width: 60rem) {
-  /* A sticky code panel on a phone-width single column eats the same viewport the reader
-     is trying to scroll the observation panels in; drop the pin and cap the height instead,
-     the same trade the code-walkthrough's `.cw-code` makes at this breakpoint. */
+@media (max-width: 899px) {
+  /* A sticky code panel on a single-column layout eats the same viewport the reader is
+     trying to scroll the observation panels in; drop the pin and cap the height instead,
+     the same trade the code-walkthrough's `.cw-code` makes at its own breakpoint. Matches
+     the `.tali-debug` two-column breakpoint above (900px) exactly, so sticky positioning
+     only ever turns on once there is a second column for it to stay clear of. */
   .dbg-code { position: static; max-height: 42vh; }
 }
 

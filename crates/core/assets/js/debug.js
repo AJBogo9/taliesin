@@ -28,8 +28,12 @@
 // and scrolly.js), idempotent via `data-dbg-init`, and self-cleaning: the only thing
 // that outlives a live-diff swap is the `setTimeout` play loop, which checks
 // `root.isConnected` before scheduling its next tick. The click/keydown listeners live on
-// `root` itself, so they are garbage-collected with it: nothing is attached to
-// `window`/`document` that would need explicit teardown.
+// `root` itself, so they are garbage-collected with it. The one exception is the Expand
+// control's `fullscreenchange` sync (near the bottom of this file): a SINGLE
+// `document`-level listener registered ONCE for the whole page, not once per block, so a
+// live-diff swap that mounts and unmounts many `.tali-debug` blocks over a session never
+// accumulates listeners to leak. It closes over nothing block-specific and re-queries the
+// DOM on every fire, so there is nothing to tear down when a block disconnects.
 (function () {
   var STEP_MS = 260;
   var noAutoplay = !!(
@@ -410,13 +414,14 @@
   }
 
   // The transport bar: first/back/play-pause/forward/last, a scrub range, a step count and
-  // an expand button (the last one is inert here; a later task wires fullscreen to it, but
-  // rendering it now means the bar's layout doesn't shift when that lands). Built with no
-  // outside references so `init` wires every control's behaviour itself, over the plain
-  // element handles returned alongside `{el, sync}`.
+  // an expand button (fullscreen toggle, wired in `init` via `toggleExpand`/
+  // `syncExpandButtons` below). Built with no outside references so `init` wires every
+  // control's behaviour itself, over the plain element handles returned alongside
+  // `{el, sync}`.
   /** @returns {{el: HTMLElement, sync: (i: number, total: number, frame: any) => void,
    *   first: HTMLButtonElement, back: HTMLButtonElement, play: HTMLButtonElement | null,
-   *   forward: HTMLButtonElement, last: HTMLButtonElement, range: HTMLInputElement}} */
+   *   forward: HTMLButtonElement, last: HTMLButtonElement, range: HTMLInputElement,
+   *   expand: HTMLButtonElement}} */
   function buildTransport() {
     var el = document.createElement('div');
     el.className = 'dbg-transport';
@@ -450,8 +455,11 @@
     count.className = 'dbg-count';
     el.appendChild(count);
 
-    // Wired in a later task (fullscreen); rendered now so the bar's width is stable.
-    mkBtn('Expand', 'dbg-expand');
+    // `aria-pressed` starts honest (nothing is fullscreen yet); `syncExpandButtons` below
+    // keeps it honest afterward, including when the browser exits fullscreen on its own
+    // (Escape) without ever calling our click handler.
+    var expand = mkBtn('Expand', 'dbg-expand');
+    expand.setAttribute('aria-pressed', 'false');
 
     /** @param {number} i @param {number} total */
     function sync(i, total) {
@@ -463,7 +471,53 @@
       forward.disabled = last.disabled = i >= total - 1;
     }
 
-    return { el: el, sync: sync, first: first, back: back, play: play, forward: forward, last: last, range: range };
+    return {
+      el: el,
+      sync: sync,
+      first: first,
+      back: back,
+      play: play,
+      forward: forward,
+      last: last,
+      range: range,
+      expand: expand,
+    };
+  }
+
+  // Fullscreen toggle for one `.tali-debug` block: reused verbatim from deck.js's
+  // `toggleFullscreen` (crates/core/assets/js/deck.js, search `toggleFullscreen`), the
+  // project's one guarded pattern for this, rather than a second implementation here. The
+  // `.dbg-overlay` class is the fallback for wherever the real Fullscreen API is missing
+  // or throws (a sandboxed iframe, a permissions-policy block, a browser that never
+  // implemented it): a fixed-position overlay that debug.css styles to the same layout.
+  /** @param {Element} root */
+  function toggleExpand(root) {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (root.requestFullscreen) root.requestFullscreen();
+      else root.classList.toggle('dbg-overlay');
+    } catch (e) {
+      root.classList.toggle('dbg-overlay');
+    }
+  }
+
+  // Keep every mounted block's Expand button honest in one pass: `aria-pressed`, its
+  // label, and its visible text. Driven by the single page-level `fullscreenchange`
+  // listener registered once near the bottom of this file (see the file header for why
+  // that is one listener total, not one per block), and also called directly right after
+  // a click that used the `.dbg-overlay` fallback, since toggling a plain class never
+  // fires `fullscreenchange` (that event belongs to the real Fullscreen API only). Reads
+  // fresh DOM state each call rather than closing over any one block, so it stays correct
+  // across live-diff swaps with no teardown needed.
+  function syncExpandButtons() {
+    document.querySelectorAll('.tali-debug').forEach(function (el) {
+      var btn = el.querySelector('.dbg-expand');
+      if (!btn) return;
+      var active = document.fullscreenElement === el || el.classList.contains('dbg-overlay');
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      btn.setAttribute('aria-label', active ? 'Collapse' : 'Expand');
+      btn.textContent = active ? 'Collapse' : 'Expand';
+    });
   }
 
   /** @param {Element} root */
@@ -576,6 +630,14 @@
         togglePlay();
       });
     }
+    bar.expand.addEventListener('click', function () {
+      toggleExpand(root);
+      // The real Fullscreen API reports back through the page-level `fullscreenchange`
+      // listener (including on Escape); the `.dbg-overlay` fallback never fires that
+      // event at all, so sync here too. Idempotent either way, since both paths land on
+      // the same DOM-driven check.
+      syncExpandButtons();
+    });
 
     // Keyboard on the CONTAINER, not on individual controls: `tabindex="-1"` keeps it out
     // of the normal tab order (the buttons and the range are still reachable that way),
@@ -613,6 +675,16 @@
           e.preventDefault();
           togglePlay();
           break;
+        case 'Escape':
+          // The real Fullscreen API already handles Escape itself (a browser-level
+          // shortcut our `preventDefault()` cannot and should not intercept); only the
+          // `.dbg-overlay` fallback needs this, since it is nothing more than a class
+          // toggle with no native Escape behaviour of its own.
+          if (!rootEl.classList.contains('dbg-overlay')) return;
+          e.preventDefault();
+          rootEl.classList.remove('dbg-overlay');
+          syncExpandButtons();
+          break;
         default:
           return;
       }
@@ -647,6 +719,13 @@
       init(el);
     });
   }
+
+  // The ONE `document`-level listener this file ever adds, registered exactly once at
+  // module load (this IIFE runs once per page), never per block and never removed: see
+  // the file header and `syncExpandButtons` above for why one listener for the whole page
+  // is the right shape here, rather than one per `.tali-debug` that would need teardown
+  // on every live-diff swap.
+  document.addEventListener('fullscreenchange', syncExpandButtons);
 
   if (window.taliEnhancers && window.taliEnhancers.register) {
     window.taliEnhancers.register(enhance);
