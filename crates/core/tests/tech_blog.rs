@@ -296,19 +296,9 @@ fn listing_frontmatter_emits_post_cards() {
         "blog: post card link not rewritten to .html"
     );
     assert!(blog.contains("tali-card-title"), "blog: card has no title");
+    // The category-filter chip row was deleted 2026-08-03; each card still carries its
+    // own category badges (page-level `categories:` front matter survives).
     assert!(blog.contains("tali-cat"), "blog: category badges missing");
-    // Filter chips expose their state to assistive tech, not only visually: the
-    // server's initial paint has "All" pressed and every category chip unpressed, so
-    // a screen reader reads the filter correctly before the client enhancer runs.
-    // The client mirrors this on every toggle (10-category-filter.js). WCAG 4.1.2.
-    assert!(
-        blog.contains("aria-pressed=\"true\" data-cat=\"\">All</button>"),
-        "blog: All chip has no aria-pressed=\"true\""
-    );
-    assert!(
-        blog.contains("class=\"tali-cat-chip\" type=\"button\" aria-pressed=\"false\" data-cat=\""),
-        "blog: category chips have no aria-pressed=\"false\""
-    );
     // Newest-first: the latest-dated post's card precedes an older one.
     let fourier = blog.find("posts/fourier-transform/").unwrap(); // 2026-05-15
     let em = blog.find("posts/em-algorithm/").unwrap(); // 2026-04-14

@@ -100,12 +100,11 @@ listing:
   contents: posts
   sort: "date desc"
   type: grid
-  categories: true
 ---
 ```
 
-`categories: true` adds a clickable filter row built from the `categories:` on each
-post. Each post supplies what the card shows through its own front matter:
+Each post supplies what the card shows — title, date, description, image, and a
+badge per category — through its own front matter:
 
 ```yaml
 ---
@@ -192,7 +191,6 @@ listing:
   contents: projects
   sort: "date desc"
   type: grid
-  categories: true
 ---
 
 Things I built to learn something.

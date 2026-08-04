@@ -44,8 +44,7 @@ fn tmp_dir(name: &str) -> PathBuf {
 
 /// Write a feature-rich, **kernel-free** multi-page website that populates every
 /// aggregate output path at once:
-/// - a `listing:` index over `posts/` with `categories: true` → listing cards + category
-///   chips + the Atom feed (`index.xml`);
+/// - a `listing:` index over `posts/` → listing cards + the Atom feed (`index.xml`);
 /// - anchored headings + prose on every page → the full-text search index
 ///   (`search-index.js`);
 /// - two content pages defining eight `.theorem`/`.definition` xref targets, cross-page
@@ -68,7 +67,7 @@ fn write_repro_site(root: &Path) {
     fs::write(
         root.join("index.tmd"),
         "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  \
-         type: grid\n  categories: true\n---\n\nWelcome to the reproducibility blog.\n",
+         type: grid\n---\n\nWelcome to the reproducibility blog.\n",
     )
     .unwrap();
 
@@ -102,8 +101,8 @@ fn write_repro_site(root: &Path) {
     .unwrap();
 
     // Sibling posts: ascending dates → the listing (date desc) shows them newest first.
-    // Each carries a category shared with the others (so the category filter has >1 member)
-    // and a unique one, plus cross-page references so the xref registry is exercised.
+    // Each carries a category shared with the others and a unique one, plus cross-page
+    // references so the xref registry is exercised.
     for i in 0..5 {
         let dir = root.join(format!("posts/post-{i}"));
         fs::create_dir_all(&dir).unwrap();
@@ -265,7 +264,7 @@ fn the_repro_site_populates_every_guarded_aggregate() {
         "search-index.js is not a populated index"
     );
 
-    // Listing → Atom feed + category chips; site url → sitemap + at least one OG card.
+    // Listing → Atom feed; site url → sitemap + at least one OG card.
     assert!(
         out.contains_key("index.xml"),
         "no Atom feed emitted — the listing path is not exercised"

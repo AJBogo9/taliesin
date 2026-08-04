@@ -210,20 +210,6 @@
     min-height: 24px; box-sizing: border-box; }
   .tali-cat[data-cat]:hover { color: var(--tali-link);
     border-color: color-mix(in oklab, var(--tali-accent) 45%, var(--tali-border)); }
-  .tali-cat.tali-cat-on { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
-
-  /* category filter chip row (listing: categories: true) */
-  .tali-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }
-  .tali-cat-chip { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
-    min-height: 24px; box-sizing: border-box; /* WCAG 2.5.8 target size */
-    font: 500 .8rem var(--tali-font-head); color: var(--tali-muted);
-    background: var(--tali-code-bg); border: 1px solid var(--tali-border); border-radius: 999px;
-    padding: .25rem .7rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
-  .tali-cat-chip:hover { color: var(--tali-fg); border-color: var(--tali-muted); }
-  .tali-cat-chip.tali-cat-active { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  /* `opacity: .65` composited the count to 2.56-3.34:1. It is already distinguished from the
-     label by size; the muted token carries it at full strength (5.38-7.46:1). */
-  .tali-cat-count { font-size: .82em; font-variant-numeric: tabular-nums; }
 
   @media (max-width: 40rem) {
     .tali-listing-default .tali-card { flex-direction: column; }

@@ -58,14 +58,6 @@ A `::: {.callout-…}` block names a callout type that is not one of Taliesin's 
 
 To fix: Change the kind to a supported one (the message suggests the nearest match), e.g. `::: {.callout-important}`.
 
-## TAL-CATEGORY
-
-**a near-miss category splits the archive**
-
-A `categories:` value is a case-variant or typo of another category used elsewhere on the site (`Statistics` vs `statistics`), so the listing filter silently forks one topic into two chips.
-
-To fix: Normalize the spelling to match the canonical category (the message names it), so every post on the topic shares one chip.
-
 ## TAL-CELL-ERROR
 
 **a code cell raised an uncaught exception**

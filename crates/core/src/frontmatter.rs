@@ -286,6 +286,14 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "it was removed when theorem numbers started scoping to a book chapter \
          automatically, so nothing replaces it: delete the key",
     ),
+    // --- Visual minimalism pass, 2026-08-03.
+    (
+        "listing key",
+        "categories",
+        "it was removed on 2026-08-03: the filter-chip row paid off only on a large \
+         archive with a disciplined category vocabulary. Page-level `categories:` still \
+         works and still shows as a badge on each card",
+    ),
 ];
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
@@ -300,7 +308,7 @@ pub(crate) const EXECUTE_KEYS: &[&str] = &["cache"];
 ///
 /// No `sort:`. A listing is newest-first, which is what all four real listings wrote out
 /// longhand; see the `RETIRED_KEYS` entry.
-pub(crate) const LISTING_KEYS: &[&str] = &["contents", "id", "type", "max-items", "categories"];
+pub(crate) const LISTING_KEYS: &[&str] = &["contents", "id", "type", "max-items"];
 
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
 ///
@@ -1010,6 +1018,38 @@ mod tests {
         // A sequence of listings (cv.tmd shape) validates each item.
         let m2 = msgs("---\ntitle: X\nlisting:\n  - contents: a\n    sort-uii: false\n---\n");
         assert_eq!(m2, vec!["unknown listing key `sort-uii`"]);
+    }
+
+    /// The listing category-filter chips were deleted 2026-08-03 (visual minimalism
+    /// pass): they paid off only on a blog with many posts AND disciplined category
+    /// vocabulary — the linter existed precisely because that discipline does not hold
+    /// by default. Page-level `categories:` and the card badges SURVIVE; only
+    /// `listing.categories` is retired, and it must be recognized in ITS OWN scope
+    /// (`listing key`), not answered with the generic did-you-mean.
+    #[test]
+    fn the_listing_categories_subkey_is_retired_but_page_categories_live() {
+        assert!(
+            !LISTING_KEYS.contains(&"categories"),
+            "`listing.categories` should be retired"
+        );
+        assert!(
+            KNOWN_KEYS.contains(&"categories"),
+            "page-level `categories:` must SURVIVE — only the listing sub-key is retired"
+        );
+        let m = msgs("---\ntitle: X\nlisting:\n  contents: posts\n  categories: true\n---\n");
+        let msg = m
+            .iter()
+            .find(|x| x.contains("`categories`"))
+            .unwrap_or_else(|| panic!("no diagnostic for retired `listing.categories`: {m:?}"));
+        assert!(
+            msg.starts_with("unknown listing key `categories`"),
+            "must be scoped to `listing key`, not the generic front-matter scope: {msg}"
+        );
+        assert!(
+            msg.contains("removed on 2026-08-03") && msg.contains("badge"),
+            "must say it went and that the badge survives: {msg}"
+        );
+        assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
     }
 
     #[test]

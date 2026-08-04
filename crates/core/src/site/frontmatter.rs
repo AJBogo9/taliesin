@@ -195,10 +195,6 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
         with_image: matches!(ty.as_deref(), Some("grid") | Some("list")),
         sort_desc,
         max_items,
-        categories: v
-            .get("categories")
-            .and_then(|c| c.as_bool())
-            .unwrap_or(false),
     })
 }
 

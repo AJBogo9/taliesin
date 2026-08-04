@@ -70,10 +70,7 @@ mod generate {
         let execute_overrides: Vec<(&str, Value)> =
             EXECUTE_KEYS.iter().map(|k| (*k, boolean())).collect();
         let execute = closed_object(EXECUTE_KEYS, &execute_overrides);
-        let listing_item = closed_object(
-            LISTING_KEYS,
-            &[("max-items", integer()), ("categories", boolean())],
-        );
+        let listing_item = closed_object(LISTING_KEYS, &[("max-items", integer())]);
         // listing: a single mapping or a sequence of mappings (cv.tmd shape).
         let listing = json!({
             "oneOf": [listing_item.clone(), { "type": "array", "items": listing_item }]

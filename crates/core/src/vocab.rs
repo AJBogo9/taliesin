@@ -89,7 +89,6 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "Listing layout (`default` text rows, `grid` cards, `list` rows with thumbnails).",
         ),
         ("max-items", "Maximum entries shown."),
-        ("categories", "Show a category filter."),
         // hero:
         ("eyebrow", "Small label above the headline."),
         ("headline", "Hero headline."),

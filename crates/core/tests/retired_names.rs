@@ -546,6 +546,31 @@ fn referenced_by_backlinks_are_gone() {
     );
 }
 
+/// The listing category-filter chips were deleted 2026-08-04 (visual minimalism pass):
+/// they paid off only on a blog with many posts AND disciplined category vocabulary. Only
+/// the `listing.categories` sub-key is retired (see `frontmatter.rs`'s own pin for the
+/// retirement message) — page-level `categories:` front matter and the per-card badges
+/// (`tali-cat` / `data-cat`, checked by `token_contract.rs`) survive untouched.
+#[test]
+fn the_category_filter_chips_are_gone_from_the_client_bundle() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in ["taliInitCategoryFilter", "tali-cat-filter", "tali-cat-chip"] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; the category-filter chips were deleted"
+        );
+    }
+    let css = taliesin_core::render::site_css();
+    for needle in [
+        "tali-cat-filter",
+        "tali-cat-chip",
+        "tali-cat-count",
+        "tali-cat-on",
+    ] {
+        assert!(!css.contains(needle), "`{needle}` CSS survives in site.css");
+    }
+}
+
 /// The backlink line is the REVERSE of cross-references (a target -> its referrers);
 /// `xref.rs` is the FORWARD direction (a `@thm-kl` -> its target) and must survive this
 /// deletion untouched. Rendered on the real `demo-book` fixture, where `results.tmd`

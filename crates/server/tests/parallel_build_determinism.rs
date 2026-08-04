@@ -165,7 +165,7 @@ fn write_listing_site(root: &Path, n_posts: usize) -> Vec<String> {
     // would depend on its siblings if any build-order edge existed.
     fs::write(
         root.join("index.tmd"),
-        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: grid\n  categories: true\n---\n\nWelcome to the blog.\n",
+        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: grid\n---\n\nWelcome to the blog.\n",
     )
     .unwrap();
     // Siblings with ascending dates → the listing (date desc) shows them newest first.
@@ -234,7 +234,7 @@ fn listing_index_reflects_all_siblings_jobs1_vs_jobs_n() {
     );
     assert!(
         index.contains("data-cat=\"cat0\""),
-        "listing card did not carry the sibling's category badge/filter"
+        "listing card did not carry the sibling's category badge"
     );
 
     let _ = fs::remove_dir_all(&base);

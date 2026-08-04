@@ -408,10 +408,6 @@
         {
           "description": "Maximum entries shown.",
           "name": "max-items"
-        },
-        {
-          "description": "Show a category filter.",
-          "name": "categories"
         }
       ],
       "theorems": [

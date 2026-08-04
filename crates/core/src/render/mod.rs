@@ -2000,7 +2000,7 @@ fn mermaid_url_for(mode: OutputMode) -> String {
 }
 
 /// The client enhancers: the `window.taliEnhancers` registry + built-ins (copy
-/// buttons, category-filter) in code-enhance.js, then the
+/// buttons) in code-enhance.js, then the
 /// self-registering mermaid module (which lazy-loads the mermaid library on first
 /// use). Emitted after the registry so it is defined when mermaid registers.
 /// Syntax highlighting arrives already done from the server. Callers invoke
@@ -2138,7 +2138,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/07-keyboard.js"),
     include_str!("../../assets/js/code-enhance/08-copy-buttons.js"),
     include_str!("../../assets/js/code-enhance/09-register.js"),
-    include_str!("../../assets/js/code-enhance/10-category-filter.js"),
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),

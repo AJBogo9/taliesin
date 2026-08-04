@@ -210,8 +210,7 @@ pub fn cited_keys_in_source(src: &str) -> Vec<String> {
 const MAX_TYPO_DISTANCE: usize = 2;
 
 /// Shortest name worth fuzzy-matching. Below this a distance-2 edit rewrites most of
-/// the name, so `fig-a` would "suggest" `fig-b`. Same value, and same reason, as
-/// `site::categories::MIN_FUZZY_LEN`.
+/// the name, so `fig-a` would "suggest" `fig-b`.
 const MIN_FUZZY_LEN: usize = 5;
 
 /// The candidate nearest to `name` within [`MAX_TYPO_DISTANCE`], or `None` when the

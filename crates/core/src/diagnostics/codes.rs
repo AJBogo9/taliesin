@@ -153,7 +153,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     // output that would carry the anchor) or a theorem id with no kind prefix. Distinct
     // from TAL-XREF-UNDEF, which is the reference site's complaint. Both messages embed
     // the author's own label and `classify` is first-hit-wins over the whole string, so
-    // this MUST stay above the generic `math`/`bibliography`/`category ` needles below —
+    // this MUST stay above the generic `math`/`bibliography` needles below —
     // otherwise `fig-math-model` classifies as TAL-MATH and `tbl-bibliography-counts` as
     // TAL-CITE-BIB. Pinned by `an_unreferenceable_label_outranks_a_needle_in_its_own_label`.
     ("cannot be cross-referenced", "TAL-XREF-UNREF", WARNING),
@@ -189,7 +189,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ),
     ("code cell did not run", "TAL-KERNEL", ERROR),
     ("code cell did not complete", "TAL-KERNEL", ERROR),
-    // Citations, math, code, categories.
+    // Citations, math, code.
     // Dead weight in a `.bib`: declared and never cited. SUGGESTION, not WARNING — the
     // page renders exactly right, so failing `check` on it would make a shared
     // bibliography (whose whole point is that most pages cite a few of it) unusable; it
@@ -201,7 +201,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("bibliography", "TAL-CITE-BIB", WARNING),
     ("math", "TAL-MATH", WARNING),
     ("unknown code language", "TAL-CODE-LANG", WARNING),
-    ("category ", "TAL-CATEGORY", WARNING),
 ];
 
 /// The `(code, severity)` for a diagnostic message: the first catalogued family whose
@@ -710,15 +709,6 @@ const EXPLANATIONS: &[Explanation] = &[
                 block renders as plain text with no syntax highlighting.",
         fix: "Use a recognized language tag, or leave the info string empty for an \
               unhighlighted block.",
-    },
-    Explanation {
-        code: "TAL-CATEGORY",
-        title: "a near-miss category splits the archive",
-        cause: "A `categories:` value is a case-variant or typo of another category used \
-                elsewhere on the site (`Statistics` vs `statistics`), so the listing filter \
-                silently forks one topic into two chips.",
-        fix: "Normalize the spelling to match the canonical category (the message names it), \
-              so every post on the topic shares one chip.",
     },
 ];
 

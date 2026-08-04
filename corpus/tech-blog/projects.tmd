@@ -4,7 +4,6 @@ title-block-style: none
 listing:
   contents: projects
   type: grid
-  categories: true
 page-layout: full
 ---
 

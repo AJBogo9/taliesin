@@ -42,7 +42,7 @@ or `{ file: … }` map, or a list of those.
 | `date` | string | Publication date (shown in the title block; sorts a `listing:`) |
 | `description` | string | Summary used for the `<meta name="description">` and social cards |
 | `lang` | string | BCP-47 language tag for `<html lang>` (default `en`) |
-| `categories` | list | Tags for the page; feed `listing:` cards and the category filter row |
+| `categories` | list | Tags for the page; feed `listing:` cards, shown as a badge on each |
 
 ### Output, format, and theming
 
@@ -218,7 +218,6 @@ is what every listing that used to spell it out asked for.
 | `id` | string | (none) | Fill a matching `::: {#id}` block in the page body instead of appending the listing to the end |
 | `type` | string | (list) | `grid` renders a card grid; anything else (or omitted) renders a stacked list |
 | `max-items` | int | (none) | Cap the number of items shown |
-| `categories` | bool | `false` | `true` renders a clickable category filter row above the listing |
 
 ```yaml
 ---
@@ -228,7 +227,6 @@ listing:
   contents: posts        # crawl ./posts for documents
   type: grid             # grid of cards (vs. the default stacked list)
   max-items: 12
-  categories: true       # show a category filter row
 ---
 ```
 
@@ -327,7 +325,7 @@ author: "Andreas Bogossian"
 date: "2026-06-27"
 description: "A close read of a training run."   # social card + <meta description>
 lang: en                                          # <html lang> (default en)
-categories: [machine-learning, training]          # listing tags + filter chips
+categories: [machine-learning, training]          # listing tags -> card badges
 
 # --- Output / format / theme ---
 format: html                                      # html (default) or deck

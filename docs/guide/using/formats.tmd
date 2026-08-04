@@ -370,7 +370,6 @@ listing:
   contents: posts
   type: grid
   sort: "date desc"
-  categories: true
   max-items: 12
 ```
 
@@ -383,9 +382,6 @@ The knobs:
   `"date asc"` for oldest first. (Any value containing `asc` sorts ascending;
   otherwise it is descending.)
 - `max-items:` caps how many cards appear.
-- `categories: true` adds a filter-chip row above the cards, one chip per category
-  found across the listing (with a count), plus an "All" chip; clicking a chip filters
-  the grid in the browser.
 
 ## Themes
 

@@ -477,11 +477,6 @@ fn collect_site_diagnostics(
     for (page_rel, w) in site.validate_cross_page_links() {
         out.push(diag_from(&w, &page_rel));
     }
-    // A typo'd category silently forks the listing filter into two chips; only the whole
-    // site's vocabulary reveals it, so this runs here rather than per page.
-    for (page_rel, w) in site.validate_categories() {
-        out.push(diag_from(&w, &page_rel));
-    }
     // Hygiene for the project-wide `bibliography:`, reported against `_site.yml` because
     // that is where it is declared. Unused-entry is site-wide by necessity: a shared entry
     // one page cites is used, however many pages leave it alone.
@@ -2068,73 +2063,6 @@ mod tests {
             "malformed config must still be reported: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn collect_site_diagnostics_flags_a_typod_category_but_not_distinct_short_tags() {
-        // Three spellings of one category render three chips, each count 1, and the
-        // reader's filter silently splits the archive. Nothing errored before this rule.
-        let dir = tmp("check-categories");
-        fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
-        fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
-        for (name, cat) in [
-            ("a", "statistics"),
-            ("b", "statistics"),
-            ("c", "statistics"),
-            ("d", "Statistics"),
-            ("e", "statstics"),
-        ] {
-            fs::write(
-                dir.join(format!("{name}.tmd")),
-                format!("---\ntitle: {name}\ncategories:\n  - {cat}\n  - R\n  - C\n---\n\nBody.\n"),
-            )
-            .unwrap();
-        }
-        let diags = collect_diagnostics(&dir).expect("site ok");
-        let cat_diags: Vec<_> = diags
-            .iter()
-            .filter(|d| d.message.starts_with("category "))
-            .collect();
-
-        assert!(
-            cat_diags.iter().any(|d| d.message.contains("`Statistics`")
-                && d.message.contains("`statistics`")
-                && d.file.contains("d.tmd")),
-            "case-only fork, located to its page: {cat_diags:?}"
-        );
-        assert!(
-            cat_diags.iter().any(|d| d.message.contains("`statstics`")
-                && d.message.contains("`statistics`")
-                && d.file.contains("e.tmd")),
-            "near-miss typo, located to its page: {cat_diags:?}"
-        );
-        // The correct spelling, and the deliberately-short `R`/`C` tags (two edits apart),
-        // must never be accused.
-        assert_eq!(cat_diags.len(), 2, "exactly two findings: {cat_diags:?}");
-        // Located to the `categories:` value line, so the editor can jump there.
-        assert!(
-            cat_diags.iter().all(|d| d.line.is_some()),
-            "category diagnostics carry a line: {cat_diags:?}"
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_real_corpus_sites_have_no_category_false_positives() {
-        // The load-bearing half: a correct site stays green. `tech-blog` is the only
-        // corpus project with a real category vocabulary.
-        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
-        for proj in ["tech-blog", "single-page-report", "demo-book"] {
-            let diags = collect_diagnostics(&corpus.join(proj)).unwrap_or_default();
-            let cats: Vec<_> = diags
-                .iter()
-                .filter(|d| d.message.starts_with("category "))
-                .collect();
-            assert!(
-                cats.is_empty(),
-                "category false positive in {proj}: {cats:?}"
-            );
-        }
     }
 
     #[test]

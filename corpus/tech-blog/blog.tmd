@@ -4,7 +4,6 @@ title-block-style: none
 listing:
   contents: posts
   type: list
-  categories: true
 ---
 
 I write about concepts I'm working to understand, mostly machine learning, statistics, and algorithms.

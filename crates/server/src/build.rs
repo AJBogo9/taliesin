@@ -2403,8 +2403,8 @@ async fn build_project_tree(
     }
 
     // The site-wide half of the check-superset: rules only the whole page registry can
-    // judge. A broken cross-page link and a typo'd category are exactly the defects a
-    // `--strict` build used to deploy with exit 0.
+    // judge. A broken cross-page link is exactly the defect a `--strict` build used to
+    // deploy with exit 0.
     for (rel, w) in site.validate_cross_page_links() {
         problems += 1;
         log::warn(&locate(&w, &rel));
@@ -2414,11 +2414,6 @@ async fn build_project_tree(
         problems += 1;
         log::warn(&locate(&w, "_site.yml"));
         diagnostics.push(crate::check::diag_from(&w, "_site.yml"));
-    }
-    for (rel, w) in site.validate_categories() {
-        problems += 1;
-        log::warn(&locate(&w, &rel));
-        diagnostics.push(crate::check::diag_from(&w, &rel));
     }
 
     // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.

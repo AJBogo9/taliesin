@@ -130,8 +130,6 @@ pub struct ListingSpec {
     pub sort_desc: bool,
     /// `max-items:` cap, if any.
     pub max_items: Option<usize>,
-    /// `categories: true` → render a category filter chip row above the cards.
-    pub categories: bool,
 }
 
 /// A discovered multi-page site: the root config plus its input pages.
@@ -203,7 +201,6 @@ pub use card::{
 mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
 mod book_toc;
-mod categories;
 mod feed;
 mod llms;
 mod manifest;
@@ -1538,44 +1535,7 @@ impl Site {
         // `<ul>` whose `list-style` is `none`, which is exactly what the card layout sets,
         // so without it VoiceOver announces nothing even though Chrome's tree is correct.
         // (AP6 compared Firefox and Chromium only, so this browser was never measured.)
-        let grid =
-            format!("<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\">{cards}</ul>");
-
-        if !spec.categories {
-            return grid;
-        }
-        // `categories: true` → a filter chip row above the cards: every category
-        // across the listing, with a count, sorted (the client enhancer wires the
-        // multi-select filtering; an "All" chip clears it).
-        let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
-        for p in &items {
-            for c in &p.categories {
-                *counts.entry(c.as_str()).or_default() += 1;
-            }
-        }
-        if counts.is_empty() {
-            return grid;
-        }
-        // `aria-pressed` mirrors the visual `tali-cat-active` state for assistive tech.
-        // Emitted server-side so the initial paint is correct before the client enhancer
-        // runs; 10-category-filter.js keeps it in sync on every toggle.
-        let mut chips = String::from(
-            "<button class=\"tali-cat-chip tali-cat-active\" type=\"button\" \
-             aria-pressed=\"true\" data-cat=\"\">All</button>",
-        );
-        for (cat, n) in &counts {
-            chips.push_str(&format!(
-                "<button class=\"tali-cat-chip\" type=\"button\" aria-pressed=\"false\" \
-                 data-cat=\"{c}\">{label}\
-                 <span class=\"tali-cat-count\">{n}</span></button>",
-                c = esc(cat),
-                label = esc(cat),
-            ));
-        }
-        format!(
-            "<div class=\"tali-listing-wrap\">\
-             <nav class=\"tali-cat-filter\" aria-label=\"Filter by category\">{chips}</nav>{grid}</div>"
-        )
+        format!("<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\">{cards}</ul>")
     }
 
     fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {

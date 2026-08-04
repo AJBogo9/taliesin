@@ -266,7 +266,6 @@ listing:
   contents: posts          # directory to crawl (relative to this page); required
   type: grid               # grid (cards) | list (rows + thumbnail) | default (text rows)
   max-items: 10            # cap the number of cards (omit for all)
-  categories: true         # render a category filter row above the cards
   id: recent               # optional: fill a `::: {#recent}` block instead of appending
 ```
 
@@ -275,18 +274,17 @@ listing:
 | `contents` | Directory to crawl, relative to the index page. Every `.tmd` under it with a `title:` becomes a card. Required |
 | `type` | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's image as a thumbnail beside the text; `default` (the fallback) is the same stacked layout without images, for a formal text list. Both `grid` and `list` show the `image:` thumbnail; `default` does not |
 | `max-items` | Cap the number of cards shown; omit it to list every match |
-| `categories` | `true` renders a filter row above the cards: one chip per category found across the listing (with a count), plus an "All" chip that clears the filter. Clicking a chip (or a card's category badge) filters the cards in the browser |
 | `id` | Fill an existing `::: {#id}` container with the listing instead of appending it to the page, so you can place prose around it |
 
 A card's date, categories, and image come from each listed page's own front
-matter. To put a page into a listing's category filter, set `categories:` on
+matter. To give a page a category badge on its card, set `categories:` on
 **that page**:
 
 ```yaml
 ---
 title: "A post about rust"
 date: 2026-06-20
-categories: [rust, performance]   # these become the card's badges + filter chips
+categories: [rust, performance]   # these become the card's badges
 image: cover.png                  # card thumbnail in a `type: grid` or `type: list` listing
 image-alt: "A flame graph of the hot loop"   # required whenever you set `image:`
 ---

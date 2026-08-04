@@ -1139,7 +1139,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     );
 
     // No per-tag archive pages, and a post no longer carries a category strip
-    // linking to them (the in-listing category filter on the grid is unaffected).
+    // linking to them.
     let fourier = site
         .render_page("posts/fourier-transform/index.tmd")
         .expect("fourier post renders");
