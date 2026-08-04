@@ -63,7 +63,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-background-repeat",
     "data-background-size",
     "data-block-id",
-    "data-cat",
     "data-code-lines",
     "data-cw-init",
     "data-cw-lines",

@@ -172,7 +172,7 @@ cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to std
 cargo run -p taliesin-server -- map    <file.tmd | dir>        # project outline; a file lists its @-reference targets
 cargo run -p taliesin-server -- features <file.tmd | dir>      # what a document uses; and what NO document uses
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
-cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
+cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
 ```
 

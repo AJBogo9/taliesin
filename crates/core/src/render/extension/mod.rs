@@ -730,7 +730,10 @@ fn video_html(
     // theme change — so exactly one clip downloads. A single-source video keeps an eager
     // `src` (works without JS; nothing to save). `preload="metadata"` renders the first
     // frame as a still while paused (no autoplay forces the load anymore). `tabindex="0"`
-    // makes the clip keyboard-reachable so focus can start it (parity with hover).
+    // makes the clip keyboard-reachable: focus no longer starts playback itself (hover-play
+    // was deleted 2026-08-03, visual minimalism pass; native `controls` is the only way to
+    // play now), it just speeds keyboard reach to that control bar instead of requiring a
+    // Tab through everything ahead of it.
     let video = |s: &str, class: &str, lazy: bool| {
         let src_attr = if lazy { "data-src" } else { "src" };
         format!(

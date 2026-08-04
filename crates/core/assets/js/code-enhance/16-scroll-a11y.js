@@ -14,7 +14,7 @@
   }
   /** @param {Element} el */
   function sync(el) {
-    // A scroll container inside the lightbox / a deck manages its own focus.
+    // A scroll container inside a deck manages its own focus.
     var overflows = el.scrollWidth - el.clientWidth > 1;
     var tagged = el.hasAttribute('data-scroll-a11y');
     if (overflows && !tagged) {
@@ -36,8 +36,8 @@
   /** @param {ParentNode | null} [root] */
   function scan(root) {
     (root || document).querySelectorAll('pre, table').forEach(function (el) {
-      // A mermaid diagram / an inner code <pre> already handled by the lightbox
-      // stays as-is; only tag the actual scroll box.
+      // A mermaid diagram gets its own `overflow-x: auto` in base.css and is skipped
+      // here to avoid double-tagging it; only tag the actual scroll box.
       if (el.classList && el.classList.contains('mermaid')) return;
       sync(el);
     });

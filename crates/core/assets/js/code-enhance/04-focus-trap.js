@@ -12,8 +12,10 @@ function taliFocusables(container) {
 
 // Shared modal focus trap: while a modal is open, confine Tab/Shift+Tab to `container`, mark it
 // aria-modal, and (on release) restore focus to the opener IF focus is still inside (a keyboard
-// or programmatic close) — not when the user clicked elsewhere. Used by the lightbox + reader
-// menu here and, via this global, by the Cmd-K palette in search.js. Returns release().
+// or programmatic close) — not when the user clicked elsewhere. Used, via this global, by the
+// Cmd-K palette in search.js. The reader/settings menu (13-reader-menu.js) deliberately does
+// NOT use it — see that file's own comment: a light-dismiss popover, not a modal, must not
+// trap Tab or it would fight its own outside-click dismissal. Returns release().
 window.taliFocusTrap = window.taliFocusTrap || function (container, initial) {
   var prev = /** @type {HTMLElement | null} */ (document.activeElement);
   container.setAttribute('aria-modal', 'true');

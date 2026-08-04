@@ -138,7 +138,7 @@ jobs:
         run: cargo test -p taliesin-server --test r_kernel
 
   # Type-check the preview client JS (client.js + the sibling shipped scripts:
-  # search.js, toc-spy.js, toc-sheet.js). They carry `// @ts-check` and have silently
+  # search.js, toc-spy.js). They carry `// @ts-check` and have silently
   # regressed to tsc errors before a release; this gate keeps them honest.
   typecheck:
     if: github.event.repository.private != true

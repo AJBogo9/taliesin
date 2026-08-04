@@ -82,34 +82,7 @@ export async function probeSearch(page, query = 'the') {
   });
 }
 
-// 3. Image lightbox. Click a figure image, expect the dialog open; ArrowRight
-// should advance within a multi-image gallery.
-export async function probeLightbox(page) {
-  const F = 'lightbox';
-  return safe(F, 'click opens lightbox; arrow navigates gallery', async () => {
-    await page.waitForSelector('figure img, img.lightbox', { timeout: 8000 });
-    await page.click('figure img, img.lightbox');
-    await page.waitForSelector('#tali-lightbox.open', { timeout: 4000 });
-    const first = await page.evaluate(
-      () => document.querySelector('#tali-lightbox img')?.src || '',
-    );
-    await page.keyboard.press('ArrowRight');
-    await new Promise((r) => setTimeout(r, 250));
-    const second = await page.evaluate(
-      () => document.querySelector('#tali-lightbox img')?.src || '',
-    );
-    const caption = await page.evaluate(
-      () => document.querySelector('.tali-lb-cap')?.textContent || '',
-    );
-    return ok(F, 'click opens lightbox; arrow navigates gallery', {
-      opened: true,
-      advanced: first !== second,
-      caption,
-    });
-  });
-}
-
-// 4. TOC scrollspy. Scroll down and expect an active TOC entry.
+// 3. TOC scrollspy. Scroll down and expect an active TOC entry.
 export async function probeToc(page) {
   const F = 'toc-scrollspy';
   return safe(F, 'scrolling marks an active TOC entry', async () => {
@@ -147,7 +120,7 @@ export async function probeToc(page) {
   });
 }
 
-// 5. Click-to-source. Ctrl-hover should light the affordance; Ctrl-click should
+// 4. Click-to-source. Ctrl-hover should light the affordance; Ctrl-click should
 // emit a `click_block` websocket frame. `cdpFrames` is an array the caller fills
 // from a CDP Network.webSocketFrameSent listener.
 export async function probeClickToSource(page, cdpFrames) {
@@ -191,7 +164,7 @@ export async function probeClickToSource(page, cdpFrames) {
   });
 }
 
-// 6. Forward search: `tali-cursor` MARKS always and SCROLLS only on `reveal: true`.
+// 5. Forward search: `tali-cursor` MARKS always and SCROLLS only on `reveal: true`.
 //
 // This is the behaviour change with the least natural coverage and the highest chance
 // of silently regressing: if `reveal` gating is lost, the preview goes back to yanking

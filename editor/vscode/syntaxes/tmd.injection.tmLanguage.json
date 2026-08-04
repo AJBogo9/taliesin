@@ -72,8 +72,8 @@
       ]
     },
     "xref": {
-      "comment": "Bare @fig-/@sec-/@tbl-/@eq-/@lst-/@thm-/@lem-/@cor-/@def- reference (cite/render.rs:23,285). The lookbehind reproduces the parser's word-boundary guard so bob@rem-server.com is NOT a reference.",
-      "match": "(?<![\\w@.])@(?:fig|sec|tbl|eq|lst|thm|lem|cor|def)-[\\w:-]+",
+      "comment": "Bare @fig-/@sec-/@tbl-/@eq-/@lst-/@thm-/@lem-/@cor-/@prp-/@def-/@exm-/@rem- reference (cite/render.rs's XREF_LABELS). prp/exm/rem outlive the theorem kinds retired 2026-08-03 as xref-only prefixes (render.rs's own comment: do not tidy them away, a dangling @exm-x must still error TAL-XREF-UNDEF rather than degrade silently to text). The lookbehind reproduces the parser's word-boundary guard so bob@rem-server.com is NOT a reference.",
+      "match": "(?<![\\w@.])@(?:fig|sec|tbl|eq|lst|thm|lem|cor|prp|def|exm|rem)-[\\w:-]+",
       "name": "markup.other.reference.tmd support.variable.reference.tmd"
     },
     "cite": {

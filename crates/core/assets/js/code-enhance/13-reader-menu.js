@@ -1,6 +1,6 @@
 // Settings menu: a gear launcher opening a single popover that the reader features mount their
 // sections into (currently just Theme) via
-// window.taliReaderMenu.addSection(title, node, onOpen). On sites the gear is docked in the
+// window.taliReaderMenu.addSection(node, onOpen). On sites the gear is docked in the
 // navbar / book topbar (server-rendered, [data-tali-settings]); on a chrome-less single doc we
 // create a floating one. Click handling is delegated on document so a hot-reload that re-injects
 // the navbar keeps working without re-running this (guarded) initializer. Reader-side, read-only.
@@ -108,21 +108,21 @@ function taliInitReaderMenu() {
 
   // Public API: each reader feature adds its own section and an optional refresh hook
   // (called when the menu opens). `open`/`close`/`toggle` are exposed for any other
-  // caller that needs to control the menu programmatically. Returns a handle to
-  // show/hide the section.
+  // caller that needs to control the menu programmatically.
+  // No title, and no visibility handle: the menu holds exactly one section (Theme) today,
+  // so both would be speculative generality with no caller. Add them back if/when a second
+  // section actually needs a heading or needs to hide itself.
   window.taliReaderMenu = {
     open: openMenu,
     close: closeMenu,
     toggle: toggleMenu,
-    addSection: function (title, node, onOpen) {
+    addSection: function (node, onOpen) {
       var wrap = document.createElement('section');
       wrap.className = 'tali-rmenu-section';
-      if (title) { var h = document.createElement('h2'); h.textContent = title; wrap.appendChild(h); }
       wrap.appendChild(node);
       panel.appendChild(wrap);
       sections.push({ wrap: wrap, onOpen: onOpen });
       if (onOpen) onOpen();
-      return { setVisible: /** @param {boolean} v */ function (v) { wrap.hidden = !v; } };
     }
   };
 

@@ -1572,8 +1572,9 @@ impl Site {
             .as_deref()
             .map(|d| format!("<p class=\"tali-card-desc\">{}</p>", esc(d)))
             .unwrap_or_default();
-        // Each badge carries `data-cat` so a click on it toggles that category in
-        // the filter; the filter also reads these badges to know a card's categories.
+        // Each badge still carries `data-cat` (the exact category name), a leftover of the
+        // listing category filter deleted 2026-08-04 (visual minimalism pass) — the badge
+        // is inert display now; nothing reads `data-cat` at runtime.
         let cats = if p.categories.is_empty() {
             String::new()
         } else {
@@ -1596,9 +1597,6 @@ impl Site {
         } else {
             ""
         };
-        // No delimited `data-categories` list: the client filter reads each card's
-        // own `.tali-cat[data-cat]` badges (exact names), so a category name
-        // containing a comma still matches.
         // `data-tali-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(

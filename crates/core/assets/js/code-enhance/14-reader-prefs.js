@@ -54,5 +54,5 @@ function taliInitReaderPrefs() {
     setTheme(/** @type {'auto' | 'light' | 'dark'} */ (v));
   });
   window.addEventListener('tali:themechange', themeSeg.sync);
-  window.taliReaderMenu.addSection('', themeSeg.row, themeSeg.sync);
+  window.taliReaderMenu.addSection(themeSeg.row, themeSeg.sync);
 }

@@ -170,8 +170,16 @@
   .tali-listing > .tali-listing-item > .tali-card { flex: 1 1 auto; min-width: 0; }
   /* On a wide listing page (blog / projects), the intro prose stays at the reading measure
      while the card grid keeps the full chrome width. Grid width and reading measure are
-     already separate tokens; this just applies that separation to a listing's own lead. */
-  .tali-site-main.tali-wide > main:has(.tali-listing-wrap) > :where(p, ul, ol, blockquote) {
+     already separate tokens; this just applies that separation to a listing's own lead.
+     `:has(.tali-listing)` targets the `<ul>` `listing_html` always emits directly under
+     `<main>`: the wrapping `.tali-listing-wrap` div this used to key off was deleted
+     2026-08-04 (visual minimalism pass, task 9) along with the category filter chip row it
+     wrapped, and without that div the listing `<ul>` itself became a DIRECT child of `<main>`
+     — the same position the intro `<p>` sits in. `ul:not(.tali-listing)` is load-bearing, not
+     redundant: `.tali-listing` is itself a `ul`, so a bare `:where(p, ul, ol, blockquote)`
+     would also catch the card grid and clamp it to reading width, exactly what this rule
+     exists to NOT do. */
+  .tali-site-main.tali-wide > main:has(.tali-listing) > :where(p, ul:not(.tali-listing), ol, blockquote) {
     max-width: var(--tali-maxw); }
   .tali-listing-grid { display: grid; gap: 1.25rem;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
@@ -207,11 +215,6 @@
   .tali-cat { font: 500 .72rem var(--tali-font-head); color: var(--tali-muted);
     background: var(--tali-code-bg); border: 1px solid var(--tali-border);
     border-radius: 999px; padding: .1rem .55rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
-  /* a card's category tag doubles as a filter toggle, so it needs a >=24px target (WCAG 2.5.8) */
-  .tali-cat[data-cat] { cursor: pointer; display: inline-flex; align-items: center;
-    min-height: 24px; box-sizing: border-box; }
-  .tali-cat[data-cat]:hover { color: var(--tali-link);
-    border-color: color-mix(in oklab, var(--tali-accent) 45%, var(--tali-border)); }
 
   @media (max-width: 40rem) {
     .tali-listing-default .tali-card { flex-direction: column; }

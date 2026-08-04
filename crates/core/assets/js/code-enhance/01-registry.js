@@ -6,7 +6,7 @@
 // build, and once immediately if it registers after the page is already mounted
 // (an extension script loaded in `include-after-body`). Enhancers MUST be
 // idempotent — guard with a data-attribute — since they re-run on every change.
-// The built-in copy-button / lightbox / etc. below (and mermaid, in its own
+// The built-in copy-button / etc. below (and mermaid, in its own
 // mermaid.js) register through the exact same API, so a third-party enhancer is
 // indistinguishable from core's.
 (function () {

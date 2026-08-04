@@ -322,6 +322,77 @@ fn listing_frontmatter_emits_post_cards() {
     assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
 }
 
+/// Regression pin for a bug found in the final review of the visual minimalism pass: task 9
+/// (2026-08-04) deleted the `<div class="tali-listing-wrap">` emitter along with the category
+/// filter chip row it wrapped, but `site.css`'s "clamp a wide listing page's intro prose to the
+/// reading measure" rule still keyed its `:has()` off `.tali-listing-wrap` — a class nothing
+/// emits any more, so the rule could never match and `page-layout: full` pages (like this one)
+/// lost the clamp entirely.
+///
+/// This is two checks, deliberately kept apart:
+/// - The CSS-content assertion below pins the SELECTOR TEXT (that the rule targets a class
+///   really emitted, `.tali-listing`, not the deleted `.tali-listing-wrap`). It does NOT prove
+///   the rule has any rendered effect — a Rust unit test can't evaluate `:has()` — so it would
+///   stay green even if some other change broke the cascade.
+/// - The structural assertion on the built `projects.html` proves the precondition a browser
+///   would need to actually match `:has()`: `.tali-site-main.tali-wide` really wraps a `<main>`
+///   whose direct children really are the intro `<p>` immediately followed by the
+///   `<ul class="tali-listing …">`, in that DOM shape, with no wrapper div between them.
+///
+/// A second trap the fix itself had to dodge: `.tali-listing` is itself a `<ul>`, so a naive
+/// `:where(p, ul, ol, blockquote)` would ALSO catch the listing and clamp the card grid to
+/// reading width — exactly what `tali-wide` exists to avoid (verified live in a browser at
+/// 1440x900: without the `ul:not(.tali-listing)` exclusion the grid narrows to one column).
+/// This test can't see computed widths, so that half is not re-pinned here; it was checked by
+/// hand against the built page.
+#[test]
+fn wide_listing_page_intro_prose_selector_targets_a_class_that_really_ships() {
+    let css = taliesin_core::render::site_css();
+    assert!(
+        css.contains("main:has(.tali-listing) > :where(p, ul:not(.tali-listing), ol, blockquote)"),
+        "the wide-listing intro-prose clamp must key off `.tali-listing` (what listing_html \
+         actually emits), not a wrapper div that no longer exists: {css}"
+    );
+    assert!(
+        !css.contains(":has(.tali-listing-wrap)"),
+        "no selector may key off `.tali-listing-wrap` any more; nothing emits that class \
+         (a bare `contains(\"tali-listing-wrap\")` would false-positive on this very test's \
+         own explanatory comment in site.css, so this needles the selector form): {css}"
+    );
+
+    // `projects.tmd` is `page-layout: full` + `listing:` + a lead paragraph — the live example
+    // named in the review. Confirm the DOM shape the selector above depends on.
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let projects = site.render_page("projects.tmd").expect("projects renders");
+    assert!(
+        projects.contains("class=\"tali-site-main tali-wide\""),
+        "projects.tmd must render with the wide main class: {projects}"
+    );
+    let main_start = projects
+        .find("<main id=\"tali-main\"")
+        .expect("projects has a <main>");
+    let after_main = &projects[main_start..];
+    let p_pos = after_main
+        .find("<p ")
+        .expect("a lead <p> follows <main> on the listing page");
+    let ul_pos = after_main
+        .find("<ul role=\"list\" class=\"tali-listing")
+        .expect("the listing <ul> is emitted");
+    assert!(
+        p_pos < ul_pos,
+        "the intro <p> must precede the listing <ul> as siblings under <main>: {projects}"
+    );
+    // No wrapper element between them — if `listing_html` ever grows one back, this selector
+    // needs to change again, and this assertion is what would catch it.
+    let between = &after_main[p_pos..ul_pos];
+    assert!(
+        !between.contains("<div"),
+        "no wrapping <div> may sit between the intro prose and the listing <ul>, or the \
+         `main:has(.tali-listing) > :where(...)` direct-child selector stops matching either \
+         one: {between}"
+    );
+}
+
 /// Post dates render humanized ("14 April 2026"), never the raw ISO string, in both the
 /// post title block and the listing cards. The machine-readable ISO stays where machines
 /// read it (JSON-LD `datePublished`, `citation_*`, the feed) — so the check is scoped to

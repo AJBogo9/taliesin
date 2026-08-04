@@ -300,6 +300,25 @@ test("Phase 2 (injection): @xref refs scoped; email is NOT a ref", async () => {
   );
 });
 
+// prp/exm/rem outlive the theorem kinds retired 2026-08-03 (visual minimalism pass): they stay
+// XREF-ONLY prefixes so a dangling @exm-x still errors TAL-XREF-UNDEF instead of degrading
+// silently to text (cite/render.rs's XREF_LABELS doc comment). 97d8a697 dropped them from this
+// grammar's regex while 5330fd4a restored them in XREF_LABELS, so the two drifted out of step —
+// this pins them back together.
+test("Phase 2 (injection): @prp-/@exm-/@rem- refs are scoped too (xref-only, no theorem kind)", async () => {
+  const toks = await tokenizeTmd(
+    "see @prp-cauchy and @exm-euler and @rem-note but not bob@rem-server.com\n"
+  );
+  assert.ok(hasScope(toks, "@prp-cauchy", "markup.other.reference.tmd"), "bare @prp- is a reference");
+  assert.ok(hasScope(toks, "@exm-euler", "markup.other.reference.tmd"), "bare @exm- is a reference");
+  assert.ok(hasScope(toks, "@rem-note", "markup.other.reference.tmd"), "bare @rem- is a reference");
+  const email = toks.find((t) => t.text.includes("rem-server"));
+  assert.ok(
+    email && !email.scopes.some((s) => s.startsWith("markup.other.reference")),
+    "bob@rem-server.com is still NOT a reference now that rem- is back in the alternation"
+  );
+});
+
 test("Phase 2 (injection): [@cite] citation keys scoped", async () => {
   const toks = await tokenizeTmd("as shown [@bishop2006, p. 12] and [@a; @b]\n");
   assert.ok(hasScope(toks, "@bishop2006", "constant.other.citekey.tmd"), "the cite key is scoped");

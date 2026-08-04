@@ -16,14 +16,10 @@ interface Window {
   /** Reader menu controller (code-enhance/13-reader-menu.js): opens/closes the
    *  reading-tools sheet and lets other fragments dock a section into it. */
   taliReaderMenu?: {
-    /** Dock a section (title, its content node, an onOpen sync hook) into the sheet.
-     *  Returns a handle for showing/hiding that section, so a feature can offer its
-     *  row only on documents it governs. */
-    addSection: (
-      title: string,
-      node: Element,
-      onOpen?: () => void,
-    ) => { setVisible: (v: boolean) => void };
+    /** Dock a section (its content node, an onOpen sync hook) into the sheet. The menu
+     *  holds exactly one section (Theme) today, so there is no title and no
+     *  show/hide handle — see 13-reader-menu.js. */
+    addSection: (node: Element, onOpen?: () => void) => void;
     open: () => void;
     close: () => void;
     toggle: () => void;
@@ -55,11 +51,6 @@ interface Window {
   __taliMermaidLoading?: boolean;
 
   // --- install-once guards (each feature fragment sets its own) --------------
-  /** Keyboard entry point for the lightbox (11): open the viewer for a decorated
-   *  image / mermaid element. Set once taliInitLightbox has run. */
-  __taliLightboxOpen?: (el: Element) => void;
-  /** lightbox (11) document-level machinery has been installed (install-once guard). */
-  __taliLightbox?: boolean;
   __taliKeyboard?: boolean;
   __taliSkipLink?: boolean;
   __taliReaderPrefs?: boolean;

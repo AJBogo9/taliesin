@@ -139,7 +139,7 @@ pub(crate) fn validate_callout_kind(
 /// A misspelled feature/theorem `:::` class → a located "did you mean". Fired from the generic-div
 /// fall-through in `build_container` (the classes that matched no feature arm). Only a *near-miss*
 /// of a known feature class ([`DIV_FEATURE_CLASSES`] ∪ [`THEOREM_KINDS`], edit distance ≤ 2) warns:
-/// an exactly-known class (a legit generic like `.aside`/`.fragment`) and a genuine custom class
+/// an exactly-known class (a legit generic like `.fragment`) and a genuine custom class
 /// (far from every known name) both stay silent, since div classes are an *open* vocabulary. At
 /// most one warning per div (the first offending class), and purely diagnostic — the div still
 /// renders with its given class. `line` is the 1-based source line of the opening fence.
