@@ -139,18 +139,13 @@ fn a_nested_part_keeps_its_chapters_and_is_marked_nested() {
             "part header `{part}` missing: {index}"
         );
     }
+    // The DRAWER's nested-part marker, and since 2026-08-04 the only one: the landing's
+    // own Contents nav (`site/book_toc.rs`) was deleted, and its companion assertion here
+    // went with it. One renderer now walks the entry list, so this needle is no longer a
+    // partial read of two surfaces.
     assert!(
         index.contains("tali-book-part-nested"),
         "the nested part must be marked as nested, not flattened into its parent"
-    );
-    // TWO renderers walk one entry list (`site/book_toc.rs:43`): the chapter drawer and
-    // the landing's own Contents nav. The assertion above is the DRAWER's marker, and the
-    // drawer chrome is on this page too, so it passes while saying nothing about the
-    // Contents list. Pin the landing's own marker as well (mutation-found: flattening
-    // `e.depth > 0` in `render_book_toc` survived the whole suite).
-    assert!(
-        index.contains("tali-btoc-part tali-btoc-part-nested"),
-        "the landing Contents must mark the nested part too, not just the drawer"
     );
     for ch in ["grouping.html", "joins.html", "performance.html"] {
         assert!(
@@ -373,41 +368,30 @@ fn a_below_toc_gate_chapters_sections_reach_the_drawer_outline() {
 }
 
 #[test]
-fn both_chapter_nav_surfaces_print_the_same_prose_length() {
-    // The drawer and the landing Contents are two renderers over one `Book.entries` list,
-    // so the cost signal must come from one `words_label` or they will print different
-    // numbers for the same chapter. Pinned on a chapter whose count is stable and whose
-    // body is prose, not code.
-    let site = tarn();
-    let drawer_page = site.render_page("grouping.tmd").expect("grouping renders");
-    let landing_page = site.render_page("index.tmd").expect("the landing renders");
-    // Scope each read to the surface it names. The landing page carries BOTH surfaces (the
-    // drawer rides on every book page), so a whole-page search for the row found the
-    // drawer's span on both sides and the equality assertion compared the drawer with
-    // itself — it passed with the Contents' span deleted. Caught by mutation.
-    let region = |page: &str, open: &str| -> String {
-        let at = page
-            .find(open)
-            .unwrap_or_else(|| panic!("no {open} on this page"));
-        page[at..].to_string()
-    };
-    let label = |region: &str| -> String {
-        // The row for `filtering.html`, then the words span inside its link.
-        let at = region.find("filtering.html").expect("the row exists");
-        let rest = &region[at..];
-        let start = rest.find("-words\">").expect("a words span follows") + "-words\">".len();
-        rest[start..start + rest[start..].find('<').expect("the span closes")].to_string()
-    };
-    let in_drawer = label(&region(&drawer_page, "id=\"tali-book-chapters\""));
-    let in_contents = label(&region(&landing_page, "class=\"tali-book-landing-toc\""));
+fn the_chapter_drawer_prints_an_absolute_prose_length() {
+    // The drawer is the ONE surface that shows a chapter's cost, since the landing's own
+    // Contents nav was deleted on 2026-08-04. This test used to be the drift pin between
+    // the two renderers (`assert_eq!(in_drawer, in_contents)`); with one renderer left
+    // there is no drift to pin, so what survives is the part that names a guarantee about
+    // the drawer itself: an absolute word count, prose-only. Pinned on a chapter whose
+    // count is stable and whose body is prose, not code.
+    let drawer_page = tarn()
+        .render_page("grouping.tmd")
+        .expect("grouping renders");
+    // Scope the read to the drawer's own list: `filtering.html` is also a prev/next target
+    // and a search-index entry on this page, so a whole-page search could land elsewhere.
+    let at = drawer_page
+        .find("id=\"tali-book-chapters\"")
+        .expect("the drawer's chapter list");
+    let rest = &drawer_page[at..];
+    let row = rest[rest.find("filtering.html").expect("the row exists")..].to_string();
+    let start = row.find("-words\">").expect("a words span follows") + "-words\">".len();
+    let in_drawer =
+        row[start..start + row[start..].find('<').expect("the span closes")].to_string();
     assert!(
         in_drawer.ends_with(" words")
             && in_drawer.chars().next().is_some_and(|c| c.is_ascii_digit()),
         "the drawer must print an absolute word count, not a bar or a time: {in_drawer}"
-    );
-    assert_eq!(
-        in_drawer, in_contents,
-        "the drawer and the landing Contents must agree on a chapter's length"
     );
     // Prose only: `filtering.tmd` is the longest chapter by prose, and counting its fenced
     // Python as words would put it somewhere else entirely.

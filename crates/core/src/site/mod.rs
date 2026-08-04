@@ -200,7 +200,6 @@ pub use card::{
 };
 mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
-mod book_toc;
 mod feed;
 mod llms;
 mod manifest;
@@ -1092,8 +1091,6 @@ impl Site {
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks));
         self.expand_page(page, blocks, warnings);
-        // The whole-book Contents list, on the book landing page only.
-        self.attach_book_toc(page, blocks);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub
