@@ -712,14 +712,14 @@ fn build_container(
         // treats as an authoring mistake, not a supported pattern. First definition
         // wins (kept in `debug_names`), the SECOND is the one located, matching
         // `register_xref`'s "keep first, warn on the duplicate" rule.
-        if let Some(n) = name {
-            if !debug_names.insert(n.to_string()) {
-                warnings.push(super::validate::validate_duplicate_debug_name(
-                    n,
-                    open_line,
-                    file.clone(),
-                ));
-            }
+        if let Some(n) = name
+            && !debug_names.insert(n.to_string())
+        {
+            warnings.push(super::validate::validate_duplicate_debug_name(
+                n,
+                open_line,
+                file.clone(),
+            ));
         }
         let hidden = match name {
             Some(n) => format!(
