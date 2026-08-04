@@ -54,9 +54,9 @@ To fix: Fix the path, or add the missing file. Remote `http(s)` assets are not c
 
 **an unknown callout kind**
 
-A `::: {.callout-…}` block names a callout type that is not one of Taliesin's kinds (`note`, `tip`, `important`, `warning`, `caution`), so it would render as a plain fenced div with no callout styling.
+A `::: {.callout-…}` block names a callout type that is not one of Taliesin's kinds (`note`, `tip`, `warning`), so it would render as a plain fenced div with no callout styling. Two prior kinds, `important` and `caution`, were retired on 2026-08-03: three kinds cover the distinctions a reader can actually decode, so the message explains the removal rather than guessing at a rename.
 
-To fix: Change the kind to a supported one (the message suggests the nearest match), e.g. `::: {.callout-important}`.
+To fix: Change the kind to a supported one (a typo draws the nearest match; a retired kind's message names what to use instead), e.g. `::: {.callout-warning}`.
 
 ## TAL-CELL-ERROR
 

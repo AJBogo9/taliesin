@@ -646,3 +646,38 @@ fn the_book_download_button_is_gone() {
         "its CSS survives in site.css"
     );
 }
+
+/// Callout kinds went 5 -> 3 on 2026-08-03 (visual minimalism pass, task 12): readers
+/// cannot decode *important* vs *warning* vs *caution* visually, and all three rendered
+/// as a coloured box with a different word in it. Both cut kinds must be registered in
+/// `RETIRED_KEYS` (scope `"callout kind"`, matching the exact literal
+/// `validate_callout_kind` passes to `unknown_key_message`) or an author who leaves one
+/// in a document gets silence: a plain unstyled box, no diagnostic.
+#[test]
+fn callout_kinds_are_three_and_the_two_cut_ones_are_registered() {
+    let kinds = taliesin_core::render::callout_kinds();
+    assert_eq!(
+        kinds,
+        &["note", "tip", "warning"],
+        "callout vocabulary should be 3"
+    );
+    for gone in ["important", "caution"] {
+        assert!(
+            taliesin_core::frontmatter::retired_note("callout kind", gone).is_some(),
+            "`{gone}` must have a RETIRED_KEYS entry or an author gets silence"
+        );
+    }
+    // The CSS half of the same subtraction: the retired kinds' selector rules must be
+    // gone from base.css too (the underlying `--tali-callout-important`/`-caution` CSS
+    // custom properties stay defined — `.tali-error`/`.tali-js-error` and the frozen
+    // `deck.css` still read `--tali-callout-important`, and `deck.css` alone still reads
+    // `--tali-callout-caution` — so only the class *selectors* are checked here, not the
+    // tokens themselves).
+    let css = taliesin_core::render::base_css();
+    for needle in [".callout-important", ".callout-caution"] {
+        assert!(
+            !css.contains(needle),
+            "`{needle}` selector rule survives in base.css"
+        );
+    }
+}

@@ -189,7 +189,7 @@ gesture opens a `vscode://file/<path>:<line>:<col>` deep link directly. Inbound,
 `window.addEventListener("message", …)` listens for `tali-cursor` and calls
 `highlightAtLine(m.file, m.line)`.
 
-::: {.callout-important}
+::: {.callout-note}
 ## The preview never writes back
 
 The bridge is deliberately one-way as a *write* path: click-to-source and

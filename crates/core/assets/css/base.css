@@ -525,18 +525,12 @@
   .callout-note { border-left-color: var(--tali-callout-note); }
   .callout-tip { border-left-color: var(--tali-callout-tip); }
   .callout-warning { border-left-color: var(--tali-callout-warning); }
-  .callout-important { border-left-color: var(--tali-callout-important); }
-  .callout-caution { border-left-color: var(--tali-callout-caution); }
   .callout-note .callout-icon { color: var(--tali-callout-note); }
   .callout-tip .callout-icon { color: var(--tali-callout-tip); }
   .callout-warning .callout-icon { color: var(--tali-callout-warning); }
-  .callout-important .callout-icon { color: var(--tali-callout-important); }
-  .callout-caution .callout-icon { color: var(--tali-callout-caution); }
   .callout-note .callout-title { background: color-mix(in srgb, var(--tali-callout-note) 12%, transparent); }
   .callout-tip .callout-title { background: color-mix(in srgb, var(--tali-callout-tip) 12%, transparent); }
   .callout-warning .callout-title { background: color-mix(in srgb, var(--tali-callout-warning) 13%, transparent); }
-  .callout-important .callout-title { background: color-mix(in srgb, var(--tali-callout-important) 12%, transparent); }
-  .callout-caution .callout-title { background: color-mix(in srgb, var(--tali-callout-caution) 12%, transparent); }
   /* appearance="simple": no tinted title bar (border + icon carry the kind). */
   .callout-simple > .callout-title, .callout-simple > details > summary.callout-title { background: transparent; }
   /* appearance="minimal": drop the left accent too; muted icon. */

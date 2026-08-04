@@ -32,7 +32,13 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
 ];
 
 /// Callout kinds taliesin recognizes (`::: {.callout-<kind>}`).
-pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning", "important", "caution"];
+///
+/// Five kinds shrank to three on 2026-08-03 (visual minimalism pass, task 12):
+/// `important` and `caution` were a coloured box with a different word in it, the same
+/// as `warning`, and no reader could reliably tell the three apart. `important` and
+/// `caution` are registered in `frontmatter::RETIRED_KEYS` (scope `"callout kind"`) so a
+/// document that still writes one gets a located removal note instead of silence.
+pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 
 /// Theorem-environment kinds taliesin recognizes (`::: {.theorem}`, `::: {.proof}`, …).
 /// Unlike callouts there is no namespace prefix, so this set IS the dispatch vocabulary:
@@ -495,16 +501,41 @@ mod tests {
 
     #[test]
     fn unknown_callout_kind_is_flagged_and_located() {
-        let w = validate_callout_kind("importnat", 7, None).expect("an unknown-kind warning");
+        let w = validate_callout_kind("warnign", 7, None).expect("an unknown-kind warning");
         assert_eq!(
             w.message,
-            "unknown callout kind `importnat` (did you mean `important`?)"
+            "unknown callout kind `warnign` (did you mean `warning`?)"
         );
         assert_eq!(w.line, Some(7));
         assert!(
             validate_callout_kind("note", 7, None).is_none(),
             "note is recognized"
         );
+    }
+
+    /// `important` and `caution` were retired 2026-08-03 (visual minimalism pass, task
+    /// 12): three kinds cover the distinctions a reader can actually decode. A document
+    /// that still names one of the two cut kinds must be told it was REMOVED, not offered
+    /// a did-you-mean (that phrasing is reserved for mechanical renames, and `warning`/
+    /// `note` are judgement calls, not renames) — same rule `RETIRED_KEYS`'s own doc
+    /// comment states for front-matter keys.
+    #[test]
+    fn retired_callout_kind_gives_the_removal_note_not_a_did_you_mean() {
+        for kind in ["important", "caution"] {
+            let w = validate_callout_kind(kind, 7, None)
+                .unwrap_or_else(|| panic!("`{kind}` must still warn"));
+            assert!(
+                w.message
+                    .starts_with(&format!("unknown callout kind `{kind}`: it was removed")),
+                "expected a removal note for `{kind}`, got: {}",
+                w.message
+            );
+            assert!(
+                !w.message.contains("did you mean"),
+                "a retired kind must not be phrased as a did-you-mean: {}",
+                w.message
+            );
+        }
     }
 
     #[test]

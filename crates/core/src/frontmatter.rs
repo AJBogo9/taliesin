@@ -294,6 +294,18 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
          archive with a disciplined category vocabulary. Page-level `categories:` still \
          works and still shows as a badge on each card",
     ),
+    (
+        "callout kind",
+        "important",
+        "it was removed on 2026-08-03: three kinds cover the distinctions a reader can \
+         actually decode. Use `warning` for a consequence, `note` for an aside",
+    ),
+    (
+        "callout kind",
+        "caution",
+        "it was removed on 2026-08-03: three kinds cover the distinctions a reader can \
+         actually decode. Use `warning`",
+    ),
 ];
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
@@ -858,6 +870,18 @@ pub fn closest_of<'a>(key: &str, candidates: impl IntoIterator<Item = &'a str>) 
         .filter(|&(d, _)| d > 0 && d <= 2)
         .min_by_key(|&(d, _)| d)
         .map(|(_, k)| k)
+}
+
+/// The retirement note for `(scope, key)` in [`RETIRED_KEYS`], or `None` if it was never
+/// retired (or was retired under a different scope). `pub` (rather than widening
+/// `RETIRED_KEYS` itself) so a test outside this crate can assert a retired construct is
+/// actually registered — the exact failure mode that produces silence instead of a
+/// diagnostic when a scope string typo slips through.
+pub fn retired_note(scope: &str, key: &str) -> Option<&'static str> {
+    RETIRED_KEYS
+        .iter()
+        .find(|(s, k, _)| *s == scope && *k == key)
+        .map(|(_, _, note)| *note)
 }
 
 /// Build an "unknown <what> `<key>`" message, appending "(did you mean `X`?)" when a

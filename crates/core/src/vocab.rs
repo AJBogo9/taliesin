@@ -135,8 +135,6 @@ fn callout_descriptions() -> &'static [(&'static str, &'static str)] {
         ("note", "Informational callout."),
         ("tip", "Helpful tip callout."),
         ("warning", "Warning callout."),
-        ("important", "Important callout."),
-        ("caution", "Caution callout."),
     ]
 }
 

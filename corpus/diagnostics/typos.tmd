@@ -13,7 +13,7 @@ listing:
 This document deliberately uses misspelled keys to pin Taliesin's schema validators.
 Each unknown key below produces one click-to-source warning; rendering is unaffected.
 
-::: {.callout-importnat}
+::: {.callout-warnign}
 This callout names a kind Taliesin does not define.
 :::
 

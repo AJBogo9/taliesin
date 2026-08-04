@@ -11,14 +11,6 @@
     {
       "description": "Warning callout.",
       "name": "warning"
-    },
-    {
-      "description": "Important callout.",
-      "name": "important"
-    },
-    {
-      "description": "Caution callout.",
-      "name": "caution"
     }
   ],
   "cellLanguages": [
@@ -133,8 +125,6 @@
         "callout-note",
         "callout-tip",
         "callout-warning",
-        "callout-important",
-        "callout-caution",
         "theorem",
         "lemma",
         "corollary",
@@ -153,8 +143,6 @@
         "callout-note",
         "callout-tip",
         "callout-warning",
-        "callout-important",
-        "callout-caution",
         "proof"
       ],
       "description": "Fold into a `<details>`: `true` starts closed, `false` starts open.",
@@ -165,9 +153,7 @@
       "classes": [
         "callout-note",
         "callout-tip",
-        "callout-warning",
-        "callout-important",
-        "callout-caution"
+        "callout-warning"
       ],
       "description": "`false` hides the callout's kind icon.",
       "name": "icon",
@@ -177,9 +163,7 @@
       "classes": [
         "callout-note",
         "callout-tip",
-        "callout-warning",
-        "callout-important",
-        "callout-caution"
+        "callout-warning"
       ],
       "description": "Callout presentation variant (default boxed).",
       "name": "appearance",

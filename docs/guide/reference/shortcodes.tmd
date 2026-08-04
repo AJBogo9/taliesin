@@ -131,7 +131,7 @@ follows the host page's light/dark setting rather than its own. A deck with a
 custom or extension `theme:` owns its own colours and is left as-is (no
 host-following script is emitted).
 
-::: {.callout-important}
+::: {.callout-warning}
 ## Embeds need a site build, not a single-doc build
 
 In a **site** build or preview, every deck referenced by an `{{< embed >}}` is

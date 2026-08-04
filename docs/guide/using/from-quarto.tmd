@@ -103,7 +103,7 @@ for a document that is wrong in a new way.
 
 ## Step 3: the body
 
-Almost everything is untouched. The one habit worth naming:
+Almost everything is untouched. Two habits worth naming:
 
 - **`::: {.columns}` with `.column` children** — Taliesin has one column grid and it
   is the bare attribute: `::: {layout-ncol=2}`, whose direct child blocks are the
@@ -111,6 +111,14 @@ Almost everything is untouched. The one habit worth naming:
   widths are equal by construction. `check` says a leftover `.columns` was *removed*
   rather than guessing at a rename, because the rewrite deletes the child fences
   instead of renaming them.
+- **`::: {.callout-important}` / `::: {.callout-caution}`** — Taliesin's callout
+  vocabulary is three kinds: `note:` an aside, `tip:` advice, `warning:` a consequence
+  the reader should not miss. `important:` and `caution:` were retired on 2026-08-03 —
+  a reader could not reliably tell either apart from `warning:` by sight, so all three
+  were the same coloured box with a different word in it. `check` says a leftover one
+  was *removed* rather than guessing at a rename, since the replacement is a judgement
+  call (which of `warning`/`note` fits what the callout actually says), not a mechanical
+  one.
 
 Cell options (`#| echo: false`, `#| label: fig-…`, `#| fig-cap: "…"`) work as you
 expect, and the document-level `execute:` block honours `echo`, `include` and

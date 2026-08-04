@@ -16,7 +16,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown front-matter key `treme` (did you mean `theme`?)",
         "unknown execute key `cach` (did you mean `cache`?)",
         "unknown listing key `max-itemz` (did you mean `max-items`?)",
-        "unknown callout kind `importnat` (did you mean `important`?)",
+        "unknown callout kind `warnign` (did you mean `warning`?)",
         "unknown cell option `labl` (did you mean `label`?)",
         "unknown div class `fragmnet` (did you mean `fragment`?)",
         // Retired, not misspelled: these two carry a REASON where the six above carry a
@@ -60,7 +60,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
     let callout = doc
         .warnings
         .iter()
-        .find(|w| w.message.contains("`importnat`"))
+        .find(|w| w.message.contains("`warnign`"))
         .unwrap();
     assert!(
         callout.line.is_some(),

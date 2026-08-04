@@ -159,7 +159,7 @@ import datetime
 print(datetime.datetime.now())
 ```
 
-::: {.callout-important}
+::: {.callout-warning}
 ## The cache key sees your code, not your data
 
 The `_freeze/` key is built from cell code, every upstream cell's code, and the

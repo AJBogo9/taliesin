@@ -46,8 +46,8 @@
   },
   "Callout": {
     "prefix": "callout",
-    "description": "A callout block (note, tip, warning, important, caution).",
-    "body": ["::: {.callout-${1|note,tip,warning,important,caution|}}", "$0", ":::"]
+    "description": "A callout block (note, tip, warning).",
+    "body": ["::: {.callout-${1|note,tip,warning|}}", "$0", ":::"]
   },
   "Figure": {
     "prefix": "fig",

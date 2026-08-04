@@ -105,8 +105,6 @@ from a single definition (no per-kind dark override needed).
 | `--tali-callout-note` | `#4c8dff` | note |
 | `--tali-callout-tip` | `#2bb673` | tip |
 | `--tali-callout-warning` | `#e0a800` | warning |
-| `--tali-callout-important` | `#e0566b` | important |
-| `--tali-callout-caution` | `#e8730c` | caution |
 
 ### Fonts, layout, and focus
 
