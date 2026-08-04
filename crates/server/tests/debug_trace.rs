@@ -667,7 +667,7 @@ fn a_traced_cell_sees_the_namespace_an_earlier_cell_built() {
 /// `json.dumps` defaults to `allow_nan=True`, which writes the bare, non-JSON tokens
 /// `Infinity`/`-Infinity`/`NaN`; `JSON.parse` on the browser side threw
 /// `SyntaxError: Unexpected token`, `readTrace` caught it and returned zero frames, and
-/// `mount` bailed — no transport, no variables, no stage, and no error message at all.
+/// `mount` bailed: no transport, no variables, no stage, and no error message at all.
 ///
 /// `float('inf')` as a sentinel is standard in Dijkstra, in dynamic programming, and in
 /// any minimum-search algorithm, so this hit the feature's headline use cases directly.

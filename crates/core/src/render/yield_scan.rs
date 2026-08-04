@@ -101,7 +101,7 @@ pub(crate) fn stamp_yields(src: &str) -> Option<String> {
                     // splice below inserts `__at(` flush against `yield` with no space
                     // between them (there was none in the source, `yield*`), merging the
                     // two into the single identifier `yield__at` and leaving a bare `*` as
-                    // the first thing inside its own argument list — a guaranteed syntax
+                    // the first thing inside its own argument list: a guaranteed syntax
                     // error, exactly the "a stamp it should not have emitted" case this
                     // scanner exists to rule out. Refuse the site instead: a missed cursor
                     // costs a line highlight, never a corrupted cell.
@@ -332,7 +332,7 @@ mod tests {
     // the `*` itself. Splicing `__at(` there merges flush against `yield` (there was no
     // space to preserve, the source read `yield*`) into the single identifier
     // `yield__at`, with a bare `*` as the first token in what was meant to be its
-    // argument list — a guaranteed `SyntaxError`. `yield*` is the idiomatic delegation
+    // argument list: a guaranteed `SyntaxError`. `yield*` is the idiomatic delegation
     // form for exactly the recursive algorithms (quicksort, mergesort, tree traversals)
     // this feature targets, so this is not an edge case.
 

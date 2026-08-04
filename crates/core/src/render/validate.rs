@@ -477,7 +477,7 @@ pub(crate) fn validate_nested_debug(line: u32, file: Option<String>) -> Warning 
 /// by that one string and stamps `data-debug-name`/`[data-tali-input]` from it too, so two
 /// blocks sharing a name overwrite each other's registry entry (whichever mounted or
 /// re-captured LAST wins) and their hidden inputs fight over the same reactive-graph edge
-/// and the same URL fragment. Purely diagnostic — both divs still render and step
+/// and the same URL fragment. Purely diagnostic: both divs still render and step
 /// independently; only the shared name is broken. `line` is the 1-based source line of
 /// the DUPLICATE (the second) `.debug` block's own opening fence, the same "locate the
 /// duplicate, keep the first" convention `register_xref`'s own warning uses.
