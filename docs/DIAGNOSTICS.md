@@ -126,7 +126,7 @@ To fix: Remove the `width=` (the columns are equal), or set an explicit column c
 
 **a misspelled or retired feature div class**
 
-A `:::` fenced div carries a class that is a near-miss of one Taliesin implements (`.fragmnet` for `.fragment`, `.theorm` for `.theorem`), so the feature never dispatches and the div renders as a plain container. Div classes are an OPEN vocabulary — a genuinely custom class you style yourself is silent — so a near-miss fires only within edit distance 2 of a known name. A class Taliesin used to implement and has since removed (`.columns`, or `.sidenote`/`.marginnote`/`.aside`, retired 2026-08-03 in favor of the single `.column-margin` spelling) fires unconditionally instead, with a removal note rather than a guessed rename.
+A `:::` fenced div carries a class that is a near-miss of one Taliesin implements (`.fragmnet` for `.fragment`, `.theorm` for `.theorem`), so the feature never dispatches and the div renders as a plain container. Div classes are an OPEN vocabulary — a genuinely custom class you style yourself is silent — so a near-miss fires only within edit distance 2 of a known name. A class Taliesin used to implement and has since removed (`.columns`; `.sidenote`/`.marginnote`/`.aside`, retired 2026-08-03 in favor of the single `.column-margin` spelling; or `.proposition`/`.example`/`.remark`, retired 2026-08-03 along with their theorem kinds) fires unconditionally instead, with a removal note rather than a guessed rename.
 
 To fix: Correct the class to the one the message suggests, or — for a retired class — to the replacement its removal note names. If the class really is your own, rename it so it is not a near-miss of a built-in.
 

@@ -548,11 +548,9 @@
   .tali-theorem-body > :first-child { margin-top: .4rem; }
   .tali-thm-style-plain { border-left-color: var(--tali-thm-plain); }
   .tali-thm-style-definition { border-left-color: var(--tali-thm-definition); }
-  .tali-thm-style-remark { border-left-color: var(--tali-thm-remark); }
   .tali-thm-style-plain .tali-theorem-head { background: color-mix(in srgb, var(--tali-thm-plain) 12%, transparent); }
   .tali-thm-style-definition .tali-theorem-head { background: color-mix(in srgb, var(--tali-thm-definition) 12%, transparent); }
-  .tali-thm-style-remark .tali-theorem-head { background: color-mix(in srgb, var(--tali-thm-remark) 10%, transparent); }
-  /* amsthm convention: plain-style bodies are italic; definition/remark stay upright. */
+  /* amsthm convention: plain-style bodies are italic; definition stays upright. */
   .tali-thm-style-plain .tali-theorem-body { font-style: italic; }
   /* proof: italic lead, right-floated QED. */
   .tali-proof { margin: 1.1rem 0; }

@@ -11,6 +11,15 @@ use std::collections::HashMap;
 /// of truth for both `xref_label` (the lookup) and the editor `vocab` dump, so the two
 /// cannot drift. The parallel bare-prefix list in `site::xref::is_ref_anchor` is guarded
 /// against this one by a unit test there.
+///
+/// `prp` (Proposition), `exm` (Example) and `rem` (Remark) were retired on 2026-08-03
+/// (visual minimalism pass, task 14) along with their theorem kinds — see
+/// `render::validate::THEOREM_KINDS`. This table has no retirement register of its own:
+/// an `@exm-x`/`@prp-x`/`@rem-x` written after this change never reaches `xref_label`'s
+/// `Some` branch, so it is left as literal text with no `data-tali-xref` marker and
+/// therefore nothing for `cite::validate::validate_xrefs` to flag. That is a genuine
+/// silence gap, not a "did you mean" — noted here rather than papered over with an
+/// invented mechanism (pure subtraction).
 pub(crate) const XREF_LABELS: &[(&str, &str)] = &[
     ("fig", "Figure"),
     ("tbl", "Table"),
@@ -20,10 +29,7 @@ pub(crate) const XREF_LABELS: &[(&str, &str)] = &[
     ("thm", "Theorem"),
     ("lem", "Lemma"),
     ("cor", "Corollary"),
-    ("prp", "Proposition"),
     ("def", "Definition"),
-    ("exm", "Example"),
-    ("rem", "Remark"),
 ];
 
 /// Cross-reference kind prefixes -> display label.
@@ -449,9 +455,11 @@ mod tests {
         xrefs.insert("fig-x".to_string(), "3".to_string());
         let mut key = |_: &str| 1usize;
 
-        // A mid-word `@` (an email / @-mention glued to a word) is NOT an xref: the
-        // `rem-` after the `@` looks like a `rem-` (Remark) anchor, but the preceding
-        // `b` of `bob` is a word char, so it's left verbatim — no link, no diagnostic.
+        // A mid-word `@` (an email / @-mention glued to a word) is NOT an xref: even a
+        // `@` followed by what LOOKS like a valid xref prefix and a hyphen is rejected
+        // when the preceding `b` of `bob` is a word char, so it's left verbatim — no
+        // link, no diagnostic. (`rem-` is no longer a real prefix at all since 2026-08-03,
+        // but the boundary check runs first regardless of prefix validity.)
         let out = rewrite_text("mail bob@rem-server.com today", &mut key, &xrefs);
         assert_eq!(out, "mail bob@rem-server.com today");
 

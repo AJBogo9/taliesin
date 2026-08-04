@@ -4607,11 +4607,22 @@ fn theorem_styles_map_kinds() {
         "got: {}",
         d.blocks[0].html
     );
-    let r = render_document("::: {.remark}\nAside.\n:::\n");
+    // The other surviving style, "plain" — shared by theorem/lemma/corollary since
+    // `remark` (its own style, kept apart before 2026-08-03) is gone.
+    let t = render_document("::: {.corollary}\nA cyclic group.\n:::\n");
     assert!(
-        r.blocks[0].html.contains("tali-thm-style-remark"),
+        t.blocks[0]
+            .html
+            .contains("tali-theorem-corollary tali-thm-style-plain"),
         "got: {}",
-        r.blocks[0].html
+        t.blocks[0].html
+    );
+    assert!(
+        t.blocks[0]
+            .html
+            .contains("<span class=\"tali-theorem-label\">Corollary"),
+        "got: {}",
+        t.blocks[0].html
     );
 }
 
@@ -5441,7 +5452,7 @@ fn theorem_accents_clear_the_graphical_floor_in_every_theme() {
         ("light", TOKENS_CSS, "#ffffff"),
         ("dark", TOKENS_DARK_CSS, "#16181d"),
     ] {
-        for kind in ["plain", "definition", "remark"] {
+        for kind in ["plain", "definition"] {
             let c = color_after(css, &format!("--tali-thm-{kind}:"));
             let r = wcag_contrast(c, bg);
             assert!(

@@ -30,18 +30,22 @@ Distinct left cosets of $H$ are disjoint and have equal size.
 Partition $G$ into left cosets of $H$ using @lem-coset, then count.
 :::
 
-::: {.corollary}
+::: {.corollary #cor-prime}
 A group of prime order is cyclic.
 :::
 
-::: {.proposition}
+By @cor-prime, no group of prime order has a proper nontrivial subgroup.
+
+::: {.theorem #thm-intersection}
 The intersection of two subgroups of $G$ is again a subgroup.
 :::
 
-::: {.example}
+Combined with @def-group, @thm-intersection shows subgroups form a lattice under intersection.
+
+::: {.callout-note title="Example"}
 The residues $\mathbb{Z}/n\mathbb{Z}$ form a group of order $n$ under addition.
 :::
 
-::: {.remark}
+::: {.callout-note title="Remark"}
 @thm-lagrange does not extend to infinite groups.
 :::

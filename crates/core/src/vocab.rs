@@ -143,10 +143,7 @@ fn theorem_descriptions() -> &'static [(&'static str, &'static str)] {
         ("theorem", "Numbered theorem."),
         ("lemma", "Numbered lemma."),
         ("corollary", "Numbered corollary."),
-        ("proposition", "Numbered proposition."),
         ("definition", "Numbered definition."),
-        ("example", "Numbered example."),
-        ("remark", "Numbered remark."),
         ("proof", "Proof block (unnumbered)."),
     ]
 }

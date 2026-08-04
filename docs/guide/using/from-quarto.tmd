@@ -126,6 +126,16 @@ Almost everything is untouched. Three habits worth naming:
   for one box. `check` says a leftover alias was *removed* and points at
   `.column-margin` — this one IS a mechanical rename, unlike `.columns` and the callout
   kinds above.
+- **`::: {.proposition}` / `::: {.example}` / `::: {.remark}`** — Taliesin's theorem
+  vocabulary is five kinds: `theorem`, `lemma`, `corollary`, `definition`, `proof`.
+  `proposition`, `example` and `remark` were retired on 2026-08-03 — none was ever
+  cross-referenced anywhere in the tree, and unlike a callout kind a theorem kind
+  carries no namespace prefix (`.theorem` dispatches directly), so a misspelled or
+  retired one has nothing to anchor a "did you mean". `check` says a leftover one was
+  *removed* rather than staying silent about it. Rewrite it as `.theorem` (a
+  proposition renders in the same `plain` style), `.definition`, or a plain
+  `::: {.callout-note}` — the fit is a judgement call about what the content actually
+  is, not a mechanical rename.
 
 Cell options (`#| echo: false`, `#| label: fig-…`, `#| fig-cap: "…"`) work as you
 expect, and the document-level `execute:` block honours `echo`, `include` and

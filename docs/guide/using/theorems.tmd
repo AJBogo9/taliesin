@@ -1,11 +1,11 @@
 ---
 title: "Theorems and proofs"
-description: "Eight numbered environments for mathematical writing: titles, proofs, cross-references, numbering, and the reading affordances they carry."
+description: "Five numbered environments for mathematical writing: titles, proofs, cross-references, numbering, and the reading affordances they carry."
 ---
 
 Mathematical writing needs more than typeset math: it needs *environments*, the
 numbered, labelled, cross-referenceable boxes that carry a statement and, after it, a
-proof. Taliesin ships eight of them as fenced divs. They are numbered server-side, so
+proof. Taliesin ships five of them as fenced divs. They are numbered server-side, so
 the first paint is already correct, there is no LaTeX package to load and nothing to
 re-run when the theme flips.
 
@@ -31,9 +31,9 @@ The left cosets of $H$ partition $G$ and each one has $|H|$ elements.
 :::
 ```
 
-## The eight environments
+## The five environments
 
-The class name *is* the vocabulary: a fenced div whose class is one of these eight
+The class name *is* the vocabulary: a fenced div whose class is one of these five
 becomes an environment. Each kind counts on its own and carries its own
 cross-reference prefix.
 
@@ -42,27 +42,22 @@ cross-reference prefix.
 | `::: {.theorem}` | Theorem | plain | `@thm-` |
 | `::: {.lemma}` | Lemma | plain | `@lem-` |
 | `::: {.corollary}` | Corollary | plain | `@cor-` |
-| `::: {.proposition}` | Proposition | plain | `@prp-` |
 | `::: {.definition}` | Definition | definition | `@def-` |
-| `::: {.example}` | Example | definition | `@exm-` |
-| `::: {.remark}` | Remark | remark | `@rem-` |
 | `::: {.proof}` | Proof | proof | none (see [Proofs](#proofs)) |
 
-The three styles follow the amsthm convention: **plain** sets the body in italics (the
-voice of a claim), while **definition** and **remark** leave it upright (the voice of
-a stipulation or an aside). Each style also gets its own accent on the left border, so
-the three read apart at a glance without a legend:
+The two styles follow the amsthm convention: **plain** sets the body in italics (the
+voice of a claim), while **definition** leaves it upright (the voice of a stipulation).
+Each style also gets its own accent on the left border, so the two read apart at a
+glance without a legend:
 
 ::: {.definition #def-group}
 A **group** is a set $G$ with an associative binary operation, an identity element,
 and an inverse for every element.
 :::
 
-::: {.remark}
 A definition is upright and a theorem is italic. That is the amsthm distinction, not a
 Taliesin invention, and the accent colours are theme variables, so they track light
 and dark.
-:::
 
 There is no namespace prefix on these classes (a callout is `.callout-note`, but a
 theorem is just `.theorem`), so this list is also the dispatch table. A misspelled kind
@@ -70,12 +65,20 @@ has no prefix to anchor a "did you mean", so `::: {.therom}` quietly falls throu
 renders as a plain div. If an environment comes out unstyled and unnumbered, check the
 spelling of the class first.
 
+Eight kinds shrank to five on 2026-08-03: `proposition`, `example` and `remark` were
+retired, since none was ever cross-referenced across the whole corpus. `check` names a
+leftover one as *removed* rather than silently falling through — the exact failure mode
+a class with no namespace prefix would otherwise hit — and points at the closest fit:
+`.theorem` for a proposition (both render in the same `plain` style), `.definition` or
+a plain `::: {.callout-note}` for an example, and a plain `::: {.callout-note}` for a
+remark.
+
 ## Titles
 
 A `title=` attribute names the result, rendered parenthetically after the number, the
 way `\begin{theorem}[Lagrange]` does:
 
-::: {.proposition title="Intersection of subgroups"}
+::: {.theorem title="Intersection of subgroups"}
 The intersection of two subgroups of $G$ is again a subgroup.
 :::
 
@@ -165,11 +168,11 @@ never has to remember which counter a number came from (this is amsthm's
 ```yaml
 ---
 theorems:
-  shared: [theorem, lemma, corollary, proposition]
+  shared: [theorem, lemma, corollary]
 ---
 ```
 
-Those four now draw from one counter: Theorem 1, Lemma 2, Corollary 3. Only the
+Those three now draw from one counter: Theorem 1, Lemma 2, Corollary 3. Only the
 *number* is shared, the visible label stays per-kind, and any kind you leave off the
 list (`definition` here) keeps counting on its own.
 

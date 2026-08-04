@@ -45,16 +45,13 @@ pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 /// a div whose class is one of these enters the theorem arm. `proof` is included but is
 /// unnumbered + unreferenceable. A misspelled kind has no prefix to anchor a did-you-mean,
 /// so it falls through to a plain div (see the design doc).
-pub(crate) const THEOREM_KINDS: &[&str] = &[
-    "theorem",
-    "lemma",
-    "corollary",
-    "proposition",
-    "definition",
-    "example",
-    "remark",
-    "proof",
-];
+///
+/// Eight kinds shrank to five on 2026-08-03 (visual minimalism pass, task 14): `example`,
+/// `proposition` and `remark` were never cross-referenced by any document in the tree. All
+/// three are registered in [`RETIRED_DIV_CLASSES`] below — the same silent-fallthrough risk
+/// the doc comment above already names, so without that entry a leftover
+/// `.example`/`.proposition`/`.remark` gets no diagnostic at all.
+pub(crate) const THEOREM_KINDS: &[&str] = &["theorem", "lemma", "corollary", "definition", "proof"];
 
 /// Structural + deck feature classes a `:::` fenced div can carry. This is **not** a closed
 /// vocabulary — a div may carry any custom class (styled by the author's own CSS) — so this list
@@ -215,6 +212,21 @@ pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
     (
         "marginnote",
         "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
+    ),
+    (
+        "example",
+        "it was removed on 2026-08-03. Rewrite it as `.definition` or a plain \
+         `::: {.callout-note}`, whichever fits the content",
+    ),
+    (
+        "proposition",
+        "it was removed on 2026-08-03. `.theorem` is the closest surviving numbered kind \
+         now — both render in the same `plain` style",
+    ),
+    (
+        "remark",
+        "it was removed on 2026-08-03. A plain `::: {.callout-note}` is the closest \
+         surviving spelling now",
     ),
 ];
 
@@ -465,6 +477,51 @@ mod tests {
                 w.message
             );
         }
+    }
+
+    /// Theorem kinds went 8 -> 5 on 2026-08-03 (visual minimalism pass, task 14): `example`,
+    /// `proposition` and `remark` were never cross-referenced by any document in the tree.
+    /// Unlike a callout kind, a theorem kind carries no namespace prefix — `THEOREM_KINDS`
+    /// IS the dispatch vocabulary — so without a `RETIRED_DIV_CLASSES` entry a leftover
+    /// `.example`/`.proposition`/`.remark` falls through to a plain, unnumbered,
+    /// unreferenceable div with no diagnostic at all. This is the direct pin that
+    /// `RETIRED_DIV_CLASSES` actually carries all three entries;
+    /// `crates/core/tests/retired_names.rs` pins the same three through the full render
+    /// pipeline, since `RETIRED_DIV_CLASSES` itself is `pub(crate)` and unreachable from
+    /// an external test.
+    #[test]
+    fn theorem_kind_aliases_warn_with_the_removal_note_not_a_did_you_mean() {
+        let s = |c: &str| vec![c.to_string()];
+        for gone in ["example", "proposition", "remark"] {
+            let w = validate_div_class(&s(gone), 3, None)
+                .unwrap_or_else(|| panic!("`.{gone}` must warn, div classes are open vocabulary"));
+            assert!(
+                w.message.starts_with(&format!(
+                    "unknown div class `{gone}`: it was removed on 2026-08-03."
+                )),
+                "expected a removal note for `.{gone}`, got: {}",
+                w.message
+            );
+            assert!(
+                !w.message.contains("did you mean"),
+                "a retired class is not a did-you-mean: {}",
+                w.message
+            );
+        }
+        // Removing a kind also removes it from the dispatch vocabulary itself: the three
+        // cut kinds must not survive in THEOREM_KINDS (else `theorem_kind()` would still
+        // route them into the theorem arm, and this whole retirement would be a no-op).
+        for gone in ["example", "proposition", "remark"] {
+            assert!(
+                !THEOREM_KINDS.contains(&gone),
+                "`.{gone}` must no longer be a recognized theorem kind"
+            );
+        }
+        assert_eq!(
+            THEOREM_KINDS,
+            &["theorem", "lemma", "corollary", "definition", "proof"],
+            "theorem vocabulary should be exactly 5"
+        );
     }
 
     #[test]

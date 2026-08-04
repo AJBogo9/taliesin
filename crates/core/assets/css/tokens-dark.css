@@ -18,6 +18,6 @@
     --tali-callout-note: #92a3d4; --tali-callout-tip: #65bf9f; --tali-callout-warning: #d4aa5a;
     --tali-callout-important: #dc747d; --tali-callout-caution: #be6f45;
     /* Theorem accents: the same vocabulary, quieter than the callouts. */
-    --tali-thm-plain: #8b97c4; --tali-thm-definition: #58ac8e; --tali-thm-remark: #9aa0aa;
+    --tali-thm-plain: #8b97c4; --tali-thm-definition: #58ac8e;
     color-scheme: dark; /* native form controls ({js} cell inputs) + scrollbars render dark */
   }

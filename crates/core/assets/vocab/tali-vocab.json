@@ -128,10 +128,7 @@
         "theorem",
         "lemma",
         "corollary",
-        "proposition",
         "definition",
-        "example",
-        "remark",
         "proof"
       ],
       "description": "Heading text for the box (else a leading heading, else the kind).",
@@ -1780,20 +1777,8 @@
       "name": "corollary"
     },
     {
-      "description": "Numbered proposition.",
-      "name": "proposition"
-    },
-    {
       "description": "Numbered definition.",
       "name": "definition"
-    },
-    {
-      "description": "Numbered example.",
-      "name": "example"
-    },
-    {
-      "description": "Numbered remark.",
-      "name": "remark"
     },
     {
       "description": "Proof block (unnumbered).",
@@ -1834,20 +1819,8 @@
       "prefix": "cor"
     },
     {
-      "label": "Proposition",
-      "prefix": "prp"
-    },
-    {
       "label": "Definition",
       "prefix": "def"
-    },
-    {
-      "label": "Example",
-      "prefix": "exm"
-    },
-    {
-      "label": "Remark",
-      "prefix": "rem"
     }
   ]
 }

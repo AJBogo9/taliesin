@@ -763,3 +763,124 @@ fn margin_aliases_are_retired_through_the_full_render_pipeline() {
         "`.column-margin` must still be styled in base.css"
     );
 }
+
+/// Theorem kinds went 8 -> 5 on 2026-08-03 (visual minimalism pass, task 14): `example`,
+/// `proposition` and `remark` were never cross-referenced by any document in the tree.
+///
+/// Unlike a callout kind, a theorem kind carries NO namespace prefix (`.theorem`
+/// dispatches directly; there is no `theorem-` prefix the way there is `callout-`), so
+/// `THEOREM_KINDS` itself IS the dispatch vocabulary. A misspelled or retired kind has
+/// nothing to anchor a "did you mean", so without a `RETIRED_DIV_CLASSES` entry it falls
+/// through to a plain, unnumbered, unreferenceable div with NO diagnostic at all — the
+/// exact silent failure mode this test guards against. `validate.rs`'s own `#[cfg(test)]`
+/// block pins that `RETIRED_DIV_CLASSES` carries all three entries directly, since the
+/// const is `pub(crate)` and unreachable from this integration test; this pins the
+/// EMITTED surface, through the full render pipeline, plus the CSS half of the same
+/// subtraction and the SECOND, independent vocabulary this retirement also touches: the
+/// `@exm-`/`@prp-`/`@rem-` cross-reference prefixes.
+#[test]
+fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
+    let kinds = taliesin_core::render::theorem_kinds();
+    assert_eq!(
+        kinds,
+        &["theorem", "lemma", "corollary", "definition", "proof"],
+        "theorem vocabulary should be 5"
+    );
+    for gone in ["example", "proposition", "remark"] {
+        assert!(
+            taliesin_core::render::retired_div_note(gone).is_some(),
+            "`.{gone}` needs a RETIRED_DIV_CLASSES entry — a misspelled theorem kind has \
+             no prefix to anchor a did-you-mean and falls through to a plain div"
+        );
+        // The full render pipeline: silence is the failure mode this test exists to catch.
+        let src = format!("::: {{.{gone}}}\nx\n:::\n");
+        let doc = taliesin_core::render::render_document(&src);
+        let w = doc
+            .warnings
+            .iter()
+            .find(|w| w.message.contains("div class"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`.{gone}` must warn (silence is the failure mode this test exists to \
+                     catch); warnings: {:?}",
+                    doc.warnings
+                )
+            });
+        assert!(
+            w.message
+                .starts_with(&format!("unknown div class `{gone}`: it was removed")),
+            "`.{gone}` must carry the removal note, got: {}",
+            w.message
+        );
+        assert!(
+            !w.message.contains("did you mean"),
+            "a retired class is not a did-you-mean: {}",
+            w.message
+        );
+        // Purely diagnostic: the div still renders with its given class, matching every
+        // other validator in `validate.rs`.
+        assert!(
+            doc.body_html().contains(&format!("class=\"{gone}\"")),
+            "`.{gone}` must still render with its given class: {}",
+            doc.body_html()
+        );
+    }
+    // The CSS half of the same subtraction. `.tali-thm-style-remark` was the only
+    // kind-specific style selector among the three cut kinds — `example` and `proposition`
+    // reused the surviving `definition`/`plain` styles, so there was never a per-kind
+    // selector for either of them to begin with.
+    let css = taliesin_core::render::base_css();
+    assert!(
+        !css.contains(".tali-thm-style-remark"),
+        "`.tali-thm-style-remark` selector rule survives in base.css"
+    );
+    assert!(
+        css.contains(".tali-thm-style-plain") && css.contains(".tali-thm-style-definition"),
+        "the two surviving theorem styles must still be styled in base.css"
+    );
+
+    // The SECOND vocabulary this retirement touches: the cross-reference prefixes.
+    // `@exm-`/`@prp-`/`@rem-` are retired from `cite::XREF_LABELS` too, and — unlike the
+    // div-class case above — that table has NO retirement register: an unknown prefix
+    // never reaches `parse_xref`'s `Some` branch, so it is left as literal text with no
+    // `data-tali-xref` marker and therefore nothing for `cite::validate_xrefs` to flag.
+    // This is a genuine silence gap (documented in `cite/render.rs`'s `XREF_LABELS` doc
+    // comment), not something this test can fix without inventing a new mechanism
+    // (`RETIRED_KEYS`/`RETIRED_DIV_CLASSES` are both per-family registers, not generic).
+    for prefix in ["exm", "prp", "rem"] {
+        let anchor = format!("{prefix}-x");
+        assert!(
+            !taliesin_core::cite::is_xref_anchor(&anchor),
+            "`@{anchor}` must no longer resolve as a cross-reference anchor"
+        );
+    }
+    // The five surviving kinds' prefixes must still resolve, end to end: a real theorem
+    // env with an id in the wild renders as a linked, numbered cross-reference. `proof`
+    // deliberately carries no prefix (unnumbered, unreferenceable by design) so it is not
+    // in this list.
+    let src = "::: {.theorem #thm-a}\nT.\n:::\n::: {.lemma #lem-a}\nL.\n:::\n\
+               ::: {.corollary #cor-a}\nC.\n:::\n::: {.definition #def-a}\nD.\n:::\n\
+               ::: {.proof}\nP.\n:::\n\nSee @thm-a, @lem-a, @cor-a, @def-a.\n";
+    let doc = taliesin_core::render::render_document(src);
+    let body = doc.body_html();
+    for (anchor, label) in [
+        ("thm-a", "Theorem"),
+        ("lem-a", "Lemma"),
+        ("cor-a", "Corollary"),
+        ("def-a", "Definition"),
+    ] {
+        assert!(
+            body.contains(&format!(
+                "<a href=\"#{anchor}\" class=\"tali-xref\">{label}&nbsp;1</a>"
+            )),
+            "`@{anchor}` must resolve to a numbered, linked cross-reference: {body}"
+        );
+    }
+    // `proof` deliberately carries no `data-tali-theorem-kind` (it is not numbered or
+    // cross-referenceable by design; `proof_emits_qed_and_no_number_slot` in
+    // `render/tests.rs` pins the number-slot half of the same contract in isolation).
+    assert!(
+        body.contains("class=\"tali-proof\"") && !body.contains("data-tali-theorem-kind=\"proof\""),
+        "the fifth survivor, `proof`, must still render, unnumbered: {body}"
+    );
+}

@@ -536,10 +536,7 @@ pub(crate) fn theorem_meta(kind: &str) -> (&'static str, &'static str) {
         "theorem" => ("Theorem", "plain"),
         "lemma" => ("Lemma", "plain"),
         "corollary" => ("Corollary", "plain"),
-        "proposition" => ("Proposition", "plain"),
         "definition" => ("Definition", "definition"),
-        "example" => ("Example", "definition"),
-        "remark" => ("Remark", "remark"),
         _ => ("", "plain"),
     }
 }
