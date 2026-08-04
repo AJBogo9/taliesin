@@ -109,6 +109,11 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-src",
     "data-tali-theme-toggle",
     "data-tali-theorem-kind",
+    // Not a real browser consumer yet (task 1 of algorithm debug mode is server-only,
+    // no JS): swept in because it's a string literal in emit.rs, which this scan
+    // includes wholesale since the file's doc comments happen to mention `<script>`
+    // elsewhere. A later task's `debug.js` gives it a genuine one.
+    "data-tali-trace",
     "data-tali-xref",
     "data-target",
     "data-theme",

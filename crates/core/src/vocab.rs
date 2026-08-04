@@ -127,6 +127,10 @@ fn cell_option_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("viewof", "Bind a `{js}` input control to this name."),
         ("input", "Reactive `{js}` inputs this cell depends on."),
+        (
+            "trace",
+            "Record this cell's execution so `::: {.debug}` can step through it.",
+        ),
     ]
 }
 

@@ -91,16 +91,23 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                         html_escape(summary)
                     ));
                 } else {
+                    // `::: {.debug}` marks its stepped cell `#| trace: true`; the marker
+                    // rides on the `<pre>` so `divs.rs`'s `is_traced_cell` can find it
+                    // without re-scanning the (already-stripped) source.
+                    let trace_attr = match cell_option(&cb.literal, "trace") {
+                        Some("true") => " data-tali-trace=\"1\"",
+                        _ => "",
+                    };
                     // `code-line-numbers` wraps each line so a deck can highlight /
                     // step through them; absent, the code block is emitted unchanged.
                     match code_line_numbers(&cb.info, &cb.literal) {
                         Some(spec) => out.push_str(&format!(
-                            "<pre{attrs}{cell_attr} data-code-lines=\"{}\"><code{class}>{}</code></pre>",
+                            "<pre{attrs}{cell_attr}{trace_attr} data-code-lines=\"{}\"><code{class}>{}</code></pre>",
                             escape_attr(&spec),
                             wrap_code_lines(&highlighted),
                         )),
                         None => out.push_str(&format!(
-                            "<pre{attrs}{cell_attr}><code{class}>{highlighted}</code></pre>"
+                            "<pre{attrs}{cell_attr}{trace_attr}><code{class}>{highlighted}</code></pre>"
                         )),
                     }
                 }

@@ -507,6 +507,14 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
     (!rest[..end].is_empty()).then(|| rest[..end].to_string())
 }
 
+/// Whether an already-emitted block is a cell marked `trace: true`. The emitter has
+/// stripped the `#|`/`//|` directive lines out of the displayed source by this point, so
+/// the marker is read off the attribute `emit.rs` leaves behind, never by re-scanning the
+/// source text.
+fn is_traced_cell(b: &Block) -> bool {
+    b.html.contains("data-tali-trace=\"1\"")
+}
+
 /// Bundled inline icon for a callout `kind` (GitHub Octicons, MIT — see THIRD_PARTY.md;
 /// `fill="currentColor"` so it takes the kind's accent). Empty for an unknown kind, which
 /// is already flagged by `validate_callout_kind`. Keyed by the same vocabulary as
@@ -624,6 +632,66 @@ fn build_container(
             .map(|b| super::emit::wrap_pre_lines(&b.html))
             .collect();
         format!("<div class=\"magic-move\"{data}>{body}</div>")
+    } else if attrs.classes.iter().any(|c| c == "debug") {
+        // Algorithm debug mode: the first code block becomes the stepped panel, the rest
+        // (a `{js}` view cell, prose) ride alongside. `debug.js` builds the transport bar,
+        // the variables panel and the data views from the trace at runtime, so the server
+        // emits only structure. Line-wrapped with the SAME helper magic-move and the
+        // walkthrough use, so the cursor reuses the `.tali-hl-ln` contract already styled
+        // in base.css instead of inventing a second one.
+        //
+        // `.column-page` is applied here rather than left to the author: the reading
+        // measure (~70ch) cannot hold a code panel beside a data view, and requiring
+        // `::: {.debug .column-page}` would make every author repeat the same escape.
+        let code_idx = inner
+            .iter()
+            .position(|b| b.html.contains("<pre") && b.html.contains("<code"));
+        let traced = inner.iter().filter(|b| is_traced_cell(b)).count();
+        let name = attrs.get("name").filter(|n| !n.is_empty());
+        for w in super::validate::validate_debug(
+            traced,
+            code_idx.is_some(),
+            name.is_some(),
+            open_line,
+            file.clone(),
+        ) {
+            warnings.push(w);
+        }
+        let hidden = match name {
+            Some(n) => format!(
+                "<input type=\"hidden\" class=\"tali-debug-input\" data-tali-input=\"{}\" value=\"0\">",
+                escape_attr(n)
+            ),
+            None => String::new(),
+        };
+        let name_attr = match name {
+            Some(n) => format!(" data-debug-name=\"{}\"", escape_attr(n)),
+            None => String::new(),
+        };
+        let code_id = format!("{}-code", block_id_of(&data).unwrap_or_default());
+        match code_idx {
+            Some(i) => {
+                let panel = super::emit::wrap_pre_lines(&inner[i].html);
+                let rest: String = inner
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(j, b)| (j != i).then_some(b.html.as_str()))
+                    .collect();
+                format!(
+                    "<div class=\"tali-debug column-page\" role=\"group\" \
+                     aria-label=\"Algorithm debugger\"{data}{name_attr}>\
+                     {hidden}<div class=\"dbg-code\" id=\"{code_id}\">{panel}</div>\
+                     <div class=\"dbg-views\">{rest}</div></div>"
+                )
+            }
+            None => {
+                let body = concat(&inner);
+                format!(
+                    "<div class=\"tali-debug column-page\"{data}{name_attr}>\
+                     <div class=\"dbg-views\">{body}</div></div>"
+                )
+            }
+        }
     } else if attrs.classes.iter().any(|c| c == "code-walkthrough") {
         // Narrated code walkthrough: the first code block becomes a sticky panel; the
         // remaining blocks (the `.step` divs) scroll alongside it and drive line-range

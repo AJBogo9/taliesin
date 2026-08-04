@@ -117,6 +117,10 @@
     {
       "description": "Reactive `{js}` inputs this cell depends on.",
       "name": "input"
+    },
+    {
+      "description": "Record this cell's execution so `::: {.debug}` can step through it.",
+      "name": "trace"
     }
   ],
   "divAttributes": [

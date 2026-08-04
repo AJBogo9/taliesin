@@ -29,6 +29,7 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "name",   // {js}
     "viewof", // {js}
     "input",  // {js}
+    "trace",  // {python}/{js} inside `::: {.debug}`
 ];
 
 /// Callout kinds taliesin recognizes (`::: {.callout-<kind>}`).
@@ -62,6 +63,7 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "panel-tabset",
     "code-walkthrough",
     "scrolly",
+    "debug",
     "magic-move",
     "step",
     "column-margin",
@@ -299,6 +301,45 @@ pub(crate) fn validate_walkthrough(
         )
         .at(file, line as u32)
     })
+}
+
+/// Validate a `::: {.debug}` container. Purely diagnostic: the div still renders, and a
+/// reader gets a plain code panel rather than a blank box.
+///
+/// `named` is whether the div carried `name=`. An unnamed `.debug` is legal (the stepper
+/// works; it just cannot be addressed from a `{js}` view cell), so it is NOT a warning
+/// here. The unaddressable-view case is caught where the `//| input:` edge is resolved.
+pub(crate) fn validate_debug(
+    traced_cells: usize,
+    has_code: bool,
+    _named: bool,
+    line: usize,
+    file: Option<String>,
+) -> Vec<Warning> {
+    let mut out = Vec::new();
+    if !has_code {
+        out.push(
+            Warning::new("`.debug` has no code block to step through".to_string())
+                .at(file.clone(), line as u32),
+        );
+    } else if traced_cells == 0 {
+        out.push(
+            Warning::new(
+                "`.debug` has no traced cell: mark one with `#| trace: true` \
+                 (or `//| trace: true` for a `{js}` generator)"
+                    .to_string(),
+            )
+            .at(file.clone(), line as u32),
+        );
+    } else if traced_cells > 1 {
+        out.push(
+            Warning::new(
+                "`.debug` has more than one traced cell; only the first is traced".to_string(),
+            )
+            .at(file, line as u32),
+        );
+    }
+    out
 }
 
 /// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
@@ -718,5 +759,37 @@ mod tests {
     #[test]
     fn scrolly_complete_is_clean() {
         assert!(validate_scrolly(true, true, 1, None).is_empty());
+    }
+
+    #[test]
+    fn debug_diagnostics_cover_every_authoring_mistake() {
+        // No traced cell: the block would render a dead code panel.
+        let w = validate_debug(0, true, true, 7, Some("a.tmd".into()));
+        assert_eq!(w.len(), 1, "expected exactly one warning, got {w:?}");
+        assert!(
+            w[0].message.contains("trace: true"),
+            "must name the fix: {}",
+            w[0].message
+        );
+        assert_eq!(w[0].line, Some(7), "must be click-to-source locatable");
+
+        // Two traced cells: only the first is traced, so say so.
+        let w = validate_debug(2, true, true, 3, None);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].message.contains("only the first"), "{}", w[0].message);
+
+        // No code block at all.
+        let w = validate_debug(0, false, true, 3, None);
+        assert!(
+            w.iter().any(|x| x.message.contains("no code block")),
+            "a bodyless .debug must warn: {w:?}"
+        );
+
+        // The healthy case is silent.
+        assert!(validate_debug(1, true, true, 3, None).is_empty());
+        assert!(
+            validate_debug(1, true, false, 3, None).is_empty(),
+            "an unnamed .debug is legal (it just cannot be addressed from a view cell)"
+        );
     }
 }
