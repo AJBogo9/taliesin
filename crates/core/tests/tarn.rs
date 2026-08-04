@@ -423,6 +423,33 @@ fn both_chapter_nav_surfaces_print_the_same_prose_length() {
     );
 }
 
+/// The drawer's chapter list (`.tali-book-chapters`) is a plain list of links and must stay
+/// usable with JavaScript off: a server-emitted `<button>` — an expander, a toggle, anything
+/// with no listener behind it yet — would be an affordance that cannot act. (Formerly the
+/// no-dead-toggle pin for the per-chapter outline, deleted 2026-08-04; that feature's two
+/// outline-only needles went with it, but this one names a guarantee about the surviving
+/// list itself, not about the outline, so it stays.)
+#[test]
+fn the_drawer_chapter_list_ships_no_button_server_side() {
+    let page = tarn()
+        .render_page("grouping.tmd")
+        .expect("grouping renders");
+    // Scope to the emitted chapter LIST, not the whole page: the topbar's own Chapters/
+    // close/search buttons are real, correct `<button>` elements elsewhere on the same
+    // page, so a whole-page `!contains("<button")` would fail unconditionally and prove
+    // nothing about the list itself.
+    let start = page
+        .find("id=\"tali-book-chapters\"")
+        .expect("the drawer's chapter list is the hydration target");
+    let list = &page[start..start + page[start..].find("</ul>").expect("the list closes")];
+    assert!(
+        !list.contains("<button"),
+        "the server must not emit a `<button>` in the chapter list — it is a plain list of \
+         links with JS off, so a server-side button would be an affordance that cannot act: \
+         {list}"
+    );
+}
+
 #[test]
 fn a_websites_index_carries_no_chapter_number() {
     // `c` is emitted only for a book chapter, so a plain website's records are unchanged.
