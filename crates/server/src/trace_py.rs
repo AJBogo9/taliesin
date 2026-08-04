@@ -54,22 +54,38 @@ def _tali_debug_run(_src):
     # ever evaluated: a Name, a literal, +/-/* over those, and unary minus. Anything else
     # is dropped, because a guessed read is worse than no read.
     #
-    # `node.ctx` must be `ast.Load`: an assignment TARGET is also a `Subscript` node
-    # (`a[j] = tmp` parses to `Subscript(ctx=Store)`), and without this check it counted
-    # as a "read" of the slot it is about to overwrite. Caught on a temp-variable swap
-    # (`tmp = a[j]; a[j] = a[j+1]; a[j+1] = tmp`): the THIRD line has no genuine array
-    # read at all (`tmp` is a scalar), yet the unfiltered scan reported `a[1]` as read on
-    # the frame BEFORE that line runs, one step ahead of the write it is actually about to
-    # become. A tuple-swap one-liner (`a[j], a[j+1] = a[j+1], a[j]`) is unaffected by this
-    # filter either way: its RHS values are their own, separate `Subscript(ctx=Load)`
-    # nodes at the SAME indices as the targets, so the reads they contribute are real,
-    # not a target masquerading as one; that swap genuinely does read both slots before
-    # overwriting them.
+    # `node.ctx` must be `ast.Load`, with one exception: an assignment TARGET is also a
+    # `Subscript` node (`a[j] = tmp` parses to `Subscript(ctx=Store)`), and without this
+    # check it counted as a "read" of the slot it is about to overwrite. Caught on a
+    # temp-variable swap (`tmp = a[j]; a[j] = a[j+1]; a[j+1] = tmp`): the THIRD line has
+    # no genuine array read at all (`tmp` is a scalar), yet the unfiltered scan reported
+    # `a[1]` as read on the frame BEFORE that line runs, one step ahead of the write it
+    # is actually about to become. A tuple-swap one-liner (`a[j], a[j+1] = a[j+1], a[j]`)
+    # is unaffected by this filter either way: its RHS values are their own, separate
+    # `Subscript(ctx=Load)` nodes at the SAME indices as the targets, so the reads they
+    # contribute are real, not a target masquerading as one; that swap genuinely does
+    # read both slots before overwriting them.
+    #
+    # The exception: `a[0] += 5` also parses its target as `Subscript(ctx=Store)`, but
+    # unlike a plain assignment it genuinely reads the slot first (`counts[x] += 1` is
+    # read-modify-write, not a bare write), so excluding it the same way the plain-Store
+    # case is excluded would regress a read that IS real. `AugAssign.target` is collected
+    # by node identity so the general ctx check below can special-case exactly that one
+    # Subscript per augmented assignment, without loosening the plain-Store exclusion for
+    # every other assignment target.
     OK = (ast.Name, ast.Constant, ast.BinOp, ast.UnaryOp, ast.Add, ast.Sub, ast.Mult, ast.USub, ast.Load)
     reads_by_line = {}
     try:
-        for node in ast.walk(ast.parse(_src)):
-            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and isinstance(node.ctx, ast.Load):
+        tree = ast.parse(_src)
+        aug_targets = set(
+            id(node.target)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Subscript)
+        )
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
+                if not (isinstance(node.ctx, ast.Load) or id(node) in aug_targets):
+                    continue
                 idx = node.slice
                 if all(isinstance(n, OK) for n in ast.walk(idx)):
                     reads_by_line.setdefault(node.lineno, []).append((node.value.id, idx))

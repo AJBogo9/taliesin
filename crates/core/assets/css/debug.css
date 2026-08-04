@@ -202,8 +202,15 @@
 
 /* bars: a fixed-height track anchors each bar to a shared baseline so the row reads as
    one chart instead of floating boxes; the value label and any pointer carets sit below
-   the track, outside the part that scales with the value. */
-.dbg-bars { display: flex; align-items: flex-start; justify-content: center; gap: .3rem; }
+   the track, outside the part that scales with the value.
+   `max-width: 100%; overflow-x: auto` is the SAME guard `.dbg-grid-scroll` already
+   carries, and it is load-bearing here too, not just for grids: even though each
+   `.dbg-bar` slot can shrink toward zero width (`.dbg-slot`'s `min-width: 0`), the
+   `gap` between slots cannot shrink, so a wide array's fixed per-gap cost alone can
+   exceed the viewport (measured live: 100 bars overflowed 390px by 44px, 500 bars by
+   677-1011px depending on viewport, with this guard missing). A sorting demo with
+   dozens to hundreds of elements is an ordinary thing to write, not an edge case. */
+.dbg-bars { display: flex; align-items: flex-start; justify-content: center; gap: .3rem; max-width: 100%; overflow-x: auto; }
 .dbg-slot { display: flex; flex-direction: column; align-items: center; gap: .3rem; min-width: 0; }
 /* Bars need equal-width columns (`flex: 1 1 0` on a `flex-basis: 0` splits the row
    evenly regardless of content), but the SAME rule on a wrapping `.dbg-boxes` row is

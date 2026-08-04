@@ -335,6 +335,75 @@ fn a_tuple_swaps_genuine_dual_read_and_write_survives_the_ctx_filter() {
     );
 }
 
+/// Regression pin for a second edge the ctx=Load filter must NOT break: `a[0] += 5` is
+/// `AugAssign(target=Subscript(ctx=Store))`, so the plain-Store exclusion that fixed the
+/// temp-variable swap would ALSO wrongly drop this read if applied uniformly, and it
+/// would be wrong to drop it: an augmented assignment genuinely reads its target before
+/// writing it (`a[0] += 5` behaves like `a[0] = a[0] + 5`), and `counts[x] += 1` is one
+/// of the most common idioms in exactly the kind of algorithm this feature exists to
+/// visualize (frequency counting, histogram building). Found by review, reproduced
+/// against the harness extracted to a standalone script before touching the fix.
+#[test]
+fn an_augmented_assignment_target_still_counts_as_a_read() {
+    let Some(py) = python_or_skip() else { return };
+
+    let dir = std::env::temp_dir().join(format!("tali-debug-augassign-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("t.tmd");
+    fs::write(
+        &src,
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\n\
+         a = [1, 2]\n\
+         a[0] += 5\n```\n:::\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_PYTHON", &py)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("build must run");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let html = String::from_utf8_lossy(&out.stdout).into_owned();
+    let json = extract_trace(&html).expect("a traced cell must embed a trace blob");
+    let t: serde_json::Value = serde_json::from_str(&json).expect("the blob must be valid JSON");
+    let frames = t["frames"].as_array().expect("frames array");
+
+    // Line 2 (`a[0] += 5`) is the frame sitting just before that line runs: this is
+    // where the read is derived (`reads_for` uses the CURRENT frame's own upcoming
+    // line), so it must show a read of index 0, not an empty read set.
+    let line2 = frames
+        .iter()
+        .find(|f| f["line"] == 2)
+        .expect("a frame must sit on line 2");
+    let reads: Vec<i64> = line2["changed"]["a"]["reads"]
+        .as_array()
+        .expect("`a[0] += 5` must report a genuine read of a[0]")
+        .iter()
+        .map(|v| v.as_i64().unwrap())
+        .collect();
+    assert_eq!(reads, vec![0], "`a[0] += 5` reads slot 0: {line2:?}");
+
+    // And the write must still show up on the following frame, same as any other write.
+    let wrote = frames
+        .iter()
+        .find(|f| {
+            f["changed"]["a"]["writes"]
+                .as_array()
+                .is_some_and(|w| !w.is_empty())
+        })
+        .expect("the augmented assignment must surface as a write to `a`");
+    let writes = wrote["changed"]["a"]["writes"].as_array().unwrap();
+    assert_eq!(writes, &vec![serde_json::json!(0)], "{wrote:?}");
+}
+
 /// Regression pin for the freeze cache blind-spotting `#| trace: true`. `compute_outputs`
 /// used to hash `cell.code` alone; `#| trace: true` is a directive line
 /// `strip_cell_options` already strips out of `cell.code` before it is ever hashed or
