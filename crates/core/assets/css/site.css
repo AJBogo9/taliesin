@@ -395,35 +395,6 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    pins measure the token, and an opacity multiplier silently defeats them. */
 .tali-chap-words { display: block; font-size: .74rem; color: var(--tali-muted);
   font-variant-numeric: tabular-nums; }
-/* The per-chapter section outline (code-enhance/19-book-outline.js). Created client-side
-   once the shared search index loads, so with JS off none of this matches and the drawer
-   is the flat chapter list it has always been. */
-.tali-book-row { display: flex; align-items: baseline; gap: .25rem; }
-.tali-book-row .tali-book-chapter { flex: 1 1 auto; min-width: 0; }
-.tali-book-expand { flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
-  color: var(--tali-muted); padding: .2rem .3rem; border-radius: var(--tali-radius-md);
-  line-height: 0; }
-.tali-book-expand:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
-.tali-book-expand svg { transition: transform var(--tali-dur) ease; }
-.tali-book-expand[aria-expanded="true"] svg { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .tali-book-expand svg { transition: none; } }
-.tali-book-sections { list-style: none; margin: 0 0 .35rem; padding: 0;
-  border-left: 1px solid var(--tali-border); margin-left: .35rem; }
-.tali-book-sections[hidden] { display: none; }
-.tali-book-section { display: block; padding: .18rem 0 .18rem .6rem; color: var(--tali-muted);
-  text-decoration: none; font-size: .85rem; line-height: 1.35; }
-.tali-book-section:hover { color: var(--tali-link); }
-/* The section the reader is stopped in, marked when the drawer opens. Same treatment the
-   current CHAPTER row already uses one level up (link colour + weight), which reads as a
-   hierarchy rather than a competing signal because the two sit in differently indented
-   lists. The marker rides the sections list's own left rule so it is findable while
-   scanning a long chapter, and it is a border, never `opacity` (the theme contrast pins
-   measure the token, and an opacity multiplier silently defeats them). */
-.tali-book-section-active { color: var(--tali-link); font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--tali-link); }
-.tali-book-sd2 { padding-left: 1.5rem; }
-.tali-book-sd3 { padding-left: 2.4rem; }
-.tali-book-sd4 { padding-left: 3.3rem; }
 /* No narrow-width book override: the reading column is one `--tali-maxw` box at every
    width, so there is no two-column grid to collapse and no reserved track to reclaim. */
 

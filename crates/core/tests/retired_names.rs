@@ -598,3 +598,38 @@ fn forward_xrefs_survive_the_backlink_deletion() {
         "the forward cross-reference to thm-kl must still resolve: {results}"
     );
 }
+
+/// The per-chapter outline disclosures in the book drawer were deleted 2026-08-04
+/// (visual minimalism pass, task 10): a second navigation layer inside a drawer that is
+/// already a navigation layer, justified against a 60-chapter book when the largest real
+/// book in the tree (docs/guide) has 25 chapters. The drawer's OWN flat chapter list
+/// (`.tali-book-chapter`, `.tali-book-chapters`, `.tali-chap-num`, `.tali-chap-words`) and
+/// the shared `search-index.js` both survive untouched — Cmd-K search reads the same
+/// index and is a keeper of this whole pass.
+#[test]
+fn the_book_drawer_outline_is_gone() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in [
+        "taliInitBookOutline",
+        "taliBookOutline",
+        "taliBookMarkSection",
+    ] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships in the client bundle"
+        );
+    }
+    let css = taliesin_core::render::site_css();
+    for needle in [
+        "tali-book-expand",
+        "tali-book-sections",
+        "tali-book-section",
+        "tali-book-section-active",
+        "tali-book-sd2",
+        "tali-book-sd3",
+        "tali-book-sd4",
+        "tali-book-row",
+    ] {
+        assert!(!css.contains(needle), "`{needle}` CSS survives in site.css");
+    }
+}

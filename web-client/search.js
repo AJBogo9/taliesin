@@ -292,11 +292,6 @@
     };
     document.head.appendChild(s);
   }
-  // Exported because the book drawer's section outline reads the same index
-  // (code-enhance/19-book-outline.js). Everything above — the live-preview cache-bust, the
-  // `<script>` load so it works under file://, the in-flight guard — is behaviour a second
-  // caller would otherwise re-derive and then drift from. One loader, two readers.
-  window.taliLoadSearchIndex = loadIndexThen;
 
   function ensureUi() {
     injectCss();

@@ -1013,8 +1013,8 @@
     // `innerHTML`, so any `{#id}` carrying `"`/`<`/`&` corrupted the nav (and executed in
     // preview). `setAttribute` takes the id verbatim, which also makes the fragment match
     // the anchor for an id like `r&d-notes` — the client half of the same defect
-    // `render::toc_html` had. `search.js` already refuses to do this; `19-book-outline.js`
-    // is the pattern followed here.
+    // `render::toc_html` had. `search.js` already refuses to do this; the same pattern is
+    // followed here.
     const list = document.createElement("ul");
     let cur = list; // the <ul> the next entry is appended to
     let level = base;

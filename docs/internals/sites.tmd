@@ -153,19 +153,7 @@ needed; the shape of the config decides. A `chapters:` entry is a bare path, a
 `{ part:, chapters: }` group, or a `{ file:, text: }` mapping whose `text:`
 overrides the chapter label (otherwise the label is the chapter's first `# H1`).
 
-The drawer's markup is a flat chapter list and stays one with JS off. The per-chapter
-**section** outline is hydrated in the browser by `code-enhance/19-book-outline.js`,
-which reads the same lazily-loaded `search-index.js` the Cmd-K palette does — through
-the same loader, which `search.js` exports as `window.taliLoadSearchIndex`. Reusing the
-index rather than emitting an outline sidecar is deliberate: a second artifact would
-need its own copy of `search::page_fragment`'s render-then-number-then-resolve ordering,
-its own whole-project assembly and its own `refresh_*_for_page` invalidation, to save
-bytes on a subresource the palette already fetches. Because the loader re-fetches in a
-live preview, the drawer refreshes when you rename a heading; a signature comparison per
-chapter keeps an unchanged book from rebuilding (and so keeps a reader's expanded rows
-expanded). Section indent is measured against each page's *own* shallowest heading, never
-the absolute level — whether a chapter's sections land on `h2`, `h3` or `h4` depends on
-whether it emits a title block and where it roots.
+The drawer's markup is a flat chapter list, with no further client-side hydration.
 
 ::: {.callout-note}
 ## A chapter's **nav label** and its **page title** are different things

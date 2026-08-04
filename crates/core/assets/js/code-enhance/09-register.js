@@ -6,5 +6,4 @@ if (reg) {
   reg.register(function () { taliInitReaderPrefs(); });
   reg.register(function () { taliInitSkipLink(); });
   reg.register(function () { taliInitKeyboard(); });
-  reg.register(function () { taliInitBookOutline(); });
 }

@@ -2141,7 +2141,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
-    include_str!("../../assets/js/code-enhance/19-book-outline.js"),
 );
 /// The enhancer registry (`window.taliEnhancers` + `taliEnhanceCode`) on its own, so the
 /// External build path can emit it INLINE at parse (before any `include-after-body`

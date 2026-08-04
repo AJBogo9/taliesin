@@ -406,8 +406,7 @@ impl Site {
             };
             // The cost of opening this chapter, where the decision to open it is made.
             // Inside the `<a>` so a screen reader announces it with the chapter rather
-            // than as a stray row; the section-outline enhancer strips this span before
-            // building its toggle's label (`19-book-outline.js`).
+            // than as a stray row.
             let words = super::book::words_label(e.words)
                 .map(|w| format!(" <span class=\"tali-chap-words\">{w}</span>"))
                 .unwrap_or_default();
@@ -831,10 +830,10 @@ mod tests {
     // after the first close.
     //
     // The audit's "focus stays on `.tali-book-body`" was nonetheless a REAL symptom with a
-    // wrong cause. Measured: focus lands in the panel synchronously, then returns to `<body>`
-    // about 300ms later — `19-book-outline.js` hydrates behind `taliLoadSearchIndex` and
-    // re-parents chapter links into `.tali-book-row`, and moving an element in the DOM blurs
-    // it. So the fix belongs in the outline, not in the dialog markup.
+    // wrong cause: it was the per-chapter section-outline hydration re-parenting the
+    // focused chapter link (moving an element in the DOM blurs it), not the dialog markup.
+    // That outline was deleted 2026-08-04 (visual minimalism pass), taking the symptom,
+    // its fix, and this file's pin of it with it.
 
     fn book_page_html() -> String {
         let root = write_site(
@@ -871,29 +870,6 @@ mod tests {
             BOOK_DRAWER_SCRIPT.contains("release=window.taliFocusTrap(panel,f)"),
             "the drawer must route through taliFocusTrap, which is what supplies aria-modal \
              and the Tab confinement:\n{BOOK_DRAWER_SCRIPT}"
-        );
-    }
-
-    #[test]
-    fn book_outline_hydration_hands_focus_back_after_reparenting_a_chapter_link() {
-        // The drawer focuses the current chapter's link on open; hydration then moves that
-        // link into a new `.tali-book-row`, which blurs it. Browser-measured before the fix:
-        // focus in the panel at click, back on `.tali-book-body` 300ms later.
-        let js = include_str!("../../assets/js/code-enhance/19-book-outline.js");
-        assert!(
-            js.contains("var hadFocus = document.activeElement;"),
-            "hydration does not remember who had focus before it re-parents links:\n{js}"
-        );
-        assert!(
-            js.contains("hadFocus.focus({ preventScroll: true })"),
-            "focus is not handed back, or is handed back without preventScroll (the drawer \
-             is a fixed overlay, so a scrolling focus would move the article behind it)"
-        );
-        // Only reclaim focus the re-parent actually dropped — never steal it from wherever
-        // the reader has since moved it.
-        assert!(
-            js.contains("document.activeElement === document.body"),
-            "the restore is unguarded, so it can steal focus the reader placed elsewhere"
         );
     }
 

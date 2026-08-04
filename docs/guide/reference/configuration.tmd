@@ -154,9 +154,8 @@ an explicit `toc: true` / `toc: false` always wins. On narrow screens the list b
 a pull-up sheet (a handle at the bottom of the screen: tap or drag it up) instead of a
 sidebar.
 
-`toc:` is a **website** key. A book has no right-hand rail: its in-chapter outline is
-the Chapters drawer, which expands the chapter you are reading down to its
-sub-subsections, so a second, shallower list beside the text earned nothing. Writing
+`toc:` is a **website** key. A book has no right-hand rail: the Chapters drawer is its
+navigation instead, so a second, shallower list beside the text earned nothing. Writing
 `toc:` in a book's `_site.yml` warns and does nothing; delete the key.
 
 **Validation.** Unrecognized keys are reported with a "did you mean …" hint, offered

@@ -424,32 +424,6 @@ fn both_chapter_nav_surfaces_print_the_same_prose_length() {
 }
 
 #[test]
-fn the_drawer_renders_flat_with_no_dead_toggle_when_js_is_off() {
-    // The outline is client-hydrated (the section data lives in the lazily-loaded index, not
-    // on the page), so the SERVER must not emit an expander it cannot fill: with JS off the
-    // drawer stays exactly the flat chapter list it has always been. A `<button
-    // aria-expanded>` shipped server-side would be an affordance that lies.
-    let page = tarn()
-        .render_page("grouping.tmd")
-        .expect("grouping renders");
-    // Scope to the emitted chapter LIST, not the whole page: the hydration script rides in
-    // the same document and names every one of these classes in its own source, so a
-    // whole-page `!contains` fails on the fix rather than on the bug (it did, first run).
-    let start = page
-        .find("id=\"tali-book-chapters\"")
-        .expect("the drawer's chapter list is the hydration target");
-    let list = &page[start..start + page[start..].find("</ul>").expect("the list closes")];
-    for dead in ["tali-book-expand", "tali-book-sections", "<button"] {
-        assert!(
-            !list.contains(dead),
-            "the server must not emit `{dead}` in the chapter list — the outline is created \
-             only once the index loads, so a server-side expander would be an affordance \
-             that cannot expand: {list}"
-        );
-    }
-}
-
-#[test]
 fn a_websites_index_carries_no_chapter_number() {
     // `c` is emitted only for a book chapter, so a plain website's records are unchanged.
     let site = Site::discover(&corpus_dir().join("tech-blog"));

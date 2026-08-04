@@ -237,11 +237,10 @@ chapters:
   - reference.tmd
 ```
 
-The Chapters drawer is a book's whole navigation: it lists every chapter and expands
-the one you are reading down to its sub-subsections, so a book has no right-hand "on
-this page" rail (`toc:` is a website key and warns here). The Cmd-K (Ctrl-K) search
-palette indexes every chapter. The book output directory defaults to `_book/` instead
-of `_site/`. The chapter pages themselves need no special front
+The Chapters drawer is a book's whole navigation: it lists every chapter, so a book has
+no right-hand "on this page" rail (`toc:` is a website key and warns here). The Cmd-K
+(Ctrl-K) search palette indexes every chapter. The book output directory defaults to
+`_book/` instead of `_site/`. The chapter pages themselves need no special front
 matter; a plain `title:` is enough:
 
 ```yaml

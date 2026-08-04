@@ -579,9 +579,9 @@
      `<summary>` only draws one at `display: list-item`) — so a collapsed callout had no
      indicator at all, and an open collapsible one was indistinguishable from a plain one.
      The callout caret TRAILS while these two lead, because the callout's left slot is
-     already the kind icon; trailing also mirrors `.tali-book-expand` in site.css. That is
-     why it is `::after` and not `::before`: `::before` is the first flex item, so pushing it
-     right with `margin-left: auto` would drag the icon and title right along with it. */
+     already the kind icon. That is why it is `::after` and not `::before`: `::before` is
+     the first flex item, so pushing it right with `margin-left: auto` would drag the icon
+     and title right along with it. */
   details.tali-code-fold > summary,
   .tali-proof-collapse > details > summary.tali-proof-head {
     display: flex; align-items: center; gap: .45em; list-style: none; }
