@@ -92,7 +92,20 @@ pub(crate) fn stamp_yields(src: &str) -> Option<String> {
                     while j < b.len() && matches!(b[j], b' ' | b'\t') {
                         j += 1;
                     }
-                    if j < b.len() && b[j] != b'\n' && b[j] != b';' {
+                    // `yield* EXPR` (generator delegation) is a DIFFERENT construct from
+                    // `yield EXPR`: the grammar treats a `*` right after `yield` (mod
+                    // inline whitespace) as the delegation marker, never as a value to
+                    // stamp. Recording a site here used to land ON the `*` (its own
+                    // start-of-expression heuristic sees `*` as "not whitespace, not `;`,
+                    // not a newline" and stamps it), producing `yield__at(N, * expr)`: the
+                    // splice below inserts `__at(` flush against `yield` with no space
+                    // between them (there was none in the source, `yield*`), merging the
+                    // two into the single identifier `yield__at` and leaving a bare `*` as
+                    // the first thing inside its own argument list — a guaranteed syntax
+                    // error, exactly the "a stamp it should not have emitted" case this
+                    // scanner exists to rule out. Refuse the site instead: a missed cursor
+                    // costs a line highlight, never a corrupted cell.
+                    if j < b.len() && b[j] != b'*' && b[j] != b'\n' && b[j] != b';' {
                         sites.push((j, line));
                     }
                     i += 5;
@@ -310,5 +323,53 @@ mod tests {
     #[test]
     fn adversarial_unterminated_template_literal_refuses() {
         assert!(stamp_yields("const s = `oops\nyield v;\n").is_none());
+    }
+
+    // --- yield* delegation (fix round 2: a real CRITICAL, not a hypothetical) ---------
+    // Regression pins for a stamp the scanner used to emit ON the `*` of a `yield*`
+    // delegation: `is_ident(b'*')` is false, so the keyword match accepted `yield*`, and
+    // the site-recording guard only rejected a newline or `;`, so it recorded a site at
+    // the `*` itself. Splicing `__at(` there merges flush against `yield` (there was no
+    // space to preserve, the source read `yield*`) into the single identifier
+    // `yield__at`, with a bare `*` as the first token in what was meant to be its
+    // argument list — a guaranteed `SyntaxError`. `yield*` is the idiomatic delegation
+    // form for exactly the recursive algorithms (quicksort, mergesort, tree traversals)
+    // this feature targets, so this is not an edge case.
+
+    /// The textbook case: `yield* recurse(...)`, no space before the `*`.
+    #[test]
+    fn a_yield_star_delegation_with_no_space_is_left_alone() {
+        let src = "function* sort(a, lo, mid) {\n  yield* sort(a, lo, mid);\n}\n";
+        let out = stamp_yields(src).expect("must scan");
+        assert!(!out.contains("__at("), "nothing to stamp here:\n{out}");
+        assert_eq!(out, src, "yield* stays byte-identical");
+        // The specific corruption a reviewer measured on a real build: `yield` and
+        // `__at` must never merge into one identifier.
+        assert!(!out.contains("yield__at"), "{out}");
+    }
+
+    /// The same delegation with whitespace between `yield` and `*` (`yield *
+    /// recurse(...)`): the grammar still parses this as delegation (a `*` right after
+    /// `yield`, mod inline whitespace, is never ordinary multiplication of a bodyless
+    /// yield), so the scanner must reach the same "do not stamp" conclusion by finding
+    /// the `*` only after skipping the inline whitespace.
+    #[test]
+    fn a_yield_star_delegation_with_a_space_before_the_star_is_left_alone() {
+        let src = "function* f(a) {\n  yield * recurse(a);\n}\n";
+        let out = stamp_yields(src).expect("must scan");
+        assert!(!out.contains("__at("), "nothing to stamp here:\n{out}");
+        assert_eq!(out, src, "yield * stays byte-identical");
+    }
+
+    /// A `yield*` delegation followed, on a LATER line, by an ordinary `yield` must not
+    /// have its own refusal leak forward: only the delegation site is skipped, the plain
+    /// `yield` after it is still stamped normally.
+    #[test]
+    fn a_plain_yield_after_a_yield_star_is_still_stamped() {
+        let src = "function* f(a) {\n  yield* recurse(a);\n  yield a;\n}\n";
+        let out = stamp_yields(src).expect("must scan");
+        assert_eq!(out.matches("__at(").count(), 1, "{out}");
+        assert!(out.contains("yield __at(3, a);"), "{out}");
+        assert!(!out.contains("yield*__at("), "{out}");
     }
 }
