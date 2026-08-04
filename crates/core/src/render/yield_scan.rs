@@ -252,4 +252,63 @@ mod tests {
         let out = stamp_yields("yield   a;\n").expect("must scan");
         assert_eq!(out, "yield   __at(1, a);\n");
     }
+
+    // --- adversarial cases (fix round 1 review) --------------------------------------
+    // Five cases a reviewer asked to be run and pinned. None of them found a stamp the
+    // scanner should not have made: a MISS costs a cursor position (acceptable, the
+    // documented contract), a wrong stamp would corrupt a cell (never acceptable). All
+    // five come back either correctly stamped once or a clean refusal.
+
+    /// A `yield` inside a NESTED expression inside a template literal's `${...}` is
+    /// inside `S::Template` the whole time (the scanner does not recurse into `${...}`
+    /// as a second code region): a MISS, not a wrong stamp. Safe by construction, since
+    /// Template-state bytes are never checked against the `yield` keyword at all.
+    #[test]
+    fn adversarial_yield_nested_inside_a_template_expression_is_missed_not_corrupted() {
+        let src = "const s = `x ${ (function*(){ yield 1; })() } y`;\n";
+        let out = stamp_yields(src).expect("the outer template closes, so this scans");
+        assert_eq!(out, src, "nothing stamped, nothing rewritten");
+    }
+
+    /// An escaped quote immediately before a real `yield` must not fool the string
+    /// scanner into closing early (which would leave the rest of the line, including
+    /// the real string close and the `yield`, misparsed).
+    #[test]
+    fn adversarial_escaped_quote_before_a_real_yield_still_stamps_it_once() {
+        let src = "const s = 'it\\'s'; yield v;\n";
+        let out = stamp_yields(src).expect("must scan");
+        assert_eq!(out.matches("__at(").count(), 1, "{out}");
+        assert!(out.contains("yield __at(1, v);"), "{out}");
+    }
+
+    /// A regex containing quote characters must not make the scanner think it is
+    /// inside a string (which would then swallow the rest of the line looking for a
+    /// closing quote that is not there, and could refuse or misplace the next yield).
+    #[test]
+    fn adversarial_regex_containing_quote_characters_still_stamps_the_real_yield_once() {
+        let src = "const r = /['\"]/g;\nyield v;\n";
+        let out = stamp_yields(src).expect("must scan");
+        assert_eq!(out.matches("__at(").count(), 1, "{out}");
+        assert!(out.contains("yield __at(2, v);"), "{out}");
+    }
+
+    /// Division must not be mistaken for a regex open (the previous significant byte
+    /// is `a`, an identifier, not an operator), so the following `yield` on the next
+    /// line is reached in `S::Code` and stamped normally.
+    #[test]
+    fn adversarial_division_is_not_mistaken_for_a_regex_open() {
+        let src = "const q = a / b;\nyield q;\n";
+        let out = stamp_yields(src).expect("must scan");
+        assert_eq!(out.matches("__at(").count(), 1, "{out}");
+        assert!(out.contains("yield __at(2, q);"), "{out}");
+    }
+
+    /// An unterminated template literal refuses, the same as an unterminated block
+    /// comment: `S::Template` survives a raw newline (real multi-line templates are
+    /// legal JS), so only running out of input while still inside one triggers the
+    /// final unterminated check.
+    #[test]
+    fn adversarial_unterminated_template_literal_refuses() {
+        assert!(stamp_yields("const s = `oops\nyield v;\n").is_none());
+    }
 }
