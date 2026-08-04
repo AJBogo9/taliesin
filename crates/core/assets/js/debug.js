@@ -11,8 +11,9 @@
 // traced cell has run, so the executor can only splice the cell's output back as a
 // SIBLING block immediately after the container closes, never back inside the string it
 // already serialized (confirmed by inspecting a real build: `</div><div
-// class="tali-output" ...><script class="tali-debug-trace">`). `readTrace` below looks
-// there first.
+// class="tali-output" ...><script class="tali-debug-trace">`). `traceEl` below looks
+// there first, and `refresh` re-reads it when a live-preview re-run replaces that sibling
+// under a widget that was never itself swapped.
 //
 // Stepping publishes the frame index into the hidden input, which is the SAME bridge
 // scrolly uses, so a `{js}` view cell re-runs through `//| input:` with no new reactive
@@ -50,10 +51,11 @@
   // needs is the same `(f.locals.a || [])` fallback they already need for a variable the
   // algorithm hasn't assigned yet, not a second, null-specific guard. Returning `null`
   // here (the first shipped version of this feature) forced every view cell to check `f`
-  // itself before touching anything on it — ceremony this project's own "perfect the
+  // itself before touching anything on it: ceremony this project's own "perfect the
   // default" convention says to design away rather than merely document. Frozen once, at
   // module load: it is a single shared singleton (never mutated, so `Object.freeze`
-  // without `deepFreeze`'s recursion is enough — every value inside is already empty).
+  // without `deepFreeze`'s recursion is enough, since every value inside is already
+  // empty).
   var EMPTY_FRAME = Object.freeze({
     line: null,
     event: null,
@@ -93,18 +95,27 @@
     return v;
   }
 
-  /** @param {Element} root @returns {{frames: any[], truncated: boolean, cap: number}} */
-  function readTrace(root) {
-    // Inside `.tali-debug` first (keeps this future-proof for a JS-side trace producer
-    // that mounts its blob in the container itself, see the file header); the real
-    // Python-harness path lands it on the sibling `.tali-output` block splice in right
-    // after the container instead.
-    var el =
+  /** The `<script class="tali-debug-trace">` element holding this block's recorded trace,
+   * or `null` when none has landed. Inside `.tali-debug` first (keeps this future-proof
+   * for a JS-side trace producer that mounts its blob in the container itself, see the
+   * file header); the real Python-harness path lands it on the SIBLING `.tali-output`
+   * block spliced in right after the container instead. Returned as an element rather than
+   * as text because `refresh` below identifies a swapped-in trace by node identity.
+   * @param {Element} root @returns {Element | null} */
+  function traceEl(root) {
+    return (
       root.querySelector('script.tali-debug-trace') ||
-      (root.nextElementSibling && root.nextElementSibling.querySelector('script.tali-debug-trace'));
-    if (!el) return deepFreeze({ frames: [], truncated: false, cap: 0 });
+      (root.nextElementSibling &&
+        root.nextElementSibling.querySelector('script.tali-debug-trace')) ||
+      null
+    );
+  }
+
+  /** @param {string | null} text @returns {{frames: any[], truncated: boolean, cap: number}} */
+  function parseTrace(text) {
+    if (text === null) return deepFreeze({ frames: [], truncated: false, cap: 0 });
     try {
-      return deepFreeze(JSON.parse(el.textContent || '{}'));
+      return deepFreeze(JSON.parse(text || '{}'));
     } catch (e) {
       console.error('tali-debug: unparseable trace', e);
       return deepFreeze({ frames: [], truncated: false, cap: 0 });
@@ -115,11 +126,11 @@
   // A `//| trace: true` `{js}` cell has no server-side trace at all: `mod.rs` emits it
   // as plain highlighted SOURCE (see the comment at that branch) carrying the
   // build-time-stamped, runnable text in `data-tali-js-src` rather than as a live
-  // `<script type="application/tali-js">`, so there is nothing for `readTrace` above to
+  // `<script type="application/tali-js">`, so there is nothing for `traceEl` above to
   // find and nothing for `tali-js.js`'s own enhancer to run. This section is the other
   // half: find that source, run it exactly like a live `{js}` cell would (same `tali`/
   // `Plot`/`d3`/`num` scope, via `window.taliJs.runDebugSource`), and drain the
-  // resulting generator into the SAME frame shape `readTrace` hands `mount` below, so
+  // resulting generator into the SAME frame shape `parseTrace` hands `mount` below, so
   // everything downstream (line cursor, variables panel, the four data views) is
   // written once against that one shape regardless of which language produced it.
 
@@ -805,6 +816,18 @@
   // bar, the line cursor, the variables panel and the four data views, so the two
   // adapters cannot drift in how they are rendered even though they arrive
   // completely differently.
+  /** Per-block state for the PYTHON path only, so `refresh` below can tell an
+   * already-mounted block whose trace changed underneath it from one that is untouched.
+   * `el` is the trace `<script>` node the block was built from (identity, not text: a
+   * live-diff swap replaces the node, an untouched block keeps it, so the common case
+   * costs one comparison); `text` is that node's content, so a swap that happens to carry
+   * a byte-identical trace does not reset the reader's position to frame 0; `recapture` is
+   * what `mount` handed back, or `null` when there were no frames to build chrome from.
+   * A `{js}` block has no entry at all: `initJsCapture` owns its own re-capture loop.
+   * @type {WeakMap<Element, {el: Element | null, text: string | null,
+   *   recapture: ((trace: {frames: any[], truncated: boolean, cap: number}) => void) | null}>} */
+  var pyState = new WeakMap();
+
   /** @param {Element} root */
   function init(root) {
     var jsSrc = jsDebugSource(root);
@@ -812,7 +835,38 @@
       initJsCapture(root, jsSrc);
       return;
     }
-    mount(root, readTrace(root));
+    var el = traceEl(root);
+    var text = el ? el.textContent || '' : null;
+    pyState.set(root, { el: el, text: text, recapture: mount(root, parseTrace(text)) });
+  }
+
+  /** Re-point an already-mounted Python `.debug` block at a trace that changed underneath
+   * it. debug.js is the first enhancer whose state lives OUTSIDE its own container: the
+   * recorded trace rides in the SIBLING output block, so editing an upstream cell in live
+   * preview re-runs the traced cell and replaces that sibling while leaving `.tali-debug`
+   * itself (same block id, unchanged source) exactly where it was. `enhance`'s
+   * `:not([data-dbg-init])` query can therefore never revisit the widget, and it went on
+   * stepping the old trace until a manual reload. The mark-and-skip idempotence
+   * scrolly.js/walkthrough.js use does not transfer for exactly that reason: their state
+   * is all inside the element they marked.
+   *
+   * Re-uses the `recapture` closure `mount` returned rather than re-running `init`: it
+   * swaps the frames into the chrome that is already built, so the click/keydown listeners
+   * bound to `root` are never bound a second time. A block that had no frames at all built
+   * no chrome (and bound nothing), so that one mounts for real now.
+   * @param {Element} root */
+  function refresh(root) {
+    var state = pyState.get(root);
+    if (!state) return;
+    var el = traceEl(root);
+    if (!el || el === state.el) return;
+    state.el = el;
+    var text = el.textContent || '';
+    if (text === state.text) return;
+    state.text = text;
+    var trace = parseTrace(text);
+    if (state.recapture) state.recapture(trace);
+    else state.recapture = mount(root, trace);
   }
 
   // Builds the widget chrome once frames actually exist, and returns a `recapture`
@@ -837,13 +891,13 @@
     var speed = 1;
     // `apply` below only publishes to the bridge on a VALUE change, which is the right
     // rule step-to-step (a re-render every 260ms of Play should not spam a downstream
-    // cell when the index didn't move) — but it means the very FIRST publish, always
+    // cell when the index didn't move), but it means the very FIRST publish, always
     // index 0 against a bridge whose server-rendered value is already the string "0",
     // compares equal and is silently skipped. Left alone, a `{js}` view cell reading
     // `tali.frame(name)` (which ran once already, during the page's initial reactive
     // pass, before THIS mount even started, and so saw the empty stand-in frame) would
     // never hear that the real frame 0 landed, unless the reader manually steps at
-    // least once first — the same "before this block has mounted" gap `tali.frame`'s
+    // least once first: the same "before this block has mounted" gap `tali.frame`'s
     // empty-frame fallback exists for, just persisting past mount instead of ending at
     // it. `forcePublish` overrides the equality check exactly once per mount and once
     // per re-capture (set again at the top of `recapture` below, for the identical
@@ -1093,10 +1147,15 @@
 
   /** @param {ParentNode | null} [root] */
   function enhance(root) {
-    (root || document).querySelectorAll('.tali-debug:not([data-dbg-init])').forEach(function (el) {
+    var scope = root || document;
+    scope.querySelectorAll('.tali-debug:not([data-dbg-init])').forEach(function (el) {
       el.setAttribute('data-dbg-init', '1');
       init(el);
     });
+    // Already-mounted blocks whose trace blob was replaced underneath them (see `refresh`).
+    // The live client calls every enhancer with `#tali-root`, not with the swapped block,
+    // so a sibling-only change is still in scope here.
+    scope.querySelectorAll('.tali-debug[data-dbg-init]').forEach(refresh);
   }
 
   // The ONE `document`-level listener this file ever adds, registered exactly once at
