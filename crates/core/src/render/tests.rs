@@ -808,7 +808,7 @@ fn mermaid_library_inlined_into_build_pages_only() {
     // globalThis.mermaid, which the loader short-circuits on) so the diagram renders
     // fully offline — no CDN fetch.
     let body = "<pre class=\"mermaid\">flowchart LR\n A --&gt; B</pre>";
-    let build = code_scripts_for(body, OutputMode::Build);
+    let build = code_scripts_for(body, OutputMode::Build, false);
     assert!(
         build.contains("__esbuild_esm_mermaid") && build.contains("globalThis.mermaid"),
         "Build must inline the vendored mermaid library for a diagram page"
@@ -818,13 +818,13 @@ fn mermaid_library_inlined_into_build_pages_only() {
         "Build still ships the loader (uses the inlined global)"
     );
     // Content-gated: a Build page with NO diagram inlines nothing.
-    let build_plain = code_scripts_for("<p>no diagram</p>", OutputMode::Build);
+    let build_plain = code_scripts_for("<p>no diagram</p>", OutputMode::Build, false);
     assert!(
         !build_plain.contains("__esbuild_esm_mermaid"),
         "Build must NOT inline mermaid on a diagram-less page"
     );
     // Preview keeps the lean lazy loader (inlining 2.5 MB on every save would bloat it).
-    let preview = code_scripts_for(body, OutputMode::Preview);
+    let preview = code_scripts_for(body, OutputMode::Preview, false);
     assert!(
         !preview.contains("__esbuild_esm_mermaid") && preview.contains("__taliMermaidLoading"),
         "Preview keeps only the lazy loader, not the inlined library"
@@ -2644,10 +2644,63 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     // never be able to tell "page-level fullscreen came back" apart from "the always-on
     // enhancer bundle carries dead code for an absent widget." Build mode is where that
     // gating is real, so that is where the check belongs instead.
-    let built_prose = code_scripts_for("<p>Prose to read.</p>", OutputMode::Build);
+    let built_prose = code_scripts_for("<p>Prose to read.</p>", OutputMode::Build, false);
     assert!(
         !built_prose.contains("requestFullscreen"),
         "a built page with neither a deck nor a debug widget must not ship requestFullscreen: {built_prose}"
+    );
+}
+
+/// A `.debug` block inside a deck (the single-file/Preview "Inline" asset path, which is
+/// what `render_html_page`/a standalone `taliesin build deck.tmd` actually use) must
+/// degrade to a plain, syntax-highlighted code block: no transport bar, no variables
+/// panel, no stepper of any kind, since a deck presents and does not hand the audience an
+/// interactive widget mid-talk (the same call the External/site-build deck bundle already
+/// makes by leaving `DEBUG_JS` out of `deck_shared_js`).
+///
+/// This is a real regression pin, not a restated assumption: before `code_scripts_for`
+/// gained `is_deck`, `deck::deck_page_from_doc`'s Inline arm called it exactly like a
+/// page, so a `.debug` block's `tali-debug` marker in the slide body opened the `debug_s`
+/// gate same as it would on a page. `debug.css` is never in a deck's style block (only
+/// `DECK_CSS`), so the result was not "a plain code block" at all: `debug.js` still ran,
+/// still built `.dbg-transport`/`.dbg-vars`/`.dbg-stage` and wired up stepping, just with
+/// zero layout/styling — a half-functional, unstyled widget dumped onto the slide.
+///
+/// The needle is debug.js's own file-header text (the same one
+/// `build_mode_content_gates_separate_enhancers` uses below), not the bare string
+/// `"window.taliDebug"`: `tali-js.js` (a different, always-on-in-Preview enhancer)
+/// legitimately mentions `window.taliDebug` in its own defensive `tali.frame` guard
+/// (`return window.taliDebug ? window.taliDebug.current(n) : null`), so that broader
+/// needle would false-positive on every deck regardless of this fix.
+#[test]
+fn a_debug_block_inside_a_deck_degrades_to_a_plain_code_block() {
+    let src = "---\nformat: deck\n---\n\n## Slide\n\n::: {.debug name=\"d\"}\n```{python}\n#| trace: true\na = [2, 1]\n```\n:::\n";
+    let needle = "Algorithm debug mode: step a recorded execution trace.";
+
+    // Preview (what `taliesin preview deck.tmd` and the `{{< embed >}}`-served deck path
+    // both render): every OTHER gate is unconditionally open in Preview, so this is the
+    // strongest possible check that debug.js's exclusion is deliberate, not incidental.
+    let preview = render_html_page(src, "deck");
+    assert!(
+        preview.contains("dbg-code"),
+        "the server still emits the debug container structure on a deck: {preview}"
+    );
+    assert!(
+        !preview.contains(needle),
+        "a deck must never ship debug.js, in Preview: {preview}"
+    );
+
+    // Build (`taliesin build deck.tmd`): the content-gated path, where `debug_s` would
+    // have opened on the `tali-debug` marker even more readily than Preview.
+    let doc = render_document(src);
+    let built = page_from_doc(&doc, "deck", OutputMode::Build);
+    assert!(
+        built.contains("dbg-code"),
+        "the server still emits the debug container structure on a built deck: {built}"
+    );
+    assert!(
+        !built.contains(needle),
+        "a deck must never ship debug.js, in Build: {built}"
     );
 }
 
@@ -4023,7 +4076,7 @@ fn captioned_code_listing_is_a_figure_not_a_bare_div() {
 fn build_mode_content_gates_separate_enhancers() {
     // Pure prose: a static build keeps code-enhance.js (the reader menu + a11y layer
     // that every page benefits from) but drops the DOM-specific enhancers it can't use.
-    let prose = code_scripts_for("<p>Just prose.</p>", OutputMode::Build);
+    let prose = code_scripts_for("<p>Just prose.</p>", OutputMode::Build, false);
     assert!(
         prose.contains("taliInitReaderMenu"),
         "build keeps code-enhance.js"
@@ -4055,7 +4108,11 @@ fn build_mode_content_gates_separate_enhancers() {
 
     // A page that actually contains a tabset gets tabset.js in a build (but still not
     // the enhancers for constructs it lacks).
-    let tabset = code_scripts_for("<div class=\"panel-tabset\"></div>", OutputMode::Build);
+    let tabset = code_scripts_for(
+        "<div class=\"panel-tabset\"></div>",
+        OutputMode::Build,
+        false,
+    );
     assert!(
         tabset.contains("Tabbed panels: the interaction layer"),
         "a tabset on the page ships tabset.js"
@@ -4072,7 +4129,7 @@ fn build_mode_content_gates_separate_enhancers() {
     // A page with a `.debug` block gets debug.js (but still not the enhancers for
     // constructs it lacks): the DOM marker `tali-debug` is what `code_scripts_for`'s
     // `debug_s` gate actually keys on, not a filename.
-    let debug = code_scripts_for("<div class=\"tali-debug\"></div>", OutputMode::Build);
+    let debug = code_scripts_for("<div class=\"tali-debug\"></div>", OutputMode::Build, false);
     assert!(
         debug.contains("Algorithm debug mode: step a recorded execution trace."),
         "a .debug block on the page ships debug.js"
@@ -4084,7 +4141,7 @@ fn build_mode_content_gates_separate_enhancers() {
 
     // Preview ships every enhancer regardless of body (a doc can gain any construct on
     // an edit — same reasoning as KaTeX/d3 always-on in preview). Gating is Build-only.
-    let preview = code_scripts_for("<p>Just prose.</p>", OutputMode::Preview);
+    let preview = code_scripts_for("<p>Just prose.</p>", OutputMode::Preview, false);
     assert!(
         preview.contains("self-contained enhancer module"),
         "preview ships mermaid.js unconditionally"
@@ -4100,7 +4157,7 @@ fn build_mode_content_gates_separate_enhancers() {
 
     // Bare ships no enhancer scripts at all (the zero-<script> contract).
     assert!(
-        code_scripts_for("<p>x</p>", OutputMode::Bare).is_empty(),
+        code_scripts_for("<p>x</p>", OutputMode::Bare, false).is_empty(),
         "bare ships no enhancer scripts"
     );
 }

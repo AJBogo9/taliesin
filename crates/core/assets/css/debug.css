@@ -343,3 +343,32 @@
   font-family: var(--tali-font-mono);
   font-size: .76rem;
 }
+
+/* Print: no transport in print, since the reader cannot step a sheet of paper, and the
+   variables panel is the same kind of live-stepping chrome (it labels what changed THIS
+   frame, which means nothing once nothing can step). What a printed algorithm page is
+   actually for is the code and whatever picture the page happened to be showing —
+   `.dbg-code` and `.dbg-stage` (plus `.dbg-views`, an author's own content/custom view) —
+   so those stay. Both `grid-template-columns` AND `grid-template-areas` are restated here
+   (not just the columns), the same reason the fullscreen rule above restates both: the
+   `min-width: 900px` rule can still match a wide print page/preview, and without
+   restating the areas the box would keep that rule's two-column strings pointing at a
+   `trans`/`vars` area this rule just hid, wasting half the printed width on nothing. */
+@media print {
+  .tali-debug .dbg-transport, .tali-debug .dbg-vars { display: none; }
+  .tali-debug {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "code" "stage" "views";
+  }
+  /* `.dbg-code` is capped to `70vh` with its own scrollbar on screen (so a long
+     algorithm doesn't push the transport bar off the first viewport); printing that
+     same box unchanged would CLIP the code to whatever fit on screen at the moment of
+     printing; instead of the whole cell body, an unrelated-looking and undisclosed
+     truncation, exactly the kind of silent data loss this project won't tolerate.
+     `position: sticky` is also meaningless once there is no scrolling to stick through. */
+  .dbg-code { position: static; max-height: none; overflow: visible; }
+  /* The same clipping risk applies sideways: a wide bars row or DP grid scrolls inside
+     its own box on screen (Task 4's overflow guards), which would print as a cropped
+     sliver of the real picture without this. */
+  .dbg-bars, .dbg-grid-scroll { max-width: none; overflow-x: visible; }
+}

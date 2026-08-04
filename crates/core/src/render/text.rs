@@ -1004,6 +1004,32 @@ mod tests {
     }
 
     #[test]
+    fn projects_a_debug_block_as_its_code_so_reading_form_and_search_are_not_empty() {
+        // No dedicated `.debug` arm exists in `project_block` (unlike `.code-walkthrough`'s
+        // `project_steps`), and none is needed: `divs.rs` already carries the traced cell's
+        // own `Cell` onto the `.tali-debug` container block (`debug_cell`, added so the
+        // executor can find it once the div is folded into one composite HTML string), and
+        // `project_block`'s very first check fences ANY block that carries a `Cell` with its
+        // language, before ever looking at `html`. That generic branch already does exactly
+        // what a `.debug`-specific arm would: the reader gets the algorithm's source, fenced,
+        // with no transport/variables/stage chrome (which is browser-only structure with
+        // nothing for a text reader to see). Kept as an explicit regression pin rather than
+        // relying on that being an accident of two other tasks' plumbing.
+        let doc = crate::render_document(
+            "::: {.debug name=\"d\"}\n```{python}\n#| trace: true\na = [2, 1]\n```\n:::\n",
+        );
+        let out = project(&doc.blocks);
+        assert!(
+            out.contains("a = [2, 1]"),
+            "the algorithm's source must survive:\n{out}"
+        );
+        assert!(
+            !out.contains("tali-debug"),
+            "no markup leaks into the text form:\n{out}"
+        );
+    }
+
+    #[test]
     fn projects_an_embedded_page_as_its_source_not_the_frames_own_buttons() {
         // Item 16 F-03. An iframe carries none of its content into this document, so the
         // visible text of the block is only the frame's controls — "⤢ FullscreenOpen ↗

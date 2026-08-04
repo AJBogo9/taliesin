@@ -44,7 +44,7 @@ fn the_pyodide_and_js_asset_gates_are_independent() {
 /// a dead cell.
 #[test]
 fn a_build_of_a_python_page_ships_the_runtime_and_the_enhancer() {
-    let scripts = code_scripts_for(&render(PY).body_html(), OutputMode::Build);
+    let scripts = code_scripts_for(&render(PY).body_html(), OutputMode::Build, false);
     assert!(
         scripts.contains("application/tali-pyodide"),
         "pyodide.js (which registers that mime) must ship"
@@ -54,7 +54,11 @@ fn a_build_of_a_python_page_ships_the_runtime_and_the_enhancer() {
         "the shared runtime must ship for a python-only page"
     );
 
-    let prose = code_scripts_for(&render("Just prose.\n").body_html(), OutputMode::Build);
+    let prose = code_scripts_for(
+        &render("Just prose.\n").body_html(),
+        OutputMode::Build,
+        false,
+    );
     assert!(
         !prose.contains("application/tali-pyodide"),
         "a prose page must ship neither"

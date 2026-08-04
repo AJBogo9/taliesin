@@ -2034,7 +2034,7 @@ fn mermaid_url_for(mode: OutputMode) -> String {
 /// Syntax highlighting arrives already done from the server. Callers invoke
 /// `window.taliEnhanceCode(root)` after (re)mounting; it is idempotent.
 pub fn code_scripts() -> String {
-    code_scripts_for("", OutputMode::Preview)
+    code_scripts_for("", OutputMode::Preview, false)
 }
 
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
@@ -2045,7 +2045,15 @@ pub fn code_scripts() -> String {
 /// edit, same reasoning as the always-on KaTeX/d3 in preview) but only when their
 /// target DOM is present in a static [`OutputMode::Build`]. [`OutputMode::Bare`]
 /// ships nothing (the zero-`<script>` contract).
-pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
+///
+/// `is_deck` exists for exactly one gate (`debug_s`, below): this same function is also
+/// the Inline deck assembler's script source (`deck::deck_page_from_doc`'s
+/// `AssetMode::Inline` arm calls it directly, unlike the External arm's hand-rolled list
+/// that already excludes `DEBUG_JS`), so without this flag a `.debug` block on a deck
+/// would ship the stepper's JS with none of its CSS (`debug.css` is never in a deck's
+/// style block), landing an unstyled, half-wired transport bar on a slide instead of the
+/// intended plain code block.
+pub fn code_scripts_for(body: &str, mode: OutputMode, is_deck: bool) -> String {
     if mode == OutputMode::Bare {
         return String::new();
     }
@@ -2095,9 +2103,22 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
-        // `.debug` renders a plain code block on a deck (deck_shared_js does not carry
-        // DEBUG_JS), so this marker is only ever meaningful on a page.
-        debug_s = gate(body.contains("tali-debug"), DEBUG_JS),
+        // `.debug` renders a plain code block on a deck: a deck presents, it does not
+        // hand the audience an interactive stepper mid-talk, the same call already made
+        // for the External deck bundle (`deck_shared_js` omits `DEBUG_JS` outright). The
+        // External arm never reaches this function at all (it hand-assembles its own
+        // script list), so `is_deck` is what closes the gap for the Inline arm, which
+        // does. `is_deck` must short-circuit OUTSIDE `gate`, not just feed its `present`
+        // argument: `gate` treats Preview as "every gate open" regardless of `present`
+        // (`mode == OutputMode::Preview || present`), so folding the exclusion into
+        // `present` alone would have left a deck's Preview render (what `taliesin preview
+        // deck.tmd` and the live `{{< embed >}}` path both use) shipping `DEBUG_JS`
+        // unconditionally, same as before `is_deck` existed.
+        debug_s = if is_deck {
+            String::new()
+        } else {
+            gate(body.contains("tali-debug"), DEBUG_JS)
+        },
     )
 }
 

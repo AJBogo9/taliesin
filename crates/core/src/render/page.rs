@@ -287,7 +287,9 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            let framework_scripts = code_scripts_for(p.body, p.mode);
+            // Never a deck: `page_from_doc` dispatches `DocFormat::Reveal` to
+            // `deck::deck_page_from_doc` before this assembler ever runs.
+            let framework_scripts = code_scripts_for(p.body, p.mode, false);
             // Inline + Preview: the same-origin route. Inline + Build: `""` — the single-file
             // build cannot carry a 15.7 MiB directory, so `degrade_pyodide_cells` is the build
             // CLI's job, not this assembler's (it runs over the finished page HTML). Folded
