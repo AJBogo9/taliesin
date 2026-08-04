@@ -142,9 +142,14 @@
     return pre ? pre.getAttribute('data-tali-js-src') : null;
   }
 
-  // Matches `trace_py.rs`'s own `MAX_DEPTH`: deep enough for a DP table's rows, shallow
-  // enough to bound a pathological/cyclic structure.
+  // Matches `trace_py.rs`'s own `MAX_DEPTH`/`MAX_ITEMS`: deep enough for a DP table's
+  // rows, shallow enough to bound a pathological/cyclic structure; wide enough for a
+  // real algorithm's working array, capped before an oversized one costs a reader's tab
+  // anything. Measured before this cap existed: a 4,000-element yielded array built
+  // 12,229 DOM nodes and cost 114ms per step. `encValue` below is what stops that, the
+  // JS adapter's mirror of the Python harness's own `enc()` cap.
   var MAX_DEPTH = 4;
+  var MAX_ITEMS = 200;
 
   // A bounded-depth recursive copy of one yielded value. Not optional: the author's
   // generator keeps mutating the SAME array/object between yields (the design's own
@@ -169,6 +174,34 @@
       out[k] = snapshotValue(v[k], depth + 1);
     });
     return out;
+  }
+
+  // Cap a value at `MAX_ITEMS` items for DISPLAY only, the JS twin of `trace_py.rs`'s
+  // `enc()`. Deliberately a SEPARATE pass from `snapshotValue` above rather than folded
+  // into it: `snapshotValue`'s own output also becomes `prev` for the NEXT frame's
+  // `diffLocals` (see `drain` below), and `diffLocals`'s element-wise write detection
+  // needs the FULL array to compare index-for-index, exactly like `trace_py.rs`'s own
+  // `diff()` runs against the un-truncated snapshot before `enc()` ever caps anything for
+  // JSON. Capping inside `snapshotValue` itself would silently downgrade every write on
+  // an over-cap array from precise per-index highlighting to a single opaque "changed"
+  // flag. An over-cap container becomes the same `{"__trunc__": N, "v": [...]}` escape
+  // the Python adapter emits, so `fmt()`'s `__trunc__` branch and `renderStage`'s
+  // `truncatedArray()` unwrap (both already written against the Python shape) handle a
+  // JS-adapter trace identically, with no adapter-specific branching downstream.
+  /** @param {any} v @returns {any} */
+  function encValue(v) {
+    if (v === null || typeof v !== 'object') return v;
+    if (Array.isArray(v)) {
+      var mapped = v.slice(0, MAX_ITEMS).map(encValue);
+      return v.length <= MAX_ITEMS ? mapped : { __trunc__: v.length, v: mapped };
+    }
+    var keys = Object.keys(v);
+    /** @type {Record<string, any>} */
+    var out = {};
+    keys.slice(0, MAX_ITEMS).forEach(function (k) {
+      out[k] = encValue(v[k]);
+    });
+    return keys.length <= MAX_ITEMS ? out : { __trunc__: keys.length, v: out };
   }
 
   // Deep-enough equality for the "did this local change at all" gate below: reference
@@ -236,10 +269,22 @@
       if (step.done) break;
       var v = step.value || {};
       var line = v.$line != null ? v.$line : null;
+      // `raw` is the full, UNCAPPED snapshot: it is what `diffLocals` compares against
+      // (both this frame's own diff below and the NEXT frame's, via `prev`), so a write
+      // past `MAX_ITEMS` is still detected precisely. `locals` is the separate, capped
+      // view that actually ships in the frame object (what `renderStage`/`renderVars`/a
+      // `tali.frame()` caller ever see); see `encValue`'s own comment for why these two
+      // must stay independent passes.
+      /** @type {Record<string, any>} */
+      var raw = {};
+      Object.keys(v).forEach(function (k) {
+        if (k !== '$line') raw[k] = snapshotValue(v[k]);
+      });
+      var changed = diffLocals(prev, raw);
       /** @type {Record<string, any>} */
       var locals = {};
-      Object.keys(v).forEach(function (k) {
-        if (k !== '$line') locals[k] = snapshotValue(v[k]);
+      Object.keys(raw).forEach(function (k) {
+        locals[k] = encValue(raw[k]);
       });
       frames.push({
         line: line,
@@ -247,11 +292,11 @@
         depth: 1,
         func: '',
         locals: locals,
-        changed: diffLocals(prev, locals),
+        changed: changed,
         stack: [],
         stdout: '',
       });
-      prev = locals;
+      prev = raw;
     }
     if (n >= MAX) truncated = true;
     return { frames: frames, truncated: truncated, cap: MAX };
@@ -413,6 +458,21 @@
       out.textContent = frame.stdout;
       el.appendChild(out);
     }
+  }
+
+  // The harness's over-cap escape for a CONTAINER (`trace_py.rs`'s `enc`, mirrored by
+  // `encValue` below for the JS adapter): `{"__trunc__": N, "v": [...200 items]}` in
+  // place of an array once it holds more than `MAX_ITEMS`. Only the ARRAY shape earns a
+  // picture here: an over-cap DICT wraps a plain object in `v`, which none of the four
+  // views knows how to draw either way, so that shape is left to the variables panel
+  // exactly like an over-cap dict already was, unwrapped or not. Returns `null` for
+  // anything else, so a caller can `||` straight through to the un-truncated case.
+  /** @param {any} v @returns {any[] | null} */
+  function truncatedArray(v) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && Array.isArray(v.v) && typeof v.__trunc__ === 'number') {
+      return v.v;
+    }
+    return null;
   }
 
   // Which built-in view a value earns. A CLOSED set: bars, boxes, grid, or nothing.
@@ -619,18 +679,27 @@
       var diff = changed[name] || {};
       /** @type {HTMLElement | null} */
       var body = null;
-      if (typeof value === 'string' && value.length) {
+      // An over-cap container (past MAX_ITEMS on either adapter) still earns a picture:
+      // unwrap to its capped `v` array and draw exactly that, rather than falling
+      // through to the variables panel just because the value is no longer a bare
+      // array. `diff.writes`/`.reads` were computed against the FULL, un-truncated
+      // value (`trace_py.rs`'s `diff` runs before `enc` truncates for display), so an
+      // index past the visible slots is simply never reached by the render loops below:
+      // never a crash, just a caret or highlight this view cannot show.
+      var trunc = truncatedArray(value);
+      var arr = trunc || value;
+      if (typeof arr === 'string' && arr.length) {
         // A literal space renders as an invisible, width-collapsing box; a non-breaking
         // space keeps the slot visible, so a palindrome check over "a man a plan" still
         // shows one box per character.
-        body = renderBoxes(value.split(''), diff, locals, name, function (c) {
+        body = renderBoxes(arr.split(''), diff, locals, name, function (c) {
           return c === ' ' ? ' ' : c;
         });
       } else {
-        var kind = viewFor(value);
-        if (kind === 'bars') body = renderBars(value, diff, locals, name);
-        else if (kind === 'boxes') body = renderBoxes(value, diff, locals, name, fmt);
-        else if (kind === 'grid') body = renderGrid(name, value, diff, frame, frames);
+        var kind = viewFor(arr);
+        if (kind === 'bars') body = renderBars(arr, diff, locals, name);
+        else if (kind === 'boxes') body = renderBoxes(arr, diff, locals, name, fmt);
+        else if (kind === 'grid') body = renderGrid(name, arr, diff, frame, frames);
       }
       if (!body) return;
       var view = document.createElement('div');
@@ -639,6 +708,15 @@
       label.className = 'dbg-view-label';
       label.textContent = name;
       view.append(label, body);
+      if (trunc) {
+        // Honest about what is NOT shown: the harness already cut the container at
+        // MAX_ITEMS (200) before this ever reached the client, so the picture itself is
+        // real for every slot it draws, only incomplete past the cap.
+        var note = document.createElement('div');
+        note.className = 'dbg-view-truncated';
+        note.textContent = 'showing ' + trunc.length + ' of ' + value.__trunc__ + ' (truncated)';
+        view.appendChild(note);
+      }
       el.appendChild(view);
     });
   }
@@ -695,10 +773,15 @@
     function sync(i, total) {
       range.max = String(Math.max(total - 1, 0));
       range.value = String(i);
-      range.setAttribute('aria-valuetext', 'step ' + (i + 1) + ' of ' + total);
-      count.textContent = i + 1 + ' / ' + total;
-      first.disabled = back.disabled = i <= 0;
-      forward.disabled = last.disabled = i >= total - 1;
+      // `total === 0` (an empty capture) is the one case `i + 1` lies: there is no step
+      // "1" to be on when there are zero steps. Show the honest "0 of 0" / "0 / 0"
+      // rather than the 1-based count that only makes sense once at least one frame
+      // exists.
+      var shown = total > 0 ? i + 1 : 0;
+      range.setAttribute('aria-valuetext', 'step ' + shown + ' of ' + total);
+      count.textContent = shown + ' / ' + total;
+      first.disabled = back.disabled = i <= 0 || total === 0;
+      forward.disabled = last.disabled = i >= total - 1 || total === 0;
     }
 
     return {
@@ -930,6 +1013,14 @@
 
     /** @param {number} i */
     function apply(i) {
+      // Inert after an empty re-capture: `frames.length - 1` is `-1` there, so the
+      // clamp below would still settle on `idx = 0` and hand `frames[0]` (`undefined`)
+      // to `focusLine`/`renderVars`/`renderStage`, which crash. `recapture` already
+      // disables every control this reaches THROUGH (see there), but the keydown
+      // handler calls `apply` directly and does not consult any control's `disabled`
+      // state, so this guard is the one place that actually stops the crash regardless
+      // of entry point (arrow keys, a dragged `.dbg-scrub`, or a `.dbg-play` tick).
+      if (!frames.length) return;
       idx = Math.max(0, Math.min(frames.length - 1, i));
       var f = frames[idx];
       // Undo any disabling `showDebugError` did after a failed capture: reaching
@@ -1107,19 +1198,37 @@
         root.prepend(warn);
       }
       idx = 0;
+      if (!frames.length) {
+        // A legitimate empty re-capture (the new input value yields nothing): leave the
+        // block honestly INERT rather than a stale transport over frames that no longer
+        // exist.
+        //
+        // The registry entry is left UNTOUCHED here, not overwritten with an empty one:
+        // this used to run BEFORE this check, so `registry[name] = {frames: [], idx: 0}`
+        // landed even on an empty result, and a `tali.frame(name)` caller (a downstream
+        // view cell) got reset to nothing just because the reader typed an input value
+        // that happens to yield an empty trace, instead of still seeing the last good
+        // frame. `window.taliDebug.current` already tolerates a registry entry that is
+        // absent, stale, or shorter than its `idx` (falls back to `EMPTY_FRAME`), so
+        // nothing downstream depends on this write happening.
+        //
+        // `bar.range`/`bar.play` are disabled explicitly: `bar.sync` only ever manages
+        // first/back/forward/last (see its own comment), and the keydown handler calls
+        // `apply` directly regardless of any control's `disabled` state: `apply`'s own
+        // `!frames.length` guard is what actually stops that path from crashing, this is
+        // the honest-UI half of the fix.
+        bar.sync(0, 0, null);
+        bar.range.disabled = true;
+        if (bar.play) bar.play.disabled = true;
+        vars.replaceChildren();
+        stage.replaceChildren();
+        return;
+      }
       // Replace, not mutate: any prior array a `tali.frame(name)` caller still holds
       // stays exactly what it was (frozen, and now orphaned), never rewritten out
       // from under it, and `window.taliDebug.current`/`.frames` see the new trace on
       // their very next call.
       if (name) registry[name] = { frames: frames, idx: 0 };
-      if (!frames.length) {
-        // A legitimate empty re-capture (the new input value yields nothing): leave
-        // an honest 0/0 transport rather than a stale one from the last trace.
-        bar.sync(0, 0, null);
-        vars.replaceChildren();
-        stage.replaceChildren();
-        return;
-      }
       apply(0);
     }
 
@@ -1136,12 +1245,26 @@
     frames: function (n) {
       return registry[n] ? registry[n].frames : [];
     },
-    /** The frame the stepper is currently sitting on, or the shared `EMPTY_FRAME` before
-     * any `.debug` block named `n` has mounted (never `null`; see `EMPTY_FRAME` above).
-     * Frozen the same way `frames` is. @param {string} n */
+    /** The frame the stepper is currently sitting on, or the shared `EMPTY_FRAME` when
+     * no `.debug` block named `n` has mounted a real frame there (never `undefined`; see
+     * `EMPTY_FRAME` above). Frozen the same way `frames` is.
+     *
+     * Guards on the FRAME, not just on the registry entry: `r.frames[r.idx]` can be
+     * `undefined` even when `registry[n]` exists, in two reproduced routes. (a) An empty
+     * re-capture used to write `registry[name] = {frames: [], idx: 0}` before checking
+     * whether there was anything to show, so `frames[0]` was `undefined` (fixed
+     * separately, in `recapture`, by not writing an empty entry at all, but a stale
+     * `idx` can still outrun a SHORTER later trace, see (b)). (b) Two `.debug` blocks
+     * sharing the same `name=` overwrite each other's registry entry; one block's `apply`
+     * can then publish an `idx` past the OTHER (shorter) block's `frames.length`. Either
+     * way, a view cell written exactly as the guide prescribes (`f.locals.a || []`)
+     * crashed with `TypeError: Cannot read properties of undefined (reading 'locals')`
+     * instead of getting the documented "always safe to read" frame.
+     * @param {string} n */
     current: function (n) {
       var r = registry[n];
-      return r ? r.frames[r.idx] : EMPTY_FRAME;
+      var f = r ? r.frames[r.idx] : undefined;
+      return f !== undefined ? f : EMPTY_FRAME;
     },
   };
 

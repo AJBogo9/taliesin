@@ -194,6 +194,15 @@
   font-family: var(--tali-font-mono);
   font-size: .78rem;
 }
+/* A container past the harness's item cap (`__trunc__`, `trace_py.rs`'s `enc` /
+   debug.js's `encValue`): the picture above is real for every slot it draws, this just
+   says honestly that it is not the whole array. */
+.dbg-view-truncated {
+  margin-top: .3rem;
+  color: var(--tali-muted);
+  font-family: var(--tali-font-mono);
+  font-size: .72rem;
+}
 
 /* Qualified with the shape class (`.dbg-bar.dbg-write`, not a bare `.dbg-write`) so this
    reliably outranks `.dbg-bar`/`.dbg-box`/`.dbg-cell`'s own background regardless of
