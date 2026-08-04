@@ -114,3 +114,35 @@ fn a_folded_traced_cell_still_carries_the_trace_marker() {
         "code-fold must not swallow the trace marker:\n{out}"
     );
 }
+
+/// Fix round 1, finding 1: a traced `{js}` cell's `//| input:` names must survive
+/// into the DOM so `debug.js` knows which reactive inputs should trigger a
+/// re-capture. The server strips `//|` option lines from the displayed source, so
+/// `data-debug-inputs` on the container is the only place they land.
+#[test]
+fn a_traced_js_cell_carries_its_input_names_onto_the_container() {
+    let out = render(
+        "---\ntitle: T\n---\n\n::: {.debug name=\"sort\"}\n\
+         ```{js}\n//| trace: true\n//| input: n, seed\n\
+         function* g() { yield 1; }\nreturn g();\n```\n:::\n",
+    );
+    assert!(
+        out.contains(r#"data-debug-inputs="n,seed""#),
+        "the container must carry both input names, comma-joined:\n{out}"
+    );
+}
+
+/// A cell with no `//| input:` (or a Python cell, which never parses one at all)
+/// must not emit an empty/dangling attribute: nothing to subscribe to means nothing
+/// to declare.
+#[test]
+fn a_traced_cell_with_no_inputs_emits_no_inputs_attribute() {
+    let out = render(
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\na = 1\n```\n:::\n",
+    );
+    assert!(
+        !out.contains("data-debug-inputs"),
+        "no //| input: means nothing to declare:\n{out}"
+    );
+}

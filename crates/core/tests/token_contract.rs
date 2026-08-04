@@ -68,6 +68,7 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-cw-init",
     "data-cw-lines",
     "data-dbg-init",
+    "data-debug-inputs",
     "data-debug-name",
     "data-drawer-wired",
     "data-i",

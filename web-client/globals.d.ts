@@ -57,6 +57,11 @@ interface Window {
      *  other way to reach this scope. Returns whatever the source itself returns
      *  (typically a generator), typed loosely for the same reason `api` is. */
     runDebugSource?: (src: string, container: HTMLElement) => any;
+    /** Subscribe to the same shared input/define change signal `tali.onInput` uses,
+     *  without needing a cell's own `api`. The algorithm debugger's re-capture
+     *  wiring is the one caller: `cb` fires with no arguments whenever any named
+     *  input or `//| name:` value changes. */
+    onInputChange?: (names: string | string[], cb: () => void) => void;
   };
   /** The curated numerics namespace `{js}` cells draw with (numerics.js), handed to a
    *  cell body as `num` beside `Plot` and `d3`. Typed loosely on purpose: it is a plain

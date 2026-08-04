@@ -226,24 +226,63 @@
 
   // Run the captured source and drain it. Failures (a syntax error the scanner's
   // conservative rewrite still let through, an author exception before the first
-  // yield) degrade to an empty trace rather than an uncaught rejection, so a broken
-  // `.debug` block shows nothing stepped instead of breaking the rest of the page,
-  // the same silent-degrade posture `showCellError`'s built-output branch takes for an
-  // ordinary `{js}` cell.
+  // yield, an exception on a RE-capture triggered by a new input value) are left to
+  // REJECT rather than degraded to an empty trace here: the caller (`initJsCapture`
+  // below) is the one place that knows whether this is the first capture (nothing
+  // built yet, so it degrades to a quiet empty state, matching a Python `.debug` with
+  // no trace) or a re-capture (something IS built, and swallowing the error here
+  // would leave the OLD trace on screen looking current against a NEW input value --
+  // exactly the half-updated block the error affordance exists to avoid).
   /** @param {Element} root @param {string} src @returns {Promise<{frames: any[], truncated: boolean, cap: number}>} */
   async function runJsCapture(root, src) {
-    try {
-      if (!window.taliJs || !window.taliJs.runDebugSource) {
-        throw new Error('tali-js.js not loaded');
+    if (!window.taliJs || !window.taliJs.runDebugSource) {
+      throw new Error('tali-js.js not loaded');
+    }
+    var container = document.createElement('div');
+    container.id =
+      (root.getAttribute('data-debug-name') || 'debug') + '-' + Math.random().toString(36).slice(2);
+    var gen = await window.taliJs.runDebugSource(src, container);
+    return drain(gen);
+  }
+
+  // The debugger's own error box, reusing tali-js.js's `tali-js-error` class (already
+  // styled) rather than inventing a second one. Placed inside `.dbg-vars` when that
+  // panel already exists (a re-capture failure after a successful mount: clearing the
+  // stage too, so a stale array picture never sits next to a NEW input value), or
+  // appended to `.dbg-views` when nothing has been built yet (the very first capture
+  // failed). Same preview-vs-built message split `showCellError` uses.
+  //
+  // The transport's STEPPING controls are disabled too, not just left showing a stale
+  // count: `recapture` never touches them on a throw (it returns before doing
+  // anything, since the error propagates straight out of `runJsCapture`), so without
+  // this a reader could click Next and step through the PREVIOUS input's now-orphaned
+  // frames while the code panel and the input control both say something else.
+  // Deliberately excludes `.dbg-expand` (fullscreen has nothing to do with which
+  // trace is loaded) and `.dbg-first`/`.dbg-back`/`.dbg-forward`/`.dbg-last` are left
+  // to `bar.sync`'s own idx-based disabling rather than fought here. Re-enabled by
+  // `apply()` itself on the next successful frame (an initial success or a later
+  // recapture), which is the one place both `.dbg-play` and `.dbg-scrub` are
+  // otherwise never touched at all.
+  /** @param {Element} root @param {any} e */
+  function showDebugError(root, e) {
+    var vars = root.querySelector('.dbg-vars');
+    var stage = root.querySelector('.dbg-stage');
+    if (stage) stage.replaceChildren();
+    root.querySelectorAll('.dbg-first, .dbg-back, .dbg-play, .dbg-forward, .dbg-last, .dbg-scrub').forEach(
+      function (el) {
+        /** @type {HTMLButtonElement | HTMLInputElement} */ (el).disabled = true;
       }
-      var container = document.createElement('div');
-      container.id =
-        (root.getAttribute('data-debug-name') || 'debug') + '-' + Math.random().toString(36).slice(2);
-      var gen = await window.taliJs.runDebugSource(src, container);
-      return drain(gen);
-    } catch (e) {
-      console.error('tali-debug: JS capture failed', e);
-      return { frames: [], truncated: false, cap: 0 };
+    );
+    var msg = document.createElement('pre');
+    msg.className = 'tali-js-error';
+    msg.textContent =
+      typeof window.taliOpenPageSource === 'function'
+        ? String((e && e.stack) || e)
+        : 'This algorithm view could not be captured.';
+    if (vars) {
+      vars.replaceChildren(msg);
+    } else {
+      (root.querySelector('.dbg-views') || root).appendChild(msg);
     }
   }
 
@@ -678,33 +717,97 @@
     });
   }
 
-  // Dispatch to the right capture adapter and mount once a trace is in hand. The JS
-  // path is async (running the generator goes through a real `AsyncFunction`, so even
-  // a generator with no `await` inside it comes back through a microtask); the Python
-  // path stays fully synchronous, reading a trace the server already baked into the
-  // page. Either way `mount` below is the single place that turns a `{frames,
-  // truncated, cap}` trace into the transport bar, the line cursor, the variables
-  // panel and the four data views, so the two adapters cannot drift in how they are
-  // rendered even though they arrive completely differently.
+  // Drive the JS capture adapter's whole lifecycle: the initial capture, AND
+  // re-capturing whenever a `//| input:` name this cell depends on changes -- the
+  // adapter's entire reason to exist over the Python one (spec: "the reader can
+  // change the input and re-run"). `data-debug-inputs` (divs.rs) is the cell's own
+  // `//| input:` names, surfaced into the DOM because the server already strips the
+  // `//|` option lines from the displayed source.
+  //
+  // `recapture` starts `null` and is filled in by `mount`'s return value the first
+  // time a capture actually produces frames to show; every capture after that
+  // (whether the first one came back empty or not) either builds the widget for the
+  // first time or replays through the SAME recapture closure `mount` returned, so
+  // Python-style chrome (transport, cursor, vars, four views) is never duplicated.
+  //
+  // Re-entrancy: an `epoch` counter is bumped on every capture request (initial or
+  // input-driven) and captured as `myEpoch` in that request's own closure. A capture
+  // is async (`runDebugSource` always goes through a real `AsyncFunction`), so a
+  // slider dragged quickly can have several in flight at once; when one resolves, it
+  // applies its result only if `myEpoch` still matches the CURRENT `epoch` -- an
+  // older capture that resolves after a newer one has already started is dropped, so
+  // a stale array can never overwrite a fresher one no matter which promise settles
+  // first.
+  /** @param {Element} root @param {string} jsSrc */
+  function initJsCapture(root, jsSrc) {
+    var inputNames = (root.getAttribute('data-debug-inputs') || '')
+      .split(',')
+      .map(function (s) {
+        return s.trim();
+      })
+      .filter(Boolean);
+    var epoch = 0;
+    /** @type {((trace: {frames: any[], truncated: boolean, cap: number}) => void) | null} */
+    var recapture = null;
+
+    function runOnce() {
+      var myEpoch = ++epoch;
+      runJsCapture(root, jsSrc)
+        .then(function (trace) {
+          if (myEpoch !== epoch) return; // superseded by a later capture
+          var frozen = deepFreeze(trace);
+          if (recapture) {
+            recapture(frozen);
+          } else {
+            recapture = mount(root, frozen);
+          }
+        })
+        .catch(function (e) {
+          if (myEpoch !== epoch) return;
+          console.error('tali-debug: JS capture failed', e);
+          showDebugError(root, e);
+        });
+    }
+
+    runOnce();
+    if (inputNames.length && window.taliJs && window.taliJs.onInputChange) {
+      window.taliJs.onInputChange(inputNames, runOnce);
+    }
+  }
+
+  // Dispatch to the right capture adapter. The JS path is async and self-driving
+  // (`initJsCapture` above owns its own re-capture loop); the Python path stays
+  // fully synchronous, reading a trace the server already baked into the page, and
+  // mounts once with nothing further to wire up. Either way `mount` below is the
+  // single place that turns a `{frames, truncated, cap}` trace into the transport
+  // bar, the line cursor, the variables panel and the four data views, so the two
+  // adapters cannot drift in how they are rendered even though they arrive
+  // completely differently.
   /** @param {Element} root */
   function init(root) {
     var jsSrc = jsDebugSource(root);
     if (jsSrc !== null) {
-      runJsCapture(root, jsSrc).then(function (trace) {
-        mount(root, deepFreeze(trace));
-      });
+      initJsCapture(root, jsSrc);
       return;
     }
     mount(root, readTrace(root));
   }
 
-  /** @param {Element} root @param {{frames: any[], truncated: boolean, cap: number}} trace */
+  // Builds the widget chrome once frames actually exist, and returns a `recapture`
+  // function closed over the SAME `frames`/`idx`/`playing`/`timer`/`bar`/`vars`/
+  // `stage` this call built, so a later JS capture can swap the trace in place
+  // instead of building a second copy of the chrome beside the first. Returns `null`
+  // when there is nothing to show yet (a Python `.debug` with no trace at all, or a
+  // JS capture whose very first run produced zero frames) -- the caller is
+  // responsible for deciding what "nothing yet" means for its own adapter.
+  /** @param {Element} root @param {{frames: any[], truncated: boolean, cap: number}} trace
+   *  @returns {((trace: {frames: any[], truncated: boolean, cap: number}) => void) | null} */
   function mount(root, trace) {
     var frames = trace.frames || [];
     var name = root.getAttribute('data-debug-name');
     var pre = root.querySelector('.dbg-code pre');
     var bridge = /** @type {HTMLInputElement | null} */ (root.querySelector('.tali-debug-input'));
-    if (!frames.length) return;
+    if (!frames.length) return null;
 
     var idx = 0;
     var playing = false;
@@ -737,6 +840,13 @@
     function apply(i) {
       idx = Math.max(0, Math.min(frames.length - 1, i));
       var f = frames[idx];
+      // Undo any disabling `showDebugError` did after a failed capture: reaching
+      // here at all means a real frame exists to show. `bar.range` and `bar.play`
+      // are the two controls `bar.sync` below never manages either way (it only
+      // ever sets first/back/forward/last from the current position), so this is
+      // the one place they can be relied on to come back.
+      bar.range.disabled = false;
+      if (bar.play) bar.play.disabled = false;
       if (name) registry[name].idx = idx;
       focusLine(pre, f.line);
       renderVars(vars, f, hasStack);
@@ -869,6 +979,54 @@
     rootEl.addEventListener('keydown', onKeydown);
 
     apply(0);
+
+    // Swap a freshly captured trace into this SAME widget: reuses every closure
+    // above (`frames`/`idx`/`playing`/`timer`/`hasStack`/`bar`/`vars`/`stage`/`pre`/
+    // `bridge`/`name`) rather than tearing the DOM down and rebuilding it, which is
+    // what keeps a re-capture from flashing the whole block or losing focus.
+    /** @param {{frames: any[], truncated: boolean, cap: number}} newTrace */
+    function recapture(newTrace) {
+      // Stop any in-flight play loop FIRST: it closes over `frames` by reference, so
+      // if it fired again after `frames` is reassigned below it would step through
+      // the wrong array (or past its new, possibly shorter, end).
+      if (playing) {
+        togglePlay();
+      } else if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      frames = newTrace.frames || [];
+      hasStack = frames.some(function (f) {
+        return f.depth > 1;
+      });
+      // A stale truncation warning (or the lack of one) must not survive a
+      // re-capture with a different frame count.
+      var oldWarn = root.querySelector('.dbg-truncated');
+      if (oldWarn) oldWarn.remove();
+      if (newTrace.truncated) {
+        var warn = document.createElement('p');
+        warn.className = 'dbg-truncated';
+        warn.textContent = 'Trace truncated at ' + newTrace.cap + ' steps.';
+        root.prepend(warn);
+      }
+      idx = 0;
+      // Replace, not mutate: any prior array a `tali.frame(name)` caller still holds
+      // stays exactly what it was (frozen, and now orphaned), never rewritten out
+      // from under it, and `window.taliDebug.current`/`.frames` see the new trace on
+      // their very next call.
+      if (name) registry[name] = { frames: frames, idx: 0 };
+      if (!frames.length) {
+        // A legitimate empty re-capture (the new input value yields nothing): leave
+        // an honest 0/0 transport rather than a stale one from the last trace.
+        bar.sync(0, 0, null);
+        vars.replaceChildren();
+        stage.replaceChildren();
+        return;
+      }
+      apply(0);
+    }
+
+    return recapture;
   }
 
   window.taliDebug = {

@@ -708,6 +708,20 @@
     );
     return fn(api, window.Plot, window.d3, window.taliNum, container, api.invalidation, __at);
   };
+  // Subscribe to the SAME shared-scope signal a live cell's own `tali.onInput`
+  // subscribes to (`r.listeners`, set by `registerInput` on every `[data-tali-input]`
+  // change): fires `cb` with no arguments whenever any named input or `//| name:`/
+  // ojs_define value changes. The one caller is the algorithm debugger, which has no
+  // cell of its own to build a full `api` through `makeApi` just to reach `onInput` --
+  // this is that same registration with the cell-scoped wrapping stripped away, not a
+  // second listener mechanism.
+  /** @param {string | string[]} names @param {() => void} cb */
+  window.taliJs.onInputChange = function (names, cb) {
+    var r = rt();
+    (Array.isArray(names) ? names : [names]).forEach(function (n) {
+      (r.listeners[n] = r.listeners[n] || new Set()).add(cb);
+    });
+  };
   /**
    * Register a client-side cell language. `mime` must match the `<script type>` its
    * server-side registry entry emits (`render/client_lang.rs`), which is the one place the

@@ -696,6 +696,24 @@ fn build_container(
                 // cell reachable by the executor at all once its block is folded
                 // away below.
                 debug_cell = inner[i].cell.clone();
+                // A traced `{js}` cell's own `//| input:` names, so `debug.js` knows
+                // which reactive inputs should re-capture and re-render this block
+                // when they change (the JS adapter's whole reason to exist over the
+                // Python one: the reader can change the input and re-run). The server
+                // strips `//|` option lines from the displayed source, so this is the
+                // only place those names survive into the DOM. `debug_cell.js.inputs`
+                // is empty for a Python cell (options are only parsed for a
+                // client-side language), so the attribute is simply absent there.
+                let inputs_attr = debug_cell
+                    .as_ref()
+                    .filter(|c| !c.js.inputs.is_empty())
+                    .map(|c| {
+                        format!(
+                            " data-debug-inputs=\"{}\"",
+                            escape_attr(&c.js.inputs.join(","))
+                        )
+                    })
+                    .unwrap_or_default();
                 let rest: String = inner
                     .iter()
                     .enumerate()
@@ -703,7 +721,7 @@ fn build_container(
                     .collect();
                 format!(
                     "<div class=\"tali-debug column-page\" role=\"group\" \
-                     aria-label=\"Algorithm debugger\"{data}{name_attr}>\
+                     aria-label=\"Algorithm debugger\"{data}{name_attr}{inputs_attr}>\
                      {hidden}<div class=\"dbg-code\" id=\"{code_id}\">{panel}</div>\
                      <div class=\"dbg-views\">{rest}</div></div>"
                 )
