@@ -18,10 +18,11 @@
 // scrolly uses, so a `{js}` view cell re-runs through `//| input:` with no new reactive
 // machinery. Read-only: nothing here ever writes source.
 //
-// This file owns the transport chrome, the line cursor and the variables panel.
-// `renderStage` (the bars/boxes/grids/pointers view of the current frame) is a
-// deliberate no-op stub: that rendering is a later task's job, and `.dbg-stage:empty`
-// collapses to nothing in debug.css so the stub costs no layout space meanwhile.
+// This file owns the transport chrome, the line cursor, the variables panel, and
+// `renderStage`: the automatic bars/boxes/grid/pointer-caret view of the current frame,
+// a CLOSED set of four shapes (`viewFor` below). Anything else falls through to the
+// variables panel instead of growing a fifth guess. `.dbg-stage:empty` in debug.css
+// still collapses to nothing when a frame's locals earn no picture at all.
 //
 // Registered through the shared `taliEnhancers` API (a third sibling of walkthrough.js
 // and scrolly.js), idempotent via `data-dbg-init`, and self-cleaning: the only thing
@@ -180,11 +181,233 @@
     }
   }
 
-  // Data-structure views (bars/boxes/grids/pointers) are a later task's job. Intentionally
-  // empty here: `dbg-stage` stays in the DOM as the slot that task fills in, and
-  // `.dbg-stage:empty` in debug.css keeps an unfilled slot from taking any layout space.
+  // Which built-in view a value earns. A CLOSED set: bars, boxes, grid, or nothing.
+  // `null` means "leave it to the variables panel", which is the honest answer for a
+  // shape we have no good picture for.
+  /** @param {any} v @returns {"bars"|"boxes"|"grid"|null} */
+  function viewFor(v) {
+    if (!Array.isArray(v) || !v.length) return null;
+    if (
+      v.every(function (r) {
+        return Array.isArray(r);
+      })
+    )
+      return 'grid';
+    if (
+      v.every(function (x) {
+        return typeof x === 'number' && isFinite(x);
+      })
+    )
+      return 'bars';
+    if (
+      v.every(function (x) {
+        return x === null || typeof x !== 'object';
+      })
+    )
+      return 'boxes';
+    return null;
+  }
+
+  // An integer local that is a valid index into a rendered array becomes a labelled caret
+  // under that slot. `i`, `j`, `lo`, `hi`, `left`, `right` need no declaration and no
+  // naming convention: being in range IS the signal.
+  /** @param {any} locals @param {string} arrayName @param {number} len */
+  function pointersInto(locals, arrayName, len) {
+    /** @type {{name: string, at: number}[]} */
+    var out = [];
+    Object.keys(locals).forEach(function (k) {
+      var v = locals[k];
+      if (k === arrayName) return;
+      if (typeof v !== 'number' || !Number.isInteger(v)) return;
+      if (v < 0 || v >= len) return;
+      out.push({ name: k, at: v });
+    });
+    return out;
+  }
+
+  // Turn a frame's `changed[name].writes`/`.reads` index list into an O(1) membership
+  // test. A plain object copy, never a mutation of the frozen array it reads from.
+  /** @param {number[] | undefined} indices @returns {Record<number, boolean>} */
+  function toSet(indices) {
+    /** @type {Record<number, boolean>} */
+    var s = {};
+    (indices || []).forEach(function (i) {
+      s[i] = true;
+    });
+    return s;
+  }
+
+  // One or more pointer badges for a single slot, stacked vertically (never overlapped)
+  // so `lo` and `hi` meeting on the same index both stay legible.
+  /** @param {{name: string, at: number}[]} ptrs @returns {HTMLElement} */
+  function renderPointers(ptrs) {
+    var wrap = document.createElement('div');
+    wrap.className = 'dbg-ptrs';
+    ptrs.forEach(function (p) {
+      var tag = document.createElement('span');
+      tag.className = 'dbg-ptr';
+      tag.textContent = p.name;
+      wrap.appendChild(tag);
+    });
+    return wrap;
+  }
+
+  // bars: one `.dbg-bar` per number, height scaled to the largest magnitude in the array
+  // (not per-bar, so relative size stays comparable across the row). A value label under
+  // each bar only when the array is 24 elements or fewer, so a big array stays legible
+  // instead of drowning in text.
+  /** @param {number[]} values @param {any} diff @param {any} locals @param {string} name
+   *  @returns {HTMLElement} */
+  function renderBars(values, diff, locals, name) {
+    var row = document.createElement('div');
+    row.className = 'dbg-bars';
+    var writes = toSet(diff.writes);
+    var reads = toSet(diff.reads);
+    var max = 0;
+    values.forEach(function (v) {
+      max = Math.max(max, Math.abs(v));
+    });
+    if (!max) max = 1;
+    var showLabels = values.length <= 24;
+    var pointers = pointersInto(locals, name, values.length);
+    values.forEach(function (v, i) {
+      var slot = document.createElement('div');
+      slot.className = 'dbg-slot';
+      var track = document.createElement('div');
+      track.className = 'dbg-bar-track';
+      var bar = document.createElement('div');
+      bar.className = 'dbg-bar' + (writes[i] ? ' dbg-write' : '') + (reads[i] ? ' dbg-read' : '');
+      bar.setAttribute('data-i', String(i));
+      bar.style.height = (Math.abs(v) / max) * 100 + '%';
+      track.appendChild(bar);
+      slot.appendChild(track);
+      if (showLabels) {
+        var label = document.createElement('span');
+        label.className = 'dbg-bar-label';
+        label.textContent = fmt(v);
+        slot.appendChild(label);
+      }
+      var here = pointers.filter(function (p) {
+        return p.at === i;
+      });
+      if (here.length) slot.appendChild(renderPointers(here));
+      row.appendChild(slot);
+    });
+    return row;
+  }
+
+  // boxes: any other 1-D array, or a string (the caller splits it into one-character
+  // strings first, formatted bare rather than through `fmt` so a box shows `a`, not
+  // `"a"`). One `.dbg-box` per value.
+  /** @param {any[]} values @param {any} diff @param {any} locals @param {string} name
+   *  @param {(v: any) => string} format @returns {HTMLElement} */
+  function renderBoxes(values, diff, locals, name, format) {
+    var row = document.createElement('div');
+    row.className = 'dbg-boxes';
+    var writes = toSet(diff.writes);
+    var reads = toSet(diff.reads);
+    var pointers = pointersInto(locals, name, values.length);
+    values.forEach(function (v, i) {
+      var slot = document.createElement('div');
+      slot.className = 'dbg-slot';
+      var box = document.createElement('div');
+      box.className = 'dbg-box' + (writes[i] ? ' dbg-write' : '') + (reads[i] ? ' dbg-read' : '');
+      box.setAttribute('data-i', String(i));
+      box.textContent = format(v);
+      slot.appendChild(box);
+      var here = pointers.filter(function (p) {
+        return p.at === i;
+      });
+      if (here.length) slot.appendChild(renderPointers(here));
+      row.appendChild(slot);
+    });
+    return row;
+  }
+
+  // grid: DP tables, matrices, boards. `changed[name].writes` only pins the ROW a nested
+  // `dp[i][j]`-shaped assignment touched (the harness's per-line scan cannot see past the
+  // first index of a chained Subscript, see trace_py.rs's `reads_by_line`); the exact
+  // cell is resolved here instead, by diffing this row against the SAME row one frame
+  // back. Reads stay row-granular for the same structural reason, and a row is shown as
+  // read only when it is NOT also the row being written: writing `dp[i][j]` always
+  // touches `dp[i]` too (Python must fetch the row before it can store into it), so
+  // without this exclusion every written row would also paint itself as read, which is
+  // the grid-shaped twin of the flat known defect this task evaluates separately. A row
+  // that is purely a lookup (say `dp[i-1]`) keeps its read tint.
+  /** @param {string} name @param {any[][]} rows @param {any} diff @param {any} frame @param {any[]} frames
+   *  @returns {HTMLElement} */
+  function renderGrid(name, rows, diff, frame, frames) {
+    var scroll = document.createElement('div');
+    scroll.className = 'dbg-grid-scroll';
+    var grid = document.createElement('div');
+    grid.className = 'dbg-grid';
+    var cols = 0;
+    rows.forEach(function (r) {
+      cols = Math.max(cols, r.length);
+    });
+    grid.style.setProperty('--dbg-cols', String(cols || 1));
+    var writeRows = toSet(diff.writes);
+    var readRows = toSet(diff.reads);
+    var at = frames.indexOf(frame);
+    var prevRows = at > 0 ? frames[at - 1].locals[name] : null;
+    rows.forEach(function (row, r) {
+      var prevRow = Array.isArray(prevRows) && Array.isArray(prevRows[r]) ? prevRows[r] : null;
+      row.forEach(function (v, c) {
+        var cell = document.createElement('div');
+        var cls = 'dbg-cell';
+        var wroteHere = writeRows[r] && (!prevRow || prevRow.length !== row.length || prevRow[c] !== v);
+        if (wroteHere) cls += ' dbg-write';
+        else if (readRows[r] && !writeRows[r]) cls += ' dbg-read';
+        cell.className = cls;
+        cell.style.gridColumn = String(c + 1);
+        cell.style.gridRow = String(r + 1);
+        cell.setAttribute('data-r', String(r));
+        cell.setAttribute('data-c', String(c));
+        cell.textContent = fmt(v);
+        grid.appendChild(cell);
+      });
+    });
+    scroll.appendChild(grid);
+    return scroll;
+  }
+
+  // The four automatic data views: bars, boxes, grid and in-range pointer carets under a
+  // slot. One `.dbg-view` per local that earns a picture (`viewFor`, plus the string
+  // special-case above it); everything else already has its honest answer in the
+  // variables panel, so it is skipped here rather than guessed at.
   /** @param {Element} el @param {any} frame @param {any[]} frames */
-  function renderStage(el, frame, frames) {}
+  function renderStage(el, frame, frames) {
+    el.replaceChildren();
+    var locals = frame.locals || {};
+    var changed = frame.changed || {};
+    Object.keys(locals).forEach(function (name) {
+      var value = locals[name];
+      var diff = changed[name] || {};
+      /** @type {HTMLElement | null} */
+      var body = null;
+      if (typeof value === 'string' && value.length) {
+        // A literal space renders as an invisible, width-collapsing box; a non-breaking
+        // space keeps the slot visible, so a palindrome check over "a man a plan" still
+        // shows one box per character.
+        body = renderBoxes(value.split(''), diff, locals, name, function (c) {
+          return c === ' ' ? ' ' : c;
+        });
+      } else {
+        var kind = viewFor(value);
+        if (kind === 'bars') body = renderBars(value, diff, locals, name);
+        else if (kind === 'boxes') body = renderBoxes(value, diff, locals, name, fmt);
+        else if (kind === 'grid') body = renderGrid(name, value, diff, frame, frames);
+      }
+      if (!body) return;
+      var view = document.createElement('div');
+      view.className = 'dbg-view';
+      var label = document.createElement('div');
+      label.className = 'dbg-view-label';
+      label.textContent = name;
+      view.append(label, body);
+      el.appendChild(view);
+    });
+  }
 
   // The transport bar: first/back/play-pause/forward/last, a scrub range, a step count and
   // an expand button (the last one is inert here; a later task wires fullscreen to it, but

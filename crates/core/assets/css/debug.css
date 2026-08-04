@@ -6,10 +6,9 @@
 
    Two columns wide, `.dbg-code` spanning them full-height on the left (sticky, like the
    code-walkthrough's `.cw-stage`) with the observation panels stacked on the right; one
-   column on a narrow viewport, code first. `.dbg-stage` is left almost bare on purpose: it
-   is the bars/boxes/pointers view slot a later task fills in, and `:empty` collapses it to
-   nothing until then, so this task ships no visual placeholder for content it doesn't
-   render. */
+   column on a narrow viewport, code first. `.dbg-stage` holds `renderStage`'s bars/boxes/
+   grid/pointer-caret views (further down this file); `:empty` still collapses it to
+   nothing on a frame whose locals earn no picture at all. */
 .tali-debug {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -33,7 +32,14 @@
 .tali-debug:focus-visible { outline: var(--tali-focus); outline-offset: var(--tali-focus-offset); }
 @media (max-width: 60rem) {
   .tali-debug {
-    grid-template-columns: 1fr;
+    /* `minmax(0, 1fr)`, not a bare `1fr`: a grid track's default minimum width is its
+       content's intrinsic (un-shrinkable) width, so without the explicit `0` floor a wide
+       `.dbg-stage` view (a many-column DP grid) would keep the whole `.tali-debug` box,
+       and with it the page body, from ever narrowing below that content's natural width.
+       This was latent since Task 3 (which always left `.dbg-stage` empty) and only
+       surfaced once Task 4 put real width-bearing content there; the two-column rule above
+       already had the `minmax(0, ...)` floor, this one just needs to match it. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "code" "trans" "vars" "stage" "views";
   }
 }
@@ -137,4 +143,162 @@
   max-height: 8rem;
   font-size: .78rem;
   white-space: pre-wrap;
+}
+
+/* The four automatic data views (debug.js's `renderStage`): bars, boxes, grid and the
+   pointer carets shared by bars/boxes. One `.dbg-view` per renderable local, stacked
+   top to bottom in binding order. Read/write share ONE vocabulary across all three
+   shapes (`.dbg-read` / `.dbg-write`), so the same two colours mean the same two things
+   everywhere in the stage. Write is the stronger, solid signal (the value just changed);
+   read is a lighter wash (this slot fed the computation but did not change). Every
+   colour is a `--tali-*` token or a `color-mix()` over one, same discipline as the rest
+   of this file. */
+.dbg-view + .dbg-view { margin-top: 1.1rem; }
+.dbg-view-label {
+  margin-bottom: .4rem;
+  color: var(--tali-muted);
+  font-family: var(--tali-font-mono);
+  font-size: .78rem;
+}
+
+/* Qualified with the shape class (`.dbg-bar.dbg-write`, not a bare `.dbg-write`) so this
+   reliably outranks `.dbg-bar`/`.dbg-box`/`.dbg-cell`'s own background regardless of
+   which rule happens to come first in the file: a bare `.dbg-write` has the SAME
+   specificity as `.dbg-bar`, so it only wins by source order, which is exactly the kind
+   of silent, order-dependent breakage this task's own browser check exists to catch (a
+   real instance of it: the first draft of this file shipped that bare version, and every
+   swap/write rendered in the plain neutral colour with no visible signal at all). */
+.dbg-bar.dbg-write, .dbg-box.dbg-write, .dbg-cell.dbg-write {
+  background: var(--tali-accent-fill);
+  color: var(--tali-on-accent);
+  border-color: var(--tali-accent-fill);
+}
+.dbg-bar.dbg-read, .dbg-box.dbg-read, .dbg-cell.dbg-read {
+  background: color-mix(in srgb, var(--tali-callout-tip) 32%, var(--tali-code-bg));
+  border-color: var(--tali-callout-tip);
+}
+/* A slot that is BOTH read and written in the same step (a tuple swap's RHS genuinely
+   reads both old values before its LHS overwrites them) keeps the write fill as the
+   dominant signal and adds the read colour as a ring around it, rather than letting one
+   class silently clobber the other. This has to REPEAT the write background rather than
+   rely on cascade order after it: `.dbg-bar.dbg-write` and `.dbg-bar.dbg-read` are the
+   SAME specificity as each other, so without a three-class rule outranking both, whichever
+   of the two happened to be declared later would silently win the background outright
+   (measured live: the read tint was winning and the write fill never showed at all on a
+   cell that was both, the same order-dependent trap the shape-qualifying comment above
+   already called out once). */
+.dbg-bar.dbg-write.dbg-read, .dbg-box.dbg-write.dbg-read, .dbg-cell.dbg-write.dbg-read {
+  background: var(--tali-accent-fill);
+  color: var(--tali-on-accent);
+  border-color: var(--tali-accent-fill);
+  box-shadow: inset 0 0 0 2px var(--tali-callout-tip);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dbg-bar, .dbg-box, .dbg-cell {
+    transition: background var(--tali-dur-slow) ease, border-color var(--tali-dur-slow) ease,
+      height var(--tali-dur-slow) ease;
+  }
+}
+
+/* bars: a fixed-height track anchors each bar to a shared baseline so the row reads as
+   one chart instead of floating boxes; the value label and any pointer carets sit below
+   the track, outside the part that scales with the value. */
+.dbg-bars { display: flex; align-items: flex-start; justify-content: center; gap: .3rem; }
+.dbg-slot { display: flex; flex-direction: column; align-items: center; gap: .3rem; min-width: 0; }
+/* Bars need equal-width columns (`flex: 1 1 0` on a `flex-basis: 0` splits the row
+   evenly regardless of content), but the SAME rule on a wrapping `.dbg-boxes` row is
+   actively wrong: `flex-basis: 0` makes every slot look zero-width to the wrap
+   algorithm, so a long string never wraps at all -- every slot lands on one line and
+   flex-grow then stretches them past the container instead. Measured live: an
+   11-character string overflowed the page at 390px width with the shared rule; boxes
+   need natural (`0 0 auto`), not equal-share, sizing so wrapping can actually trigger. */
+.dbg-bars .dbg-slot { flex: 1 1 0; max-width: 3.4rem; }
+.dbg-boxes .dbg-slot { flex: 0 0 auto; }
+.dbg-bar-track { display: flex; align-items: flex-end; width: 100%; height: 6rem; }
+.dbg-bar {
+  width: 100%;
+  min-height: 2px;
+  background: var(--tali-border-strong);
+  border: 1px solid transparent;
+  border-radius: var(--tali-radius-sm) var(--tali-radius-sm) 0 0;
+}
+.dbg-bar-label { font-size: .72rem; color: var(--tali-muted); font-variant-numeric: tabular-nums; }
+
+/* boxes: a wrapping row rather than a fixed track, since there is no magnitude to plot,
+   only values to display. */
+.dbg-boxes { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem; }
+.dbg-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  min-height: 1.9rem;
+  padding: .15rem .35rem;
+  border: 1px solid var(--tali-border-strong);
+  border-radius: var(--tali-radius-sm);
+  background: var(--tali-code-bg);
+  font-family: var(--tali-font-mono);
+  font-size: .82rem;
+}
+
+/* Pointer carets: a small triangle plus a labelled pill under the slot. Stacked with
+   `flex-direction: column` (debug.js appends one `.dbg-ptr` per pointer landing on that
+   index), so two pointers meeting on the same slot stack rather than overlap. */
+.dbg-ptrs { display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+/* Deliberately the UI sans font, not `--tali-font-mono`: a pointer name is a single
+   short identifier, not code to align, and measured live at monospace's usual small
+   badge size a lowercase `i` and a `1` render as the same bare vertical stroke (this
+   was caught by zooming into an actual screenshot, not by reading the rule), which is
+   exactly the ambiguity two-pointer names like `i`/`lo`/`hi` cannot afford. */
+.dbg-ptr {
+  position: relative;
+  margin-top: .45rem;
+  padding: .1rem .45rem;
+  border-radius: var(--tali-radius-sm);
+  background: var(--tali-accent);
+  color: var(--tali-on-accent);
+  font-size: .74rem;
+  font-family: var(--tali-font-head);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.dbg-ptr::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -.34rem;
+  transform: translateX(-50%);
+  border: .34rem solid transparent;
+  border-bottom-color: var(--tali-accent);
+}
+
+/* grid: DP tables, matrices, boards. Placed on an explicit `grid-column`/`grid-row` per
+   cell (set inline by debug.js) rather than relying on source order, so a ragged row
+   (a triangular table) still lands in the right column instead of sliding left. Scrolls
+   inside its own box on a narrow viewport rather than widening the page: a wide DP table
+   would otherwise be the one view in this file that can force the page to scroll
+   sideways. */
+/* `max-width: 100%` is load-bearing, not decoration: `overflow-x: auto` alone only adds
+   a scrollbar once the box's OWN width is exceeded, but with no width cap a block-level
+   div just grows to fit its content instead, so a wide table pushed the whole PAGE into
+   horizontal scroll instead of scrolling itself (measured live: a 14-column DP table
+   overflowed the 390px mobile viewport by 76px with this line missing, while the grid's
+   own scrollWidth/clientWidth matched -- the grid box itself had simply grown, so its
+   own overflow check never had anything to catch). */
+.dbg-grid-scroll { max-width: 100%; overflow-x: auto; }
+.dbg-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(var(--dbg-cols, 1), minmax(1.8rem, 1fr));
+  gap: 2px;
+}
+.dbg-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.9rem;
+  padding: .1rem .2rem;
+  border: 1px solid var(--tali-border);
+  background: var(--tali-code-bg);
+  font-family: var(--tali-font-mono);
+  font-size: .76rem;
 }

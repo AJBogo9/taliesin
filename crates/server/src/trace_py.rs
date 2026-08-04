@@ -10,8 +10,16 @@
 //! 1. **`reads`.** Line-granularity tracing observes locals, never expression reads. The
 //!    harness pre-parses each source line's `Subscript` nodes over plain names and
 //!    resolves their indices from the live frame, so `a[j] > a[j+1]` reports `{j, j+1}`.
-//!    An index that is not a whitelisted expression is skipped rather than guessed.
-//! 2. **`writes`.** Diffed from the previous frame's locals snapshot.
+//!    An index that is not a whitelisted expression is skipped rather than guessed. Only
+//!    a `Load`-context Subscript counts: an assignment target is a `Subscript` node too,
+//!    and without that check a pure write (`a[j] = tmp`) reported the slot it was about
+//!    to overwrite as "read" instead.
+//! 2. **`writes`.** Diffed from the previous frame's locals snapshot. The snapshot is a
+//!    bounded-depth recursive copy, not a one-level `list(v)`/`dict(v)`: a nested
+//!    container (`dp[i][j] = x` on a list of lists) shares its ROW objects across a
+//!    one-level copy, so mutating a row in place retroactively "corrupts" the previous
+//!    snapshot too (they are the same row object), and a row-level write is silently
+//!    never detected. Reproduced by hand before fixing: see the task report.
 
 /// The tracer, as Python source. Stdlib only: it runs inside the author's kernel and must
 /// not assume anything is installed.
@@ -45,11 +53,23 @@ def _tali_debug_run(_src):
     # Per-line subscript reads, precomputed once. Only whitelisted index expressions are
     # ever evaluated: a Name, a literal, +/-/* over those, and unary minus. Anything else
     # is dropped, because a guessed read is worse than no read.
+    #
+    # `node.ctx` must be `ast.Load`: an assignment TARGET is also a `Subscript` node
+    # (`a[j] = tmp` parses to `Subscript(ctx=Store)`), and without this check it counted
+    # as a "read" of the slot it is about to overwrite. Caught on a temp-variable swap
+    # (`tmp = a[j]; a[j] = a[j+1]; a[j+1] = tmp`): the THIRD line has no genuine array
+    # read at all (`tmp` is a scalar), yet the unfiltered scan reported `a[1]` as read on
+    # the frame BEFORE that line runs, one step ahead of the write it is actually about to
+    # become. A tuple-swap one-liner (`a[j], a[j+1] = a[j+1], a[j]`) is unaffected by this
+    # filter either way: its RHS values are their own, separate `Subscript(ctx=Load)`
+    # nodes at the SAME indices as the targets, so the reads they contribute are real,
+    # not a target masquerading as one; that swap genuinely does read both slots before
+    # overwriting them.
     OK = (ast.Name, ast.Constant, ast.BinOp, ast.UnaryOp, ast.Add, ast.Sub, ast.Mult, ast.USub, ast.Load)
     reads_by_line = {}
     try:
         for node in ast.walk(ast.parse(_src)):
-            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
+            if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and isinstance(node.ctx, ast.Load):
                 idx = node.slice
                 if all(isinstance(n, OK) for n in ast.walk(idx)):
                     reads_by_line.setdefault(node.lineno, []).append((node.value.id, idx))
@@ -105,21 +125,31 @@ def _tali_debug_run(_src):
         # `__builtins__` (and friends). Those dunder keys are not code the author
         # wrote; drop them so a frame's `locals` shows only what the author bound.
         #
-        # A `list`/`dict` value is snapshotted (a shallow copy), not just referenced:
-        # `frame.f_locals` hands back the SAME mutable object on every call, so an
-        # in-place mutation (`a[i] = ...`) would otherwise retroactively change what
-        # last frame's snapshot looks like too, and `diff` below (which relies on
-        # comparing this frame's value against the PREVIOUS frame's) would never see
-        # a difference: `prev` and `cur` would be `is`-identical, the same list,
-        # already mutated. A shallow copy is enough for the writes/reads this diffs
-        # (index assignment into a flat container); a container nested inside
-        # another can still alias the same way, same limitation `enc`'s depth cap
-        # already accepts.
-        def snapshot(v):
+        # A `list`/`dict` value is snapshotted, not just referenced: `frame.f_locals`
+        # hands back the SAME mutable object on every call, so an in-place mutation
+        # (`a[i] = ...`) would otherwise retroactively change what last frame's snapshot
+        # looks like too, and `diff` below (which relies on comparing this frame's value
+        # against the PREVIOUS frame's) would never see a difference: `prev` and `cur`
+        # would be `is`-identical, the same list, already mutated.
+        #
+        # A ONE-LEVEL copy is not enough: a nested container (`dp[i][j] = x` on a DP
+        # table, a list of lists) shares its INNER rows across the copy, so mutating a
+        # row in place retroactively mutates the "previous" snapshot's row too, since
+        # both snapshots hold the same row object. `diff` then compares a row against
+        # itself and reports no write, ever, for any nested structure -- reproduced by
+        # hand: `p = {"dp": [[0,0],[0,0]]}` shallow-copied, mutate `dp[1][0] = 9`,
+        # re-snapshot into `cur`; `p["dp"] == cur["dp"]` is True, because
+        # `p["dp"][1] is cur["dp"][1]`. Recursing (bounded by the same MAX_DEPTH `enc`
+        # already caps at, so a pathological self-referential structure cannot recurse
+        # forever) copies each nested list/dict independently, so a row keeps the value
+        # it had at snapshot time regardless of what a later line does to it.
+        def snapshot(v, d=0):
+            if d > MAX_DEPTH:
+                return v
             if isinstance(v, list):
-                return list(v)
+                return [snapshot(x, d + 1) for x in v]
             if isinstance(v, dict):
-                return dict(v)
+                return {k: snapshot(x, d + 1) for k, x in v.items()}
             return v
 
         loc = {
