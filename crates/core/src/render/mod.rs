@@ -1926,6 +1926,12 @@ pub(crate) const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-d
 /// highlight). Emitted by the page builders in `page.rs`/`deck.rs`; KaTeX rides
 /// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
+/// `::: {.debug}` stepper chrome: the transport bar, the variables panel, and the
+/// `.tali-debug`-scoped line-cursor rules. Concatenated onto [`BASE_CSS`] everywhere that
+/// constant is assembled into a page's stylesheet (never gated per-page like the JS
+/// enhancer is: see the comment on [`code_scripts_for`]'s `debug_s` gate for why the two
+/// halves of this feature are gated differently).
+const DEBUG_CSS: &str = include_str!("../../assets/css/debug.css");
 
 /// A human-readable ASCII-art banner emitted as the first thing inside `<head>`. The
 /// machine-readable `<meta name="generator">` already ships; this is its view-source
@@ -2047,7 +2053,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{pyodide_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{pyodide_s}{walk_s}{tabset_s}{scrolly_s}{debug_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
@@ -2059,6 +2065,9 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
+        // `.debug` renders a plain code block on a deck (deck_shared_js does not carry
+        // DEBUG_JS), so this marker is only ever meaningful on a page.
+        debug_s = gate(body.contains("tali-debug"), DEBUG_JS),
     )
 }
 
@@ -2165,12 +2174,16 @@ const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
 /// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `taliEnhancers`,
 /// no-ops without a `.scrolly`, rides in [`code_scripts`].
 const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
+/// The stepper for `::: {.debug}`: transport controls, the line cursor and the variables
+/// panel over a recorded execution trace. Registers through `taliEnhancers`, no-ops without
+/// a `.tali-debug` block, rides in [`code_scripts`].
+const DEBUG_JS: &str = include_str!("../../assets/js/debug.js");
 
 /// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
 /// tokens + base + dark + site chrome). Exposed so the multi-page build can externalize it
 /// into one content-hashed `_assets/app.<hash>.css` instead of inlining a copy per page.
 pub fn shared_site_css() -> String {
-    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
+    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DEBUG_CSS}{DARK_CSS}{SITE_CSS}")
 }
 
 /// [`shared_site_css`] with the body typeface **linked** rather than inlined: the same
@@ -2178,7 +2191,7 @@ pub fn shared_site_css() -> String {
 /// writes [`FONT_FILES`] beside it in `_assets/` (item 150).
 pub fn shared_site_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
     format!(
-        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}",
+        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DEBUG_CSS}{DARK_CSS}{SITE_CSS}",
         fonts_css_linked(hrefs)
     )
 }
@@ -2284,6 +2297,7 @@ pub fn core_enhance_js() -> String {
         WALKTHROUGH_JS,
         TABSET_JS,
         SCROLLY_JS,
+        DEBUG_JS,
         TOC_SPY_JS,
         SEARCH_JS,
     ]

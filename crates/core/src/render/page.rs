@@ -271,7 +271,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 String::new()
             };
             let style_block = format!(
-                "<style>{FONTS_CSS}{TOKENS_CSS}{tokens_dark}{BASE_CSS}{dark}{site_css}{bare_theme}</style>"
+                "<style>{FONTS_CSS}{TOKENS_CSS}{tokens_dark}{BASE_CSS}{DEBUG_CSS}{dark}{site_css}{bare_theme}</style>"
             );
             let katex_block = if p.ship_katex {
                 format!("\n<style>{KATEX_CSS}</style>")

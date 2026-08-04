@@ -13,6 +13,56 @@ fn bin() -> &'static str {
 // under `AssetMode::External`.
 const MARKER_BASE: &str = ".tali-reader-seg";
 
+/// Build `src` (written to a fresh temp `.tmd`) and return the page HTML written to
+/// stdout. Mirrors the `build` helper in `executed_output_reproducible.rs:50`, but drives
+/// `--stdout --no-exec` (a single self-contained page, no kernel) instead of writing to a
+/// file: exactly the shape `debug_js_ships_only_on_pages_that_have_a_debug_block` needs to
+/// inspect the emitted `<script>` gating with no Python dependency.
+fn build_stdout(src: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("tali-ab-stdout-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("t-{n}.tmd"));
+    std::fs::write(&path, src).unwrap();
+    let out = Command::new(bin())
+        .args(["build", path.to_str().unwrap(), "--stdout", "--no-exec"])
+        .output()
+        .expect("build");
+    assert!(
+        out.status.success(),
+        "build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    String::from_utf8(out.stdout).expect("html is utf-8")
+}
+
+/// Needle the identifier the enhancer actually defines, not the filename: every standalone
+/// page inlines the whole JS payload, so a loose substring check passes on pages that ship
+/// nothing. (See the inlined-asset needle trap.)
+///
+/// `--no-exec` keeps this kernel-free: the gate under test is the DOM marker
+/// `body.contains("tali-debug")`, which the render emits whether or not the cell ran.
+#[test]
+fn debug_js_ships_only_on_pages_that_have_a_debug_block() {
+    let with = build_stdout(
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\na = 1\n```\n:::\n",
+    );
+    assert!(
+        with.contains("window.taliDebug"),
+        "a page with a .debug block must carry the enhancer"
+    );
+
+    let without = build_stdout("---\ntitle: T\n---\n\nJust prose.\n");
+    assert!(
+        !without.contains("window.taliDebug"),
+        "a prose page must not pay for the debugger"
+    );
+}
+
 #[test]
 fn site_build_externalizes_shared_assets() {
     let root = std::env::temp_dir().join(format!("tali-ab-src-{}", std::process::id()));

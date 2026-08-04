@@ -54,4 +54,17 @@ interface Window {
   __taliKeyboard?: boolean;
   __taliSkipLink?: boolean;
   __taliReaderPrefs?: boolean;
+
+  // --- algorithm debug mode (debug.js) ----------------------------------------
+  /** Public, READ-ONLY accessors over a `::: {.debug name="…"}` block's recorded trace.
+   *  `tali.frame(n)` in a `{js}` cell (tali-js.js's `makeApi`) is a thin wrapper over
+   *  `current`; there is deliberately no setter here (see the comment beside `frame` in
+   *  tali-js.js: a writable frame index reachable from author source would let a cell
+   *  drive the very stepper that re-runs it). */
+  taliDebug?: {
+    /** Every recorded frame for a named block (`[]` before it mounts). */
+    frames: (n: string) => any[];
+    /** The frame the stepper currently sits on (`null` before it mounts). */
+    current: (n: string) => any;
+  };
 }

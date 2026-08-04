@@ -66,6 +66,8 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-code-lines",
     "data-cw-init",
     "data-cw-lines",
+    "data-dbg-init",
+    "data-debug-name",
     "data-drawer-wired",
     "data-i",
     "data-inputs",
@@ -109,10 +111,12 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-src",
     "data-tali-theme-toggle",
     "data-tali-theorem-kind",
-    // Not a real browser consumer yet (task 1 of algorithm debug mode is server-only,
-    // no JS): swept in because it's a string literal in emit.rs, which this scan
-    // includes wholesale since the file's doc comments happen to mention `<script>`
-    // elsewhere. A later task's `debug.js` gives it a genuine one.
+    // Still no real browser consumer even with `debug.js` landed: it reads the panel's
+    // trace off `script.tali-debug-trace` directly and never needs to ask "was THIS cell
+    // the traced one" from the DOM, so this marker stays what `is_traced_cell` (divs.rs)
+    // already made it, a build-time-only Rust string needle. Swept into this list because
+    // it's a string literal in emit.rs, which this scan includes wholesale since the
+    // file's doc comments happen to mention `<script>` elsewhere.
     "data-tali-trace",
     "data-tali-xref",
     "data-target",

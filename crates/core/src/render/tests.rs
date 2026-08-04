@@ -4028,6 +4028,10 @@ fn build_mode_content_gates_separate_enhancers() {
         !prose.contains("a tiny enhancer that replaces the vendored"),
         "no tali-js.js on a prose page"
     );
+    assert!(
+        !prose.contains("Algorithm debug mode: step a recorded execution trace."),
+        "no debug.js on a prose page"
+    );
 
     // A page that actually contains a tabset gets tabset.js in a build (but still not
     // the enhancers for constructs it lacks).
@@ -4040,6 +4044,23 @@ fn build_mode_content_gates_separate_enhancers() {
         !tabset.contains("Narrated code walkthrough"),
         "still no walkthrough.js"
     );
+    assert!(
+        !tabset.contains("Algorithm debug mode"),
+        "still no debug.js"
+    );
+
+    // A page with a `.debug` block gets debug.js (but still not the enhancers for
+    // constructs it lacks): the DOM marker `tali-debug` is what `code_scripts_for`'s
+    // `debug_s` gate actually keys on, not a filename.
+    let debug = code_scripts_for("<div class=\"tali-debug\"></div>", OutputMode::Build);
+    assert!(
+        debug.contains("Algorithm debug mode: step a recorded execution trace."),
+        "a .debug block on the page ships debug.js"
+    );
+    assert!(
+        !debug.contains("Narrated code walkthrough"),
+        "still no walkthrough.js on a page with only a .debug block"
+    );
 
     // Preview ships every enhancer regardless of body (a doc can gain any construct on
     // an edit — same reasoning as KaTeX/d3 always-on in preview). Gating is Build-only.
@@ -4051,6 +4072,10 @@ fn build_mode_content_gates_separate_enhancers() {
     assert!(
         preview.contains("Tabbed panels: the interaction layer"),
         "preview ships tabset.js unconditionally"
+    );
+    assert!(
+        preview.contains("Algorithm debug mode: step a recorded execution trace."),
+        "preview ships debug.js unconditionally"
     );
 
     // Bare ships no enhancer scripts at all (the zero-<script> contract).
@@ -6312,6 +6337,9 @@ fn shared_site_css_bundles_the_framework_sheets() {
         "dark.css missing"
     );
     assert!(css.contains(".tali-book-topbar"), "site.css missing");
+    // debug.css rides unconditionally beside BASE_CSS (never gated per-page like the JS
+    // enhancer): confirmed present via grep, `.dbg-transport` is unique to this sheet.
+    assert!(css.contains(".dbg-transport"), "debug.css missing");
 }
 
 #[test]

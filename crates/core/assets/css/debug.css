@@ -1,0 +1,140 @@
+/* Algorithm debug mode (`::: {.debug}`): the stepper chrome debug.js builds at runtime.
+   The server (divs.rs) emits only `.tali-debug > .dbg-code + .dbg-views` (plus an optional
+   hidden `.tali-debug-input` bridge); debug.js inserts `.dbg-stage` right after `.dbg-code`
+   and appends `.dbg-vars` + `.dbg-transport` at the end, so this file positions all five by
+   grid-area rather than by source order.
+
+   Two columns wide, `.dbg-code` spanning them full-height on the left (sticky, like the
+   code-walkthrough's `.cw-stage`) with the observation panels stacked on the right; one
+   column on a narrow viewport, code first. `.dbg-stage` is left almost bare on purpose: it
+   is the bars/boxes/pointers view slot a later task fills in, and `:empty` collapses it to
+   nothing until then, so this task ships no visual placeholder for content it doesn't
+   render. */
+.tali-debug {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    "code  views"
+    "code  vars"
+    "code  stage"
+    "trans trans";
+  gap: 1rem 1.75rem;
+  margin: 1.6rem 0;
+}
+.tali-debug > .dbg-code { grid-area: code; }
+.tali-debug > .dbg-views { grid-area: views; }
+.tali-debug > .dbg-vars { grid-area: vars; }
+.tali-debug > .dbg-stage { grid-area: stage; }
+.tali-debug > .dbg-stage:empty { display: none; }
+.tali-debug > .dbg-transport { grid-area: trans; }
+/* Reachable only by a click into the widget (debug.js sets `tabindex="-1"` and focuses on
+   click), so the ring only needs to answer "where did keyboard focus land", never "where do
+   I tab to next". */
+.tali-debug:focus-visible { outline: var(--tali-focus); outline-offset: var(--tali-focus-offset); }
+@media (max-width: 60rem) {
+  .tali-debug {
+    grid-template-columns: 1fr;
+    grid-template-areas: "code" "trans" "vars" "stage" "views";
+  }
+}
+
+.dbg-code { position: sticky; top: .5rem; align-self: start; max-height: 70vh; overflow: auto; }
+.dbg-code pre { margin: 0; }
+@media (max-width: 60rem) {
+  /* A sticky code panel on a phone-width single column eats the same viewport the reader
+     is trying to scroll the observation panels in; drop the pin and cap the height instead,
+     the same trade the code-walkthrough's `.cw-code` makes at this breakpoint. */
+  .dbg-code { position: static; max-height: 42vh; }
+}
+
+/* The line cursor: the SAME `.tali-hl-ln` / `.tali-hl-ln-hl` / `.tali-hl-lines-active`
+   contract the deck and the code-walkthrough already use (base.css), scoped here to
+   `.tali-debug pre` since neither of those stylesheets reaches into this container. The
+   focused line is marked POSITIVELY (accent wash + inset rail) rather than dimming the
+   rest: dimming syntax-coloured text with `opacity` is a WCAG 1.4.3 failure the
+   code-walkthrough's own comment already measured. */
+.tali-debug pre .tali-hl-ln { display: block; }
+.tali-debug pre.tali-hl-lines-active .tali-hl-ln-hl {
+  background: color-mix(in srgb, var(--tali-accent) 14%, transparent);
+  box-shadow: inset .18em 0 0 var(--tali-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tali-debug pre .tali-hl-ln { transition: background var(--tali-dur-slow) ease, box-shadow var(--tali-dur-slow) ease; }
+}
+
+.dbg-truncated {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: .5rem .75rem;
+  border: 1px solid var(--tali-callout-warning);
+  border-radius: var(--tali-radius-sm);
+  color: var(--tali-callout-warning);
+  font-size: .85rem;
+}
+
+/* Transport bar: first / back / play-pause / forward / last, a scrub range, a step count
+   and (rendered but not yet wired, a later task) an expand button. */
+.dbg-transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem;
+  padding-top: .6rem;
+  border-top: 1px solid var(--tali-border);
+}
+.dbg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px; /* WCAG 2.5.8 minimum target size, same floor as .tali-reader-seg */
+  padding: .3rem .55rem;
+  border: 1px solid var(--tali-border-strong);
+  border-radius: var(--tali-radius-sm);
+  background: var(--tali-bg);
+  color: var(--tali-fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: .8rem;
+  line-height: 1;
+}
+.dbg-btn:hover:not(:disabled) { border-color: var(--tali-accent); color: var(--tali-link); }
+.dbg-btn:disabled { color: var(--tali-muted); cursor: default; }
+.dbg-btn.dbg-playing { background: var(--tali-accent-fill); color: var(--tali-on-accent); border-color: var(--tali-accent-fill); }
+.dbg-scrub { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--tali-accent); }
+.dbg-count {
+  min-width: 4.5rem;
+  text-align: right;
+  color: var(--tali-muted);
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Variables panel: one row per local (`dbg-changed` when this frame's diff touched it),
+   the call stack (only rendered when the trace ever goes deeper than the top level) and
+   the stdout pane (only when this frame buffered output). */
+.dbg-var-list { display: flex; flex-direction: column; gap: .15rem; font-size: .85rem; }
+.dbg-var { display: flex; gap: .5rem; padding: .15rem .4rem; border-radius: var(--tali-radius-sm); }
+.dbg-var.dbg-changed { background: color-mix(in srgb, var(--tali-accent) 12%, transparent); }
+.dbg-var-name { color: var(--tali-muted); font-family: var(--tali-font-mono); }
+.dbg-var-value { font-family: var(--tali-font-mono); overflow-wrap: anywhere; }
+.dbg-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  margin-top: .6rem;
+  padding-top: .5rem;
+  border-top: 1px solid var(--tali-border);
+  font-size: .78rem;
+  font-family: var(--tali-font-mono);
+  color: var(--tali-muted);
+}
+.dbg-stack-frame::after { content: " \2192"; } /* U+2192 RIGHTWARDS ARROW between frames */
+.dbg-stack-frame:last-child::after { content: ""; }
+.dbg-stack-current { color: var(--tali-fg); font-weight: 600; }
+.dbg-stdout {
+  margin: .6rem 0 0;
+  padding: .5rem .6rem;
+  max-height: 8rem;
+  font-size: .78rem;
+  white-space: pre-wrap;
+}

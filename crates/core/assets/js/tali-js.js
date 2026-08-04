@@ -380,6 +380,15 @@
       value: function (n) {
         return r.inputs[n] ? readValue(r.inputs[n]) : r.defines[n];
       },
+      // Read-only view of a `::: {.debug}` block's current frame. Deliberately a READ
+      // accessor only, for the same reason `publish` is not on this object: `api` is
+      // handed verbatim to author cell source as `tali`, so anything reachable here is
+      // author-callable. A writable frame setter would let a cell drive the stepper that
+      // re-runs it, creating exactly the feedback edge `buildGraph` never cycle-checked.
+      /** @param {string} n */
+      frame: function (n) {
+        return window.taliDebug ? window.taliDebug.current(n) : null;
+      },
       defines: r.defines,
       /** @param {string | string[]} names @param {() => void} cb */
       onInput: function (names, cb) {
