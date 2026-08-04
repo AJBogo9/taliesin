@@ -662,6 +662,78 @@ fn a_traced_cell_sees_the_namespace_an_earlier_cell_built() {
     );
 }
 
+/// Regression pin: `float('inf')`/`float('nan')` in a traced cell used to make the whole
+/// trace blob UNPARSEABLE JSON. `enc()` passed a Python float through verbatim and
+/// `json.dumps` defaults to `allow_nan=True`, which writes the bare, non-JSON tokens
+/// `Infinity`/`-Infinity`/`NaN`; `JSON.parse` on the browser side threw
+/// `SyntaxError: Unexpected token`, `readTrace` caught it and returned zero frames, and
+/// `mount` bailed — no transport, no variables, no stage, and no error message at all.
+///
+/// `float('inf')` as a sentinel is standard in Dijkstra, in dynamic programming, and in
+/// any minimum-search algorithm, so this hit the feature's headline use cases directly.
+/// Fixed by routing a non-finite float through the harness's existing `__repr__` escape
+/// (so it displays honestly, e.g. `inf`) and by passing `allow_nan=False` to `json.dumps`
+/// as a backstop so any future leak fails loudly server-side instead of silently breaking
+/// on the browser.
+#[test]
+fn a_non_finite_float_still_produces_valid_json_with_an_honest_value() {
+    let Some(py) = python_or_skip() else { return };
+
+    let dir = std::env::temp_dir().join(format!("tali-debug-inf-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("t.tmd");
+    fs::write(
+        &src,
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\n\
+         dist = [0, float('inf'), float('inf')]\n\
+         missing = float('nan')\n```\n:::\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_PYTHON", &py)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("build must run");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let html = String::from_utf8_lossy(&out.stdout).into_owned();
+
+    // The literal payload text must never contain the bare, non-JSON `Infinity`/`NaN`
+    // tokens `json.dumps(allow_nan=True)` would have written.
+    let json = extract_trace(&html).expect("a traced cell must embed a trace blob");
+    assert!(
+        !json.contains("Infinity") && !json.contains("NaN"),
+        "the raw blob must carry no bare non-JSON float tokens: {json}"
+    );
+
+    // The whole point: this must actually PARSE, unlike before the fix.
+    let t: serde_json::Value =
+        serde_json::from_str(&json).expect("the blob must be valid JSON even with inf/nan");
+    let frames = t["frames"].as_array().expect("frames array");
+
+    // The infinities are visible, honestly, not silently dropped.
+    let dist_frame = frames
+        .iter()
+        .find(|f| {
+            f["locals"]["dist"] == serde_json::json!([0, {"__repr__": "inf"}, {"__repr__": "inf"}])
+        })
+        .expect("a frame must show dist with inf rendered via the __repr__ escape, not vanished");
+    let _ = dist_frame;
+
+    let nan_frame = frames
+        .iter()
+        .find(|f| f["locals"]["missing"] == serde_json::json!({"__repr__": "nan"}))
+        .expect("a frame must show `missing` as nan via the __repr__ escape");
+    let _ = nan_frame;
+}
+
 fn extract_trace(html: &str) -> Option<String> {
     let open = "<script type=\"application/json\" class=\"tali-debug-trace\">";
     let start = html.find(open)? + open.len();

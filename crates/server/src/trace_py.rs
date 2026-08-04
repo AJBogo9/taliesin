@@ -35,14 +35,26 @@
 /// not assume anything is installed.
 const HARNESS: &str = r#"
 def _tali_debug_run(_src):
-    import sys, ast, json, io, itertools
+    import sys, ast, json, io, itertools, math
     MAX_FRAMES, MAX_ITEMS, MAX_DEPTH, MAX_CHARS = 5000, 200, 4, 2000
 
     def enc(v, d=0):
         if d > MAX_DEPTH:
             return {"__repr__": type(v).__name__}
-        if v is None or isinstance(v, bool) or isinstance(v, int) or isinstance(v, float):
+        if v is None or isinstance(v, bool) or isinstance(v, int):
             return v
+        if isinstance(v, float):
+            # `inf`/`-inf`/`nan` are standard sentinels in exactly the algorithms this
+            # feature targets (Dijkstra, DP, any minimum search over `float('inf')`), but
+            # they are not valid JSON tokens: `json.dumps` with its default
+            # `allow_nan=True` would emit bare `Infinity`/`NaN`, which `JSON.parse` on the
+            # browser side rejects outright (`SyntaxError: Unexpected token`), and the
+            # WHOLE trace is lost -- no transport, no variables, no stage, no error
+            # message at all, since `readTrace` catches the parse failure and returns
+            # zero frames. Route a non-finite float through the same `__repr__` escape an
+            # unrepresentable object already uses, so it displays honestly (`inf`, `-inf`,
+            # `nan`, Python's own `repr`) instead of vanishing the whole payload.
+            return v if math.isfinite(v) else {"__repr__": repr(v)}
         if isinstance(v, str):
             return v if len(v) <= MAX_CHARS else v[:MAX_CHARS] + "…"
         if isinstance(v, (list, tuple)):
@@ -276,7 +288,16 @@ def _tali_debug_run(_src):
         sys.settrace(None)
         sys.stdout = real_stdout
 
-    payload = json.dumps({"frames": frames, "truncated": truncated[0], "cap": MAX_FRAMES})
+    # `allow_nan=False` is a hard backstop, not the primary fix (`enc` above already
+    # routes every non-finite float through `__repr__` before it ever reaches this call):
+    # it turns any future non-finite float that slips past `enc` into a loud Python
+    # `ValueError` raised right here, which surfaces as an ordinary uncaught cell error
+    # (the same `tali-error` path any other interpreter exception takes) instead of a
+    # silently invalid `Infinity`/`NaN` token that only breaks far away, on the BROWSER
+    # side, once `JSON.parse` chokes on it.
+    payload = json.dumps(
+        {"frames": frames, "truncated": truncated[0], "cap": MAX_FRAMES}, allow_nan=False
+    )
     # `</script>` inside a JSON string would close the tag the blob rides in. Escaping
     # every `<` is the standard fix and costs nothing: JSON parses < back to `<`.
     payload = payload.replace("<", "\\u003c")
