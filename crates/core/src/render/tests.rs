@@ -6550,6 +6550,39 @@ fn search_kbd_badge_is_hidden_on_touch_at_any_width() {
     );
 }
 
+/// Regression pin for a Task 3 fix-round bug (visual minimalism pass, 2026-08-04): deleting
+/// the mobile pull-up TOC sheet fixed the single-document layout (base.css's
+/// `body.has-toc > #TOC { order: -1; position: static; ... }`, in its own `has-toc`
+/// narrow-width block) but missed the SITE layout, which uses a different container
+/// (`.tali-site-main.has-toc`, not `body.has-toc`). The sheet used to make `#TOC`
+/// `position: fixed`, so its place in the DOM (after `<main>`) never mattered; once the
+/// sheet was gone, a site page's on-page TOC rendered below the entire article at narrow
+/// widths with no lift to correct it.
+///
+/// **This pins the CSS RULE'S PRESENCE, not its rendered effect**: it cannot see that the
+/// TOC actually paints above the article (that needs a browser; verified by hand at
+/// 390x844 and 1440x900 against a built `corpus/tech-blog` page and a `docs/guide` book
+/// chapter for this fix). It only proves the declarations a regression would delete are
+/// still in the sheet.
+#[test]
+fn site_toc_gets_the_same_narrow_width_order_lift_as_the_single_document_layout() {
+    let block = media_block(SITE_CSS, "(max-width: 60rem)")
+        .expect("site.css has no has-toc narrow-width query");
+    assert!(
+        block.contains(".tali-site-main.has-toc > #TOC"),
+        "the site layout's narrow-width block no longer targets its own #TOC:\n{block}"
+    );
+    assert!(
+        block.contains("order: -1"),
+        "the lift above <main> is gone, so #TOC (which follows <main> in the DOM) would \
+         strand at the bottom of the article again:\n{block}"
+    );
+    assert!(
+        block.contains("position: static"),
+        "#TOC would stay sticky/positioned instead of dropping into the in-flow stack:\n{block}"
+    );
+}
+
 #[test]
 fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
     // MOB-4: the control sat at `opacity: 0`, revealed only by `:hover`/`:focus-visible`, with

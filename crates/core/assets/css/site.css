@@ -9,10 +9,10 @@
     --tali-nav-h: 3.25rem; }
   /* the sticky navbar would otherwise cover the top of the sticky TOC and the top
      of any heading a TOC link jumps to — offset both by the navbar height + a gap */
-  /* Desktop only. Below the sheet breakpoint (mirrors base.css `@media (max-width: 60rem)`)
-     `#TOC` becomes the fixed bottom sheet, anchored by `inset: auto 0 0 0`. A `top` here has
-     the same specificity and lands later in source order, so it would win and break the
-     sheet's `translateY(100%)` bottom anchor, leaving it poking over the content. */
+  /* Desktop only: at the narrow breakpoint below (the `has-toc` block further down)
+     `#TOC` becomes a static, in-flow block stacked above the article instead of the
+     sticky rail, and `position: static` ignores `top` regardless, so this offset only
+     ever needs to apply here. */
   @media (min-width: 60.001rem) {
     body.tali-site #TOC { top: calc(var(--tali-nav-h) + 1rem); }
   }
@@ -118,12 +118,21 @@
   .tali-site-main.has-toc > main .tali-sidenote:target {
     display: block; float: none; width: auto; margin: .6rem 0;
     padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
-  /* At the sheet breakpoint `#TOC` turns `position: fixed` and leaves the grid flow, so the
-     14rem track would stand empty and auto-placement would drop the next sibling (the
-     back-to-listing nav) into that vacant top-right cell. Collapse to the single reading
-     column — which is what a book uses at every width (it has no rail at all, item 76). */
+  /* Below this breakpoint `#TOC` drops out of the sticky rail and becomes a static,
+     in-flow block ordered ABOVE <main> (mirrors base.css's single-document treatment):
+     it follows <main> in the DOM, so without the lift it would strand at the very
+     bottom of the article. With the rail gone the 14rem track would also stand empty,
+     and auto-placement would drop the next sibling (the back-to-listing nav) into that
+     vacant top-right cell, so the grid collapses to the single reading column too,
+     which is what a book uses at every width (it has no rail at all, item 76). */
   @media (max-width: 60rem) {
     .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
+    /* Same treatment as base.css's single-document `body.has-toc > #TOC`: stack it
+       above the content instead of stranding it at the bottom, and take it out of
+       sticky positioning (the `top` offset above is desktop-only and does nothing to
+       a `position: static` element regardless). */
+    .tali-site-main.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
+      border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
     /* One column again and no rail in the way: hand the escapes back to the page-centred
        formula in base.css. */
     .tali-site-main.has-toc > main :is(.column-page, .column-screen) {
