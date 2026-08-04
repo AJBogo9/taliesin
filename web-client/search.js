@@ -1062,8 +1062,8 @@
     }
   });
 
-  // Programmatic opener so the keyboard reader's `/` shortcut (and any UI) can open the
-  // palette without synthesizing a Cmd-K event.
+  // Programmatic opener so other UI can open the palette without synthesizing a
+  // Cmd-K event.
   window.taliOpenSearch = open;
 
   // The `.tali-search-kbd` badge is server-rendered with the Mac glyph (⌘K) since the same

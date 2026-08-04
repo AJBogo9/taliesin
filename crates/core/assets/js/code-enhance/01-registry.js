@@ -57,28 +57,3 @@ function taliCopyText(text, onOk, onFail) {
   else if (onFail) { onFail(); }
 }
 
-// Reader preference: are the single-key shortcuts (`f`, `?`, `/`) live? WCAG 2.1.4 (Character
-// Key Shortcuts) requires a way to turn character-key shortcuts off; this is that mechanism, and
-// it is why `f` can keep entering fullscreen directly. Default ON, so a reader who never opens
-// Settings sees no change. Esc + the arrow keys are not character keys and are never gated.
-// A blocked or throwing localStorage must not silently cost a reader their shortcuts, so every
-// failure path returns true.
-//
-// Key: `tali-shortcuts`, matching its siblings `tali-theme` (render/theme.rs) and
-// `tali-deck-theme`. Those two were renamed onto the `tali-` prefix on 2026-07-25.
-// A storage key has no aliasing mechanism, so that rename discarded every existing
-// reader's saved theme choice. That was accepted deliberately (single-user tool); if a
-// key is ever renamed again, either accept the same reset or read the old key once and
-// migrate it forward.
-function taliShortcutsOn() {
-  try { return localStorage.getItem('tali-shortcuts') !== 'off'; } catch (e) { return true; }
-}
-// Absent === on (the default), mirroring how theme.rs stores its non-default choices only.
-/** @param {boolean} on */
-function taliSetShortcuts(on) {
-  try {
-    if (on) localStorage.removeItem('tali-shortcuts');
-    else localStorage.setItem('tali-shortcuts', 'off');
-  } catch (e) {}
-}
-

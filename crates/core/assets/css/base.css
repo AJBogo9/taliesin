@@ -209,14 +209,6 @@
   /* The skip link is pinned chrome with its own box; keep its offset tight. */
   .tali-skip:focus-visible { outline: var(--tali-focus); outline-offset: 2px; }
 
-  /* Keyboard-shortcuts list (taliInitKeyboard), shown as a section inside the Settings panel. */
-  .tali-keys-list { margin: 0; }
-  .tali-keys-list > div { display: flex; flex-wrap: wrap; gap: .8rem; align-items: baseline; margin: .35rem 0; }
-  .tali-keys-list dt { flex: 0 0 4.5rem; margin: 0; }
-  .tali-keys-list dd { margin: 0; color: var(--tali-muted); font-size: .82rem; }
-  .tali-keys-list kbd { font: inherit; font-size: .78rem; background: var(--tali-code-bg);
-    border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius-sm); padding: .05rem .35rem; }
-
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--tali-link); }

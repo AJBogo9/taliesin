@@ -1,5 +1,5 @@
 // Settings menu: a gear launcher opening a single popover that the reader features mount their
-// sections into (Theme, Focus, Keyboard shortcuts) via
+// sections into (currently just Theme) via
 // window.taliReaderMenu.addSection(title, node, onOpen). On sites the gear is docked in the
 // navbar / book topbar (server-rendered, [data-tali-settings]); on a chrome-less single doc we
 // create a floating one. Click handling is delegated on document so a hot-reload that re-injects
@@ -107,8 +107,9 @@ function taliInitReaderMenu() {
   });
 
   // Public API: each reader feature adds its own section and an optional refresh hook
-  // (called when the menu opens). `open`/`toggle` let the `?` shortcut summon it.
-  // Returns a handle to show/hide the section.
+  // (called when the menu opens). `open`/`close`/`toggle` are exposed for any other
+  // caller that needs to control the menu programmatically. Returns a handle to
+  // show/hide the section.
   window.taliReaderMenu = {
     open: openMenu,
     close: closeMenu,

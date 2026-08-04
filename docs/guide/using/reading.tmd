@@ -23,9 +23,8 @@ Two principles hold for everything on this page:
 
 The **Settings** gear opens a light-dismiss popover (not a modal: it never covers or
 inerts the page). On a website it lives in the navbar; on a book, in the topbar; on a
-standalone page it floats in the top-right corner. It hosts Theme, Keyboard shortcuts,
-and, on a document that has code cells, Code. Close it with Esc, a click outside, or the
-gear again.
+standalone page it floats in the top-right corner. It hosts Theme and, on a document
+that has code cells, Code. Close it with Esc, a click outside, or the gear again.
 
 ## Theme
 
@@ -132,25 +131,17 @@ fullscreen (F11) is one key away and belongs to the reader, not to the document.
 
 Tab from the top of any page reveals a **Skip to content** link that jumps focus past
 the chrome straight to the prose. The link and its focusable `<main>` target are
-emitted server-side, so they work even with JavaScript disabled. A handful of keyboard
-shortcuts speed up reading (each is ignored while you are typing in a field or a dialog
-is open):
+emitted server-side, so they work even with JavaScript disabled. A few keyboard
+interactions speed up reading (each is ignored while you are typing in a field or a
+dialog is open):
 
-- `?` opens (and closes) the Settings menu, whose Keyboard shortcuts section lists these.
-- `/` opens the search palette.
+- <kbd>Cmd/Ctrl-K</kbd> opens the search palette.
 - `←` / `→` move to the previous / next chapter (in a book).
 - `Esc` closes the open menu, dialog, or palette.
 
-The two single-character shortcuts (`?`, `/`) can be switched off: the **Shortcuts**
-control sits directly above that list in the Settings menu. A bare letter key is easy to fire
-by accident, especially with speech input, so WCAG 2.1.4 requires a way to turn character-key
-shortcuts off, and this is it. Switching them off hides the list (the keys are dead, so
-advertising them would be a lie) and leaves the Settings gear as your way back in. `Esc` and
-the arrow keys are not character keys, so they always stay live. The choice persists per
-reader, in their own `localStorage`.
-
-This is not a contradiction of the no-comfort-panel stance above: a text-size slider is a
-preference, whereas a shortcut you cannot turn off is a barrier.
+None of these is a character-key shortcut (a single key fired with no modifier), so
+WCAG 2.1.4's requirement to make character-key shortcuts switchable off does not apply,
+and there is no such control in Settings.
 
 Keyboard focus is always visible: every interactive control (links, buttons, tabs,
 the Settings controls, and the deck controls) shares one consistent focus ring,

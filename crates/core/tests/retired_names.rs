@@ -908,3 +908,44 @@ fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
         "the fifth survivor, `proof`, must still render, unnumbered: {body}"
     );
 }
+
+/// The `?` and `/` character-key shortcuts were deleted 2026-08-04 (visual minimalism
+/// pass, task 15), and with them the WCAG 2.1.4 off-switch they forced into the
+/// Settings menu: `taliShortcutsOn`/`taliSetShortcuts` (code-enhance/01-registry.js),
+/// storage key `tali-shortcuts`, and the "Keyboard shortcuts" section 07-keyboard.js
+/// mounted (its `.tali-keys-list` cheatsheet). Esc and the arrow keys are not
+/// character keys, so they stay live with no control needed.
+#[test]
+fn character_key_shortcuts_and_their_offswitch_are_gone() {
+    let js = taliesin_core::render::code_scripts();
+    for needle in [
+        "taliShortcutsOn",
+        "taliSetShortcuts",
+        "tali-shortcuts",
+        "Keyboard shortcuts",
+        "tali-keys-list",
+    ] {
+        assert!(
+            !js.contains(needle),
+            "`{needle}` still ships; the character-key shortcuts and their WCAG 2.1.4 \
+             off-switch were deleted together"
+        );
+    }
+    assert!(
+        js.contains("ArrowLeft") || js.contains("ArrowRight"),
+        "the arrow-key chapter nav must SURVIVE, it is not a character key"
+    );
+
+    let css = taliesin_core::render::base_css();
+    assert!(
+        !css.contains(".tali-keys-list"),
+        "the shortcuts cheatsheet's CSS survives in base.css"
+    );
+
+    // The generic `window.taliReaderMenu.addSection(...)` mounting API (13-reader-menu.js)
+    // survives untouched: Theme (14-reader-prefs.js) is its one remaining live caller.
+    assert!(
+        js.contains("addSection"),
+        "the Settings menu's generic section-mounting API must survive; Theme still uses it"
+    );
+}

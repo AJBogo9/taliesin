@@ -163,7 +163,7 @@ impl Site {
         // into the burger menu on mobile. Dev-only tools live in the floating dev menu.
         s.push_str(&search_button());
         s.push_str("</div>");
-        // The reader Settings gear (theme / focus / shortcuts) sits OUTSIDE the collapsing
+        // The reader Settings gear (theme / focus) sits OUTSIDE the collapsing
         // links so it stays visible top-right at every width, beside the burger on mobile.
         s.push_str(&settings_button());
         s.push_str("</nav></header>");
@@ -333,7 +333,7 @@ impl Site {
         s.push_str(&self.book_brand_html(book.title.as_ref(), &up));
         s.push_str("<span class=\"tali-nav-spacer\"></span>");
         // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
-        // focus / shortcuts). The gear replaces the old light/dark toggle that lived here.
+        // focus). The gear replaces the old light/dark toggle that lived here.
         s.push_str(&search_button());
         s.push_str(&settings_button());
         s.push_str("</div></header>");

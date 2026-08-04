@@ -114,10 +114,6 @@ interface Window {
   /** Focus-trap helper (code-enhance/04-focus-trap.js): traps focus inside
    *  `container`, focuses `initial`, and returns a release function. */
   taliFocusTrap?: (container: Element, initial?: Element | null) => () => void;
-  /** Programmatic Cmd-K opener (search.js), for the keyboard reader's `/` shortcut. */
+  /** Programmatic Cmd-K opener (search.js). */
   taliOpenSearch?: () => void;
-  /** Reader preference: are single-key shortcuts (`f`, `?`, `/`) live?
-   *  (code-enhance/01-registry.js). Consult it before advertising one of those keys in
-   *  UI text, matching the "don't advertise dead keys" rule in 07-keyboard.js. */
-  taliShortcutsOn?: () => boolean;
 }
