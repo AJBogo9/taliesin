@@ -496,6 +496,172 @@ fn toggling_trace_on_a_cached_cell_busts_the_key_instead_of_replaying_the_old_ou
     );
 }
 
+/// A traced cell that RAISES must behave like any other failing cell: a `tali-error`
+/// output on the page, a non-zero `build --strict`, and nothing persisted to `_freeze/`.
+///
+/// The first harness caught the exception into an "exception" frame and returned normally,
+/// so the kernel reported a clean success. Reproduced before fixing: `build --strict` on a
+/// `.debug` block whose body is `b = a[5]` exited **0** with zero warnings, and
+/// `_freeze/t.json` cached the errored output, against the documented invariant that an
+/// error is never persisted. The same cell WITHOUT `trace:` warned and was never cached,
+/// which is the whole point: `trace:` is not supposed to change what a cell IS.
+///
+/// The trace itself must survive the fix, so this also pins that the frames recorded
+/// before the raise still reach the page: a stepper that shows the reader exactly where
+/// the algorithm blew up is the most useful thing a debugger can do with a crash.
+#[test]
+fn a_traced_cell_that_raises_surfaces_the_error_and_is_never_cached() {
+    let Some(py) = python_or_skip() else { return };
+
+    let dir = std::env::temp_dir().join(format!("tali-debug-raise-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("t.tmd");
+    fs::write(
+        &src,
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\n\
+         a = [1, 2]\n\
+         b = a[5]\n```\n:::\n",
+    )
+    .unwrap();
+
+    // Freeze cache ACTIVE on purpose (no `TALIESIN_NO_CACHE`): the never-persist-an-error
+    // rule is the half that regressed, and it only exists when the cache is live.
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_PYTHON", &py)
+        .output()
+        .expect("build must run");
+    let html = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        html.contains("class=\"tali-error\""),
+        "an IndexError inside a traced cell must reach the page as a `tali-error` output, \
+         exactly like an untraced cell's does: {html}"
+    );
+    assert!(
+        html.contains("IndexError"),
+        "the reader must get the interpreter's own message, not a silent widget: {html}"
+    );
+
+    // The frames recorded before the raise still ship.
+    let json = extract_trace(&html).expect("the frames recorded before the raise must ship");
+    let t: serde_json::Value = serde_json::from_str(&json).expect("the blob must be valid JSON");
+    let frames = t["frames"].as_array().expect("frames array");
+    assert!(
+        frames.len() >= 2,
+        "line 1 ran before line 2 raised, so at least two frames were recorded: {frames:?}"
+    );
+
+    // Nothing errored is persisted. `_freeze/t.json` may or may not be written at all
+    // (that depends on whether any cell was cacheable); either way it must hold no entry
+    // for this cell.
+    let freeze_path = dir.join("_freeze").join("t.json");
+    if let Ok(bytes) = fs::read(&freeze_path) {
+        let on_disk: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("_freeze/t.json must be valid JSON");
+        let entries = on_disk["entries"].as_array().cloned().unwrap_or_default();
+        assert!(
+            entries.is_empty(),
+            "an errored traced cell must never be persisted, got {entries:?}"
+        );
+    }
+
+    // And `--strict` (the CI gate) must fail on it.
+    let strict = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout", "--strict"])
+        .env("TALIESIN_PYTHON", &py)
+        .output()
+        .expect("build must run");
+    assert!(
+        !strict.status.success(),
+        "`build --strict` must exit non-zero on a traced cell that raised; stderr: {}",
+        String::from_utf8_lossy(&strict.stderr)
+    );
+}
+
+/// A traced cell shares the document's namespace: it can read what an earlier, UNTRACED
+/// cell bound, and what it binds is there for the cells after it.
+///
+/// The first harness ran the author's code in a private `ns = {}`, so `data.sort()` after
+/// an upstream `data = [3, 1, 2]` raised `NameError` *inside* the harness, was swallowed
+/// by the same `except` the test above covers, and rendered as a widget with three empty
+/// frames and no explanation at all.
+#[test]
+fn a_traced_cell_sees_the_namespace_an_earlier_cell_built() {
+    let Some(py) = python_or_skip() else { return };
+
+    let dir = std::env::temp_dir().join(format!("tali-debug-ns-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let src = dir.join("t.tmd");
+    fs::write(
+        &src,
+        "---\ntitle: T\n---\n\n\
+         ```{python}\ndata = [3, 1, 2]\n```\n\n\
+         ::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\n\
+         data.sort()\n```\n:::\n\n\
+         ```{python}\nprint(\"after\", data)\n```\n",
+    )
+    .unwrap();
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", src.to_str().unwrap(), "--stdout"])
+        .env("TALIESIN_PYTHON", &py)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("build must run");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let html = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        !html.contains("NameError"),
+        "the traced cell must see `data` from the cell above it: {html}"
+    );
+
+    let json = extract_trace(&html).expect("a traced cell must embed a trace blob");
+    let t: serde_json::Value = serde_json::from_str(&json).expect("the blob must be valid JSON");
+    let frames = t["frames"].as_array().expect("frames array");
+    assert!(
+        frames
+            .iter()
+            .any(|f| f["locals"]["data"] == serde_json::json!([3, 1, 2])),
+        "a frame must show `data` at the value the EARLIER cell bound: {frames:?}"
+    );
+    assert!(
+        frames
+            .iter()
+            .any(|f| f["locals"]["data"] == serde_json::json!([1, 2, 3])),
+        "and a later frame must show it sorted, so the mutation happened for real: {frames:?}"
+    );
+
+    // The mutation is visible DOWNSTREAM too: the cell after the `.debug` div prints the
+    // sorted list, which is only possible if the traced cell wrote to the shared namespace
+    // rather than to a private dict.
+    assert!(
+        html.contains("after [1, 2, 3]"),
+        "a cell after the traced one must see the mutation: {html}"
+    );
+
+    // The kernel's own bookkeeping (`In`, `Out`, `get_ipython`, the harness function
+    // itself) must NOT flood the variables panel now that the namespace is shared.
+    let noise: Vec<&str> = frames
+        .iter()
+        .filter_map(|f| f["locals"].as_object())
+        .flat_map(|o| o.keys())
+        .map(String::as_str)
+        .filter(|k| *k != "data")
+        .collect();
+    assert!(
+        noise.is_empty(),
+        "only the names the traced source mentions belong in a frame's locals, got {noise:?}"
+    );
+}
+
 fn extract_trace(html: &str) -> Option<String> {
     let open = "<script type=\"application/json\" class=\"tali-debug-trace\">";
     let start = html.find(open)? + open.len();
