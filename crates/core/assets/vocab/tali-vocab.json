@@ -215,6 +215,10 @@
       "name": "scrolly"
     },
     {
+      "description": "Algorithm debugger: step a `#| trace: true` cell line by line.",
+      "name": "debug"
+    },
+    {
       "description": "Animated code diff between steps.",
       "name": "magic-move"
     },

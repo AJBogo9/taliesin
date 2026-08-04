@@ -2633,18 +2633,28 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
             "focus mode was removed but `{needle}` is still shipped"
         );
     }
-    // `requestFullscreen` itself moved out of this loop (it used to be the fourth needle
-    // here): the algorithm-debug-mode design gave `.tali-debug`'s own Expand control real
-    // per-block fullscreen (`toggleExpand` in debug.js), a second widget-level carve-out
-    // alongside the deck's, which `a_deck_keeps_its_own_fullscreen` right below already
-    // pins as legitimate. `render_html_page` is `OutputMode::Preview`, which ships every
-    // core enhancer (debug.js included) unconditionally so a live-diff edit can gain any
-    // construct without a reload, so the string is present in THIS page's bundle even
-    // though this specific prose source has no `.debug` block at all: the needle would
-    // never be able to tell "page-level fullscreen came back" apart from "the always-on
-    // enhancer bundle carries dead code for an absent widget." Build mode is where that
-    // gating is real, so that is where the check belongs instead.
-    let built_prose = code_scripts_for("<p>Prose to read.</p>", OutputMode::Build, false);
+    // `requestFullscreen` gets its own needle rather than joining the loop above: the
+    // algorithm-debug-mode design gave `.tali-debug`'s own Expand control real per-block
+    // fullscreen (`toggleExpand` in debug.js), a second widget-level carve-out alongside
+    // the deck's, which `a_deck_keeps_its_own_fullscreen` right below already pins as
+    // legitimate. `render_html_page` is `OutputMode::Preview`, which ships every core
+    // enhancer (debug.js included) unconditionally so a live-diff edit can gain any
+    // construct without a reload, so the string is present in THAT page's bundle even
+    // though this prose source has no `.debug` block at all: the needle could never tell
+    // "page-level fullscreen came back" apart from "the always-on enhancer bundle carries
+    // dead code for an absent widget." Build mode is where the content gating is real.
+    //
+    // It is still asserted against the WHOLE ASSEMBLED PAGE, not against
+    // `code_scripts_for` alone: that helper covers only the content-gated enhancer bundle,
+    // so page-level fullscreen reintroduced in `web-client/client.js`, in `page.rs`'s own
+    // inline bootstrap, or in `tali-js.js` would sail straight past it. A Build-mode
+    // assembled prose page contains zero `requestFullscreen`, measured, so the strong form
+    // is available and is what runs here.
+    let built_prose = page_from_doc(
+        &render_document("# Title\n\nProse to read.\n"),
+        "doc",
+        OutputMode::Build,
+    );
     assert!(
         !built_prose.contains("requestFullscreen"),
         "a built page with neither a deck nor a debug widget must not ship requestFullscreen: {built_prose}"
@@ -2664,7 +2674,7 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
 /// gate same as it would on a page. `debug.css` is never in a deck's style block (only
 /// `DECK_CSS`), so the result was not "a plain code block" at all: `debug.js` still ran,
 /// still built `.dbg-transport`/`.dbg-vars`/`.dbg-stage` and wired up stepping, just with
-/// zero layout/styling — a half-functional, unstyled widget dumped onto the slide.
+/// zero layout/styling: a half-functional, unstyled widget dumped onto the slide.
 ///
 /// The needle is debug.js's own file-header text (the same one
 /// `build_mode_content_gates_separate_enhancers` uses below), not the bare string
