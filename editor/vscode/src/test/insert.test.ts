@@ -29,9 +29,9 @@ test("an unknown mime routes nowhere, so the plain paste wins", () => {
 });
 
 test("a URL is recognised only when it is a single absolute http(s) URL", () => {
-  assert.ok(isUrl("https://taliesin.dev/guide"));
+  assert.ok(isUrl("https://taliesin.sh/guide"));
   assert.ok(isUrl("  http://example.org/x?a=1#b  "), "surrounding whitespace is trimmed");
-  assert.ok(!isUrl("taliesin.dev/guide"), "no scheme");
+  assert.ok(!isUrl("taliesin.sh/guide"), "no scheme");
   assert.ok(!isUrl("mailto:a@b.c"), "not a web URL");
   assert.ok(!isUrl("see https://x.dev for more"), "prose containing a URL is not a URL");
   assert.ok(!isUrl(""));

@@ -29,7 +29,7 @@ fn head_carries_the_human_readable_generator_banner() {
     let head = &page[..page.find("</head>").expect("page has </head>")];
     assert!(
         head.contains(&format!("Taliesin v{}", taliesin_core::VERSION))
-            && head.contains("https://taliesin.dev")
+            && head.contains("https://taliesin.sh")
             && head.contains("block-modeled live HTML process"),
         "the head must carry the human generator banner (name + version + URL); head:\n{head}"
     );
@@ -47,7 +47,7 @@ fn deck_head_carries_generator_meta_and_banner() {
     );
     assert!(
         head.contains(&format!("Taliesin v{}", taliesin_core::VERSION))
-            && head.contains("https://taliesin.dev"),
+            && head.contains("https://taliesin.sh"),
         "the deck head must carry the human generator banner; head:\n{head}"
     );
 }

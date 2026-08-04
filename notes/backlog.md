@@ -400,9 +400,6 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      - **Still absent: a code of conduct and GitHub issue templates**, both only worth doing once the
        repo is public. (`CONTRIBUTING.md` with the inbound relicensing grant and the platform matrix
        both shipped 2026-07-28.)
-     - **`taliesin.dev` resolves to nothing** (registered; NS + SPF + a google-site-verification TXT,
-       zero web records) and is baked into every canonical URL, `og:url`, sitemap and feed.
-       `site/README.md:11-12` already flags it as a placeholder.
      - **The name** (surfaced, not a task): TALIESIN is a live registered mark of the Frank Lloyd
        Wright Foundation (Reg. 4150375). Software is outside the recited goods so legal risk is low;
        the cost is permanent SEO invisibility, and `github.com/taliesin` + `/taliesins` are both

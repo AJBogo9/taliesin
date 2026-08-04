@@ -324,9 +324,9 @@ fn no_built_page_fetches_anything_off_origin() {
     );
     let allowed = offsite_refs(
         "<a href=\"https://example.com/post\">an outbound link</a>\
-         <link rel=\"canonical\" href=\"https://taliesin.dev/p.html\">\
-         <meta property=\"og:url\" content=\"https://taliesin.dev/p.html\">\
-         <script type=\"application/ld+json\">{\"url\":\"https://taliesin.dev\"}</script>\
+         <link rel=\"canonical\" href=\"https://taliesin.sh/p.html\">\
+         <meta property=\"og:url\" content=\"https://taliesin.sh/p.html\">\
+         <script type=\"application/ld+json\">{\"url\":\"https://taliesin.sh\"}</script>\
          <svg xmlns=\"http://www.w3.org/2000/svg\"><image href=\"inline.png\"/></svg>\
          <img src=\"data:image/png;base64,iVBOR\">",
     );

@@ -321,7 +321,7 @@ offered in the paste-as menu rather than done automatically: text with tabs in i
 usually just text, and silently turning it into a table is worse than one extra keystroke.
 
 **Paste a URL over a selection** to wrap it: select `manual`, paste
-`https://taliesin.dev/guide`, get `[manual](https://taliesin.dev/guide)`.
+`https://taliesin.sh/guide`, get `[manual](https://taliesin.sh/guide)`.
 
 **Paste a BibTeX entry** and it is appended to the bibliography your front matter names,
 with `[@key]` inserted at the cursor. Both edits are one undo. If the key is already in the
