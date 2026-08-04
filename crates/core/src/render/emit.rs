@@ -91,10 +91,27 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                     Some("true") => " data-tali-trace=\"1\"",
                     _ => "",
                 };
+                // A traced `{js}` cell has no live `<script type="application/tali-js">`
+                // (`mod.rs` routes it to this plain-source arm instead, so the panel
+                // stays a single root element; see the comment there), so `debug.js` has
+                // nothing to run unless the RUNNABLE source rides along too. It cannot
+                // just re-read `<code>`'s highlighted text at the displayed line numbers:
+                // the cursor needs `yield` rewritten to `yield __at(N, ...)`, which the
+                // reader must never see, so the stamped text goes in a data attribute
+                // instead of the visible listing. `stamp_yields` refuses (returns `None`)
+                // whenever it cannot scan confidently; the ORIGINAL text ships in that
+                // case, still valid JS, just with no line stamps, so the cursor stays
+                // parked rather than the cell breaking.
+                let js_src_attr = if lang.as_deref() == Some("js") && !trace_attr.is_empty() {
+                    let stamped = stamp_yields(&literal).unwrap_or_else(|| literal.clone());
+                    format!(" data-tali-js-src=\"{}\"", escape_attr(&stamped))
+                } else {
+                    String::new()
+                };
                 if let Some((open, summary)) = &fold {
                     let open_attr = if *open { " open" } else { "" };
                     out.push_str(&format!(
-                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}><summary>{}</summary><pre{trace_attr}><code{class}>{highlighted}</code></pre></details>",
+                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}><summary>{}</summary><pre{trace_attr}{js_src_attr}><code{class}>{highlighted}</code></pre></details>",
                         html_escape(summary)
                     ));
                 } else {
@@ -102,12 +119,12 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                     // step through them; absent, the code block is emitted unchanged.
                     match code_line_numbers(&cb.info, &cb.literal) {
                         Some(spec) => out.push_str(&format!(
-                            "<pre{attrs}{cell_attr}{trace_attr} data-code-lines=\"{}\"><code{class}>{}</code></pre>",
+                            "<pre{attrs}{cell_attr}{trace_attr}{js_src_attr} data-code-lines=\"{}\"><code{class}>{}</code></pre>",
                             escape_attr(&spec),
                             wrap_code_lines(&highlighted),
                         )),
                         None => out.push_str(&format!(
-                            "<pre{attrs}{cell_attr}{trace_attr}><code{class}>{highlighted}</code></pre>"
+                            "<pre{attrs}{cell_attr}{trace_attr}{js_src_attr}><code{class}>{highlighted}</code></pre>"
                         )),
                     }
                 }

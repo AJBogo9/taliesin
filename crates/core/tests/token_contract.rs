@@ -100,6 +100,7 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-drawer-close",
     "data-tali-input",
     "data-tali-input-bound",
+    "data-tali-js-src",
     "data-tali-n",
     "data-tali-op",
     "data-tali-out",

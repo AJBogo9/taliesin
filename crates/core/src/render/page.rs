@@ -351,21 +351,27 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // cells are `{glsl}` needs it just as much. Each language's own enhancer
             // follows it inline (and must, since it calls `window.taliJs.registerLanguage`
             // on the object this script has just defined).
-            let tali_js_inline = if !bare && has_client_cells(p.body) {
-                let glsl = if has_client_cells_of(p.body, "glsl") {
-                    format!("\n<script>{GLSL_JS}</script>")
+            // Also opens for a traced `{js}` debug cell (`data-tali-js-src`): it never
+            // emits a live `application/tali-js` script (`has_client_cells` alone would
+            // miss it), but `debug.js` still needs `window.taliJs.runDebugSource` from
+            // this file to run the captured generator. See the identical reasoning on
+            // `code_scripts_for`'s `talijs_s` gate.
+            let tali_js_inline =
+                if !bare && (has_client_cells(p.body) || p.body.contains("data-tali-js-src")) {
+                    let glsl = if has_client_cells_of(p.body, "glsl") {
+                        format!("\n<script>{GLSL_JS}</script>")
+                    } else {
+                        String::new()
+                    };
+                    let pyodide = if has_client_cells_of(p.body, "pyodide") {
+                        format!("\n<script>{PYODIDE_JS}</script>")
+                    } else {
+                        String::new()
+                    };
+                    format!("\n<script>{TALIESIN_JS}</script>{glsl}{pyodide}")
                 } else {
                     String::new()
                 };
-                let pyodide = if has_client_cells_of(p.body, "pyodide") {
-                    format!("\n<script>{PYODIDE_JS}</script>")
-                } else {
-                    String::new()
-                };
-                format!("\n<script>{TALIESIN_JS}</script>{glsl}{pyodide}")
-            } else {
-                String::new()
-            };
             // The registry itself is emitted in <head> (see `enhancer_registry` above), so this
             // is just the deferred bundle. app.js stays deferred (non-blocking): when it runs
             // after parse, its own bundled `01-registry` copy hits

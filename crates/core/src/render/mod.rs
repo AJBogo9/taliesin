@@ -1190,7 +1190,10 @@ fn render_internal_impl(
             .as_ref()
             .and_then(|c| client_lang(&c.lang).map(|spec| (c, spec)))
         {
-            if no_exec_in_force() || !client_lang_runnable(&c.lang) {
+            if (c.lang == "js" && c.js.trace)
+                || no_exec_in_force()
+                || !client_lang_runnable(&c.lang)
+            {
                 // `--no-exec`: a client-side cell is a code cell whose kernel is the
                 // browser, so it renders as source like a `{python}` cell with no kernel
                 // does (item 79). `emit` keeps the highlighted source and the block's
@@ -1203,6 +1206,20 @@ fn render_internal_impl(
                 // round-trip (it recovers the source by reversing an `</script` escape that
                 // cannot be reversed unambiguously): the wrapper is never emitted, so it
                 // never needs reversing.
+                //
+                // A traced `{js}` cell (`//| trace: true`, inside `::: {.debug}`) takes the
+                // SAME arm for a third reason: `debug.js` drains its generator itself and
+                // owns the whole visible output, so it needs the highlighted SOURCE as the
+                // `.dbg-code` panel (the same `<pre><code>` shape a traced `{python}` cell
+                // already gets via this arm), not the interactive target-div-plus-script
+                // wrapper every other `{js}` cell gets below. Emitting both would give the
+                // block two root elements, which `crates/core/tests/block_single_root.rs`
+                // forbids project-wide, so this is an either/or choice: `emit.rs` embeds the
+                // (stamped) runnable source as a data attribute on the very `<pre>` this
+                // produces, and `debug.js` reads it from there instead of finding a
+                // `<script type="application/tali-js">` that this arm never emits. Only
+                // `js` takes this branch on `trace`; `{glsl}`/`{pyodide}` cells don't
+                // document `trace` and keep their normal live wrapper even if one is set.
                 emit(node, &attrs, &mut html);
             } else {
                 // Native interactive client-side cell (`{js}`, `{glsl}`): the matching
@@ -2064,7 +2081,15 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         } else {
             String::new()
         },
-        talijs_s = gate(has_client_cells(body), TALIESIN_JS),
+        // A traced `{js}` debug cell needs `window.taliJs.runDebugSource` (tali-js.js)
+        // even though it never emits a live `application/tali-js` script itself
+        // (`has_client_cells` alone would miss it): `debug.js` is the only caller, and
+        // it cannot run a captured generator through the real `tali`/`Plot`/`d3`/`num`
+        // scope without this file loaded first.
+        talijs_s = gate(
+            has_client_cells(body) || body.contains("data-tali-js-src"),
+            TALIESIN_JS
+        ),
         glsl_s = gate(has_client_cells_of(body, "glsl"), GLSL_JS),
         pyodide_s = gate(has_client_cells_of(body, "pyodide"), PYODIDE_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),

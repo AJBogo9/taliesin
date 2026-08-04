@@ -142,7 +142,7 @@ fn splice(src: &str, sites: &[(usize, usize)]) -> String {
     let mut out = src.to_string();
     for &(start, line) in sites.iter().rev() {
         // A site whose expression end can't be found at bracket depth zero is skipped
-        // on its own — a partial cursor beats no adapter, and every OTHER site still
+        // on its own (a partial cursor beats no adapter), and every OTHER site still
         // gets stamped.
         if let Some(end) = expr_end(b, start) {
             out.insert(end, ')');
