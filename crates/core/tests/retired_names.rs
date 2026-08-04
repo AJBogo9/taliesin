@@ -777,7 +777,9 @@ fn margin_aliases_are_retired_through_the_full_render_pipeline() {
 /// const is `pub(crate)` and unreachable from this integration test; this pins the
 /// EMITTED surface, through the full render pipeline, plus the CSS half of the same
 /// subtraction and the SECOND, independent vocabulary this retirement also touches: the
-/// `@exm-`/`@prp-`/`@rem-` cross-reference prefixes.
+/// `@exm-`/`@prp-`/`@rem-` cross-reference prefixes — which resolve the OPPOSITE way:
+/// those three stay in `cite::XREF_LABELS` on purpose (see its doc comment), so a
+/// leftover reference is a loud "broken cross-reference" instead of silent text.
 #[test]
 fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
     let kinds = taliesin_core::render::theorem_kinds();
@@ -840,18 +842,40 @@ fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
     );
 
     // The SECOND vocabulary this retirement touches: the cross-reference prefixes.
-    // `@exm-`/`@prp-`/`@rem-` are retired from `cite::XREF_LABELS` too, and — unlike the
-    // div-class case above — that table has NO retirement register: an unknown prefix
-    // never reaches `parse_xref`'s `Some` branch, so it is left as literal text with no
-    // `data-tali-xref` marker and therefore nothing for `cite::validate_xrefs` to flag.
-    // This is a genuine silence gap (documented in `cite/render.rs`'s `XREF_LABELS` doc
-    // comment), not something this test can fix without inventing a new mechanism
-    // (`RETIRED_KEYS`/`RETIRED_DIV_CLASSES` are both per-family registers, not generic).
+    // Fix round 1 (2026-08-04): the first cut of this task ALSO deleted `exm`/`prp`/
+    // `rem` from `cite::XREF_LABELS`, which was wrong — with the prefix gone,
+    // `@exm-x` never reaches `parse_xref`'s `Some` branch at all, so it degraded
+    // silently to literal text (no link, no error, nothing). The three prefixes are
+    // kept ON PURPOSE now, specifically because their div classes are gone: every
+    // `@exm-`/`@prp-`/`@rem-` reference is therefore necessarily dangling (nothing can
+    // ever define that anchor again), which the ordinary "broken cross-reference" path
+    // already reports for free — no retirement register needed, unlike the div-class
+    // case above.
     for prefix in ["exm", "prp", "rem"] {
         let anchor = format!("{prefix}-x");
         assert!(
-            !taliesin_core::cite::is_xref_anchor(&anchor),
-            "`@{anchor}` must no longer resolve as a cross-reference anchor"
+            taliesin_core::cite::is_xref_anchor(&anchor),
+            "`@{anchor}` must still be a recognized cross-reference SHAPE (its div class \
+             is gone, but the prefix survives so a stray reference errors loudly instead \
+             of degrading to silent text)"
+        );
+    }
+    // Render a document that references `@exm-oldid` with nothing anywhere to define it
+    // (impossible after this retirement, since no div class produces an `exm-` anchor any
+    // more) and confirm it is reported as a broken cross-reference, not silence.
+    let dangling = taliesin_core::render_document_with_includes(
+        "---\ntitle: T\n---\n\nSee @exm-oldid, @prp-oldid, @rem-oldid.\n",
+        std::path::Path::new("."),
+    );
+    let xref_warnings = taliesin_core::cite::validate_xrefs(&dangling.blocks);
+    for prefix in ["exm", "prp", "rem"] {
+        let anchor = format!("{prefix}-oldid");
+        assert!(
+            xref_warnings.iter().any(|w| w
+                .message
+                .contains(&format!("broken cross-reference: @{anchor}"))),
+            "`@{anchor}` must be reported as a broken cross-reference, not silence: {:?}",
+            xref_warnings
         );
     }
     // The five surviving kinds' prefixes must still resolve, end to end: a real theorem

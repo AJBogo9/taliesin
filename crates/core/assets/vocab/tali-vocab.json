@@ -1819,8 +1819,20 @@
       "prefix": "cor"
     },
     {
+      "label": "Proposition",
+      "prefix": "prp"
+    },
+    {
       "label": "Definition",
       "prefix": "def"
+    },
+    {
+      "label": "Example",
+      "prefix": "exm"
+    },
+    {
+      "label": "Remark",
+      "prefix": "rem"
     }
   ]
 }
