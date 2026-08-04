@@ -567,6 +567,16 @@ fn build_container(
     let data = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
     let concat = |inner: &[Block]| -> String { inner.iter().map(|b| b.html.as_str()).collect() };
 
+    // A fenced-div's own composite block never carries a `Cell`: its children are
+    // folded into one `html` string below, and by construction that folding is the
+    // only place their per-block identity survives. For `.debug` that is fatal to
+    // the whole feature, because `Executor::run_through` (crates/server/src/exec.rs)
+    // only scans TOP-LEVEL blocks for a `Cell` to run: once this container replaces
+    // its children in the flat list, a traced cell folded away with `cell: None`
+    // would never execute at all. Set below, inside the `.debug` branch, to the same
+    // cell `code_idx` there resolves to (the traced cell, or the first code block).
+    let mut debug_cell: Option<Cell> = None;
+
     let html = if let Some(kind) = attrs.callout_kind() {
         // Validate the kind against taliesin's callout vocabulary (an unknown kind
         // warns, click-to-source, and still renders with its given class).
@@ -681,6 +691,11 @@ fn build_container(
         match code_idx {
             Some(i) => {
                 let panel = super::emit::wrap_pre_lines(&inner[i].html);
+                // Carry the panel cell's own `Cell` onto the container (see the
+                // `debug_cell` declaration above): this is what makes the traced
+                // cell reachable by the executor at all once its block is folded
+                // away below.
+                debug_cell = inner[i].cell.clone();
                 let rest: String = inner
                     .iter()
                     .enumerate()
@@ -956,7 +971,7 @@ fn build_container(
         sourcepos,
         source_file: file,
         html,
-        cell: None,
+        cell: debug_cell,
     }
 }
 

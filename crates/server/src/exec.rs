@@ -181,6 +181,13 @@ struct CellRef {
     /// `#| cache: false`: never restore from / persist to the disk cache; always
     /// re-executes (the escape hatch for non-deterministic cells).
     cache: bool,
+    /// `#| trace: true` inside `::: {.debug}`: run under `trace_py::wrap_traced`
+    /// instead of verbatim. Read off the emitted `data-tali-trace="1"` attribute
+    /// rather than a `Cell` field: `render::Cell` carries no trace bit of its own
+    /// (Task 1 stamped only the `<pre>` attribute), and `divs.rs`'s own
+    /// `is_traced_cell` already reads the same attribute for the same reason, so
+    /// this mirrors that precedent instead of inventing a second channel for one bit.
+    traced: bool,
 }
 
 /// A cell the *current warm kernel* has executed: its cumulative cache key and the
@@ -571,6 +578,7 @@ impl Executor {
                     table: c.table.clone(),
                     include: c.include,
                     cache: c.cache,
+                    traced: b.html.contains("data-tali-trace=\"1\""),
                 });
             }
         }
@@ -876,7 +884,15 @@ impl Executor {
                             ),
                         );
                     }
-                    let code = cell.code.clone();
+                    // `#| trace: true` cells run under the settrace harness instead of
+                    // verbatim; everything downstream (hashing above, caching, the
+                    // output splice below) is unaware and treats the result as
+                    // ordinary cell output, which is the whole point (see trace_py.rs).
+                    let code = if cell.traced {
+                        crate::trace_py::wrap_traced(&cell.code)
+                    } else {
+                        cell.code.clone()
+                    };
                     // queued → running → done|error per cell. Only when a kernel is
                     // actually live: without one the cell is an instant no-op that
                     // stays honestly `queued` (it never ran), and we never emit
@@ -1705,6 +1721,7 @@ mod tests {
             table: None,
             include: true,
             cache: true,
+            traced: false,
         }
     }
 

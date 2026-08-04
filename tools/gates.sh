@@ -85,6 +85,12 @@ CANARY_PYODIDE="a_pyodide_cell_boots_and_publishes_to_a_js_consumer"
 # green and one assertion shorter, which no summary line reveals).
 CANARY_PYODIDE_DELIVERY="a_single_file_build_degrades_a_pyodide_cell_to_visible_source"
 CANARY_PYODIDE_SITE="site_build_copies_the_pyodide_runtime_and_stamps_a_page_relative_index"
+# A tenth canary, independent of the python kernel canary above: the `#| trace: true`
+# debug harness. `CANARY_KERNEL` only proves a Python kernel runs at all; this is the
+# only thing that proves the `sys.settrace` harness runs inside one, embeds a trace
+# blob, and derives its `reads` correctly, all of which stays green if the harness
+# itself silently produced no output (the whole failure mode this test exists to catch).
+CANARY_DEBUG_TRACE="traced_python_records_a_line_per_step_with_locals_and_writes"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -297,7 +303,8 @@ else
             "chrome (print track):$CANARY_PRINT" \
             "chrome (pyodide):$CANARY_PYODIDE" \
             "pyodide feature (delivery):$CANARY_PYODIDE_DELIVERY" \
-            "pyodide feature (site build):$CANARY_PYODIDE_SITE"; do
+            "pyodide feature (site build):$CANARY_PYODIDE_SITE" \
+            "debug trace:$CANARY_DEBUG_TRACE"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then
