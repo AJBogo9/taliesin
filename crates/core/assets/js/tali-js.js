@@ -666,12 +666,48 @@
     };
   };
 
+  // Stamp a captured `yield` with the source line it came from (`__at(N, v)` ->
+  // `v.$line = N; return v`), so the algorithm debugger's cursor can find it. Defined
+  // once here, beside the `AsyncFunction` assembly it rides into, rather than in
+  // `debug.js`: the build-time scanner that inserts the call (`yield_scan.rs`) and the
+  // runtime that defines it belong to the same contract, and duplicating it in two
+  // files would let them drift. Guards against a non-object yield (`yield 5`) rather
+  // than throwing: a missed guard would turn a working cell into a broken one over a
+  // cursor position, which is exactly backwards for this project's stated asymmetry.
+  /** @param {number} line @param {any} v @returns {any} */
+  function __at(line, v) {
+    if (v !== null && typeof v === "object") v.$line = line;
+    return v;
+  }
+
   // Public API for the live-preview client (web-client/client.js) and for the other
   // client-side cell languages: two teardown hooks (one for a block about to be
   // replaced/removed, one before a full re-mount) plus the language registry itself.
   window.taliJs = window.taliJs || {};
   window.taliJs.teardown = teardownIn;
   window.taliJs.reset = resetRuntime;
+  // Run a piece of `{js}`-cell-shaped source with the SAME scope a live cell gets
+  // (`tali`/`Plot`/`d3`/`num`/`container`/`invalidation`), plus `__at`, for a caller
+  // that owns its own output and does not want the shared wrapper's mount/publish/
+  // scheduling machinery. The one caller today is the algorithm debugger
+  // (`debug.js`): a `//| trace: true` `{js}` cell is captured, not mounted (`mod.rs`
+  // emits it as plain highlighted source, never as a `<script type="application/
+  // tali-js">`, so `setupCell` above never sees it), and this is how it still gets a
+  // real `tali` (so `tali.value("n")`/`tali.frame(...)` work exactly like they would
+  // in a live cell) without a second, drifting copy of the `AsyncFunction` assembly
+  // above. `publish` is deliberately NOT reachable here, same as every other cell:
+  // this only ever returns the source's own return value (the generator) to the
+  // caller, it never schedules anything itself.
+  /** @param {string} src @param {HTMLElement} container @returns {any} */
+  window.taliJs.runDebugSource = function (src, container) {
+    var r = rt();
+    var api = makeApi(r, container, function () { return null; }, container.id);
+    var fn = new AsyncFunction(
+      "tali", "Plot", "d3", "num", "container", "invalidation", "__at",
+      src
+    );
+    return fn(api, window.Plot, window.d3, window.taliNum, container, api.invalidation, __at);
+  };
   /**
    * Register a client-side cell language. `mime` must match the `<script type>` its
    * server-side registry entry emits (`render/client_lang.rs`), which is the one place the

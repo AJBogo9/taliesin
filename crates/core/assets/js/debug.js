@@ -89,6 +89,164 @@
     }
   }
 
+  // --- the JS generator capture adapter --------------------------------------------
+  // A `//| trace: true` `{js}` cell has no server-side trace at all: `mod.rs` emits it
+  // as plain highlighted SOURCE (see the comment at that branch) carrying the
+  // build-time-stamped, runnable text in `data-tali-js-src` rather than as a live
+  // `<script type="application/tali-js">`, so there is nothing for `readTrace` above to
+  // find and nothing for `tali-js.js`'s own enhancer to run. This section is the other
+  // half: find that source, run it exactly like a live `{js}` cell would (same `tali`/
+  // `Plot`/`d3`/`num` scope, via `window.taliJs.runDebugSource`), and drain the
+  // resulting generator into the SAME frame shape `readTrace` hands `mount` below, so
+  // everything downstream (line cursor, variables panel, the four data views) is
+  // written once against that one shape regardless of which language produced it.
+
+  /** The raw (possibly `__at`-stamped) source of a captured `{js}` cell inside `root`,
+   * or `null` when this `.debug` block has no such cell (the ordinary Python path).
+   * @param {Element} root @returns {string | null} */
+  function jsDebugSource(root) {
+    var pre = root.querySelector('.dbg-code pre[data-tali-js-src]');
+    return pre ? pre.getAttribute('data-tali-js-src') : null;
+  }
+
+  // Matches `trace_py.rs`'s own `MAX_DEPTH`: deep enough for a DP table's rows, shallow
+  // enough to bound a pathological/cyclic structure.
+  var MAX_DEPTH = 4;
+
+  // A bounded-depth recursive copy of one yielded value. Not optional: the author's
+  // generator keeps mutating the SAME array/object between yields (the design's own
+  // worked example does exactly this: `yield {a, i, j}` then `[a[j], a[j+1]] =
+  // [a[j+1], a[j]]` on the very next line), so storing the reference verbatim would
+  // make every earlier frame's `locals.a` retroactively show the FINAL array once the
+  // generator finishes draining, the identical aliasing bug Task 4 found and fixed on
+  // the Python side (`trace_py.rs`'s `snapshot`). Beyond `MAX_DEPTH` the value is kept
+  // as-is rather than recursed into further, same tradeoff `enc`/`snapshot` make there.
+  /** @param {any} v @param {number} [d] @returns {any} */
+  function snapshotValue(v, d) {
+    var depth = d || 0;
+    if (depth > MAX_DEPTH || v === null || typeof v !== 'object') return v;
+    if (Array.isArray(v)) {
+      return v.map(function (x) {
+        return snapshotValue(x, depth + 1);
+      });
+    }
+    /** @type {Record<string, any>} */
+    var out = {};
+    Object.keys(v).forEach(function (k) {
+      out[k] = snapshotValue(v[k], depth + 1);
+    });
+    return out;
+  }
+
+  // Deep-enough equality for the "did this local change at all" gate below: reference
+  // equality first (cheap, and correct for every primitive), then a structural
+  // fallback for two independently-snapshotted arrays/objects that happen to hold the
+  // same values. `JSON.stringify` is a pragmatic stand-in for real structural equality
+  // here (this project does not carry a deep-equal dependency for one small gate), and
+  // a false "changed" only costs an extra flash in the variables panel, never a wrong
+  // picture (unlike the writes/from-to fields below, which are still computed exactly).
+  /** @param {any} a @param {any} b @returns {boolean} */
+  function sameValue(a, b) {
+    if (a === b) return true;
+    if (a === null || b === null || typeof a !== typeof b) return false;
+    if (typeof a !== 'object') return false;
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // The JS twin of `trace_py.rs`'s `diff`: element-wise `writes` for two same-length
+  // arrays, `from`/`to` otherwise. `reads` is always `[]` here and stays that way: the
+  // Python harness derives it from a static AST scan of the traced source, which this
+  // adapter deliberately does not attempt (a second, JS-flavoured static analyzer is
+  // not a trade this project makes for a value the author can still show directly by
+  // yielding it, e.g. `yield {a, i, j, comparing: [j, j + 1]}`).
+  /** @param {Record<string, any> | null} prev @param {Record<string, any>} cur
+   *  @returns {Record<string, any>} */
+  function diffLocals(prev, cur) {
+    /** @type {Record<string, any>} */
+    var out = {};
+    Object.keys(cur).forEach(function (k) {
+      var v = cur[k];
+      var p = prev ? prev[k] : undefined;
+      if (sameValue(p, v)) return;
+      if (Array.isArray(v) && Array.isArray(p) && v.length === p.length) {
+        var writes = [];
+        for (var i = 0; i < v.length; i++) {
+          if (!sameValue(v[i], p[i])) writes.push(i);
+        }
+        if (writes.length) out[k] = { writes: writes, reads: [] };
+      } else {
+        out[k] = { from: p === undefined ? null : p, to: v };
+      }
+    });
+    return out;
+  }
+
+  // Drain a captured generator into the shared frame shape, under the same 5,000-frame
+  // cap the Python harness uses (`trace_py.rs`'s `MAX_FRAMES`). `__at` (tali-js.js)
+  // stamps a yielded object's `$line`; a cell the yield scanner had to leave unmodified
+  // (an unterminated literal, or simply a `yield` it never reached) yields a plain
+  // object with no `$line` at all, so `line` is `null` and the cursor just does not
+  // move for that frame; never a crash, and never a wrong line.
+  /** @param {Generator} gen @returns {{frames: any[], truncated: boolean, cap: number}} */
+  function drain(gen) {
+    var MAX = 5000,
+      frames = [],
+      prev = null,
+      truncated = false,
+      n;
+    for (n = 0; n < MAX; n++) {
+      var step = gen.next();
+      if (step.done) break;
+      var v = step.value || {};
+      var line = v.$line != null ? v.$line : null;
+      /** @type {Record<string, any>} */
+      var locals = {};
+      Object.keys(v).forEach(function (k) {
+        if (k !== '$line') locals[k] = snapshotValue(v[k]);
+      });
+      frames.push({
+        line: line,
+        event: 'line',
+        depth: 1,
+        func: '',
+        locals: locals,
+        changed: diffLocals(prev, locals),
+        stack: [],
+        stdout: '',
+      });
+      prev = locals;
+    }
+    if (n >= MAX) truncated = true;
+    return { frames: frames, truncated: truncated, cap: MAX };
+  }
+
+  // Run the captured source and drain it. Failures (a syntax error the scanner's
+  // conservative rewrite still let through, an author exception before the first
+  // yield) degrade to an empty trace rather than an uncaught rejection, so a broken
+  // `.debug` block shows nothing stepped instead of breaking the rest of the page,
+  // the same silent-degrade posture `showCellError`'s built-output branch takes for an
+  // ordinary `{js}` cell.
+  /** @param {Element} root @param {string} src @returns {Promise<{frames: any[], truncated: boolean, cap: number}>} */
+  async function runJsCapture(root, src) {
+    try {
+      if (!window.taliJs || !window.taliJs.runDebugSource) {
+        throw new Error('tali-js.js not loaded');
+      }
+      var container = document.createElement('div');
+      container.id =
+        (root.getAttribute('data-debug-name') || 'debug') + '-' + Math.random().toString(36).slice(2);
+      var gen = await window.taliJs.runDebugSource(src, container);
+      return drain(gen);
+    } catch (e) {
+      console.error('tali-debug: JS capture failed', e);
+      return { frames: [], truncated: false, cap: 0 };
+    }
+  }
+
   // Focus one 1-based line in the panel, reusing the walkthrough/deck `.tali-hl-ln`
   // contract rather than a second highlight vocabulary.
   /** @param {Element | null} pre @param {number} line */
@@ -520,9 +678,28 @@
     });
   }
 
+  // Dispatch to the right capture adapter and mount once a trace is in hand. The JS
+  // path is async (running the generator goes through a real `AsyncFunction`, so even
+  // a generator with no `await` inside it comes back through a microtask); the Python
+  // path stays fully synchronous, reading a trace the server already baked into the
+  // page. Either way `mount` below is the single place that turns a `{frames,
+  // truncated, cap}` trace into the transport bar, the line cursor, the variables
+  // panel and the four data views, so the two adapters cannot drift in how they are
+  // rendered even though they arrive completely differently.
   /** @param {Element} root */
   function init(root) {
-    var trace = readTrace(root);
+    var jsSrc = jsDebugSource(root);
+    if (jsSrc !== null) {
+      runJsCapture(root, jsSrc).then(function (trace) {
+        mount(root, deepFreeze(trace));
+      });
+      return;
+    }
+    mount(root, readTrace(root));
+  }
+
+  /** @param {Element} root @param {{frames: any[], truncated: boolean, cap: number}} trace */
+  function mount(root, trace) {
     var frames = trace.frames || [];
     var name = root.getAttribute('data-debug-name');
     var pre = root.querySelector('.dbg-code pre');
