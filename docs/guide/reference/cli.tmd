@@ -538,10 +538,10 @@ cross-reference kind appears, so a capability nothing exercises shows up as a ro
 reading `(no document)` rather than as an absence you would have to already suspect:
 
 ```
-div classes                    18 known · 15 used · 3 unused
-  scrolly                         4
-  column-margin                   3  layout/escapes.tmd, layout/panels.tmd, refs/theorems.tmd
-  aside                           0  (no document)
+front-matter keys              23 known · 21 used · 2 unused
+  toc                            19
+  draft                           3  corpus/course/problems.tmd, corpus/demo-book/appendix.tmd, corpus/tech-blog/posts/draft-example/index.tmd
+  csl                             0  (no document)
 ```
 
 A construct used by three or fewer documents names them inline, because that tail is

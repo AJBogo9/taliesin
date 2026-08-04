@@ -244,10 +244,11 @@ because a margin note can only hold inline content.
 
 For an aside with no reference to hang it off, a `::: {.column-margin}` block floats
 into the same margin column on a wide screen and folds into the flow on a narrow one:
-web-native marginalia a PDF can't do. `.column-margin` is the canonical name;
-`.sidenote`, `.marginnote`, and `.aside` are accepted aliases for the identical block
-(Tufte/Distill/Quarto muscle memory), so reach for whichever you already know. Footnotes
-and margin blocks share one column, so the two never collide.
+web-native marginalia a PDF can't do. `.column-margin` is the only spelling — it used to
+also accept `.sidenote`, `.marginnote`, and `.aside` as aliases (Tufte/Distill/Quarto
+muscle memory), retired on 2026-08-03, since a single tool gains nothing from four names
+for the same box. Footnotes and margin blocks share one column, so the two never
+collide.
 
 ::: {.column-margin}
 This is a margin note. On a wide screen it sits in the margin, aligned to where it was

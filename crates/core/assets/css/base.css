@@ -176,7 +176,7 @@
      never leaks into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
      or margin notes. `inherit` restores each element's own leading. */
   nav li, [role="listbox"] li,
-  .sidenote p, .marginnote p, .column-margin p, .aside p {
+  .column-margin p {
     line-height: inherit; }
   /* Reading-typography polish. Global: text-wrap/orphans are no-ops on short chrome
      (nav/TOC), and global scope also covers no-TOC build pages (no <main> wrapper). */
@@ -749,21 +749,18 @@
       display: block; float: none; width: auto; margin: .6rem 0;
       padding-left: .9rem; border-left: 2px solid var(--tali-border); background: none; }
   }
-  /* Margin notes (Tufte/Distill): `::: {.column-margin}` (canonical; aliases `.sidenote`,
-     `.marginnote`, `.aside`) floats into the right margin on a wide screen — marginalia
-     that don't interrupt the body, impossible to do in a PDF. Below ~73rem (no margin
-     room) it falls back to an indented aside in the flow. It's a normal block, so
-     click-to-source works. */
-  .sidenote, .marginnote, .column-margin, .aside {
+  /* Margin notes (Tufte/Distill): `::: {.column-margin}` floats into the right margin on
+     a wide screen — marginalia that don't interrupt the body, impossible to do in a PDF.
+     Below ~73rem (no margin room) it falls back to an indented aside in the flow. It's a
+     normal block, so click-to-source works. */
+  .column-margin {
     float: right; clear: right; width: 12rem;
     margin: .3rem -13.5rem 1rem 1.5rem;
     font: 400 .82rem/1.5 var(--tali-font-head); color: var(--tali-muted); text-align: left; }
-  .sidenote > :first-child, .marginnote > :first-child,
-  .column-margin > :first-child, .aside > :first-child { margin-top: 0; }
-  .sidenote > :last-child, .marginnote > :last-child,
-  .column-margin > :last-child, .aside > :last-child { margin-bottom: 0; }
+  .column-margin > :first-child { margin-top: 0; }
+  .column-margin > :last-child { margin-bottom: 0; }
   @media (max-width: 73rem) {
-    .sidenote, .marginnote, .column-margin, .aside {
+    .column-margin {
       float: none; width: auto; margin: 1rem 0;
       padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   }
@@ -977,7 +974,7 @@
      column, so the fix is to stop floating, exactly as below the width breakpoint and for
      exactly the same reason. Collision-free by construction beats a clever offset that
      only holds at some widths — the rule item 181 settled on for the other end. */
-  body.has-toc > main :is(.sidenote, .marginnote, .column-margin, .aside) {
+  body.has-toc > main .column-margin {
     float: none; width: auto; margin: 1rem 0;
     padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   /* A footnote takes the *collapsed* fallback rather than the in-flow one, because there

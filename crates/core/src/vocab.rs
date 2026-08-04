@@ -154,7 +154,7 @@ fn theorem_descriptions() -> &'static [(&'static str, &'static str)] {
 /// Structural fenced-div classes offered to the editor. These are a subset of
 /// `render::DIV_FEATURE_CLASSES` (the near-miss anchor for the div-class did-you-mean); the
 /// `div_classes_are_a_subset_of_the_validator_vocab` test pins that so the two can't drift.
-/// Keep in sync with the `.class` dispatch in `render/divs.rs` and the aliases in `base.css`.
+/// Keep in sync with the `.class` dispatch in `render/divs.rs`.
 const DIV_CLASS_NAMES: &[&str] = &[
     "panel-tabset",
     "code-walkthrough",
@@ -164,9 +164,6 @@ const DIV_CLASS_NAMES: &[&str] = &[
     "column-margin",
     "column-page",
     "column-screen",
-    "aside",
-    "sidenote",
-    "marginnote",
 ];
 
 fn div_classes() -> Value {
@@ -193,9 +190,6 @@ fn div_classes() -> Value {
                 "column-screen",
                 "Widen content to the full width of the screen.",
             ),
-            ("aside", "Margin aside (alias of `column-margin`)."),
-            ("sidenote", "Margin sidenote (alias of `column-margin`)."),
-            ("marginnote", "Margin note (alias of sidenote)."),
         ],
     )
 }

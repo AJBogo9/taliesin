@@ -681,3 +681,85 @@ fn callout_kinds_are_three_and_the_two_cut_ones_are_registered() {
         );
     }
 }
+
+/// Margin-content spellings went 4 -> 1 on 2026-08-03 (visual minimalism pass, task 13):
+/// `.aside` and `.marginnote` had zero uses in the tree; `.sidenote` had exactly one
+/// (`samples/paper.tmd`, migrated to `.column-margin` in the same change). The three
+/// aliases were a Quarto/Tufte/Distill welcome mat for a tool that has otherwise shed its
+/// Quarto vocabulary.
+///
+/// `validate.rs`'s own `#[cfg(test)]` block pins that `RETIRED_DIV_CLASSES` carries all
+/// three entries directly, since the const is `pub(crate)` and unreachable from an
+/// integration test. This pins the EMITTED surface instead: the actual diagnostic an
+/// author sees through the full render pipeline, plus the CSS half of the same
+/// subtraction. Div classes are an open vocabulary — the validator stays silent on a
+/// class it does not recognize, since it cannot tell a typo from a legitimate custom
+/// class — so without a `RETIRED_DIV_CLASSES` entry a leftover `.sidenote` would get
+/// NOTHING: no error, no warning, no did-you-mean, and the page would quietly lose its
+/// margin layout. That silence is the exact failure mode this test guards against.
+#[test]
+fn margin_aliases_are_retired_through_the_full_render_pipeline() {
+    for gone in ["aside", "sidenote", "marginnote"] {
+        let src = format!("::: {{.{gone}}}\nx\n:::\n");
+        let doc = taliesin_core::render::render_document(&src);
+        let w = doc
+            .warnings
+            .iter()
+            .find(|w| w.message.contains("div class"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`.{gone}` must warn (silence is the failure mode this test exists to \
+                     catch); warnings: {:?}",
+                    doc.warnings
+                )
+            });
+        assert!(
+            w.message
+                .starts_with(&format!("unknown div class `{gone}`: it was removed")),
+            "`.{gone}` must carry the removal note, got: {}",
+            w.message
+        );
+        assert!(
+            w.message
+                .contains("`.column-margin` is the only margin spelling now"),
+            "`.{gone}`'s removal note must point at `.column-margin`, got: {}",
+            w.message
+        );
+        assert!(
+            !w.message.contains("did you mean"),
+            "a retired class is not a did-you-mean: {}",
+            w.message
+        );
+        // Purely diagnostic: the div still renders with its given class (validate.rs's own
+        // contract for every validator), so the warning above is the ONLY thing telling the
+        // author their margin note stopped working.
+        assert!(
+            doc.body_html().contains(&format!("class=\"{gone}\"")),
+            "`.{gone}` must still render with its given class: {}",
+            doc.body_html()
+        );
+    }
+    // The CSS half of the same subtraction: none of the three retired spellings are styled
+    // any more (a leftover `.sidenote` therefore really does render as a plain unstyled
+    // block, matching the warning above). `.tali-sidenote` (the unrelated auto-generated
+    // footnote margin note, a different feature entirely) is deliberately NOT in this list.
+    let css = taliesin_core::render::base_css();
+    for needle in [".sidenote", ".marginnote", ".aside"] {
+        assert!(
+            !css.contains(needle),
+            "`{needle}` selector rule survives in base.css"
+        );
+    }
+    let site_css = taliesin_core::render::site_css();
+    for needle in [".sidenote", ".marginnote", ".aside"] {
+        assert!(
+            !site_css.contains(needle),
+            "`{needle}` selector rule survives in site.css"
+        );
+    }
+    // `.column-margin` itself must survive, styled, untouched.
+    assert!(
+        css.contains(".column-margin {"),
+        "`.column-margin` must still be styled in base.css"
+    );
+}

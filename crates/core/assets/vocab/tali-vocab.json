@@ -232,18 +232,6 @@
     {
       "description": "Widen content to the full width of the screen.",
       "name": "column-screen"
-    },
-    {
-      "description": "Margin aside (alias of `column-margin`).",
-      "name": "aside"
-    },
-    {
-      "description": "Margin sidenote (alias of `column-margin`).",
-      "name": "sidenote"
-    },
-    {
-      "description": "Margin note (alias of sidenote).",
-      "name": "marginnote"
     }
   ],
   "frontmatter": {

@@ -3290,15 +3290,21 @@ fn a_footnote_definition_with_block_content_is_flattened_and_warns() {
 }
 
 #[test]
-fn sidenote_div_renders_with_class() {
-    // `::: {.sidenote}` is a margin note (styled via base.css float); it just needs
-    // to emit a `.sidenote` block carrying the usual data-block-id (click-to-source).
+fn column_margin_div_renders_with_class() {
+    // `::: {.column-margin}` is a margin note (styled via base.css float); it just needs
+    // to emit a `.column-margin` block carrying the usual data-block-id (click-to-source).
+    // `.sidenote`/`.marginnote`/`.aside` were retired aliases of this same block (visual
+    // minimalism pass, task 13, 2026-08-03); `retired_names.rs` pins that a leftover one
+    // still renders (unstyled) and warns with a removal note, through the full pipeline.
     let page = render_html_page(
-        "---\ntitle: T\n---\n\n::: {.sidenote}\nA margin note.\n:::\n",
+        "---\ntitle: T\n---\n\n::: {.column-margin}\nA margin note.\n:::\n",
         "fb",
     );
-    assert!(page.contains("class=\"sidenote\""), "sidenote div: {page}");
-    assert!(page.contains("A margin note"), "sidenote content");
+    assert!(
+        page.contains("class=\"column-margin\""),
+        "column-margin div: {page}"
+    );
+    assert!(page.contains("A margin note"), "margin note content");
 }
 
 #[test]

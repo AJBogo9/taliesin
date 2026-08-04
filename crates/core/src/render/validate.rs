@@ -70,9 +70,6 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "column-margin",
     "column-page",
     "column-screen",
-    "aside",
-    "sidenote",
-    "marginnote",
     "fragment",
     "incremental",
     // Fragment EFFECT modifiers: real styled classes (`deck.css`) that ride alongside
@@ -206,6 +203,18 @@ pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
         "it was removed on 2026-08-02 with `.columns`. Under `{layout-ncol=N}` each direct \
          child block is already a column, so the child fences go away entirely rather than \
          being renamed",
+    ),
+    (
+        "aside",
+        "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
+    ),
+    (
+        "sidenote",
+        "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
+    ),
+    (
+        "marginnote",
+        "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
     ),
 ];
 
@@ -410,7 +419,7 @@ mod tests {
         );
         // An exactly-known class is legit → silent.
         assert!(
-            validate_div_class(&s("aside"), 3, None).is_none(),
+            validate_div_class(&s("column-margin"), 3, None).is_none(),
             "known class is silent"
         );
         // A genuine custom class (far from every known name) → silent (open vocabulary).
@@ -425,6 +434,37 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    /// Margin-content spellings went 4 -> 1 on 2026-08-03 (visual minimalism pass, task
+    /// 13): `.aside` and `.marginnote` had zero uses in the tree, `.sidenote` had one
+    /// (migrated to `.column-margin`). Each retired spelling must warn with the removal
+    /// note — not silence (div classes are an open vocabulary, so silence is what a
+    /// PLAIN removal from `DIV_FEATURE_CLASSES` alone would produce) and not a
+    /// did-you-mean (a removal and a misspelling are different mistakes). This is the
+    /// direct pin that `RETIRED_DIV_CLASSES` actually carries all three entries;
+    /// `crates/core/tests/retired_names.rs` pins the same three through the full render
+    /// pipeline, since `RETIRED_DIV_CLASSES` itself is `pub(crate)` and unreachable from
+    /// an external test.
+    #[test]
+    fn margin_aliases_warn_with_the_removal_note_not_a_did_you_mean() {
+        let s = |c: &str| vec![c.to_string()];
+        for gone in ["aside", "sidenote", "marginnote"] {
+            let w = validate_div_class(&s(gone), 3, None)
+                .unwrap_or_else(|| panic!("`.{gone}` must warn, div classes are open vocabulary"));
+            assert_eq!(
+                w.message,
+                format!(
+                    "unknown div class `{gone}`: it was removed on 2026-08-03. \
+                     `.column-margin` is the only margin spelling now"
+                )
+            );
+            assert!(
+                !w.message.contains("did you mean"),
+                "a retired class is not a did-you-mean: {}",
+                w.message
+            );
+        }
     }
 
     #[test]

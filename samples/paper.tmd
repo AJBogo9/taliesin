@@ -59,7 +59,7 @@ oscillates forever, and beyond it the loss explodes.[^quadratic]
     curvature (the Hessian's eigenvalues). The threshold $\eta < 2/L$ for an
     $L$-smooth function is the same statement, generalized.
 
-::: {.sidenote}
+::: {.column-margin}
 The contraction factor $|1-\eta|$ is minimized at $\eta = 1$, where this quadratic
 converges in a *single* step. Real objectives are not so kind: the best fixed step
 trades off the largest and smallest curvature directions.

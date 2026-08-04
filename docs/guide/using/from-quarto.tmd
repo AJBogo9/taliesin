@@ -103,7 +103,7 @@ for a document that is wrong in a new way.
 
 ## Step 3: the body
 
-Almost everything is untouched. Two habits worth naming:
+Almost everything is untouched. Three habits worth naming:
 
 - **`::: {.columns}` with `.column` children** — Taliesin has one column grid and it
   is the bare attribute: `::: {layout-ncol=2}`, whose direct child blocks are the
@@ -119,6 +119,13 @@ Almost everything is untouched. Two habits worth naming:
   was *removed* rather than guessing at a rename, since the replacement is a judgement
   call (which of `warning`/`note` fits what the callout actually says), not a mechanical
   one.
+- **`::: {.sidenote}` / `::: {.marginnote}` / `::: {.aside}`** — the same Tufte/Distill
+  margin float you may know by any of these three names has one spelling now:
+  `::: {.column-margin}`. The other three were retired on 2026-08-03 alongside the
+  callout kinds above, for the same reason: a single tool gains nothing from four names
+  for one box. `check` says a leftover alias was *removed* and points at
+  `.column-margin` — this one IS a mechanical rename, unlike `.columns` and the callout
+  kinds above.
 
 Cell options (`#| echo: false`, `#| label: fig-…`, `#| fig-cap: "…"`) work as you
 expect, and the document-level `execute:` block honours `echo`, `include` and
