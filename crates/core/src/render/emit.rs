@@ -84,20 +84,20 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 // `code-fold` wraps the listing in a <details>; the block data
                 // attrs move to the <details> so click-to-source still keys off it.
                 let highlighted = crate::highlight::highlight(&literal, lang.as_deref());
+                // `::: {.debug}` marks its stepped cell `#| trace: true`; the marker rides
+                // on the `<pre>` (folded or not) so `divs.rs`'s `is_traced_cell` can find
+                // it without re-scanning the (already-stripped) source.
+                let trace_attr = match cell_option(&cb.literal, "trace") {
+                    Some("true") => " data-tali-trace=\"1\"",
+                    _ => "",
+                };
                 if let Some((open, summary)) = &fold {
                     let open_attr = if *open { " open" } else { "" };
                     out.push_str(&format!(
-                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>{highlighted}</code></pre></details>",
+                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}><summary>{}</summary><pre{trace_attr}><code{class}>{highlighted}</code></pre></details>",
                         html_escape(summary)
                     ));
                 } else {
-                    // `::: {.debug}` marks its stepped cell `#| trace: true`; the marker
-                    // rides on the `<pre>` so `divs.rs`'s `is_traced_cell` can find it
-                    // without re-scanning the (already-stripped) source.
-                    let trace_attr = match cell_option(&cb.literal, "trace") {
-                        Some("true") => " data-tali-trace=\"1\"",
-                        _ => "",
-                    };
                     // `code-line-numbers` wraps each line so a deck can highlight /
                     // step through them; absent, the code block is emitted unchanged.
                     match code_line_numbers(&cb.info, &cb.literal) {

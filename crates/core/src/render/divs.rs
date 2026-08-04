@@ -643,10 +643,19 @@ fn build_container(
         // `.column-page` is applied here rather than left to the author: the reading
         // measure (~70ch) cannot hold a code panel beside a data view, and requiring
         // `::: {.debug .column-page}` would make every author repeat the same escape.
+        let is_code = |b: &Block| b.html.contains("<pre") && b.html.contains("<code");
+        let traced = inner.iter().filter(|b| is_traced_cell(b)).count();
+        // The panel follows the trace, not document order. A `.debug` may hold more than
+        // one code block (`validate_debug` warns on it, but the div still renders), and
+        // if the traced cell isn't the first code block, showing the first one would
+        // silently step through code the reader never sees highlighted: exactly the
+        // silent-fallthrough this project won't tolerate. Fall back to the first code
+        // block only when nothing is traced (which `validate_debug`'s "no traced cell"
+        // warning already covers).
         let code_idx = inner
             .iter()
-            .position(|b| b.html.contains("<pre") && b.html.contains("<code"));
-        let traced = inner.iter().filter(|b| is_traced_cell(b)).count();
+            .position(|b| is_code(b) && is_traced_cell(b))
+            .or_else(|| inner.iter().position(is_code));
         let name = attrs.get("name").filter(|n| !n.is_empty());
         for w in super::validate::validate_debug(
             traced,

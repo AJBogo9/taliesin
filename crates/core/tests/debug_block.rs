@@ -68,3 +68,49 @@ fn cell_option_lines_are_stripped_from_the_panel_so_ordinals_match_the_executed_
         "the `#|` directive must not occupy a panel line; expected `first`/`second` only:\n{out}"
     );
 }
+
+/// Fix round 1, finding 1: `code_idx` (first code block) and `traced` (count of traced
+/// cells) used to be computed independently, so a `.debug` with two code cells where the
+/// SECOND is the traced one showed the wrong, untraced cell in the panel while `traced ==
+/// 1` reported healthy: a silent misrender with no warning. The panel must follow the
+/// trace, not document order.
+#[test]
+fn debug_panel_follows_the_traced_cell_even_when_it_is_not_the_first_code_block() {
+    let out = render(
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\nfirst_cell = 1\n```\n\n\
+         ```{python}\n#| trace: true\nsecond_cell = 2\n```\n:::\n",
+    );
+    let code_start = out.find(r#"class="dbg-code""#).expect("panel present");
+    let views_start = out.find(r#"class="dbg-views""#).expect("views present");
+    let panel = &out[code_start..views_start];
+    assert!(
+        panel.contains("second_cell"),
+        "the panel must show the TRACED cell even though it's second in the div:\n{out}"
+    );
+    assert!(
+        !panel.contains("first_cell"),
+        "the untraced first cell must not end up in the panel:\n{out}"
+    );
+    let views = &out[views_start..];
+    assert!(
+        views.contains("first_cell"),
+        "the untraced cell still rides along in the views slot:\n{out}"
+    );
+}
+
+/// Fix round 1, finding 2: `trace_attr` used to be interpolated only into the
+/// non-folded `<pre>` branches, so `#| code-fold: true` + `#| trace: true` together
+/// never got `data-tali-trace="1"` and `.debug` wrongly warned "no traced cell" against
+/// correct authoring. A folded traced cell must still carry the marker.
+#[test]
+fn a_folded_traced_cell_still_carries_the_trace_marker() {
+    let out = render(
+        "---\ntitle: T\n---\n\n::: {.debug name=\"d\"}\n\
+         ```{python}\n#| trace: true\n#| code-fold: true\na = 1\n```\n:::\n",
+    );
+    assert!(
+        out.contains(r#"data-tali-trace="1""#),
+        "code-fold must not swallow the trace marker:\n{out}"
+    );
+}
