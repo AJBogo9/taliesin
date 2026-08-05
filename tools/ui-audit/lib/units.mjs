@@ -12,16 +12,73 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// The six multi-page projects. `kind` is the reported `format` for their pages
-// (books have `chapters:` in _site.yml; websites are directory-walked).
-export const SITE_UNITS = [
-  { slug: 'site', source: 'site', kind: 'website' },
-  { slug: 'docs-guide', source: 'docs/guide', kind: 'book' },
-  { slug: 'docs-internals', source: 'docs/internals', kind: 'book' },
-  { slug: 'single-page-report', source: 'corpus/single-page-report', kind: 'website' },
-  { slug: 'demo-book', source: 'corpus/demo-book', kind: 'book' },
-  { slug: 'tech-blog', source: 'corpus/tech-blog', kind: 'website' },
-];
+// The multi-page projects, DISCOVERED rather than declared: every directory
+// holding a `_site.yml`.
+//
+// This was a hardcoded list of six until 2026-08-05, and it had gone stale:
+// fifteen `_site.yml` projects existed, so twelve corpus projects (debug,
+// analyst, course, descent, tarn, ...) fell through to the standalone
+// enumerator and were captured page-by-page as single documents. Their nav,
+// chapter sidebar, cross-page links and site chrome were therefore never
+// rendered in a capture at all, and a whole-corpus audit silently skipped them.
+// Derive, don't declare.
+//
+// `kind` is the reported `format` for a project's pages: a book declares a
+// top-level `chapters:` in its `_site.yml`, everything else is directory-walked.
+const PRUNED_DIRS = new Set(['target', 'node_modules', 'dist']);
+
+function* walkDirs(dir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    // `_`/`.` prefixes are build output (`_site/`, `.work/`) or partials.
+    if (PRUNED_DIRS.has(ent.name)) continue;
+    if (ent.name.startsWith('_') || ent.name.startsWith('.')) continue;
+    const abs = path.join(dir, ent.name);
+    yield abs;
+    yield* walkDirs(abs);
+  }
+}
+
+function declaresChapters(siteYmlPath) {
+  try {
+    return /^chapters:/m.test(fs.readFileSync(siteYmlPath, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+// corpus/single-page-report -> single-page-report, docs/guide -> docs-guide.
+// Keeps the slugs the six declared units already had, so existing `--only`
+// invocations and any banked artifact paths still match.
+function siteSlug(source) {
+  return source.replace(/^corpus\//, '').split('/').join('-');
+}
+
+export function discoverSiteUnits(repoRoot) {
+  const found = [];
+  for (const abs of walkDirs(repoRoot)) {
+    if (!fs.existsSync(path.join(abs, '_site.yml'))) continue;
+    found.push(path.relative(repoRoot, abs));
+  }
+  // Drop a project nested inside another: the outer build emits it (`mounts:`),
+  // so capturing it twice would double-count and misattribute its routes.
+  const roots = found.filter(
+    (r) => !found.some((o) => o !== r && r.startsWith(o + path.sep)),
+  );
+  return roots.sort().map((source) => ({
+    slug: siteSlug(source),
+    source,
+    kind: declaresChapters(path.join(repoRoot, source, '_site.yml'))
+      ? 'book'
+      : 'website',
+  }));
+}
 
 // Decks that exist only as `{{< embed >}}` targets. They are NOT standalone
 // units (the owning site build emits them as tour.html / demo.html inside its
@@ -43,8 +100,8 @@ function hasHiddenSegment(relPath) {
     .some((seg) => seg.startsWith('_') || seg.startsWith('.'));
 }
 
-function isUnderSiteRoot(relPath) {
-  return SITE_UNITS.some(
+function isUnderSiteRoot(relPath, siteUnits) {
+  return siteUnits.some(
     (u) => relPath === u.source || relPath.startsWith(u.source + path.sep),
   );
 }
@@ -86,14 +143,14 @@ export function detectFormat(absTmdPath) {
 // root and has no `_`/`.`-prefixed path segment. This reproduces the exclude
 // list (all excludes are `_`-prefixed partials) while staying robust as the
 // corpus grows.
-export function discoverStandalones(repoRoot) {
+export function discoverStandalones(repoRoot, siteUnits = discoverSiteUnits(repoRoot)) {
   const corpus = path.join(repoRoot, 'corpus');
   const out = [];
   for (const abs of walk(corpus)) {
     if (!abs.endsWith('.tmd')) continue;
     const rel = path.relative(repoRoot, abs);
     if (hasHiddenSegment(rel)) continue;
-    if (isUnderSiteRoot(rel)) continue;
+    if (isUnderSiteRoot(rel, siteUnits)) continue;
     out.push(rel);
   }
   return out.sort();
@@ -128,8 +185,9 @@ function standaloneSlug(relTmd) {
 // The full unit list: 6 site projects + N standalone docs. Each unit:
 //   { slug, source, type: 'site'|'standalone', kind|format }
 export function allUnits(repoRoot) {
-  const site = SITE_UNITS.map((u) => ({ ...u, type: 'site' }));
-  const standalone = discoverStandalones(repoRoot).map((rel) => ({
+  const siteUnits = discoverSiteUnits(repoRoot);
+  const site = siteUnits.map((u) => ({ ...u, type: 'site' }));
+  const standalone = discoverStandalones(repoRoot, siteUnits).map((rel) => ({
     slug: standaloneSlug(rel),
     source: rel,
     type: 'standalone',
