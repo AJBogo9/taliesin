@@ -25,9 +25,18 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 ranking that settled the cross-cluster call the previous session left open: the feature-value
 audit's own order, 202 first as the instrument and 203/204 as the two cuts it measures.
 
-**What is left in P1 is 188, 164, 167, 56, 175(c), 174 and 170**, and no ranking among them has
-been made. **205 is moot**: `{pyodide}` was withdrawn entirely on 2026-08-04, so there is no
-payload left to take out of the binary.
+**What is left in P1 is 210, 211, 188, 164, 167, 56, 175(c), 174 and 170**, and no ranking among
+them has been made. **205 is moot**: `{pyodide}` was withdrawn entirely on 2026-08-04, so there is
+no payload left to take out of the binary.
+
+**Release readiness, re-measured 2026-08-05** (the flip sequence itself is item 100; 148 and 149
+hold the rest). Green today: `git-filter-repo` is installed, the rewrite is rehearsed end to end,
+the tree is clean and equal to `origin/main`, the repo has zero forks, and README's D9-3 claim is
+already softened to "no prebuilt binaries yet". Not green: **`./tools/gates.sh` has not been run
+since 2026-08-03 at `62a3908e`**, four merges ago, and D9-1 makes that a pre-flip requirement
+because all 8 CI jobs arm on the first push after the flip against a tree they have never seen.
+Also still owed before the irreversible half: item 103 (trademark), and item 100's two open
+sub-decisions (do tags travel; prune `notes/` + `docs/superpowers/`).
 
 **`taliesin features <dir>` now exists, so do not re-derive an adoption table by grep.** It reads
 the validator consts, not `vocab.rs` (which is the *offered-completions* subset and would report a
@@ -234,10 +243,13 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      it). Fix the stale comment whenever this file is touched for any other reason.
 
 170. **Marketing site.** (Last by the author's own feature-first policy.) The `live-edit-hero-demo`
-     clip (= `ROADMAP.md` Wave 2's unshipped deliverable), swapping the `site/_site.yml`
-     placeholders, a demo-led hero rebuild, mobile embed refinement, and deploy. **The deploy half is
-     additionally flip-gated** and overlaps 149's launch-presentation group in P3; do not build the
-     same thing twice from both entries.
+     clip (= `ROADMAP.md` Wave 2's unshipped deliverable), a demo-led hero rebuild, mobile embed
+     refinement, and deploy. **"Swapping the `site/_site.yml` placeholders" is rot** (2026-08-05):
+     `url:` is already `https://taliesin.sh`, and placeholder/TBD/lorem greps across `site/` return
+     zero. **There is no deploy mechanism at all** to flip on: `.github/workflows/` holds only
+     `ci.yml` and `release.yml`, so the deploy half is a build, not a switch. It is additionally
+     flip-gated and overlaps 149's launch-presentation group in P3; do not build the same thing
+     twice from both entries.
 
 ### P2 — filed so it is not rediscovered as a defect
 
@@ -378,10 +390,17 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
        this is a launch blocker rather than cosmetic, and the resolution is flip-then-tag, not
        softening the table. Sequence: flip public → push a `v*` tag → verify the release assets
        exist → only then is the README true.
-     - **`git grep -Il "/home/bogo"` → 11 files** (measured 2026-07-28), against a former line in
-       this file claiming the tracked paths were scrubbed. The 2026-07-17 scrub was scoped to four
-       paths under `docs/superpowers/*`; low impact (the username is public via git author metadata)
-       but it is the failure mode `LESSONS.md` warns about. *(Item **25**, the pre-public flip
+     - **`git grep -Il "/home/bogo"` → 21 files** (re-measured 2026-08-05; the filed 11 was
+       2026-07-28, so it has grown, not shrunk), against a former line in this file claiming the
+       tracked paths were scrubbed. They are concentrated in `docs/superpowers/plans/` and `notes/`
+       audit reports. The 2026-07-17 scrub was scoped to four paths under `docs/superpowers/*`; low
+       impact (the username is public via git author metadata) but it is the failure mode
+       `LESSONS.md` warns about.
+     - **Phase 2's tooling prerequisite is discharged:** `git-filter-repo` 2.47.0 is installed at
+       `~/.local/bin/git-filter-repo` (verified 2026-08-05). The audit's prerequisite table and the
+       Phase 2 inputs README both still say "not installed", and the inputs README **contradicts
+       itself** (its own rehearsal section records the full rewrite running under 2.47.0). Trust
+       the binary, not either note. *(Item **25**, the pre-public flip
        procedure, is folded into this item; its number is retired below. `oss-4` was ruled
        2026-07-25: deferred, "I'll do it at the end of summer". All five of its code items shipped
        2026-07-25.)*
@@ -416,21 +435,25 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
 
 149. **Launch presentation, all gated on the flip.** Grouped because none is actionable until the
      repo is public, and each is small once it is.
-     - **The README does not lead with the speed moat.** Measured 2026-08-01: Quarto appears **once**
-       in the README (the earlier "zero times" is rot) and **none** of
-       `tools/live-edit-bench/RESULTS.md`'s numbers appear anywhere in it. The ruling says *lead
-       with the moat*; it does not say *name Quarto*. **Use the re-measured 2026-08-02 figures,
-       not the ones filed here originally** (cold 123,994.9 µs / warm 28,425.1 µs / 83× smaller
-       was a pre-`6cdbc218` measurement this note copied after it had already gone stale): cold
-       **135,010.4 µs** vs warm **13,403.9 µs**, payload **32 KB vs a 292 KB page, 9× smaller**,
-       53 `SetMeta` / 1 `Update`. The honest headline for a README is the op shape rather than the
-       ratio (54 of 55 ops are metadata-only patches totalling ~3.2 KB that never touch a DOM
-       node), since one fenced div carries 90% of the payload on its own.
-     - **The GitHub repo is a dead first impression:** the description defines Taliesin in terms of
-       Taliesin, `homepageUrl` empty, one topic ("rust"), zero releases, and the README's only image
-       is the licence badge — while four screencasts demonstrating the moat sit committed in
-       `site/assets/` and appear on no page a visitor sees. (They are MP4; a GIF conversion or an
-       uploaded asset URL is needed, not a one-line embed.)
+     - **The README leads with the moat now, and the pair it led with was WRONG until 2026-08-05.**
+       The filed "none of `RESULTS.md`'s numbers appear anywhere in it" is discharged: the speed
+       bullet carries them. But it quoted **3.2 KB against a 270 KB page**, which is exactly the
+       pre-`6cdbc218` pair `RESULTS.md` warns about in a header of its own ("Read this before
+       quoting the ratio anywhere"). **3.2 KB is the other 54 ops, not the patch**, so the public
+       claim overstated the shrink by ~10x. Corrected in the same push to the gated numbers:
+       payload **32,303 bytes vs a 291,691-byte page, 9x smaller**, 53 `SetMeta` / 1 `Update`,
+       cold **135,010.4 µs** vs warm **13,403.9 µs**. Quarto still appears **once** (the "zero
+       times" filing was rot). **Anything quoting the ratio reads `RESULTS.md`'s "why the ratio is
+       9x and not 83x" section first**: one fenced div carries 90% of the payload on its own, and
+       the honest headline is the op shape, not the ratio.
+     - **The GitHub repo is a *partly* dead first impression.** Re-measured 2026-08-05 via
+       `gh repo view`: the description is a real one-line description and there are **6 topics**,
+       not the filed 1, and the four screencasts **do** appear on pages a visitor sees
+       (`site/index.tmd:76,131`, `site/features.tmd:14`). Both halves are rot. Still true:
+       `homepageUrl` is **empty** although `taliesin.sh` is bought and already set as `url:` in
+       `site/_site.yml`, there are zero releases, and the README's only image is the licence badge.
+       The screencasts are MP4, so putting one in the README needs a GIF conversion or an uploaded
+       asset URL, not a one-line embed.
      - **Still absent: a code of conduct and GitHub issue templates**, both only worth doing once the
        repo is public. (`CONTRIBUTING.md` with the inbound relicensing grant and the platform matrix
        both shipped 2026-07-28.)
