@@ -16,6 +16,9 @@ the shared file stays where it is.
 
 ## One section, pulled in below
 
+The section arrives with its own heading, so this one introduces it rather than
+replacing it. Everything from here to the next heading is the shared file's.
+
 {{< include _includes/shared-derivation.tmd#sec-bias-variance >}}
 
 ## A second section from the same file

@@ -29,9 +29,15 @@ pub(crate) fn parse_pandoc_attrs(s: &str) -> Option<(Vec<String>, Option<String>
 /// Blank out fenced-div markers (`::: {...}` / `:::`) without changing
 /// the line count, so the inner content parses as ordinary blocks and every
 /// other block's sourcepos line numbers stay valid against the original source.
+///
+/// Also indents display-math continuation lines that would otherwise start a new
+/// block (see [`interrupts_paragraph`]). Both passes are line-preserving, which is
+/// what keeps every sourcepos honest.
 pub(crate) fn preprocess(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let mut in_code: Option<(char, usize)> = None;
+    // Indentation of the line that opened the display-math block we are inside.
+    let mut math_open: Option<usize> = None;
     for (i, line) in src.lines().enumerate() {
         if i > 0 {
             out.push('\n');
@@ -42,14 +48,89 @@ pub(crate) fn preprocess(src: &str) -> String {
         // literal content (e.g. docs that *show* `::: {.callout-note}` in a code
         // block), so leave those lines untouched.
         let blank = !was_in_code && in_code.is_none() && parse_fence(line.trim_start()).is_some();
+        // Display math is only display math outside a code fence, for the same reason.
+        let outside_code = !was_in_code && in_code.is_none();
+        let mut masked = None;
+        if outside_code && !blank {
+            match math_open {
+                None => math_open = display_math_open_indent(line),
+                // A blank line ends the paragraph, so the block never closes and there
+                // is nothing left to protect; closing delimiters end it normally.
+                Some(_) if line.trim().is_empty() || closes_display_math(line) => math_open = None,
+                Some(open_indent) => {
+                    let indent = line.len() - line.trim_start_matches(' ').len();
+                    let target = open_indent + 4;
+                    if indent < target && interrupts_paragraph(line) {
+                        masked = Some(format!("{}{line}", " ".repeat(target - indent)));
+                    }
+                }
+            }
+        }
         if !blank {
-            out.push_str(line);
+            out.push_str(masked.as_deref().unwrap_or(line));
         }
     }
     if src.ends_with('\n') {
         out.push('\n');
     }
     out
+}
+
+/// Indentation of `line` if it opens a multi-line display-math block: `$$` or a bare
+/// `\begin{env}` that does not also close on the same line. A one-line `$$a+b$$` needs
+/// no protection (nothing can interrupt a single line), so it does not open a region.
+fn display_math_open_indent(line: &str) -> Option<usize> {
+    let trimmed = line.trim_start_matches(' ');
+    let indent = line.len() - trimmed.len();
+    if let Some(rest) = trimmed.strip_prefix("$$") {
+        return (!rest.contains("$$")).then_some(indent);
+    }
+    // Pandoc treats a bare `\begin{env}…\end{env}` as display math; `bare_math_env`
+    // renders it, and it is split by a list marker exactly the same way.
+    if trimmed.starts_with("\\begin{") && !trimmed.contains("\\end{") {
+        return Some(indent);
+    }
+    None
+}
+
+fn closes_display_math(line: &str) -> bool {
+    line.contains("$$") || line.contains("\\end{")
+}
+
+/// Would this line start a new block, interrupting the paragraph that a multi-line
+/// display-math block lives inside? `math_dollars` is an inline extension, so the
+/// whole `$$…$$` run is one paragraph and CommonMark lets these markers cut it in
+/// two. Only these lines are re-indented: leaving every other line untouched keeps
+/// block-id churn (ids hash the source) to the documents that were actually broken.
+fn interrupts_paragraph(line: &str) -> bool {
+    let trimmed = line.trim_start_matches(' ');
+    if line.len() - trimmed.len() >= 4 {
+        return false; // already indented enough to be a lazy continuation
+    }
+    let Some(first) = trimmed.chars().next() else {
+        return false;
+    };
+    let rest = &trimmed[first.len_utf8()..];
+    // A run of 3+ `-`/`*`/`_` (spaces allowed) is a thematic break.
+    let thematic = matches!(first, '-' | '*' | '_')
+        && trimmed.chars().all(|c| c == first || c == ' ')
+        && trimmed.chars().filter(|&c| c == first).count() >= 3;
+    match first {
+        // A bullet marker interrupts only with non-empty content after it.
+        '-' | '+' | '*' => thematic || (rest.starts_with(' ') && !rest.trim().is_empty()),
+        '_' => thematic,
+        '>' => true,
+        '#' => {
+            let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+            (1..=6).contains(&hashes)
+                && (trimmed.len() == hashes || trimmed[hashes..].starts_with(' '))
+        }
+        // A fenced code block interrupts a paragraph.
+        '`' | '~' => trimmed.chars().take_while(|&c| c == first).count() >= 3,
+        // Only `1.`/`1)` may interrupt a paragraph (CommonMark restricts the start number).
+        '1' => rest.starts_with(". ") || rest.starts_with(") "),
+        _ => false,
+    }
 }
 
 /// A Markdown code-fence marker line (3+ backticks or tildes after at most 3 spaces

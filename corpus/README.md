@@ -60,9 +60,34 @@ live with cross-page navigation and per-page hot reload. Its `listing:` blocks
 (blog index, projects index, homepage recent-posts) render post cards, and the
 homepage's `hero:` block renders the Marginalia header (see `todo.md` §4).
 
-`posts/pca-geometry/index.tmd` pulls in `_includes/three-scene.tmd` via
-`{{< include ../../_includes/three-scene.tmd >}}`; the `posts/` + `_includes/`
-layout is mirrored from the source project so that path resolves verbatim.
+`posts/pca-geometry/index.tmd` pulls in the Three.js scene helper via
+`{{< include _includes/three-scene.tmd >}}`, from its **own**
+`posts/pca-geometry/_includes/`.
+
+It used to reach up to `corpus/_includes/` with `../../`, mirroring the source
+project's layout. That silently stopped working: a single invoked document is
+confined to its own directory unless an `_site.yml` widens the boundary (PT-2,
+see `crates/core/tests/include_root_parity.rs`), and nothing above `corpus/posts/`
+declares one — so `build corpus/posts/pca-geometry/index.tmd` shipped the literal
+`{{< include … >}}` as text plus three "couldn't load" boxes where the 3D figures
+belong. The `corpus/tech-blog/` copy of this post keeps the `../../` form, which
+is correct *there* because `corpus/tech-blog/_site.yml` declares that boundary.
+The two copies are otherwise byte-identical, and that one line is the difference.
+`every_corpus_doc_resolves_its_includes_when_built_alone` (`tests/corpus.rs`)
+sweeps every doc through the single-file entry point so this cannot rot again.
+
+**The Three.js pages need the network.** Every copy of `three-scene.tmd`
+(`graphics3d/`, `posts/pca-geometry/`, `tech-blog/`) `import()`s three.js,
+`OrbitControls` and `GLTFLoader` from `https://esm.sh/three@0.163.0` at *view*
+time, so `graphics3d/{cad,lorenz,molecules}` and both `pca-geometry` copies do
+not render their 3D figures offline. The build says so per page ("external
+reference not bundled … offline viewing fails"); this is the corpus's own
+authored `{js}`, not something the tool injects, and it is the one place the
+corpus depends on a third party at view time. Taliesin vendors d3, Observable
+Plot and mermaid for exactly this reason, so vendoring three.js too is the
+obvious symmetry — it is left undone deliberately, because it is ~600 kB plus an
+ESM bundling step, a `THIRD_PARTY.md` entry and a `third_party.rs` version pin,
+which is a product decision rather than a bug fix.
 
 `transclude.tmd` is the **block-level** counterpart: it pulls single anchored
 sections out of `_includes/shared-derivation.tmd` with

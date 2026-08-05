@@ -18,7 +18,7 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
     let mut out = String::with_capacity(src.len());
     let mut in_code = false;
     // Deduplicates `{{< input >}}` control ids across the document, so two controls that
-    // bind the same reactive name get distinct DOM ids (`qin-rate`, `qin-rate-1`). Threaded
+    // bind the same reactive name get distinct DOM ids (`tali-in-rate`, `tali-in-rate-1`). Threaded
     // here (not per line) because the id must be name-based, not line-based — see
     // `input_shortcode`.
     let mut input_ids: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
@@ -595,15 +595,15 @@ fn input_shortcode(
     }
     // Derive the control's DOM id from its reactive name, not the source line, so the
     // block's content-hash `data-block-id` stays stable when an edit above shifts the line.
-    // A line-based id (the old `qin-<line>`) re-hashes the block on any shift, forcing a live
+    // A line-based id (the old `tali-in-<line>`) re-hashes the block on any shift, forcing a live
     // re-render that discards the control's DOM/JS state (and, in a deck, defeats the
     // section-signature re-mount that keeps untouched slides alive). Deduped so two controls
     // binding the same name still get unique ids; an anonymous control (no name, hence no
     // reactive identity to preserve) keeps the line-based fallback.
     let ctrl_id = if name.is_empty() {
-        format!("qin-{line_no}")
+        format!("tali-in-{line_no}")
     } else {
-        dedup_with_suffix(format!("qin-{}", slugify(&name)), input_ids)
+        dedup_with_suffix(format!("tali-in-{}", slugify(&name)), input_ids)
     };
     let name_a = escape_attr(&name);
     let num_attr = |k: &str| {
@@ -1075,7 +1075,7 @@ mod a11y_tests {
     #[test]
     fn slider_output_is_tied_to_its_control_with_for() {
         // PA-M9: the live `<output>` readout must carry `for="<control-id>"` so AT associates the
-        // reading with the range input it reflects. The control id is name-derived (`qin-<slug>`).
+        // reading with the range input it reflects. The control id is name-derived (`tali-in-<slug>`).
         let mut ids = std::collections::HashMap::new();
         let mut warns = Vec::new();
         let html = input_shortcode(
@@ -1085,11 +1085,11 @@ mod a11y_tests {
             &mut ids,
         );
         assert!(
-            html.contains("id=\"qin-freq\""),
+            html.contains("id=\"tali-in-freq\""),
             "sanity: the control carries its id: {html}"
         );
         assert!(
-            html.contains("for=\"qin-freq\" data-tali-out"),
+            html.contains("for=\"tali-in-freq\" data-tali-out"),
             "the <output> readout must be tied to its control via for=: {html}"
         );
     }

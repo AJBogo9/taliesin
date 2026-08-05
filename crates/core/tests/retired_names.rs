@@ -260,6 +260,33 @@ fn the_guard_detects_a_reintroduction() {
     );
 }
 
+/// The rest of this file hunts the `qmd` token. That is not the whole brand: the
+/// `{{< input >}}` controls emitted DOM ids prefixed `q` + `in` — `qin-k`, `qin-rate` —
+/// for a year after the rename, on nine corpus pages including the deck and the
+/// `descent` gallery exhibit. The token guard could never see it (it is not the literal
+/// `qmd`), and every other assertion lives in the same file as its emitter, so nothing
+/// did. Renamed to `tali-in-` on 2026-08-05; this keeps the whole `q`-prefix family out
+/// of emitted markup rather than just the one spelling that was found.
+#[test]
+fn no_q_prefixed_identifier_ships_in_emitted_markup() {
+    // A real corpus page, through the entry point that expands shortcodes: `{{< input >}}`
+    // is expanded by the include-aware path, so a bare `render_document` leaves the
+    // directive as literal text and every needle below passes vacuously.
+    let dir = corpus_dir().join("reactive");
+    let src = std::fs::read_to_string(dir.join("inputs.tmd")).unwrap();
+    let h = taliesin_core::render_document_with_includes(&src, &dir).body_html();
+    assert!(
+        h.contains("tali-in-k"),
+        "fixture is wrong: the control id should be name-derived, got {h}"
+    );
+    for attr in ["id=\"q", "for=\"q", "class=\"q", "data-q"] {
+        assert!(
+            !h.contains(attr),
+            "`{attr}…` is a retired `q`-prefix brand leftover in emitted markup: {h}"
+        );
+    }
+}
+
 /// The figure lightbox was deleted 2026-08-03 (visual minimalism pass): browsers
 /// open images in a new tab and pinch-zoom natively, and the viewer cost a
 /// permanently-armed capture-phase click handler on every figure.

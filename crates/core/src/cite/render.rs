@@ -108,7 +108,7 @@ pub fn process(
 
     for b in blocks.iter_mut() {
         *cur_loc.borrow_mut() = (b.source_file.clone(), sourcepos_start_line(&b.sourcepos));
-        b.html = transform_html(&b.html, &mut cite_key, xrefs);
+        b.html = transform_html(&b.html, &mut cite_key, xrefs, CiteMode::Resolve);
     }
     let key_loc = key_loc.into_inner();
 
@@ -233,12 +233,37 @@ fn is_manual_references_heading(html: &str) -> bool {
     text == "references" || text == "bibliography"
 }
 
+/// Link the bare `@fig-…`/`@tbl-…`/`@sec-…` cross-references in an HTML fragment that
+/// is produced *after* [`process`] has already walked the document's blocks — an
+/// executed cell's caption, which the server builds only once the kernel returns.
+/// Unknown anchors (all of them here, since no local registry is passed) become
+/// `data-tali-xref` markers, which the site's `resolve_cross_refs` then turns into the
+/// numbered link, so a caption reference reads exactly like the same reference in prose.
+///
+/// Citations are deliberately left alone: numbering one now would have to append to a
+/// References list that was built before this fragment existed, so `[@key]` in a caption
+/// stays literal rather than silently claiming a number nothing lists.
+pub fn link_xrefs_in_fragment(html: &str) -> String {
+    let empty = HashMap::new();
+    transform_html(html, &mut |_| 0, &empty, CiteMode::Skip)
+}
+
+/// Whether [`transform_html`] may rewrite `[@key]` citation groups. A fragment
+/// transformed after the References block exists must not (see
+/// [`link_xrefs_in_fragment`]).
+#[derive(Clone, Copy, PartialEq)]
+enum CiteMode {
+    Resolve,
+    Skip,
+}
+
 /// Walk HTML, transforming only plain-text runs (never inside tags or inside
 /// `pre`/`code`/`script`/`style`/`annotation` elements).
 fn transform_html(
     html: &str,
     cite_key: &mut impl FnMut(&str) -> usize,
     xrefs: &HashMap<String, String>,
+    cites: CiteMode,
 ) -> String {
     const SKIP: [&str; 5] = ["pre", "code", "script", "style", "annotation"];
     let mut out = String::with_capacity(html.len());
@@ -267,7 +292,7 @@ fn transform_html(
             let end = rest.find('<').unwrap_or(rest.len());
             let text = &rest[..end];
             if skip_depth == 0 {
-                out.push_str(&rewrite_text(text, cite_key, xrefs));
+                out.push_str(&rewrite_text(text, cite_key, xrefs, cites));
             } else {
                 out.push_str(text);
             }
@@ -282,6 +307,7 @@ fn rewrite_text(
     text: &str,
     cite_key: &mut impl FnMut(&str) -> usize,
     xrefs: &HashMap<String, String>,
+    cites: CiteMode,
 ) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
@@ -291,7 +317,7 @@ fn rewrite_text(
     // this, a run of N unmatched `[` is O(N^2) (one full scan per `[`).
     let mut no_close = false;
     while i < chars.len() {
-        if chars[i] == '[' && !no_close {
+        if chars[i] == '[' && !no_close && cites == CiteMode::Resolve {
             match chars[i + 1..].iter().position(|&c| c == ']') {
                 Some(close) => {
                     let inner = &chars[i + 1..i + 1 + close];
@@ -442,16 +468,21 @@ mod tests {
         // A run of '[' with no closing ']' is emitted verbatim (this is also the
         // O(n^2)-pathological input the scan must not choke on).
         assert_eq!(
-            rewrite_text("[[[[ no close here", &mut key, &xrefs),
+            rewrite_text("[[[[ no close here", &mut key, &xrefs, CiteMode::Resolve),
             "[[[[ no close here"
         );
         // A bracket group without '@' is not a citation; the brackets stay.
         assert_eq!(
-            rewrite_text("see [ref 12] here", &mut key, &xrefs),
+            rewrite_text("see [ref 12] here", &mut key, &xrefs, CiteMode::Resolve),
             "see [ref 12] here"
         );
         // A real citation is still rewritten.
-        let out = rewrite_text("see [@bishop2006pattern]", &mut key, &xrefs);
+        let out = rewrite_text(
+            "see [@bishop2006pattern]",
+            &mut key,
+            &xrefs,
+            CiteMode::Resolve,
+        );
         assert!(
             out.contains("<a") && !out.contains("[@"),
             "citation not rewritten: {out}"
@@ -467,11 +498,16 @@ mod tests {
         // A mid-word `@` (an email / @-mention glued to a word) is NOT an xref: the
         // `rem-` after the `@` looks like a `rem-` (Remark) anchor, but the preceding
         // `b` of `bob` is a word char, so it's left verbatim — no link, no diagnostic.
-        let out = rewrite_text("mail bob@rem-server.com today", &mut key, &xrefs);
+        let out = rewrite_text(
+            "mail bob@rem-server.com today",
+            &mut key,
+            &xrefs,
+            CiteMode::Resolve,
+        );
         assert_eq!(out, "mail bob@rem-server.com today");
 
         // The same anchor still resolves when `@` starts a word.
-        let out = rewrite_text("see @fig-x for this", &mut key, &xrefs);
+        let out = rewrite_text("see @fig-x for this", &mut key, &xrefs, CiteMode::Resolve);
         assert!(
             out.contains("href=\"#fig-x\"") && out.contains("Figure"),
             "@fig-x at a word boundary must still resolve: {out}"
@@ -479,9 +515,9 @@ mod tests {
 
         // Boundary forms that must keep working: start-of-string, after `(`, and a
         // trailing `.` after the anchor.
-        let after_paren = rewrite_text("(@fig-x)", &mut key, &xrefs);
+        let after_paren = rewrite_text("(@fig-x)", &mut key, &xrefs, CiteMode::Resolve);
         assert!(after_paren.contains("href=\"#fig-x\""), "{after_paren}");
-        let at_start = rewrite_text("@fig-x.", &mut key, &xrefs);
+        let at_start = rewrite_text("@fig-x.", &mut key, &xrefs, CiteMode::Resolve);
         assert!(
             at_start.contains("href=\"#fig-x\""),
             "start-of-string @fig-x must resolve: {at_start}"

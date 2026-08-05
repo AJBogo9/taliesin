@@ -97,6 +97,14 @@ fn a_cross_page_ref_to_a_cell_produced_float_keeps_its_number() {
     );
 }
 
+// A cross-reference written inside an executed cell's `#| fig-cap:` (the readout has one:
+// `@tbl-slo` in the `fig-p95` caption) is NOT asserted here. This file renders without a
+// kernel, so that caption does not exist in `readout()` at all — asserting on it would
+// pass vacuously either way. The two halves are pinned where each can actually run:
+// `exec::tests::executed_caption_emits_cross_reference_markers` (the server emits the
+// marker) and `site::xref::tests::a_same_page_marker_resolves_to_a_bare_fragment_with_its_number`
+// (the site pass resolves it).
+
 /// A cross-PAGE `@sec-` on a **website** has no number to carry — section numbering is
 /// a book's, and `harvest_xref_numbers` deliberately refuses to invent one here (a flat
 /// per-page counter would be mislabelled "Chapter 1"). It must still say which section

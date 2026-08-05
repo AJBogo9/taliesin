@@ -14,7 +14,7 @@ An NBA scout records three measurements for every player he is scouting: height,
 taller players tend to have longer wingspans and higher reaches. So in practice there are three numbers (dimensions) per player, but the data could be
 represented with a single dimension representing the "overall size" of the NBA player. PCA finds this dimension automatically from the data alone.
 
-{{< include ../../_includes/three-scene.tmd >}}
+{{< include _includes/three-scene.tmd >}}
 
 ```{python}
 #| label: setup

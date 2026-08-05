@@ -498,6 +498,99 @@ fn includes_are_resolved_with_origin_files() {
     );
 }
 
+/// EVERY corpus document must resolve its includes when built **on its own**, which is
+/// what `taliesin build <file.tmd>` does and what a reader copying one example does.
+///
+/// The test above deliberately renders the tech-blog copy, because that one sits under a
+/// `_site.yml`. That left the loose `corpus/posts/pca-geometry/` copy — same bytes, no
+/// project marker above it — with no coverage at all, and it rotted: a standalone build
+/// shipped the literal `{{< include ../../_includes/three-scene.tmd >}}` as text plus
+/// three "couldn't load" boxes where the 3D figures belong, because a single invoked
+/// document is confined to its own directory (PT-2, see `include_root_parity.rs`) so
+/// `../../` escapes. Sweeping every doc through the single-doc entry point is what makes
+/// that unmissable for the next one.
+#[test]
+fn every_corpus_doc_resolves_its_includes_when_built_alone() {
+    /// Drop `<code>`/`<pre>` subtrees, so a document that *shows* the include syntax
+    /// as an example is not mistaken for one that failed to expand it.
+    fn strip_code(html: &str) -> String {
+        let mut out = String::with_capacity(html.len());
+        let mut rest = html;
+        while let Some(open) = rest.find("<code").or_else(|| rest.find("<pre")) {
+            out.push_str(&rest[..open]);
+            let close_tag = if rest[open..].starts_with("<code") {
+                "</code>"
+            } else {
+                "</pre>"
+            };
+            match rest[open..].find(close_tag) {
+                Some(rel) => rest = &rest[open + rel + close_tag.len()..],
+                None => return out,
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+
+    let mut files = Vec::new();
+    collect_tmd(&corpus_dir(), &mut files);
+    let mut leaked = Vec::new();
+    let mut checked = 0;
+    for f in &files {
+        let Ok(src) = fs::read_to_string(f) else {
+            continue;
+        };
+        if !src.contains("{{< include") {
+            continue;
+        }
+        // Partials (`_includes/…`) are pulled INTO a page, never built on their own —
+        // the site walker skips any `_`-prefixed segment and so does this.
+        if f.components().any(|c| {
+            c.as_os_str()
+                .to_str()
+                .is_some_and(|s| s.starts_with('_') && s != "_")
+        }) {
+            continue;
+        }
+        let dir = f.parent().unwrap();
+        // The product entry point for one invoked file, not the library-only one: an
+        // include assertion true of the library and false of the command is exactly the
+        // vacuous shape this file has been bitten by before.
+        let doc = taliesin_core::render_single_doc(&src, dir);
+        checked += 1;
+        // The leaked directive is ESCAPED in the body (`{{&lt; include …`), so a needle
+        // for the raw `{{< include` matches nothing and passes on a broken page — this
+        // assertion was written that way first and stayed green with the bug in place.
+        // Code has to come out first: `transclude.tmd` *documents* the syntax in code
+        // spans, and those are literal content, not an unresolved directive.
+        let body = strip_code(&doc.body_html());
+        let leaked_text = body.contains("{{&lt; include") || body.contains("{{< include");
+        let warned = doc
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("include not resolved"));
+        if leaked_text || warned {
+            leaked.push(
+                f.strip_prefix(corpus_dir())
+                    .unwrap_or(f)
+                    .display()
+                    .to_string(),
+            );
+        }
+    }
+    // Guard against the sweep silently matching nothing (a renamed shortcode, a moved
+    // corpus): this assertion is only worth anything if it actually rendered documents.
+    assert!(
+        checked >= 3,
+        "expected several corpus docs to use `{{{{< include >}}}}`, walked {checked}"
+    );
+    assert!(
+        leaked.is_empty(),
+        "these corpus docs ship an unresolved `{{{{< include >}}}}` when built on their \
+         own (a reader copying one gets literal shortcode text): {leaked:?}"
+    );
+}
+
 #[test]
 fn reveal_deck_detects_format_and_splits_into_slides() {
     use taliesin_core::{DocFormat, render_document_with_includes, slides_html};
@@ -1567,13 +1660,42 @@ fn shared_sources(a_root: &Path, b_root: &Path, rel: &Path, out: &mut Vec<PathBu
     }
 }
 
-/// `corpus/posts/<slug>/` and `corpus/tech-blog/posts/<slug>/` hold byte-identical
-/// copies of three posts (plus a shared `_includes/three-scene.tmd`), and both
-/// copies are live documents in the regression net. Nothing stopped a content fix
-/// from landing in one copy and rotting the other; `fa200e5`'s own message notes
-/// that "every fix lands twice". This pins that.
+/// `corpus/posts/<slug>/` and `corpus/tech-blog/posts/<slug>/` hold identical copies of
+/// three posts (plus a shared `_includes/three-scene.tmd`), and both copies are live
+/// documents in the regression net. Nothing stopped a content fix from landing in one
+/// copy and rotting the other; `fa200e5`'s own message notes that "every fix lands
+/// twice". This pins that.
+///
+/// The one licensed difference is an `{{< include >}}`'s **path prefix**. The two copies
+/// sit under different project boundaries, and the boundary decides what a relative
+/// include may reach: the tech-blog copy resolves `../../_includes/three-scene.tmd`
+/// against `corpus/tech-blog/_site.yml` (pinned as that exact literal by
+/// `includes_are_resolved_with_origin_files` and `include_relative_base.rs`), while the
+/// loose copy has no `_site.yml` above it and so is confined to its own directory
+/// (PT-2). Byte-identity and both-copies-resolve cannot both hold. Normalising the
+/// include target to its basename keeps the pin on *which file* is pulled in and on all
+/// the prose/code around it, and gives up only the prefix the boundary dictates.
 #[test]
 fn twinned_corpus_sources_stay_byte_identical() {
+    /// Reduce `{{< include <path>/<name>.tmd … >}}` to `{{< include <name>.tmd … >}}`,
+    /// so the two copies' differing project-relative prefixes compare equal.
+    fn normalize_include_paths(bytes: &[u8]) -> String {
+        let text = String::from_utf8_lossy(bytes);
+        text.lines()
+            .map(|line| match line.find("{{< include ") {
+                None => line.to_string(),
+                Some(at) => {
+                    let head = &line[..at + "{{< include ".len()];
+                    let tail = &line[at + "{{< include ".len()..];
+                    let (path, rest) = tail.split_once(' ').unwrap_or((tail, ""));
+                    let base = path.rsplit('/').next().unwrap_or(path);
+                    format!("{head}{base} {rest}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     let corpus = corpus_dir();
     let roots = [
         (corpus.join("posts"), corpus.join("tech-blog/posts")),
@@ -1597,7 +1719,10 @@ fn twinned_corpus_sources_stay_byte_identical() {
 
     let drifted: Vec<String> = pairs
         .iter()
-        .filter(|(a, b)| fs::read(a).unwrap() != fs::read(b).unwrap())
+        .filter(|(a, b)| {
+            normalize_include_paths(&fs::read(a).unwrap())
+                != normalize_include_paths(&fs::read(b).unwrap())
+        })
         .map(|(a, b)| {
             format!(
                 "  {} != {}",

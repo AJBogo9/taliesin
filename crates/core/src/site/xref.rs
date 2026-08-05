@@ -449,9 +449,18 @@ fn rewrite_one_xref(
         return link.to_string();
     };
     let anchor = &link[astart..astart + alen];
-    let Some(target) = targets.get(anchor).filter(|t| t.url != current_url) else {
-        return link.to_string(); // same page or unknown → leave cite's label link
+    let Some(target) = targets.get(anchor) else {
+        return link.to_string(); // unknown anchor → leave cite's bare-label link
     };
+    // A same-page target used to be skipped here, on the assumption that cite already
+    // resolved every local reference at render time and a leftover marker could only be
+    // cross-page. That stopped being true once executed-cell captions were linked: a
+    // `#| fig-cap:` is built AFTER the render-time cite pass (the kernel has to return
+    // first), so its `@tbl-x` arrives here as an unresolved marker pointing at this very
+    // page, and skipping it shipped a numberless "Table" link plus a spurious
+    // "broken cross-reference" warning. A marker only exists when cite could NOT resolve
+    // it locally, so resolving one now is never double work.
+    let same_page = target.url == current_url;
     // A `@sec-` to a chapter (a whole-number section number, no dot) reads "Chapter
     // N"; a subsection keeps cite's "Section" label.
     let label = if anchor.starts_with("sec-")
@@ -475,10 +484,14 @@ fn rewrite_one_xref(
     } else {
         String::new()
     };
-    format!(
-        "<a href=\"{up}{}#{anchor}\" class=\"tali-xref\">{label}{qualifier}</a>",
-        target.url
-    )
+    // A same-page reference is a bare fragment: prefixing the page's own url would send
+    // the reader through a fresh document load to land where they already are.
+    let href = if same_page {
+        format!("#{anchor}")
+    } else {
+        format!("{up}{}#{anchor}", target.url)
+    };
+    format!("<a href=\"{href}\" class=\"tali-xref\">{label}{qualifier}</a>")
 }
 
 #[cfg(test)]
@@ -618,6 +631,44 @@ mod tests {
             "<a href=\"index.html#sec-model\" class=\"tali-xref\">Section&nbsp;\u{201c}Is the \
              canary still slower?\u{201d}</a>"
         );
+    }
+
+    /// A marker whose target is on the CURRENT page must resolve too, as a bare `#anchor`
+    /// fragment carrying the number.
+    ///
+    /// This used to be skipped: cite resolves every local reference at render time, so a
+    /// leftover marker could only be cross-page. Executed-cell captions broke that — a
+    /// `#| fig-cap:` is built after the kernel returns, which is after the cite pass, so
+    /// its `@tbl-x` reaches here as a same-page marker. Skipping it shipped a numberless
+    /// "Table" link and a spurious "broken cross-reference" warning on the very page that
+    /// defines the anchor. A marker exists only where cite could not resolve locally, so
+    /// resolving one here is never double work.
+    #[test]
+    fn a_same_page_marker_resolves_to_a_bare_fragment_with_its_number() {
+        let targets = HashMap::from([(
+            "tbl-slo".to_string(),
+            XrefTarget {
+                url: "index.html".to_string(),
+                number: "1".to_string(),
+                title: String::new(),
+            },
+        )]);
+        let link = r##"<a href="#tbl-slo" class="tali-xref" data-tali-xref="tbl-slo">Table</a>"##;
+        assert_eq!(
+            rewrite_one_xref(link, &targets, "index.html", ""),
+            "<a href=\"#tbl-slo\" class=\"tali-xref\">Table&nbsp;1</a>",
+            "a same-page target must not be prefixed with its own page url"
+        );
+    }
+
+    /// An anchor no page defines still degrades to cite's bare-label link, rather than
+    /// becoming a link to nowhere.
+    #[test]
+    fn an_unknown_marker_is_left_as_the_bare_label_link() {
+        let targets: HashMap<String, XrefTarget> = HashMap::new();
+        let link =
+            r##"<a href="#tbl-ghost" class="tali-xref" data-tali-xref="tbl-ghost">Table</a>"##;
+        assert_eq!(rewrite_one_xref(link, &targets, "index.html", ""), link);
     }
 
     /// A number, where the project has one, still wins: a book is untouched by the

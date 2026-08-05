@@ -27,7 +27,7 @@ is decoration. It is the difference between finishing the chapter and closing th
 
 ## A figure
 
-![A calm reading column.](../media/fit-a.png){#fig-reading}
+![A calm reading column.](fit-a.png){#fig-reading}
 
 @fig-reading should keep its caption and numbering in every theme.
 

@@ -37,6 +37,7 @@ pub(crate) use render::XREF_LABELS;
 /// Public so `taliesin symbols` can offer only anchors an author can actually write
 /// after `@`, instead of reimplementing the prefix list outside `taliesin-core`.
 pub use render::is_xref_anchor;
+pub use render::link_xrefs_in_fragment;
 pub use render::process;
 pub(crate) use render::xref_prefix_for_label;
 

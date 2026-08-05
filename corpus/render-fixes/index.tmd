@@ -14,11 +14,17 @@ alongside `width=`.
 
 ## A video with a query-string in its source
 
-A token-bearing media URL carries an `=` *after* a `?`, so it is the
-positional path, not a `key=value` named arg. The whole `src` must survive
-intact (no literal `{{<` braces shipped).
+A token-bearing media path carries an `=` *after* a `?`, so it is the
+positional path, not a `key=value` named arg. The token also contains a `:`,
+which makes the path *look* like it opens with a URL scheme. Both readings are
+wrong, and the whole `src` must survive intact (no literal `{{<` braces
+shipped).
 
-{{< video https://media.example.com/clip.mp4?token=demo123 caption="A token-signed screencast" >}}
+`{{< video >}}` takes a file relative to the page, so this is a local clip:
+a `https:` source is refused outright and would leave the shortcode
+unexpanded. That is the shape the shortcode is built to keep positional.
+
+{{< video clip.mp4?token=a:b caption="A token-signed screencast" >}}
 
 ## A mermaid diagram (offline-aware)
 

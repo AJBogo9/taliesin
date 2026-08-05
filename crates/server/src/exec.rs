@@ -1582,6 +1582,19 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
     }
 }
 
+/// An executed cell's caption, ready to sit in a `<figcaption>`/`<caption>`: escaped
+/// first (it is author text, never markup), then with its `@fig-`/`@tbl-`/`@sec-`
+/// cross-references linked.
+///
+/// The linking cannot happen at render time: this caption only exists once the kernel
+/// has returned, which is after `cite::process` has walked the document. So the refs are
+/// emitted as `data-tali-xref` markers and the site's `resolve_cross_refs` (via
+/// `finish_blocks`, which already runs over the executed blocks) resolves them to the
+/// number — the same path a cross-page reference to a cell-produced float already takes.
+fn caption_html(caption: &str) -> String {
+    taliesin_core::cite::link_xrefs_in_fragment(&esc(caption))
+}
+
 /// Wrap a cell's rendered output in a numbered `<figure>` (caption below),
 /// carrying the `#fig-` anchor so `@fig-x` cross-references resolve to it.
 fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
@@ -1593,7 +1606,7 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
     let figcap = if caption.is_empty() {
         format!("Figure&nbsp;{}", fig.number)
     } else {
-        format!("Figure&nbsp;{}: {}", fig.number, esc(caption))
+        format!("Figure&nbsp;{}: {}", fig.number, caption_html(caption))
     };
     format!(
         "<figure{id_attr} class=\"tali-figure tali-figure-center\">{inner}\
@@ -1625,7 +1638,7 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
         "{}{open}<caption>Table&nbsp;{}{sep}{}</caption>{}",
         &inner[..start],
         tbl.number,
-        esc(caption),
+        caption_html(caption),
         &inner[gt..],
     )
 }
@@ -1653,7 +1666,7 @@ fn table_figure_wrap(
         "<figure{id_attr} class=\"tali-figure tali-table-figure\">\
          <figcaption>Table&nbsp;{}{sep}{}</figcaption>{inner}</figure>",
         tbl.number,
-        esc(caption),
+        caption_html(caption),
     )
 }
 
@@ -3156,6 +3169,70 @@ mod tests {
         assert!(
             html.contains("<figcaption>Figure&nbsp;2: Cov &amp; vars</figcaption>"),
             "caption not numbered/escaped: {html}"
+        );
+    }
+
+    /// A `@tbl-`/`@fig-` cross-reference written inside a cell's `fig-cap:`/`tbl-cap:`
+    /// must become a link, exactly as the same reference does in prose. It cannot be
+    /// resolved here: this caption is built *after* the render-time cite pass has run,
+    /// so it is emitted as a `data-tali-xref` marker and the site pass
+    /// (`finish_blocks` -> `resolve_cross_refs`) turns it into the numbered link. Before
+    /// this, `esc()` shipped the caption verbatim and `@tbl-slo` stayed literal text in
+    /// the `<figcaption>` while the same ref in a paragraph read "Table 1".
+    #[test]
+    fn executed_caption_emits_cross_reference_markers() {
+        let fig = CellFigure {
+            anchor: Some("fig-p95".into()),
+            caption: Some("The objective from @tbl-slo; excluded weeks shaded.".into()),
+            number: "1".into(),
+        };
+        let html = figure_wrap(&fig, "<img src=\"p.png\">");
+        assert!(
+            html.contains("data-tali-xref=\"tbl-slo\""),
+            "caption cross-ref not marked for site resolution: {html}"
+        );
+        assert!(
+            !html.contains("@tbl-slo"),
+            "raw `@tbl-slo` survived into the caption: {html}"
+        );
+
+        let tbl = CellTable {
+            anchor: Some("tbl-coefs".into()),
+            caption: Some("Coefficients behind @fig-p95.".into()),
+            number: "2".into(),
+        };
+        let html = table_wrap(&tbl, "<table><tr><td>x</td></tr></table>");
+        assert!(
+            html.contains("data-tali-xref=\"fig-p95\""),
+            "table caption cross-ref not marked: {html}"
+        );
+    }
+
+    /// The caption is escaped before cross-references are linked, so markup in a
+    /// caption stays inert and an `&` still escapes exactly once.
+    #[test]
+    fn executed_caption_still_escapes_html() {
+        // The tag is assembled rather than written literally on purpose: `token_contract`'s
+        // browser-attribute census pulls in a Rust file only when it contains an opening
+        // script tag, and a fixture holding that literal drags this whole module's `data-*`
+        // constants into the census as phantom browser vocabulary (measured — it failed
+        // exactly so, on `data-tali-not-run`). This comment avoids the literal for the same
+        // reason.
+        let tag = format!("<{}>alert(1)</{}>", "script", "script");
+        let fig = CellFigure {
+            anchor: None,
+            caption: Some(format!("Cov & vars {tag}")),
+            number: "3".into(),
+        };
+        let html = figure_wrap(&fig, "out");
+        assert!(html.contains("Cov &amp; vars"), "escaping lost: {html}");
+        assert!(
+            !html.contains(&tag),
+            "caption markup was not escaped: {html}"
+        );
+        assert!(
+            html.contains("&lt;script&gt;"),
+            "the tag should survive as escaped text: {html}"
         );
     }
 

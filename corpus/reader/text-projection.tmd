@@ -33,12 +33,24 @@ The projection keeps these apart instead of fusing them:
 
 {{< input name="lr" type="slider" min="0.01" max="0.35" step="0.01" value="0.12" label="step size" >}}
 
-::: {.scrolly}
-::: {.step}
+::: {.scrolly name="scene"}
+```{js}
+//| input: scene
+//| input: lr
+const scene = tali.value("scene");
+const lr = tali.value("lr");
+const xs = [0, 1, 2, 3, 4, 5, 6];
+const data = xs.map((x) => ({ x, y: scene === "gradient" ? 6 - x * lr * 8 : (x - 3) ** 2 }));
+return Plot.plot({
+  height: 220,
+  marks: [Plot.line(data, { x: "x", y: "y" }), Plot.dot(data, { x: "x", y: "y" })],
+});
+```
+::: {.step state="valley"}
 The landscape. Descent begins high on the steep left wall of the valley.
 :::
 
-::: {.step}
+::: {.step state="gradient"}
 Which way is downhill. The negative gradient points almost straight across.
 :::
 :::

@@ -1476,6 +1476,67 @@ fn display_math_block_renders() {
     );
 }
 
+/// A display-math block whose continuation lines begin with `+`, `-` or `*` must
+/// still render as one equation. `math_dollars` is an INLINE extension, so a
+/// multi-line `$$…$$` lives inside a paragraph — and CommonMark lets a list marker
+/// interrupt a paragraph. Before the fix, comrak split the block into a paragraph
+/// plus a `<ul>`: the `$$` shipped as literal text, the math never typeset, and the
+/// leading operator was swallowed as the bullet marker, so `a = b - c - d` rendered
+/// as "a = b" followed by bullets "c" and "d". Silent corruption of the equation's
+/// meaning, which is why this is pinned per marker rather than once.
+#[test]
+fn display_math_survives_list_marker_continuation_lines() {
+    for (marker, src) in [
+        (
+            "+",
+            "$$\n\\mathbb{E}\\left[(y - \\hat f(x))^2\\right]\n  = \\operatorname{Bias}^2\n  + \\operatorname{Var}\n  + \\sigma^2\n$$\n",
+        ),
+        ("-", "$$\na = b\n  - c\n  - d\n$$\n"),
+        ("*", "$$\na = b\n  * c\n$$\n"),
+        (
+            "aligned+",
+            "$$\n\\begin{aligned}\nL &= \\sum_i \\log p(x_i)\\\\\n  + \\lambda \\lVert \\theta \\rVert^2\n\\end{aligned}\n$$\n",
+        ),
+        ("0-indent-", "$$\na = b\n- c\n$$\n"),
+    ] {
+        let doc = render_document(src);
+        let h = doc.body_html();
+        assert!(
+            h.contains("katex-display"),
+            "[{marker}] expected one display-math block, got: {h}"
+        );
+        assert!(
+            !h.contains("<ul"),
+            "[{marker}] continuation line was parsed as a list: {h}"
+        );
+        assert!(
+            !h.contains("$$"),
+            "[{marker}] `$$` delimiters leaked as literal text: {h}"
+        );
+    }
+}
+
+/// The masking that fixes the case above must not reach into fenced code, where a
+/// `$$` line is literal content (documentation that *shows* display math) and a
+/// `-` line is a real list in an example.
+#[test]
+fn display_math_masking_leaves_fenced_code_alone() {
+    let doc = render_document("```\n$$\na = b\n- c\n$$\n```\n");
+    let h = doc.body_html();
+    assert!(
+        h.contains("$$"),
+        "code block must keep its literal `$$`: {h}"
+    );
+    assert!(
+        h.contains("- c"),
+        "code block must keep its literal `- c`: {h}"
+    );
+    assert!(
+        !h.contains("katex"),
+        "nothing inside a code fence may be typeset: {h}"
+    );
+}
+
 #[test]
 fn bare_latex_environment_renders_as_display_math() {
     let doc = render_document("\\begin{align*}\na &= b \\\\\nc &= d\n\\end{align*}\n");
@@ -3426,7 +3487,7 @@ fn input_slider_shortcode_emits_reactive_control() {
     assert!(h.contains("type=\"range\""), "range control: {h}");
     assert!(h.contains("min=\"1\"") && h.contains("max=\"10\"") && h.contains("value=\"3\""));
     assert!(
-        h.contains("<output class=\"tali-input-out\" for=\"qin-k\" data-tali-out>3</output>"),
+        h.contains("<output class=\"tali-input-out\" for=\"tali-in-k\" data-tali-out>3</output>"),
         "slider readout, tied to its control via for= (PA-M9): {h}"
     );
     assert!(h.contains(">k</label>"), "label: {h}");
@@ -3449,11 +3510,11 @@ fn input_control_id_is_position_independent() {
     // The control id is derived from the reactive name, not the source line, so it is the
     // same whether the input sits at the top or is shifted down by an edit above.
     assert!(
-        top.contains("id=\"qin-rate\""),
+        top.contains("id=\"tali-in-rate\""),
         "name-based control id at top: {top}"
     );
     assert!(
-        shifted.contains("id=\"qin-rate\""),
+        shifted.contains("id=\"tali-in-rate\""),
         "name-based control id when shifted: {shifted}"
     );
     // Therefore the input block's content-hash `data-block-id` is stable across the shift —
@@ -3475,9 +3536,9 @@ fn duplicate_input_names_get_deduped_control_ids() {
     .body_html();
     // Two controls can bind the same reactive name (e.g. the same control on two slides);
     // their DOM ids must still be unique, so the second dedups with a `-N` suffix.
-    assert!(h.contains("id=\"qin-rate\""), "first control id: {h}");
+    assert!(h.contains("id=\"tali-in-rate\""), "first control id: {h}");
     assert!(
-        h.contains("id=\"qin-rate-1\""),
+        h.contains("id=\"tali-in-rate-1\""),
         "second deduped control id: {h}"
     );
 }
