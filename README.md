@@ -33,9 +33,11 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   `taliesin read --format json` projects a document to structured text.
 - **Speed, in absolutes and with no multiplier.** A 15-page book builds in **0.25 s**
   (16.7 ms/page); `preview` is serving in **1–5 ms** for a single document and **≈200 ms**
-  for a 23-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **3.2 KB**
-  patch instead of a 270 KB page reload. These measure Taliesin's work only — a batch
-  compiler doing a cold Pandoc pass is doing different work, so no ratio is quoted.
+  for a 23-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **32 KB**
+  patch instead of a 292 KB page reload, and 54 of its 55 ops are metadata-only patches
+  totalling ~3.2 KB that never touch a DOM node, which is why live state survives the
+  edit. These measure Taliesin's work only — a batch compiler doing a cold Pandoc pass is
+  doing different work, so no ratio is quoted.
 - **One maintainer, pre-1.0.** No support contract, no release cadence, no bus factor above
   one. What that risk is bounded by: Markdown source you already hold, built HTML with no
   dependency on this tool, and an AGPL-3.0 licence that makes a fork always available.
