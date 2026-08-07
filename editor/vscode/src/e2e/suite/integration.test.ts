@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { dropProvider } from "../../insert";
 import { runTask } from "../../runcell";
+import { kernelFailure } from "../../kernelfail";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
@@ -202,6 +203,49 @@ suite("Taliesin companion (integration)", () => {
     // The server (not the old TS shim) is the source, and it carries the stable TAL code.
     assert.equal(typo!.source, "taliesin");
     assert.ok(typo!.code, "the diagnostic should carry its TAL-* code");
+  });
+
+  test("the doctor hint reads the code shape the platform really delivers", async () => {
+    // The trap item 219 walks into if this is written from memory: because `check.rs` wires
+    // `code_description` from each code's docs URL, vscode-languageclient delivers `code` as
+    // an OBJECT — `{ value, target }` — not the string the JSON wire carries. A watcher
+    // written as `d.code === "TAL-KERNEL"` passes every hand-made unit fixture and then never
+    // fires once in a real editor. This asserts the shape, then drives `kernelFailure` over a
+    // diagnostic that has made the same round trip through the platform.
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(DIAG_FIXTURE));
+    await vscode.window.showTextDocument(doc);
+    const ready = await waitFor(() => vscode.languages.getDiagnostics(doc.uri).length > 0, 20000);
+    assert.ok(ready, "no diagnostics to read the code shape from");
+    const coded = vscode.languages.getDiagnostics(doc.uri).find((d) => d.code);
+    assert.strictEqual(
+      typeof coded!.code,
+      "object",
+      `a Taliesin diagnostic's code is wrapped, not a bare string (got ${JSON.stringify(coded!.code)})`
+    );
+
+    // A TAL-KERNEL diagnostic through a real collection, since no kernel failure is available
+    // to provoke here: the point is the platform round trip, not who published it.
+    const collection = vscode.languages.createDiagnosticCollection("taliesin-doctor-hint-test");
+    const uri = vscode.Uri.file(path.join(os.tmpdir(), "taliesin-kernel-probe.tmd"));
+    const kernel = new vscode.Diagnostic(
+      new vscode.Range(0, 0, 0, 1),
+      "code cell did not run",
+      vscode.DiagnosticSeverity.Error
+    );
+    kernel.code = {
+      value: "TAL-KERNEL",
+      target: vscode.Uri.parse("https://example.invalid/DIAGNOSTICS.md"),
+    };
+    collection.set(uri, [kernel]);
+    try {
+      assert.strictEqual(
+        kernelFailure(vscode.languages.getDiagnostics(uri)),
+        "code cell did not run",
+        "the doctor hint would never fire on a real kernel failure"
+      );
+    } finally {
+      collection.dispose();
+    }
   });
 
   test("offers cell-option and div-class completions", async () => {

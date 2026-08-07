@@ -21,6 +21,7 @@ import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
 import { registerRunCell } from "./runcell";
 import { registerDecorations } from "./decorations";
+import { registerDoctorHint } from "./doctorhint";
 import { registerMcpProvider } from "./lmtools";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
@@ -99,6 +100,10 @@ export function activate(context: vscode.ExtensionContext) {
   // language server only sees buffers it has been sent, so a page never opened is invisible
   // to it; `check` sees the whole project.
   registerDecorations(context);
+  // A cell that could not run for want of a kernel is the one diagnostic with a command
+  // behind it. Offer that command, once per session, instead of leaving `doctor` reachable
+  // only to whoever already knows it exists.
+  registerDoctorHint(context);
   // `taliesin mcp` advertised rather than hand-registered, which is the one surface an agent
   // in this editor needs: pointing it at an MCP server is an explicit act, where an always-on
   // editor tool is not.

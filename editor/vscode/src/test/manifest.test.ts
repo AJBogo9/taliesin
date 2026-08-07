@@ -204,6 +204,28 @@ test("every command the manifest contributes is registered in the source", () =>
   }
 });
 
+test("every taliesin command the source INVOKES is a contributed command", () => {
+  // The other direction from the two gates above, and it opened the moment one part of the
+  // companion started calling another's command: `doctorhint.ts` puts a "Run doctor" button
+  // on a notification, and if `taliesin.doctor` were ever renamed that button would fail
+  // with "command not found" — at the exact moment the author's setup is already broken.
+  const contributed = new Set(
+    ((manifest.contributes?.commands ?? []) as { command: string }[]).map((c) => c.command)
+  );
+  const invoked = [...allSource.matchAll(/executeCommand\(\s*"(taliesin\.[^"]+)"/g)].map(
+    (m) => m[1]
+  );
+  // Also catch the id when it is bound to a constant first, which is how `doctorhint.ts`
+  // spells it: a bare `executeCommand(NAME)` would otherwise slip past the scan above.
+  const constants = [...allSource.matchAll(/=\s*"(taliesin\.[a-zA-Z]+)"\s*;/g)].map((m) => m[1]);
+  for (const cmd of [...invoked, ...constants]) {
+    assert.ok(
+      contributed.has(cmd),
+      `the source invokes \`${cmd}\`, which package.json does not contribute`
+    );
+  }
+});
+
 test("every keybinding and menu entry points at a contributed command", () => {
   const contributed = new Set(
     ((manifest.contributes?.commands ?? []) as { command: string }[]).map((c) => c.command)
