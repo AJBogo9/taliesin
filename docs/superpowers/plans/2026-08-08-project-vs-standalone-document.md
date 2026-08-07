@@ -270,24 +270,57 @@ fn preview_of_a_non_project_directory_is_rejected_with_guidance() {
     );
 }
 
-#[test]
-fn preview_of_a_single_document_still_works() {
-    // A lone .tmd is still previewable; only the *directory* form is refused. `--help`-free
-    // smoke: resolving the target must not error. Uses `check`, which shares the resolver.
-    let (ok, _out, stderr) = run(&["check", &corpus("agent/executed-read.tmd")]);
-    assert!(ok, "a single document is not a project and needs none; stderr: {stderr}");
-}
 ```
+
+Then add the authoritative pair as **unit** tests in the existing `#[cfg(test)] mod tests`
+at the bottom of `crates/server/src/serve_site/mod.rs`, beside
+`an_out_of_project_document_keys_on_itself_on_both_sides`. They use that module's existing
+`tmp(name)` helper, and they test `resolve_target` directly rather than through a verb:
+
+```rust
+    /// A lone document with no ancestor `_site.yml` is legitimate and must keep resolving.
+    /// Only the *directory* form is refused.
+    #[test]
+    fn a_loose_document_still_resolves() {
+        let dir = tmp("loose-doc");
+        let doc = dir.join("scratch.tmd");
+        std::fs::write(&doc, "---\ntitle: S\n---\n\nProse.\n").unwrap();
+        assert!(
+            resolve_target(Target::at(doc)).is_ok(),
+            "a lone document is not a project and needs none"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A directory with no `_site.yml` is not a project, and is refused before a port is bound.
+    #[test]
+    fn a_directory_without_site_yml_is_refused() {
+        let dir = tmp("not-a-project");
+        std::fs::write(dir.join("a.tmd"), "---\ntitle: A\n---\n\nProse.\n").unwrap();
+        let err = resolve_target(Target::at(dir.clone())).expect_err("not a project");
+        assert!(err.to_string().contains("no _site.yml"), "says why: {err}");
+        assert!(err.to_string().contains("<page>.tmd"), "offers the fix: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+```
+
+These two are the authoritative guard: they run in milliseconds and cannot hang. The
+CLI-level test above additionally pins that the **exit code** is non-zero, which the unit
+tests cannot see.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```sh
-cargo test -p taliesin-server --test project_required preview_of_a_non_project
+cargo test -p taliesin-server a_directory_without_site_yml_is_refused a_loose_document_still_resolves
+timeout 60 cargo test -p taliesin-server --test project_required preview_of_a_non_project
 ```
 
-Expected: FAIL. Today `preview` warns and serves, so the process does not exit and the
-test times out or hangs. If it hangs, that IS the failure; add a
-`--` timeout via your shell (`timeout 20 cargo test …`) while iterating.
+Expected: the two unit tests FAIL (`expect_err` panics, because resolution succeeds today).
+
+**Run the CLI test under `timeout`, as shown.** Today `preview` warns and serves forever,
+so that test does not fail, it hangs. A hang here IS the red state; do not interpret it as
+a broken harness. Once Task 3 is implemented the process exits immediately and the timeout
+is never reached.
 
 - [ ] **Step 3: Write the implementation**
 
