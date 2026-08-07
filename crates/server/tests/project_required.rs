@@ -53,3 +53,15 @@ fn build_of_a_real_project_still_works() {
         "a directory WITH _site.yml still builds; stderr: {stderr}"
     );
 }
+
+#[test]
+fn preview_of_a_non_project_directory_is_rejected_with_guidance() {
+    // Must fail before binding a port, so this returns rather than serving forever.
+    let (ok, _out, stderr) = run(&["preview", &corpus("agent"), "4399"]);
+    assert!(!ok, "a bare directory (no _site.yml) must fail");
+    assert!(stderr.contains("no _site.yml"), "says why: {stderr}");
+    assert!(
+        stderr.contains("<page>.tmd"),
+        "offers the name-one-document fix: {stderr}"
+    );
+}

@@ -442,6 +442,15 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
         }
     };
     let root = root.canonicalize().unwrap_or(root);
+    // A directory target is a project; a project is what `_site.yml` declares. Refuse before
+    // binding a port, so the author gets the fix instead of a 404 page at `/` whose only link
+    // points back at itself and which mounts neither the live client nor the dev menu.
+    if scope.is_none() && !root.join("_site.yml").is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            crate::serve::not_a_project_error(&root, "preview"),
+        ));
+    }
     // Only an OUT-of-project document narrows discovery. A document inside a project must
     // discover the whole project, or its nav and cross-page links would be the very orphan
     // this routing exists to prevent.
@@ -487,6 +496,7 @@ impl Resolved {
 }
 
 /// What [`resolve_target`] worked out about the thing being previewed.
+#[derive(Debug)]
 struct Resolved {
     root: PathBuf,
     site: Site,
@@ -3007,6 +3017,34 @@ mod session_key_tests {
         // `run <dir>/chapters/ch9.tmd` are one session, not two.
         let whole = resolve_target(Target::at(dir.clone())).unwrap();
         assert_eq!(whole.session_key(), dir);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A lone document with no ancestor `_site.yml` is legitimate and must keep resolving.
+    /// Only the *directory* form is refused.
+    #[test]
+    fn a_loose_document_still_resolves() {
+        let dir = tmp("loose-doc");
+        let doc = dir.join("scratch.tmd");
+        std::fs::write(&doc, "---\ntitle: S\n---\n\nProse.\n").unwrap();
+        assert!(
+            resolve_target(Target::at(doc)).is_ok(),
+            "a lone document is not a project and needs none"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A directory with no `_site.yml` is not a project, and is refused before a port is bound.
+    #[test]
+    fn a_directory_without_site_yml_is_refused() {
+        let dir = tmp("not-a-project");
+        std::fs::write(dir.join("a.tmd"), "---\ntitle: A\n---\n\nProse.\n").unwrap();
+        let err = resolve_target(Target::at(dir.clone())).expect_err("not a project");
+        assert!(err.to_string().contains("no _site.yml"), "says why: {err}");
+        assert!(
+            err.to_string().contains("<page>.tmd"),
+            "offers the fix: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
