@@ -697,6 +697,33 @@ pub(crate) fn bad_format_error(got: Option<&str>) -> String {
     )
 }
 
+/// The one message both `build` and `preview` print when handed a directory that is not a
+/// project. A directory is a project, and a project is what `_site.yml` declares; without
+/// one there is no nav to build, no title to brand with, and no page to serve at `/`.
+///
+/// When an ancestor IS a project, that is nearly always what the author meant (running the
+/// verb on `corpus/tech-blog/posts` silently built eight posts as a detached site), so the
+/// suggestion leads with it instead of the generic pair.
+pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
+    let shown = path.display();
+    if let Some(root) = taliesin_core::site::enclosing_site_root(path) {
+        return format!(
+            "{shown} has no _site.yml.\n\
+             its ancestor {root} is a project. did you mean:\n  \
+             taliesin {verb} {root}",
+            root = root.display()
+        );
+    }
+    // `join` rather than string concatenation, so the suggestion reads
+    // `corpus/agent/<page>.tmd` whether or not the author typed a trailing slash.
+    format!(
+        "{shown} has no _site.yml, so it is not a project.\n\
+         to {verb} one document:   taliesin {verb} {example}\n\
+         to make it a site or book: add a _site.yml",
+        example = path.join("<page>.tmd").display()
+    )
+}
+
 #[cfg(test)]
 mod protocol_contract {
     //! The protocol messages this shared layer still produces (`style`, `diagnostics`),
@@ -878,6 +905,40 @@ mod protocol_contract {
             .await;
         let payload = outcome.expect_err("the panic must be caught, not propagated");
         assert_eq!(panic_msg(&*payload), "render boom");
+    }
+
+    #[test]
+    fn not_a_project_error_names_both_fixes() {
+        let dir = std::path::Path::new("corpus/agent");
+        let msg = not_a_project_error(dir, "preview");
+        assert!(
+            msg.contains("no _site.yml"),
+            "names the missing file: {msg}"
+        );
+        assert!(
+            msg.contains("_site.yml") && msg.contains("add"),
+            "offers the make-it-a-project fix: {msg}"
+        );
+        assert!(
+            msg.contains("taliesin preview corpus/agent/"),
+            "offers the name-one-document fix, with the verb: {msg}"
+        );
+    }
+
+    #[test]
+    fn not_a_project_error_leads_with_an_enclosing_project() {
+        // corpus/tech-blog/posts has no _site.yml of its own, but corpus/tech-blog does.
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/tech-blog/posts");
+        let msg = not_a_project_error(&root, "build");
+        assert!(
+            msg.contains("tech-blog"),
+            "names the ancestor project: {msg}"
+        );
+        assert!(
+            msg.contains("did you mean"),
+            "leads with the ancestor as the likely intent: {msg}"
+        );
     }
 }
 
