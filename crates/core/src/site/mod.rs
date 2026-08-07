@@ -170,6 +170,14 @@ pub struct Site {
     /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
+    /// True when this is a one-document project synthesized by
+    /// [`Site::discover_single`] for a file with no `_site.yml` anywhere above it.
+    ///
+    /// Such a document belongs to no project, so it gets no project chrome: the navbar
+    /// would brand it "Home" and link to the page you are already on, the burger would
+    /// open an empty nav, and the footer would credit a site that does not exist.
+    /// `build <file>` has never emitted any of it; this is what makes `preview` agree.
+    pub standalone: bool,
 }
 
 /// Compute a page's Cmd-K search fragment (its JSON entries, or `None` when the page is
@@ -517,6 +525,8 @@ impl Site {
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
 
+        let standalone = only.is_some() && !root.join("_site.yml").is_file();
+
         let mut site = Site {
             root: root.to_path_buf(),
             config,
@@ -533,6 +543,7 @@ impl Site {
             search_sections: Vec::new(),
             decks,
             excluded_drafts,
+            standalone,
         };
         // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
         // equation / table / listing / theorem number is assigned only during render, so
@@ -779,12 +790,16 @@ impl Site {
         SiteCtx {
             // A book replaces the top navbar with a slim topbar + off-canvas chapter
             // drawer and uses chapter prev/next instead of the post "back to listing" link.
-            navbar_html: if book {
+            navbar_html: if book || self.standalone {
                 String::new()
             } else {
                 self.navbar_html(page, depth)
             },
-            footer_html: self.footer_html(depth),
+            footer_html: if self.standalone {
+                String::new()
+            } else {
+                self.footer_html(depth)
+            },
             post_nav_html: if book {
                 self.book_nav_html(page, depth)
             } else {
