@@ -38,7 +38,7 @@ pub struct ClientLang {
 /// because WebGL is a browser API, so the whole language costs one small enhancer and no
 /// vendored bytes. `{pyodide}` was the one entry that DID pay the multi-MB price (a CPython
 /// WASM build) and it was **withdrawn**: see [`crate::diagnostics::RETIRED_CELL_LANGS`] for
-/// what an author who still has one gets told, and `notes/backlog.md` for the ruling.
+/// what an author who still has one gets told, and `notes/DO-NOT-REBUILD.md` for the ruling.
 pub(crate) const CLIENT_LANGS: &[ClientLang] = &[
     ClientLang {
         lang: "js",
