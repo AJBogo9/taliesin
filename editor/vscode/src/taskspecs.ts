@@ -1,4 +1,5 @@
-// Which Taliesin tasks exist for a project and where they run, as pure functions.
+// Which Taliesin tasks exist, where they run, and what to say when one ends, as pure
+// functions.
 //
 // Split from `tasks.ts` for the same reason `pastekind.ts` is split from `insert.ts`: no
 // `vscode` import here, so `node --test` can check it against the manifest without an
@@ -72,4 +73,67 @@ export function taskSpecs(target: string): TaskSpec[] {
 /** `_site` under the target, without a `./` when the target is the working directory itself. */
 function outDir(target: string): string {
   return target === "." ? "_site" : `${target.replace(/\/+$/, "")}/_site`;
+}
+
+/**
+ * `taliesin run` for one cell, or for the whole document.
+ *
+ * Not part of `taskSpecs`, and deliberately: those are project-wide and are what the task
+ * picker offers, while a run needs a file and a cursor line. It is a `TaskSpec` all the same
+ * because it is executed as a **task**, so its `command` is checked against the manifest's
+ * `taskDefinitions` enum by the same drift gate — the mismatch class that kept the companion
+ * silently inert for months.
+ *
+ * `--line` rather than `--cell N` because the editor knows the cursor, and an ordinal
+ * computed here would be a second copy of "which fences count" (`taliesin/cellRegions` owns
+ * that). The path is passed as one argv element and never quoted: the task runs the binary
+ * directly, with no shell to re-split it.
+ */
+export function runSpec(file: string, target: number | "all"): TaskSpec {
+  return {
+    name: "run",
+    args: target === "all" ? ["run", file, "--all"] : ["run", file, "--line", String(target)],
+  };
+}
+
+/** What to tell the author when a run ends, if anything. */
+export interface RunOutcome {
+  kind: "error" | "info" | "silent";
+  message: string;
+}
+
+/**
+ * A run finished after `elapsedMs` with `exitCode`. Say what?
+ *
+ * Three answers, and "nothing" is the common one. The notification exists for CHI 2020's
+ * long-running-task complaint ("when the process is done, it automatically creates a
+ * notification"), which is about the run you walked away from — a toast after every
+ * 300 ms cell would be noise that trains the author to dismiss without reading.
+ *
+ * `exitCode` is `undefined` in two cases, and silence is right for both. VS Code reports it
+ * for a process that was **terminated** rather than exited — the author stopped the run, which
+ * is not a failure to announce. And measured: the very first task executed in a window reports
+ * no exit code whatever it is, so the first run of a session ends quietly.
+ */
+export function runOutcome(exitCode: number | undefined, elapsedMs: number): RunOutcome {
+  if (exitCode === undefined) return { kind: "silent", message: "" };
+  if (exitCode !== 0) {
+    return {
+      kind: "error",
+      message: `Taliesin: the run failed (exit ${exitCode}). The run terminal has the detail.`,
+    };
+  }
+  if (elapsedMs < NOTIFY_AFTER_MS) return { kind: "silent", message: "" };
+  return { kind: "info", message: `Taliesin: run finished in ${formatElapsed(elapsedMs)}.` };
+}
+
+/** Long enough that the author has plausibly looked away, short enough to still be the run. */
+const NOTIFY_AFTER_MS = 10_000;
+
+/** `12.3 s`, or `2 min 5 s` once seconds stop being a number anyone reads. */
+function formatElapsed(ms: number): string {
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)} min ${whole % 60} s`;
 }

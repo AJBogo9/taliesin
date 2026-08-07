@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { dropProvider } from "../../insert";
+import { runTask } from "../../runcell";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
@@ -879,6 +880,90 @@ suite("Taliesin companion (integration)", () => {
         `--line ${line} points at a fence, not at code`
       );
     }
+  });
+
+  test("a run reports that it ended, and with what exit code", async () => {
+    // The whole of item 218 rests on this one platform fact. `terminal.sendText` could never
+    // learn that a run had ended — no progress, no completion notification, no exit code —
+    // and a task can. Built by the SHIPPED factory, so the definition, the execution kind and
+    // the presentation options under test are the real ones.
+    //
+    // Pointed at `/bin/echo` rather than at `taliesin`: a real `taliesin run` starts a warm
+    // session (`run_cmd.rs` spawns `taliesin preview --session` detached and leaves it
+    // running), which this harness's own leak check would then fail the run for — correctly.
+    const task = runTask(RUNCELL_FIXTURE, 9, os.tmpdir(), "/bin/echo");
+
+    assert.deepStrictEqual(
+      task.definition,
+      { type: "taliesin", command: "run", file: RUNCELL_FIXTURE, target: "9" },
+      "the definition VS Code keys the task's identity off: the file and the target are what " +
+        "keep two runs from colliding, and are how the end of THIS run is recognised"
+    );
+    assert.ok(
+      task.execution instanceof vscode.ProcessExecution,
+      "a ShellExecution would re-split the argv through whichever shell the author uses"
+    );
+    assert.deepStrictEqual((task.execution as vscode.ProcessExecution).args, [
+      "run",
+      RUNCELL_FIXTURE,
+      "--line",
+      "9",
+    ]);
+
+    /** Execute `t` and report the exit code VS Code attributes to that run. */
+    async function endCodeOf(
+      t: vscode.Task
+    ): Promise<{ arrived: boolean; exitCode?: number; definition?: vscode.TaskDefinition }> {
+      let seen: { exitCode: number | undefined; definition: vscode.TaskDefinition } | undefined;
+      // Matched by DEFINITION, exactly as `runcell.ts` does — which is only sound if the
+      // definition survives the trip through the platform unchanged. That round trip is the
+      // contract under test: if it stopped holding, every run would spin a progress
+      // indicator forever and no completion notification would ever arrive.
+      const sub = vscode.tasks.onDidEndTaskProcess((e) => {
+        const d = e.execution.task.definition;
+        if (d.file === t.definition.file && d.target === t.definition.target) {
+          seen = { exitCode: e.exitCode, definition: d };
+        }
+      });
+      await vscode.tasks.executeTask(t);
+      const arrived = await waitFor(() => seen !== undefined, 20000);
+      sub.dispose();
+      return { arrived, exitCode: seen?.exitCode, definition: seen?.definition };
+    }
+
+    // MEASURED, and the reason this test warms up first: the FIRST task executed in a VS Code
+    // window reports `processId: undefined` and `exitCode: undefined`, whatever it is — a task
+    // of a type no extension has registered behaves identically, so it is neither our task
+    // shape nor our provider declining to resolve a run. Every later execution reports a real
+    // pid and a real code. In the editor that costs the first run of a session its completion
+    // notification and nothing else: `runOutcome(undefined, …)` is deliberately silent, since
+    // an undefined code is also what a run the author stopped by hand looks like.
+    const warmup = await endCodeOf(runTask(RUNCELL_FIXTURE, 8, os.tmpdir(), "/bin/echo"));
+    assert.ok(warmup.arrived, "even the warm-up execution must report that it ended");
+
+    const { arrived, exitCode, definition } = await endCodeOf(task);
+    assert.ok(arrived, "the run task never reported a process end");
+    assert.strictEqual(exitCode, 0, "a task that exited 0 must report 0, not undefined");
+    assert.deepStrictEqual(
+      definition,
+      task.definition,
+      "the definition must come back unchanged, since that is what identifies the run"
+    );
+
+    // And the behaviour change this bought, asserted rather than assumed: runs no longer go
+    // to a terminal reused by name. A task terminal is named by VS Code, not by us.
+    assert.strictEqual(
+      vscode.window.terminals.find((t) => t.name === "taliesin run"),
+      undefined,
+      "the old reused-by-name run terminal should be gone"
+    );
+
+    // Leave the workbench as it was found. A run reveals the terminal panel (that is the
+    // point of it), and the typing tests further down depend on keyboard focus being in an
+    // editor — see the retry loop in `pressEnterAfter`, which exists for exactly this class
+    // of interference from an earlier test.
+    await vscode.commands.executeCommand("workbench.action.closePanel");
+    await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
   });
 
   test("puts the buttons on a real corpus document too", async () => {

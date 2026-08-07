@@ -356,9 +356,10 @@
             "enum": [
               "check",
               "build",
-              "build --out"
+              "build --out",
+              "run"
             ],
-            "description": "Which Taliesin command this task runs against the project root."
+            "description": "Which Taliesin command this task runs: check, build and build --out target the project root; run executes the cell at the cursor."
           }
         }
       }
