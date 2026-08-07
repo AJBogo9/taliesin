@@ -25,9 +25,32 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 ranking that settled the cross-cluster call the previous session left open: the feature-value
 audit's own order, 202 first as the instrument and 203/204 as the two cuts it measures.
 
-**What is left in P1 is 210, 211, 188, 164, 167, 56, 175(c), 174 and 170**, and no ranking among
-them has been made. **205 is moot**: `{pyodide}` was withdrawn entirely on 2026-08-04, so there is
-no payload left to take out of the binary.
+**What is left in P1 is 210, 211, 188, 164, 167, 56, 175(c), 174, 170 and the rest of the
+2026-08-07 dev-tooling cluster (216-221)**, and no ranking among them has been made. **205 is
+moot**: `{pyodide}` was withdrawn entirely on 2026-08-04, so there is no payload left to take out
+of the binary.
+
+**214+215 shipped 2026-08-07**, on one branch as planned, together with 218+219. The editor's
+buffer lint is now site-aware and stays true across external changes, so
+`docs/guide/reference/cli.tmd:625`'s "the same validators as `check`" became true rather than
+being narrowed — pinned by `the_editor_finds_the_same_defects_on_a_page_as_check_does`. Two things
+that were NOT wire-only and are worth knowing before costing the rest of the cluster: the site
+registry the buffer lint needs costs a 188 ms walk, so it required a stat-validated
+`lsp_project::SiteCache` (first publish 14→205 ms, typing unchanged); and the cross-page validator
+read the page from **disk**, which for an editor buffer is the wrong document. The
+[audit](2026-08-07-devtooling-frontier-audit.md)'s "Prioritised" table is the ranking for what is
+left; its two committed probes ([harness](2026-08-07-devtooling-harness/)) are the regression
+check, and each carries a known-positive control row for the reason this file's own broken-probe
+rule gives.
+
+**Before ranking 216 vs 217 vs 222, arm `TALIESIN_LSP_TRACE`** (XS, and the highest
+evidence-per-minute act available). `lsp_trace.rs` shipped 2026-08-04 to answer which of the
+fourteen LSP capabilities actually fire during real writing, and **no trace file exists on the
+machine** — so the largest feature in the tool (15,592 LOC) is still at zero adoption evidence and
+three portfolio rounds' blind spot is still open. Set it in the shell profile VS Code inherits, not
+as an extension default: turning collection on by default contradicts the no-telemetry stance, and
+`lsp_trace.rs`'s own "a dev instrument does not earn a nineteenth verb" argues equally against it
+earning a setting.
 
 **Release readiness, re-measured 2026-08-05** (the flip sequence itself is item 100; 148 and 149
 hold the rest). Green today: `git-filter-repo` is installed, the rewrite is rehearsed end to end,
@@ -251,6 +274,48 @@ question, not just for lack of demand. Those say so; brainstorm before coding.
      flip-gated and overlaps 149's launch-presentation group in P3; do not build the same thing
      twice from both entries.
 
+**216-221 all come from [2026-08-07-devtooling-frontier-audit.md](2026-08-07-devtooling-frontier-audit.md)**
+(the editor-and-machine lens FV-2 named as its blind spot; 214, 215, 218 and 219 shipped from the
+same round on 2026-08-07). Read its "Prioritised" table before picking one: they are a cluster, not
+a list. Every capability claim in them was measured by driving the release binary over real stdio —
+the two probes are committed at
+[2026-08-07-devtooling-harness/](2026-08-07-devtooling-harness/) and are the regression check for
+216 and 217. **The 214/215 probe rows are now the standing regression check for a shipped
+behaviour**, so a re-run must show the LSP answering with `TAL-LINK-ANCHOR`, not without it.
+
+216. **No `textDocument/references`, on a format whose whole story is cross-references.** (S,
+     wire-only.) Measured `-32601`. "Where is this label used?" is *the* question in a
+     cross-referenced book, and `documentHighlight` answers it within one file only. The answer is
+     already computed and already served — on the proprietary **`taliesin/projectRefs`**, which only
+     the VS Code companion can call. Re-publishing it on the standard method is close to free and
+     multiplies the audience. Same shape, same round: `textDocument/selectionRange` from
+     `lsp_outline`'s section extents (the editor's expand-by-brackets default is meaningless in
+     prose) — smaller, do it in the same branch or not at all.
+
+217. **`textDocument/codeLens` in the server: the highest-leverage single missing capability.** (M.)
+     Measured `-32601`. Today `editor/vscode/src/runcell.ts` + `taliesin/cellRegions` deliver
+     Run/Run-Above to **VS Code alone**; a server-side lens puts the execution loop in every LSP
+     client from Rust with zero TypeScript. It is also the natural home for the still-open
+     "make caching legible" item (2026-07-18 DX audit #9): `⚡ cached` vs `✓ 1.2s` per cell, whose
+     data `freeze.rs` already has and which `decorations.ts:8-11` explicitly declined to half-build
+     on the TS side. The companion's own lens now has somewhere to migrate to: its runs go
+     through `vscode.tasks`, so a server-side lens replaces the buttons and not the plumbing.
+
+220. **`check --explain`'s cause-and-fix text is CLI-only.** (S, Rust.) `check.rs:127` already wires
+     `code_description` from `docs_url`, so a diagnostic links out to `DIAGNOSTICS.md` — a trip out
+     of the editor. Barik et al. (ICSE 2017, eye-tracking) found reading an error message already
+     costs as much as reading source, which makes a doc trip the point where people stop. The 47
+     codes already carry cause + fix; put that body in the diagnostic hover. Do **not** build this
+     in the companion.
+
+221. **"Any LSP editor" ships unhighlighted grey text everywhere but VS Code.** (S for this item —
+     docs only; the highlighting itself is 227.) `cli.tmd:27` and `:625` advertise Neovim, Helix,
+     Zed, VS Code, and the documented setup is **one Neovim snippet**. Measured: no tree-sitter
+     grammar anywhere in the tree, `textDocument/semanticTokens` `-32601`, and the only grammar is
+     the 16-scope VS Code TextMate file. Narrow the claim to what is true (diagnostics and
+     intelligence, not highlighting) and ship the Helix `languages.toml` + Zed `extension.toml`
+     snippets. **Owed regardless of how 227 is ruled**; do not wait on it.
+
 ### P2 — filed so it is not rediscovered as a defect
 
 Not worth a session on its own. Each is a record or a known cost, not a task.
@@ -326,6 +391,59 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      once outside a test? A still-empty column is not automatically a cut — it is the trigger to
      price one. **Front-matter adoption must be counted inside the YAML block**, not grepped from
      body text, or the reference page that documents a key reads as a page that uses it.
+
+222. **Diagnostics are push-only, so the Problems panel can only ever show open files.** (M. Same
+     audit as 214-221.) `textDocument/diagnostic` and `workspace/diagnostic` both `-32601`, so a
+     25-chapter book shows problems for the two chapters you have open and silence for the other 23
+     — while `check <dir>` answers the whole question in 0.36 s. Filed here rather than P1 because
+     **the companion has already worked around it twice**: `decorations.ts` spawns `check --strict`
+     project-wide on every save (~369 ms) and `tasks.ts` says outright it exists because "the
+     language server only ever diagnoses buffers it has been sent". So this is not a missing
+     capability, it is a **transport** decision, and building the 3.17 pull model would let both
+     workarounds be deleted rather than extended. Read this before adding anything to
+     `decorations.ts`. Also the principled answer to 215's invalidation problem (pull inverts
+     ownership: the client asks rather than the server guessing).
+
+223. **No `$/cancelRequest` and no `$/progress`; `workspace/symbol` is the one latency outlier.**
+     (M.) Measured 2026-08-07: `didChange`→`publishDiagnostics` 144 ms (120 of it the deliberate
+     debounce), hover 19 ms, symbols/folding/formatting sub-ms — and **`workspace/symbol` 167 ms**,
+     a full project walk with a `stat` per page on a single-threaded loop. It is also the one
+     request a user types into character-by-character, so every Ctrl-T keystroke queues another walk
+     that **cannot be abandoned**. A latent scaling cliff, not a present defect: measured on the
+     largest project in the tree. Do not "optimise" it before cancellation exists — the queue is the
+     cost, not the walk.
+
+224. **`taliesin mcp` is tools-only.** (M, additive, rides data that already exists.) `mcp.rs:143`
+     declares `"capabilities": { "tools": {} }`; the MCP 2025-11-25 server spec also defines
+     `resources` (+ templates), `prompts`, `completions` and `logging`. Three things are already
+     resource-shaped and are currently forced through a tool call: the two JSON Schemas
+     (`taliesin schema`), the 47-code diagnostic catalogue as a resource **template**
+     (`taliesin://diagnostic/{code}`, so an agent resolves a code without a process per lookup), and
+     `AGENTS.md` + `vocab`. `prompts` is the un-taken one — the `new post|page|deck|paper` scaffolds
+     already encode "this project's idiom", and a prompt is how a host offers that without the agent
+     reverse-engineering the dialect from docs.
+
+225. **Long-running cells report no progress outside the browser.** (M. The companion's half
+     is done — a run is a task now, so the editor gets a spinner for the duration, an exit
+     code and a completion notification — and this is the server half it is waiting on, plus
+     the one that would put a failed cell in the Problems panel: `run` prints `✗ cell 3`, and
+     no problem matcher can match that.) `exec.rs:113` `ProgressSink` / `set_progress` / `build-state` are wired to the browser
+     **only**, so `taliesin run` in a terminal and every editor path get nothing. CHI 2020 puts
+     long-running tasks in its four high-impact activities (76% important, 55% difficult) with the
+     specific complaint that there is "no feedback on progress". The silence budget
+     (`TALIESIN_CELL_SILENCE`, reset on every printed line) is better thinking than a wall-clock
+     timeout and is invisible to anyone not watching the browser. Stream the existing sink to the
+     terminal, and to `$/progress` once 223 lands.
+
+226. **The freeze key cannot see a package upgrade, and `doctor` audits presence rather than
+     versions.** (M. Not a defect — a named limit worth closing.) `freeze.rs:19-29` documents it
+     honestly: the key "folds in code and interpreter identity only", so an in-place
+     `pip install --upgrade` is the same interpreter reporting the same `--version` and every key is
+     unchanged. That is exactly CHI 2020's **Reproduce and Reuse** pain point. Cheapest honest
+     close: `doctor --format json` emits a package manifest and `_freeze/` records the manifest
+     digest it was produced under, so a restore that crosses an environment change **says so**.
+     Folding the digest into the key itself is the strong version and the disruptive one (every
+     `pip install` busts the whole cache) — behind a flag if at all.
 
 ### P3 — blocked on an owner ruling (not a task until then)
 
@@ -466,6 +584,27 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      author may have built it for writing that has not happened yet. Either way, `banned:` word
      lists are per-project far more naturally than per-document, which is an argument for the fold
      independent of the cut. Retired-key diagnostic if it goes, as in 203/204.
+
+227. **Highlighting for `.tmd` outside VS Code: which route, or none.** (Ruling, not a task. From
+     [2026-08-07-devtooling-frontier-audit.md](2026-08-07-devtooling-frontier-audit.md) finding 5;
+     the docs half is **221** and is owed whichever way this goes.) **The obvious answer is wrong,
+     and it was checked rather than assumed**: LSP semantic tokens are the architecturally correct
+     move — one Rust producer, reusing the parser and `highlight.rs`, no second dialect definition,
+     which is the exact principle [2026-07-28-vscode-companion-audit.md](2026-07-28-vscode-companion-audit.md)
+     was written to enforce — and they **do not reach Helix**, which has no semantic-token support
+     at all and uses tree-sitter as its only highlighter, nor default-Zed, where the setting ships
+     `off`. A tree-sitter grammar reaches Neovim, Helix and Zed and is a **third** definition of the
+     dialect after the Rust parser and the TextMate file.
+
+     | route | Neovim | Helix | Zed | cost |
+     |---|---|---|---|---|
+     | semantic tokens | yes | **no** | opt-in only | one Rust producer, no second dialect |
+     | tree-sitter grammar | yes | yes | yes | a third dialect definition to keep in sync |
+
+     Three options: (a) narrow the claim only (= 221, do it regardless); (b) semantic tokens — the
+     frontier move, lights up Neovim and opt-in Zed, and lets the TextMate grammar stop growing;
+     (c) a grammar — universal, and the principle violation. **(c) needs demand first**: a
+     non-VS-Code editor has to be a real target rather than a documented one.
 
 ### P4 — blocked on a device, a real user, or working-as-intended
 
