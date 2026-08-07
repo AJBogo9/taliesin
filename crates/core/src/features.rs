@@ -231,10 +231,32 @@ fn scan_frontmatter(
             _ => Vec::new(),
         };
         for child in children {
-            for sub in child.keys().filter_map(|s| s.as_str()) {
+            for (sub_k, sub_v) in child {
+                let Some(sub) = sub_k.as_str() else { continue };
                 let qualified = format!("{key}.{sub}");
                 if known_nested.contains(&qualified) {
-                    out.add("frontmatter-subkeys", qualified);
+                    out.add("frontmatter-subkeys", &qualified);
+                }
+                // One level deeper again, because the catalogue qualifies `hero.actions`
+                // twice over: `actions:` is a SEQUENCE of maps, so `text`/`href`/`primary`
+                // sit at depth 2 and a walk that stopped here reported all three as used
+                // by no document however many documents wrote them. Membership is still
+                // decided by `known_nested`, so this descends without widening the
+                // vocabulary.
+                let grandchildren: Vec<&serde_yaml::Mapping> = match sub_v {
+                    serde_yaml::Value::Mapping(m) => vec![m],
+                    serde_yaml::Value::Sequence(seq) => {
+                        seq.iter().filter_map(|i| i.as_mapping()).collect()
+                    }
+                    _ => Vec::new(),
+                };
+                for grandchild in grandchildren {
+                    for leaf in grandchild.keys().filter_map(|s| s.as_str()) {
+                        let deep = format!("{qualified}.{leaf}");
+                        if known_nested.contains(&deep) {
+                            out.add("frontmatter-subkeys", deep);
+                        }
+                    }
                 }
             }
         }
@@ -564,6 +586,39 @@ See @fig-scree.
         assert_eq!(got("shortcode-args"), ["video.poster"]);
         assert_eq!(got("input-types"), ["slider"]);
         assert_eq!(got("xref-kinds"), ["fig"]);
+    }
+
+    /// A front-matter key TWO levels down is a use. `hero.actions` is a *sequence of maps*,
+    /// so `text`/`href`/`primary` sit at depth 2, and a one-level walk can never report
+    /// them however many documents write them — the same vacuous zero as the two tests
+    /// below, and the one the catalogue's own `hero.actions.text` entry promises to
+    /// measure. `corpus/tech-blog/index.tmd` writes all three.
+    #[test]
+    fn a_front_matter_key_two_levels_down_counts_as_a_use() {
+        let f = scan(concat!(
+            "---\n",
+            "hero:\n",
+            "  headline: H\n",
+            "  actions:\n",
+            "    - { text: \"Read the posts\", href: \"blog.tmd\", primary: true }\n",
+            "    - { text: \"Projects\", href: \"projects.tmd\" }\n",
+            "---\n",
+        ));
+        let subs = f.used.get("frontmatter-subkeys").unwrap();
+        assert!(
+            subs.contains("hero.actions"),
+            "the depth-1 key still counts: {subs:?}"
+        );
+        for k in [
+            "hero.actions.text",
+            "hero.actions.href",
+            "hero.actions.primary",
+        ] {
+            assert!(
+                subs.contains(k),
+                "`{k}` is written here, so it is used: {subs:?}"
+            );
+        }
     }
 
     /// A shortcode argument written as a BARE FLAG is a use. `{{< video >}}`'s `controls`

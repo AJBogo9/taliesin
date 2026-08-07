@@ -407,10 +407,17 @@ fn cell_languages() -> Value {
     )
 }
 
+/// The `@`-prefixes offered to an author and to an agent. Retired prefixes are filtered
+/// out: the renderer still resolves a *label* for `prp`/`exm`/`rem` so a leftover `@prp-a`
+/// draws `TAL-XREF-UNDEF` instead of passing through silently, but nothing can define one
+/// of those targets since the `proposition`/`example`/`remark` environments were retired on
+/// 2026-08-03. Offering them told `AGENTS.md`'s reader to write a reference that is
+/// guaranteed to be broken.
 fn xref_prefixes() -> Value {
     Value::Array(
         crate::cite::XREF_LABELS
             .iter()
+            .filter(|(prefix, _)| !crate::cite::RETIRED_XREF_PREFIXES.contains(prefix))
             .map(|(prefix, label)| json!({ "prefix": prefix, "label": label }))
             .collect(),
     )

@@ -39,7 +39,7 @@ Taliesin's Markdown is Pandoc-flavored. The closed sets below come straight from
 
 - **Callouts:** a fenced div `::: {.callout-note}` opens a callout. Kinds: `note`, `tip`, `warning`.
 - **Code cells:** a fenced ` ```{python} ` (or `{r}`, `{js}`) block runs live. In-cell options use a `#| key: value` comment, e.g. `#| label: fig-scree` or `#| echo: false`. Options: `echo`, `include`, `cache`, `label`, `fig-cap`, `lst-cap`, `tbl-cap`, `code-fold`, `code-summary`, `code-line-numbers`, `name`, `viewof`, `input`, `trace`.
-- **Cross-references:** cite a labelled target with `@`-prefixes (`fig`, `tbl`, `sec`, `eq`, `lst`, `thm`, `lem`, `cor`, `prp`, `def`, `exm`, `rem`); e.g. `@fig-scree` renders as "Figure 3".
+- **Cross-references:** cite a labelled target with `@`-prefixes (`fig`, `tbl`, `sec`, `eq`, `lst`, `thm`, `lem`, `cor`, `def`); e.g. `@fig-scree` renders as "Figure 3".
 - **Citations:** `[@key]` cites a `.bib` entry declared in the `bibliography:` front matter.
 - **Structural divs:** `::: {.class} ... :::` blocks. Classes: `panel-tabset`, `code-walkthrough`, `scrolly`, `debug`, `magic-move`, `step`, `column-margin`, `column-page`, `column-screen`.
 - **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `footer`, `logo`, `format`, `theme`, `page-layout`, `draft`, `title-block-style`, `toc`, `bibliography`, `execute`, `listing`, `hero`, `theorems`.
@@ -54,6 +54,7 @@ Worked idioms the closed-set `vocab` can't express. Each is kept byte-identical 
 ```{python}
 #| label: fig-sales
 #| fig-cap: "Monthly sales from `data.csv`."
+#| cache: false
 import pandas as pd
 import matplotlib.pyplot as plt
 

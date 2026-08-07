@@ -177,31 +177,51 @@ fn an_unused_feature_is_a_row_not_an_omission() {
     _ = std::fs::remove_dir_all(&d);
 }
 
-/// The keys still filed as documented-but-unpinned. This is the report checking the
-/// corpus-plus-roadmap policy against the real corpus, which is the whole point of building
-/// it, and it doubles as a positive control on a real tree rather than a synthetic one.
+/// **The corpus-plus-roadmap policy, enforced against the real corpus:** every catalogued
+/// construct is pinned by at least one corpus document. This is the report checking the
+/// policy that governs the project, which is the whole point of building it, and it doubles
+/// as a positive control on a real tree rather than a synthetic one.
 ///
-/// Item 207 originally listed four. Three of them — `include-in-header`,
-/// `include-before-body`, `include-after-body` — were resolved on 2026-08-02 by *removal*
-/// rather than by writing a pin, which is the other way a documented-but-unpinned key can
-/// be discharged. `logo:` remains, joined by the recognized-but-unhonoured `csl:`. (The
-/// third, `acknowledgements:`, was discharged the third way on 2026-08-03: the key was
-/// retired with the academic-publishing cluster.)
+/// This test used to assert the opposite — it named `logo:` and `csl:` as *known* gaps
+/// (backlog item 207) and failed if they ever got pinned. Both were closed on 2026-08-07
+/// along with the rest: `logo:` by the deck corner mark on `corpus/deck.tmd`, `csl:` by
+/// `corpus/diagnostics/typos.tmd` (it is recognized-but-inert, so the doc that pins it is
+/// the one that pins its diagnostic). Item 207 originally listed four keys; the other three
+/// (`include-in-header`, `include-before-body`, `include-after-body`) were discharged on
+/// 2026-08-02 by *removal*, and `acknowledgements:` on 2026-08-03 by retirement — the two
+/// other ways a documented-but-unpinned key can be closed.
+///
+/// A NEW feature that lands without a corpus document fails here, which is the gate the
+/// policy asks for. Closing it means adding the pin doc, not editing this list.
 #[test]
-fn the_real_corpus_shows_the_documented_but_unpinned_keys() {
+fn every_catalogued_feature_is_pinned_by_a_corpus_document() {
     let corpus = format!("{}/../../corpus", env!("CARGO_MANIFEST_DIR"));
     let v = json(&["features", &corpus, "--json"]);
     assert!(
         v["documents"].as_u64().unwrap() > 100,
         "the corpus walk must find the whole corpus, not one directory"
     );
-    for unpinned in ["logo", "csl"] {
-        assert!(
-            docs_of(&v, "frontmatter-keys", unpinned).is_empty(),
-            "`{unpinned}` is documented in the guide and pinned by no corpus document \
-             (backlog item 207); if that changed, update the item rather than this test"
+
+    let mut unpinned: Vec<String> = Vec::new();
+    for g in v["groups"].as_array().expect("groups") {
+        let slug = g["slug"].as_str().unwrap_or("?");
+        assert_eq!(
+            g["known"].as_u64().unwrap(),
+            g["used"].as_u64().unwrap() + g["unused"].as_u64().unwrap(),
+            "`{slug}`: known must be used + unused, or the denominator is lying"
         );
+        for f in g["features"].as_array().into_iter().flatten() {
+            if f["documents"].as_array().is_some_and(|d| d.is_empty()) {
+                unpinned.push(format!("{slug}.{}", f["name"].as_str().unwrap_or("?")));
+            }
+        }
     }
+    assert!(
+        unpinned.is_empty(),
+        "every catalogued feature must be pinned by a corpus document \
+         (corpus-plus-roadmap: a capability ships WITH its pin doc). Unpinned: {unpinned:#?}"
+    );
+
     // The control: keys the corpus obviously DOES set, so an all-empty table cannot pass.
     assert!(docs_of(&v, "frontmatter-keys", "title").len() > 50);
     assert!(!docs_of(&v, "frontmatter-keys", "bibliography").is_empty());

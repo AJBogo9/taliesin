@@ -1,12 +1,12 @@
 ---
 title: "Shared theorem counters"
 theorems:
-  shared: [theorem, lemma, corollary, proposition]
+  shared: [theorem, lemma, corollary]
 ---
 
 # One sequence
 
-These four kinds share a single counter, so the numbers run continuously across them
+These three kinds share a single counter, so the numbers run continuously across them
 (amsthm's `\newtheorem{lem}[thm]{Lemma}`), while definitions number on their own.
 
 ::: {.theorem #thm-a}

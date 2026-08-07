@@ -9,9 +9,15 @@ preview with a kernel. A `#| label:` with a `fig-` prefix makes the output a
 numbered figure, and `#| fig-cap:` is its caption, so `@fig-sales` resolves on
 its own.
 
+`#| cache: false` is the honest setting for this one cell. The freeze cache keys on
+the cell's code plus everything upstream of it, and `data.csv` is neither: editing the
+CSV without touching the document would replay a stale figure from `_freeze/` forever.
+A cell whose real input sits outside the document opts out.
+
 ```{python}
 #| label: fig-sales
 #| fig-cap: "Monthly sales from `data.csv`."
+#| cache: false
 import pandas as pd
 import matplotlib.pyplot as plt
 

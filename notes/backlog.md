@@ -21,7 +21,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**Items 202, 203 and 204 shipped 2026-08-02** (plus 201 and 207's policy half), on the owner
+**Items 202, 203 and 204 shipped 2026-08-02** (plus 201; 207 closed in full 2026-08-07), on the owner
 ranking that settled the cross-cluster call the previous session left open: the feature-value
 audit's own order, 202 first as the instrument and 203/204 as the two cuts it measures.
 
@@ -114,7 +114,7 @@ evidence independently on its first run.
   with `TALIESIN_BLESS=1`; the guide one wants prose. `crates/server/tests/agents_md_cli.rs`
   still reads `vocab()` from the SERVER crate, so `cargo test -p taliesin-core` can be green
   while it is stale. Five gates *come back* when a key is removed. That cost is the standing
-  argument for item 207's "derive, don't declare".
+  argument for the "derive, don't declare" rule above (item 207, closed 2026-08-07).
 - **Any new generated block owes the four-projection sweep** — `taliesin read`, `skim.rs`, the search
   index and `llms-full.txt` — or its text leaks into the search index. Four projections in three
   modules; two of item 173's leaks were found only by building a real site and grepping the
@@ -314,17 +314,6 @@ Not worth a session on its own. Each is a record or a known cost, not a task.
      use that history to argue against any of those. **Not an alias problem:** `preview` already has
      three spellings (`preview | dev | serve`) and the author still twice typed a fourth
      (`tali view`), so adding `view` is not the fix — if anything `dev`/`serve` are the retirees.
-
-207. **Four documented-but-unpinned front-matter keys: pin them or drop them.** (XS. Feature-value
-     audit, F1/I4. **The policy half landed 2026-08-02** as "derive, don't declare" in Standing
-     constraints.) `include-in-header`, `include-before-body`, `include-after-body` and `logo` are
-     documented in the guide, unit-tested, and exercised by **no corpus document**, so this is a pin
-     gap rather than a coverage gap — but corpus-plus-roadmap makes the corpus the arbiter of done
-     and these were never arbitrated. **`taliesin features corpus` now prints them**, and
-     `crates/server/tests/features_cli.rs` asserts the list, so the gap is measured rather than
-     re-derived: if it changes, update this item, not the test. This is an owner call between
-     pinning four keys and dropping four keys, which is why it was not made while building the
-     instrument that surfaced them.
 
 208. **Re-measure the provisional features on 2026-09-15.** (XS, dated. Feature-value audit, T3.)
      Three capabilities were shipped within three days of that round and so could only be judged on
@@ -660,6 +649,24 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-08-07 corpus completeness: `taliesin features corpus` reports 0 unused, and a test now
+  enforces it** (closes 207 in full; the owner call was *pin*, not drop). The 15 it reported were
+  four different things: **3 vacuous zeroes** (`hero.actions.text/href/primary` — the scanner
+  descended one level and `actions:` is a sequence of maps at depth 2), **3 phantom catalogue
+  entries** (`prp`/`exm`/`rem` survived in `XREF_LABELS` after the 2026-08-03 theorem retirement,
+  reachable by nothing — not a theorem env, not a manual `{#prp-a}`), **2 by-design** (`csl`
+  inert, `range` a `slider` alias) and **7 real gaps**. `features_cli.rs`'s
+  `every_catalogued_feature_is_pinned_by_a_corpus_document` replaced the test that asserted the
+  gap, so a capability landing without its pin doc now FAILS. **Closing the gaps found two
+  shipping bugs neither the suite nor any audit had caught, because nothing exercised them:**
+  `build --out` never copied `poster=`/`data-src=` assets (a built folder's poster and
+  off-theme clip both 404'd, and the missing poster collapsed the element to the UA-default
+  150px), and the book brand linked to a hardcoded `index.html` that a book whose `chapters:`
+  does not start with `index.tmd` never emits (`corpus/theorem-book/`: dead title link on every
+  page, both slots). Also new: `TAL-THM-KIND` — `theorems: shared:` validated its KEY but never
+  its VALUES, so `shared: [theorem, lemna]` drew separate counters and `proposition` stayed
+  accepted four days after retirement, both with a clean `check`.
+
 - **2026-08-04 `::: {.debug}`, algorithm debug mode** (not a backlog item; requested directly).
   A `#| trace: true` `{python}` cell is recorded with `sys.settrace` in the warm kernel at build
   time; a `//| trace: true` `{js}` cell returns a generator drained client-side and **re-captured**
@@ -684,7 +691,7 @@ branch are enough to find its commits.
   JSON, and the widget vanished silently on any Dijkstra or DP cell using `float('inf')`).
 
 - **2026-08-02 the adoption report and the two cuts it measures** (202, 203, 204, plus 201 and
-  207's policy half): `taliesin features <file|dir>` reports what a document uses and what nothing
+  207's policy half, item now closed): `taliesin features <file|dir>` reports what a document uses and what nothing
   uses; `::: {.columns}`/`.column`/`ncol=` are **removed** for `{layout-ncol=N}`; `{{< dataset >}}`
   carries its own annotations and the `datasets:` key is retired. **Do not rebuild `features` on
   `vocab.rs`** (the offered-completions subset: 11 div classes where the validator has 16, and a

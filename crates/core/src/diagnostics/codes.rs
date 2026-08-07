@@ -99,6 +99,10 @@ const TABLE: &[(&str, &str, &str)] = &[
     // text (`{{< video math-intro.mp4 >}}` would otherwise classify as TAL-MATH).
     ("{{<", "TAL-SHORTCODE", WARNING),
     ("unknown callout kind", "TAL-CALLOUT-KIND", WARNING),
+    // A bad value inside `theorems: shared:`. Its own family rather than TAL-FM-KEY: the
+    // key is fine and the fix edits a list ENTRY, not the key. Above the generic needles
+    // because the message quotes the author's own kind name.
+    ("unknown theorem kind", "TAL-THM-KIND", WARNING),
     // The `.callout-…` row's sibling: a near-miss of any other feature/theorem div class.
     // Separate family because the fix is a different edit (the class, not the callout kind),
     // and above the generic needles below because the message quotes the author's own class.
@@ -429,6 +433,20 @@ const EXPLANATIONS: &[Explanation] = &[
                 at a rename.",
         fix: "Change the kind to a supported one (a typo draws the nearest match; a retired \
               kind's message names what to use instead), e.g. `::: {.callout-warning}`.",
+    },
+    Explanation {
+        code: "TAL-THM-KIND",
+        title: "an unknown theorem kind in `theorems: shared:`",
+        cause: "The `shared:` list names theorem kinds that should draw ONE counter, and an \
+                entry here is not one of Taliesin's five (`theorem`, `lemma`, `corollary`, \
+                `definition`, `proof`). An unrecognized kind is simply skipped, so the \
+                counter you asked to share silently stays separate and the numbering is \
+                wrong in a way nothing on the page announces. `proposition`, `example` and \
+                `remark` were retired on 2026-08-03 with their div classes, so a list \
+                carried over from before then names kinds that no longer exist.",
+        fix: "Drop the entry, or replace it with the surviving kind the message names \
+              (`theorem` covers a proposition — both render in the same `plain` style). A \
+              typo draws the nearest match instead.",
     },
     Explanation {
         code: "TAL-DIV-CLASS",

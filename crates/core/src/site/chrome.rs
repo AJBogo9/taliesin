@@ -136,7 +136,8 @@ impl Site {
             "<header class=\"tali-site-nav\" data-tali-src=\"_site.yml\"><nav class=\"tali-nav-inner\" aria-label=\"Primary\">",
         );
         s.push_str(&format!(
-            "<a class=\"tali-nav-brand\" href=\"{up}index.html\">{}</a>",
+            "<a class=\"tali-nav-brand\" href=\"{up}{}\">{}</a>",
+            self.site_home_url(),
             self.brand_content(&brand_text, &up)
         ));
         // A real, focusable button toggles the mobile menu, so keyboard and
@@ -300,9 +301,51 @@ impl Site {
             return String::new();
         }
         format!(
-            "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
+            "<a class=\"tali-book-brand\" href=\"{up}{}\">{}</a>",
+            self.book_home_url(),
             self.brand_content(title.map(String::as_str).unwrap_or(""), up)
         )
+    }
+
+    /// Where the site brand points: the website's home page.
+    ///
+    /// The website twin of [`Self::book_home_url`], and the same hazard. A directory-walked
+    /// website has no required entry file — `corpus/debug/` is four pages named
+    /// `sorting`/`leetcode`/`dp`/`custom-view` and nothing else — so a hardcoded
+    /// `index.html` was a dead brand link on every page of it. Prefer a real `index.html`
+    /// (every other site in the repo has one, and keeps exactly its old behaviour),
+    /// otherwise fall back to the first page in the site's own order.
+    fn site_home_url(&self) -> String {
+        if self.pages.iter().any(|p| p.url == "index.html") {
+            return "index.html".to_string();
+        }
+        self.pages
+            .first()
+            .map(|p| p.url.clone())
+            .unwrap_or_else(|| "index.html".to_string())
+    }
+
+    /// Where the book brand points: the book's home page.
+    ///
+    /// **Not always `index.html`.** `chapters:` is an ordered list of files the author
+    /// names, and nothing requires the first to be `index.tmd`; a book that starts with
+    /// `alpha.tmd` builds no `index.html` at all, so a hardcoded `index.html` was a dead
+    /// link in both brand slots on every page of it (measured on `corpus/theorem-book/`).
+    /// Prefer a real index chapter when one exists — that keeps every book that already
+    /// starts with `index.tmd` exactly as it was — and otherwise fall back to the first
+    /// chapter, which IS the book's front door when there is no index.
+    fn book_home_url(&self) -> String {
+        let Some(book) = &self.book else {
+            return "index.html".to_string();
+        };
+        let chapters = book.chapters();
+        if chapters.iter().any(|c| c.url == "index.html") {
+            return "index.html".to_string();
+        }
+        chapters
+            .first()
+            .map(|c| c.url.clone())
+            .unwrap_or_else(|| "index.html".to_string())
     }
 
     /// The book chrome: a slim sticky topbar (a "Chapters" drawer launcher, the title
@@ -639,6 +682,95 @@ mod tests {
             html.matches(brand).count(),
             2,
             "both book brand slots (topbar + drawer head) must carry the logo:\n{html}"
+        );
+    }
+
+    /// The book brand links to the book's HOME, and a book's home is not always
+    /// `index.html`. `chapters:` is an ordered list of files the author names, and nothing
+    /// requires the first to be `index.tmd` — `corpus/theorem-book/` declares `alpha.tmd`
+    /// then `beta.tmd`, so its build emitted no `index.html` at all and the title in the
+    /// topbar (and the drawer head, both slots) was a dead link on every page. Every other
+    /// book in the repo happened to start with `index.tmd`, which is why it survived: the
+    /// bug needs a book that simply named its chapters something else.
+    #[test]
+    fn the_book_brand_links_to_the_first_chapter_when_there_is_no_index() {
+        let root = write_site(
+            "booknoindex",
+            &[
+                (
+                    "_site.yml",
+                    "title: Counters\nchapters:\n  - alpha.tmd\n  - beta.tmd\n",
+                ),
+                ("alpha.tmd", "---\ntitle: Alpha\n---\n\nx\n"),
+                ("beta.tmd", "---\ntitle: Beta\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let beta = site.render_page("beta.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            !beta.contains("<a class=\"tali-book-brand\" href=\"index.html\">"),
+            "no chapter emits index.html, so the brand must not point at it:\n{beta}"
+        );
+        assert_eq!(
+            beta.matches("<a class=\"tali-book-brand\" href=\"alpha.html\">")
+                .count(),
+            2,
+            "both brand slots point at the first chapter, the book's actual home:\n{beta}"
+        );
+    }
+
+    /// The website twin: a directory-walked site has no required entry file, so a site
+    /// whose pages are simply named something else got a dead brand link on every page.
+    /// `corpus/debug/` is exactly that (`sorting`/`leetcode`/`dp`/`custom-view`, no
+    /// `index.tmd`) and every one of its four pages linked "home" to a 404.
+    #[test]
+    fn the_site_brand_links_to_the_first_page_when_there_is_no_index() {
+        let root = write_site(
+            "sitenoindex",
+            &[
+                ("_site.yml", "title: Exhibit\n"),
+                ("alpha.tmd", "---\ntitle: Alpha\n---\n\nx\n"),
+                ("beta.tmd", "---\ntitle: Beta\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let beta = site.render_page("beta.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            !beta.contains("<a class=\"tali-nav-brand\" href=\"index.html\">"),
+            "no page emits index.html, so the brand must not point at it:\n{beta}"
+        );
+        assert!(
+            beta.contains("<a class=\"tali-nav-brand\" href=\"alpha.html\">"),
+            "the brand points at the first page, the site's actual home:\n{beta}"
+        );
+    }
+
+    /// The other half: a book that DOES start with `index.tmd` keeps linking there, so the
+    /// fix above is a fallback rather than a behaviour change for every existing book.
+    #[test]
+    fn the_book_brand_still_prefers_a_real_index_chapter() {
+        let root = write_site(
+            "bookwithindex",
+            &[
+                (
+                    "_site.yml",
+                    "title: Manual\nchapters:\n  - index.tmd\n  - two.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+                ("two.tmd", "---\ntitle: Two\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let two = site.render_page("two.tmd").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(
+            two.matches("<a class=\"tali-book-brand\" href=\"index.html\">")
+                .count(),
+            2,
+            "an index chapter stays the home:\n{two}"
         );
     }
 

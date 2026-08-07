@@ -82,13 +82,47 @@ fn a_flag_written_before_the_path_is_not_taken_for_the_clip() {
     );
 }
 
+/// `dark=` emits a PAIR of elements (CSS picks one per theme) rather than swapping a `src`
+/// at runtime, and `poster=` rides on both. Pinned as whole tags for trap 1 above: the
+/// bundled CSS names `.tali-video-dark`, so a page-wide `contains("tali-video-dark")`
+/// passes on a page with no video at all.
+#[test]
+fn a_theme_adaptive_pair_emits_one_element_per_theme_sharing_the_poster() {
+    let h = page();
+    let label = "With `poster=` and `dark=`: a still before playback, and a source per theme.";
+    for (class, src) in [
+        ("tali-video-light", "tour-light.mp4"),
+        ("tali-video-dark", "tour.mp4"),
+    ] {
+        assert!(
+            h.contains(&format!(
+                "<video class=\"{class}\" data-src=\"{src}\" \
+                 poster=\"tour-light-poster.png\" muted loop controls playsinline \
+                 preload=\"metadata\" tabindex=\"0\" aria-label=\"{label}\">"
+            )),
+            "the {class} half of the theme pair must carry {src} and the shared poster: {h}"
+        );
+    }
+    // The single-element form is unaffected: a clip with no `dark=` stays one `<video>`
+    // with a plain `src`, so the pair is not leaking into every invocation.
+    assert!(
+        h.contains("<video src=\"tour.mp4\" muted loop controls"),
+        "a clip without `dark=` keeps the single-element form: {h}"
+    );
+}
+
 #[test]
 fn every_media_file_the_pin_names_exists_on_disk() {
     // The pin asserts on emitted paths, which would stay green if the fixture media were
     // deleted — and `taliesin check`'s local-media diagnostic would then be the only thing
     // that noticed, on a document no `check` run covers.
     let dir = corpus_dir().join("media");
-    for f in ["tour.mp4", "tour.vtt"] {
+    for f in [
+        "tour.mp4",
+        "tour.vtt",
+        "tour-light.mp4",
+        "tour-light-poster.png",
+    ] {
         assert!(dir.join(f).is_file(), "corpus/media/{f} must exist");
     }
 }

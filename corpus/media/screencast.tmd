@@ -29,3 +29,23 @@ Flag order is free, so a bare `controls` (redundant now, but still accepted) can
 before the path:
 
 {{< video controls tour.mp4 caption="The flags are not paths, so this still plays `tour.mp4`." >}}
+
+## A poster frame, and a source per theme
+
+`poster=` is the still the browser shows before playback starts. Without one the frame
+is an empty black box until the reader presses play, which reads as a broken embed
+rather than a video waiting to be started.
+
+`dark=` is the video equivalent of a theme-adaptive figure: the main path is used in
+the light theme and `dark=` replaces it in the dark one. A screencast of a
+light-themed UI stays legible on a light page and is replaced by the dark capture on a
+dark page, instead of one of the two glaring. The pair below is the same three seconds
+inverted, so switching the theme toggle swaps a dark square on white for a light
+square on near-black.
+
+There is one `poster=` and two sources, so **both themes share the one still**: in the
+dark theme the light poster shows until playback starts. A second poster would be a
+second key for a frame that is visible for a moment, which is the trade this deliberately
+does not make.
+
+{{< video tour-light.mp4 dark=tour.mp4 poster=tour-light-poster.png caption="With `poster=` and `dark=`: a still before playback, and a source per theme." >}}

@@ -28,6 +28,13 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown div class `column`: it was removed on 2026-08-02 with `.columns`. Under \
          `{layout-ncol=N}` each direct child block is already a column, so the child fences \
          go away entirely rather than being renamed",
+        // `theorems: shared:` names KINDS, and its list entries went unvalidated until
+        // 2026-08-07: a typo drew two separate counters and a kind retired on 2026-08-03
+        // stayed accepted, both with a clean `check`. Same rename-vs-removal split as the
+        // div classes above, one vocabulary over.
+        "unknown theorem kind `lemna` (did you mean `lemma`?)",
+        "unknown theorem kind `proposition`: it was removed on 2026-08-03. `.theorem` is \
+         the closest surviving numbered kind now — both render in the same `plain` style",
     ];
     for e in expected {
         assert!(
@@ -45,6 +52,19 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         unknown,
         expected.len(),
         "unexpected unknown-key warnings:\n{msgs:#?}"
+    );
+
+    // `csl:` is RECOGNIZED but deliberately inert, which is a third category again: not a
+    // typo (nothing to rename) and not a removal (it was never honored). Its message does
+    // not start with "unknown", so it sits outside the count above on purpose.
+    let unsupported = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("is recognized but not supported"))
+        .expect("`csl:` must draw the recognized-but-unsupported diagnostic");
+    assert!(
+        unsupported.message.contains("`csl:`") && unsupported.line.is_some(),
+        "the unsupported-key warning names the key and is located: {unsupported:?}"
     );
 
     // The body validators are click-to-source (located at the offending line).

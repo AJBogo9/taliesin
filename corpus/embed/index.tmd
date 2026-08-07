@@ -6,7 +6,11 @@ A `{{< embed >}}` pulls another document's **deck** view into this page as an
 isolated iframe. The deck is built as a standalone `.html` beside this page (kept
 out of the site nav) and the iframe resolves to it:
 
-{{< embed talk.tmd >}}
+{{< embed talk.tmd title="A short talk, embedded as slides" >}}
+
+`title=` names the iframe. It is the only accessible name the frame has, so without
+it a screen reader announces an unlabelled frame and a keyboard reader tabbing into
+the deck has no idea what they landed in — invisible on screen, load-bearing off it.
 
 Everything below the embed is ordinary page prose, so the embedded deck is one
 component of an article rather than a page of its own.

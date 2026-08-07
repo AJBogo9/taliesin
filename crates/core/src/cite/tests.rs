@@ -190,6 +190,49 @@ fn validate_xrefs_flags_only_unresolved_markers() {
     assert!(validate_xrefs(&ok).is_empty());
 }
 
+/// The two halves of the 2026-08-03 theorem retirement, which must not drift apart.
+/// `proposition`/`example`/`remark` left [`crate::render::THEOREM_KINDS`], and nothing else
+/// mints a `prp-`/`exm-`/`rem-` anchor, so an author can no longer *define* one of these
+/// targets. The prefixes stay in [`XREF_LABELS`] on purpose, so a leftover `@prp-a` still
+/// resolves far enough to be reported broken rather than passing through as literal text
+/// (the silent fallthrough `RETIRED_DIV_CLASSES` exists to prevent). But they must not be
+/// *offered*: as catalogue entries they parked three permanent zeroes in `taliesin
+/// features` that no document could ever clear, and `AGENTS.md` told its reader to write a
+/// reference guaranteed to break.
+#[test]
+fn a_retired_xref_prefix_is_diagnosable_but_not_offered() {
+    for p in RETIRED_XREF_PREFIXES {
+        assert!(
+            XREF_LABELS.iter().any(|(k, _)| k == p),
+            "`{p}` must stay in the label table, or a leftover `@{p}-x` goes silent"
+        );
+        assert!(
+            !xref_prefixes().contains(p),
+            "`{p}` must not be offered: no construct can define its target"
+        );
+    }
+    // Positive control, so this cannot pass by both lists being empty.
+    assert!(xref_prefixes().contains(&"thm"));
+    assert!(XREF_LABELS.iter().any(|(k, _)| *k == "thm"));
+
+    // The anti-silence half is behaviour, not just table membership.
+    let leftover = vec![Block {
+        id: "x".into(),
+        sourcepos: "1:1-1:1".into(),
+        source_file: None,
+        html: "<a href=\"#prp-a\" class=\"tali-xref\" data-tali-xref=\"prp-a\">Proposition</a>"
+            .into(),
+        cell: None,
+    }];
+    let w = validate_xrefs(&leftover);
+    assert_eq!(
+        w.len(),
+        1,
+        "a leftover retired reference is still reported: {w:?}"
+    );
+    assert!(w[0].message.contains("@prp-a"));
+}
+
 /// One block carrying `html`, at line 1. The did-you-mean tests only care about HTML.
 fn block(html: &str) -> Block {
     Block {

@@ -116,3 +116,30 @@ def f(x):
 ```rust,no_run,edition2021
 fn main() {}
 ```
+
+## The registered languages that highlight but never execute
+
+`vocab`'s cell-language registry carries four languages described as "highlighted only;
+not executed" — `bash`, `sql`, `julia` and `rust`. They are a real part of the authoring
+vocabulary (completion offers them, `check` accepts them), so a document that writes one
+must come out coloured rather than plain, even though no kernel is ever consulted. `bash`
+and `rust` are exercised above and in `tarn/`; these two are pinned here.
+
+```julia
+function loglikelihood(x::Vector{Float64}, mu::Float64, sigma::Float64)
+    n = length(x)
+    -n / 2 * log(2pi * sigma^2) - sum((x .- mu) .^ 2) / (2 * sigma^2)
+end
+```
+
+```sql
+SELECT
+    region,
+    count(*) AS n,
+    round(avg(latency_ms), 1) AS mean_latency
+FROM requests
+WHERE created_at >= date('now', '-7 days')
+GROUP BY region
+HAVING count(*) > 100
+ORDER BY mean_latency DESC;
+```

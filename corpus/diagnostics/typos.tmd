@@ -1,17 +1,28 @@
 ---
 title: "Diagnostics: typo coverage"
 treme: darkly
+csl: ieee.csl
 execute:
   cach: true
 listing:
   contents: posts
   max-itemz: 3
+theorems:
+  shared: [theorem, lemna, proposition]
 ---
 
 # Typo coverage
 
 This document deliberately uses misspelled keys to pin Taliesin's schema validators.
 Each unknown key below produces one click-to-source warning; rendering is unaffected.
+
+The front matter covers three *different* mistakes on purpose, because they need three
+different messages: a **typo** gets a did-you-mean (`treme`, `cach`, `max-itemz`,
+`lemna`), a **retired** name gets a removal note instead of a guessed rename
+(`proposition`), and a **recognized but inert** key gets neither, because there is
+nothing to rename and nothing was removed (`csl:` parses, and has never had an effect).
+`theorems: shared:` is the list whose *values* went unchecked until 2026-08-07: a typo
+there silently drew separate counters.
 
 ::: {.callout-warnign}
 This callout names a kind Taliesin does not define.

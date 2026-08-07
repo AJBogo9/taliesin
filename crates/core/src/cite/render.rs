@@ -41,6 +41,20 @@ pub(crate) const XREF_LABELS: &[(&str, &str)] = &[
     ("rem", "Remark"),
 ];
 
+/// Prefixes [`XREF_LABELS`] still resolves a label for, but that an author can no longer
+/// *define* a target for: `proposition`, `example` and `remark` were retired from
+/// [`crate::render::THEOREM_KINDS`] on 2026-08-03, and nothing else mints a `prp-`/`exm-`/
+/// `rem-` anchor (not a section `{#prp-a}`, not a figure `{#exm-b}` — both were measured).
+///
+/// They stay in the table on purpose, so `@prp-a` left behind by a migration still renders
+/// its label and still draws `TAL-XREF-UNDEF` rather than passing through as literal text —
+/// the silent-fallthrough the retired-div register exists to prevent. But they are **not**
+/// features: [`xref_prefixes`](crate::cite::xref_prefixes) filters them out, because the
+/// catalogue answers "what can an author write", and `taliesin features` would otherwise
+/// report three constructs as adopted by no document forever, with no document able to fix
+/// it.
+pub(crate) const RETIRED_XREF_PREFIXES: &[&str] = &["prp", "exm", "rem"];
+
 /// Cross-reference kind prefixes -> display label.
 fn xref_label(prefix: &str) -> Option<&'static str> {
     XREF_LABELS

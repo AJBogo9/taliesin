@@ -30,6 +30,13 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-slide-anchor",
     "data-source-file",
     "data-sourcepos",
+    // A theme-adaptive `{{< video … dark= >}}` pair ships BOTH clips as `data-src` so the
+    // hidden variant is never fetched; the page shell promotes the visible one to `src`.
+    // Deliberately un-namespaced: it is the conventional lazy-media spelling, and
+    // `data-tali-src` is already taken by click-to-source (a page's `.tmd` path), which
+    // `build`'s asset harvest must never publish. Reached the corpus on 2026-08-07 with
+    // `corpus/media/screencast.tmd`'s poster/dark pair; the attribute itself is older.
+    "data-src",
     "data-state",
     "data-tali-cell",
     "data-tali-input",

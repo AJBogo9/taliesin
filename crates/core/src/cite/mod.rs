@@ -32,7 +32,6 @@ mod validate;
 mod tests;
 
 pub use parse::{parse_bib, parse_bib_warned};
-pub(crate) use render::XREF_LABELS;
 /// Whether an id's prefix names a cross-reference kind, i.e. whether `@id` can resolve.
 /// Public so `taliesin symbols` can offer only anchors an author can actually write
 /// after `@`, instead of reimplementing the prefix list outside `taliesin-core`.
@@ -40,12 +39,21 @@ pub use render::is_xref_anchor;
 pub use render::link_xrefs_in_fragment;
 pub use render::process;
 pub(crate) use render::xref_prefix_for_label;
+pub(crate) use render::{RETIRED_XREF_PREFIXES, XREF_LABELS};
 
 /// The cross-reference kind prefixes an author can write after `@`, for
 /// [`crate::features`]'s catalogue. Reads [`XREF_LABELS`], the same table that decides what
-/// a reference renders as, so the report cannot list a kind the renderer will not resolve.
+/// a reference renders as, so the report cannot list a kind the renderer will not resolve,
+/// minus [`RETIRED_XREF_PREFIXES`] — a kind the renderer resolves a *label* for but that no
+/// construct can define a *target* for is not something an author can adopt, and listing it
+/// would park three permanent zeroes in a report whose whole job is to distinguish "nobody
+/// uses this" from "this is not a feature".
 pub(crate) fn xref_prefixes() -> Vec<&'static str> {
-    XREF_LABELS.iter().map(|(p, _)| *p).collect()
+    XREF_LABELS
+        .iter()
+        .map(|(p, _)| *p)
+        .filter(|p| !render::RETIRED_XREF_PREFIXES.contains(p))
+        .collect()
 }
 pub use validate::{validate_xrefs, validate_xrefs_known_elsewhere};
 

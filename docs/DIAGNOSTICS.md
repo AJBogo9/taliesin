@@ -354,6 +354,14 @@ The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. T
 
 To fix: Use comma-separated ranges within the step (`lines="3-5,8"`), and express multiple reveal states as separate `.step` blocks — one per pipe group.
 
+## TAL-THM-KIND
+
+**an unknown theorem kind in `theorems: shared:`**
+
+The `shared:` list names theorem kinds that should draw ONE counter, and an entry here is not one of Taliesin's five (`theorem`, `lemma`, `corollary`, `definition`, `proof`). An unrecognized kind is simply skipped, so the counter you asked to share silently stays separate and the numbering is wrong in a way nothing on the page announces. `proposition`, `example` and `remark` were retired on 2026-08-03 with their div classes, so a list carried over from before then names kinds that no longer exist.
+
+To fix: Drop the entry, or replace it with the surviving kind the message names (`theorem` covers a proposition — both render in the same `plain` style). A typo draws the nearest match instead.
+
 ## TAL-XREF-UNDEF
 
 **a cross-reference points at nothing**

@@ -387,6 +387,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         block,
         &mut out,
     );
+    validate_theorem_shared_kinds(map, block, &mut out);
     // `listing:` is one mapping or a sequence of mappings (cv.tmd).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
@@ -605,6 +606,41 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
                 ));
             }
         }
+    }
+}
+
+/// Validate the *values* of `theorems: shared:`, which name theorem kinds rather than keys.
+///
+/// Only the key was ever checked, so the list itself fell through in silence: `shared:
+/// [theorem, lemna]` drew two separate counters with a clean `check`, and
+/// `corpus/refs/theorems-shared.tmd` went on declaring `proposition` for four days after
+/// that kind was retired. This is the [`crate::render::RETIRED_DIV_CLASSES`]
+/// silent-fallthrough hazard one vocabulary over, and it is answered the same way: a
+/// retired kind gets its registered note (read through
+/// [`crate::render::retired_div_note`], so the two diagnostics cannot drift apart),
+/// anything else gets the usual did-you-mean.
+fn validate_theorem_shared_kinds(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    let Some(serde_yaml::Value::Mapping(theorems)) = map.get("theorems") else {
+        return;
+    };
+    let Some(serde_yaml::Value::Sequence(shared)) = theorems.get("shared") else {
+        return;
+    };
+    for kind in shared.iter().filter_map(|v| v.as_str()) {
+        if crate::render::THEOREM_KINDS.contains(&kind) {
+            continue;
+        }
+        let msg = match crate::render::retired_div_note(kind) {
+            Some(note) => format!("unknown theorem kind `{kind}`: {note}"),
+            None => match closest(kind, crate::render::THEOREM_KINDS) {
+                Some(near) => format!("unknown theorem kind `{kind}` (did you mean `{near}`?)"),
+                None => format!("unknown theorem kind `{kind}`"),
+            },
+        };
+        out.push(located_span(
+            msg,
+            block_key_span(block, "shared").or_else(|| block_key_span(block, "theorems")),
+        ));
     }
 }
 
@@ -987,6 +1023,44 @@ mod tests {
             );
             assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
         }
+    }
+
+    /// `shared:` names theorem KINDS, and only its *key* was ever validated — the values
+    /// were not. `shared: [theorem, lemna]` silently drew two separate counters, and
+    /// `corpus/refs/theorems-shared.tmd` carried `proposition` for four days after that kind
+    /// was retired with `check` still reporting "no problems found". Same silent
+    /// fallthrough `RETIRED_DIV_CLASSES` exists to prevent, one vocabulary over.
+    #[test]
+    fn theorems_shared_validates_its_kind_values() {
+        let m = msgs("---\ntheorems:\n  shared: [theorem, lemna]\n---\n");
+        assert!(
+            m.iter()
+                .any(|w| w.contains("unknown theorem kind `lemna`") && w.contains("lemma")),
+            "a typo'd kind warns with did-you-mean: {m:?}"
+        );
+
+        // A kind retired on 2026-08-03 explains itself instead of being answered with a
+        // near-miss rename, exactly as the div-class register does.
+        for kind in ["proposition", "example", "remark"] {
+            let m = msgs(&format!(
+                "---\ntheorems:\n  shared: [theorem, {kind}]\n---\n"
+            ));
+            let msg = m
+                .iter()
+                .find(|w| w.contains(&format!("`{kind}`")))
+                .unwrap_or_else(|| panic!("`shared: [{kind}]` drew no diagnostic: {m:?}"));
+            assert!(
+                msg.contains("removed on 2026-08-03"),
+                "must say it went and what survives: {msg}"
+            );
+        }
+
+        // The live set stays clean, so this cannot pass by warning on everything.
+        assert!(
+            msgs("---\ntheorems:\n  shared: [theorem, lemma, corollary, definition, proof]\n---\n")
+                .is_empty(),
+            "every live kind must validate silently"
+        );
     }
 
     #[test]

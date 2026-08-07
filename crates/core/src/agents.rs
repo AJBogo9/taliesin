@@ -26,6 +26,7 @@ pub const AGENTS_MD: &str = include_str!("../assets/agents/AGENTS.md");
 const CSV_FIGURE_CELL: &str = r#"```{python}
 #| label: fig-sales
 #| fig-cap: "Monthly sales from `data.csv`."
+#| cache: false
 import pandas as pd
 import matplotlib.pyplot as plt
 
