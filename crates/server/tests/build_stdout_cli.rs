@@ -104,7 +104,11 @@ fn stdout_conflicts_are_loud() {
         assert!(err.contains(needle), "`{args:?}` said: {err}");
     }
 
-    // A site has many pages and no one page to put on stdout.
+    // A site has many pages and no one page to put on stdout. `--stdout` on a directory is
+    // rejected for that reason specifically, so this needs a real project (`_site.yml`) --
+    // otherwise the newer, more fundamental "not a project" guard wins instead (by design:
+    // see `project_required.rs`), masking the check this test means to exercise.
+    fs::write(dir.join("_site.yml"), "title: Conflict probe\n").unwrap();
     let (ok, _out, err) = build(&[dir.to_str().unwrap(), "--stdout"]);
     assert!(!ok, "--stdout on a directory must fail");
     assert!(err.contains("many"), "got: {err}");

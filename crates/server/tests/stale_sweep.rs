@@ -32,6 +32,7 @@ fn build(dir: &std::path::Path, out: &std::path::Path) {
 fn rebuild_sweeps_removed_page_and_asset_but_keeps_deploy_metadata() {
     let dir = tmp_dir("removed");
     let out = dir.join("out");
+    fs::write(dir.join("_site.yml"), "title: Sweep probe\n").unwrap();
     fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
     fs::create_dir_all(dir.join("posts")).unwrap();
     fs::write(

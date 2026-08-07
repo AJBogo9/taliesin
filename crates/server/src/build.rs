@@ -266,6 +266,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // A directory is a multi-page site project (`_site.yml` + `.tmd` pages);
     // a single `.tmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
+        // A directory is a project, and a project is what `_site.yml` declares. Without one
+        // there is nothing to build: no nav, no title, no page at `/`. This is the stance
+        // `read` already takes (`query.rs`); `build` used to warn and synthesize a website.
+        if !Path::new(path).join("_site.yml").is_file() {
+            log::error(&crate::serve::not_a_project_error(Path::new(path), "build"));
+            return ExitCode::FAILURE;
+        }
         if bare {
             log::error(
                 "--bare builds a single document, not a site (a site's navigation + \

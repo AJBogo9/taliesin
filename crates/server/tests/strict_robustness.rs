@@ -3,7 +3,9 @@
 //! `CARGO_BIN_EXE_taliesin`):
 //!
 //! - a malformed `_site.yml` is a `--strict` build problem (a silently-degraded site must
-//!   not ship green), while a *missing* `_site.yml` is not;
+//!   not ship green); a *missing* `_site.yml` is a harder, unconditional failure (a
+//!   directory is refused as not a project regardless of `--strict` -- see
+//!   `project_required.rs`);
 //! - an unknown `--flag` is a hard error with a did-you-mean (not silently dropped);
 //! - a value-less `--out` is a hard error (not a silent `<stem>.html` write).
 
@@ -69,9 +71,11 @@ fn malformed_site_yml_fails_strict_build() {
 }
 
 #[test]
-fn missing_site_yml_does_not_fail_strict_build() {
-    // A bare directory of `.tmd` pages (no `_site.yml`) is legitimate: --strict must not
-    // fail just because the config is absent.
+fn missing_site_yml_fails_regardless_of_strict() {
+    // A bare directory of `.tmd` pages (no `_site.yml`) is no longer a legitimate build
+    // target at all (see `project_required.rs`): the failure is unconditional, so
+    // `--strict` is not what decides it -- a lenient build of the same directory fails
+    // exactly the same way.
     let dir = tmp_dir("nofile");
     fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
     let out = dir.join("_site");
@@ -86,9 +90,10 @@ fn missing_site_yml_does_not_fail_strict_build() {
     let err = String::from_utf8_lossy(&res.stderr);
     let _ = fs::remove_dir_all(&dir);
     assert!(
-        res.status.success(),
-        "a missing _site.yml must NOT fail --strict, stderr was:\n{err}"
+        !res.status.success(),
+        "a missing _site.yml must fail even without --strict, stderr was:\n{err}"
     );
+    assert!(err.contains("no _site.yml"), "names the reason: {err}");
 }
 
 #[test]
