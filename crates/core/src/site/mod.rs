@@ -998,7 +998,7 @@ impl Site {
         Some(PageLinkFacts {
             rel: page.rel.clone(),
             url: page.url.clone(),
-            has_cells: doc.blocks.iter().any(|b| b.cell.is_some()),
+            has_cells: doc.blocks.iter().any(|b| b.cells().next().is_some()),
             ids,
             links,
         })
@@ -1187,6 +1187,7 @@ impl Site {
             source_file: None,
             html: body,
             cell: None,
+            nested: Vec::new(),
         }];
         doc
     }
@@ -1720,6 +1721,7 @@ fn listing_block(index: usize, contents: &str, cards_html: &str) -> Block {
         source_file: None,
         html: cards_html.to_string(),
         cell: None,
+        nested: Vec::new(),
     }
 }
 
@@ -1737,6 +1739,7 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
                 source_file: None,
                 html,
                 cell: None,
+                nested: Vec::new(),
             },
         ),
     }

@@ -45,7 +45,7 @@ pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
     // Static check never executes cells; a {python}/{r}/{js} cell can emit the target id at
     // runtime (e.g. `HTML('<div id="x">')`). Conservatively skip the manual-anchor check for
     // any doc with executable cells, so a green check stays a no-false-positive promise.
-    if blocks.iter().any(|b| b.cell.is_some()) {
+    if blocks.iter().any(|b| b.cells().next().is_some()) {
         return Vec::new();
     }
     let mut ids: std::collections::HashSet<&str> = std::collections::HashSet::new();

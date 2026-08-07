@@ -641,9 +641,8 @@ impl EnvEntry {
 /// stopping once both are seen.
 fn used_languages(blocks: &[taliesin_core::Block]) -> Vec<&'static str> {
     let mut seen = Vec::new();
-    for b in blocks {
-        if let Some(c) = &b.cell
-            && let Some(lang) = crate::exec::kernel_lang(&c.lang)
+    for c in blocks.iter().flat_map(|b| b.cells()) {
+        if let Some(lang) = crate::exec::kernel_lang(&c.lang)
             && !seen.contains(&lang)
         {
             seen.push(lang);

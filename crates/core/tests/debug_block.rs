@@ -213,16 +213,23 @@ fn a_trace_option_on_a_language_that_cannot_be_stepped_is_diagnosed_at_its_own_l
     );
 }
 
-/// A `.debug` nested inside ANY other fenced div loses its traced cell, and must say so.
+/// A `.debug` nested inside ANY other fenced div still reaches the executor.
 ///
-/// A fenced div's composite block folds its children's HTML into one string and carries at
-/// most one `Cell`; `.debug` works only because it hoists its traced cell onto its own
-/// container. A wrapping div folds THAT container away in turn and carries no cell, so the
-/// executor never runs the trace: reproduced as zero trace blobs, zero warnings, and a
-/// dead code panel. `validate_stray_trace` cannot catch it, because the wrapper's own HTML
-/// carries the `tali-debug` class and the trace marker alike.
+/// This used to warn (`validate_nested_debug`) and give up. A fenced div's composite block
+/// folds its children's HTML into one string and carries at most one `Cell`; `.debug` works
+/// because it hoists its traced cell onto its own container, and a wrapping div folded THAT
+/// container away in turn, carrying no cell — the trace never ran, and the reader got a dead
+/// code panel. The warning was the honest answer only for as long as the fix could rescue
+/// just one `.debug` per wrapper; item 210 replaced it with `Block::nested`, which carries
+/// every folded cell, so two algorithms in a `.panel-tabset` both work and the warning is
+/// gone rather than half-true.
+///
+/// `.debug` is still the one container that hoists onto `cell` rather than `nested` (its
+/// trace lands on the SIBLING output block `debug.js` reads), so what the wrapper collects
+/// here is that hoisted cell — and collecting it exactly once is the property under test:
+/// twice would re-run the traced cell on every rebuild.
 #[test]
-fn a_debug_div_nested_inside_another_div_warns_that_its_traced_cell_is_dropped() {
+fn a_debug_div_nested_inside_another_div_still_reaches_the_executor() {
     for wrapper in [".callout-note", ".panel-tabset", ".column-page"] {
         let src = format!(
             "---\ntitle: T\n---\n\n::: {{{wrapper}}}\n\n\
@@ -230,42 +237,50 @@ fn a_debug_div_nested_inside_another_div_warns_that_its_traced_cell_is_dropped()
              ```{{python}}\n#| trace: true\na = 1\n```\n:::\n\n:::\n"
         );
         let d = doc(&src);
-        let w = d
-            .warnings
-            .iter()
-            .find(|w| w.message.contains("nested inside another div"))
-            .unwrap_or_else(|| panic!("{wrapper}: no nesting warning in {:?}", d.warnings));
-        // Located on the INNER `.debug` fence (line 7), not the wrapper's (line 5): the
-        // line the author has to move is the one click-to-source should open.
-        assert_eq!(w.line, Some(7), "{wrapper}: {w:?}");
-        // And the reason the warning is needed: the top-level block the executor scans
-        // carries no cell at all, so the trace genuinely never runs.
+        assert!(
+            !d.warnings
+                .iter()
+                .any(|w| w.message.contains("nested inside another div")),
+            "{wrapper}: the nesting limitation is gone, so its warning must be too: {:?}",
+            d.warnings
+        );
         let top = d
             .blocks
             .iter()
             .find(|b| b.html.contains("tali-debug"))
             .expect("the wrapper block");
+        assert_eq!(
+            top.nested.len(),
+            1,
+            "{wrapper}: the wrapper must carry the folded traced cell exactly once \
+             (twice re-runs it every rebuild): {top:?}"
+        );
+        // …and the output slot the executor fills is keyed to that same cell.
+        let id = &top.nested[0].id;
         assert!(
-            top.cell.is_none(),
-            "{wrapper}: a wrapping container cannot carry the nested cell, which is \
-             exactly why this warns: {top:?}"
+            top.html
+                .contains(&format!("data-tali-out-for=\"{id}\"></div>")),
+            "{wrapper}: no output slot for the folded cell {id}: {}",
+            top.html
         );
     }
 
-    // A top-level `.debug` is the supported shape and must stay silent.
+    // A top-level `.debug` is unchanged: it hands the executor its traced cell directly,
+    // and its trace still arrives as the sibling output block `debug.js` looks for.
     let ok = doc("---\ntitle: T\n---\n\n::: {.debug name=\"s\"}\n\
          ```{python}\n#| trace: true\na = 1\n```\n:::\n");
+    let top = ok
+        .blocks
+        .iter()
+        .find(|b| b.html.contains("tali-debug"))
+        .expect("the debug block");
     assert!(
-        !ok.warnings
-            .iter()
-            .any(|w| w.message.contains("nested inside another div")),
-        "{:?}",
-        ok.warnings
+        top.cell.is_some(),
+        "a top-level `.debug` still hands the executor its traced cell: {top:?}"
     );
     assert!(
-        ok.blocks.iter().any(|b| b.cell.is_some()),
-        "a top-level `.debug` still hands the executor its traced cell: {:?}",
-        ok.blocks
+        top.nested.is_empty(),
+        "the hoisted cell must not ALSO be collected as a nested one: {top:?}"
     );
 }
 

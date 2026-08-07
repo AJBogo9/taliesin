@@ -136,6 +136,51 @@ pub struct Block {
     pub html: String,
     /// Present when this block is an executable code cell.
     pub cell: Option<Cell>,
+    /// The executable cells this block folded away, in document order. Non-empty only for
+    /// a `:::` container (see [`super::divs`]); every other block leaves it empty.
+    ///
+    /// A container concatenates its children into ONE `html` string, so a nested cell's
+    /// own `Block` — and with it the `cell` the executor looks for — stops existing at
+    /// that point. `Executor::run_through` scans only top-level blocks, so the cell
+    /// rendered and never ran: a `{python}` cell in a `.callout-note` or a
+    /// `.panel-tabset` was dead source (backlog item 210). The folded child blocks are
+    /// kept here instead, and the container leaves an empty
+    /// [`super::CELL_OUT_SLOT_ATTR`] slot after each one in `html`, so the executor
+    /// puts the output back INSIDE the container rather than after it — which is the
+    /// difference between a tab's output appearing in its own panel and every tab's
+    /// output stacked below the tabset, hidden ones included.
+    ///
+    /// Entries are the child blocks themselves (same id, sourcepos, source_file and
+    /// html), so the executor can ask a nested cell exactly the questions it asks a
+    /// top-level one. They are already flattened when a container folds another
+    /// container, so an entry's own `nested` is always empty.
+    pub nested: Vec<Block>,
+}
+
+impl Block {
+    /// Every block carrying a code cell that this one contributes, in document order: the
+    /// cells a `:::` container folded away (they are *inside* it, so they come first), then
+    /// this block itself when it is a cell. Yields nothing for ordinary prose.
+    ///
+    /// **ONE definition, and reading `self.cell` directly instead is the bug.** "Which cells
+    /// does this document have, in what order" is asked from at least seven places — the
+    /// executor, the editor's freeze-cache lens, `--cell N` resolution, the preview's
+    /// kernel-free bypass lane, `check`'s used-languages report, the reproduce block, and
+    /// the static anchor lint — and every one of them that reads `cell` alone silently
+    /// forgets each cell inside a callout or a tabset. That is the exact shape of the defect
+    /// [`Block::nested`] exists to close, so it is worth one method rather than seven
+    /// chances to reintroduce it.
+    pub fn cell_blocks(&self) -> impl Iterator<Item = &Block> {
+        self.nested
+            .iter()
+            .chain(std::iter::once(self).filter(|b| b.cell.is_some()))
+    }
+
+    /// [`Block::cell_blocks`] for a caller that needs the cells but not their block
+    /// identity (a language census, "does this page have any cells at all").
+    pub fn cells(&self) -> impl Iterator<Item = &Cell> {
+        self.cell_blocks().filter_map(|b| b.cell.as_ref())
+    }
 }
 
 /// The output format the document targets, taken from its front matter

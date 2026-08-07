@@ -755,6 +755,7 @@ mod tests {
             source_file: None,
             html: html.into(),
             cell: None,
+            nested: Vec::new(),
         }
     }
 

@@ -1,0 +1,106 @@
+---
+title: "Code cells inside fenced divs"
+---
+
+A `:::` container folds its children into one block, so for as long as the executor only
+scanned top-level blocks a code cell inside a container was dead source: it rendered, and
+it never ran. This document is the shape that pins the fix (backlog item 210) — one
+executable cell per container kind, so each one carries the output slot the executor
+fills in place.
+
+## A cell in a callout
+
+::: {.callout-note}
+The output belongs inside the callout, under the code that produced it, not after the
+box closes.
+
+```{python}
+print("from inside a callout")
+```
+:::
+
+## A cell per tab
+
+The motivating case: two algorithms side by side. Splicing each output after the
+container would stack both below the tabs, including the hidden one.
+
+::: {.panel-tabset}
+
+## Iterative
+
+```{python}
+total = 0
+for i in range(5):
+    total += i
+print(total)
+```
+
+## Closed form
+
+```{python}
+n = 4
+print(n * (n + 1) // 2)
+```
+
+:::
+
+## A cell in a layout grid
+
+::: {layout-ncol=2}
+
+```{python}
+print("left column")
+```
+
+```{python}
+print("right column")
+```
+
+:::
+
+## A cell in a width escape
+
+::: {.column-page}
+A wide container is where a table too broad for the reading measure goes, which is
+exactly the cell an author most wants to run.
+
+```{python}
+print("| a | b |")
+print("|---|---|")
+print("| 1 | 2 |")
+```
+:::
+
+## A cell in a theorem environment
+
+::: {.theorem title="Sum of the first n integers"}
+The sum $\sum_{i=1}^{n} i$ equals $n(n+1)/2$.
+
+```{python}
+print(sum(range(1, 5)) == 4 * 5 // 2)
+```
+:::
+
+## A cell two containers deep
+
+A container folds another container, and the cells keep their slots at the depth they
+were written. This is also the shape that used to warn: nothing nested could run.
+
+::: {.column-page}
+::: {.callout-tip}
+```{python}
+print("two levels down")
+```
+:::
+:::
+
+## A `{js}` cell earns no slot
+
+A `{js}` cell mounts its own live target in the browser and never produces a server-side
+output block, so no slot is emitted for one — an element that could never fill.
+
+::: {.callout-note}
+```{js}
+return tali.table([1, 2, 3].map((n) => ({ n, doubled: n * 2 })));
+```
+:::

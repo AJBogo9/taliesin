@@ -175,20 +175,19 @@ would otherwise be cramped beside the code panel. The button's label flips to **
 while active, and the Escape key (or the browser's own fullscreen exit) leaves it the same
 way any fullscreen element exits.
 
-## What a `.debug` block cannot be nested inside
+## Nesting a `.debug` block
 
-Keep the `::: {.debug}` fence at the top level of the page. It cannot live inside another
-fenced div, so a `.debug` wrapped in a callout, a `.panel-tabset` or a `.column-page` will
-not run its traced cell: the wrapping container folds the debug block into its own markup
-before the cell has run, and the trace never happens. The result is a code panel with no
-stepper at all.
+A `::: {.debug}` fence works wherever you write it, including inside another fenced div: a
+callout, a `.column-page`, or two algorithms as two tabs of one `.panel-tabset`. Give each
+one its own `name=` so their `tali.frame(name)` registries stay separate.
 
-Taliesin does not let that pass quietly. A nested `.debug` warns (`TAL-DEBUG-TRACE`, run
-`taliesin check --explain TAL-DEBUG-TRACE` for the full note) at the inner fence's own
-line, so the dev panel points at the line you have to move. Two algorithms side by side
-are written as two top-level `.debug` blocks, each with its own `name=`, rather than as
-two tabs of one tabset.
+This was a real limitation until recently, and older notes may still say so. A wrapping
+container folds its children's markup into one block, and a folded code cell used to be
+dropped on the floor: the trace never ran and the reader got a code panel with no stepper.
+Cells folded into a container are now carried through to the executor, so nothing about
+where you put the fence changes whether it runs.
 
-The same top-level rule is why `#| trace: true` on a cell that is not inside any `.debug`
-div warns as well: the trace would run, cost real kernel time, and produce a recording
-nothing on the page would ever read.
+`#| trace: true` on a cell that is not inside *any* `.debug` div still warns
+(`TAL-DEBUG-TRACE`, run `taliesin check --explain TAL-DEBUG-TRACE` for the full note): the
+trace would run, cost real kernel time, and produce a recording nothing on the page would
+ever read.

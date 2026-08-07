@@ -248,6 +248,7 @@ mod tests {
             source_file: None,
             html: format!("<p data-block-id=\"{id}\">{id}</p>"),
             cell: None,
+            nested: Vec::new(),
         }
     }
 
@@ -412,6 +413,7 @@ mod tests {
             source_file: None,
             html: "<p data-block-id=\"a\" data-sourcepos=\"5:1-5:6\">Body.</p>".into(),
             cell: None,
+            nested: Vec::new(),
         };
         let new = Block {
             sourcepos: "3:1-3:6".into(),
@@ -443,6 +445,7 @@ mod tests {
                    <p data-sourcepos=\"6:1-6:5\">Inner.</p></div>"
                 .into(),
             cell: None,
+            nested: Vec::new(),
         };
         let new = Block {
             sourcepos: "3:1-5:3".into(),
@@ -472,6 +475,7 @@ mod tests {
             source_file: None,
             html: "<div data-block-id=\"out\" data-sourcepos=\"5:1-5:6\">old</div>".into(),
             cell: None,
+            nested: Vec::new(),
         };
         let new = Block {
             sourcepos: "3:1-3:6".into(),

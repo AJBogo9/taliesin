@@ -444,34 +444,6 @@ pub(crate) fn validate_stray_trace(html: &str, line: u32, file: Option<String>) 
     })
 }
 
-/// Warn on a `::: {.debug}` nested inside any OTHER fenced div, whose traced cell is
-/// dropped on the floor.
-///
-/// A fenced div's composite `Block` folds its children's HTML into one string and can
-/// carry at most ONE `Cell`. `.debug` exploits that by hoisting its traced cell onto its
-/// own container (see `build_container`), which is what makes the cell reachable by the
-/// executor at all. A wrapping div then folds THAT container away in turn and carries no
-/// cell, so the trace never runs: the reader gets a dead code panel with an empty
-/// transport bar. `validate_stray_trace` cannot catch it, because the wrapper's HTML
-/// carries the `tali-debug` class and the trace marker alike.
-///
-/// This warns rather than propagating the cell up. Propagation is one line, but it can
-/// only ever rescue ONE `.debug` per wrapper, and the motivating case is exactly the one
-/// it cannot serve: two algorithms side by side in a `.panel-tabset`, where the first tab
-/// would quietly work and the second would quietly not. A rule that fixes half the cases
-/// and silently drops the other half is worse than the honest warning, so the limitation
-/// is stated here, in `docs/guide/using/debug.tmd`, and in the TAL-DEBUG-TRACE
-/// explanation. `line` is the 1-based source line of the nested `.debug`'s own opening
-/// fence, not the wrapper's.
-pub(crate) fn validate_nested_debug(line: u32, file: Option<String>) -> Warning {
-    Warning::new(
-        "a `.debug` nested inside another div cannot run its traced cell; move it to the \
-         top level"
-            .to_string(),
-    )
-    .at(file, line)
-}
-
 /// Warn on a SECOND `::: {.debug name="…"}` on the same page reusing a `name=` an
 /// earlier `.debug` block already claimed. `debug.js`'s registry keys `tali.frame(name)`
 /// by that one string and stamps `data-debug-name`/`[data-tali-input]` from it too, so two

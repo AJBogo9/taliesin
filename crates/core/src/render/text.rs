@@ -854,6 +854,7 @@ mod tests {
                 <figcaption>Figure&nbsp;2: A histogram</figcaption></figure></div>"
                 .into(),
             cell: None,
+            nested: Vec::new(),
         };
         assert_eq!(
             project_block(&fig),
@@ -868,6 +869,7 @@ mod tests {
                 <pre class=\"tali-error\">ValueError: bad value</pre></div>"
                 .into(),
             cell: None,
+            nested: Vec::new(),
         };
         assert_eq!(project_block(&err), "[cell error: ValueError: bad value]");
     }

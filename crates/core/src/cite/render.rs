@@ -202,6 +202,7 @@ pub fn process(
         source_file: None,
         html: list,
         cell: None,
+        nested: Vec::new(),
     };
     // Land the list under the author's own `# References` heading when they wrote one.
     // Appending unconditionally was right by luck while every document ended with that

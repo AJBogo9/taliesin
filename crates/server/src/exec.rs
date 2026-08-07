@@ -29,7 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use parking_lot::Mutex;
 use taliesin_core::{
     Block, escape_attr as esc,
-    render::{CellFigure, CellTable},
+    render::{self, CellFigure, CellTable},
 };
 
 use crate::freeze::{self, FreezeCache};
@@ -243,14 +243,16 @@ pub(crate) fn cell_cache_keys(
 ) -> Vec<CellCacheKey> {
     let mut by_lang: HashMap<&'static str, Vec<(usize, String, bool)>> = HashMap::new();
     for (i, b) in blocks.iter().enumerate() {
-        if let Some(c) = &b.cell
-            && let Some(lang) = kernel_lang(&c.lang)
-        {
-            by_lang.entry(lang).or_default().push((
-                i,
-                cache_code(&c.code, is_traced(lang, &b.html)),
-                c.cache,
-            ));
+        for (cell_block, _) in cells_of(b) {
+            if let Some(c) = &cell_block.cell
+                && let Some(lang) = kernel_lang(&c.lang)
+            {
+                by_lang.entry(lang).or_default().push((
+                    i,
+                    cache_code(&c.code, is_traced(lang, &cell_block.html)),
+                    c.cache,
+                ));
+            }
         }
     }
     let mut out = Vec::new();
@@ -295,6 +297,64 @@ struct CellRef {
     ///
     /// **Python only**, gated by [`is_traced`] above (see its doc comment for why).
     traced: bool,
+    /// Where this cell's output goes once it has run.
+    out: OutTarget,
+}
+
+/// Where an executed cell's output is put back.
+///
+/// A top-level cell gets its own output `Block`, spliced into the flat list right after it
+/// (`Sibling`). A cell a `:::` container folded away has no block of its own left, so the
+/// renderer left an empty slot in the container's HTML where the cell sits and the output
+/// is written into that slot (`Slot`) — inside the container, not after it. See
+/// [`taliesin_core::render::Block::nested`] and `render::divs::output_slot`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OutTarget {
+    Sibling,
+    /// The folded cell's own block id, which keys its slot's `data-tali-out-for`.
+    Slot(String),
+}
+
+/// Every executable cell a top-level block contributes, in document order, each paired
+/// with where its output goes.
+///
+/// A `:::` container folds its children into one HTML string, so the cells it swallowed
+/// live on [`Block::nested`] rather than on blocks of their own (item 210). They come
+/// first, because they are *inside* this block: a nested cell has to enter the kernel and
+/// the cumulative hash chain at the container's position in the document, not after it.
+/// `cell` and `nested` are disjoint in practice — only a `.debug` container sets `cell`,
+/// and it excludes from `nested` the one child it hoisted — but the order is fixed here
+/// rather than assumed, so a block that ever carried both could not reorder a run.
+///
+/// ONE definition, because two walks have to agree: the executor's, and the editor code
+/// lens's [`cell_cache_keys`]. The freeze key is a cumulative hash over exactly this
+/// sequence, so a lens that enumerated cells differently would confidently report "cached"
+/// for keys the executor would miss on.
+fn cells_of(b: &Block) -> impl Iterator<Item = (&Block, OutTarget)> {
+    b.cell_blocks().map(move |cb| match cb.id == b.id {
+        // The block IS this one: an unfolded top-level cell, whose output becomes its own
+        // sibling block. Block ids are unique within a document, so this cannot confuse a
+        // container with a cell it swallowed.
+        true => (cb, OutTarget::Sibling),
+        false => (cb, OutTarget::Slot(cb.id.clone())),
+    })
+}
+
+/// Write an executed nested cell's output into the empty slot its container left for it.
+///
+/// The slot's tail is the exact literal `<CELL_OUT_SLOT_ATTR>="<id>"></div>` —
+/// `render::divs::output_slot` puts that attribute last precisely so this needs no HTML
+/// parsing — and block ids are unique, so the match cannot land on a filled slot or on
+/// anything else on the page. The attribute NAME comes from core rather than being spelled
+/// again here: two spellings of a string one side writes and the other searches for would
+/// fail as an output that silently never appears. A missing slot is a no-op rather than a
+/// panic, for the same reason — the only way to reach one is a renderer and an executor
+/// that disagree, and losing one output beats losing the page.
+fn fill_output_slot(html: &mut String, id: &str, inner: &str) {
+    let tail = format!("{}=\"{id}\"></div>", render::CELL_OUT_SLOT_ATTR);
+    if let Some(at) = html.find(&tail) {
+        html.insert_str(at + tail.len() - "</div>".len(), inner);
+    }
 }
 
 impl CellRef {
@@ -687,21 +747,24 @@ impl Executor {
         // Group executable cells by language, preserving document order.
         let mut by_lang: HashMap<&'static str, Vec<CellRef>> = HashMap::new();
         for (i, b) in blocks.iter().enumerate() {
-            if let Some(c) = &b.cell
-                && let Some(lang) = kernel_lang(&c.lang)
-            {
-                by_lang.entry(lang).or_default().push(CellRef {
-                    block_index: i,
-                    id: b.id.clone(),
-                    code: c.code.clone(),
-                    sourcepos: b.sourcepos.clone(),
-                    source_file: b.source_file.clone(),
-                    figure: c.figure.clone(),
-                    table: c.table.clone(),
-                    include: c.include,
-                    cache: c.cache,
-                    traced: is_traced(lang, &b.html),
-                });
+            for (cell_block, out) in cells_of(b) {
+                if let Some(c) = &cell_block.cell
+                    && let Some(lang) = kernel_lang(&c.lang)
+                {
+                    by_lang.entry(lang).or_default().push(CellRef {
+                        block_index: i,
+                        id: cell_block.id.clone(),
+                        code: c.code.clone(),
+                        sourcepos: cell_block.sourcepos.clone(),
+                        source_file: cell_block.source_file.clone(),
+                        figure: c.figure.clone(),
+                        table: c.table.clone(),
+                        include: c.include,
+                        cache: c.cache,
+                        traced: is_traced(lang, &cell_block.html),
+                        out,
+                    });
+                }
             }
         }
 
@@ -714,6 +777,10 @@ impl Executor {
 
         // Map cell block index -> its output block (when non-empty), across langs.
         let mut output_blocks: HashMap<usize, Block> = HashMap::new();
+        // Container block index -> (folded cell id, its output HTML), for the cells a
+        // `:::` div swallowed: those go back into the slot the renderer left inside the
+        // container, not into a block of their own.
+        let mut slot_fills: HashMap<usize, Vec<(String, String)>> = HashMap::new();
         let mut tally = CacheTally::default();
         let run_epoch = requested_at.unwrap_or_else(|| self.control.epoch());
         for (lang, cells) in &by_lang {
@@ -739,7 +806,15 @@ impl Executor {
                     }
                     continue;
                 }
-                output_blocks.insert(cell.block_index, output_block(cell, inner));
+                match &cell.out {
+                    OutTarget::Sibling => {
+                        output_blocks.insert(cell.block_index, output_block(cell, inner));
+                    }
+                    OutTarget::Slot(id) => slot_fills
+                        .entry(cell.block_index)
+                        .or_default()
+                        .push((id.clone(), output_inner(cell, inner))),
+                }
             }
         }
         // One legible cache line per run (DX9): only when something replayed, so a cold
@@ -755,7 +830,10 @@ impl Executor {
         self.control.end_cell();
 
         let mut result = Vec::with_capacity(blocks.len() + output_blocks.len());
-        for (i, b) in blocks.into_iter().enumerate() {
+        for (i, mut b) in blocks.into_iter().enumerate() {
+            for (id, inner) in slot_fills.remove(&i).unwrap_or_default() {
+                fill_output_slot(&mut b.html, &id, &inner);
+            }
             result.push(b);
             if let Some(ob) = output_blocks.remove(&i) {
                 result.push(ob);
@@ -1710,19 +1788,28 @@ fn empty_labelled_float_warning(cell: &CellRef, inner: &str) -> Option<String> {
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
 /// points click-to-source at the cell's own source position. A `#| label: fig-x`
 /// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
+/// What goes *inside* a cell's output element: the raw output, wrapped as a numbered
+/// `<figure>`/captioned `<table>` when the cell is labelled. Split out of
+/// [`output_block`] because a cell a `:::` container folded away has no output block of
+/// its own — its output is written into the container's slot — and must still be wrapped
+/// the same way, or a `#| label: fig-x` inside a callout would lose its number.
+fn output_inner(cell: &CellRef, inner: &str) -> String {
+    if let Some(fig) = &cell.figure {
+        figure_wrap(fig, inner)
+    } else if let Some(tbl) = &cell.table {
+        table_wrap(tbl, inner)
+    } else {
+        inner.to_string()
+    }
+}
+
 fn output_block(cell: &CellRef, inner: &str) -> Block {
     let id = format!("{}-out", cell.id);
     let source_file_attr = match &cell.source_file {
         Some(f) => format!(" data-source-file=\"{}\"", esc(f)),
         None => String::new(),
     };
-    let inner = if let Some(fig) = &cell.figure {
-        figure_wrap(fig, inner)
-    } else if let Some(tbl) = &cell.table {
-        table_wrap(tbl, inner)
-    } else {
-        inner.to_string()
-    };
+    let inner = output_inner(cell, inner);
     let html = format!(
         "<div class=\"tali-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
         cell.sourcepos
@@ -1733,6 +1820,7 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
         source_file: cell.source_file.clone(),
         html,
         cell: None,
+        nested: Vec::new(),
     }
 }
 
@@ -1948,6 +2036,7 @@ mod tests {
             include: true,
             cache: true,
             traced: false,
+            out: OutTarget::Sibling,
         }
     }
 
@@ -2038,6 +2127,7 @@ mod tests {
                 cache: true,
                 js: Default::default(),
             }),
+            nested: Vec::new(),
         }
     }
 

@@ -1660,11 +1660,10 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
 /// which is what makes a `{js}` page cell-free here: `{js}` runs in the browser, so a page
 /// full of reactive cells needs the kernel lane exactly as much as a prose page does.
 fn is_cell_free(blocks: &[Block]) -> bool {
-    !blocks.iter().any(|b| {
-        b.cell
-            .as_ref()
-            .is_some_and(|c| taliesin_core::render::executes_to_kernel(&c.lang))
-    })
+    !blocks
+        .iter()
+        .flat_map(|b| b.cells())
+        .any(|c| taliesin_core::render::executes_to_kernel(&c.lang))
 }
 
 /// What a build pass concluded about the page's lane.
@@ -2771,6 +2770,33 @@ mod project_tests {
         assert!(!is_cell_free(&render(
             "---\ntitle: T\n---\n\n```{python}\n#| include: false\nprint(1)\n```\n"
         )));
+        // A cell a `:::` container folded away runs too (item 210), and asking `b.cell`
+        // alone here does not see it. Found by hand, not by this suite: the first build
+        // went down the exec lane and worked, the page was then classified cell-free, and
+        // every rebuild after it silently produced empty outputs — the same silent-drop the
+        // whole item is about, reintroduced one predicate downstream of the fix. Every
+        // container kind, because the bypass decision is per page, not per container.
+        for wrapper in [
+            ".callout-note",
+            ".panel-tabset",
+            ".column-page",
+            "layout-ncol=2",
+        ] {
+            let src = format!(
+                "---\ntitle: T\n---\n\n::: {{{wrapper}}}\n\n\
+                 ```{{python}}\nprint(1)\n```\n\n:::\n"
+            );
+            assert!(
+                !is_cell_free(&render(&src)),
+                "a `{wrapper}` holding a {{python}} cell was routed to the lane that \
+                 cannot run one"
+            );
+        }
+        // …and a `{js}` cell in a container is still cell-free, for the same reason a
+        // top-level one is: it runs in the browser.
+        assert!(is_cell_free(&render(
+            "---\ntitle: T\n---\n\n::: {.callout-note}\n\n```{js}\nreturn 1;\n```\n\n:::\n"
+        )));
     }
 
     /// The site-preview shell for one page of a corpus project, assembled the way the live
@@ -2839,6 +2865,7 @@ mod project_tests {
                     source_file: None,
                     html: html.into(),
                     cell: None,
+                    nested: Vec::new(),
                 }],
                 ..Default::default()
             },

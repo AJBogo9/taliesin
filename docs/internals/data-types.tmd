@@ -31,6 +31,7 @@ struct Block {
     source_file: Option<String>, // Some(path) only for a block from an {{< include >}}d file
     html: String,                // rendered HTML; the root element carries the three attrs
     cell: Option<Cell>,          // Some(..) when this block is an executable code cell
+    nested: Vec<Block>,          // the cells a ::: container folded away, in document order
 }
 ```
 
@@ -39,6 +40,20 @@ positional `-N` suffix to break ties between byte-identical blocks). Because it 
 content-derived, an unchanged block keeps its id across edits, which is the whole
 basis for the incremental diff. `cell` is the bridge to the server: a `Some(..)`
 marks a block the executor must run.
+
+`nested` is the second half of that bridge, and it exists because a `:::` container
+concatenates its children into one `html` string. A cell inside a callout or a tabset has
+no block of its own left, so it is invisible to an executor that scans the flat top-level
+list, which is exactly what it was until this field arrived: the cell rendered and never
+ran. The container keeps the folded child blocks here, and leaves an **empty output slot**
+in its own HTML after each one — a `<div class="tali-output">` carrying that cell's
+`{id}-out` block id plus a `data-tali-out-for` marker. The executor fills the slot in
+place, so a tab's output lands in that tab's own panel rather than below the whole tabset.
+
+Entries are flattened to one level (a container that folds another container takes its
+list wholesale), so an entry's own `nested` is always empty. `.debug` is the one exception
+to the whole mechanism: it hoists its traced cell onto the container's own `cell` instead,
+because `debug.js` reads that trace off the sibling output block.
 
 ### `Cell`
 

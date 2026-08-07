@@ -625,6 +625,62 @@ fn is_traced_cell(b: &Block) -> bool {
     b.html.contains("data-tali-trace=\"1\"")
 }
 
+/// Whether a folded child block is a rendered code block (a cell or a plain fence).
+fn is_code_block(b: &Block) -> bool {
+    b.html.contains("<pre") && b.html.contains("<code")
+}
+
+/// The child index a `::: {.debug}` turns into its stepped code panel: the traced cell,
+/// else the first code block.
+///
+/// The panel follows the trace, not document order. A `.debug` may hold more than one code
+/// block (`validate_debug` warns on it, but the div still renders), and if the traced cell
+/// isn't the first code block, showing the first one would silently step through code the
+/// reader never sees highlighted. Falling back to the first code block only when nothing is
+/// traced is covered by `validate_debug`'s "no traced cell" warning.
+///
+/// ONE definition because two callers need the same answer: the `.debug` branch builds the
+/// panel from it, and the nested-cell collection above skips exactly that child (a `.debug`
+/// hoists its traced cell onto the container's own `cell`, so collecting it as a nested cell
+/// too would run it twice per rebuild).
+fn debug_code_idx(inner: &[Block]) -> Option<usize> {
+    inner
+        .iter()
+        .position(|b| is_code_block(b) && is_traced_cell(b))
+        .or_else(|| inner.iter().position(is_code_block))
+}
+
+/// The attribute marking a container's empty output slot, keyed by the folded cell's own
+/// block id.
+///
+/// ONE definition, shared with `taliesin-server`'s `exec::fill_output_slot`, which finds
+/// the slot by this exact name when the cell's output comes back. Two spellings of a
+/// string one side writes and the other searches for would fail the way this project likes
+/// least: silently, as an output that simply never appears.
+pub const CELL_OUT_SLOT_ATTR: &str = "data-tali-out-for";
+
+/// The empty output slot a container leaves in its HTML after a code cell it folds away,
+/// so the executor can splice that cell's output back INSIDE the container.
+///
+/// Byte-compatible with the top-level output block `exec.rs` builds for an unfolded cell —
+/// same `tali-output` class, same `{id}-out` block id, same click-to-source position — so
+/// the browser code that finds a running cell's output by `{id}-out` (the streaming host in
+/// `client.js`, the per-cell state ring) works on a nested cell with no second lookup path,
+/// and `.tali-output:empty` in base.css collapses one that never filled.
+///
+/// [`CELL_OUT_SLOT_ATTR`] comes LAST on purpose: the executor fills the slot by splicing
+/// at the exact literal `<attr>="<id>"></div>`, which needs no HTML parsing, cannot match
+/// a filled slot, and cannot collide with anything else on the page (block ids are unique).
+fn output_slot(b: &Block) -> String {
+    format!(
+        "<div class=\"tali-output\" data-block-id=\"{id}-out\" data-sourcepos=\"{pos}\"{file} {attr}=\"{id}\"></div>",
+        id = b.id,
+        pos = b.sourcepos,
+        file = source_file_attr(b.source_file.as_deref()),
+        attr = CELL_OUT_SLOT_ATTR,
+    )
+}
+
 /// Bundled inline icon for a callout `kind` (GitHub Octicons, MIT — see THIRD_PARTY.md;
 /// `fill="currentColor"` so it takes the kind's accent). Empty for an unknown kind, which
 /// is already flagged by `validate_callout_kind`. Keyed by the same vocabulary as
@@ -687,6 +743,43 @@ fn build_container(
     // would never execute at all. Set below, inside the `.debug` branch, to the same
     // cell `code_idx` there resolves to (the traced cell, or the first code block).
     let mut debug_cell: Option<Cell> = None;
+
+    // Every OTHER folded cell has the same problem and, until item 210, the same fate: a
+    // `{python}` cell in a `.callout-note`, a `.panel-tabset` or a `layout-ncol` grid
+    // rendered and never ran. They are collected onto `Block::nested` here, each with an
+    // empty output slot left after it in the folded HTML, so the executor can run them in
+    // document order and put each output back where its cell sits. `.debug` is the one
+    // exception: it hoists its traced cell onto `debug_cell` instead, because `debug.js`
+    // reads that trace off the SIBLING block the executor splices in after the container
+    // (and collecting it here as well would run the cell twice per rebuild).
+    //
+    // `group_divs` closes containers innermost-first, so a nested container has already
+    // done this to its own children: taking its `nested` list wholesale flattens every
+    // cell in the document to one level while each slot stays where it belongs inside the
+    // folded HTML. That is also what makes a `.debug` inside another div work, which
+    // `validate_nested_debug` used to have to warn about.
+    let debug_hoist = attrs
+        .classes
+        .iter()
+        .any(|c| c == "debug")
+        .then(|| debug_code_idx(&inner))
+        .flatten();
+    //
+    // Only a cell in a language the *kernel* runs earns a slot. A `{js}` cell mounts its
+    // own live target client-side and never produces a server-side output block, so a slot
+    // after one would be an element that can never fill — which is exactly what the
+    // `explorable/scrolly.tmd` snapshot caught. `executes_to_kernel` is the canonical set
+    // (drift-locked to `exec::kernel_lang` by a test), so this asks it rather than
+    // re-listing the languages.
+    let mut nested: Vec<Block> = Vec::new();
+    for (i, b) in inner.iter_mut().enumerate() {
+        nested.append(&mut b.nested);
+        let runs = b.cell.as_ref().is_some_and(|c| executes_to_kernel(&c.lang));
+        if runs && Some(i) != debug_hoist {
+            b.html.push_str(&output_slot(b));
+            nested.push(b.clone());
+        }
+    }
 
     let html = if let Some(kind) = attrs.callout_kind() {
         // Validate the kind against taliesin's callout vocabulary (an unknown kind
@@ -764,19 +857,10 @@ fn build_container(
         // `.column-page` is applied here rather than left to the author: the reading
         // measure (~70ch) cannot hold a code panel beside a data view, and requiring
         // `::: {.debug .column-page}` would make every author repeat the same escape.
-        let is_code = |b: &Block| b.html.contains("<pre") && b.html.contains("<code");
         let traced = inner.iter().filter(|b| is_traced_cell(b)).count();
-        // The panel follows the trace, not document order. A `.debug` may hold more than
-        // one code block (`validate_debug` warns on it, but the div still renders), and
-        // if the traced cell isn't the first code block, showing the first one would
-        // silently step through code the reader never sees highlighted: exactly the
-        // silent-fallthrough this project won't tolerate. Fall back to the first code
-        // block only when nothing is traced (which `validate_debug`'s "no traced cell"
-        // warning already covers).
-        let code_idx = inner
-            .iter()
-            .position(|b| is_code(b) && is_traced_cell(b))
-            .or_else(|| inner.iter().position(is_code));
+        // Resolved once, above, because the nested-cell collection has to skip exactly the
+        // child this hoists (see `debug_code_idx`).
+        let code_idx = debug_hoist;
         let name = attrs.get("name").filter(|n| !n.is_empty());
         for w in super::validate::validate_debug(
             traced,
@@ -1110,26 +1194,13 @@ fn build_container(
         format!("<div class=\"{class}\"{id_attr}{data}>{body}</div>")
     };
 
-    // A `.debug` folded into THIS container loses the traced cell it hoisted onto its own
-    // block a moment ago: `Block` carries at most one `Cell`, and this composite is about
-    // to carry either its own (`.debug`) or none. Either way the nested one is gone and
-    // the trace never runs. See `validate_nested_debug` for why this warns instead of
-    // propagating the cell upward.
-    for b in &inner {
-        if b.cell.is_some() && b.html.contains("class=\"tali-debug") {
-            warnings.push(super::validate::validate_nested_debug(
-                sourcepos_start_line(&b.sourcepos),
-                b.source_file.clone(),
-            ));
-        }
-    }
-
     Block {
         id,
         sourcepos,
         source_file: file,
         html,
         cell: debug_cell,
+        nested,
     }
 }
 

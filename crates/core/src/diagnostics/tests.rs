@@ -187,6 +187,7 @@ fn link_text_collision_exempts_generated_cross_reference_labels() {
                <a href=\"b.html#thm-b\" class=\"tali-xref\">Theorem</a></p>"
             .into(),
         cell: None,
+        nested: Vec::new(),
     };
     assert!(
         validate_link_text_collisions(std::slice::from_ref(&xrefs)).is_empty(),
@@ -214,6 +215,7 @@ fn link_text_collision_reads_aria_label_over_visible_text() {
         source_file: None,
         html: html.into(),
         cell: None,
+        nested: Vec::new(),
     };
     let labelled = block(
         "<p><a href=\"one.html\" aria-label=\"read the intro\">more</a> \

@@ -88,7 +88,7 @@ pub(crate) use divs::{scan_code_fences, scan_div_attrs};
 pub mod print;
 mod validate;
 pub(crate) use divs::parse_attrs;
-pub use divs::tokenize_attrs;
+pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
 use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary dump (crate::vocab), which sources completion
@@ -1305,6 +1305,7 @@ fn render_internal_impl(
                 source_file,
                 html,
                 cell,
+                nested: Vec::new(),
             },
         });
     }
@@ -1380,6 +1381,7 @@ fn render_internal_impl(
                 source_file: None,
                 html: tb,
                 cell: None,
+                nested: Vec::new(),
             },
         );
     } else if format == DocFormat::Html
@@ -1403,6 +1405,7 @@ fn render_internal_impl(
                 source_file: None,
                 html: h1,
                 cell: None,
+                nested: Vec::new(),
             },
         );
     }
@@ -1418,6 +1421,7 @@ fn render_internal_impl(
                 source_file: None,
                 html: ap,
                 cell: None,
+                nested: Vec::new(),
             });
         }
     }

@@ -24,7 +24,7 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
 | `map <file.tmd\|dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning). A single file is a project of one page, so this also lists that document's cross-reference targets (what you can write after `@`) |
 | `mcp` | Run a stdio **MCP server** exposing check/read/symbols/map/vocab/build tools |
-| `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics in any LSP editor (Neovim, Helix, Zed, VS Code) |
+| `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
 `check` renders the document or site in memory and reports everything that flows
@@ -640,15 +640,54 @@ and `build` writes HTML beside that path and executes the document's code cells.
 Contain it with the host's own sandbox and working directory.
 :::
 
-`lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so any LSP
-editor (Neovim, Helix, Zed, VS Code) gets live `.tmd` diagnostics as you type, the same
-validators as `check`, run on the unsaved buffer. It is parse-only: no kernel, no code
+`lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
+editor gets live `.tmd` diagnostics as you type, the same validators as `check`, run on
+the unsaved buffer — plus completion, hover, go-to-definition, symbols, rename, inlay
+hints, folding and the Run-Cell code lens. It is parse-only: no kernel, no code
 execution, and it never edits your source.
 
-```
+```lua
 -- Neovim (nvim-lspconfig or vim.lsp.start)
 cmd = { "taliesin", "lsp" }
 ```
+
+```toml
+# Helix — ~/.config/helix/languages.toml
+[language-server.taliesin]
+command = "taliesin"
+args = ["lsp"]
+
+# `.tmd` is Markdown plus extensions, so attaching the server to Helix's own
+# markdown language is both the highlighting answer and the LSP answer. `file-types`
+# REPLACES the built-in list rather than adding to it, so keep the defaults.
+[[language]]
+name = "markdown"
+file-types = ["md", "markdown", "tmd"]
+language-servers = ["taliesin", "marksman"]
+```
+
+## "Any LSP editor", except the colours
+
+The server speaks LSP, so the intelligence above works anywhere. **Syntax highlighting
+does not travel with it**, and it is worth being blunt about that before you set this up
+somewhere and wonder why your document is grey:
+
+- Taliesin ships **no tree-sitter grammar**. The only `.tmd` grammar in the repository is
+  the TextMate one inside the VS Code companion, which is a VS Code format.
+- The server answers `textDocument/semanticTokens` with "method not found". Semantic
+  tokens would not rescue this anyway: Helix does not implement them at all, and Zed
+  ships them off.
+
+So outside VS Code, point your editor at **Markdown** for the colours (as the Helix
+snippet above does) and let the LSP supply everything Markdown cannot know. You lose
+highlighting on the `.tmd`-specific syntax — `::: {.callout-note}` fences, `#|` cell
+options, `[@citekey]`, `@fig-` references — and keep it for the Markdown the rest of the
+document is.
+
+**Zed needs an extension, and there is not one yet.** Zed's `lsp` setting re-points a
+language server it already knows about; registering a new one is a published extension,
+not a config block. You can still get highlighting today with
+`"file_types": { "Markdown": ["tmd"] }` in `settings.json`.
 
 Two of its capabilities need a word here, because they are the ones an editor has to
 meet halfway.

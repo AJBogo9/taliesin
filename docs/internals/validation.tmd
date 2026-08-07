@@ -218,9 +218,13 @@ practice is covered in the guide's [CLI reference](../guide/reference/cli.html).
 ## `taliesin lsp`: live diagnostics in any editor
 
 `check` is the batch gate; `taliesin lsp` is the same validators, live. It runs an
-offline **Language Server Protocol** server over stdio, so any LSP editor (Neovim,
-Helix, Zed, VS Code) gets `.tmd` diagnostics **as you type**, on the unsaved buffer,
-before you save or render. It is parse-only: **no kernel, no code execution**, and
+offline **Language Server Protocol** server over stdio, so an LSP editor (Neovim, Helix
+and VS Code today; Zed needs a published extension to register a new server at all) gets
+`.tmd` diagnostics **as you type**, on the unsaved buffer, before you save or render.
+Syntax highlighting is not part of that: there is no tree-sitter grammar, and the server
+answers `textDocument/semanticTokens` with "method not found" — the guide's
+[CLI reference](../guide/reference/cli.html) says so where a reader setting this up will
+meet it. It is parse-only: **no kernel, no code execution**, and
 **read-only** (the single-editing-surface invariant holds, the server never writes to
 your source).
 

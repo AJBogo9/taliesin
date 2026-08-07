@@ -23,14 +23,15 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-**The whole file is now one sequence: ship the thing.** The seven items below are ordered, and the
-order is the plan, not a ranking. 103 → 221 → *pre-flight* → 100 → 148 → 149 → 170, with 210 the one
-piece of engineering that goes in wherever it fits (it is independent of all of them).
+**The whole file is now one sequence: ship the thing.** The five items below are ordered, and the
+order is the plan, not a ranking. 103 → 100 → 148 → 149 → 170.
 
-**Pre-flight, and it is the gate on 100: `./tools/gates.sh` has not been run since 2026-08-03** at
-`62a3908e`, several merges ago. All 8 CI jobs arm on the first push after the flip, against a tree
-they have never seen, so a red gate discovered *after* the repo is public is discovered by an
-audience. Run it before Phase 2 of item 100, not after.
+**Pre-flight is DISCHARGED for the current tree, and it re-arms on every merge.**
+`./tools/gates.sh` ran green on 2026-08-07 (all 9 gates, twice: once at `87af6aa6` as a baseline and
+once on the finished `item-210-nested-cell-execution` branch). All 8 CI jobs still arm on the first
+push after the flip, against whatever tree exists then, so a red gate discovered *after* the repo is
+public is discovered by an audience: **re-run it immediately before Phase 2 of item 100**, not once
+and for all.
 
 **Release readiness, re-measured 2026-08-05.** Green: `git-filter-repo` is installed, the history
 rewrite is rehearsed end to end, the tree is clean and equal to `origin/main`, the repo has zero
@@ -147,19 +148,6 @@ anything client-side, and **delete the item from this file when it lands.**
      than a bad search name** — if the answer is keep, always publish as "Taliesin — the `.tmd` dev
      server" so the disambiguator travels.
 
-221. **"Any LSP editor" ships unhighlighted grey text everywhere but VS Code.** (S, docs only. From
-     [2026-08-07-devtooling-frontier-audit.md](2026-08-07-devtooling-frontier-audit.md) finding 5.)
-     `docs/guide/reference/cli.tmd:27` and `:625` advertise Neovim, Helix, Zed and VS Code, and the
-     documented setup is **one Neovim snippet**. Measured: no tree-sitter grammar anywhere in the
-     tree, `textDocument/semanticTokens` answers `-32601`, and the only grammar is the 16-scope
-     VS Code TextMate file. **Do this before the flip, not after** — it is a false capability claim
-     sitting in the manual a stranger reads first. Narrow the claim to what is true (diagnostics and
-     intelligence, not highlighting) and ship the Helix `languages.toml` + Zed `extension.toml`
-     snippets. Actually building the highlighting was ruled out of the release: semantic tokens do
-     **not** reach Helix (no support at all) and ship `off` in Zed, and a tree-sitter grammar is a
-     *third* definition of the dialect after the Rust parser and the TextMate file. Revive that
-     choice only when a non-VS-Code editor is a real target rather than a documented one.
-
 100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** See
      [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md).
      The ruling threads the needle both earlier routes missed: **the history IS published** (the
@@ -264,27 +252,6 @@ anything client-side, and **delete the item from this file when it lands.**
      away. Overlaps 149; do not build the same thing twice from both entries. Browser-verify at the
      three project viewports (390x844, 1440x900, **900x1440** — the forgotten portrait band is where
      layout defects show).
-
-### The one defect worth fixing first
-
-210. **A code cell inside ANY fenced div never executes.** (S-M, a real correctness defect, found
-     2026-08-04 while building `::: {.debug}`. Independent of the release sequence; slot it
-     anywhere.) `build_container` in `render/divs.rs` returns `Block { cell: None }` for every div
-     kind, and `Executor::run_through` only scans **top-level** blocks for `Some(cell)`. So a
-     `{python}`/`{r}`/`{js}` cell nested in a `.callout-note`, a `layout-ncol` grid, a
-     `.panel-tabset`, a `.column-page` or a theorem environment is dead source: it renders, and it
-     never runs. Pre-existing on main for as long as those two pieces have coexisted; nothing caught
-     it because no corpus document put an executable cell inside a div until `.debug` did.
-     **Kept through the prune when every other defect was dropped** because it is silent and it
-     contradicts the tool's core promise: a first user who puts a cell in a callout concludes
-     execution is broken. **Fixed for `.debug` only** (the `debug_cell` field, `divs.rs`). The
-     general fix is a block-model question, not a patch: a `Block` carries at most one `Cell`, so a
-     container holding two cells cannot represent both. Decide whether `Block` grows a `Vec<Cell>` or
-     whether containers stop folding their children, then pin it with a corpus doc that puts a cell
-     inside a callout and a tabset. **Fixing it also closes the nested-`.debug` warning** — that was
-     deliberately not patched separately, because propagation could only ever rescue the *first*
-     `.debug` per wrapper and would keep failing silently on the second, which is exactly the
-     two-algorithms-in-a-`.panel-tabset` case an author reaches for first.
 
 ## Product / distribution
 

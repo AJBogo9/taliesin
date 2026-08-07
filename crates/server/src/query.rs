@@ -351,11 +351,8 @@ fn skip_all_js(js_ids: &[String], reason: &str) -> HashMap<String, JsOutcome> {
 fn count_kernel_cells(blocks: &[taliesin_core::Block]) -> usize {
     blocks
         .iter()
-        .filter(|b| {
-            b.cell
-                .as_ref()
-                .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
-        })
+        .flat_map(|b| b.cells())
+        .filter(|c| matches!(c.lang.as_str(), "python" | "r"))
         .count()
 }
 

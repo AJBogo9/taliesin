@@ -46,12 +46,11 @@ fn executable_cells(blocks: &[Block]) -> Vec<usize> {
     blocks
         .iter()
         .enumerate()
-        .filter(|(_, b)| {
-            b.cell
-                .as_ref()
-                .is_some_and(|c| crate::exec::kernel_lang(&c.lang).is_some())
+        .flat_map(|(i, b)| {
+            b.cells()
+                .filter(|c| crate::exec::kernel_lang(&c.lang).is_some())
+                .map(move |_| i)
         })
-        .map(|(i, _)| i)
         .collect()
 }
 
@@ -197,6 +196,7 @@ mod tests {
                 cache: true,
                 js: Default::default(),
             }),
+            nested: Vec::new(),
         }
     }
 

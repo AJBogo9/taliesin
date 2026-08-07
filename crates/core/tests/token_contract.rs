@@ -42,6 +42,7 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-tali-input",
     "data-tali-js-src",
     "data-tali-out",
+    "data-tali-out-for",
     "data-tali-theorem-kind",
     "data-tali-trace",
     "data-tali-xref",
@@ -175,6 +176,15 @@ const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
          (per-section length, section-scoped read state or change marks, a JS-driven fold) needs \
          no render change to arrive. Option (a), a real <section> wrapper, was explicitly \
          deferred: it changes the parent/child shape the incremental diff mounts.",
+    ),
+    (
+        "data-tali-out-for",
+        "build-time only: it marks the empty output slot a `:::` container leaves for a code \
+         cell it folded away (render/divs.rs's output_slot), and exec.rs's fill_output_slot \
+         scans for it as a Rust string needle when the cell's output comes back. The browser \
+         never asks for it: the slot ALSO carries the same `{cell}-out` data-block-id a \
+         top-level output block would, which is the name client.js already looks up for \
+         streaming output and per-cell state, so a nested cell needs no second lookup path.",
     ),
     (
         "data-scrolly-name",

@@ -133,6 +133,7 @@ fn the_heading_rule_counts_the_title_block_as_the_pages_h1() {
         source_file: None,
         html: "<h3 id=\"one\">One</h3>".into(),
         cell: None,
+        nested: Vec::new(),
     });
     let ws = diagnostics::validate_a11y(&blocks, doc.format);
     assert!(

@@ -784,6 +784,14 @@
       --tali-escape-w: 100%; --tali-escape-room: 100%; padding-inline: 0; }
   }
   .tali-output { margin: 0 0 1rem; }
+  /* An output slot that never filled leaves no trace. A cell folded inside a `:::` div
+     gets its output element emitted at RENDER time (the slot the executor writes into,
+     see `render::divs::output_slot`), so unlike a top-level cell — whose output block
+     only exists once there is output to put in it — the element is already on the page
+     when the cell produced nothing, was `#| include: false`, or never ran at all
+     (`--no-exec`, `--bare`, no kernel). Without this it reserves 1rem of blank space
+     inside the callout for output that is not coming. */
+  .tali-output:empty { display: none; }
   /* Cell output is BOUNDED, in CSS. A cell that prints ten thousand lines, or returns a
      10,000-row frame, otherwise pushes the rest of the document off the end of the page: the
      reader's scrollbar stops describing the document and starts describing one runaway

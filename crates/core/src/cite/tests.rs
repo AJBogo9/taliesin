@@ -123,6 +123,7 @@ fn citation_becomes_numbered_link_with_locator() {
         source_file: None,
         html: "<p>fails [@bishop2006pattern, chap. 9].</p>".into(),
         cell: None,
+        nested: Vec::new(),
     }];
     process(&mut blocks, &b, &HashMap::new(), None);
     assert!(
@@ -145,6 +146,7 @@ fn broken_citation_warns_only_when_a_bib_exists() {
             source_file: None,
             html: "<p>see [@nosuchkey].</p>".into(),
             cell: None,
+            nested: Vec::new(),
         }]
     };
     // A non-empty bib + an unknown key -> one "broken citation" warning.
@@ -175,6 +177,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         html: "<a href=\"#fig-gone\" class=\"tali-xref\" data-tali-xref=\"fig-gone\">Figure</a>"
             .into(),
         cell: None,
+        nested: Vec::new(),
     }];
     let w = validate_xrefs(&broken);
     assert_eq!(w.len(), 1, "got: {w:?}");
@@ -186,6 +189,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         source_file: None,
         html: "<a href=\"#fig-x\" class=\"tali-xref\">Figure&nbsp;1</a>".into(),
         cell: None,
+        nested: Vec::new(),
     }];
     assert!(validate_xrefs(&ok).is_empty());
 }
@@ -223,6 +227,7 @@ fn a_retired_xref_prefix_is_diagnosable_but_not_offered() {
         html: "<a href=\"#prp-a\" class=\"tali-xref\" data-tali-xref=\"prp-a\">Proposition</a>"
             .into(),
         cell: None,
+        nested: Vec::new(),
     }];
     let w = validate_xrefs(&leftover);
     assert_eq!(
@@ -241,6 +246,7 @@ fn block(html: &str) -> Block {
         source_file: None,
         html: html.into(),
         cell: None,
+        nested: Vec::new(),
     }
 }
 
@@ -353,6 +359,7 @@ fn crossref_becomes_labelled_link() {
         source_file: None,
         html: "<p>see @fig-scree for details</p>".into(),
         cell: None,
+        nested: Vec::new(),
     }];
     process(&mut blocks, &b, &HashMap::new(), None);
     // Unresolved here: linked label, marked for cross-page resolution by a site.
@@ -377,6 +384,7 @@ fn crossref_resolves_number_from_registry() {
         source_file: None,
         html: "<p>see @fig-scree for the elbow</p>".into(),
         cell: None,
+        nested: Vec::new(),
     }];
     process(&mut blocks, &Bibliography::default(), &xrefs, None);
     assert!(
@@ -397,6 +405,7 @@ fn citations_inside_code_are_left_alone() {
         source_file: None,
         html: "<pre><code>x = [@bishop2006pattern]</code></pre>".into(),
         cell: None,
+        nested: Vec::new(),
     }];
     process(&mut blocks, &b, &HashMap::new(), None);
     assert!(
@@ -512,6 +521,7 @@ fn manual_references_heading_suppresses_auto_heading() {
             source_file: None,
             html: "<p>see [@bishop2006pattern].</p>".into(),
             cell: None,
+            nested: Vec::new(),
         },
         Block {
             id: "h".into(),
@@ -519,6 +529,7 @@ fn manual_references_heading_suppresses_auto_heading() {
             source_file: None,
             html: "<h1 id=\"references\" data-block-id=\"h\" data-sourcepos=\"3:1-3:12\">References</h1>".into(),
             cell: None,
+            nested: Vec::new(),
         },
     ];
     process(&mut blocks, &b, &HashMap::new(), None);
@@ -561,6 +572,7 @@ fn no_manual_heading_keeps_auto_references_heading() {
         source_file: None,
         html: "<p>see [@bishop2006pattern].</p>".into(),
         cell: None,
+        nested: Vec::new(),
     }];
     process(&mut blocks, &b, &HashMap::new(), None);
     assert!(blocks.last().unwrap().html.contains("<h2>References</h2>"));
@@ -582,6 +594,7 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
             source_file: None,
             html: "<p>see [@bishop2006pattern].</p>".into(),
             cell: None,
+            nested: Vec::new(),
         },
         Block {
             id: "refs-h".into(),
@@ -589,6 +602,7 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
             source_file: None,
             html: "<h1 id=\"references\">References</h1>".into(),
             cell: None,
+            nested: Vec::new(),
         },
         Block {
             id: "appx-h".into(),
@@ -596,6 +610,7 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
             source_file: None,
             html: "<h1 id=\"appendix\">Appendix</h1>".into(),
             cell: None,
+            nested: Vec::new(),
         },
         Block {
             id: "appx-p".into(),
@@ -603,6 +618,7 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
             source_file: None,
             html: "<p>Derivation details.</p>".into(),
             cell: None,
+            nested: Vec::new(),
         },
     ];
     process(&mut blocks, &b, &HashMap::new(), None);
@@ -686,6 +702,7 @@ fn cite_key_and_bib_key_charsets_agree() {
         source_file: None,
         html: format!("<p>see [@{key}].</p>"),
         cell: None,
+        nested: Vec::new(),
     }];
     process(&mut blocks, &b, &HashMap::new(), None);
     assert!(
@@ -763,6 +780,7 @@ fn para(html: &str) -> Block {
         source_file: None,
         html: html.to_string(),
         cell: None,
+        nested: Vec::new(),
     }
 }
 

@@ -80,7 +80,7 @@ fn display(lang: &str) -> String {
 /// execution model guarantees (each cell sees the kernel state the ones above it left).
 fn collect(blocks: &[Block]) -> Vec<LangCode> {
     let mut out: Vec<LangCode> = Vec::new();
-    for cell in blocks.iter().filter_map(|b| b.cell.as_ref()) {
+    for cell in blocks.iter().flat_map(|b| b.cells()) {
         // A browser-run language (`{js}`, `{glsl}`) is deliberately excluded, and the reason
         // is that this box's one claim would be FALSE for it. A kernel language is a script:
         // each cell sees the state the ones above it left, so document order is program
@@ -160,6 +160,7 @@ pub(super) fn repro_block(blocks: &[Block]) -> Option<Block> {
         source_file: None,
         html,
         cell: None,
+        nested: Vec::new(),
     })
 }
 

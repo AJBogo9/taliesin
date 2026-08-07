@@ -140,9 +140,8 @@ const TABLE: &[(&str, &str, &str)] = &[
     // a cell that never made it into a `.debug` div at all (the trace still runs, for a
     // `<script>` blob nothing will ever read), a `trace:` value that is neither `true` nor
     // `false` (silently treated as absent by the same literal match that decides whether
-    // to trace at all), `trace:` on a language with no stepping adapter, a `.debug`
-    // nested inside a wrapping div (whose traced cell is folded away before the executor
-    // can see it), and two `.debug` blocks on one page reusing the same `name=` (their
+    // to trace at all), `trace:` on a language with no stepping adapter, and two `.debug`
+    // blocks on one page reusing the same `name=` (their
     // `tali.frame(name)` registry entry and hidden reactive input collide). One family:
     // every one of these is the same authoring mistake (the tracer and the `.debug` div
     // disagreeing about what to step, or two `.debug` divs disagreeing about who owns a
@@ -152,7 +151,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("has no effect outside a", "TAL-DEBUG-TRACE", WARNING),
     ("`trace:` expects", "TAL-DEBUG-TRACE", WARNING),
     ("cannot step a", "TAL-DEBUG-TRACE", WARNING),
-    ("nested inside another div", "TAL-DEBUG-TRACE", WARNING),
     ("duplicate `.debug` name", "TAL-DEBUG-TRACE", WARNING),
     // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
     // which is dropped and renders nothing.
@@ -527,7 +525,7 @@ const EXPLANATIONS: &[Explanation] = &[
         title: "a `::: {.debug}` div and its `trace:` option disagree",
         cause: "`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and \
                 `trace:` only means something on a `{python}` or `{js}` cell inside one of \
-                those divs, at the top level of the document. Seven mistakes land here: a \
+                those divs. Six mistakes land here: a \
                 `.debug` with no `#| trace: true` (or `//| trace: true`) cell to step \
                 through, a `.debug` with more than one (only the first is ever stepped), \
                 `#| trace: true` on a cell that never made it into a `.debug` div at all (it \
@@ -535,17 +533,13 @@ const EXPLANATIONS: &[Explanation] = &[
                 widget will ever read), a `trace:` value that is neither `true` nor `false`, \
                 which the same literal match that decides whether to trace at all silently \
                 treats as absent, `trace:` on a cell in a language with no stepping adapter \
-                (an `{r}` cell cannot be recorded), a `.debug` nested inside another \
-                fenced div, whose traced cell is folded into the wrapper's own HTML before \
-                the executor can find anything to run, and two `.debug` divs on the same \
+                (an `{r}` cell cannot be recorded), and two `.debug` divs on the same \
                 page reusing the same `name=`, whose `tali.frame(name)` registry entry and \
                 hidden reactive input then collide between the two blocks.",
         fix: "Mark exactly one `{python}` or `{js}` cell inside the `.debug` div \
               `#| trace: true`, spell the value `true` or `false`, remove `trace:` from a \
-              cell that is not meant to be stepped, keep the `.debug` div itself at the \
-              top level rather than inside a callout, a `.panel-tabset` or any other \
-              `:::` container, and give each named `.debug` block on a page its own \
-              `name=`.",
+              cell that is not meant to be stepped, and give each named `.debug` block on \
+              a page its own `name=`.",
     },
     Explanation {
         code: "TAL-INPUT-TYPE",
