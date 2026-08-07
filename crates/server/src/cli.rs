@@ -390,7 +390,7 @@ pub(crate) enum NewKind {
 }
 
 /// The kind names, for the unknown-kind did-you-mean.
-const NEW_KINDS: &[&str] = &["post", "page", "deck", "paper"];
+pub(crate) const NEW_KINDS: &[&str] = &["post", "page", "deck", "paper"];
 
 impl NewKind {
     fn parse(raw: &str) -> Result<Self, String> {

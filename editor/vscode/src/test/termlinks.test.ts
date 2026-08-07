@@ -70,6 +70,18 @@ test("the Rust format strings this pattern was written against have not moved", 
     build.includes('"{}:{line}: {message}"'),
     "build.rs no longer prints `file:line: message`; revisit DIAGNOSTIC_LINE"
   );
+  // `run` prints a failed cell as a location too, so the run task can carry the same
+  // matchers (`runcell.ts`). It is the third producer of this shape and the newest, so it
+  // is the likeliest to drift away from it.
+  const runPrint = fs.readFileSync(
+    path.join(REPO_ROOT, "crates/server/src/run_print.rs"),
+    "utf8"
+  );
+  assert.ok(
+    runPrint.includes('"{}:{line}: error[{code}]: {what} ({ordinal})"'),
+    "run_print.rs no longer prints a failed cell as `file:line: error[CODE]: …`; a failed " +
+      "cell then cannot reach the Problems panel at all"
+  );
   // And the property the pattern depends on most: no column is printed anywhere. A `:col` group
   // would match none of the three forms.
   assert.ok(

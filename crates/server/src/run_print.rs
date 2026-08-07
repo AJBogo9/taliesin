@@ -25,6 +25,22 @@ pub(crate) struct Printer {
     /// Where decoded figures go: `<root>/_freeze/figs`. Beside the cache they belong to,
     /// so they are gitignored and disposable exactly like it.
     fig_dir: PathBuf,
+    /// The project root, so a failure can be reported at a path relative to it. That is
+    /// what the editor's problem matcher resolves against (`fileLocation: relative`), and
+    /// an absolute path there is silently joined onto the workspace folder.
+    root: PathBuf,
+    /// The document this run was asked for, for a cell that carries no `file` of its own
+    /// (every cell that is not spliced in by an `{{< include >}}`).
+    page: PathBuf,
+    /// How many cells this pass will execute, from `build-state`. `None` until the session
+    /// says, which is before the first cell runs.
+    total: Option<u32>,
+    /// Languages whose kernel boot has already been announced, so a document mixing
+    /// `{python}` and `{r}` says it once per kernel rather than once per cell.
+    warming: std::collections::HashSet<String>,
+    /// Cells that produced output during this run. The difference between "your code threw"
+    /// and "nothing ran it" — see [`Self::failure_line`].
+    produced: std::collections::HashSet<String>,
     /// `cell_id` -> the 1-based ordinal shown to the author. Assigned in the order the
     /// session announces cells, which is document order.
     ordinals: HashMap<String, usize>,
@@ -50,10 +66,15 @@ pub(crate) struct Printer {
 }
 
 impl Printer {
-    pub(crate) fn new(quiet: bool, root: &Path) -> Self {
+    pub(crate) fn new(quiet: bool, root: &Path, page: &Path) -> Self {
         Self {
             quiet,
             fig_dir: root.join("_freeze").join("figs"),
+            root: root.to_path_buf(),
+            page: page.to_path_buf(),
+            total: None,
+            warming: std::collections::HashSet::new(),
+            produced: std::collections::HashSet::new(),
             ordinals: HashMap::new(),
             open_cell: None,
             ran: 0,
@@ -80,6 +101,7 @@ impl Printer {
             // `✗ cell 1` and left the author to guess — the error text never reaches
             // `cell-output-append` because the cell never ran to produce any.
             Some("diagnostics") => self.diagnostics(&v),
+            Some("build-state") => self.build_state(&v),
             Some("run-lagged") => {
                 self.lagged = true;
                 crate::log::warn(
@@ -125,6 +147,35 @@ impl Printer {
         }
     }
 
+    /// The document-level phase, which the terminal did not show at all.
+    ///
+    /// Two things were invisible from a terminal and are the two an author waits through.
+    /// **A cold kernel boot** is seconds of nothing — the browser has said "warming kernel"
+    /// since the preview existed, and `taliesin run` sat silent, which is the state CHI
+    /// 2020 names ("no feedback on progress") as one of the four high-impact notebook pain
+    /// points. And **how many cells there are**: `▸ cell 3` says nothing about whether that
+    /// is nearly done or barely started, while `▸ cell 3/12` does.
+    fn build_state(&mut self, v: &serde_json::Value) {
+        let phase = v.get("phase").and_then(|p| p.as_str()).unwrap_or("");
+        let lang = v.get("lang").and_then(|l| l.as_str()).unwrap_or("");
+        if let Some(total) = v.get("total").and_then(|t| t.as_u64()) {
+            self.total = Some(total as u32);
+        }
+        // Only the cold path emits this (a warm-pool hit is near-instant and deliberately
+        // does not claim to be warming), so it is never printed for a wait that is not real.
+        if phase == "warming-kernel" && !self.quiet && self.warming.insert(lang.to_string()) {
+            println!("\x1b[2m⋯ starting the {lang} kernel\x1b[0m");
+        }
+    }
+
+    /// `cell 3` or `cell 3/12`, depending on whether the session has said how many yet.
+    fn ordinal(&self, n: usize) -> String {
+        match self.total {
+            Some(total) if total > 1 => format!("cell {n}/{total}"),
+            _ => format!("cell {n}"),
+        }
+    }
+
     fn cell_state(&mut self, v: &serde_json::Value) {
         let Some(id) = v.get("cell_id").and_then(|c| c.as_str()) else {
             return;
@@ -138,7 +189,7 @@ impl Printer {
         match state {
             "running" => {
                 if !self.quiet {
-                    println!("\x1b[1m▸ cell {n}\x1b[0m");
+                    println!("\x1b[1m▸ {}\x1b[0m", self.ordinal(n));
                 }
                 self.open_cell = Some(id.to_string());
             }
@@ -150,30 +201,74 @@ impl Printer {
             "done" => {
                 self.ran += 1;
                 if !self.quiet {
-                    println!("\x1b[32m✓ cell {n}\x1b[0m{}", took(ms));
+                    println!("\x1b[32m✓ {}\x1b[0m{}", self.ordinal(n), took(ms));
                 }
                 self.open_cell = None;
             }
             "skipped" => self.skipped += 1,
             "error" => {
                 self.ran += 1;
+                let ordinal = self.ordinal(n);
                 self.failure
-                    .get_or_insert_with(|| format!("cell {n} failed"));
-                println!("\x1b[31m✗ cell {n}\x1b[0m{}", took(ms));
+                    .get_or_insert_with(|| format!("{ordinal} failed"));
+                println!("\x1b[31m✗ {ordinal}\x1b[0m{}", took(ms));
+                // The same failure again, as a LOCATION. `✗ cell 3` is for a human reading
+                // the terminal; this line is for the editor reading over their shoulder —
+                // `runcell.ts` recorded that no problem matcher could match anything `run`
+                // printed, so a failed cell could not reach the Problems panel however the
+                // task was configured. `$taliesin` already understands
+                // `path:line: severity[CODE]: message`, so this needs no new matcher.
+                if let Some(line) = self.failure_line(v, id, &ordinal) {
+                    println!("{line}");
+                }
                 self.open_cell = None;
             }
             _ => {}
         }
     }
 
+    /// The `path:line: error[CODE]: message` line for a failed cell, or `None` when the
+    /// session gave no position to name.
+    ///
+    /// **Which code** is decided by whether the cell produced anything. The catalogue draws
+    /// the line in exactly this place: `TAL-CELL-ERROR` is "the author's code raising", which
+    /// means a traceback arrived; `TAL-KERNEL` is "the environment failing to run it at all",
+    /// which means nothing did. Guessing the other way round would send an author to debug
+    /// code that never ran.
+    fn failure_line(&self, v: &serde_json::Value, id: &str, ordinal: &str) -> Option<String> {
+        let line = v.get("line").and_then(|l| l.as_u64()).unwrap_or(0);
+        if line == 0 {
+            return None;
+        }
+        // A cell spliced in by `{{< include >}}` names its own file, which is the one to
+        // edit; anything else is the page the run was asked for.
+        let file = match v.get("file").and_then(|f| f.as_str()) {
+            Some(rel) => self.page.parent().unwrap_or(Path::new(".")).join(rel),
+            None => self.page.clone(),
+        };
+        let shown = file.strip_prefix(&self.root).unwrap_or(&file);
+        let (code, what) = match self.produced.contains(id) {
+            true => ("TAL-CELL-ERROR", "code cell raised an uncaught exception"),
+            false => ("TAL-KERNEL", "code cell did not run"),
+        };
+        Some(format!(
+            "{}:{line}: error[{code}]: {what} ({ordinal})",
+            shown.display()
+        ))
+    }
+
     fn cell_output(&mut self, v: &serde_json::Value) {
+        let id = v.get("cell_id").and_then(|c| c.as_str()).unwrap_or("");
+        // Recorded before the `--quiet` return: this is what tells `TAL-CELL-ERROR` (the
+        // author's code threw) from `TAL-KERNEL` (nothing ran it), and a quiet run must
+        // report the same code a loud one does.
+        self.produced.insert(id.to_string());
         if self.quiet {
             return;
         }
         let Some(html) = v.get("html").and_then(|h| h.as_str()) else {
             return;
         };
-        let id = v.get("cell_id").and_then(|c| c.as_str()).unwrap_or("");
         // A `replace_last` is a `\r` progress bar redrawing itself. A terminal can do that
         // natively, so re-print in place rather than stacking a line per frame.
         let replace = v.get("op").and_then(|o| o.as_str()) == Some("replace_last");
@@ -522,10 +617,10 @@ mod tests {
     #[test]
     fn ordinals_follow_announcement_order_and_are_stable() {
         let dir = std::env::temp_dir();
-        let mut p = Printer::new(true, &dir);
+        let mut p = Printer::new(true, &dir, &dir.join("doc.tmd"));
         for id in ["c-aaa", "c-bbb", "c-aaa"] {
             p.consume(&crate::protocol::cell_state(
-                None, id, "queued", None, None, None,
+                None, id, None, "queued", None, None, None,
             ));
         }
         assert_eq!(p.ordinals.get("c-aaa"), Some(&1));
@@ -535,10 +630,11 @@ mod tests {
     #[test]
     fn a_cached_cell_is_counted_but_a_failure_sets_the_exit_code() {
         let dir = std::env::temp_dir();
-        let mut p = Printer::new(true, &dir);
+        let mut p = Printer::new(true, &dir, &dir.join("doc.tmd"));
         p.consume(&crate::protocol::cell_state(
             None,
             "c1",
+            None,
             "done",
             None,
             None,
@@ -548,7 +644,7 @@ mod tests {
         assert!(p.failure.is_none());
 
         p.consume(&crate::protocol::cell_state(
-            None, "c2", "error", None, None, None,
+            None, "c2", None, "error", None, None, None,
         ));
         assert!(p.failure.is_some(), "an errored cell must fail the run");
     }
@@ -556,10 +652,10 @@ mod tests {
     #[test]
     fn run_done_ends_the_stream_and_a_bad_status_fails() {
         let dir = std::env::temp_dir();
-        let mut p = Printer::new(true, &dir);
+        let mut p = Printer::new(true, &dir, &dir.join("doc.tmd"));
         assert!(
             !p.consume(&crate::protocol::cell_state(
-                None, "c1", "queued", None, None, None
+                None, "c1", None, "queued", None, None, None
             )),
             "a cell-state must not end the stream"
         );
@@ -579,7 +675,7 @@ mod tests {
     fn a_lagged_stream_fails_even_when_every_cell_succeeded() {
         // A transcript with holes must not be reported as a clean pass to a script.
         let dir = std::env::temp_dir();
-        let mut p = Printer::new(true, &dir);
+        let mut p = Printer::new(true, &dir, &dir.join("doc.tmd"));
         p.consume(r#"{"type":"run-lagged","dropped":7}"#);
         assert!(p.lagged);
         // `ExitCode` has no comparison; assert through the flag the code is derived from.
@@ -590,8 +686,135 @@ mod tests {
     #[test]
     fn a_non_json_line_is_ignored_rather_than_fatal() {
         let dir = std::env::temp_dir();
-        let mut p = Printer::new(true, &dir);
+        let mut p = Printer::new(true, &dir, &dir.join("doc.tmd"));
         assert!(!p.consume("this is not json"));
         assert!(!p.consume(""));
+    }
+
+    /// The two things the terminal could not say, and an author waits through both: a cold
+    /// kernel boot (seconds of silence) and how many cells there are.
+    #[test]
+    fn the_document_phase_reaches_the_terminal() {
+        let dir = std::env::temp_dir();
+        let mut p = Printer::new(false, &dir, &dir.join("doc.tmd"));
+        p.consume(&crate::protocol::build_state(
+            None,
+            "warming-kernel",
+            0,
+            12,
+            "python",
+        ));
+        assert!(
+            p.warming.contains("python"),
+            "a cold boot must be announced once"
+        );
+        assert_eq!(p.total, Some(12));
+        assert_eq!(
+            p.ordinal(3),
+            "cell 3/12",
+            "the count is what says how far along"
+        );
+        // Said once per kernel, not once per cell: a document mixing languages should not
+        // repeat itself, and neither should a rebuild.
+        p.consume(&crate::protocol::build_state(
+            None,
+            "warming-kernel",
+            0,
+            12,
+            "python",
+        ));
+        assert_eq!(p.warming.len(), 1);
+    }
+
+    /// A one-cell run has no k-of-N worth printing: `cell 1/1` is noise.
+    #[test]
+    fn a_single_cell_run_is_not_dressed_up_as_a_count() {
+        let dir = std::env::temp_dir();
+        let mut p = Printer::new(true, &dir, &dir.join("doc.tmd"));
+        p.consume(&crate::protocol::build_state(
+            None,
+            "executing",
+            1,
+            1,
+            "python",
+        ));
+        assert_eq!(p.ordinal(1), "cell 1");
+    }
+
+    /// The half `runcell.ts` recorded as impossible: `✗ cell 3` matches no problem matcher,
+    /// so a failed cell could not reach the Problems panel however the task was configured.
+    /// This is the same failure as a location the existing `$taliesin` pattern understands.
+    #[test]
+    fn a_failed_cell_is_also_printed_as_a_matchable_location() {
+        let dir = std::env::temp_dir().join(format!("tali-runprint-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut p = Printer::new(true, &dir, &dir.join("posts/a.tmd"));
+        // The cell produced a traceback, so this is the author's code raising.
+        p.consume(&crate::protocol::cell_output_append(
+            None,
+            "c1",
+            "append",
+            "<pre>Traceback</pre>",
+        ));
+        let line = p
+            .failure_line(&serde_json::json!({ "line": 12 }), "c1", "cell 1/3")
+            .expect("a located failure");
+        assert_eq!(
+            line,
+            "posts/a.tmd:12: error[TAL-CELL-ERROR]: code cell raised an uncaught exception (cell 1/3)",
+            "must match `^([^\\s:][^:]*):(\\d+): (error|warning|suggestion)\\[([^\\]]+)\\]: (.*)$`"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// And the other cause, which is a different code because it is a different fix: nothing
+    /// ran the cell. Sending an author to debug code that never executed is the failure this
+    /// distinction exists to prevent.
+    #[test]
+    fn a_cell_that_never_ran_is_a_kernel_failure_not_a_code_failure() {
+        let dir = std::env::temp_dir();
+        let p = Printer::new(true, &dir, &dir.join("a.tmd"));
+        let line = p
+            .failure_line(&serde_json::json!({ "line": 4 }), "c1", "cell 1")
+            .expect("a located failure");
+        assert!(
+            line.contains("error[TAL-KERNEL]"),
+            "no output means nothing ran it: {line}"
+        );
+    }
+
+    /// A cell spliced in by `{{< include >}}` names the file to EDIT, not the one that
+    /// included it — the same rule click-to-source follows.
+    #[test]
+    fn an_included_cells_failure_names_its_own_file() {
+        let dir = std::env::temp_dir().join(format!("tali-runprint-inc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = Printer::new(true, &dir, &dir.join("book/ch1.tmd"));
+        let line = p
+            .failure_line(
+                &serde_json::json!({ "line": 9, "file": "_parts/setup.tmd" }),
+                "c1",
+                "cell 2",
+            )
+            .expect("a located failure");
+        assert!(
+            line.starts_with("book/_parts/setup.tmd:9:"),
+            "resolved against the including page's directory: {line}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A generated block has no source position, and inventing one would send the editor to
+    /// a line that means nothing.
+    #[test]
+    fn a_cell_with_no_position_gets_no_location_line() {
+        let dir = std::env::temp_dir();
+        let p = Printer::new(true, &dir, &dir.join("a.tmd"));
+        assert!(
+            p.failure_line(&serde_json::json!({}), "c1", "cell 1")
+                .is_none()
+        );
     }
 }

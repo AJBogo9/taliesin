@@ -120,3 +120,93 @@ fn unknown_method_is_a_jsonrpc_error_not_a_crash() {
     let r = responses.iter().find(|r| r["id"] == 1).expect("response");
     assert_eq!(r["error"]["code"], -32601, "method-not-found: {r}");
 }
+
+/// Resources, the resource template and prompts all answer over the real stdio wire
+/// (backlog item 224).
+///
+/// The unit tests own the bodies; this owns the thing only a real session can get wrong —
+/// that the four new methods are dispatched at all, and that `initialize` advertises them.
+/// A capability a host is not told about is one it never asks for, so an unadvertised
+/// resource does not exist however completely it is implemented.
+#[test]
+fn resources_and_prompts_answer_over_the_wire() {
+    let responses = mcp_session(&[
+        req(1, "initialize", serde_json::json!({})),
+        req(2, "resources/list", serde_json::json!({})),
+        req(3, "resources/templates/list", serde_json::json!({})),
+        req(
+            4,
+            "resources/read",
+            serde_json::json!({ "uri": "taliesin://diagnostic/TAL-FM-KEY" }),
+        ),
+        req(5, "prompts/list", serde_json::json!({})),
+        req(
+            6,
+            "prompts/get",
+            serde_json::json!({ "name": "new-post", "arguments": { "slug": "scree" } }),
+        ),
+    ]);
+    let at = |id: i64| {
+        responses
+            .iter()
+            .find(|r| r["id"] == id)
+            .unwrap_or_else(|| panic!("no response for id {id}: {responses:?}"))
+            .clone()
+    };
+
+    let caps = at(1)["result"]["capabilities"].clone();
+    assert!(caps["resources"].is_object(), "advertised: {caps}");
+    assert!(caps["prompts"].is_object(), "advertised: {caps}");
+
+    let uris: BTreeSet<String> = at(2)["result"]["resources"]
+        .as_array()
+        .expect("resources array")
+        .iter()
+        .map(|r| r["uri"].as_str().unwrap().to_string())
+        .collect();
+    for want in [
+        "taliesin://schema/site",
+        "taliesin://schema/frontmatter",
+        "taliesin://vocab",
+        "taliesin://agents",
+        "taliesin://diagnostics",
+    ] {
+        assert!(uris.contains(want), "{want} missing from {uris:?}");
+    }
+
+    assert_eq!(
+        at(3)["result"]["resourceTemplates"][0]["uriTemplate"],
+        "taliesin://diagnostic/{code}",
+        "the template an agent substitutes a code into"
+    );
+
+    let body = at(4)["result"]["contents"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        body.contains("## Fix"),
+        "the fix is the half that says what to type: {body}"
+    );
+
+    let prompts: Vec<String> = at(5)["result"]["prompts"]
+        .as_array()
+        .expect("prompts array")
+        .iter()
+        .map(|p| p["name"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        prompts,
+        vec!["new-post", "new-page", "new-deck", "new-paper"],
+        "one per `taliesin new` kind"
+    );
+
+    let text = at(6)["result"]["messages"][0]["content"]["text"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    assert!(
+        text.contains("taliesin new post scree"),
+        "the prompt carries the slug the host supplied: {text}"
+    );
+}

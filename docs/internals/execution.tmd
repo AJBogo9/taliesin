@@ -157,6 +157,7 @@ key/output pairs:
 ```json
 {
   "version": 4,
+  "packages": { "python": "5b5d92121322a910" },
   "entries": [
     { "k": "9f1c…", "v": "<pre class=\"tali-stream\">…</pre>" },
     { "k": "a37e…", "v": "<img class=\"tali-fig tali-fig-light\" …>" }
@@ -184,6 +185,27 @@ A few properties earn their place:
   place, so a crash mid-write can't corrupt an existing cache; `_freeze/` (and any
   sub-dirs) are created on demand, and a write failure is logged but non-fatal (the
   build still works, just uncached).
+- **`packages`: what these outputs were produced under.** One digest per language over
+  the interpreter's installed `name==version` set (`packages.rs`). This is the axis
+  the cumulative key structurally *cannot* see — an in-place
+  `pip install --upgrade pandas` is the same interpreter reporting the same
+  `--version`, so every key is unchanged and the old numbers restore. Recorded only
+  by a run that actually **executed** something (stamping a pure replay would relabel
+  yesterday's outputs as today's), and compared when a restore comes off disk: a
+  replay that crossed a package change **says so** on stderr, once per language.
+
+  It deliberately does **not** change what hits. Folding the digest into the key is
+  the strong version and the disruptive one — every `pip install` in the environment,
+  however unrelated to the document, would bust the whole cache — so the escape
+  hatches stay the ones that already existed: `#| cache: false` for a cell that reads
+  something the key cannot see, and `TALIESIN_NO_CACHE` to re-run everything. A cache
+  written before this field simply records nothing and is not compared, which is why
+  adding it needed no `FORMAT_VERSION` bump: "not known" and "it changed" are
+  different statements, and only the second is worth telling an author about.
+
+  `taliesin doctor --format json` prints the same manifest in full (every package and
+  version, plus the digest), which is what turns "the digest moved" into "*which*
+  pandas".
 
 ### What is never persisted
 

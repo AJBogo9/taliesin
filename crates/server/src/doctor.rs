@@ -260,7 +260,7 @@ fn print_human(checks: &[Check]) {
     println!("\n  {}", summary(checks));
 }
 
-fn print_json(checks: &[Check]) {
+fn print_json(checks: &[Check], packages: &[(&'static str, crate::packages::Manifest)]) {
     let payload = serde_json::json!({
         "ok": overall_ok(checks),
         "checks": checks.iter().map(|c| serde_json::json!({
@@ -269,6 +269,10 @@ fn print_json(checks: &[Check]) {
             "detail": c.detail,
             "fix": c.fix,
         })).collect::<Vec<_>>(),
+        "packages": packages.iter().map(|(lang, m)| (
+            lang.to_string(),
+            serde_json::json!({ "digest": m.digest, "packages": m.packages }),
+        )).collect::<serde_json::Map<_, _>>(),
     });
     println!(
         "{}",
@@ -352,8 +356,21 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
         });
     }
 
+    // Which packages, not just which interpreter. `doctor` reported "ipykernel MISSING" and
+    // never "which pandas", which is the half that decides whether a document reproduces —
+    // CHI 2020's Reproduce and Reuse pain point, and the axis `_freeze/`'s cumulative key
+    // structurally cannot see. Probed only for `--format json`: this is a machine channel,
+    // and a human report does not want two hundred lines of version numbers. A language whose
+    // interpreter cannot be probed is simply absent, rather than reported as an empty
+    // environment.
+    let mut packages: Vec<(&'static str, crate::packages::Manifest)> = Vec::new();
     if json {
-        print_json(&checks);
+        for (name, lang, resolved) in [("python", Lang::Python, &py), ("r", Lang::R, &r)] {
+            if let Some(m) = crate::packages::manifest(lang, &resolved.path) {
+                packages.push((name, m));
+            }
+        }
+        print_json(&checks, &packages);
     } else {
         print_human(&checks);
     }

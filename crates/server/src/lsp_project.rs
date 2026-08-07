@@ -196,6 +196,35 @@ impl SiteCache {
     }
 }
 
+/// Every page of the project rooted at `root`, plus one number standing for the state of
+/// every input its diagnostics depend on.
+///
+/// The caller is `workspace/diagnostic`, which has to name the pages **nobody has opened** —
+/// that is the whole point of the pull model — and so cannot get them from the open-buffer
+/// store. It is answered on a client poll (`vscode-languageclient` re-asks every 2 s), so the
+/// two halves come back from **one** walk: asking for the pages and the stamp separately read
+/// the directory tree twice per poll for no gain.
+///
+/// The stamp is deliberately **project-wide** rather than per-page. A cross-page `@sec-` makes
+/// every page's answer depend on every other page and on `_site.yml`, so a per-page stamp would
+/// answer `Unchanged` for chapter 12 after chapter 3 renamed the heading it links to. It is the
+/// same `(path, mtime, len)` data [`stamps_for`] validates the memos with, so the report and
+/// the caches cannot disagree about what counts as a change.
+pub(crate) fn pages_and_stamp(root: &Path) -> (Vec<PathBuf>, u64) {
+    let stamps = stamps_for(root);
+    let mut acc = String::new();
+    for (path, mtime, len) in &stamps {
+        let nanos = mtime
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        acc.push_str(&format!("{}:{len}:{nanos}\n", path.display()));
+    }
+    // `stamps_for` puts `_site.yml` first and the pages after it; only the pages are pages.
+    let pages = stamps.into_iter().skip(1).map(|(p, _, _)| p).collect();
+    (pages, taliesin_core::hash::fnv1a(&acc))
+}
+
 /// `(path, mtime, len)` for every page, in `collect_pages` order so two runs compare equal.
 ///
 /// `_site.yml` is stamped alongside the pages because the scan now carries the book's reading

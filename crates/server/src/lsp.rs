@@ -45,6 +45,13 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // The anchor under the cursor and its other occurrences: a targeted single-id scan,
         // not a full-document tokenizer.
         document_highlight_provider: Some(OneOf::Left(true)),
+        // The same question across the whole project, which is the boundary it is actually
+        // asked at in a 25-chapter book. `documentHighlight` above stops at the file.
+        references_provider: Some(OneOf::Left(true)),
+        // Expand-selection by document structure. Without it an editor expands by *brackets*,
+        // which in prose selects `](target)` and `{#sec-id}` and nothing an author reached
+        // for — the same category of mistake as indentation folding.
+        selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         // Replaces indentation-based folding, which is what `.tmd` gets without this and is
         // meaningless in a format where nesting is heading level and fences.
         folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
@@ -76,6 +83,30 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // prose would fight every deliberate line break in the file.
         document_formatting_provider: Some(OneOf::Left(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+        // Run · Run above · ⚡ cached, above every executable fence — the execution loop, in
+        // every LSP client, from Rust. Everything is resolved in one pass (the freeze lookup
+        // is a memoized read), so there is nothing for a `codeLens/resolve` round trip to add.
+        code_lens_provider: Some(lsp_types::CodeLensOptions {
+            resolve_provider: Some(false),
+        }),
+        // The 3.17 pull model. `publishDiagnostics` can only ever speak about buffers the
+        // editor has opened, so a 25-chapter book shows problems for the two chapters on
+        // screen and silence for the other 23 — while `check <dir>` answers the whole
+        // question in 0.36 s. `interFileDependencies` is true and is not a formality: a
+        // cross-page `@sec-` means editing chapter 3 changes chapter 12's answer.
+        diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
+            lsp_types::DiagnosticOptions {
+                identifier: Some(crate::check::LSP_SOURCE.to_string()),
+                inter_file_dependencies: true,
+                workspace_diagnostics: true,
+                // The one operation here long enough to have a middle: linting every page of
+                // a book. Declaring it is what makes the client send a `workDoneToken`, which
+                // is the only channel we are allowed to report into.
+                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
+                    work_done_progress: Some(true),
+                },
+            },
+        )),
         rename_provider: Some(OneOf::Right(RenameOptions {
             // `prepareRename` gates renaming to a cross-reference anchor, so the editor shows
             // "cannot rename here" on anything else.
@@ -126,8 +157,48 @@ fn run_with_debounce(
     let caps = serde_json::to_value(server_capabilities())?;
     let init = connection.initialize(caps)?;
     register_file_watchers(&connection, &init)?;
-    main_loop(&connection, debounce)?;
+    main_loop(&connection, debounce, Transport::of(&init))?;
     Ok(())
+}
+
+/// How this client wants its diagnostics: pushed at it, or pulled from it.
+///
+/// **Both at once would double every squiggle.** A client that supports the 3.17 pull model
+/// keeps pull results in a diagnostic collection of its own, separate from the one
+/// `publishDiagnostics` fills, so a server doing both puts every finding in the Problems panel
+/// twice. The client's own `textDocument.diagnostic` capability is the only honest signal of
+/// which it will use, so it decides.
+///
+/// Push stays the default and is not deprecated: it is what an editor that predates 3.17 (or
+/// one whose LSP layer never adopted the feature) has, and going silent on those would be a
+/// regression dressed as a feature.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Transport {
+    Push,
+    /// `refresh` is the client's `workspace.diagnostics.refreshSupport`: whether it will
+    /// re-pull when we say something changed. Without it, a pull client only refreshes on its
+    /// own schedule — still correct, just less prompt — so this is not a reason to fall back
+    /// to push.
+    Pull {
+        refresh: bool,
+    },
+}
+
+impl Transport {
+    fn of(init: &serde_json::Value) -> Self {
+        let pulls = init
+            .pointer("/capabilities/textDocument/diagnostic")
+            .is_some();
+        match pulls {
+            false => Transport::Push,
+            true => Transport::Pull {
+                refresh: init
+                    .pointer("/capabilities/workspace/diagnostics/refreshSupport")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false),
+            },
+        }
+    }
 }
 
 /// Ask the client to watch the files that can invalidate an open buffer's diagnostics.
@@ -230,6 +301,7 @@ impl PendingPublishes {
 fn main_loop(
     connection: &Connection,
     debounce: std::time::Duration,
+    transport: Transport,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Open taliesin documents, by URI → current buffer text. `didChange` carries no
     // languageId, so we only track what `didOpen` admitted; a request between edits reads
@@ -257,29 +329,81 @@ fn main_loop(
     if let Some(p) = trace.armed() {
         crate::log::info(&format!("lsp: capability trace armed → {}", p.display()));
     }
+    // The last diagnostics published for each open buffer — what the editor is showing right
+    // now. Read by hover (to put the `--explain` body under the squiggle) and by the pull
+    // arms (so the Problems panel cannot contradict the squiggles above it).
+    let mut published: std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>> =
+        std::collections::HashMap::new();
+    // The `resultId` last handed to the client for each page, so a repeated
+    // `workspace/diagnostic` poll can be answered `Unchanged` at the cost of one `stat` per
+    // page instead of a whole-project lint. Ours as well as theirs: a client is free to send
+    // back nothing, and then this is what stops the poll from being a walk every time.
+    let mut pulled: std::collections::HashMap<lsp_types::Url, String> =
+        std::collections::HashMap::new();
+    // Messages the client has sent that we have not dispatched yet, and the ids among them a
+    // `$/cancelRequest` in the same batch superseded. See [`read_batch`].
+    let mut inbox: std::collections::VecDeque<Message> = std::collections::VecDeque::new();
+    let mut cancelled: std::collections::HashSet<lsp_server::RequestId> =
+        std::collections::HashSet::new();
     loop {
-        // Block outright when nothing is owed, so an idle server costs nothing; wait only as
-        // long as the open window when a publish is pending.
-        let msg = match pending.wait() {
-            None => match connection.receiver.recv() {
-                Ok(m) => m,
-                Err(_) => break,
-            },
-            Some(remaining) => match connection.receiver.recv_timeout(remaining) {
-                Ok(m) => m,
+        if inbox.is_empty() {
+            // Block outright when nothing is owed, so an idle server costs nothing; wait only
+            // as long as the open window when a publish is pending.
+            match read_batch(connection, pending.wait()) {
+                Batch::Messages(msgs, dead) => {
+                    inbox = msgs;
+                    cancelled = dead;
+                }
                 // The window closed with no further edit: publish the latest text of every
                 // buffer that is owed.
-                Err(e) if e.is_timeout() => {
-                    for uri in pending.take() {
-                        if let Some(text) = docs.get(&uri) {
-                            publish(connection, &mut sites, &uri, text)?;
+                Batch::Timeout => {
+                    let owed = pending.take();
+                    match transport {
+                        Transport::Push => {
+                            for uri in owed {
+                                if let Some(text) = docs.get(&uri) {
+                                    publish(connection, &mut sites, &mut published, &uri, text)?;
+                                }
+                            }
+                        }
+                        // A pull client owns the question; all we owe it is the news that
+                        // the answer moved. One refresh for the whole batch, not one per
+                        // buffer: the request is project-wide on the client's side.
+                        Transport::Pull { refresh } => {
+                            if refresh && !owed.is_empty() {
+                                request_diagnostic_refresh(connection)?;
+                            }
                         }
                     }
                     continue;
                 }
-                Err(_) => break,
-            },
+                Batch::Closed => break,
+            }
+        }
+        let Some(msg) = inbox.pop_front() else {
+            continue;
         };
+        // A request the client withdrew while it was still queued behind other work. Answering
+        // `RequestCancelled` is not a courtesy: the protocol owes a response to every id, and a
+        // client that never gets one holds the pending entry (and, in VS Code, the progress it
+        // was showing) for the rest of the session.
+        if let Message::Request(req) = &msg
+            && cancelled.remove(&req.id)
+        {
+            trace.record(&req.method);
+            connection
+                .sender
+                .send(Message::Response(lsp_server::Response {
+                    id: req.id.clone(),
+                    result: None,
+                    error: Some(lsp_server::ResponseError {
+                        code: -32800, // JSON-RPC RequestCancelled (LSP)
+                        message: format!("{} was cancelled", req.method),
+                        data: None,
+                    }),
+                }))?;
+            continue;
+        }
         match msg {
             Message::Request(req) => {
                 // Before the shutdown branch below, so the tally sees every dispatched
@@ -323,7 +447,16 @@ fn main_loop(
                 // it should.
                 let (id, method) = (req.id.clone(), req.method.clone());
                 let failure = match crate::serve::guarded(|| {
-                    handle_request(connection, &docs, &mut memo, &mut project, req)
+                    handle_request(
+                        connection,
+                        &docs,
+                        &mut memo,
+                        &mut project,
+                        &mut sites,
+                        &mut published,
+                        &mut pulled,
+                        req,
+                    )
                 }) {
                     Ok(Ok(())) => None,
                     // JSON-RPC InvalidParams.
@@ -364,8 +497,10 @@ fn main_loop(
                         connection,
                         &mut docs,
                         &mut sites,
+                        &mut published,
                         &mut pending,
                         debounce,
+                        transport,
                         notif,
                     )
                 }) {
@@ -384,6 +519,111 @@ fn main_loop(
     Ok(())
 }
 
+/// One turn's worth of client traffic.
+enum Batch {
+    /// Messages to dispatch, and the ids among them the client withdrew.
+    Messages(
+        std::collections::VecDeque<Message>,
+        std::collections::HashSet<lsp_server::RequestId>,
+    ),
+    /// The coalescing window closed with nothing new to read.
+    Timeout,
+    /// The client is gone.
+    Closed,
+}
+
+/// Read everything the client has already sent, and separate out the requests it has since
+/// withdrawn.
+///
+/// **This is the whole of `$/cancelRequest` in a synchronous server, and it is the right
+/// shape for one.** A request already being executed cannot be abandoned here — there is one
+/// thread and it is inside the handler — but that was never the expensive case. The expensive
+/// case is the *queue*: `workspace/symbol` is a whole-project walk with a `stat` per page
+/// (measured at **167 ms** on the largest project in the tree) and it is the one request a
+/// user types into character by character, so a five-letter Ctrl+T query used to queue five
+/// walks and run all five, four of them for a query nobody was waiting on any more. Draining
+/// the channel before dispatching lets the cancel that arrived *behind* the superseded request
+/// be seen *before* it.
+///
+/// This is why the 2026-08-07 audit's advice was "do not optimise the walk before cancellation
+/// exists": the walk is 167 ms once, and the queue is 167 ms times however fast you type.
+///
+/// Cancellations are matched only against messages **in this batch**. A cancel for a request
+/// already answered is dropped rather than remembered, so a client that reuses request ids
+/// cannot have a later request killed by an older cancel.
+fn read_batch(connection: &Connection, wait: Option<std::time::Duration>) -> Batch {
+    let first = match wait {
+        None => match connection.receiver.recv() {
+            Ok(m) => m,
+            Err(_) => return Batch::Closed,
+        },
+        Some(remaining) => match connection.receiver.recv_timeout(remaining) {
+            Ok(m) => m,
+            Err(e) if e.is_timeout() => return Batch::Timeout,
+            Err(_) => return Batch::Closed,
+        },
+    };
+    let mut msgs = vec![first];
+    // Everything else already buffered. Non-blocking, so an idle client costs one `recv`.
+    //
+    // **Except past `shutdown`.** `Connection::handle_shutdown` answers it and then reads the
+    // channel itself, waiting up to 30 s for the `exit` that follows. Draining `exit` into
+    // this batch would take it out of the channel that call is watching, so every clean
+    // teardown would spend 30 s timing out and log a protocol complaint about a client that
+    // did nothing wrong.
+    while !msgs.last().is_some_and(is_shutdown) {
+        match connection.receiver.try_recv() {
+            Ok(m) => msgs.push(m),
+            Err(_) => break,
+        }
+    }
+    let mut cancelled = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::with_capacity(msgs.len());
+    for m in msgs {
+        match cancel_target(&m) {
+            Some(id) => {
+                cancelled.insert(id);
+            }
+            None => queue.push_back(m),
+        }
+    }
+    // Only ids this batch actually carries. A cancel for something already answered is noise.
+    let live: std::collections::HashSet<lsp_server::RequestId> = queue
+        .iter()
+        .filter_map(|m| match m {
+            Message::Request(r) => Some(r.id.clone()),
+            _ => None,
+        })
+        .collect();
+    cancelled.retain(|id| live.contains(id));
+    Batch::Messages(queue, cancelled)
+}
+
+/// Is this the `shutdown` request? The one message the batch reader must not read past.
+fn is_shutdown(msg: &Message) -> bool {
+    use lsp_types::request::Request as _;
+    matches!(msg, Message::Request(r)
+        if r.method == lsp_types::request::Shutdown::METHOD)
+}
+
+/// The request id a `$/cancelRequest` notification names, or `None` for any other message.
+fn cancel_target(msg: &Message) -> Option<lsp_server::RequestId> {
+    use lsp_types::notification::Notification as _;
+    let Message::Notification(n) = msg else {
+        return None;
+    };
+    if n.method != lsp_types::notification::Cancel::METHOD {
+        return None;
+    }
+    match serde_json::from_value::<lsp_types::CancelParams>(n.params.clone())
+        .ok()?
+        .id
+    {
+        lsp_types::NumberOrString::Number(n) => Some(lsp_server::RequestId::from(n)),
+        lsp_types::NumberOrString::String(s) => Some(lsp_server::RequestId::from(s)),
+    }
+}
+
 /// Test-only method name that panics inside the dispatch. Real input does not panic the
 /// renderer (AP2's fuzz round produced zero unexpected panics), so injecting one here is the
 /// only way to exercise the loop's panic boundary — the guard exists for the residual
@@ -393,12 +633,15 @@ pub(crate) const PANIC_PROBE_METHOD: &str = "taliesin/testPanic";
 
 /// Dispatch a text-document notification: keep the open-buffer store current and
 /// (re)publish diagnostics for the affected buffer.
+#[allow(clippy::too_many_arguments)]
 fn handle_notification(
     connection: &Connection,
     docs: &mut std::collections::HashMap<lsp_types::Url, String>,
     sites: &mut crate::lsp_project::SiteCache,
+    published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
     pending: &mut PendingPublishes,
     debounce: std::time::Duration,
+    transport: Transport,
     notif: lsp_server::Notification,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::notification::{
@@ -423,7 +666,11 @@ fn handle_notification(
         if p.text_document.language_id == "taliesin" || is_tmd_uri(&p.text_document.uri) {
             let uri = p.text_document.uri;
             docs.insert(uri.clone(), p.text_document.text);
-            publish(connection, sites, &uri, &docs[&uri])?;
+            // A pull client asks for this itself the moment it opens the document, so
+            // publishing here would put every finding in its Problems panel twice.
+            if transport == Transport::Push {
+                publish(connection, sites, published, &uri, &docs[&uri])?;
+            }
         } else {
             crate::log::warn(&format!(
                 "lsp: ignoring {} (languageId {:?} is not `taliesin` and the path is not .tmd)",
@@ -466,27 +713,38 @@ fn handle_notification(
     } else if method == DidCloseTextDocument::METHOD {
         let p: DidCloseTextDocumentParams = serde_json::from_value(notif.params)?;
         docs.remove(&p.text_document.uri);
+        published.remove(&p.text_document.uri);
         // Before the clear below, or a window that closes after this would re-publish
         // diagnostics for a buffer that is gone.
         pending.forget(&p.text_document.uri);
-        publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
+        // Only the push transport owns a collection we have to empty. A pull client drops
+        // its own on close, and an empty push here would be a second, contradictory answer.
+        if transport == Transport::Push {
+            publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
+        }
     }
     Ok(())
 }
 
 /// Answer a request from the open-buffer store. Only `textDocument/definition` is handled;
 /// any other request gets a `MethodNotFound` reply so the client never hangs waiting.
+#[allow(clippy::too_many_arguments)]
 fn handle_request(
     connection: &Connection,
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     memo: &mut crate::lsp_memo::RenderMemo,
     project: &mut crate::lsp_project::ProjectCache,
+    sites: &mut crate::lsp_project::SiteCache,
+    published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
+    pulled: &mut std::collections::HashMap<lsp_types::Url, String>,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, Completion, DocumentHighlightRequest, DocumentLinkRequest,
-        DocumentSymbolRequest, FoldingRangeRequest, Formatting, GotoDefinition, HoverRequest,
-        InlayHintRequest, PrepareRenameRequest, Rename, Request as _, WorkspaceSymbolRequest,
+        CodeActionRequest, CodeLensRequest, Completion, DocumentDiagnosticRequest,
+        DocumentHighlightRequest, DocumentLinkRequest, DocumentSymbolRequest, FoldingRangeRequest,
+        Formatting, GotoDefinition, HoverRequest, InlayHintRequest, PrepareRenameRequest,
+        References, Rename, Request as _, SelectionRangeRequest, WorkspaceDiagnosticRequest,
+        WorkspaceSymbolRequest,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
@@ -519,6 +777,170 @@ fn handle_request(
             result: Some(serde_json::to_value(resolve_document_highlight(
                 docs, &params,
             ))?),
+            error: None,
+        }
+    } else if req.method == CodeLensRequest::METHOD {
+        let params: lsp_types::CodeLensParams = serde_json::from_value(req.params)?;
+        let uri = params.text_document.uri;
+        // The rendered block model, from the same memo hover and inlay hints use: the lens
+        // needs to know which fences a kernel runs and what each cell's cache key is, and
+        // both are questions about the rendered document, not about the text.
+        let lenses = match (uri.to_file_path().ok(), docs.get(&uri)) {
+            (Some(path), Some(text)) => memo
+                .get(&uri, text)
+                .map(|doc| {
+                    let mut probe = crate::lsp_lens::CacheProbe::new(&path, sites.get(&path));
+                    crate::lsp_lens::code_lenses(&uri, &doc.blocks, &mut probe)
+                })
+                .unwrap_or_default(),
+            // An unsaved buffer has no path, so it has no `_freeze/` and no project to
+            // resolve an interpreter against — and `taliesin run` could not open it either.
+            _ => Vec::new(),
+        };
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(lenses)?),
+            error: None,
+        }
+    } else if req.method == DocumentDiagnosticRequest::METHOD {
+        let params: lsp_types::DocumentDiagnosticParams = serde_json::from_value(req.params)?;
+        let uri = params.text_document.uri;
+        let path = uri
+            .to_file_path()
+            .unwrap_or_else(|_| std::path::PathBuf::from("untitled.tmd"));
+        // The buffer when the editor has one, the file otherwise. A pull can name a document
+        // that was never opened — that is the point of the model — so "not open" is a normal
+        // input here rather than the empty answer it is on every other request.
+        let text = match docs.get(&uri) {
+            Some(t) => Some(t.clone()),
+            None => std::fs::read_to_string(&path).ok(),
+        };
+        let items = text
+            .map(|t| crate::lsp_diag::diagnose_file(sites, &path, &t))
+            .unwrap_or_default();
+        // Recorded so hover can put the `--explain` body under the squiggle the client is
+        // now showing, exactly as the push path does.
+        published.insert(uri, items.clone());
+        let report = lsp_types::DocumentDiagnosticReportResult::Report(
+            lsp_types::DocumentDiagnosticReport::Full(
+                lsp_types::RelatedFullDocumentDiagnosticReport {
+                    // Reporting other pages here would fight `workspace/diagnostic`, which
+                    // owns the whole-project answer and is where those belong.
+                    related_documents: None,
+                    full_document_diagnostic_report: lsp_types::FullDocumentDiagnosticReport {
+                        result_id: None,
+                        items,
+                    },
+                },
+            ),
+        );
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(report)?),
+            error: None,
+        }
+    } else if req.method == WorkspaceDiagnosticRequest::METHOD {
+        let params: lsp_types::WorkspaceDiagnosticParams = serde_json::from_value(req.params)?;
+        // The client's own record wins over ours where it has one: it is the authority on
+        // what it is still holding, and after a restart on its side ours is stale.
+        for p in &params.previous_result_ids {
+            pulled.insert(p.uri.clone(), p.value.clone());
+        }
+        // `$/progress` for the one operation here that is long enough to have a middle:
+        // linting every page of a book. Only when the client asked for it by supplying a
+        // token — a server that invented one would be reporting into a channel nobody
+        // opened.
+        let token = params.work_done_progress_params.work_done_token.clone();
+        let mut started = false;
+        let mut report = |done: usize, total: usize| {
+            let Some(token) = token.clone() else { return };
+            // A one-page project has no middle worth drawing; the notification would appear
+            // and vanish in the same frame, which reads as a glitch rather than as progress.
+            if total < 2 {
+                return;
+            }
+            let value = match (started, done >= total) {
+                (false, _) => serde_json::json!({
+                    "kind": "begin",
+                    "title": "Taliesin: checking the project",
+                    "percentage": 0,
+                    "cancellable": false,
+                }),
+                (true, false) => serde_json::json!({
+                    "kind": "report",
+                    "message": format!("{done}/{total} pages"),
+                    "percentage": (done * 100 / total.max(1)) as u32,
+                }),
+                (true, true) => serde_json::json!({ "kind": "end" }),
+            };
+            started = true;
+            let _ = progress(connection, &token, value);
+        };
+        let mut items = Vec::new();
+        for row in crate::lsp_diag::workspace_report(docs, sites, pulled, &mut report) {
+            items.push(match row {
+                crate::lsp_diag::PageReport::Full {
+                    uri,
+                    result_id,
+                    items,
+                } => {
+                    pulled.insert(uri.clone(), result_id.clone());
+                    published.insert(uri.clone(), items.clone());
+                    lsp_types::WorkspaceDocumentDiagnosticReport::Full(
+                        lsp_types::WorkspaceFullDocumentDiagnosticReport {
+                            uri,
+                            // We do not track the client's document versions, and the spec
+                            // makes this optional for exactly that case.
+                            version: None,
+                            full_document_diagnostic_report:
+                                lsp_types::FullDocumentDiagnosticReport {
+                                    result_id: Some(result_id),
+                                    items,
+                                },
+                        },
+                    )
+                }
+                crate::lsp_diag::PageReport::Unchanged { uri, result_id } => {
+                    lsp_types::WorkspaceDocumentDiagnosticReport::Unchanged(
+                        lsp_types::WorkspaceUnchangedDocumentDiagnosticReport {
+                            uri,
+                            version: None,
+                            unchanged_document_diagnostic_report:
+                                lsp_types::UnchangedDocumentDiagnosticReport { result_id },
+                        },
+                    )
+                }
+            });
+        }
+        let report = lsp_types::WorkspaceDiagnosticReportResult::Report(
+            lsp_types::WorkspaceDiagnosticReport { items },
+        );
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(report)?),
+            error: None,
+        }
+    } else if req.method == References::METHOD {
+        let params: lsp_types::ReferenceParams = serde_json::from_value(req.params)?;
+        lsp_server::Response {
+            id: req.id,
+            // `null` rather than `[]` when the cursor is on nothing referenceable: an empty
+            // array is a claim that this anchor has no uses, which is a different answer
+            // from "that is not an anchor".
+            result: Some(serde_json::to_value(crate::lsp_refs::references(
+                docs, project, &params,
+            ))?),
+            error: None,
+        }
+    } else if req.method == SelectionRangeRequest::METHOD {
+        let params: lsp_types::SelectionRangeParams = serde_json::from_value(req.params)?;
+        let ranges = docs
+            .get(&params.text_document.uri)
+            .map(|text| crate::lsp_select::selection_ranges(text, &params.positions))
+            .unwrap_or_default();
+        lsp_server::Response {
+            id: req.id,
+            result: Some(serde_json::to_value(ranges)?),
             error: None,
         }
     } else if req.method == FoldingRangeRequest::METHOD {
@@ -559,7 +981,9 @@ fn handle_request(
         let params: lsp_types::HoverParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
             id: req.id,
-            result: Some(serde_json::to_value(resolve_hover(docs, project, &params))?),
+            result: Some(serde_json::to_value(resolve_hover(
+                docs, project, published, &params,
+            ))?),
             error: None,
         }
     } else if req.method == DocumentLinkRequest::METHOD {
@@ -1128,12 +1552,68 @@ fn project_refs(
     Some(serde_json::json!({ "root": scan.root.to_string_lossy(), "targets": targets }))
 }
 
+/// Hover: the token under the cursor, plus the `check --explain` body of any diagnostic that
+/// covers it.
+///
+/// The two are merged rather than chosen between, because a hover is the one surface where
+/// both questions get asked at the same position — "what is `@fig-2`" and "why is it
+/// squiggled" — and answering only the first is what sent an author to the browser. The
+/// explanation is a *section under* the token's answer, never in place of it.
+fn resolve_hover(
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    project: &mut crate::lsp_project::ProjectCache,
+    published: &std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
+    params: &lsp_types::HoverParams,
+) -> Option<lsp_types::Hover> {
+    use lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind};
+
+    let uri = &params.text_document_position_params.text_document.uri;
+    let pos = params.text_document_position_params.position;
+    let token = token_hover(docs, project, params);
+    // The diagnostics the editor is *currently showing* for this buffer, not a fresh lint: it
+    // is the squiggle under the pointer that the author is asking about, and re-linting here
+    // would put a whole-project walk on the pointer-move path.
+    let empty = Vec::new();
+    let diagnostics = published.get(uri).unwrap_or(&empty);
+    let explanations = crate::lsp_diag::explanations_at(diagnostics, pos);
+    if explanations.is_empty() {
+        return token;
+    }
+    let body = explanations.join("\n\n---\n\n");
+    match token {
+        Some(t) => {
+            let head = match t.contents {
+                HoverContents::Markup(m) => m.value,
+                // Neither other variant is ever constructed below; keep the explanation
+                // rather than dropping it if that ever changes.
+                _ => String::new(),
+            };
+            Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("{head}\n\n---\n\n{body}"),
+                }),
+                range: t.range,
+            })
+        }
+        // No token here, only a squiggle: highlight the diagnostic's own span so the tooltip
+        // is anchored to something rather than floating.
+        None => Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: body,
+            }),
+            range: crate::lsp_diag::narrowest_range_at(diagnostics, pos),
+        }),
+    }
+}
+
 /// Resolve hover for the token under the cursor: an xref's rendered label + number, a
 /// front-matter key's documentation, or a citation's BibTeX entry. `None` when the token
 /// resolves to nothing (an unknown xref, an undocumented key, a missing/absent `.bib` entry)
 /// or is not a hoverable kind (an include path is go-to-definition only, mirroring the
 /// companion). Markdown content, ranged to the token so the editor highlights it.
-fn resolve_hover(
+fn token_hover(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     project: &mut crate::lsp_project::ProjectCache,
     params: &lsp_types::HoverParams,
@@ -2165,27 +2645,75 @@ fn is_tmd_uri(uri: &lsp_types::Url) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("tmd"))
 }
 
-/// Lint `text` as the document at `uri` and publish the result.
+/// Lint `text` as the document at `uri`, publish the result, and remember it.
+///
+/// Remembered because two later readers need the diagnostics the editor is *currently
+/// showing*, not a fresh lint of their own: hover, to put the `--explain` body under the
+/// squiggle the pointer is on, and the pull-diagnostic arms, which must not contradict the
+/// squiggles in the window above the Problems panel.
 fn publish(
     connection: &Connection,
     sites: &mut crate::lsp_project::SiteCache,
+    published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
     uri: &lsp_types::Url,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let path = uri
         .to_file_path()
         .unwrap_or_else(|_| std::path::PathBuf::from("untitled.tmd"));
-    let lines: Vec<&str> = text.split('\n').collect();
     // The enclosing project, when this buffer is a page of one. Without it the buffer is
     // linted as a standalone document and the editor gets a strictly weaker answer than the
     // read-only preview: no broken cross-page anchors at all, and broken links described by
     // a rule that does not apply to a site page.
-    let site = sites.get(&path);
-    let diagnostics = crate::check::buffer_diagnostics_in_site(&path, text, site)
-        .iter()
-        .map(|d| d.to_lsp(&lines))
-        .collect();
+    let diagnostics = crate::lsp_diag::diagnose_file(sites, &path, text);
+    published.insert(uri.clone(), diagnostics.clone());
     publish_diagnostics(connection, uri, diagnostics)
+}
+
+/// Send one `$/progress` notification against a token the client supplied.
+///
+/// Server-*initiated* progress would need `window/workDoneProgress/create` first; this is the
+/// other kind — the client handed us a token with its request and is already listening on it,
+/// so there is nothing to negotiate and nothing to tear down if it stops.
+fn progress(
+    connection: &Connection,
+    token: &lsp_types::ProgressToken,
+    value: serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use lsp_types::notification::Notification as _;
+    connection
+        .sender
+        .send(Message::Notification(lsp_server::Notification {
+            method: lsp_types::notification::Progress::METHOD.to_owned(),
+            params: serde_json::json!({ "token": token, "value": value }),
+        }))?;
+    Ok(())
+}
+
+/// Tell a pull client that the project's diagnostics moved, so it re-pulls.
+///
+/// This is the pull model's answer to the invalidation problem the push model could only ever
+/// guess at: under push, nothing refreshes a document the author is not currently typing in,
+/// so editing chapter 3 left chapter 12's open buffer showing an anchor error that had just
+/// been fixed. Here ownership is inverted — we say "something changed", the client decides
+/// what to ask about.
+///
+/// The reply is ignored on purpose, exactly as `register_file_watchers`' is: a client that
+/// declines leaves us where we started, and the main loop drops responses it did not ask
+/// about. The id is fixed rather than sequential because nothing here awaits a specific one.
+fn request_diagnostic_refresh(
+    connection: &Connection,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    connection
+        .sender
+        .send(Message::Request(lsp_server::Request {
+        id: lsp_server::RequestId::from("taliesin-diagnostic-refresh".to_owned()),
+        method:
+            <lsp_types::request::WorkspaceDiagnosticRefresh as lsp_types::request::Request>::METHOD
+                .to_owned(),
+        params: serde_json::Value::Null,
+    }))?;
+    Ok(())
 }
 
 /// Send a `textDocument/publishDiagnostics` notification (an empty vec clears squiggles).
@@ -2239,14 +2767,22 @@ mod tests {
         .unwrap()
     }
 
-    // Send initialize + initialized so the server enters its main loop.
+    // Send initialize + initialized so the server enters its main loop. Declares no client
+    // capabilities, which is the PUSH transport — what an editor predating LSP 3.17 has, and
+    // what every test written before the pull model exercises.
     fn handshake(client: &Connection) {
+        handshake_with(client, serde_json::json!({}));
+    }
+
+    /// [`handshake`] with the client capabilities spelled out, for the tests that need the
+    /// pull transport (which is chosen from `textDocument.diagnostic`, not by us).
+    fn handshake_with(client: &Connection, capabilities: serde_json::Value) {
         client
             .sender
             .send(Message::Request(Request {
                 id: RequestId::from(1),
                 method: "initialize".to_owned(),
-                params: serde_json::json!({ "capabilities": {} }),
+                params: serde_json::json!({ "capabilities": capabilities }),
             }))
             .unwrap();
         let _ = client.receiver.recv().unwrap(); // InitializeResult
@@ -2257,6 +2793,15 @@ mod tests {
                 params: serde_json::json!({}),
             }))
             .unwrap();
+    }
+
+    /// The capability block a 3.17 pull client sends: it manages diagnostics itself and will
+    /// re-pull when told to.
+    fn pull_capabilities() -> serde_json::Value {
+        serde_json::json!({
+            "textDocument": { "diagnostic": { "dynamicRegistration": false } },
+            "workspace": { "diagnostics": { "refreshSupport": true } },
+        })
     }
 
     // Block (bounded) until the next publishDiagnostics notification; panics on any other
@@ -2772,8 +3317,13 @@ mod tests {
             cross_page_fixture("hover", "# Two {#sec-two}\n", "See @sec-two.\n");
         let mut project = crate::lsp_project::ProjectCache::new();
 
-        let hover = resolve_hover(&docs, &mut project, &hover_params(&uri, 0, 6))
-            .expect("a cross-page xref must hover");
+        let hover = resolve_hover(
+            &docs,
+            &mut project,
+            &Default::default(),
+            &hover_params(&uri, 0, 6),
+        )
+        .expect("a cross-page xref must hover");
         let lsp_types::HoverContents::Markup(m) = hover.contents else {
             panic!("expected markup");
         };
@@ -3994,12 +4544,17 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
-    // The reject axis for the same lookup: a key the vocab does not document gets NO hover.
-    // Without this, a lookup that always answers something (a constant, or "the first entry
-    // that isn't this one") looks correct from the positive case alone — and would invent
-    // documentation for a key that has none, which is worse than saying nothing.
+    // The reject axis for the same lookup: a key the vocab does not document gets no key
+    // documentation. Without this, a lookup that always answers something (a constant, or
+    // "the first entry that isn't this one") looks correct from the positive case alone — and
+    // would invent documentation for a key that has none, which is worse than saying nothing.
+    //
+    // What it *does* get is the other half of item 220: an unknown key is a `TAL-FM-KEY`
+    // diagnostic, and the diagnostic's cause + canonical fix are now in the hover rather than
+    // behind a link out of the editor. That is a different answer from a key's docs, and this
+    // test is where the two must not be confused for one another.
     #[test]
-    fn hover_on_an_undocumented_frontmatter_key_shows_nothing() {
+    fn hover_on_an_undocumented_frontmatter_key_explains_the_diagnostic_instead() {
         let (server, client) = Connection::memory();
         let thread = std::thread::spawn(move || run(server));
         handshake(&client);
@@ -4009,9 +4564,23 @@ mod tests {
         did_open(&client, &uri, text);
         let _ = recv_publish(&client);
 
+        let h = hover_raw_at(&client, &uri, 53, 1, 2).expect("the diagnostic explanation");
+        let md = hover_markdown(&h);
         assert!(
-            hover_raw_at(&client, &uri, 53, 1, 2).is_none(),
-            "an undocumented key must not be handed another key's documentation"
+            !md.contains("`frobnicate:`"),
+            "an undocumented key must not be handed another key's documentation: {md:?}"
+        );
+        assert!(
+            md.starts_with("**TAL-FM-KEY**"),
+            "the squiggle under the pointer is what the author is asking about: {md:?}"
+        );
+        let fix = taliesin_core::diagnostics::codes::explain("TAL-FM-KEY")
+            .expect("the catalogue documents TAL-FM-KEY")
+            .fix;
+        assert!(
+            md.contains(fix),
+            "the canonical fix is the half that says what to type; without it this is a \
+             restatement of the message the author already read: {md:?}"
         );
 
         shutdown(&client);
@@ -4735,6 +5304,31 @@ mod tests {
             "the anchor under the cursor and its other occurrences"
         );
         assert_eq!(
+            caps["codeLensProvider"]["resolveProvider"], false,
+            "the Run buttons: the whole lens is resolved in one pass"
+        );
+        assert!(
+            caps["diagnosticProvider"]["workspaceDiagnostics"]
+                .as_bool()
+                .unwrap_or(false),
+            "without the workspace half, the Problems panel still cannot see an unopened page"
+        );
+        assert!(
+            caps["diagnosticProvider"]["interFileDependencies"]
+                .as_bool()
+                .unwrap_or(false),
+            "a cross-page `@sec-` means editing chapter 3 changes chapter 12's answer"
+        );
+        assert_eq!(
+            caps["referencesProvider"], true,
+            "the same question across the project, which is where it is actually asked"
+        );
+        assert_eq!(
+            caps["selectionRangeProvider"], true,
+            "without this the editor expands the selection by brackets, which in prose \
+             selects `](target)` and nothing an author reached for"
+        );
+        assert_eq!(
             caps["foldingRangeProvider"], true,
             "without this the editor falls back to indentation folding, which is \
              meaningless for a Markdown-derived format"
@@ -5281,5 +5875,558 @@ mod tests {
         let _ = recv_publish(&client);
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    // -----------------------------------------------------------------------------------
+    // The 3.17 pull model (backlog item 222). The push half above is unchanged and is what
+    // an editor predating 3.17 still gets; these own the half that lets the Problems panel
+    // list a book rather than only the chapters that happen to be open.
+    // -----------------------------------------------------------------------------------
+
+    /// A project on disk, with a page nobody opens. That page is the whole point: under push
+    /// it can never appear in the Problems panel, because push only speaks about buffers.
+    fn pull_fixture(name: &str) -> std::path::PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("tali-lsp-pull-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(root.join("a.tmd"), "---\ntitle: A\n---\n\nBody.\n").unwrap();
+        // Never opened, and carrying a diagnostic of its own.
+        std::fs::write(root.join("b.tmd"), "---\nfrobnicate: B\n---\n\nBody.\n").unwrap();
+        root
+    }
+
+    /// Send `req` and return the response body, panicking on an error reply so a
+    /// `MethodNotFound` fails here rather than as a confusing `None` downstream.
+    fn ask(
+        client: &Connection,
+        id: i32,
+        method: &str,
+        params: serde_json::Value,
+    ) -> serde_json::Value {
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(id),
+                method: method.to_owned(),
+                params,
+            }))
+            .unwrap();
+        loop {
+            match client
+                .receiver
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+            {
+                Message::Response(Response {
+                    result: Some(v),
+                    error: None,
+                    ..
+                }) => return v,
+                Message::Response(r) => panic!("{method} failed: {r:?}"),
+                // A refresh request or a publish can overtake the reply; neither is the
+                // answer being waited on.
+                _ => continue,
+            }
+        }
+    }
+
+    /// The reason the transport is a choice rather than "do both": a pull client keeps pull
+    /// results in a collection of its own, so a server that also pushed would put every
+    /// finding in the Problems panel twice.
+    #[test]
+    fn a_pull_client_is_not_also_pushed_at() {
+        let root = pull_fixture("nopush");
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake_with(&client, pull_capabilities());
+
+        let uri = Url::from_file_path(root.join("b.tmd")).unwrap();
+        did_open(
+            &client,
+            &uri,
+            std::fs::read_to_string(root.join("b.tmd")).unwrap(),
+        );
+        // The document has a real diagnostic, so a push transport would send one here.
+        let report = ask(
+            &client,
+            2,
+            "textDocument/diagnostic",
+            serde_json::json!({ "textDocument": { "uri": uri } }),
+        );
+        assert_eq!(report["kind"], "full", "a full report: {report}");
+        let codes: Vec<String> = report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| d["code"].as_str().unwrap_or("").to_string())
+            .collect();
+        assert!(
+            codes.iter().any(|c| c == "TAL-FM-KEY"),
+            "the pull answer must carry the finding: {report}"
+        );
+        // Nothing else was sent: no publishDiagnostics reached this client at any point.
+        assert!(
+            client.receiver.try_recv().is_err(),
+            "a pull client must not also be pushed at, or every finding appears twice"
+        );
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The finding this item exists for: a page nobody opened is in the report.
+    #[test]
+    fn workspace_diagnostic_reaches_a_page_no_editor_has_opened() {
+        let root = pull_fixture("unopened");
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake_with(&client, pull_capabilities());
+
+        // Only `a.tmd` is open. `b.tmd` is the one carrying a diagnostic.
+        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
+        did_open(
+            &client,
+            &a,
+            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
+        );
+
+        let report = ask(
+            &client,
+            2,
+            "workspace/diagnostic",
+            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
+        );
+        let items = report["items"].as_array().expect("items");
+        let b = Url::from_file_path(root.join("b.tmd")).unwrap();
+        let row = items
+            .iter()
+            .find(|r| r["uri"] == serde_json::json!(b))
+            .unwrap_or_else(|| panic!("b.tmd must be reported though nobody opened it: {report}"));
+        assert_eq!(row["kind"], "full");
+        assert_eq!(
+            row["items"][0]["code"], "TAL-FM-KEY",
+            "with its own finding: {row}"
+        );
+        assert!(
+            row["resultId"].is_string(),
+            "a resultId is what makes the next poll cheap: {row}"
+        );
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A client polls this method. Re-linting a 25-chapter book per poll would be a walk
+    /// every time, so an unchanged project must answer `unchanged` from the result ids it
+    /// handed out — which is a `stat` per page and no render at all.
+    #[test]
+    fn a_repeat_workspace_poll_is_answered_unchanged() {
+        let root = pull_fixture("repeat");
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake_with(&client, pull_capabilities());
+        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
+        did_open(
+            &client,
+            &a,
+            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
+        );
+
+        let first = ask(
+            &client,
+            2,
+            "workspace/diagnostic",
+            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
+        );
+        let previous: Vec<serde_json::Value> = first["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| serde_json::json!({ "uri": r["uri"], "value": r["resultId"] }))
+            .collect();
+        assert!(!previous.is_empty(), "the first poll must report something");
+
+        let second = ask(
+            &client,
+            3,
+            "workspace/diagnostic",
+            serde_json::json!({ "identifier": "taliesin", "previousResultIds": previous }),
+        );
+        let kinds: Vec<&str> = second["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["kind"].as_str().unwrap_or(""))
+            .collect();
+        assert!(
+            kinds.iter().all(|k| *k == "unchanged"),
+            "nothing changed, so nothing should be re-linted: {second}"
+        );
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// And the direction that must NOT be sticky: once the buffer changes, the same result id
+    /// must not still be served. Without this, `unchanged` would be a permanent answer and the
+    /// panel would freeze at whatever the first poll said.
+    #[test]
+    fn an_edit_invalidates_the_result_id() {
+        let root = pull_fixture("invalidate");
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake_with(&client, pull_capabilities());
+        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
+        did_open(
+            &client,
+            &a,
+            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
+        );
+
+        let first = ask(
+            &client,
+            2,
+            "workspace/diagnostic",
+            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
+        );
+        let previous: Vec<serde_json::Value> = first["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| serde_json::json!({ "uri": r["uri"], "value": r["resultId"] }))
+            .collect();
+
+        // Type an unknown key into the open buffer.
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: DidChangeTextDocument::METHOD.to_owned(),
+                params: serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: a.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: "---\ntitle: A\nfrobnicate: x\n---\n\nBody.\n".to_owned(),
+                    }],
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+
+        let second = ask(
+            &client,
+            3,
+            "workspace/diagnostic",
+            serde_json::json!({ "identifier": "taliesin", "previousResultIds": previous }),
+        );
+        let row = second["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["uri"] == serde_json::json!(a))
+            .unwrap_or_else(|| panic!("a.tmd must be reported: {second}"));
+        assert_eq!(
+            row["kind"], "full",
+            "the edited buffer must be re-linted, not answered `unchanged`: {second}"
+        );
+        assert_eq!(row["items"][0]["code"], "TAL-FM-KEY", "{row}");
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Under push, the coalescing window ends in a publish. Under pull the server owns no
+    /// collection to update, so what it owes the client is the *news* — a
+    /// `workspace/diagnostic/refresh` — and without it a pull client only re-asks on its own
+    /// schedule, which is how a fixed cross-page anchor stays squiggled.
+    #[test]
+    fn an_edit_asks_a_pull_client_to_refresh_instead_of_publishing() {
+        let (server, client) = Connection::memory();
+        let thread =
+            std::thread::spawn(move || run_with_debounce(server, Duration::from_millis(10)));
+        handshake_with(&client, pull_capabilities());
+        let uri = Url::from_file_path(corpus("links.tmd")).unwrap();
+        did_open(&client, &uri, "---\ntitle: T\n---\n\nBody.\n".to_owned());
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: DidChangeTextDocument::METHOD.to_owned(),
+                params: serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: uri.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: "---\ntitle: T\n---\n\nEdited.\n".to_owned(),
+                    }],
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+
+        match client
+            .receiver
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap()
+        {
+            Message::Request(r) => assert_eq!(
+                r.method, "workspace/diagnostic/refresh",
+                "a pull client is told to re-ask, not pushed at"
+            ),
+            other => panic!("expected a refresh request, got {other:?}"),
+        }
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    // -----------------------------------------------------------------------------------
+    // `$/cancelRequest` + `$/progress` (backlog item 223).
+    // -----------------------------------------------------------------------------------
+
+    /// A superseded request is answered `RequestCancelled` and never executed.
+    ///
+    /// This is the Ctrl+T case: `workspace/symbol` is a whole-project walk with a `stat` per
+    /// page, and it is the one request a user types into character by character, so a
+    /// five-letter query queued five walks and ran all five. The `-32800` reply is not a
+    /// courtesy either — the protocol owes a response to every id, and a client that never
+    /// gets one keeps the pending entry for the session.
+    ///
+    /// **Every message is queued before the server starts**, and that is not a shortcut: this
+    /// test is about which messages arrive *together*, and racing a running server thread to
+    /// arrange that is how it would flake. Queued up front, the batch the server drains is
+    /// exactly the one written here.
+    #[test]
+    fn a_cancelled_request_is_answered_rather_than_run() {
+        let root = symbol_fixture("cancel", &[("a.tmd", "# Alpha\n"), ("b.tmd", "# Beta\n")]);
+        let (server, client) = Connection::memory();
+        let uri = Url::from_file_path(root.join("a.tmd")).unwrap();
+        let query = |id: i32, q: &str| {
+            Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::WorkspaceSymbolRequest::METHOD.to_owned(),
+                params: serde_json::json!({ "query": q }),
+            })
+        };
+        for msg in [
+            Message::Request(Request {
+                id: RequestId::from(1),
+                method: "initialize".to_owned(),
+                params: serde_json::json!({ "capabilities": {} }),
+            }),
+            Message::Notification(Notification {
+                method: "initialized".to_owned(),
+                params: serde_json::json!({}),
+            }),
+            Message::Notification(Notification {
+                method: DidOpenTextDocument::METHOD.to_owned(),
+                params: serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "taliesin".to_owned(),
+                        version: 1,
+                        text: "# Alpha\n".to_owned(),
+                    },
+                })
+                .unwrap(),
+            }),
+            query(10, "al"),
+            query(11, "alp"),
+            Message::Notification(Notification {
+                method: "$/cancelRequest".to_owned(),
+                params: serde_json::json!({ "id": 10 }),
+            }),
+            Message::Request(Request {
+                id: RequestId::from(99),
+                method: "shutdown".to_owned(),
+                params: serde_json::Value::Null,
+            }),
+            Message::Notification(Notification {
+                method: "exit".to_owned(),
+                params: serde_json::Value::Null,
+            }),
+        ] {
+            client.sender.send(msg).unwrap();
+        }
+        let thread = std::thread::spawn(move || run(server));
+
+        let mut answers: Vec<(RequestId, Option<i32>)> = Vec::new();
+        while let Ok(msg) = client.receiver.recv_timeout(Duration::from_secs(10)) {
+            if let Message::Response(r) = msg {
+                answers.push((r.id, r.error.map(|e| e.code)));
+            }
+        }
+        thread.join().unwrap().unwrap();
+        // ids 1 (initialize) and 99 (shutdown) bracket the two under test.
+        let under_test: Vec<(RequestId, Option<i32>)> = answers
+            .into_iter()
+            .filter(|(id, _)| *id == RequestId::from(10) || *id == RequestId::from(11))
+            .collect();
+        assert_eq!(
+            under_test,
+            vec![
+                (RequestId::from(10), Some(-32800)),
+                (RequestId::from(11), None),
+            ],
+            "the superseded query comes back cancelled and the live one is still answered"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Cancellation is scoped to one batch, and this is the rule that keeps it so.
+    ///
+    /// Driven through [`read_batch`] rather than over a live session, because the property is
+    /// *which messages were read together* — the one thing a test racing a server thread
+    /// cannot pin. (Asking a running server to answer this is what made the first version of
+    /// this test flake under load: the cancel and the request it was not meant to reach
+    /// sometimes landed in the same batch after all.)
+    #[test]
+    fn a_cancel_only_reaches_a_request_in_its_own_batch() {
+        let query = |id: i32| {
+            Message::Request(Request {
+                id: RequestId::from(id),
+                method: lsp_types::request::WorkspaceSymbolRequest::METHOD.to_owned(),
+                params: serde_json::json!({ "query": "x" }),
+            })
+        };
+        let cancel = |id: i32| {
+            Message::Notification(Notification {
+                method: "$/cancelRequest".to_owned(),
+                params: serde_json::json!({ "id": id }),
+            })
+        };
+        let batch = |msgs: Vec<Message>| {
+            let (server, client) = Connection::memory();
+            for m in msgs {
+                client.sender.send(m).unwrap();
+            }
+            drop(client);
+            match read_batch(&server, None) {
+                Batch::Messages(queue, cancelled) => (queue.len(), cancelled),
+                other => panic!(
+                    "expected messages, got a {}",
+                    match other {
+                        Batch::Timeout => "timeout",
+                        _ => "closed channel",
+                    }
+                ),
+            }
+        };
+
+        // Together: the cancel reaches the request, and is taken out of the queue.
+        let (queued, cancelled) = batch(vec![query(10), query(11), cancel(10)]);
+        assert_eq!(queued, 2, "the cancel itself is not dispatched");
+        assert!(cancelled.contains(&RequestId::from(10)));
+        assert!(!cancelled.contains(&RequestId::from(11)));
+
+        // Alone: a cancel naming nothing in this batch is a cancel for something already
+        // answered. Remembering it would let a client that reuses an id have live work
+        // dropped at random, which is worse than the wasted walk this feature exists to save.
+        let (queued, cancelled) = batch(vec![cancel(7), query(7)]);
+        assert_eq!(queued, 1);
+        assert!(
+            cancelled.contains(&RequestId::from(7)),
+            "a cancel BEFORE its request in the same batch still reaches it — order within a \
+             batch is arrival order, not causality"
+        );
+        let (_, cancelled) = batch(vec![cancel(7), query(8)]);
+        assert!(
+            cancelled.is_empty(),
+            "a cancel for an id this batch does not carry must be dropped, not remembered"
+        );
+    }
+
+    /// A whole-project lint is the one operation here long enough to have a middle, and a
+    /// client that supplied a `workDoneToken` is told where it has got to. Reported per page
+    /// rather than once at the end: progress that all arrives with the answer is a flicker.
+    #[test]
+    fn a_workspace_lint_reports_progress_against_the_clients_token() {
+        let root = pull_fixture("progress");
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake_with(&client, pull_capabilities());
+        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
+        did_open(
+            &client,
+            &a,
+            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
+        );
+
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(2),
+                method: "workspace/diagnostic".to_owned(),
+                params: serde_json::json!({
+                    "identifier": "taliesin",
+                    "previousResultIds": [],
+                    "workDoneToken": "tok-1",
+                }),
+            }))
+            .unwrap();
+
+        let mut kinds: Vec<String> = Vec::new();
+        loop {
+            match client
+                .receiver
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap()
+            {
+                Message::Notification(n) if n.method == "$/progress" => {
+                    assert_eq!(n.params["token"], "tok-1", "our token, not an invented one");
+                    kinds.push(n.params["value"]["kind"].as_str().unwrap_or("").to_string());
+                }
+                Message::Response(_) => break,
+                _ => continue,
+            }
+        }
+        assert_eq!(
+            kinds.first().map(String::as_str),
+            Some("begin"),
+            "a progress run opens with `begin`: {kinds:?}"
+        );
+        assert_eq!(
+            kinds.last().map(String::as_str),
+            Some("end"),
+            "and must close, or the client's indicator never goes away: {kinds:?}"
+        );
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// And the reject axis: no token, no notifications. Reporting into a channel the client
+    /// never opened is at best ignored and at worst an unmatched token it has to reason about.
+    #[test]
+    fn no_token_means_no_progress_notifications() {
+        let root = pull_fixture("notoken");
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake_with(&client, pull_capabilities());
+        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
+        did_open(
+            &client,
+            &a,
+            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
+        );
+        let _ = ask(
+            &client,
+            2,
+            "workspace/diagnostic",
+            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
+        );
+        assert!(
+            client.receiver.try_recv().is_err(),
+            "nothing else should have been sent"
+        );
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

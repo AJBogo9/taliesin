@@ -25,6 +25,13 @@ import { disposeShadowsFor, embeddedCompletions } from "./embedded";
 let client: LanguageClient | undefined;
 
 /**
+ * The `source` every diagnostic the server publishes is stamped with, and the only way to tell
+ * ours from the other providers an editor attaches to the same file. Must match
+ * `check::LSP_SOURCE` in Rust — a mismatch does not fail loudly, it silently badges nothing.
+ */
+export const TALIESIN_SOURCE = "taliesin";
+
+/**
  * The running language server, or `undefined` before it starts (and after a failed start).
  *
  * Exported for the editor commands that are not language *intelligence* but still need the

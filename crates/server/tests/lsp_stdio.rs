@@ -758,3 +758,225 @@ fn document_highlight_marks_the_anchor_definition_apart_from_its_references() {
     );
     assert_eq!(hits[1]["kind"], 2, "a reference is a read: {hits:?}");
 }
+
+/// `textDocument/references` and `textDocument/selectionRange` reach the editor over the real
+/// wire.
+///
+/// Both answered `-32601` when the 2026-08-07 devtooling audit probed the release binary over
+/// stdio, and that probe is what this test replaces: an in-process test of the resolver would
+/// still pass with the dispatch arm deleted, because the *dispatch* is the half that was
+/// missing. Asserting a value (not merely "no MethodNotFound") is the other half — an arm that
+/// answered `null` to everything would satisfy the negative check alone.
+#[test]
+fn references_and_selection_range_answer_over_the_wire() {
+    let doc = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/refs.tmd"),
+    )
+    .expect("corpus fixture");
+    let text = std::fs::read_to_string(&doc).expect("read fixture");
+    let uri = format!("file://{}", doc.display());
+    let line15 = text.lines().nth(15).expect("line 15");
+    let col = line15.find("@fig-results").expect("the reference") + 3;
+
+    let input = format!(
+        "{}{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/references",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": 15, "character": col },
+                "context": { "includeDeclaration": true }
+            }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "textDocument/selectionRange",
+            "params": {
+                "textDocument": { "uri": uri },
+                "positions": [{ "line": 15, "character": col }]
+            }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    assert!(
+        !stdout.contains("MethodNotFound"),
+        "both methods must be handled, not rejected.\nstdout:\n{stdout}"
+    );
+
+    let refs = response(&stdout, 2);
+    let refs = refs.as_array().expect("references returns an array");
+    // `fig-results` is defined on line 11 and referenced once, on line 15; the declaration is
+    // included, so both are here.
+    let lines: Vec<u64> = refs
+        .iter()
+        .map(|l| l["range"]["start"]["line"].as_u64().expect("a line"))
+        .collect();
+    assert_eq!(lines, vec![11, 15], "definition + reference: {refs:?}");
+
+    let chains = response(&stdout, 3);
+    let chains = chains.as_array().expect("selectionRange returns an array");
+    assert_eq!(chains.len(), 1, "one chain per position: {chains:?}");
+    // The innermost rung is the id under the cursor, and the chain must actually nest —
+    // a flat answer is what a client cannot expand.
+    assert_eq!(
+        chains[0]["range"]["start"]["line"], 15,
+        "the innermost rung is on the cursor's line: {chains:?}"
+    );
+    assert!(
+        chains[0]["parent"].is_object(),
+        "the chain must have a parent to expand to: {chains:?}"
+    );
+}
+
+/// `textDocument/codeLens` reaches the editor over the real wire, with the command a client
+/// binds to.
+///
+/// Answered `-32601` when the 2026-08-07 audit probed the release binary. The value asserted
+/// here is the *contract*: a lens is a command name plus arguments, and a client that binds
+/// `taliesin.runCell` to `taliesin run <file> --line <L>` gets the execution loop. Changing
+/// either the name or the argument shape silently unbinds every editor that did.
+#[test]
+fn code_lens_offers_the_run_command_over_the_wire() {
+    let dir = std::env::temp_dir().join(format!("tali-lsp-lens-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let doc = dir.join("cells.tmd");
+    let text = "---\ntitle: T\n---\n\n# A\n\n```{python}\nx = 1\n```\n\n```bash\nls\n```\n";
+    std::fs::write(&doc, text).expect("fixture doc");
+    let uri = format!("file://{}", doc.display());
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeLens",
+            "params": { "textDocument": { "uri": uri } }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    assert!(
+        !stdout.contains("MethodNotFound"),
+        "codeLens must be handled, not rejected.\nstdout:\n{stdout}"
+    );
+
+    let lenses = response(&stdout, 2);
+    let lenses = lenses.as_array().expect("codeLens returns an array");
+    let run: Vec<&serde_json::Value> = lenses
+        .iter()
+        .filter(|l| l["command"]["command"] == "taliesin.runCell")
+        .collect();
+    assert_eq!(
+        run.len(),
+        1,
+        "one Run per executable cell, and the `bash` fence is not one: {lenses:?}"
+    );
+    // Line 6 (0-based) is the ```{python} fence; the argument is its 1-based line, which is
+    // what `run --line` resolves against.
+    assert_eq!(run[0]["range"]["start"]["line"], 6, "{run:?}");
+    assert_eq!(
+        run[0]["command"]["arguments"][1], 7,
+        "the 1-based line of the cell's own fence: {run:?}"
+    );
+    assert_eq!(
+        run[0]["command"]["arguments"][0], uri,
+        "the document, as a string a client can parse back: {run:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The `--explain` body reaches the hover over the real wire (backlog item 220).
+///
+/// The catalogue's cause and fix used to be reachable only from a terminal (`check --explain`)
+/// or a browser (`code_description`), which is the trip Barik et al. measured people stop
+/// making. `hover` is where the pointer already is.
+#[test]
+fn hover_on_a_squiggle_carries_the_explain_body() {
+    let doc = std::fs::canonicalize(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/typos.tmd"),
+    )
+    .expect("corpus fixture");
+    let text = std::fs::read_to_string(&doc).expect("read fixture");
+    let uri = format!("file://{}", doc.display());
+    // Line 2 (0-based) is `treme: darkly`, an unknown front-matter key.
+    assert!(
+        text.lines().nth(2).unwrap_or("").starts_with("treme:"),
+        "fixture moved"
+    );
+
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": {
+                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
+            }}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+            "params": {
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": 2 }
+            }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+    let hover = response(&stdout, 2);
+    let md = hover["contents"]["value"].as_str().unwrap_or("");
+    assert!(
+        md.contains("TAL-FM-KEY"),
+        "the code under the pointer: {hover:?}"
+    );
+    let fix = taliesin_core::diagnostics::codes::explain("TAL-FM-KEY")
+        .expect("the catalogue documents TAL-FM-KEY")
+        .fix;
+    assert!(
+        md.contains(fix),
+        "the canonical fix must travel with it, or this is one more restatement of the \
+         message the author already read: {md:?}"
+    );
+}

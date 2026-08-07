@@ -187,6 +187,7 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 pub fn cell_state(
     page: Option<&str>,
     cell_id: &str,
+    site: Option<CellSite>,
     state: &str,
     started_ms: Option<u64>,
     duration_ms: Option<u64>,
@@ -194,10 +195,30 @@ pub fn cell_state(
 ) -> String {
     serde_json::json!({
         "type": "cell-state", "page": page, "cell_id": cell_id,
+        "file": site.and_then(|s| s.file), "line": site.map(|s| s.line),
         "state": state, "started_ms": started_ms, "duration_ms": duration_ms,
         "source": source
     })
     .to_string()
+}
+
+/// Where a cell sits in **source**, carried on `cell-state` so a consumer can report a
+/// failure as a place rather than as an ordinal.
+///
+/// `taliesin run` is the reason it exists: it printed `✗ cell 3`, which no problem matcher
+/// can match, so a failed cell could not reach an editor's Problems panel however the task
+/// was configured (`editor/vscode/src/runcell.ts` says exactly this). A location plus the
+/// catalogued `TAL-CELL-ERROR` code is a line the existing `$taliesin` matcher already
+/// understands.
+///
+/// `file` is the cell's own source file when it came in through an `{{< include >}}` and
+/// `None` when it is the page itself — the same rule `Warning.file` follows, so a spliced-in
+/// cell's failure names the file the author has to edit rather than the one that included it.
+/// `line` is 1-based, or 0 for a generated block that has no source position.
+#[derive(Clone, Copy)]
+pub struct CellSite<'a> {
+    pub file: Option<&'a str>,
+    pub line: u32,
 }
 
 /// `cell-output-append`: one cell output, delivered **while the cell is still
@@ -498,7 +519,15 @@ mod tests {
 
     #[test]
     fn cell_state_includes_state_and_optional_timing() {
-        let s = super::cell_state(Some("p.tmd"), "abc", "running", Some(1000), None, None);
+        let s = super::cell_state(
+            Some("p.tmd"),
+            "abc",
+            None,
+            "running",
+            Some(1000),
+            None,
+            None,
+        );
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "cell-state");
         assert_eq!(v["cell_id"], "abc");
@@ -513,10 +542,10 @@ mod tests {
     fn cell_state_carries_cache_provenance_for_done_cells() {
         // DX9: a cache-restored `done` cell is tagged so the client can render "⚡ cached"
         // instead of the blank "✓" that made a replay indistinguishable from a 0ms run.
-        let cached = super::cell_state(None, "c1", "done", None, None, Some("cache"));
+        let cached = super::cell_state(None, "c1", None, "done", None, None, Some("cache"));
         let v: serde_json::Value = serde_json::from_str(&cached).unwrap();
         assert_eq!(v["source"], "cache");
-        let fresh = super::cell_state(None, "c2", "done", Some(1), Some(1200), Some("fresh"));
+        let fresh = super::cell_state(None, "c2", None, "done", Some(1), Some(1200), Some("fresh"));
         let v: serde_json::Value = serde_json::from_str(&fresh).unwrap();
         assert_eq!(v["source"], "fresh");
         assert_eq!(v["duration_ms"], 1200);

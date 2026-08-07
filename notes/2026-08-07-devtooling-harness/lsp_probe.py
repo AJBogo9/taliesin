@@ -105,7 +105,15 @@ for i, (method, params) in enumerate(probes, start=100):
         n = len(r) if isinstance(r, list) else ("null" if r is None else "obj")
         print(f"  {method:45s} ok  ({n})  {ms:.1f} ms")
 
-print("\n=== KEYSTROKE LATENCY (didChange -> publishDiagnostics) ===")
+# This client declares `textDocument.diagnostic`, so the server chooses the LSP 3.17 PULL
+# transport and deliberately sends NO `publishDiagnostics` — a client that supports pull keeps
+# those results in a collection of its own, so a server doing both would double every finding.
+# Waiting for a publish here therefore hangs forever, which is exactly what the first run of
+# this probe after that landed did. The signal a pull client is owed is
+# `workspace/diagnostic/refresh`, so that is what is timed.
+WANTED = ("workspace/diagnostic/refresh" if "diagnosticProvider" in caps
+          else "textDocument/publishDiagnostics")
+print(f"\n=== KEYSTROKE LATENCY (didChange -> {WANTED}) ===")
 lat = []
 for k in range(6):
     t0 = time.perf_counter()
@@ -114,12 +122,20 @@ for k in range(6):
         "contentChanges": [{"text": text + "\n\nedit %d\n" % k}]}})
     while True:
         m = read()
-        if m and m.get("method") == "textDocument/publishDiagnostics":
+        if m is None:
+            break
+        if m.get("method") == WANTED:
             lat.append((time.perf_counter() - t0) * 1000)
+            # A server request needs a reply, or the server's own pending table never drains.
+            if "id" in m:
+                send({"jsonrpc": "2.0", "id": m["id"], "result": None})
             break
 lat.sort()
-print(f"  n={len(lat)}  median {lat[len(lat)//2]:.1f} ms  min {lat[0]:.1f}  max {lat[-1]:.1f}"
-      f"   (includes the 120 ms debounce)")
+if lat:
+    print(f"  n={len(lat)}  median {lat[len(lat)//2]:.1f} ms  min {lat[0]:.1f}  max {lat[-1]:.1f}"
+          f"   (includes the 120 ms debounce)")
+else:
+    print("  no signal — the server neither published nor asked for a refresh")
 
 send({"jsonrpc": "2.0", "id": 999, "method": "shutdown", "params": None})
 read()

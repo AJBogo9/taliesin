@@ -612,6 +612,25 @@ host can drive the read / validate / build loop without shelling out. It exposes
 tools, `check`, `read`, `symbols`, `map`, `vocab`, and `build`, and deliberately **no
 write, edit, or preview tool**, so the `.tmd` stays your direct edit surface.
 
+It also serves **resources** and **prompts**, which are the same answers off the tool
+path. A tool call is a request to *do* something and costs a round trip (and, for a host
+that shells out, a process); "give me the `_site.yml` schema" and "what does
+`TAL-FM-KEY` mean" are documents, not actions.
+
+| resource | what it is |
+|---|---|
+| `taliesin://schema/site` · `taliesin://schema/frontmatter` | the two JSON Schemas, the same files `taliesin schema` writes |
+| `taliesin://vocab` | the closed-set vocabulary — read it before inventing a front-matter key |
+| `taliesin://agents` | `AGENTS.md`: the whole authoring loop in one document |
+| `taliesin://diagnostics` | every `TAL-*` code with its cause and canonical fix |
+| `taliesin://diagnostic/{code}` | one of them — a **template**, so a code read out of a `check` result resolves without a process per lookup |
+
+The prompts are `new-post`, `new-page`, `new-deck` and `new-paper`, one per `taliesin
+new` kind and each taking a `slug`. They exist because the scaffolds already encode what
+this project thinks a post, a page, a deck and a paper *are*; without them an agent
+reverse-engineers that from the docs and produces something plausible that is not the
+idiom.
+
 ::: {.callout-warning}
 ## The MCP server is not a sandbox
 
@@ -630,6 +649,29 @@ execution, and it never edits your source.
 -- Neovim (nvim-lspconfig or vim.lsp.start)
 cmd = { "taliesin", "lsp" }
 ```
+
+Two of its capabilities need a word here, because they are the ones an editor has to
+meet halfway.
+
+**Diagnostics come in whichever way your editor asks for.** A client that supports the
+LSP 3.17 *pull* model gets `textDocument/diagnostic` and `workspace/diagnostic` — which
+is what lets the Problems panel list **every page of the book**, not only the two
+chapters you have open — and one that does not keeps the classic pushed
+`publishDiagnostics`. You get one or the other, never both: a client that supports pull
+keeps those results in a collection of its own, so a server doing both would show every
+finding twice.
+
+**The Run buttons are a code lens, and a lens names a command.** Above every
+`{python}`/`{r}`/`{js}` fence the server offers **▶ Run Cell**, **Run Above**, and a
+**⚡ cached** label when `_freeze/` already holds that cell's output. Clicking one is the
+client's job: it invokes `taliesin.runCell` with `[uri, line]`, so an editor wires that
+command once to
+
+```sh
+taliesin run <file.tmd> --line <L>
+```
+
+and has the whole execution loop. The VS Code companion does this for you.
 
 ## Shell completions
 

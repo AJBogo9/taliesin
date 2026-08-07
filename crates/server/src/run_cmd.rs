@@ -204,7 +204,7 @@ async fn run(opts: Opts) -> ExitCode {
     // for a session that is wedged or gone.
     let mut stopping = false;
 
-    let mut printer = crate::run_print::Printer::new(opts.quiet, &root);
+    let mut printer = crate::run_print::Printer::new(opts.quiet, &root, &file);
     loop {
         let line = tokio::select! {
             biased;

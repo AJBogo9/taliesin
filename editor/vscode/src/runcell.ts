@@ -1,49 +1,25 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { isSourceFile } from "./paths";
-import { languageClient } from "./client";
 import { TASK_TYPE } from "./tasks";
 import { runSpec, runOutcome } from "./taskspecs";
 
-// The Run / Run Above buttons over every executable code cell.
+// Running a code cell: the task, the progress indicator, and the completion notification.
 //
-// The buttons are the only new thing here. Both the cell positions and the decision about
-// which fences are runnable come from the server (`taliesin/cellRegions`), because a fence
-// scan and an executable-language list in TypeScript are exactly the second copies the LSP
-// rewrite existed to delete — and a Run button over a `{bash}` fence, or a missing one over
-// `{python}`, is what that drift looks like to an author.
+// **The buttons are not here any more.** This file used to hold a `CodeLensProvider` that
+// asked the server for `taliesin/cellRegions` and drew Run / Run Above over each executable
+// fence — which meant the execution loop reached VS Code and no other editor. The server
+// answers `textDocument/codeLens` now (`crates/server/src/lsp_lens.rs`), so the buttons come
+// over the protocol, in every LSP client, and they carry a `⚡ cached` label this side could
+// never have computed. What is left is the half a code lens cannot express: a lens names a
+// command, and *running* one is the client's job.
 //
 // Execution itself is `taliesin run` as a **task**. Nothing about the kernel, the cache, or
 // the session lives on this side: the CLI attaches to the project's warm session, and this
-// file only decides which line to point it at — and, now, watches for the end of the run.
-
-interface CellRegion {
-  language: string;
-  startLine: number;
-  endLine: number;
-  executable: boolean;
-}
-
-/** The custom request the server answers. Must match `lsp::CELL_REGIONS_METHOD`. */
-const CELL_REGIONS = "taliesin/cellRegions";
+// file only decides which line to point it at, and watches for the end of the run.
 
 function binaryPath(): string {
   return vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
-}
-
-async function cellRegions(doc: vscode.TextDocument): Promise<CellRegion[]> {
-  const client = languageClient();
-  if (!client) return [];
-  try {
-    const regions = await client.sendRequest<CellRegion[]>(CELL_REGIONS, {
-      textDocument: { uri: doc.uri.toString() },
-    });
-    return regions ?? [];
-  } catch {
-    // The server is starting, or this buffer is not one it tracks. No lenses is the right
-    // answer; a thrown provider would show an error banner on every keystroke.
-    return [];
-  }
 }
 
 /**
@@ -61,14 +37,17 @@ async function cellRegions(doc: vscode.TextDocument): Promise<CellRegion[]> {
  * shell re-split arguments the old code had to hand-quote POSIX-style — and a document path
  * is arbitrary text. Run directly, each argument reaches the binary exactly as spelled.
  *
- * **No problem matcher.** `tasks.ts` attaches `$taliesin`/`$taliesin-unlocated` because
- * `check` prints `file.tmd:12: error[CODE]: …`, which they match. `taliesin run` does not:
- * `run_print.rs` prints `✗ cell 3` and an indented `error   cell 3 failed`, and both patterns
- * are anchored on a path at the start of the line, so neither can match a word of it. They
- * are not free to attach on spec either — measured, a task carrying them in a window with no
- * workspace folder (where `${workspaceFolder}` cannot resolve) reported no process at all,
- * while the same task without them ran and reported its exit code. Getting a failed cell into
- * the Problems panel is a change to what `run` PRINTS, in Rust, not a matcher declared here.
+ * **The problem matchers, and the one condition on them.** `run_print.rs` now prints a failed
+ * cell twice: `✗ cell 3/12` for the human reading the terminal, and
+ * `posts/a.tmd:12: error[TAL-CELL-ERROR]: …` for the editor reading over their shoulder — which
+ * is exactly the shape `$taliesin` already matches. That was the change this file used to say
+ * was owed ("a change to what `run` PRINTS, in Rust, not a matcher declared here"), so the
+ * matchers can finally be attached.
+ *
+ * They are still **not free to attach on spec**: measured, a task carrying them in a window with
+ * no workspace folder (where `${workspaceFolder}` cannot resolve) reported no process at all,
+ * while the same task without them ran and reported its exit code. So they go on only when a
+ * folder exists — losing the Problems entry in a folderless window, never the run.
  */
 export function runTask(
   file: string,
@@ -77,6 +56,8 @@ export function runTask(
   binary: string
 ): vscode.Task {
   const spec = runSpec(file, target);
+  // Scope to the folder the run actually happens in when there is one, as `tasks.ts` does.
+  const folder = vscode.workspace.workspaceFolders?.find((f) => f.uri.fsPath === cwd);
   const task = new vscode.Task(
     // The file and the target ride in the definition because VS Code keys a task's IDENTITY
     // off it. Measured: executing a task whose identity is already running registers a
@@ -85,12 +66,14 @@ export function runTask(
     // second chapter, silently did nothing at all. It is also what `endOf` recognises the
     // run by, without depending on object identity surviving a trip through the platform.
     { type: TASK_TYPE, command: spec.name, file, target: String(target) },
-    // Scope to the folder the run actually happens in when there is one, as `tasks.ts` does.
-    vscode.workspace.workspaceFolders?.find((f) => f.uri.fsPath === cwd) ??
-      vscode.TaskScope.Workspace,
+    folder ?? vscode.TaskScope.Workspace,
     spec.name,
     TASK_TYPE,
-    new vscode.ProcessExecution(binary, spec.args, { cwd })
+    new vscode.ProcessExecution(binary, spec.args, { cwd }),
+    // Both matchers, and only with a folder — see the note above. `run` emits located cell
+    // failures; the unlocated one is there for the same reason `tasks.ts` carries it, so a
+    // finding with no line is reported rather than silently dropped.
+    folder ? ["$taliesin", "$taliesin-unlocated"] : undefined
   );
   task.presentationOptions = {
     // Task terminals do not reuse by name the way `createTerminal({ name })` did, so this is
@@ -202,64 +185,31 @@ function endOf(task: vscode.Task): { ended: Promise<number | undefined>; cancel:
   return { ended, cancel };
 }
 
-const provider: vscode.CodeLensProvider = {
-  async provideCodeLenses(doc) {
-    if (!isSourceFile(doc.fileName)) return [];
-    const regions = await cellRegions(doc);
-    const lenses: vscode.CodeLens[] = [];
-    const runnable = regions.filter((r) => r.executable);
-    runnable.forEach((r, i) => {
-      // Anchor on the fence line (the body's first line minus one), so the buttons sit
-      // above the cell rather than over its first statement.
-      const anchor = new vscode.Range(Math.max(0, r.startLine - 1), 0, Math.max(0, r.startLine - 1), 0);
-      // 1-based for the CLI, and the body's first line is inside the cell, which is what
-      // `--line` resolves against.
-      const line = r.startLine + 1;
-      lenses.push(
-        new vscode.CodeLens(anchor, {
-          title: "▶ Run Cell",
-          command: "taliesin.runCell",
-          arguments: [doc.uri, line],
-          tooltip: `Run this ${r.language} cell (and any earlier cell the kernel is missing)`,
-        })
-      );
-      // "Run Above" is only meaningful when there IS something above: on the first cell it
-      // would run nothing and read as a broken button.
-      if (i > 0) {
-        const prev = runnable[i - 1];
-        lenses.push(
-          new vscode.CodeLens(anchor, {
-            title: "Run Above",
-            command: "taliesin.runCell",
-            arguments: [doc.uri, prev.startLine + 1],
-            tooltip: "Run every cell before this one",
-          })
-        );
-      }
-    });
-    return lenses;
-  },
-};
-
 export function registerRunCell(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider({ language: "taliesin" }, provider),
-    // Invoked by the lens (with args) and from the command palette (without), where the
-    // cursor names the cell instead.
+    // Invoked by the SERVER'S code lens (with args) and from the command palette (without),
+    // where the cursor names the cell instead. The lens used to be built here; it is
+    // `crates/server/src/lsp_lens.rs` now, so every LSP editor gets the buttons and this
+    // file keeps only the plumbing a lens cannot express — the task, the progress indicator
+    // and the completion notification.
     vscode.commands.registerCommand(
       "taliesin.runCell",
-      async (uri?: vscode.Uri, line?: number) => {
+      async (uri?: vscode.Uri | string, line?: number) => {
         const editor = vscode.window.activeTextEditor;
-        const doc = uri
-          ? await vscode.workspace.openTextDocument(uri)
+        // A code lens's arguments are plain JSON, so the server sends the URI as a string.
+        // `openTextDocument(string)` would read it as a *file path* and open a file called
+        // `file:///…`, so parse it back first.
+        const target = typeof uri === "string" ? vscode.Uri.parse(uri) : uri;
+        const doc = target
+          ? await vscode.workspace.openTextDocument(target)
           : editor?.document;
         if (!doc || !isSourceFile(doc.fileName)) {
           vscode.window.showWarningMessage("Open a .tmd file to run a cell.");
           return;
         }
-        const target = line ?? (editor ? editor.selection.active.line + 1 : 1);
+        const through = line ?? (editor ? editor.selection.active.line + 1 : 1);
         await doc.save();
-        await startRun(doc, target);
+        await startRun(doc, through);
       }
     ),
     vscode.commands.registerCommand("taliesin.runAll", async () => {

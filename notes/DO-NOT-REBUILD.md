@@ -141,6 +141,46 @@ branch are enough to find its commits.
 
 ### Shipped
 
+- **2026-08-07 the devtooling frontier round, tiers 1-2 in one batch** (owner instruction: implement
+  216, 217, 220, 222-226 rather than drop them). Detail in
+  [2026-08-07-devtooling-frontier-audit.md](2026-08-07-devtooling-frontier-audit.md), which now
+  carries a STATUS banner naming what is left of it (**item 221 and nothing else**). Four new
+  modules rather than more `lsp.rs`, which is finding 9's advice taken without doing finding 9.
+  - **216** `textDocument/references` (`lsp_refs.rs`) — the project-wide answer `taliesin/projectRefs`
+    already computed, on the standard method. The open buffer wins for its own file, so an unsaved
+    reference is in the list and a just-deleted one is not. Plus `textDocument/selectionRange`
+    (`lsp_select.rs`): word → sentence → paragraph → **the folds `foldingRange` already draws** →
+    document. Reusing the fold extents is what stops it being a second segmentation.
+  - **217** `textDocument/codeLens` (`lsp_lens.rs`) — ▶ Run Cell · Run Above · ⚡ cached. The
+    companion's own lens provider is **deleted**; it keeps only the task, the spinner and the
+    completion notice, which is the half a lens cannot express. The ⚡ label absorbs the 2026-07-18
+    DX audit's still-open "make caching legible" and is computed from `exec::cell_cache_keys` — the
+    executor's own key function, extracted so the lens cannot claim a hit the executor would miss.
+  - **220** the `check --explain` cause+fix is in the **hover**, merged under the token's own answer.
+  - **222** the 3.17 pull model (`lsp_diag.rs`). **Push or pull, never both** — a pull client keeps
+    those results in its own collection, so a server doing both doubles every finding. `resultId` is
+    folded out of the project stat stamps + the buffer text, so `vscode-languageclient`'s 2-second
+    workspace poll costs one `stat` per page and no render. `decorations.ts`'s `check --strict`
+    subprocess-per-save (369 ms) is **deleted**, not extended: the badges read
+    `vscode.languages.getDiagnostics()` now.
+  - **223** `$/cancelRequest`, batch-scoped (drain before dispatch), which is the right shape for a
+    synchronous server: the queue was the cost, not the 167 ms walk — so `workspace/symbol` needed no
+    optimising. Plus `$/progress` on the workspace lint, reported per page. **`read_batch` must not
+    read past `shutdown`**: `handle_shutdown` reads the channel itself for `exit`, and draining it
+    made every clean teardown spend 30 s timing out.
+  - **224** MCP `resources` + a `taliesin://diagnostic/{code}` **template** + `prompts` (one per
+    `taliesin new` kind, gated on `NEW_KINDS`).
+  - **225** `build-state` reaches the terminal (a cold kernel boot is announced; `▸ cell 3/12`), and
+    a failed cell is **also** printed as `file:line: error[CODE]: …` — so the run task can finally
+    carry `$taliesin`, which `runcell.ts` had recorded as impossible. `TAL-CELL-ERROR` vs
+    `TAL-KERNEL` is decided by whether the cell produced output, which is exactly how the catalogue
+    draws the line.
+  - **226** `packages.rs`: `doctor --format json` emits the full manifest, and `_freeze/` records the
+    digest each output was produced under, so a replay that crossed a `pip install --upgrade` says
+    so. **The digest is deliberately NOT in the cache key** — that would bust the whole cache on any
+    unrelated `pip install`; `#| cache: false` and `TALIESIN_NO_CACHE` remain the escape hatches. No
+    `FORMAT_VERSION` bump: an old cache records nothing and is simply not compared.
+
 - **2026-08-07 corpus completeness: `taliesin features corpus` reports 0 unused, and a test now
   enforces it** (closes 207 in full; the owner call was *pin*, not drop). The 15 it reported were
   four different things: **3 vacuous zeroes** (`hero.actions.text/href/primary` — the scanner

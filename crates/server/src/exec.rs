@@ -139,7 +139,7 @@ fn emit_cell_errors(
     for cell in &cells[range] {
         emit(
             sink,
-            crate::protocol::cell_state(page, &cell.id, "error", None, None, None),
+            crate::protocol::cell_state(page, &cell.id, cell.site(), "error", None, None, None),
         );
     }
 }
@@ -175,8 +175,98 @@ pub(crate) fn kernel_lang(lang: &str) -> Option<&'static str> {
 /// reaches this executor, so `{r}` was the sole reachable hole. The author-facing half of
 /// this fix is `render::validate::validate_trace_language`, which says so at the source
 /// line, so this gate is silent only because the warning is not.
-fn is_traced(lang: &str, html: &str) -> bool {
+pub(crate) fn is_traced(lang: &str, html: &str) -> bool {
     lang == "python" && html.contains("data-tali-trace=\"1\"")
+}
+
+/// The exact string a cell's freeze key is computed over.
+///
+/// A traced cell folds in a marker so toggling `#| trace: true` busts the cache:
+/// `strip_cell_options` already removed that directive from `code` (it is not code the kernel
+/// runs), so without this a cell whose UNTRACED output is cached would replay it instead of
+/// re-tracing. **One definition**, because two callers ask the same question from opposite
+/// sides — the executor asks "may I restore this output", the editor's code lens asks "is
+/// there one" — and a lens that answered from a different key would be a confident lie above
+/// the fence.
+pub(crate) fn cache_code(code: &str, traced: bool) -> String {
+    match traced {
+        true => format!("{code}\n#| trace: true"),
+        false => code.to_string(),
+    }
+}
+
+/// The interpreter identity that seeds a page's cumulative hash chain.
+///
+/// Byte-identical output is load-bearing: this string is hashed into every freeze key, so any
+/// change to its shape silently invalidates every existing `_freeze/` on every machine.
+pub(crate) fn interp_identity(lang: &str, program: &Path, version: &str) -> String {
+    format!("{lang}::{}::{version}", program.display())
+}
+
+/// The version line to fold into [`interp_identity`], from a `--version` probe's two streams.
+/// Python prints to stdout, some tools to stderr; take whichever is set. Shared so the
+/// editor's synchronous probe and the executor's async one cannot disagree about the answer
+/// for the same interpreter — which would make the lens report "cached" for keys the
+/// executor would miss on.
+pub(crate) fn version_line(stdout: &[u8], stderr: &[u8]) -> String {
+    let bytes = if stdout.is_empty() { stderr } else { stdout };
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+/// One executable cell's freeze key, for a caller that wants to know whether an output
+/// exists without being able to produce one.
+pub(crate) struct CellCacheKey {
+    /// Index into the `blocks` slice this was computed from.
+    pub block_index: usize,
+    pub key: String,
+    /// `#| cache: false` cells are never persisted, so "no entry" is their permanent and
+    /// correct state rather than a cache miss worth reporting.
+    pub cacheable: bool,
+}
+
+/// The freeze key of every executable cell in `blocks`, in document order.
+///
+/// The grouping is the same one [`Executor::run_through`] performs — by [`kernel_lang`], in
+/// document order — and the key is built from the same [`cache_code`] and
+/// [`freeze::cumulative_hashes`], because the whole value of this function is that its answer
+/// is the executor's answer. `interp_of` is a parameter because the interpreter probe is
+/// async on the execution path and synchronous on the editor's; the *identity format* is
+/// shared through [`interp_identity`] either way.
+pub(crate) fn cell_cache_keys(
+    blocks: &[Block],
+    interp_of: &mut dyn FnMut(&'static str) -> String,
+) -> Vec<CellCacheKey> {
+    let mut by_lang: HashMap<&'static str, Vec<(usize, String, bool)>> = HashMap::new();
+    for (i, b) in blocks.iter().enumerate() {
+        if let Some(c) = &b.cell
+            && let Some(lang) = kernel_lang(&c.lang)
+        {
+            by_lang.entry(lang).or_default().push((
+                i,
+                cache_code(&c.code, is_traced(lang, &b.html)),
+                c.cache,
+            ));
+        }
+    }
+    let mut out = Vec::new();
+    for (lang, cells) in by_lang {
+        let codes: Vec<&str> = cells.iter().map(|(_, code, _)| code.as_str()).collect();
+        let keys = freeze::cumulative_hashes(&interp_of(lang), &codes);
+        for ((block_index, _, cacheable), key) in cells.iter().zip(keys) {
+            out.push(CellCacheKey {
+                block_index: *block_index,
+                key,
+                cacheable: *cacheable,
+            });
+        }
+    }
+    out.sort_by_key(|c| c.block_index);
+    out
 }
 
 /// A code cell pulled out of the block list, with what the engine needs to run
@@ -205,6 +295,21 @@ struct CellRef {
     ///
     /// **Python only**, gated by [`is_traced`] above (see its doc comment for why).
     traced: bool,
+}
+
+impl CellRef {
+    /// Where this cell is in source, for the `cell-state` message.
+    ///
+    /// Read off the block's own `sourcepos`/`source_file` rather than recomputed, so a
+    /// failure reported to the terminal names the same place click-to-source would take the
+    /// author to. `source_file` is `Some` only for a cell spliced in by `{{< include >}}`,
+    /// which is exactly when the page the run named is *not* the file to edit.
+    fn site(&self) -> Option<crate::protocol::CellSite<'_>> {
+        Some(crate::protocol::CellSite {
+            file: self.source_file.as_deref(),
+            line: taliesin_core::render::sourcepos_start_line(&self.sourcepos),
+        })
+    }
 }
 
 /// A cell the *current warm kernel* has executed: its cumulative cache key and the
@@ -687,13 +792,7 @@ impl Executor {
         // Only a traced cell's key changes, so an existing all-untraced cache stays hit.
         let code_refs: Vec<String> = cells
             .iter()
-            .map(|c| {
-                if c.traced {
-                    format!("{}\n#| trace: true", c.code)
-                } else {
-                    c.code.clone()
-                }
-            })
+            .map(|c| cache_code(&c.code, c.traced))
             .collect();
         let code_ref_strs: Vec<&str> = code_refs.iter().map(String::as_str).collect();
         let hashes = freeze::cumulative_hashes(&interp, &code_ref_strs);
@@ -749,6 +848,7 @@ impl Executor {
                 crate::protocol::cell_state(
                     self.page.as_deref(),
                     &cell.id,
+                    cell.site(),
                     state,
                     None,
                     None,
@@ -845,6 +945,7 @@ impl Executor {
                         crate::protocol::cell_state(
                             page.as_deref(),
                             &cell.id,
+                            cell.site(),
                             "skipped",
                             None,
                             None,
@@ -894,6 +995,7 @@ impl Executor {
                         crate::protocol::cell_state(
                             page.as_deref(),
                             &cell.id,
+                            cell.site(),
                             "error",
                             None,
                             None,
@@ -938,6 +1040,7 @@ impl Executor {
                             crate::protocol::cell_state(
                                 page.as_deref(),
                                 &cell.id,
+                                cell.site(),
                                 "running",
                                 Some(t0),
                                 None,
@@ -974,6 +1077,7 @@ impl Executor {
                             crate::protocol::cell_state(
                                 page.as_deref(),
                                 &cell.id,
+                                cell.site(),
                                 state,
                                 Some(t0),
                                 Some(now_ms().saturating_sub(t0)),
@@ -1002,6 +1106,12 @@ impl Executor {
                 if cells[i].cache && !is_uncacheable(&outputs[i]) {
                     self.freeze.put(hashes[i].clone(), outputs[i].clone());
                 }
+            }
+            // What these outputs were produced under. Only after a real execution: a pure
+            // replay produced nothing, and stamping it would relabel yesterday's outputs as
+            // today's and destroy the one signal this exists for.
+            if executed_end > shared {
+                self.stamp_packages(lang);
             }
         }
 
@@ -1061,6 +1171,12 @@ impl Executor {
         // `[run_end, len)` were restored without running; `ran_count` is what actually
         // executed. Observational only — computed after all execution, changes nothing.
         let cached = shared + cells.len().saturating_sub(run_end);
+        // A restore that crossed a package change says so. Only when something was actually
+        // restored from DISK: the warm in-memory prefix was produced by the kernel running
+        // in this process, so it cannot predate a package change this process could see.
+        if cells.len() > run_end {
+            self.warn_if_packages_moved(lang);
+        }
         (
             outputs,
             CacheTally {
@@ -1068,6 +1184,57 @@ impl Executor {
                 ran: ran_count,
             },
         )
+    }
+
+    /// The package set this language's interpreter currently has, or `None` when it cannot
+    /// be probed (no interpreter, a probe that failed). Memoized inside
+    /// [`crate::packages::manifest`], so this is one subprocess per interpreter per process.
+    fn packages_now(&self, lang: &str) -> Option<crate::packages::Manifest> {
+        let (spec_lang, program) = match lang {
+            "python" => (crate::interpreter::Lang::Python, &self.python.path),
+            "r" => (crate::interpreter::Lang::R, &self.r.path),
+            _ => return None,
+        };
+        crate::packages::manifest(spec_lang, program)
+    }
+
+    /// Record the package digest the outputs just executed were produced under.
+    fn stamp_packages(&mut self, lang: &'static str) {
+        if let Some(m) = self.packages_now(lang) {
+            self.freeze.record_packages(lang, &m.digest);
+        }
+    }
+
+    /// Say so when this page's cached outputs were produced under a different package set.
+    ///
+    /// This is the hole `freeze.rs` documents and cannot close: the cumulative key folds in
+    /// code and interpreter *identity* only, so an in-place `pip install --upgrade` is the
+    /// same interpreter reporting the same `--version` and every key is unchanged. The fix
+    /// is not to fold the digest into the key — that would bust the whole cache on any
+    /// `pip install`, however unrelated to the document — it is to stop the replay being
+    /// **silent**, which is what made it indistinguishable from a correct one.
+    ///
+    /// Three ways this stays quiet, each deliberate: an unprobeable interpreter (we do not
+    /// know, which is not the same as "it changed"), a cache written before the digest was
+    /// recorded (likewise), and a matching digest. Announced once per process per language,
+    /// through the same `announce_once` the kernel failure uses, because a preview rebuilds
+    /// on every keystroke.
+    fn warn_if_packages_moved(&self, lang: &'static str) {
+        let was = self.freeze.recorded_packages(lang);
+        let now = self.packages_now(lang);
+        if !crate::packages::crossed(was, now.as_ref().map(|m| m.digest.as_str())) {
+            return;
+        }
+        // Both are `Some` once `crossed` said yes, so neither unwrap below can fire.
+        let (was, now) = (was.unwrap_or_default(), now.unwrap_or_default());
+        announce_once(&format!(
+            "{lang}: restored cached cell output produced under a different package set \
+             (was {was}, now {} — {} packages installed). If a result looks stale, \
+             `TALIESIN_NO_CACHE=1` re-runs everything; `#| cache: false` marks one cell that \
+             reads something the key cannot see.",
+            now.digest,
+            now.packages.len()
+        ));
     }
 
     /// Ensure a live kernel for `lang` before executing. Cases, in order:
@@ -1441,7 +1608,7 @@ async fn probe_interp_id(lang: &str, program: &Path, bound: Duration) -> String 
     // is the whole cost. Holding it would serialize every language behind one probe.
     let answer = probe_version(program, bound).await;
     let version = answer.clone().unwrap_or_default();
-    let id = format!("{lang}::{}::{version}", program.display());
+    let id = interp_identity(lang, program, &version);
     if answer.is_some() {
         cache.lock().insert(key, id.clone());
     }
@@ -1469,20 +1636,7 @@ async fn probe_version(program: &Path, bound: Duration) -> Option<String> {
         .await
         .ok()?
         .ok()?;
-    // Python prints to stdout, some tools to stderr; take whichever is set.
-    let bytes = if out.stdout.is_empty() {
-        out.stderr
-    } else {
-        out.stdout
-    };
-    Some(
-        String::from_utf8_lossy(&bytes)
-            .lines()
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string(),
-    )
+    Some(version_line(&out.stdout, &out.stderr))
 }
 
 /// A visible "this cell could not run" diagnostic, spliced where a boot-failed (or

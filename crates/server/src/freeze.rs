@@ -132,6 +132,20 @@ struct OnDisk {
     version: u32,
     /// Oldest-first, so eviction drops from the front; rewritten on every save.
     entries: Vec<Entry>,
+    /// Language -> the package-set digest these outputs were produced under
+    /// ([`crate::packages`]). The axis the cumulative key structurally cannot see: an
+    /// in-place `pip install --upgrade` is the same interpreter reporting the same
+    /// `--version`, so every key is unchanged and the old numbers restore. This does not
+    /// change what hits — folding it into the key would bust the whole cache on any
+    /// `pip install`, however unrelated — it lets a restore that crossed a package change
+    /// **say so**.
+    ///
+    /// `#[serde(default)]` is what keeps an existing `_freeze/` loading, which is why this
+    /// needed no [`FORMAT_VERSION`] bump: an older file records nothing, is read as "not
+    /// known", and is simply not compared. Bumping would have thrown away every cache in
+    /// existence to add a field that only ever adds a warning.
+    #[serde(default)]
+    packages: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -150,6 +164,9 @@ pub struct FreezeCache {
     entries: HashMap<String, String>,
     /// Keys oldest-first, kept in sync with `entries`, for bounded LRU-ish eviction.
     order: Vec<String>,
+    /// The package-set digests these entries were produced under, by language. See
+    /// [`OnDisk::packages`].
+    packages: HashMap<String, String>,
     /// Live total of `key.len() + value.len()` across `entries`, maintained on every
     /// insert and eviction so [`MAX_BYTES`] costs no walk of the map.
     bytes: usize,
@@ -163,6 +180,7 @@ impl FreezeCache {
             path: None,
             entries: HashMap::new(),
             order: Vec::new(),
+            packages: HashMap::new(),
             bytes: 0,
             dirty: false,
         }
@@ -176,15 +194,16 @@ impl FreezeCache {
         if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
             return Self::disabled();
         }
-        let (entries, order) = std::fs::read(&path)
+        let (entries, order, packages) = std::fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<OnDisk>(&bytes).ok())
             .filter(|d| d.version == FORMAT_VERSION)
             .map(|d| {
                 let order: Vec<String> = d.entries.iter().map(|e| e.k.clone()).collect();
+                let installed = d.packages;
                 let map: HashMap<String, String> =
                     d.entries.into_iter().map(|e| (e.k, e.v)).collect();
-                (map, order)
+                (map, order, installed)
             })
             .unwrap_or_default();
         let bytes = entries
@@ -195,6 +214,7 @@ impl FreezeCache {
             path: Some(path),
             entries,
             order,
+            packages,
             bytes,
             dirty: false,
         }
@@ -203,6 +223,32 @@ impl FreezeCache {
     /// The cached output for `key`, if present.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.entries.get(key).map(String::as_str)
+    }
+
+    /// The package-set digest `lang`'s entries were produced under, or `None` for a cache
+    /// written before this was recorded (or by a run that could not probe the interpreter).
+    ///
+    /// `None` is never an error and never a warning: "we do not know what this was produced
+    /// under" is a different statement from "it was produced under something else", and only
+    /// the second is worth telling an author about.
+    pub fn recorded_packages(&self, lang: &str) -> Option<&str> {
+        self.packages.get(lang).map(String::as_str)
+    }
+
+    /// Record the digest this run's outputs were produced under. A no-op on a disabled cache,
+    /// like [`Self::put`].
+    ///
+    /// Only called when cells actually **executed**: a pure replay produced nothing, so
+    /// stamping it with the current package set would relabel yesterday's outputs as today's
+    /// and destroy the one signal this exists for.
+    pub fn record_packages(&mut self, lang: &str, digest: &str) {
+        if self.path.is_none() {
+            return;
+        }
+        if self.packages.get(lang).map(String::as_str) != Some(digest) {
+            self.packages.insert(lang.to_string(), digest.to_string());
+            self.dirty = true;
+        }
     }
 
     /// Store (or refresh) `key`'s output and mark it most-recently-used. A no-op on
@@ -245,6 +291,7 @@ impl FreezeCache {
         };
         let on_disk = OnDisk {
             version: FORMAT_VERSION,
+            packages: self.packages.clone(),
             entries: self
                 .order
                 .iter()
@@ -334,6 +381,82 @@ mod tests {
         let other_interp = cumulative_hashes("py3.12", &["x = 1", "print(x)"]);
         assert_ne!(other_interp[0], a[0]);
         assert_ne!(other_interp[1], a[1]);
+    }
+
+    /// The digest survives a save/load, which is the whole mechanism: it is written by the
+    /// run that produced the outputs and read by whatever run restores them, possibly weeks
+    /// later in a different process.
+    #[test]
+    fn the_package_digest_round_trips_with_the_entries() {
+        let path = tmp();
+        let mut c = FreezeCache::for_page(path.clone());
+        assert_eq!(c.recorded_packages("python"), None, "nothing recorded yet");
+        c.put("k1".into(), "<pre>1</pre>".into());
+        c.record_packages("python", "deadbeefdeadbeef");
+        c.save();
+
+        let reloaded = FreezeCache::for_page(path.clone());
+        assert_eq!(reloaded.get("k1"), Some("<pre>1</pre>"));
+        assert_eq!(
+            reloaded.recorded_packages("python"),
+            Some("deadbeefdeadbeef")
+        );
+        assert_eq!(
+            reloaded.recorded_packages("r"),
+            None,
+            "per language, not global"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Recording is a write, so it must mark the cache dirty on its own — otherwise a run
+    /// that only changed the environment (every cell cached, nothing executed... which
+    /// cannot happen, but also: a run whose outputs were all identical) would never persist
+    /// the new digest and would warn again on every build forever.
+    #[test]
+    fn recording_a_new_digest_makes_the_cache_dirty_and_recording_the_same_one_does_not() {
+        let path = tmp();
+        let mut c = FreezeCache::for_page(path.clone());
+        c.record_packages("python", "aaaa");
+        assert!(c.dirty, "a new digest is a change to persist");
+        c.save();
+        assert!(!c.dirty);
+        c.record_packages("python", "aaaa");
+        assert!(
+            !c.dirty,
+            "recording what is already recorded must not rewrite the file"
+        );
+        c.record_packages("python", "bbbb");
+        assert!(c.dirty, "a changed digest is a change");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// **The reason this needed no `FORMAT_VERSION` bump.** Every `_freeze/` in existence was
+    /// written before the digest, and throwing all of them away to add a field that only ever
+    /// produces a warning would be the worst possible trade. An old file must load, keep its
+    /// entries, and report "not known" — which `packages::crossed` reads as "say nothing".
+    #[test]
+    fn a_cache_written_before_the_digest_still_loads_and_reports_nothing() {
+        let path = tmp();
+        std::fs::write(
+            &path,
+            format!(r#"{{"version":{FORMAT_VERSION},"entries":[{{"k":"a","v":"b"}}]}}"#),
+        )
+        .unwrap();
+        let c = FreezeCache::for_page(path.clone());
+        assert_eq!(c.get("a"), Some("b"), "the entries must survive");
+        assert_eq!(c.recorded_packages("python"), None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A disabled cache records nothing, exactly as it stores nothing. Without this,
+    /// `TALIESIN_NO_CACHE` would still try to write a digest into a file it must not touch.
+    #[test]
+    fn a_disabled_cache_records_no_digest() {
+        let mut c = FreezeCache::disabled();
+        c.record_packages("python", "aaaa");
+        assert_eq!(c.recorded_packages("python"), None);
+        assert!(!c.dirty);
     }
 
     #[test]

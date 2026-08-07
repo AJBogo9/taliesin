@@ -22,6 +22,17 @@
 > 2025-11-25 server spec, and the Zed language-extension docs (context7); DX ranking
 > grounded in the DevEx framework and the CHI 2020 notebook pain-point taxonomy.
 
+> **STATUS 2026-08-07, same day: tiers 0-2 are shipped.** Findings 1, 2 and 10 landed first
+> (site-aware buffer lint, `didChangeWatchedFiles`, the trace armed). Everything else in the
+> table below landed in one batch except finding 5's *highlighting* half, which stays ruled out
+> (semantic tokens do not reach Helix and ship `off` in Zed; a tree-sitter grammar is a third
+> definition of the dialect) — its docs half is backlog item 221 and is still owed. Finding 9 was
+> deliberately no-action and remains so, though the new work took its advice: four new modules
+> (`lsp_refs`, `lsp_select`, `lsp_lens`, `lsp_diag`) rather than more of `lsp.rs`.
+>
+> **Do not re-derive this round's findings as new work.** What is left of it is item 221 and
+> nothing else.
+
 ## Verdict
 
 **The tooling is not immature; it is asymmetric.** Taliesin ships fourteen LSP

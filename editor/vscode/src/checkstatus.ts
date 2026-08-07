@@ -1,24 +1,24 @@
-// Turning `taliesin check --format json` into "how bad is each file", as a pure function.
+// Turning "what does the language server say about this project" into "how bad is each file",
+// as a pure function.
 //
-// Split from `decorations.ts` (no `vscode` import here) so `node --test` can check the
-// severity ranking without an Extension Host, which is where the ordering bug would be.
-
-import * as path from "node:path";
+// No `vscode` import here, so `node --test` can check the severity ranking without an Extension
+// Host — which is where the ordering bug would be. The caller converts VS Code's severity enum
+// to the three names below; this file only ranks them.
+//
+// **This used to parse `taliesin check --format json` from a subprocess per save.** It did
+// because the language server had no way to speak about a file nobody had opened, so the whole
+// project could only be learned by running `check` over it. `taliesin lsp` now implements the
+// LSP 3.17 `workspace/diagnostic` pull model, so those findings arrive over the protocol the
+// client is already connected to, for every page, live rather than on save.
 
 /** The three severities `crates/core/src/diagnostics/codes.rs` defines, all lowercase. */
 export type Severity = "error" | "warning" | "suggestion";
 
-export interface CheckDiagnostic {
-  severity: string;
+/** One diagnostic reduced to what a badge needs: which file, and how bad. */
+export interface FileSeverity {
+  /** Absolute path. VS Code's `Uri.fsPath` already is one. */
   file: string;
-  line?: number | null;
-  code: string;
-  message: string;
-}
-
-export interface CheckJson {
-  diagnostics: CheckDiagnostic[];
-  environment: unknown[];
+  severity: string;
 }
 
 /**
@@ -39,16 +39,13 @@ function rank(severity: string): number {
 }
 
 /** The worst severity per file, keyed by absolute path. */
-export function worstByFile(json: CheckJson, root: string): Map<string, Severity> {
+export function worstByFile(rows: Iterable<FileSeverity>): Map<string, Severity> {
   const worst = new Map<string, Severity>();
-  for (const d of json.diagnostics ?? []) {
+  for (const d of rows) {
     if (!d.file) continue;
-    // `path.resolve` leaves an already-absolute path alone. Joining a root onto one would
-    // produce a key nothing in the Explorer can ever match.
-    const key = path.resolve(root, d.file);
-    const seen = worst.get(key);
+    const seen = worst.get(d.file);
     if (seen === undefined || rank(d.severity) > rank(seen)) {
-      worst.set(key, normalize(d.severity));
+      worst.set(d.file, normalize(d.severity));
     }
   }
   return worst;

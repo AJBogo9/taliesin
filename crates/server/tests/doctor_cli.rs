@@ -160,3 +160,48 @@ fn doctor_fails_on_a_broken_configured_python() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// `--format json` carries a package manifest, not only the interpreter checks.
+///
+/// `doctor` audited interpreter *presence* — "ipykernel MISSING" — and never "which pandas",
+/// which is the half that decides whether a document reproduces on another machine. It is
+/// also the axis `_freeze/`'s cumulative key structurally cannot see: an in-place
+/// `pip install --upgrade` leaves every key unchanged.
+///
+/// Skipped rather than failed when no interpreter answers: this is a real probe of the
+/// machine it runs on, and a CI box with no Python is not a regression.
+#[test]
+fn doctor_json_carries_a_package_manifest() {
+    let dir = tmp("packages");
+    let out = taliesin()
+        .args(["doctor", dir.to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("run doctor");
+    let text = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+    let packages = v["packages"]
+        .as_object()
+        .expect("a `packages` object, even when empty");
+    if packages.is_empty() {
+        eprintln!("no interpreter answered here; the manifest shape is still asserted above");
+        return;
+    }
+    for (lang, m) in packages {
+        assert!(
+            m["digest"].as_str().is_some_and(|d| d.len() == 16),
+            "{lang}: a 16-hex-digit digest, which is what `_freeze/` records: {m}"
+        );
+        let listed = m["packages"].as_object().expect("name → version");
+        assert!(
+            !listed.is_empty(),
+            "{lang}: an interpreter that answered must list something — an empty manifest \
+             would hash the same as a different empty one and report a false match"
+        );
+        for (name, version) in listed {
+            assert!(
+                version.is_string(),
+                "{lang}: {name} has no version, which is the whole thing being recorded"
+            );
+        }
+    }
+}
