@@ -124,8 +124,55 @@ fn run_with_debounce(
     debounce: std::time::Duration,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let caps = serde_json::to_value(server_capabilities())?;
-    connection.initialize(caps)?;
+    let init = connection.initialize(caps)?;
+    register_file_watchers(&connection, &init)?;
     main_loop(&connection, debounce)?;
+    Ok(())
+}
+
+/// Ask the client to watch the files that can invalidate an open buffer's diagnostics.
+///
+/// Without this, `workspace/didChangeWatchedFiles` arrives from **VS Code only**, and only
+/// because `editor/vscode/src/client.ts` registers a watcher of its own. Every other editor
+/// the docs name would keep showing diagnostics computed against a tree that a `git pull`
+/// had already replaced — which would make a freshness fix that lives in Rust behave like
+/// one that lives in the companion, against the rule that put it here.
+///
+/// Guarded on the client having said it supports dynamic registration: sending this to one
+/// that did not is a protocol error aimed at a client that was working fine. The reply is
+/// ignored on purpose — a client that refuses leaves us exactly where we started, and the
+/// main loop already drops responses it did not ask about.
+fn register_file_watchers(
+    connection: &Connection,
+    init: &serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let dynamic = init
+        .pointer("/capabilities/workspace/didChangeWatchedFiles/dynamicRegistration")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if !dynamic {
+        return Ok(());
+    }
+    // The three kinds of file that change what an open page's diagnostics should say without
+    // the page itself changing: a sibling page (its anchors and ids), the project config
+    // (every rule that reads it), and a bibliography (`[@key]` resolution).
+    let watchers: Vec<serde_json::Value> = ["**/*.tmd", "**/_site.yml", "**/*.bib"]
+        .iter()
+        .map(|glob| serde_json::json!({ "globPattern": glob }))
+        .collect();
+    connection
+        .sender
+        .send(Message::Request(lsp_server::Request {
+            id: lsp_server::RequestId::from("taliesin-watch-registration".to_owned()),
+            method: "client/registerCapability".to_owned(),
+            params: serde_json::json!({
+                "registrations": [{
+                    "id": "taliesin-watched-files",
+                    "method": "workspace/didChangeWatchedFiles",
+                    "registerOptions": { "watchers": watchers },
+                }]
+            }),
+        }))?;
     Ok(())
 }
 
@@ -397,6 +444,23 @@ fn handle_notification(
             // (backlog item 178). `didOpen` above still publishes immediately — opening a
             // document is a single event, not a burst, and waiting would only delay the
             // first squiggles an author sees.
+            pending.owe(uri, debounce);
+        }
+    } else if method == lsp_types::notification::DidChangeWatchedFiles::METHOD {
+        // A file changed on disk that the editor may never have opened: a `git pull` or
+        // `git checkout`, an agent editing a sibling chapter, a `.bib` or `_site.yml` edit.
+        //
+        // Every open buffer is re-published, because any of them can be wrong now and the
+        // notification does not say which: a chapter's cross-page links are judged against
+        // the OTHER pages' ids, its citations against the bibliography, its whole lint
+        // against `_site.yml`. `publish` is per-URI, so nothing else ever refreshes a
+        // document the author is not currently typing in — editing page B in the editor did
+        // not refresh page A either. There are only ever a handful of open buffers.
+        //
+        // Owed rather than published here: a `git pull` touching two hundred files arrives
+        // as a burst, and the coalescing window collapses it into one publish per buffer.
+        // The params are deliberately not read — no field of them changes the answer.
+        for uri in docs.keys().cloned().collect::<Vec<_>>() {
             pending.owe(uri, debounce);
         }
     } else if method == DidCloseTextDocument::METHOD {
@@ -2203,6 +2267,15 @@ mod tests {
                 serde_json::from_value(n.params).unwrap()
             }
             other => panic!("expected publishDiagnostics, got {other:?}"),
+        }
+    }
+
+    /// A published diagnostic's stable `TAL-*` code, or "" when it carries none.
+    fn code_of(d: &lsp_types::Diagnostic) -> String {
+        match &d.code {
+            Some(lsp_types::NumberOrString::String(s)) => s.clone(),
+            Some(lsp_types::NumberOrString::Number(n)) => n.to_string(),
+            None => String::new(),
         }
     }
 
@@ -5033,5 +5106,180 @@ mod tests {
 
         shutdown(&client);
         handle.join().unwrap().unwrap();
+    }
+
+    /// The companion has always paid for this signal and the server has always dropped it:
+    /// `client.ts` watches `**/{*.tmd,_site.yml,*.bib}`, so `vscode-languageclient` sends
+    /// `workspace/didChangeWatchedFiles` on every external change — a `git pull`, an agent
+    /// editing a sibling chapter, a `.bib` edit — and `lsp.rs` had zero occurrences of the
+    /// method. Every open buffer kept squiggles computed against a tree that no longer
+    /// existed, and `publish` is per-URI so editing page B in the editor never refreshed A.
+    ///
+    /// Asserted through a REAL change of state, not by counting notifications: `a.tmd`
+    /// links to an anchor that `b.tmd` does not define yet, so it opens with a broken-anchor
+    /// diagnostic. `b.tmd` then gains the heading on disk — a change to a file the editor
+    /// never opened — and the only thing that can clear A's squiggle is the server acting on
+    /// the watch notification.
+    #[test]
+    fn an_external_change_re_publishes_every_open_buffer() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: P\n").unwrap();
+        let a = dir.join("a.tmd");
+        let a_src = "---\ntitle: A\n---\n\nSee [it](b.html#sec-later).\n";
+        std::fs::write(&a, a_src).unwrap();
+        std::fs::write(
+            dir.join("b.tmd"),
+            "---\ntitle: B\n---\n\nNothing here yet.\n",
+        )
+        .unwrap();
+        let dir = std::fs::canonicalize(&dir).unwrap();
+        let a_uri = Url::from_file_path(dir.join("a.tmd")).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+
+        did_open(&client, &a_uri, a_src.to_owned());
+        let first = recv_publish(&client);
+        assert!(
+            first
+                .diagnostics
+                .iter()
+                .any(|d| code_of(d) == "TAL-LINK-ANCHOR"),
+            "the buffer should open with a broken cross-page anchor: {:?}",
+            first
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+
+        // The fix happens on DISK, in a file the editor never opened.
+        std::fs::write(
+            dir.join("b.tmd"),
+            "---\ntitle: B\n---\n\n## Later {#sec-later}\n",
+        )
+        .unwrap();
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: lsp_types::notification::DidChangeWatchedFiles::METHOD.to_owned(),
+                params: serde_json::json!({
+                    "changes": [{
+                        "uri": Url::from_file_path(dir.join("b.tmd")).unwrap(),
+                        "type": 2,
+                    }]
+                }),
+            }))
+            .unwrap();
+
+        let after = recv_publish(&client);
+        assert_eq!(after.uri, a_uri, "the open buffer is the one re-published");
+        assert!(
+            !after
+                .diagnostics
+                .iter()
+                .any(|d| code_of(d) == "TAL-LINK-ANCHOR"),
+            "an external fix must clear the squiggle it caused: {:?}",
+            after
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Handling `didChangeWatchedFiles` only helps an editor that SENDS it, and the only
+    /// reason VS Code does is that `client.ts` registers a watcher of its own. Every other
+    /// editor the docs name — Neovim, Helix, Zed — sends nothing unless the server asks, so
+    /// without this registration the freshness fix would have been VS Code-only, in the one
+    /// component whose whole design rule is that editor intelligence lives in Rust so that
+    /// every client gets it.
+    ///
+    /// Guarded on the client saying it supports dynamic registration: sending
+    /// `client/registerCapability` to a client that does not is a protocol error against a
+    /// client that was working fine.
+    #[test]
+    fn the_server_registers_its_own_file_watchers_when_the_client_allows_it() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        client
+            .sender
+            .send(Message::Request(Request {
+                id: RequestId::from(1),
+                method: "initialize".to_owned(),
+                params: serde_json::json!({
+                    "capabilities": {
+                        "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": true } }
+                    }
+                }),
+            }))
+            .unwrap();
+        let _ = client.receiver.recv().unwrap(); // InitializeResult
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: "initialized".to_owned(),
+                params: serde_json::json!({}),
+            }))
+            .unwrap();
+
+        let req = match client.receiver.recv_timeout(Duration::from_secs(10)) {
+            Ok(Message::Request(r)) => r,
+            other => panic!("expected a registration request, got {other:?}"),
+        };
+        assert_eq!(req.method, "client/registerCapability");
+        let globs: Vec<String> = req.params["registrations"][0]["registerOptions"]["watchers"]
+            .as_array()
+            .expect("watchers")
+            .iter()
+            .map(|w| w["globPattern"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(
+            req.params["registrations"][0]["method"],
+            "workspace/didChangeWatchedFiles"
+        );
+        // The three file kinds that can invalidate an open buffer's diagnostics without the
+        // buffer itself changing — the same set `client.ts` watches.
+        for want in ["tmd", "_site.yml", "bib"] {
+            assert!(
+                globs.iter().any(|g| g.contains(want)),
+                "no watcher covers {want}: {globs:?}"
+            );
+        }
+        // The client answers a registration request; the server must carry on regardless.
+        client
+            .sender
+            .send(Message::Response(Response {
+                id: req.id,
+                result: Some(serde_json::Value::Null),
+                error: None,
+            }))
+            .unwrap();
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+    }
+
+    /// And the other half of the guard: a client that never claimed dynamic registration is
+    /// sent no request at all. `handshake()` (used by every other test here) sends empty
+    /// capabilities, so a server that registered unconditionally would push an unexpected
+    /// request into all of them.
+    #[test]
+    fn a_client_without_dynamic_registration_is_not_sent_one() {
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(corpus("links.tmd")).unwrap();
+        did_open(&client, &uri, "---\ntitle: T\n---\n\nBody.\n".to_owned());
+        // The next message must be diagnostics, not a registration request.
+        let _ = recv_publish(&client);
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
     }
 }
