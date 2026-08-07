@@ -143,8 +143,14 @@ inventory of `build corpus/agent/executed-read.tmd`, by grep count:
 | `tali-nav-brand` | 0 |
 | `tali-nav-burger` | 0 |
 | `tali-search-btn` | 0 |
+| `tali-site-footer` | 0 |
 | `tali-theme-toggle` | 2 |
 | `tali-toc` | 4 |
+
+The footer matters as much as the header: `preview <file>` emits `tali-site-footer`
+twice where `build <file>` emits it zero times. A site footer on a document that
+belongs to no site is the same category of error as the "Home" link, so the standalone
+gate covers `navbar_html` **and** `footer_html`.
 
 A standalone document keeps the reader affordances (theme toggle, table of contents) and
 drops every navigational element. The theme toggle staying is consistent with the
