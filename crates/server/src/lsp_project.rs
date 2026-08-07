@@ -10,8 +10,11 @@
 //! is orders of magnitude cheaper than the read-plus-parse it guards, and the failure mode is
 //! "re-walked when it need not have", never "served stale data".
 //!
-//! The per-keystroke diagnostic path does NOT use this. It keeps calling
+//! The per-keystroke diagnostic path does NOT use [`ProjectCache`]. It keeps calling
 //! `site::anchors_defined_elsewhere_in_project` behind the existing coalescing window.
+//! It does use [`SiteCache`] below, which is the same stat-validated shape holding a
+//! different thing (the page registry) for a caller with the opposite cost profile — see
+//! the note there for the measurement that forced it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -127,6 +130,69 @@ impl ProjectCache {
         roots.sort();
         roots.dedup();
         roots
+    }
+}
+
+/// The enclosing project as a [`taliesin_core::Site`], memoized the same way and for the
+/// opposite reason to [`ProjectCache`].
+///
+/// This one **does** sit on the per-keystroke diagnostic path, which is exactly why it has to
+/// exist. Making the editor's buffer lint site-aware needs the page registry — only it knows
+/// that `b.html` is a real page and which ids that page defines — and discovering it costs a
+/// full walk: measured at **188 ms on `docs/guide`**, against 14 ms for the entire rest of the
+/// lint. Discovering per publish would have made the fix for the missing diagnostic worse than
+/// the missing diagnostic.
+///
+/// Validated by the same `(mtime, len)` stamps, so an edit to any page in the project (or to
+/// `_site.yml`) rebuilds it and nothing serves a stale registry. The buffer being edited is
+/// *not* read from disk — `validate_cross_page_links_for_src` takes the live text — so the
+/// author's own unsaved typing never invalidates this.
+///
+/// **What it costs, measured over real stdio on `docs/guide` (release):** the first publish
+/// for a project goes from 14 ms to 205 ms, and every publish after it is unchanged — typing
+/// measured at ~134 ms against a ~130 ms baseline, of which 120 ms is the coalescing window
+/// that already gated it. So the walk is paid once when a project's first buffer opens, which
+/// is the one moment nobody is waiting on a keystroke.
+pub(crate) struct SiteCache {
+    entries: HashMap<PathBuf, (taliesin_core::Site, Vec<Stamp>)>,
+    builds: usize,
+}
+
+impl SiteCache {
+    pub(crate) fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+            builds: 0,
+        }
+    }
+
+    /// Discoveries actually performed. Read by `an_unchanged_project_is_not_re_discovered`,
+    /// without which a cache that always missed would still pass every correctness test.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn builds(&self) -> usize {
+        self.builds
+    }
+
+    /// The project enclosing `page`, or `None` when no `_site.yml` sits above it.
+    ///
+    /// Whether `page` is a *page* of that project is settled by the caller
+    /// (`check::collect_file_diagnostics_in_site`), so that one place decides it: a deck and
+    /// a `draft: true` chapter are both inside a project and are both linted standalone.
+    ///
+    /// `DraftMode::Exclude` matches `check`, which is the parity this whole path claims.
+    pub(crate) fn get(&mut self, page: &Path) -> Option<&taliesin_core::Site> {
+        let root = taliesin_core::site::enclosing_site_root_across_git(page.parent()?)?;
+        let stamps = stamps_for(&root);
+        let fresh = self
+            .entries
+            .get(&root)
+            .is_some_and(|(_, seen)| *seen == stamps);
+        if !fresh {
+            self.entries
+                .insert(root.clone(), (taliesin_core::Site::discover(&root), stamps));
+            self.builds += 1;
+        }
+        self.entries.get(&root).map(|(site, _)| site)
     }
 }
 
@@ -417,5 +483,49 @@ mod tests {
         );
         assert_eq!(first, 1, "the first get must actually have walked");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The SiteCache's whole reason to exist, and the one property no correctness test can
+    /// see: this memo sits on the per-keystroke path, where a full `Site::discover` was
+    /// measured at 188 ms against 14 ms for the entire rest of the lint. A cache that always
+    /// missed would publish exactly the right diagnostics and make typing unusable.
+    #[test]
+    fn an_unchanged_project_is_not_re_discovered() {
+        let root = fixture("site-memo");
+        let probe = root.join("index.tmd");
+        let mut cache = SiteCache::new();
+        assert!(cache.get(&probe).is_some(), "the fixture is a project");
+        assert_eq!(cache.builds(), 1, "the first get must actually discover");
+        cache.get(&probe).unwrap();
+        assert_eq!(
+            cache.builds(),
+            1,
+            "a second get on an unchanged project re-discovered the whole site"
+        );
+
+        // And the other half, or the memo would serve a page registry that no longer
+        // matches the tree: an external edit to a page the author is not typing in — which
+        // is exactly what `didChangeWatchedFiles` now re-publishes for — must invalidate it.
+        std::fs::write(root.join("ch/three.tmd"), "# Three {#sec-three}\n").unwrap();
+        cache.get(&probe).unwrap();
+        assert_eq!(
+            cache.builds(),
+            2,
+            "a page added to the project must invalidate the site memo"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A document with no `_site.yml` above it has no project, and must be linted as the
+    /// standalone document it is rather than borrowing an unrelated neighbour's registry.
+    #[test]
+    fn a_document_outside_any_project_has_no_site() {
+        let dir = scratch("site-solo");
+        let solo = dir.join("solo.tmd");
+        std::fs::write(&solo, "# Solo\n").unwrap();
+        let mut cache = SiteCache::new();
+        assert!(cache.get(&solo).is_none());
+        assert_eq!(cache.builds(), 0, "nothing to discover, nothing discovered");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

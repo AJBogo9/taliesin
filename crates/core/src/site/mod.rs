@@ -636,6 +636,21 @@ impl Site {
             .find(|p| p.rel == needle || p.url == needle)
     }
 
+    /// The page whose source file is `input`, or `None` when this project publishes no such
+    /// page — which is a real answer, not a lookup failure: a deck held out of `pages`, a
+    /// `draft: true` chapter, an `_includes/` partial and a file in a sibling directory all
+    /// land here, and none of them may be linted as a page of this site.
+    ///
+    /// Compared by canonical path, because the caller's path and `Page.input` reach this
+    /// from different directions (a CLI argument as typed, an editor's absolute URI, a root
+    /// joined during discovery) and `a/../b.tmd` is the same file as `b.tmd`.
+    pub fn page_for_input(&self, input: &Path) -> Option<&Page> {
+        let want = input.canonicalize().ok()?;
+        self.pages
+            .iter()
+            .find(|p| p.input.canonicalize().ok().as_deref() == Some(&want))
+    }
+
     /// Re-extract the Cmd-K search entries for the given page (accepts its `rel` or
     /// `url`, like [`Site::page`]) and reassemble the index, so a content edit in the
     /// live preview doesn't leave stale headings/prose in search (the static build
@@ -903,10 +918,30 @@ impl Site {
     /// every *registered* page this one links to, so "no ids for this url" still means
     /// exactly "not a page in this site" — the distinction the broken-link branch turns on.
     pub fn validate_cross_page_links_for(&self, page_rel: &str) -> Vec<Warning> {
+        self.cross_page_links_for(page_rel, None)
+    }
+
+    /// [`validate_cross_page_links_for`](Self::validate_cross_page_links_for) judging `src`
+    /// as the source page's content instead of the file on disk.
+    ///
+    /// This is what the editor needs and the disk-reading form cannot give it: an unsaved
+    /// buffer is the only version that exists, so linting the saved file would report a link
+    /// the author already deleted and miss the one they just typed. Only the SOURCE page is
+    /// substituted — the pages it points at are read from disk, which is also what the
+    /// preview does, and is right for the same reason: another page's unsaved buffer is not
+    /// something this side can see.
+    pub fn validate_cross_page_links_for_src(&self, page_rel: &str, src: &str) -> Vec<Warning> {
+        self.cross_page_links_for(page_rel, Some(src))
+    }
+
+    fn cross_page_links_for(&self, page_rel: &str, src: Option<&str>) -> Vec<Warning> {
         let Some(page) = self.page(page_rel) else {
             return Vec::new();
         };
-        let Some(source) = self.page_link_facts(page) else {
+        let Some(source) = (match src {
+            Some(src) => self.page_link_facts_from_src(page, src),
+            None => self.page_link_facts(page),
+        }) else {
             return Vec::new();
         };
         // The source page first (so it is also its own link target, for a `self.html#frag`),
@@ -938,8 +973,14 @@ impl Site {
     /// One render, not three passes, so the ids and the links cannot disagree.
     fn page_link_facts(&self, page: &Page) -> Option<PageLinkFacts> {
         let src = std::fs::read_to_string(&page.input).ok()?;
+        self.page_link_facts_from_src(page, &src)
+    }
+
+    /// [`page_link_facts`](Self::page_link_facts) over source already in hand — an editor
+    /// buffer, which has no file to read.
+    fn page_link_facts_from_src(&self, page: &Page, src: &str) -> Option<PageLinkFacts> {
         let base = page.input.parent().unwrap_or(&self.root);
-        let doc = render::render_document_with_includes(&src, base);
+        let doc = render::render_document_with_includes(src, base);
         let mut ids = std::collections::HashSet::new();
         let mut links = Vec::new();
         for b in &doc.blocks {

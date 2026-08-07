@@ -199,6 +199,10 @@ fn main_loop(
     // all of those fire on a user gesture, so re-validating with one `stat` per page is
     // cheaper than the file watching an index would need. See `lsp_project`.
     let mut project = crate::lsp_project::ProjectCache::new();
+    // The page registry for the buffer lint, so a document inside a site is linted as one.
+    // Separate from `project` above because it is the one memo on the per-keystroke path:
+    // see `lsp_project::SiteCache` for the measurement that makes it mandatory.
+    let mut sites = crate::lsp_project::SiteCache::new();
     // Off unless `TALIESIN_LSP_TRACE` names a file. See `lsp_trace`: this is the FV-5
     // instrument, and the one line below is how you can tell it is actually armed rather
     // than finding out after a week that the editor never inherited the variable.
@@ -221,7 +225,7 @@ fn main_loop(
                 Err(e) if e.is_timeout() => {
                     for uri in pending.take() {
                         if let Some(text) = docs.get(&uri) {
-                            publish(connection, &uri, text)?;
+                            publish(connection, &mut sites, &uri, text)?;
                         }
                     }
                     continue;
@@ -309,7 +313,14 @@ fn main_loop(
                 let method = notif.method.clone();
                 trace.record(&method);
                 match crate::serve::guarded(|| {
-                    handle_notification(connection, &mut docs, &mut pending, debounce, notif)
+                    handle_notification(
+                        connection,
+                        &mut docs,
+                        &mut sites,
+                        &mut pending,
+                        debounce,
+                        notif,
+                    )
                 }) {
                     Ok(Ok(())) => {}
                     Ok(Err(e)) => {
@@ -338,6 +349,7 @@ pub(crate) const PANIC_PROBE_METHOD: &str = "taliesin/testPanic";
 fn handle_notification(
     connection: &Connection,
     docs: &mut std::collections::HashMap<lsp_types::Url, String>,
+    sites: &mut crate::lsp_project::SiteCache,
     pending: &mut PendingPublishes,
     debounce: std::time::Duration,
     notif: lsp_server::Notification,
@@ -364,7 +376,7 @@ fn handle_notification(
         if p.text_document.language_id == "taliesin" || is_tmd_uri(&p.text_document.uri) {
             let uri = p.text_document.uri;
             docs.insert(uri.clone(), p.text_document.text);
-            publish(connection, &uri, &docs[&uri])?;
+            publish(connection, sites, &uri, &docs[&uri])?;
         } else {
             crate::log::warn(&format!(
                 "lsp: ignoring {} (languageId {:?} is not `taliesin` and the path is not .tmd)",
@@ -2092,6 +2104,7 @@ fn is_tmd_uri(uri: &lsp_types::Url) -> bool {
 /// Lint `text` as the document at `uri` and publish the result.
 fn publish(
     connection: &Connection,
+    sites: &mut crate::lsp_project::SiteCache,
     uri: &lsp_types::Url,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -2099,7 +2112,12 @@ fn publish(
         .to_file_path()
         .unwrap_or_else(|_| std::path::PathBuf::from("untitled.tmd"));
     let lines: Vec<&str> = text.split('\n').collect();
-    let diagnostics = crate::check::buffer_diagnostics(&path, text)
+    // The enclosing project, when this buffer is a page of one. Without it the buffer is
+    // linted as a standalone document and the editor gets a strictly weaker answer than the
+    // read-only preview: no broken cross-page anchors at all, and broken links described by
+    // a rule that does not apply to a site page.
+    let site = sites.get(&path);
+    let diagnostics = crate::check::buffer_diagnostics_in_site(&path, text, site)
         .iter()
         .map(|d| d.to_lsp(&lines))
         .collect();

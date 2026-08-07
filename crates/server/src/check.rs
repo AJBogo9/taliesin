@@ -176,7 +176,14 @@ fn collect_diagnostics(path: &Path, scope: &mut CheckScope) -> Result<Vec<Diagno
     if path.is_dir() {
         collect_site_diagnostics(path, scope)
     } else {
-        collect_file_diagnostics(path, Some(scope))
+        // Site-aware when the file is a page of a project, so `check <file.tmd>` and
+        // `check <dir>` answer the same question about that page. The deck pass inside
+        // `collect_site_diagnostics` keeps calling `collect_file_diagnostics` directly: it
+        // is already inside a discovered project, and re-discovering per deck would make a
+        // site check quadratic in the number of decks.
+        let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
+        let site = enclosing_site_of(path);
+        collect_file_diagnostics_in_site(path, &src, Some(scope), site.as_ref())
     }
 }
 
@@ -295,6 +302,30 @@ fn collect_file_diagnostics_from_src(
     src: &str,
     scope: Option<&mut CheckScope>,
 ) -> Result<Vec<Diagnostic>, String> {
+    collect_file_diagnostics_in_site(path, src, scope, None)
+}
+
+/// [`collect_file_diagnostics_from_src`] told which project the page belongs to.
+///
+/// `site` is `Some` only when this file is a published page of that project (see
+/// [`taliesin_core::Site::page_for_input`]), and it changes two things, both of which the
+/// live preview has done since DX1 while the editor did not:
+///
+/// * the scope becomes [`Scope::InSite`], which drops `validate_local_links` — a rule whose
+///   "no such file under the document directory" phrasing describes a standalone document
+///   and not a site page, whose links are `.html` urls the page registry resolves;
+/// * `validate_cross_page_links_for_src` runs, which is the site-aware counterpart and the
+///   only thing that can see a broken cross-page **anchor** at all.
+///
+/// Passing `None` keeps the standalone behaviour, which is right for a document with no
+/// project above it and for a deck (a deck is built and served but is deliberately not one
+/// of `site.pages`, so the site rules would remove its link check and put nothing back).
+fn collect_file_diagnostics_in_site(
+    path: &Path,
+    src: &str,
+    scope: Option<&mut CheckScope>,
+    site: Option<&taliesin_core::Site>,
+) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_single_doc(src, base);
     // Free: this render already happened for the lints below.
@@ -309,21 +340,54 @@ fn collect_file_diagnostics_from_src(
     // the same tree was clean. Outside a project the scan is empty and nothing changes.
     let elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(path);
     let xref = taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &elsewhere);
-    let statics = page_static_diagnostics(src, &doc.blocks, base, doc.format, Scope::Standalone);
+    let page = site.and_then(|s| s.page_for_input(path));
+    let scope_kind = if page.is_some() {
+        Scope::InSite
+    } else {
+        Scope::Standalone
+    };
+    let statics = page_static_diagnostics(src, &doc.blocks, base, doc.format, scope_kind);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
         out.push(Diagnostic::new(path_str.clone(), Some(line), message));
     }
+    // From the BUFFER, not from `page.input`: the file on disk is a different document as
+    // soon as the author types, and the squiggle has to describe what is on screen.
+    let cross: Vec<taliesin_core::render::Warning> = match (site, page) {
+        (Some(site), Some(page)) => site.validate_cross_page_links_for_src(&page.rel, src),
+        _ => Vec::new(),
+    };
     out.extend(
         doc.warnings
             .iter()
             .chain(xref.iter())
             .chain(statics.iter())
+            .chain(cross.iter())
             .map(|w| diag_from(w, &path_str)),
     );
     Ok(out)
+}
+
+/// The project enclosing `path`, discovered now.
+///
+/// Whether `path` is a *page* of it is a separate question, settled downstream in
+/// [`collect_file_diagnostics_in_site`] so that one place decides it: a deck and a
+/// `draft: true` chapter both sit inside a project and are both linted standalone.
+///
+/// `DraftMode::Exclude`, matching `check <dir>` rather than the preview: this is the seam
+/// whose whole claim is "the same validators as `check`".
+///
+/// Discovery costs a full walk, and it is paid per call. Measured end to end on
+/// `docs/guide`: `check <file.tmd>` goes from **14 ms to 213 ms**, against 387 ms for
+/// `check <dir>`. That is the price of the two commands giving the same answer about the
+/// same page, and it is worth it on a one-shot command — but it is far too slow to pay per
+/// keystroke, so the language server passes a stat-validated `lsp_project::SiteCache`
+/// instead of calling this. A file outside any project still costs nothing (11 ms).
+fn enclosing_site_of(path: &Path) -> Option<taliesin_core::Site> {
+    let root = taliesin_core::site::enclosing_site_root_across_git(path.parent()?)?;
+    Some(taliesin_core::Site::discover(&root))
 }
 
 /// Lint an in-memory editor buffer as if it were the file at `path`, returning the
@@ -332,8 +396,14 @@ fn collect_file_diagnostics_from_src(
 /// `taliesin lsp` existed, and once the LSP owned on-type diagnostics nothing invoked it. The buffer path can't fail to render,
 /// but a hypothetical error surfaces as one line-1 diagnostic (parity with the
 /// companion's check-error handling) rather than vanishing.
-pub(crate) fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
-    match collect_file_diagnostics_from_src(path, src, None) {
+///
+/// `site` is the enclosing project or `None`; see [`collect_file_diagnostics_in_site`].
+pub(crate) fn buffer_diagnostics_in_site(
+    path: &Path,
+    src: &str,
+    site: Option<&taliesin_core::Site>,
+) -> Vec<Diagnostic> {
+    match collect_file_diagnostics_in_site(path, src, None, site) {
         Ok(diags) => diags,
         Err(e) => vec![Diagnostic::new(path.display().to_string(), Some(1), e)],
     }
@@ -1268,7 +1338,7 @@ mod tests {
     fn buffer_diagnostics_flags_a_front_matter_typo() {
         // A misspelled front-matter key: the static validator locates it with a column span.
         let src = "---\ntittle: Hi\n---\n\n# Body\n";
-        let diags = super::buffer_diagnostics(Path::new("buf.tmd"), src);
+        let diags = buffer_diagnostics(Path::new("buf.tmd"), src);
         assert!(
             diags
                 .iter()
@@ -1288,6 +1358,15 @@ mod tests {
             fs::write(dir.join(name), body).unwrap();
         }
         dir
+    }
+
+    /// What the language server publishes for `path` with `src` in the buffer: the same
+    /// two calls `lsp::publish` makes, cache included, so these tests exercise the real
+    /// path rather than a convenience wrapper that only they use.
+    fn buffer_diagnostics(path: &Path, src: &str) -> Vec<Diagnostic> {
+        let mut sites = crate::lsp_project::SiteCache::new();
+        let site = sites.get(path);
+        super::buffer_diagnostics_in_site(path, src, site)
     }
 
     fn broken_xrefs(diags: &[Diagnostic]) -> Vec<&str> {
@@ -1321,7 +1400,7 @@ mod tests {
             ],
         );
         let src = fs::read_to_string(dir.join("other.tmd")).unwrap();
-        let diags = super::buffer_diagnostics(&dir.join("other.tmd"), &src);
+        let diags = buffer_diagnostics(&dir.join("other.tmd"), &src);
         assert!(
             broken_xrefs(&diags).is_empty(),
             "a reference the project resolves must not be reported broken: {:?}",
@@ -1347,13 +1426,171 @@ mod tests {
             ],
         );
         let src = fs::read_to_string(dir.join("other.tmd")).unwrap();
-        let diags = super::buffer_diagnostics(&dir.join("other.tmd"), &src);
+        let diags = buffer_diagnostics(&dir.join("other.tmd"), &src);
         assert!(
             broken_xrefs(&diags)
                 .iter()
                 .any(|m| m.contains("@sec-ghost")),
             "an anchor nothing defines is still broken: {:?}",
             diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The editor's every-keystroke validator linted every buffer as a STANDALONE
+    /// document, even one sitting inside a site — so the single editing surface got a
+    /// strictly weaker diagnostic than the read-only preview, which has passed
+    /// `Scope::InSite` and called the cross-page validator since DX1. Measured on this
+    /// exact shape: `check <dir>` reported `TAL-LINK-ANCHOR`, the buffer path did not.
+    #[test]
+    fn a_broken_cross_page_anchor_is_reported_on_the_buffer_path() {
+        let dir = tmp_project(
+            "xlink-anchor",
+            &[
+                ("_site.yml", "title: Project\n"),
+                (
+                    "a.tmd",
+                    "---\ntitle: A\n---\n\nSee [the target](b.html#the-target).\n",
+                ),
+                ("b.tmd", "---\ntitle: B\n---\n\n## Renamed Heading\n"),
+            ],
+        );
+        let src = fs::read_to_string(dir.join("a.tmd")).unwrap();
+        let diags = buffer_diagnostics(&dir.join("a.tmd"), &src);
+        assert!(
+            diags.iter().any(|d| d.code == "TAL-LINK-ANCHOR"),
+            "an anchor no page in the project defines must reach the editor: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The other half of the scope flip, and the reason it is not just "add a validator":
+    /// `Scope::InSite` also *removes* `validate_local_links`, whose standalone phrasing
+    /// ("no such file under the document directory") described a rule that does not apply
+    /// to a site page. The site-aware rule reports the same link in the site's terms.
+    #[test]
+    fn a_link_to_no_page_is_reported_in_the_site_s_terms() {
+        let dir = tmp_project(
+            "xlink-site-phrasing",
+            &[
+                ("_site.yml", "title: Project\n"),
+                ("a.tmd", "---\ntitle: A\n---\n\n[nowhere](nope.html)\n"),
+                ("b.tmd", "---\ntitle: B\n---\n\nBody.\n"),
+            ],
+        );
+        let src = fs::read_to_string(dir.join("a.tmd")).unwrap();
+        let diags = buffer_diagnostics(&dir.join("a.tmd"), &src);
+        let link: Vec<&str> = diags
+            .iter()
+            .filter(|d| d.code == "TAL-LINK")
+            .map(|d| d.message.as_str())
+            .collect();
+        assert_eq!(link.len(), 1, "exactly one broken-link finding: {link:?}");
+        assert!(
+            link[0].contains("no page in this site"),
+            "the site-aware phrasing, not the standalone one: {link:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The buffer, not the file on disk. This is the whole point of the buffer path: an
+    /// author fixing a broken link must see the squiggle clear before saving, and one
+    /// typing a new link must see it appear. `page_link_facts` reads the page from disk,
+    /// so a naive wiring of the site validator would answer about the last saved version.
+    #[test]
+    fn cross_page_links_are_judged_from_the_buffer_not_the_saved_file() {
+        let dir = tmp_project(
+            "xlink-unsaved",
+            &[
+                ("_site.yml", "title: Project\n"),
+                ("a.tmd", "---\ntitle: A\n---\n\nNo links yet.\n"),
+                (
+                    "b.tmd",
+                    "---\ntitle: B\n---\n\n## Real Heading {#sec-real}\n",
+                ),
+            ],
+        );
+        // Typed but not saved: the file on disk still has no links at all.
+        let unsaved = "---\ntitle: A\n---\n\nSee [gone](b.html#sec-ghost).\n";
+        let diags = buffer_diagnostics(&dir.join("a.tmd"), unsaved);
+        assert!(
+            diags.iter().any(|d| d.code == "TAL-LINK-ANCHOR"),
+            "a link typed into the buffer must be judged: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+
+        // And the reverse: a broken link on disk that the author has just deleted in the
+        // buffer must stop being reported, or the squiggle outlives the defect.
+        fs::write(
+            dir.join("a.tmd"),
+            "---\ntitle: A\n---\n\nSee [gone](b.html#sec-ghost).\n",
+        )
+        .unwrap();
+        let fixed = "---\ntitle: A\n---\n\nSee [real](b.html#sec-real).\n";
+        let after = buffer_diagnostics(&dir.join("a.tmd"), fixed);
+        assert!(
+            !after.iter().any(|d| d.code == "TAL-LINK-ANCHOR"),
+            "a link fixed in the buffer must clear before saving: {:?}",
+            after.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The claim `docs/guide/reference/cli.tmd` makes about `taliesin lsp`, pinned: "the
+    /// same validators as `check`, run on the unsaved buffer". Measured false before this —
+    /// the buffer path missed `TAL-LINK-ANCHOR` entirely and described a broken link with a
+    /// rule that does not apply to a site page — so it is asserted rather than restated.
+    ///
+    /// Compared as a SET OF CODES for one page, not message-for-message: `check <dir>`
+    /// renders each page with the project's numbering and defaults, so a message may name
+    /// "Figure 2.1" where the buffer path says "Figure 1". What must not differ is which
+    /// defects each one finds.
+    #[test]
+    fn the_editor_finds_the_same_defects_on_a_page_as_check_does() {
+        let dir = tmp_project(
+            "parity",
+            &[
+                ("_site.yml", "title: Project\n"),
+                (
+                    "page.tmd",
+                    "---\ntitle: P\ntitel: typo\n---\n\n\
+                     A [missing page](ghost.html), a [bad anchor](other.html#nope), \
+                     a [good anchor](other.html#sec-real).\n\n\
+                     ![](missing.png)\n\n\
+                     See @sec-ghost.\n",
+                ),
+                (
+                    "other.tmd",
+                    "---\ntitle: Other\n---\n\n## Real {#sec-real}\n",
+                ),
+            ],
+        );
+        let page = dir.join("page.tmd");
+        let src = fs::read_to_string(&page).unwrap();
+
+        let mut site_codes: Vec<String> = collect_diagnostics(&dir)
+            .expect("site ok")
+            .into_iter()
+            .filter(|d| d.file.contains("page.tmd"))
+            .map(|d| d.code.to_string())
+            .collect();
+        let mut buffer_codes: Vec<String> = buffer_diagnostics(&page, &src)
+            .into_iter()
+            .map(|d| d.code.to_string())
+            .collect();
+        site_codes.sort();
+        site_codes.dedup();
+        buffer_codes.sort();
+        buffer_codes.dedup();
+
+        assert!(
+            site_codes.len() >= 4,
+            "the fixture must exercise several validators, or parity is vacuous: {site_codes:?}"
+        );
+        assert_eq!(
+            buffer_codes, site_codes,
+            "the editor and `check` disagree about what is wrong with this page"
         );
         let _ = fs::remove_dir_all(&dir);
     }
@@ -1365,7 +1602,7 @@ mod tests {
         let dir = tmp_project("xpage-solo", &[("solo.tmd", "# Solo\n\nSee @fig-nope.\n")]);
         // `tmp_project` writes no `_site.yml` here, which is the point.
         let src = fs::read_to_string(dir.join("solo.tmd")).unwrap();
-        let diags = super::buffer_diagnostics(&dir.join("solo.tmd"), &src);
+        let diags = buffer_diagnostics(&dir.join("solo.tmd"), &src);
         assert!(
             broken_xrefs(&diags).iter().any(|m| m.contains("@fig-nope")),
             "a standalone document has no project to excuse a broken ref: {:?}",
