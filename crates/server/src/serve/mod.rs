@@ -697,6 +697,47 @@ pub(crate) fn bad_format_error(got: Option<&str>) -> String {
     )
 }
 
+/// Render `root` (an ancestor of `path`, as returned by
+/// [`taliesin_core::site::enclosing_site_root`]) in the same spelling `path` itself was
+/// given in, rather than `enclosing_site_root`'s always-absolute answer.
+///
+/// `enclosing_site_root` canonicalizes internally (`walk_up_for_site_yml` starts with
+/// `start.canonicalize().ok()?`), so `root` carries no memory of whether `path` was typed
+/// relatively — the "not a project" message would otherwise mix a relative subject with
+/// an absolute suggested fix. But `root` is, by construction, some number of directory
+/// levels above `path`'s own canonical form, and that level count is a fact about the
+/// real filesystem tree, not about either path's spelling — so popping that many trailing
+/// components off `path` AS TYPED recovers the ancestor in the caller's own spelling. An
+/// absolute `path` in still comes out absolute; that is simply what popping components
+/// off an absolute path yields.
+///
+/// Falls back to `root` (today's absolute rendering) whenever recovering the typed
+/// spelling isn't safely possible: `path` failing to canonicalize (e.g. a race, or a
+/// permissions error — a worse-looking message beats a crash), a zero-level climb
+/// (neither caller reaches here without one, but an unchanged `path` would misname
+/// itself as its own ancestor), or `path` running out of components to pop (only
+/// reachable through a symlink whose real depth differs from its typed depth).
+fn ancestor_as_typed(path: &Path, root: &Path) -> PathBuf {
+    let Ok(canon) = path.canonicalize() else {
+        return root.to_path_buf();
+    };
+    let climbed = canon
+        .components()
+        .count()
+        .saturating_sub(root.components().count());
+    if climbed == 0 {
+        return root.to_path_buf();
+    }
+    let mut shown = path.to_path_buf();
+    for _ in 0..climbed {
+        match shown.parent() {
+            Some(p) if !p.as_os_str().is_empty() => shown = p.to_path_buf(),
+            _ => return root.to_path_buf(),
+        }
+    }
+    shown
+}
+
 /// The one message both `build` and `preview` print when handed a directory that is not a
 /// project. A directory is a project, and a project is what `_site.yml` declares; without
 /// one there is no nav to build, no title to brand with, and no page to serve at `/`.
@@ -707,6 +748,7 @@ pub(crate) fn bad_format_error(got: Option<&str>) -> String {
 pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
     let shown = path.display();
     let body = if let Some(root) = taliesin_core::site::enclosing_site_root(path) {
+        let root = ancestor_as_typed(path, &root);
         format!(
             "{shown} has no _site.yml.\n\
              its ancestor {root} is a project. did you mean:\n  \
@@ -963,6 +1005,94 @@ mod protocol_contract {
                 "continuation line must hang under the 10-column gutter: {cont:?} in {msg:?}"
             );
         }
+    }
+
+    #[test]
+    fn not_a_project_error_names_the_ancestor_in_the_same_spelling_as_the_subject() {
+        // Regression: `enclosing_site_root` canonicalizes internally, so its answer is
+        // always absolute regardless of how `path` was spelled — without
+        // `ancestor_as_typed` this message mixed a relative subject with an absolute
+        // suggested fix (and told the reader to run a 50-character absolute command
+        // where `taliesin build corpus/tech-blog` would do). Relative in the cwd this
+        // test binary runs from (`crates/server`, so `../..` is the repo root) exercises
+        // exactly the caller-supplied-a-relative-path case; `..` in the middle also
+        // proves popping trailing components doesn't get confused by it.
+        let dir = std::path::Path::new("../../corpus/tech-blog/posts");
+        let msg = not_a_project_error(dir, "build");
+        assert!(
+            msg.contains("its ancestor ../../corpus/tech-blog is a project"),
+            "the ancestor must be spelled the same way the subject was: {msg}"
+        );
+        assert!(
+            msg.contains("taliesin build ../../corpus/tech-blog"),
+            "the suggested command must use the same spelling: {msg}"
+        );
+        assert!(
+            !msg.contains(env!("CARGO_MANIFEST_DIR")),
+            "must not fall back to an absolute path when the subject was relative: {msg}"
+        );
+    }
+
+    #[test]
+    fn ancestor_as_typed_recovers_a_relative_spelling() {
+        let subject = std::path::Path::new("../../corpus/tech-blog/posts");
+        let root = taliesin_core::site::enclosing_site_root(subject)
+            .expect("corpus/tech-blog is a project");
+        assert!(
+            root.is_absolute(),
+            "enclosing_site_root always canonicalizes: {root:?}"
+        );
+        let shown = ancestor_as_typed(subject, &root);
+        assert_eq!(shown, std::path::Path::new("../../corpus/tech-blog"));
+    }
+
+    #[test]
+    fn ancestor_as_typed_leaves_an_absolute_subject_absolute() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let subject = manifest.join("../../corpus/tech-blog/posts");
+        let root = taliesin_core::site::enclosing_site_root(&subject)
+            .expect("corpus/tech-blog is a project");
+        let shown = ancestor_as_typed(&subject, &root);
+        assert!(
+            shown.is_absolute(),
+            "an absolute subject must stay absolute, not be left canonicalized-relative: {shown:?}"
+        );
+        assert_eq!(shown, manifest.join("../../corpus/tech-blog"));
+    }
+
+    #[test]
+    fn ancestor_as_typed_handles_a_trailing_slash_without_a_dangling_separator() {
+        let subject = std::path::Path::new("../../corpus/tech-blog/posts/");
+        let root = taliesin_core::site::enclosing_site_root(subject)
+            .expect("corpus/tech-blog is a project");
+        let shown = ancestor_as_typed(subject, &root);
+        assert_eq!(shown, std::path::Path::new("../../corpus/tech-blog"));
+        assert!(
+            !shown.display().to_string().ends_with('/'),
+            "no dangling trailing separator: {shown:?}"
+        );
+    }
+
+    #[test]
+    fn ancestor_as_typed_falls_back_to_root_when_the_subject_cannot_canonicalize() {
+        // A path that does not exist (a race with the caller's own `.is_dir()` check, or
+        // a permissions error) must not panic or unwrap — a worse-looking (absolute)
+        // message beats a crash.
+        let bogus = std::path::Path::new("/definitely/does/not/exist/so/canonicalize/fails");
+        let root = std::path::Path::new("/some/real/ancestor");
+        assert_eq!(ancestor_as_typed(bogus, root), root);
+    }
+
+    #[test]
+    fn ancestor_as_typed_does_not_echo_the_subject_back_as_its_own_ancestor() {
+        // Neither caller reaches `ancestor_as_typed` without `enclosing_site_root` having
+        // climbed at least one level (both only call it after confirming `path` itself
+        // has no `_site.yml`), but guard the zero-level case anyway: if `root` and
+        // `path`'s own canonical form were equal, popping zero components off `path`
+        // would misname it as its own ancestor.
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let same = manifest.canonicalize().expect("manifest dir exists");
+        assert_eq!(ancestor_as_typed(manifest, &same), same);
     }
 }
 

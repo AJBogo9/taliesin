@@ -33,6 +33,29 @@ fn corpus(rel: &str) -> String {
     format!("{}/../../corpus/{rel}", env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Like [`run`], but with the child's own working directory set to `dir` — needed to hand
+/// the binary a path that is genuinely relative (no baked-in `CARGO_MANIFEST_DIR`
+/// prefix), which is the only way to observe whether it echoes a path back in the
+/// caller's own spelling or silently resolves it to an absolute one.
+fn run_in(dir: &str, args: &[&str]) -> (bool, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .expect("run taliesin");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// This crate's repo root (`crates/server/../..`), as a genuinely relative-friendly base
+/// to run a child process from.
+fn repo_root() -> String {
+    format!("{}/../..", env!("CARGO_MANIFEST_DIR"))
+}
+
 /// Every continuation line of a `log::error` message hangs under its 10-column tag
 /// gutter (`"  " + a 7-wide tag + " "`), so a multi-line error reads as one block
 /// instead of half a message sitting flush against the left margin. `first` is the
@@ -126,6 +149,52 @@ fn build_and_preview_report_the_same_path_for_the_same_directory() {
     assert!(
         preview_err.contains(&expected_line),
         "preview must echo the SAME path as build, not a canonicalized one: {preview_err}"
+    );
+}
+
+/// The other half of Defect B: the subject path was already fixed to echo as typed, but
+/// the ANCESTOR named in the "did you mean" suggestion (`taliesin_core::site::
+/// enclosing_site_root`) canonicalizes internally, so it used to stay absolute even when
+/// the subject was relative — mixing a relative subject with an absolute suggested fix
+/// (a 50-character absolute command where `taliesin build corpus/tech-blog` would do).
+/// Run with the child's cwd set to the repo root so `corpus/tech-blog/posts` is a
+/// genuinely relative argument, not one built from an absolute `CARGO_MANIFEST_DIR`.
+#[test]
+fn build_and_preview_report_the_ancestor_in_the_same_spelling_as_the_subject() {
+    let root = repo_root();
+    let dir = "corpus/tech-blog/posts";
+
+    let (build_ok, _o, build_err) = run_in(&root, &["build", dir]);
+    assert!(!build_ok, "a project subdirectory is not itself a project");
+    assert!(
+        build_err.contains("its ancestor corpus/tech-blog is a project"),
+        "the ancestor must be spelled the same way the (relative) subject was: {build_err}"
+    );
+    assert!(
+        build_err.contains("taliesin build corpus/tech-blog"),
+        "the suggested command must use the same relative spelling: {build_err}"
+    );
+    assert!(
+        !build_err.contains(env!("CARGO_MANIFEST_DIR")),
+        "must not fall back to an absolute path when the subject was relative: {build_err}"
+    );
+
+    let (preview_ok, _o, preview_err) = run_in(&root, &["preview", dir, "4399"]);
+    assert!(
+        !preview_ok,
+        "a project subdirectory is not itself a project"
+    );
+    assert!(
+        preview_err.contains("its ancestor corpus/tech-blog is a project"),
+        "preview must render the ancestor the same way build does: {preview_err}"
+    );
+    assert!(
+        preview_err.contains("taliesin preview corpus/tech-blog"),
+        "the suggested command must use the same relative spelling: {preview_err}"
+    );
+    assert!(
+        !preview_err.contains(env!("CARGO_MANIFEST_DIR")),
+        "must not fall back to an absolute path when the subject was relative: {preview_err}"
     );
 }
 
