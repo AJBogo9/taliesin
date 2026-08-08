@@ -65,3 +65,37 @@ fn preview_of_a_non_project_directory_is_rejected_with_guidance() {
         "offers the name-one-document fix: {stderr}"
     );
 }
+
+/// The contract: for a document with no ancestor `_site.yml`, what `preview` serves and what
+/// `build` writes carry the same chrome. This is the assertion the "Home" button bug failed.
+#[test]
+fn a_standalone_document_builds_without_site_chrome() {
+    let out = std::env::temp_dir().join(format!(
+        "tali-standalone-chrome-{}.html",
+        std::process::id()
+    ));
+    let out_s = out.to_string_lossy().into_owned();
+    let (ok, _o, stderr) = run(&[
+        "build",
+        &corpus("agent/executed-read.tmd"),
+        &out_s,
+        "--no-exec",
+    ]);
+    assert!(ok, "single-document build; stderr: {stderr}");
+    let html = std::fs::read_to_string(&out).expect("built page");
+    let _ = std::fs::remove_file(&out);
+
+    for marker in [
+        "tali-site-nav",
+        "tali-nav-brand",
+        "tali-nav-burger",
+        "tali-site-footer",
+    ] {
+        assert!(
+            !html.contains(marker),
+            "a standalone document must carry no `{marker}`"
+        );
+    }
+    // The reader affordances stay: they are personal, not project, chrome.
+    assert!(html.contains("tali-theme-toggle"), "theme toggle survives");
+}
