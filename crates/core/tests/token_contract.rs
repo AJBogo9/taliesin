@@ -21,8 +21,6 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-block-id",
     "data-code-lines",
     "data-cw-lines",
-    "data-debug-inputs",
-    "data-debug-name",
     "data-inputs",
     "data-name",
     "data-scrolly-name",
@@ -40,11 +38,9 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-state",
     "data-tali-cell",
     "data-tali-input",
-    "data-tali-js-src",
     "data-tali-out",
     "data-tali-out-for",
     "data-tali-theorem-kind",
-    "data-tali-trace",
     "data-tali-xref",
     "data-target",
     "data-viewof",
@@ -75,13 +71,9 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-background-repeat",
     "data-background-size",
     "data-block-id",
-    "data-c",
     "data-code-lines",
     "data-cw-init",
     "data-cw-lines",
-    "data-dbg-init",
-    "data-debug-inputs",
-    "data-debug-name",
     "data-drawer-wired",
     "data-i",
     "data-inputs",
@@ -91,7 +83,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-name",
     "data-nav-wired",
     "data-processed",
-    "data-r",
     "data-script-secs",
     "data-scroll-a11y",
     "data-scrolly-init",
@@ -113,7 +104,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-drawer-close",
     "data-tali-input",
     "data-tali-input-bound",
-    "data-tali-js-src",
     "data-tali-n",
     "data-tali-op",
     "data-tali-out",
@@ -127,13 +117,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-src",
     "data-tali-theme-toggle",
     "data-tali-theorem-kind",
-    // Still no real browser consumer even with `debug.js` landed: it reads the panel's
-    // trace off `script.tali-debug-trace` directly and never needs to ask "was THIS cell
-    // the traced one" from the DOM, so this marker stays what `is_traced_cell` (divs.rs)
-    // already made it, a build-time-only Rust string needle. Swept into this list because
-    // it's a string literal in emit.rs, which this scan includes wholesale since the
-    // file's doc comments happen to mention `<script>` elsewhere.
-    "data-tali-trace",
     "data-tali-xref",
     "data-target",
     "data-theme",
@@ -146,15 +129,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
 /// because "nothing selects on this" is otherwise indistinguishable from "the
 /// rename moved the emitter and forgot the consumer".
 const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
-    (
-        "data-tali-trace",
-        "build-time only: divs.rs's is_traced_cell and exec.rs's CellRef.traced both scan for \
-         it as a Rust string needle; debug.js finds a block's own trace off `script.tali-debug-\
-         trace` (a class, not this attribute) and never needs to ask \"was THIS cell the traced \
-         one\" from the DOM. First reachable from a rendered corpus doc now that corpus/debug/ \
-         exists (Task 7); the same fact was already recorded once in \
-         BROWSER_SELECTED_DATA_ATTRS's own comment on this name.",
-    ),
     (
         "data-tali-theorem-kind",
         "build-time only: render/mod.rs:2188 scans for it as a Rust string needle while numbering theorems",

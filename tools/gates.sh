@@ -72,12 +72,6 @@ CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
 # Rust EMITTED into the stylesheet — all of which stays green with pagination entirely
 # broken, including the failure mode that produces a plausible but truncated PDF.
 CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
-# A canary independent of the python kernel canary above: the `#| trace: true`
-# debug harness. `CANARY_KERNEL` only proves a Python kernel runs at all; this is the
-# only thing that proves the `sys.settrace` harness runs inside one, embeds a trace
-# blob, and derives its `reads` correctly, all of which stays green if the harness
-# itself silently produced no output (the whole failure mode this test exists to catch).
-CANARY_DEBUG_TRACE="traced_python_records_a_line_per_step_with_locals_and_writes"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -280,8 +274,7 @@ else
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
             "chrome (reactive client):$CANARY_REACTIVE" \
-            "chrome (print track):$CANARY_PRINT" \
-            "debug trace:$CANARY_DEBUG_TRACE"; do
+            "chrome (print track):$CANARY_PRINT"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

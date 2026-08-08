@@ -192,7 +192,7 @@ pub(super) fn deck_page_from_doc(
             "<script>{DECK_JS}</script>\n\
              <script>\n  TaliesinDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
              {}\n",
-            code_scripts_for(&slides, mode, true)
+            code_scripts_for(&slides, mode)
         ),
         AssetMode::External(a) => {
             // Mermaid keeps its own conditional file (shared with the site's pages, which is

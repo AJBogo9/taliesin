@@ -42,7 +42,18 @@ pub(crate) fn project(blocks: &[Block]) -> String {
 /// heading/figure/callout/pre by its leading element, everything else by visible text.
 fn project_block(b: &Block) -> String {
     // A code cell: fence its source with the language, whether or not it executed. (In
-    // parse-only `read` there is no output to show; the source is what the agent wrote.)
+    // parse-only projection there is no output to show; the source is what was written.)
+    //
+    // Deliberately generic — it asks the BLOCK for a `Cell`, it does not ask what kind of
+    // block it is. A top-level cell is what reaches it today, and
+    // `projects_code_cell_fenced` witnesses that. The other shape it used to
+    // serve, a `:::` CONTAINER block carrying a folded cell of its own, is unreachable as
+    // of 2026-08-08: `.debug` was the only construct that ever hoisted a child's `Cell`
+    // onto its container, and `divs::build_container` now sets `cell: None`
+    // unconditionally. So the branch is fully exercised, but only on one of its two former
+    // inputs; keep it shaped this way rather than narrowing it to `is_code_block`, so a
+    // future container that folds a cell projects its source instead of silently
+    // projecting nothing.
     if let Some(cell) = &b.cell {
         return fenced_code(&cell.lang, &cell.code);
     }
@@ -945,32 +956,6 @@ mod tests {
         assert!(
             out.find("def m_step").unwrap() < out.find("[lines 2]").unwrap(),
             "code before narration:\n{out}"
-        );
-    }
-
-    #[test]
-    fn projects_a_debug_block_as_its_code_so_reading_form_and_search_are_not_empty() {
-        // No dedicated `.debug` arm exists in `project_block` (unlike `.code-walkthrough`'s
-        // `project_steps`), and none is needed: `divs.rs` already carries the traced cell's
-        // own `Cell` onto the `.tali-debug` container block (`debug_cell`, added so the
-        // executor can find it once the div is folded into one composite HTML string), and
-        // `project_block`'s very first check fences ANY block that carries a `Cell` with its
-        // language, before ever looking at `html`. That generic branch already does exactly
-        // what a `.debug`-specific arm would: the reader gets the algorithm's source, fenced,
-        // with no transport/variables/stage chrome (which is browser-only structure with
-        // nothing for a text reader to see). Kept as an explicit regression pin rather than
-        // relying on that being an accident of two other tasks' plumbing.
-        let doc = crate::render_document(
-            "::: {.debug name=\"d\"}\n```{python}\n#| trace: true\na = [2, 1]\n```\n:::\n",
-        );
-        let out = project(&doc.blocks);
-        assert!(
-            out.contains("a = [2, 1]"),
-            "the algorithm's source must survive:\n{out}"
-        );
-        assert!(
-            !out.contains("tali-debug"),
-            "no markup leaks into the text form:\n{out}"
         );
     }
 

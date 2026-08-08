@@ -227,9 +227,5 @@ pub(super) fn parse_js_opts(literal: &str, lang: &str) -> JsOpts {
                     .collect()
             })
             .unwrap_or_default(),
-        // Same literal match `emit.rs`'s own `trace_attr` uses; kept in that exact
-        // form (not the `cell_flag_or` boolean normalizer) so the two agree on every
-        // input rather than one accepting `yes`/`on` and the other not.
-        trace: cell_option(literal, "trace") == Some("true"),
     }
 }

@@ -55,7 +55,6 @@ mod serve_site;
 mod session;
 #[cfg(test)]
 mod testutil;
-mod trace_py;
 mod warm_pool;
 
 use std::process::ExitCode;

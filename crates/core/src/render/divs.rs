@@ -349,7 +349,6 @@ pub(crate) fn group_divs(
     spans: &[DivSpan],
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
-    debug_names: &mut HashSet<String>,
     warnings: &mut Vec<Warning>,
 ) -> Vec<Block> {
     struct Open<'a> {
@@ -416,14 +415,7 @@ pub(crate) fn group_divs(
         while let Some(top) = stack.last() {
             if top.span.close < next_start {
                 let done = stack.pop().unwrap();
-                let container = build_container(
-                    done.span,
-                    done.inner,
-                    origins,
-                    counts,
-                    debug_names,
-                    warnings,
-                );
+                let container = build_container(done.span, done.inner, origins, counts, warnings);
                 push_block(&mut stack, &mut result, container);
             } else {
                 break;
@@ -432,29 +424,8 @@ pub(crate) fn group_divs(
     }
     // Close anything still open (e.g. unterminated div at EOF).
     while let Some(done) = stack.pop() {
-        let container = build_container(
-            done.span,
-            done.inner,
-            origins,
-            counts,
-            debug_names,
-            warnings,
-        );
+        let container = build_container(done.span, done.inner, origins, counts, warnings);
         push_block(&mut stack, &mut result, container);
-    }
-    // A traced cell that never made it into a `.debug` div: every div type folds its
-    // inner blocks into ONE composite top-level `Block` (this function's own loop above,
-    // via `build_container`), so a stray `#| trace: true` (bare, or nested inside some
-    // OTHER div) is still findable as a top-level `result` entry whose html carries the
-    // trace marker without the `.debug` container's own class alongside it.
-    for b in &result {
-        if let Some(w) = super::validate::validate_stray_trace(
-            &b.html,
-            sourcepos_start_line(&b.sourcepos),
-            b.source_file.clone(),
-        ) {
-            warnings.push(w);
-        }
     }
     result
 }
@@ -562,39 +533,6 @@ fn attr_value(tag: &str, name: &str) -> Option<String> {
     (!rest[..end].is_empty()).then(|| rest[..end].to_string())
 }
 
-/// Whether an already-emitted block is a cell marked `trace: true`. The emitter has
-/// stripped the `#|`/`//|` directive lines out of the displayed source by this point, so
-/// the marker is read off the attribute `emit.rs` leaves behind, never by re-scanning the
-/// source text.
-fn is_traced_cell(b: &Block) -> bool {
-    b.html.contains("data-tali-trace=\"1\"")
-}
-
-/// Whether a folded child block is a rendered code block (a cell or a plain fence).
-fn is_code_block(b: &Block) -> bool {
-    b.html.contains("<pre") && b.html.contains("<code")
-}
-
-/// The child index a `::: {.debug}` turns into its stepped code panel: the traced cell,
-/// else the first code block.
-///
-/// The panel follows the trace, not document order. A `.debug` may hold more than one code
-/// block (`validate_debug` warns on it, but the div still renders), and if the traced cell
-/// isn't the first code block, showing the first one would silently step through code the
-/// reader never sees highlighted. Falling back to the first code block only when nothing is
-/// traced is covered by `validate_debug`'s "no traced cell" warning.
-///
-/// ONE definition because two callers need the same answer: the `.debug` branch builds the
-/// panel from it, and the nested-cell collection above skips exactly that child (a `.debug`
-/// hoists its traced cell onto the container's own `cell`, so collecting it as a nested cell
-/// too would run it twice per rebuild).
-fn debug_code_idx(inner: &[Block]) -> Option<usize> {
-    inner
-        .iter()
-        .position(|b| is_code_block(b) && is_traced_cell(b))
-        .or_else(|| inner.iter().position(is_code_block))
-}
-
 /// The attribute marking a container's empty output slot, keyed by the folded cell's own
 /// block id.
 ///
@@ -667,7 +605,6 @@ fn build_container(
     mut inner: Vec<Block>,
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
-    debug_names: &mut HashSet<String>,
     warnings: &mut Vec<Warning>,
 ) -> Block {
     let attrs = parse_attrs(&span.attrs);
@@ -681,34 +618,19 @@ fn build_container(
 
     // A fenced-div's own composite block never carries a `Cell`: its children are
     // folded into one `html` string below, and by construction that folding is the
-    // only place their per-block identity survives. For `.debug` that is fatal to
-    // the whole feature, because `Executor::run_through` (crates/server/src/exec.rs)
-    // only scans TOP-LEVEL blocks for a `Cell` to run: once this container replaces
-    // its children in the flat list, a traced cell folded away with `cell: None`
-    // would never execute at all. Set below, inside the `.debug` branch, to the same
-    // cell `code_idx` there resolves to (the traced cell, or the first code block).
-    let mut debug_cell: Option<Cell> = None;
-
-    // Every OTHER folded cell has the same problem and, until item 210, the same fate: a
-    // `{python}` cell in a `.callout-note`, a `.panel-tabset` or a `layout-ncol` grid
-    // rendered and never ran. They are collected onto `Block::nested` here, each with an
-    // empty output slot left after it in the folded HTML, so the executor can run them in
-    // document order and put each output back where its cell sits. `.debug` is the one
-    // exception: it hoists its traced cell onto `debug_cell` instead, because `debug.js`
-    // reads that trace off the SIBLING block the executor splices in after the container
-    // (and collecting it here as well would run the cell twice per rebuild).
+    // only place their per-block identity survives. A folded cell would therefore have
+    // rendered and never run, because `Executor::run_through` (crates/server/src/exec.rs)
+    // only scans TOP-LEVEL blocks for a `Cell`. So every folded cell — a `{python}` cell
+    // in a `.callout-note`, a `.panel-tabset` or a `layout-ncol` grid — is collected onto
+    // `Block::nested` here, each with an empty output slot left after it in the folded
+    // HTML, so the executor can run them in document order and put each output back where
+    // its cell sits. There is no exception to this rule (`.debug` was the one, and it is
+    // gone).
     //
     // `group_divs` closes containers innermost-first, so a nested container has already
     // done this to its own children: taking its `nested` list wholesale flattens every
     // cell in the document to one level while each slot stays where it belongs inside the
-    // folded HTML. That is also what makes a `.debug` inside another div work, which
-    // `validate_nested_debug` used to have to warn about.
-    let debug_hoist = attrs
-        .classes
-        .iter()
-        .any(|c| c == "debug")
-        .then(|| debug_code_idx(&inner))
-        .flatten();
+    // folded HTML.
     //
     // Only a cell in a language the *kernel* runs earns a slot. A `{js}` cell mounts its
     // own live target client-side and never produces a server-side output block, so a slot
@@ -717,10 +639,10 @@ fn build_container(
     // (drift-locked to `exec::kernel_lang` by a test), so this asks it rather than
     // re-listing the languages.
     let mut nested: Vec<Block> = Vec::new();
-    for (i, b) in inner.iter_mut().enumerate() {
+    for b in inner.iter_mut() {
         nested.append(&mut b.nested);
         let runs = b.cell.as_ref().is_some_and(|c| executes_to_kernel(&c.lang));
-        if runs && Some(i) != debug_hoist {
+        if runs {
             b.html.push_str(&output_slot(b));
             nested.push(b.clone());
         }
@@ -791,104 +713,6 @@ fn build_container(
             .map(|b| super::emit::wrap_pre_lines(&b.html))
             .collect();
         format!("<div class=\"magic-move\"{data}>{body}</div>")
-    } else if attrs.classes.iter().any(|c| c == "debug") {
-        // Algorithm debug mode: the first code block becomes the stepped panel, the rest
-        // (a `{js}` view cell, prose) ride alongside. `debug.js` builds the transport bar,
-        // the variables panel and the data views from the trace at runtime, so the server
-        // emits only structure. Line-wrapped with the SAME helper magic-move and the
-        // walkthrough use, so the cursor reuses the `.tali-hl-ln` contract already styled
-        // in base.css instead of inventing a second one.
-        //
-        // `.column-page` is applied here rather than left to the author: the reading
-        // measure (~70ch) cannot hold a code panel beside a data view, and requiring
-        // `::: {.debug .column-page}` would make every author repeat the same escape.
-        let traced = inner.iter().filter(|b| is_traced_cell(b)).count();
-        // Resolved once, above, because the nested-cell collection has to skip exactly the
-        // child this hoists (see `debug_code_idx`).
-        let code_idx = debug_hoist;
-        let name = attrs.get("name").filter(|n| !n.is_empty());
-        for w in super::validate::validate_debug(
-            traced,
-            code_idx.is_some(),
-            name.is_some(),
-            open_line,
-            file.clone(),
-        ) {
-            warnings.push(w);
-        }
-        // Two `.debug` blocks sharing one `name=` overwrite each other's
-        // `tali.frame(name)` registry entry AND fight over one `[data-tali-input]`
-        // bridge (`debug.js`'s `registry`/`mount`): a silent collision this project
-        // treats as an authoring mistake, not a supported pattern. First definition
-        // wins (kept in `debug_names`), the SECOND is the one located, matching
-        // `register_xref`'s "keep first, warn on the duplicate" rule.
-        if let Some(n) = name
-            && !debug_names.insert(n.to_string())
-        {
-            warnings.push(super::validate::validate_duplicate_debug_name(
-                n,
-                open_line,
-                file.clone(),
-            ));
-        }
-        let hidden = match name {
-            Some(n) => format!(
-                "<input type=\"hidden\" class=\"tali-debug-input\" data-tali-input=\"{}\" value=\"0\">",
-                escape_attr(n)
-            ),
-            None => String::new(),
-        };
-        let name_attr = match name {
-            Some(n) => format!(" data-debug-name=\"{}\"", escape_attr(n)),
-            None => String::new(),
-        };
-        let code_id = format!("{}-code", block_id_of(&data).unwrap_or_default());
-        match code_idx {
-            Some(i) => {
-                let panel = super::emit::wrap_pre_lines(&inner[i].html);
-                // Carry the panel cell's own `Cell` onto the container (see the
-                // `debug_cell` declaration above): this is what makes the traced
-                // cell reachable by the executor at all once its block is folded
-                // away below.
-                debug_cell = inner[i].cell.clone();
-                // A traced `{js}` cell's own `//| input:` names, so `debug.js` knows
-                // which reactive inputs should re-capture and re-render this block
-                // when they change (the JS adapter's whole reason to exist over the
-                // Python one: the reader can change the input and re-run). The server
-                // strips `//|` option lines from the displayed source, so this is the
-                // only place those names survive into the DOM. `debug_cell.js.inputs`
-                // is empty for a Python cell (options are only parsed for a
-                // client-side language), so the attribute is simply absent there.
-                let inputs_attr = debug_cell
-                    .as_ref()
-                    .filter(|c| !c.js.inputs.is_empty())
-                    .map(|c| {
-                        format!(
-                            " data-debug-inputs=\"{}\"",
-                            escape_attr(&c.js.inputs.join(","))
-                        )
-                    })
-                    .unwrap_or_default();
-                let rest: String = inner
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(j, b)| (j != i).then_some(b.html.as_str()))
-                    .collect();
-                format!(
-                    "<div class=\"tali-debug column-page\" role=\"group\" \
-                     aria-label=\"Algorithm debugger\"{data}{name_attr}{inputs_attr}>\
-                     {hidden}<div class=\"dbg-code\" id=\"{code_id}\">{panel}</div>\
-                     <div class=\"dbg-views\">{rest}</div></div>"
-                )
-            }
-            None => {
-                let body = concat(&inner);
-                format!(
-                    "<div class=\"tali-debug column-page\"{data}{name_attr}>\
-                     <div class=\"dbg-views\">{body}</div></div>"
-                )
-            }
-        }
     } else if attrs.classes.iter().any(|c| c == "code-walkthrough") {
         // Narrated code walkthrough: the first code block becomes a sticky panel; the
         // remaining blocks (the `.step` divs) scroll alongside it and drive line-range
@@ -1144,7 +968,9 @@ fn build_container(
         sourcepos,
         source_file: file,
         html,
-        cell: debug_cell,
+        // A container never carries a `Cell` of its own: every folded cell that runs is
+        // collected onto `nested` above, with an output slot left where it sits.
+        cell: None,
         nested,
     }
 }

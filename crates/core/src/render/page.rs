@@ -271,7 +271,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 String::new()
             };
             let style_block = format!(
-                "<style>{FONTS_CSS}{TOKENS_CSS}{tokens_dark}{BASE_CSS}{DEBUG_CSS}{dark}{site_css}{bare_theme}</style>"
+                "<style>{FONTS_CSS}{TOKENS_CSS}{tokens_dark}{BASE_CSS}{dark}{site_css}{bare_theme}</style>"
             );
             let katex_block = if p.ship_katex {
                 format!("\n<style>{KATEX_CSS}</style>")
@@ -289,7 +289,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             };
             // Never a deck: `page_from_doc` dispatches `DocFormat::Reveal` to
             // `deck::deck_page_from_doc` before this assembler ever runs.
-            let framework_scripts = code_scripts_for(p.body, p.mode, false);
+            let framework_scripts = code_scripts_for(p.body, p.mode);
             (style_block, katex_block, js_head_html, framework_scripts)
         }
         AssetMode::External(a) => {
@@ -341,22 +341,16 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // cells are `{glsl}` needs it just as much. Each language's own enhancer
             // follows it inline (and must, since it calls `window.taliJs.registerLanguage`
             // on the object this script has just defined).
-            // Also opens for a traced `{js}` debug cell (`data-tali-js-src`): it never
-            // emits a live `application/tali-js` script (`has_client_cells` alone would
-            // miss it), but `debug.js` still needs `window.taliJs.runDebugSource` from
-            // this file to run the captured generator. See the identical reasoning on
-            // `code_scripts_for`'s `talijs_s` gate.
-            let tali_js_inline =
-                if !bare && (has_client_cells(p.body) || p.body.contains("data-tali-js-src")) {
-                    let glsl = if has_client_cells_of(p.body, "glsl") {
-                        format!("\n<script>{GLSL_JS}</script>")
-                    } else {
-                        String::new()
-                    };
-                    format!("\n<script>{TALIESIN_JS}</script>{glsl}")
+            let tali_js_inline = if !bare && has_client_cells(p.body) {
+                let glsl = if has_client_cells_of(p.body, "glsl") {
+                    format!("\n<script>{GLSL_JS}</script>")
                 } else {
                     String::new()
                 };
+                format!("\n<script>{TALIESIN_JS}</script>{glsl}")
+            } else {
+                String::new()
+            };
             // The registry itself is emitted in <head> (see `enhancer_registry` above), so this
             // is just the deferred bundle. app.js stays deferred (non-blocking): when it runs
             // after parse, its own bundled `01-registry` copy hits

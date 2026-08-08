@@ -29,7 +29,6 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "name",   // {js}
     "viewof", // {js}
     "input",  // {js}
-    "trace",  // {python}/{js} inside `::: {.debug}`
 ];
 
 /// Callout kinds taliesin recognizes (`::: {.callout-<kind>}`).
@@ -63,7 +62,6 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "panel-tabset",
     "code-walkthrough",
     "scrolly",
-    "debug",
     "magic-move",
     "step",
     "column-margin",
@@ -124,92 +122,6 @@ pub(crate) fn validate_cell_options(
                 .at(file.clone(), line)
         })
         .collect()
-}
-
-/// Validate a `trace:` cell option's VALUE. [`validate_cell_options`] above already
-/// covers the KEY (a typo/unknown option name); this is the separate question of whether
-/// the value taliesin actually reads is well-formed. `cell_option`/`JsOpts::trace`
-/// (`cell_extract.rs`) match the raw value against the literal string `"true"` and treat
-/// anything else (`false`, but also a typo like `yes`/`True`/`1`) as "not traced",
-/// which is silent by construction: an author who writes `#| trace: yes` gets a plain,
-/// unstepped code block with no explanation at all. `false` is the other legal spelling
-/// (an explicit opt-out) and does not warn; every other value does. `fence_line` is the
-/// 1-based source line of the cell's opening fence, matching [`validate_cell_options`].
-pub(crate) fn validate_trace_value(
-    literal: &str,
-    fence_line: usize,
-    file: Option<String>,
-) -> Option<Warning> {
-    for (i, line) in literal.lines().enumerate() {
-        let opt = super::option_directive(line)?;
-        let Some((k, v)) = opt.split_once(':') else {
-            continue;
-        };
-        if k.trim() != "trace" {
-            continue;
-        }
-        let v = v.trim().trim_matches(['"', '\'']);
-        return (v != "true" && v != "false").then(|| {
-            Warning::new(format!("`trace:` expects `true` or `false`, not `{v}`"))
-                .at(file, (fence_line + 1 + i) as u32)
-        });
-    }
-    None
-}
-
-/// The cell languages `trace:` can actually step, and the whole set. `{python}` is
-/// recorded server-side by the `sys.settrace` harness (`crates/server/src/trace_py.rs`);
-/// `{js}` is captured in the browser by draining a generator (`assets/js/debug.js`).
-/// Nothing else has an adapter, and `docs/guide/reference/cell-options.tmd` documents
-/// exactly this pair.
-pub(crate) const TRACE_LANGS: &[&str] = &["python", "js"];
-
-/// Validate that a `#| trace: true` cell is in a language taliesin can step. Everything
-/// upstream of the executor is language-blind: `emit.rs` stamps `data-tali-trace="1"` on
-/// any cell carrying the option, and `divs.rs` counts any such cell as the `.debug` div's
-/// traced one. An `{r}` cell (the only *reachable* miss: `{js}` never reaches the
-/// executor, and no other language is in the trace path at all) therefore used to be fed
-/// the PYTHON harness's source to its own kernel, and the reader got
-/// `Error in parse(text = input): <text>:2:5: unexpected input` where a stepper should be
-/// while `taliesin check` reported nothing at all, because the `.debug` div was perfectly
-/// satisfied that it had found its one traced cell. The executor now refuses to wrap a
-/// non-Python cell; this is the half that tells the author why. A malformed VALUE is
-/// [`validate_trace_value`]'s job, so only the literal `true` (the same match `emit.rs`
-/// makes) warns here. `fence_line` is the 1-based source line of the cell's opening fence,
-/// matching [`validate_cell_options`].
-pub(crate) fn validate_trace_language(
-    lang: &str,
-    literal: &str,
-    fence_line: usize,
-    file: Option<String>,
-) -> Option<Warning> {
-    if TRACE_LANGS.contains(&lang) {
-        return None;
-    }
-    for (i, line) in literal.lines().enumerate() {
-        let opt = super::option_directive(line)?;
-        let Some((k, v)) = opt.split_once(':') else {
-            continue;
-        };
-        if k.trim() != "trace" {
-            continue;
-        }
-        if v.trim().trim_matches(['"', '\'']) != "true" {
-            return None;
-        }
-        let supported = TRACE_LANGS
-            .iter()
-            .map(|l| format!("`{{{l}}}`"))
-            .collect::<Vec<_>>()
-            .join(" and ");
-        return Some(
-            Warning::new(format!(
-                "`trace:` cannot step a `{{{lang}}}` cell; only {supported} can be stepped"
-            ))
-            .at(file, (fence_line + 1 + i) as u32),
-        );
-    }
-    None
 }
 
 /// Validate a callout kind (the `<kind>` in `.callout-<kind>`) against
@@ -282,6 +194,11 @@ pub(crate) fn validate_div_class(
 /// file's `mod tests` derives the rest (gone from the live vocabulary, warns with this note
 /// and no did-you-mean, CSS rule gone), so no hand-written test is owed.
 pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
+    (
+        "debug",
+        "it was removed on 2026-08-08 along with the algorithm stepper and `#| trace:`, \
+         and nothing replaces it",
+    ),
     (
         "columns",
         "it was removed on 2026-08-02: `{layout-ncol=N}` is the same grid and the only \
@@ -391,83 +308,6 @@ pub(crate) fn validate_walkthrough(
         )
         .at(file, line as u32)
     })
-}
-
-/// Validate a `::: {.debug}` container. Purely diagnostic: the div still renders, and a
-/// reader gets a plain code panel rather than a blank box.
-///
-/// `named` is whether the div carried `name=`. An unnamed `.debug` is legal (the stepper
-/// works; it just cannot be addressed from a `{js}` view cell), so it is NOT a warning
-/// here. The unaddressable-view case is caught where the `//| input:` edge is resolved.
-pub(crate) fn validate_debug(
-    traced_cells: usize,
-    has_code: bool,
-    _named: bool,
-    line: usize,
-    file: Option<String>,
-) -> Vec<Warning> {
-    let mut out = Vec::new();
-    if !has_code {
-        out.push(
-            Warning::new("`.debug` has no code block to step through".to_string())
-                .at(file.clone(), line as u32),
-        );
-    } else if traced_cells == 0 {
-        out.push(
-            Warning::new(
-                "`.debug` has no traced cell: mark one with `#| trace: true` \
-                 (or `//| trace: true` for a `{js}` generator)"
-                    .to_string(),
-            )
-            .at(file.clone(), line as u32),
-        );
-    } else if traced_cells > 1 {
-        out.push(
-            Warning::new(
-                "`.debug` has more than one traced cell; only the first is traced".to_string(),
-            )
-            .at(file, line as u32),
-        );
-    }
-    out
-}
-
-/// Warn on a traced cell (`#| trace: true` / `//| trace: true`) that never made it into a
-/// `.debug` div's own composite block: a stray `#| trace: true` on an ordinary showcase
-/// cell, or one folded into some OTHER div type (a callout, say). The cell's full trace
-/// still runs (real kernel work for Python, a real client-side capture for JS) for a
-/// `<script>` blob no `.tali-debug` container will ever exist to read back: work for
-/// nothing, with no explanation. `html` is the already-rendered block's full HTML (a
-/// `.debug` div's OWN composite block carries both the trace marker, from its embedded
-/// code panel, AND its own `tali-debug` class, so this only fires when the marker shows
-/// up WITHOUT that class alongside it).
-pub(crate) fn validate_stray_trace(html: &str, line: u32, file: Option<String>) -> Option<Warning> {
-    (html.contains("data-tali-trace=\"1\"") && !html.contains("class=\"tali-debug")).then(|| {
-        Warning::new("`#| trace: true` has no effect outside a `::: {.debug}` div".to_string())
-            .at(file, line)
-    })
-}
-
-/// Warn on a SECOND `::: {.debug name="…"}` on the same page reusing a `name=` an
-/// earlier `.debug` block already claimed. `debug.js`'s registry keys `tali.frame(name)`
-/// by that one string and stamps `data-debug-name`/`[data-tali-input]` from it too, so two
-/// blocks sharing a name overwrite each other's registry entry (whichever mounted or
-/// re-captured LAST wins) and their hidden inputs fight over the same reactive-graph edge
-/// and the same URL fragment. Purely diagnostic: both divs still render and step
-/// independently; only the shared name is broken. `line` is the 1-based source line of
-/// the DUPLICATE (the second) `.debug` block's own opening fence, the same "locate the
-/// duplicate, keep the first" convention `register_xref`'s own warning uses.
-pub(crate) fn validate_duplicate_debug_name(
-    name: &str,
-    line: usize,
-    file: Option<String>,
-) -> Warning {
-    Warning::new(format!(
-        "duplicate `.debug` name \u{201c}{name}\u{201d}: another `.debug` block on this \
-         page already uses it, and `tali.frame(\"{name}\")` plus the hidden reactive \
-         input both collide between the two"
-    ))
-    .at(file, line as u32)
 }
 
 /// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
@@ -935,95 +775,5 @@ mod tests {
     #[test]
     fn scrolly_complete_is_clean() {
         assert!(validate_scrolly(true, true, 1, None).is_empty());
-    }
-
-    #[test]
-    fn debug_diagnostics_cover_every_authoring_mistake() {
-        // No traced cell: the block would render a dead code panel.
-        let w = validate_debug(0, true, true, 7, Some("a.tmd".into()));
-        assert_eq!(w.len(), 1, "expected exactly one warning, got {w:?}");
-        assert!(
-            w[0].message.contains("trace: true"),
-            "must name the fix: {}",
-            w[0].message
-        );
-        assert_eq!(w[0].line, Some(7), "must be click-to-source locatable");
-
-        // Two traced cells: only the first is traced, so say so.
-        let w = validate_debug(2, true, true, 3, None);
-        assert_eq!(w.len(), 1, "{w:?}");
-        assert!(w[0].message.contains("only the first"), "{}", w[0].message);
-
-        // No code block at all.
-        let w = validate_debug(0, false, true, 3, None);
-        assert!(
-            w.iter().any(|x| x.message.contains("no code block")),
-            "a bodyless .debug must warn: {w:?}"
-        );
-
-        // The healthy case is silent.
-        assert!(validate_debug(1, true, true, 3, None).is_empty());
-        assert!(
-            validate_debug(1, true, false, 3, None).is_empty(),
-            "an unnamed .debug is legal (it just cannot be addressed from a view cell)"
-        );
-    }
-
-    /// `validate_duplicate_debug_name` names both the colliding name and the two things
-    /// that actually break: `tali.frame(name)` and the hidden reactive input, and locates
-    /// on the DUPLICATE (the caller's job is to pass the second block's own line, kept
-    /// separate from the first's).
-    #[test]
-    fn duplicate_debug_name_warning_names_the_collision_and_locates_the_duplicate() {
-        let w = validate_duplicate_debug_name("sort", 12, Some("a.tmd".into()));
-        assert!(w.message.contains("sort"), "{}", w.message);
-        assert!(w.message.contains("tali.frame"), "{}", w.message);
-        assert!(
-            w.message.contains("reactive input"),
-            "must call out the SECOND collision, not just the registry: {}",
-            w.message
-        );
-        assert_eq!(w.line, Some(12));
-        assert_eq!(w.file.as_deref(), Some("a.tmd"));
-    }
-
-    #[test]
-    fn a_non_boolean_trace_value_warns_by_name() {
-        let w = validate_trace_value("#| trace: yes\na = 1\n", 10, Some("a.tmd".into()))
-            .expect("a non-boolean value must warn");
-        assert!(
-            w.message.contains("yes") && w.message.contains("true") && w.message.contains("false"),
-            "must name the bad value and both legal ones: {}",
-            w.message
-        );
-        assert_eq!(w.line, Some(11), "the trace: line itself, not the fence");
-
-        // Both legal spellings are silent.
-        assert!(validate_trace_value("#| trace: true\na = 1\n", 1, None).is_none());
-        assert!(validate_trace_value("#| trace: false\na = 1\n", 1, None).is_none());
-        // No `trace:` option at all is silent (nothing to validate).
-        assert!(validate_trace_value("#| echo: false\na = 1\n", 1, None).is_none());
-        assert!(validate_trace_value("a = 1\n", 1, None).is_none());
-    }
-
-    #[test]
-    fn a_traced_cell_outside_debug_warns_that_trace_has_no_effect() {
-        // A bare traced cell, no div at all.
-        let html = "<pre data-tali-trace=\"1\"><code>a = 1</code></pre>";
-        let w = validate_stray_trace(html, 5, Some("a.tmd".into())).expect("must warn");
-        assert!(w.message.contains("no effect"), "{}", w.message);
-        assert_eq!(w.line, Some(5));
-
-        // Folded into some OTHER div (a callout): still stray.
-        let html = "<div class=\"callout callout-note\"><pre data-tali-trace=\"1\"><code>a = 1</code></pre></div>";
-        assert!(validate_stray_trace(html, 1, None).is_some());
-
-        // Claimed by a real `.debug` div (the container's own composite html carries
-        // both markers): silent.
-        let html = "<div class=\"tali-debug column-page\"><div class=\"dbg-code\"><pre data-tali-trace=\"1\"><code>a = 1</code></pre></div></div>";
-        assert!(validate_stray_trace(html, 1, None).is_none());
-
-        // No trace marker at all: silent.
-        assert!(validate_stray_trace("<pre><code>a = 1</code></pre>", 1, None).is_none());
     }
 }

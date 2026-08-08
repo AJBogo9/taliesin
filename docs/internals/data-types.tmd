@@ -51,9 +51,9 @@ in its own HTML after each one — a `<div class="tali-output">` carrying that c
 place, so a tab's output lands in that tab's own panel rather than below the whole tabset.
 
 Entries are flattened to one level (a container that folds another container takes its
-list wholesale), so an entry's own `nested` is always empty. `.debug` is the one exception
-to the whole mechanism: it hoists its traced cell onto the container's own `cell` instead,
-because `debug.js` reads that trace off the sibling output block.
+list wholesale), so an entry's own `nested` is always empty. The rule has no exception: a
+container block never carries a `Cell` of its own, so every folded cell that runs is
+reachable here and nowhere else.
 
 ### `Cell`
 

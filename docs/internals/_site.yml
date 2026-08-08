@@ -13,7 +13,6 @@ chapters:
   - data-types.tmd
   - protocol.tmd
   - execution.tmd
-  - debug-mode.tmd
   - server.tmd
   - client.tmd
   - validation.tmd

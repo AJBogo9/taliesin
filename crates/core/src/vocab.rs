@@ -131,10 +131,6 @@ fn cell_option_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("viewof", "Bind a `{js}` input control to this name."),
         ("input", "Reactive `{js}` inputs this cell depends on."),
-        (
-            "trace",
-            "Record this cell's execution so `::: {.debug}` can step through it.",
-        ),
     ]
 }
 
@@ -164,7 +160,6 @@ const DIV_CLASS_NAMES: &[&str] = &[
     "panel-tabset",
     "code-walkthrough",
     "scrolly",
-    "debug",
     "magic-move",
     "step",
     "column-margin",
@@ -182,10 +177,6 @@ fn div_classes() -> Value {
             ),
             ("code-walkthrough", "Step-through narrated code."),
             ("scrolly", "Scroll-driven storytelling section."),
-            (
-                "debug",
-                "Algorithm debugger: step a `#| trace: true` cell line by line.",
-            ),
             ("magic-move", "Animated code diff between steps."),
             (
                 "step",

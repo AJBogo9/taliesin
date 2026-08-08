@@ -123,35 +123,9 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("has no code block to show", "TAL-DIV-PARTS", WARNING),
     ("has no sticky stage", "TAL-DIV-PARTS", WARNING),
     ("has no `.step` divs", "TAL-DIV-PARTS", WARNING),
-    // `.debug`'s own "missing the part it needs" message: no code block at all to become
-    // the stepped panel. Same family as the three rows above (a `.code-walkthrough`/
-    // `.scrolly` reporting the identical shape of mistake), different wording only
-    // because a debugger "steps through" where a walkthrough "shows".
-    (
-        "has no code block to step through",
-        "TAL-DIV-PARTS",
-        WARNING,
-    ),
     // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
     // which a step's own comma-only parser silently focuses to zero lines.
     ("step separator", "TAL-STEP-LINES", WARNING),
-    // `::: {.debug}`'s `trace:` mechanism, misused seven ways: a `.debug` with no traced
-    // cell, one with more than one (only the first is ever stepped), `#| trace: true` on
-    // a cell that never made it into a `.debug` div at all (the trace still runs, for a
-    // `<script>` blob nothing will ever read), a `trace:` value that is neither `true` nor
-    // `false` (silently treated as absent by the same literal match that decides whether
-    // to trace at all), `trace:` on a language with no stepping adapter, and two `.debug`
-    // blocks on one page reusing the same `name=` (their
-    // `tali.frame(name)` registry entry and hidden reactive input collide). One family:
-    // every one of these is the same authoring mistake (the tracer and the `.debug` div
-    // disagreeing about what to step, or two `.debug` divs disagreeing about who owns a
-    // name), just caught at a different point.
-    ("has no traced cell", "TAL-DEBUG-TRACE", WARNING),
-    ("more than one traced cell", "TAL-DEBUG-TRACE", WARNING),
-    ("has no effect outside a", "TAL-DEBUG-TRACE", WARNING),
-    ("`trace:` expects", "TAL-DEBUG-TRACE", WARNING),
-    ("cannot step a", "TAL-DEBUG-TRACE", WARNING),
-    ("duplicate `.debug` name", "TAL-DEBUG-TRACE", WARNING),
     // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
     // which is dropped and renders nothing.
     ("no content between the", "TAL-EMPTY-DIV", WARNING),
@@ -466,17 +440,17 @@ const EXPLANATIONS: &[Explanation] = &[
     Explanation {
         code: "TAL-DIV-PARTS",
         title: "a feature div is missing a part it needs",
-        cause: "A `.panel-tabset`, `.code-walkthrough`, `.scrolly` or `.debug` has content \
-                but not the part that makes it work: a tabset builds its tabs from `##` \
-                headings, a walkthrough pins a code block in its sticky panel, a scrolly \
+        cause: "A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not \
+                the part that makes it work: a tabset builds its tabs from `##` \
+                headings, a walkthrough pins a code block in its sticky panel, and a scrolly \
                 needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to \
-                scroll past it, and a debugger needs a code block to step through. The \
+                scroll past it. The \
                 container still renders, just half-formed: a tab strip with no tabs, an \
-                empty sticky panel, a scroller that drives nothing, a stepper with nothing \
-                to step. Distinct from TAL-EMPTY-DIV, which is a feature div with no \
+                empty sticky panel, a scroller that drives nothing. Distinct from \
+                TAL-EMPTY-DIV, which is a feature div with no \
                 content at all.",
         fix: "Add the missing part named in the message: `##` headings inside the tabset, a \
-              fenced code block inside the walkthrough or the `.debug` div, or a stage and \
+              fenced code block inside the walkthrough, or a stage and \
               `.step` blocks inside the scrolly.",
     },
     Explanation {
@@ -519,27 +493,6 @@ const EXPLANATIONS: &[Explanation] = &[
                 the step silently focuses zero lines.",
         fix: "Use comma-separated ranges within the step (`lines=\"3-5,8\"`), and express \
               multiple reveal states as separate `.step` blocks — one per pipe group.",
-    },
-    Explanation {
-        code: "TAL-DEBUG-TRACE",
-        title: "a `::: {.debug}` div and its `trace:` option disagree",
-        cause: "`::: {.debug}` builds an algorithm stepper from exactly one traced cell, and \
-                `trace:` only means something on a `{python}` or `{js}` cell inside one of \
-                those divs. Six mistakes land here: a \
-                `.debug` with no `#| trace: true` (or `//| trace: true`) cell to step \
-                through, a `.debug` with more than one (only the first is ever stepped), \
-                `#| trace: true` on a cell that never made it into a `.debug` div at all (it \
-                still runs, and its full trace still gets recorded, for a script tag no \
-                widget will ever read), a `trace:` value that is neither `true` nor `false`, \
-                which the same literal match that decides whether to trace at all silently \
-                treats as absent, `trace:` on a cell in a language with no stepping adapter \
-                (an `{r}` cell cannot be recorded), and two `.debug` divs on the same \
-                page reusing the same `name=`, whose `tali.frame(name)` registry entry and \
-                hidden reactive input then collide between the two blocks.",
-        fix: "Mark exactly one `{python}` or `{js}` cell inside the `.debug` div \
-              `#| trace: true`, spell the value `true` or `false`, remove `trace:` from a \
-              cell that is not meant to be stepped, and give each named `.debug` block on \
-              a page its own `name=`.",
     },
     Explanation {
         code: "TAL-INPUT-TYPE",
@@ -968,47 +921,6 @@ mod tests {
         // No replacement exists, so no structured suggestion may be lifted: an agent must
         // not be handed a fix to apply.
         assert_eq!(extract_suggestion(&csl[0].message), None);
-    }
-
-    #[test]
-    fn every_debug_trace_diagnostic_classifies_as_the_named_family_not_the_generic_error() {
-        // All five `::: {.debug}`/`trace:` diagnostics (the div's own three, plus the two
-        // `trace:`-value diagnostics that live outside `validate_debug`) previously matched
-        // no TABLE needle at all and fell through to `(GENERIC, ERROR)`: a page with a
-        // `.debug` authoring slip failed `build --strict`/`publish` outright. This is the
-        // recurring shape recorded at the head of TABLE: a new warning with no needle here
-        // ships as an ERROR, so every family needs its own entry and its own pin. Produced
-        // by the real render path (not copied literals), so this can't drift from the
-        // shipped messages.
-        let no_traced_cell =
-            crate::render::render_document("::: {.debug}\n```{python}\na = 1\n```\n:::\n");
-        let two_traced = crate::render::render_document(
-            "::: {.debug}\n```{python}\n#| trace: true\na = 1\n```\n\n```{python}\n#| trace: true\nb = 2\n```\n:::\n",
-        );
-        let stray = crate::render::render_document("```{python}\n#| trace: true\na = 1\n```\n");
-        let bad_value = crate::render::render_document("```{python}\n#| trace: yes\na = 1\n```\n");
-        let cases: &[(&str, &str)] = &[
-            ("has no traced cell", "no traced cell"),
-            ("more than one traced cell", "more than one"),
-            ("has no effect outside a", "stray trace"),
-            ("`trace:` expects", "bad value"),
-        ];
-        for (doc, (needle, label)) in [&no_traced_cell, &two_traced, &stray, &bad_value]
-            .into_iter()
-            .zip(cases)
-        {
-            let w = doc
-                .warnings
-                .iter()
-                .find(|w| w.message.contains(*needle))
-                .unwrap_or_else(|| panic!("{label}: no warning containing {needle:?} in {doc:?}"));
-            assert_eq!(
-                classify(&w.message),
-                ("TAL-DEBUG-TRACE", WARNING),
-                "{label}: {}",
-                w.message
-            );
-        }
     }
 
     #[test]

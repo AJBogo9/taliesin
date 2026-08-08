@@ -164,37 +164,6 @@ pub(crate) fn kernel_lang(lang: &str) -> Option<&'static str> {
     }
 }
 
-/// Whether a cell block may be run under the `#| trace: true` harness. Two conditions,
-/// and the language one is load-bearing: `trace_py::wrap_traced` splices the author's code
-/// into a **Python** harness, while everything upstream of here is language-blind
-/// (`emit.rs` stamps `data-tali-trace="1"` on any cell carrying the option, and `divs.rs`
-/// counts any such cell as the `.debug` div's traced one). Without the `python` check an
-/// `{r}` cell was handed `def _tali_debug_run(_src):` to parse and the reader got
-/// `Error in parse(text = input): <text>:2:5: unexpected input` where a stepper belonged.
-/// `{js}` (the only other language `trace:` supports) is captured in the browser and never
-/// reaches this executor, so `{r}` was the sole reachable hole. The author-facing half of
-/// this fix is `render::validate::validate_trace_language`, which says so at the source
-/// line, so this gate is silent only because the warning is not.
-pub(crate) fn is_traced(lang: &str, html: &str) -> bool {
-    lang == "python" && html.contains("data-tali-trace=\"1\"")
-}
-
-/// The exact string a cell's freeze key is computed over.
-///
-/// A traced cell folds in a marker so toggling `#| trace: true` busts the cache:
-/// `strip_cell_options` already removed that directive from `code` (it is not code the kernel
-/// runs), so without this a cell whose UNTRACED output is cached would replay it instead of
-/// re-tracing. **One definition**, because two callers ask the same question from opposite
-/// sides — the executor asks "may I restore this output", the editor's code lens asks "is
-/// there one" — and a lens that answered from a different key would be a confident lie above
-/// the fence.
-pub(crate) fn cache_code(code: &str, traced: bool) -> String {
-    match traced {
-        true => format!("{code}\n#| trace: true"),
-        false => code.to_string(),
-    }
-}
-
 /// The interpreter identity that seeds a page's cumulative hash chain.
 ///
 /// Byte-identical output is load-bearing: this string is hashed into every freeze key, so any
@@ -232,7 +201,7 @@ pub(crate) struct CellCacheKey {
 /// The freeze key of every executable cell in `blocks`, in document order.
 ///
 /// The grouping is the same one [`Executor::run_through`] performs — by [`kernel_lang`], in
-/// document order — and the key is built from the same [`cache_code`] and
+/// document order — and the key is built over the same code with the same
 /// [`freeze::cumulative_hashes`], because the whole value of this function is that its answer
 /// is the executor's answer. `interp_of` is a parameter because the interpreter probe is
 /// async on the execution path and synchronous on the editor's; the *identity format* is
@@ -247,11 +216,10 @@ pub(crate) fn cell_cache_keys(
             if let Some(c) = &cell_block.cell
                 && let Some(lang) = kernel_lang(&c.lang)
             {
-                by_lang.entry(lang).or_default().push((
-                    i,
-                    cache_code(&c.code, is_traced(lang, &cell_block.html)),
-                    c.cache,
-                ));
+                by_lang
+                    .entry(lang)
+                    .or_default()
+                    .push((i, c.code.clone(), c.cache));
             }
         }
     }
@@ -288,15 +256,6 @@ struct CellRef {
     /// `#| cache: false`: never restore from / persist to the disk cache; always
     /// re-executes (the escape hatch for non-deterministic cells).
     cache: bool,
-    /// `#| trace: true` inside `::: {.debug}`: run under `trace_py::wrap_traced`
-    /// instead of verbatim. Read off the emitted `data-tali-trace="1"` attribute
-    /// rather than a `Cell` field: `render::Cell` carries no trace bit of its own
-    /// (Task 1 stamped only the `<pre>` attribute), and `divs.rs`'s own
-    /// `is_traced_cell` already reads the same attribute for the same reason, so
-    /// this mirrors that precedent instead of inventing a second channel for one bit.
-    ///
-    /// **Python only**, gated by [`is_traced`] above (see its doc comment for why).
-    traced: bool,
     /// Where this cell's output goes once it has run.
     out: OutTarget,
 }
@@ -322,9 +281,9 @@ enum OutTarget {
 /// live on [`Block::nested`] rather than on blocks of their own (item 210). They come
 /// first, because they are *inside* this block: a nested cell has to enter the kernel and
 /// the cumulative hash chain at the container's position in the document, not after it.
-/// `cell` and `nested` are disjoint in practice — only a `.debug` container sets `cell`,
-/// and it excludes from `nested` the one child it hoisted — but the order is fixed here
-/// rather than assumed, so a block that ever carried both could not reorder a run.
+/// `cell` and `nested` are disjoint in practice — a container block never carries a `cell`
+/// of its own — but the order is fixed here rather than assumed, so a block that ever
+/// carried both could not reorder a run.
 ///
 /// ONE definition, because two walks have to agree: the executor's, and the editor code
 /// lens's [`cell_cache_keys`]. The freeze key is a cumulative hash over exactly this
@@ -761,7 +720,6 @@ impl Executor {
                         table: c.table.clone(),
                         include: c.include,
                         cache: c.cache,
-                        traced: is_traced(lang, &cell_block.html),
                         out,
                     });
                 }
@@ -861,19 +819,8 @@ impl Executor {
             Some((_, program)) => interp_id(lang, &program).await,
             None => lang.to_string(),
         };
-        // A traced cell's hash key folds in a marker so toggling `#| trace: true` busts
-        // the cache. `strip_cell_options` already stripped that directive line out of
-        // `c.code` itself (it isn't code the kernel runs), so without this a cell whose
-        // UNTRACED output is already cached would silently replay it instead of
-        // re-tracing: same `c.code`, same key, `known(i)` reports a hit, and the wrap in
-        // the execute loop below never runs because the cell never re-executes at all.
-        // Only a traced cell's key changes, so an existing all-untraced cache stays hit.
-        let code_refs: Vec<String> = cells
-            .iter()
-            .map(|c| cache_code(&c.code, c.traced))
-            .collect();
-        let code_ref_strs: Vec<&str> = code_refs.iter().map(String::as_str).collect();
-        let hashes = freeze::cumulative_hashes(&interp, &code_ref_strs);
+        let code_refs: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
+        let hashes = freeze::cumulative_hashes(&interp, &code_refs);
 
         // A cell is "known" (restorable without running) when its output is on disk
         // and it isn't opted out (`#| cache: false` always re-executes). A forced
@@ -1098,15 +1045,6 @@ impl Executor {
                             ),
                         );
                     }
-                    // `#| trace: true` cells run under the settrace harness instead of
-                    // verbatim; everything downstream (hashing above, caching, the
-                    // output splice below) is unaware and treats the result as
-                    // ordinary cell output, which is the whole point (see trace_py.rs).
-                    let code = if cell.traced {
-                        crate::trace_py::wrap_traced(&cell.code)
-                    } else {
-                        cell.code.clone()
-                    };
                     // queued → running → done|error per cell. Only when a kernel is
                     // actually live: without one the cell is an instant no-op that
                     // stays honestly `queued` (it never ran), and we never emit
@@ -1138,7 +1076,9 @@ impl Executor {
                             .and_then(|s| s.kernel.as_ref())
                             .and_then(Kernel::pid),
                     );
-                    let out = self.exec_cell(lang, &code, &cell.id, page.as_deref()).await;
+                    let out = self
+                        .exec_cell(lang, &cell.code, &cell.id, page.as_deref())
+                        .await;
                     control.end_cell();
                     if let Some(t0) = t0 {
                         let state = if is_uncacheable(&out) {
@@ -1980,31 +1920,6 @@ mod tests {
         }
     }
 
-    /// Only a `{python}` cell is ever handed [`crate::trace_py::wrap_traced`]'s harness.
-    ///
-    /// `wrap_traced` splices the author's code into a **Python** program, and the marker it
-    /// keys off is stamped by `emit.rs` for any language at all. Dropping the `lang` half of
-    /// [`is_traced`] therefore does not fail loudly, it feeds `def _tali_debug_run(_src):`
-    /// to whatever kernel the cell belongs to: reproduced against a live IRkernel as
-    /// `Error in parse(text = input): <text>:2:5: unexpected input` (see
-    /// `crates/server/tests/r_kernel.rs`, which pins the same fix end to end).
-    #[test]
-    fn only_a_python_cell_is_ever_wrapped_in_the_python_trace_harness() {
-        let marked = r#"<pre data-tali-cell="r" data-tali-trace="1"><code>x &lt;- 1</code></pre>"#;
-        assert!(
-            is_traced("python", marked),
-            "a marked python cell is the whole point of the feature"
-        );
-        assert!(
-            !is_traced("r", marked),
-            "an `{{r}}` cell must never be handed the python harness"
-        );
-        assert!(
-            !is_traced("python", "<pre><code>x = 1</code></pre>"),
-            "an unmarked cell is not traced whatever its language"
-        );
-    }
-
     /// The render pass reserves a `@fig-`/`@tbl-` number only for a lang core believes
     /// executes (`taliesin_core::render::executes_to_kernel`), while `kernel_lang` is
     /// what actually runs one. If the two sets ever drift, a `label: fig-*` on a lang
@@ -2035,7 +1950,6 @@ mod tests {
             table: None,
             include: true,
             cache: true,
-            traced: false,
             out: OutTarget::Sibling,
         }
     }

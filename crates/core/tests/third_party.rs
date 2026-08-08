@@ -12,7 +12,6 @@ const OWN_JS: &[&str] = &[
     "walkthrough.js",
     "tabset.js",
     "scrolly.js",
-    "debug.js",
     // First-party and deliberately so: `{glsl}` needs no vendored library because WebGL is
     // a browser API, and `numerics.js` is written here rather than pulling in jStat so that
     // it stays the curated set a document actually needs.

@@ -158,7 +158,7 @@ fn the_two_asset_gates_are_independent() {
 #[test]
 fn a_build_of_a_shader_page_ships_the_runtime_and_the_enhancer() {
     let body = render(SHADER).body_html();
-    let scripts = code_scripts_for(&body, OutputMode::Build, false);
+    let scripts = code_scripts_for(&body, OutputMode::Build);
     assert!(
         scripts.contains("tali-js cell error:"),
         "the shared runtime must ship for a shader-only page"
@@ -168,11 +168,7 @@ fn a_build_of_a_shader_page_ships_the_runtime_and_the_enhancer() {
         "glsl.js (which registers that mime) must ship"
     );
 
-    let prose = code_scripts_for(
-        &render("Just prose.\n").body_html(),
-        OutputMode::Build,
-        false,
-    );
+    let prose = code_scripts_for(&render("Just prose.\n").body_html(), OutputMode::Build);
     assert!(
         !prose.contains("application/tali-glsl"),
         "a prose page must ship neither"

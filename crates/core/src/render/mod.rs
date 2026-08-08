@@ -8,7 +8,7 @@
 use crate::includes::LineOrigin;
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 mod model;
@@ -101,11 +101,6 @@ use emit::emit;
 // emit_children is re-exported so the sibling figure module reaches it via `super`.
 pub(crate) use emit::emit_children;
 pub(crate) use emit::safe_url;
-// The build-time `yield X` -> `yield __at(N, X)` scanner for a traced `{js}` debug
-// cell; `emit.rs` is the only caller. See the module doc for the refuse-rather-than-
-// guess contract.
-mod yield_scan;
-use yield_scan::stamp_yields;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // Intrinsic `width`/`height` + loading hints on local raster images. A post-emission pass
@@ -607,13 +602,6 @@ fn render_internal_impl(
         })
         .collect();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
-    // Every named `::: {.debug name="…"}` seen so far, so a SECOND block reusing the
-    // same name can warn rather than silently colliding: two named debug blocks share
-    // one `tali.frame(name)` registry slot and one `[data-tali-input]` bridge (see
-    // `validate_duplicate_debug_name`), and the collision is otherwise invisible until a
-    // reader actually steps the wrong one. Document-scoped (one per render call), the
-    // same scope `id_counts`/`xref_registry` already use for this class of problem.
-    let mut debug_names: HashSet<String> = HashSet::new();
     // Heading anchor slugs (deduped) and the cross-reference number registry
     // (figures + equations), both used for `@sec-x`/`@fig-x`/`@eq-x` and the TOC.
     let mut heading_slugs: HashMap<String, u32> = HashMap::new();
@@ -793,7 +781,7 @@ fn render_internal_impl(
             // Validate this code cell's `#|` options against taliesin's vocabulary
             // (a typo or a legacy key becomes a located, click-to-source warning;
             // the cell still renders unchanged).
-            if let Some(traced_cell) = cell.as_ref()
+            if cell.is_some()
                 && let NodeValue::CodeBlock(cb) = &data.value
             {
                 warnings.extend(validate::validate_cell_options(
@@ -801,27 +789,6 @@ fn render_internal_impl(
                     start_line,
                     file.clone(),
                 ));
-                // `#| trace: true` on a language with no stepping adapter. Everything
-                // downstream of here is language-blind (the `data-tali-trace` attribute,
-                // `.debug`'s traced-cell count), so without this an `{r}` cell counted as
-                // the div's traced cell and was handed the PYTHON harness to parse.
-                if let Some(w) = validate::validate_trace_language(
-                    &traced_cell.lang,
-                    &cb.literal,
-                    start_line,
-                    file.clone(),
-                ) {
-                    warnings.push(w);
-                }
-                // A malformed `trace:` VALUE (`validate_cell_options` above only checks the
-                // KEY): `#| trace: yes`/`True`/`1` is silently treated as "not traced" by
-                // `cell_option`'s literal `"true"` match, which would otherwise leave an
-                // author's `.debug` block rendering an unstepped code panel with no warning.
-                if let Some(w) =
-                    validate::validate_trace_value(&cb.literal, start_line, file.clone())
-                {
-                    warnings.push(w);
-                }
             }
             (
                 sp.start.line,
@@ -1178,34 +1145,12 @@ fn render_internal_impl(
             .as_ref()
             .and_then(|c| client_lang(&c.lang).map(|spec| (c, spec)))
         {
-            if (c.lang == "js" && c.js.trace)
-                || no_exec_in_force()
-                || !client_lang_runnable(&c.lang)
-            {
+            if no_exec_in_force() || !client_lang_runnable(&c.lang) {
                 // `--no-exec`: a client-side cell is a code cell whose kernel is the
                 // browser, so it renders as source like a `{python}` cell with no kernel
                 // does (item 79). `emit` keeps the highlighted source and the block's
                 // id/sourcepos, so click-to-source and the incremental swap are unaffected.
                 //
-                // A language whose runtime is unavailable in this build takes the identical
-                // arm, for the identical reason: nothing will run it, so emitting the live
-                // wrapper would leave a husk. Doing it here rather than as a post-pass over
-                // finished HTML also means the wrapper is never emitted, so no later stage
-                // has to recover the author's source back out of a `<script>` element.
-                //
-                // A traced `{js}` cell (`//| trace: true`, inside `::: {.debug}`) takes the
-                // SAME arm for a third reason: `debug.js` drains its generator itself and
-                // owns the whole visible output, so it needs the highlighted SOURCE as the
-                // `.dbg-code` panel (the same `<pre><code>` shape a traced `{python}` cell
-                // already gets via this arm), not the interactive target-div-plus-script
-                // wrapper every other `{js}` cell gets below. Emitting both would give the
-                // block two root elements, which `crates/core/tests/block_single_root.rs`
-                // forbids project-wide, so this is an either/or choice: `emit.rs` embeds the
-                // (stamped) runnable source as a data attribute on the very `<pre>` this
-                // produces, and `debug.js` reads it from there instead of finding a
-                // `<script type="application/tali-js">` that this arm never emits. Only
-                // `js` takes this branch on `trace`; a `{glsl}` cell does not document
-                // `trace` and keeps its normal live wrapper even if one is set.
                 // A language whose runtime is unavailable in this build takes the identical
                 // arm, for the identical reason: nothing will run it, so emitting the live
                 // wrapper would leave a husk. Doing it here rather than as a post-pass over
@@ -1301,14 +1246,7 @@ fn render_internal_impl(
         });
     }
 
-    let mut blocks = group_divs(
-        flat,
-        &spans,
-        origins,
-        &mut id_counts,
-        &mut debug_names,
-        &mut warnings,
-    );
+    let mut blocks = group_divs(flat, &spans, origins, &mut id_counts, &mut warnings);
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings, chapter);
@@ -1950,12 +1888,6 @@ pub(crate) const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-d
 /// highlight). Emitted by the page builders in `page.rs`/`deck.rs`; KaTeX rides
 /// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
-/// `::: {.debug}` stepper chrome: the transport bar, the variables panel, and the
-/// `.tali-debug`-scoped line-cursor rules. Concatenated onto [`BASE_CSS`] everywhere that
-/// constant is assembled into a page's stylesheet (never gated per-page like the JS
-/// enhancer is: see the comment on [`code_scripts_for`]'s `debug_s` gate for why the two
-/// halves of this feature are gated differently).
-const DEBUG_CSS: &str = include_str!("../../assets/css/debug.css");
 
 /// A human-readable ASCII-art banner emitted as the first thing inside `<head>`. The
 /// machine-readable `<meta name="generator">` already ships; this is its view-source
@@ -2036,7 +1968,7 @@ fn mermaid_url_for(mode: OutputMode) -> String {
 /// Syntax highlighting arrives already done from the server. Callers invoke
 /// `window.taliEnhanceCode(root)` after (re)mounting; it is idempotent.
 pub fn code_scripts() -> String {
-    code_scripts_for("", OutputMode::Preview, false)
+    code_scripts_for("", OutputMode::Preview)
 }
 
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
@@ -2047,15 +1979,7 @@ pub fn code_scripts() -> String {
 /// edit, same reasoning as the always-on KaTeX/d3 in preview) but only when their
 /// target DOM is present in a static [`OutputMode::Build`]. [`OutputMode::Bare`]
 /// ships nothing (the zero-`<script>` contract).
-///
-/// `is_deck` exists for exactly one gate (`debug_s`, below): this same function is also
-/// the Inline deck assembler's script source (`deck::deck_page_from_doc`'s
-/// `AssetMode::Inline` arm calls it directly, unlike the External arm's hand-rolled list
-/// that already excludes `DEBUG_JS`), so without this flag a `.debug` block on a deck
-/// would ship the stepper's JS with none of its CSS (`debug.css` is never in a deck's
-/// style block), landing an unstyled, half-wired transport bar on a slide instead of the
-/// intended plain code block.
-pub fn code_scripts_for(body: &str, mode: OutputMode, is_deck: bool) -> String {
+pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
     if mode == OutputMode::Bare {
         return String::new();
     }
@@ -2085,41 +2009,17 @@ pub fn code_scripts_for(body: &str, mode: OutputMode, is_deck: bool) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{walk_s}{tabset_s}{scrolly_s}{debug_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{walk_s}{tabset_s}{scrolly_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
             String::new()
         },
-        // A traced `{js}` debug cell needs `window.taliJs.runDebugSource` (tali-js.js)
-        // even though it never emits a live `application/tali-js` script itself
-        // (`has_client_cells` alone would miss it): `debug.js` is the only caller, and
-        // it cannot run a captured generator through the real `tali`/`Plot`/`d3`/`num`
-        // scope without this file loaded first.
-        talijs_s = gate(
-            has_client_cells(body) || body.contains("data-tali-js-src"),
-            TALIESIN_JS
-        ),
+        talijs_s = gate(has_client_cells(body), TALIESIN_JS),
         glsl_s = gate(has_client_cells_of(body, "glsl"), GLSL_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
-        // `.debug` renders a plain code block on a deck: a deck presents, it does not
-        // hand the audience an interactive stepper mid-talk, the same call already made
-        // for the External deck bundle (`deck_shared_js` omits `DEBUG_JS` outright). The
-        // External arm never reaches this function at all (it hand-assembles its own
-        // script list), so `is_deck` is what closes the gap for the Inline arm, which
-        // does. `is_deck` must short-circuit OUTSIDE `gate`, not just feed its `present`
-        // argument: `gate` treats Preview as "every gate open" regardless of `present`
-        // (`mode == OutputMode::Preview || present`), so folding the exclusion into
-        // `present` alone would have left a deck's Preview render (what `taliesin preview
-        // deck.tmd` and the live `{{< embed >}}` path both use) shipping `DEBUG_JS`
-        // unconditionally, same as before `is_deck` existed.
-        debug_s = if is_deck {
-            String::new()
-        } else {
-            gate(body.contains("tali-debug"), DEBUG_JS)
-        },
     )
 }
 
@@ -2222,16 +2122,12 @@ const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
 /// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `taliEnhancers`,
 /// no-ops without a `.scrolly`, rides in [`code_scripts`].
 const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
-/// The stepper for `::: {.debug}`: transport controls, the line cursor and the variables
-/// panel over a recorded execution trace. Registers through `taliEnhancers`, no-ops without
-/// a `.tali-debug` block, rides in [`code_scripts`].
-const DEBUG_JS: &str = include_str!("../../assets/js/debug.js");
 
 /// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
 /// tokens + base + dark + site chrome). Exposed so the multi-page build can externalize it
 /// into one content-hashed `_assets/app.<hash>.css` instead of inlining a copy per page.
 pub fn shared_site_css() -> String {
-    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DEBUG_CSS}{DARK_CSS}{SITE_CSS}")
+    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
 }
 
 /// [`shared_site_css`] with the body typeface **linked** rather than inlined: the same
@@ -2239,7 +2135,7 @@ pub fn shared_site_css() -> String {
 /// writes [`FONT_FILES`] beside it in `_assets/` (item 150).
 pub fn shared_site_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
     format!(
-        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DEBUG_CSS}{DARK_CSS}{SITE_CSS}",
+        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}",
         fonts_css_linked(hrefs)
     )
 }
@@ -2345,7 +2241,6 @@ pub fn core_enhance_js() -> String {
         WALKTHROUGH_JS,
         TABSET_JS,
         SCROLLY_JS,
-        DEBUG_JS,
         TOC_SPY_JS,
         SEARCH_JS,
     ]

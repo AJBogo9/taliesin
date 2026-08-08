@@ -49,19 +49,6 @@ interface Window {
         hooks: { publish: (n: string, v: any) => Promise<void> },
       ) => { run: () => any; dispose?: () => void },
     ) => void;
-    /** Run `{js}`-cell-shaped source with the same `tali`/`Plot`/`d3`/`num`/
-     *  `container`/`invalidation` scope a live cell gets, plus `__at`, without the
-     *  shared wrapper's mount/publish/scheduling machinery. The algorithm debugger's
-     *  JS capture adapter (debug.js) is the one caller: a `//| trace: true` `{js}`
-     *  cell never becomes a live `<script type="application/tali-js">`, so it has no
-     *  other way to reach this scope. Returns whatever the source itself returns
-     *  (typically a generator), typed loosely for the same reason `api` is. */
-    runDebugSource?: (src: string, container: HTMLElement) => any;
-    /** Subscribe to the same shared input/define change signal `tali.onInput` uses,
-     *  without needing a cell's own `api`. The algorithm debugger's re-capture
-     *  wiring is the one caller: `cb` fires with no arguments whenever any named
-     *  input or `//| name:` value changes. */
-    onInputChange?: (names: string | string[], cb: () => void) => void;
   };
   /** The curated numerics namespace `{js}` cells draw with (numerics.js), handed to a
    *  cell body as `num` beside `Plot` and `d3`. Typed loosely on purpose: it is a plain

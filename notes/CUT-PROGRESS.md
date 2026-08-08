@@ -84,7 +84,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 0 | Establish `gates.sh` baseline + `pre-cut` tag | **done** 2026-08-08 | `main` | n/a | green at `3ccfa595`; needs `TALIESIN_PYTHON` (see Baseline) |
 | 1 | Anti-drift simplification + doctrine + dead code | **done** 2026-08-08 | `cut/wave-1-antidrift` | **−1,118** (+400 / −1,518, 30 files) | a retirement now costs ONE register line; **no tombstone test is owed** |
 | 2 | Machine-facing verbs (keep one JSON surface) | **done** 2026-08-08 | `cut/wave-2-machine-verbs` | **−7,796** (+685 / −8,481, 79 files) | 18 verbs → **12**; `map` + `vocab` re-homed into the LSP |
-| 3 | Debug mode | not started | | | also fixes unconditional `DEBUG_CSS` |
+| 3 | Debug mode | **done** 2026-08-08 | `cut/wave-3-debug` | **−5,374** (+118 / −5,492, 45 files) | `DEBUG_CSS` was ungated in **three** places, not two; proven **−7,245 B** of shipped CSS per page |
 | 4 | Publishing + web-platform ops | not started | | | `image_opt` lands here, once |
 | 5 | The deck engine | not started | | | biggest churn win: 122 commits |
 | 6 | Reactive tail, R, Chrome kill | not started | | | drops 2 gate runtimes |
@@ -114,6 +114,13 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
     the moment they hit the retired key, which no page can beat.
 - **Re-measure the warm pool on the preview path** before wave 11 if you want the
   number. The directive says cut regardless; measure only if you want to know the cost.
+- **Wave 6 inherits TWO chrome canaries, and wave 3 confirmed both still fire.** `gates.sh`
+  is down to **5** canaries (python, R, node, reactive, print). Wave 3 dropped
+  `CANARY_DEBUG_TRACE` without repointing it, per the precedent wave 2 set — see the
+  reasoning now written into `gate_script.rs`'s count assertion, which states the rule
+  outright: *a canary is dropped only when the sole thing it proved goes away, never by
+  repointing it at a surviving test.* A later wave that deletes a capability should read
+  that string before touching the count.
 - **Wave 6's Chrome kill now has one fewer thing to delete and one more to check.** Wave 2
   removed the `{js}` observation path from `headless_js.rs` (that was wave 6's STAGE 5), so
   what is left there is only the launch policy `pdf.rs` uses. Wave 6 also inherits the two
@@ -298,3 +305,112 @@ is still covered by `corpus/analyst` (executed `#| label: tbl-` floats, cross-pa
 `lsp_nav.rs`'s definition-site tests, so this is a fixture loss rather than a coverage loss.
 And the author's own agent loop drops from a turnkey MCP server to shelling out to
 `check --format json`, which is the trade the ruling made deliberately.
+
+### Wave 3 — 2026-08-08, `cut/wave-3-debug`
+
+**Measured reclaim: −5,374 lines** (`+118 / −5,492` over 45 files) against the ~5,057
+estimate. By area: `crates/core/assets` −1,762 (debug.js 1,298 + debug.css 383 + the
+tali-js/globals trim), `crates/server` −1,146 (trace_py 350, debug_trace.rs 742, exec.rs
+wiring), `crates/core/src` −890, `crates/core/tests` −479, `docs` −443, `corpus` −417,
+`site` −61, `tools`/`web-client` −22.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** 9/9 gates, **5/5** canaries,
+**112 suites / 2,193 passed / 0 failed / 0 ignored**, exit 0. Measure wave 4 against
+**2,193 and five canaries**. (A bare default-feature `cargo test --workspace` is
+**109 suites / 2,175 passed**.)
+
+**THE CSS WIN, MEASURED, NOT ASSERTED.** `cargo build` first (assets are `include_str!`-
+compiled), then the same site rebuilt both sides. `corpus/tech-blog` (17 prose pages):
+`_assets/app.9215aeb6a5c26dc4.css` **63,674 B** → `app.a9002fdedc5ac85e.css` **56,429 B**.
+**−7,245 bytes, −11.4%, off every page the tool ships**, and `.dbg-transport` greps 1 → 0.
+The 383 source lines of `debug.css` minify to those 7,245 shipped bytes.
+
+**Five things that were not true, or that the playbook did not know.** Same genus as
+waves 1 and 2:
+
+1. **`DEBUG_CSS` was ungated in THREE places, not two.** The playbook and the ruling both
+   name `shared_site_css` and `shared_site_css_linked_fonts`. There is a third:
+   `page.rs:274`'s `style_block`, the inline `<style>` every **standalone** page uses —
+   so `build <file.tmd>` was paying the same 7,245 bytes, and a fix that took only the two
+   named sites would have left the single-page path shipping stepper CSS forever with
+   every gate green. Found by grepping `BASE_CSS`'s assemblies rather than `DEBUG_CSS`'s
+   own line numbers.
+2. **`token_contract.rs` had FOUR debug names to remove beyond the two the playbook
+   names.** Both lists lost `data-debug-inputs`/`data-debug-name`/`data-tali-js-src` as
+   expected, but the browser-selected census also pinned **`data-c` and `data-r`** —
+   debug.js's grid-view row/column stamps for `dp.tmd`'s edit-distance table. Nothing in
+   the playbook mentions them; the census failure is what found them. Also
+   `data-dbg-init`.
+3. **The `{js}` cell API surface was larger than the two exports the playbook lists.**
+   `runDebugSource` and `onInputChange` were named; `__at` (the `yield`-stamp runtime, the
+   other half of `yield_scan.rs`'s contract), `tali.frame(n)` and its `EMPTY_DEBUG_FRAME`
+   stand-in, and the whole `window.taliDebug` type declaration were not. All were dead the
+   moment `debug.js` went: `taliDebug` is set by nothing, so `tali.frame` could only ever
+   return the empty stand-in. Cut per the standing directive. Verified live: on
+   `corpus/descent`, `typeof window.taliDebug === "undefined"`, and all three `{js}` cells
+   still mount and run.
+4. **`text.rs`'s branch is NOT left "unwitnessed", and saying so would have been wrong.**
+   The playbook and the ruling both describe `project_block`'s `if let Some(cell)` as
+   surviving unwitnessed once `.debug` goes. It is witnessed — `projects_code_cell_fenced`
+   drives it with an ordinary top-level `{python}` cell. What actually became unreachable
+   is the narrower case of a **container** block carrying a `Cell`, since
+   `build_container` now sets `cell: None` unconditionally. The comment left on the branch
+   says that, not the weaker claim.
+5. **`build_stdout` in `asset_bundle.rs` had exactly one caller** (the deleted debug-gating
+   test), so `-D warnings` failed on dead code until it went too. `cargo test` alone was
+   green; only clippy caught it.
+
+**The two judgement calls, and how they went.**
+
+- **`RETIRED_DIV_CLASSES` got its `debug` entry**, mandatory as ruled: div classes are an
+  open vocabulary, so a leftover `::: {.debug}` would otherwise get silence. One sentence,
+  the date, then "nothing replaces it". No tombstone test written — wave 1's derived
+  gate covers it.
+- **`TAL-DEBUG-TRACE` gets NO register, deliberately.** The three registers exist because
+  the AUTHOR writes the retired name in their own source and the tool must answer it. A
+  diagnostic code is written by the tool and read out of a message that no longer exists;
+  there is no `.tmd` file anywhere containing the string `TAL-DEBUG-TRACE`, so there is no
+  silence to prevent. The only stale artefact is a bookmarked
+  `DIAGNOSTICS.md#tal-debug-trace` anchor, which is a dead link on a doc page, not a
+  silent authoring failure. Adding a fourth register for it would be machinery serving one
+  entry. **Precedent for later waves: retire a diagnostic code by deleting its rows, its
+  `Explanation` and its pin, and re-bless `docs/DIAGNOSTICS.md` with `TALIESIN_BLESS=1`.**
+
+**What was given up, stated plainly, per the dissent.** `site/showcase.tmd:342-401` is
+gone: sixty-one lines in which the author staked the tool's claim on this feature on the
+shop window ("this one comes from a real interpreter running the exact ten lines below…
+so the diagram and the code can never quietly drift apart"). The demand measurement could
+not see it, because `site/` was excluded from the read set by construction. **This is the
+one cut in the whole audit that deletes a differentiator rather than shrinking one** — no
+competitor has an algorithm stepper. Five showcase exhibits survive, including the two
+carrying the same web-native claim (the live equation-plus-plot and the browser-integrated
+Lorenz attractor).
+
+**What is expensive to re-derive, recorded because reading the deleted code will not give
+it back.** Four field-diagnosed bugs were encoded in `trace_py.rs`, none discoverable by
+reading the code:
+
+1. **Nested-container snapshot aliasing** — a snapshot of a mutable container captured by
+   reference shows every earlier frame the container's FINAL contents, so the whole trace
+   silently reads as if the algorithm already finished.
+2. **`Subscript(ctx=Store)` filtering** — `a[i] = x` must not be collected as a *read* of
+   `a[i]`; without the store-context filter the reads set names the very cell being
+   written.
+3. **The `AugAssign` counter-exception, collected by node identity** — `x += 1` is both a
+   read and a write of the same name at the same source position, so it needs an explicit
+   exception keyed on the AST node's identity rather than on its name or line.
+4. **Non-finite floats destroy the WHOLE trace** — bare `json.dumps` emits `Infinity` /
+   `NaN`, which is not JSON, so one non-finite value anywhere makes the entire blob
+   unparseable client-side and the stepper renders nothing at all, with no error naming
+   the cause.
+
+Also lost: `debug.js`'s untyped view inference, the thing the showcase copy called magic
+("no annotation told Taliesin those three names were pointers"). Recoverable in full from
+the `pre-cut` tag; expensive to re-derive from scratch.
+
+**Verified in a real browser, not asserted.** `corpus/descent` built and served, opened
+via chrome-devtools MCP: zero console messages, 3 `{js}` cell scripts, 3 mounted outputs,
+3 `data-tali-ran` markers, 0 error boxes, 0 debug widgets, `window.taliDebug` undefined.
+The `has_client_cells(body)`-as-sole-gate change was the risk here and it holds in both
+directions: a prose page in `corpus/tech-blog` ships 0 copies of the runtime, a `{js}` page
+ships it.

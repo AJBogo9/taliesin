@@ -89,7 +89,6 @@ An option marked `(none)` in the **Default** column does nothing unless you set 
 | `name` | `js` | (none) | Publish the cell's return value into the reactive scope under this name (a helper other `{js}` cells read) |
 | `viewof` | `js` | (none) | The cell returns a DOM input; its value is registered under this name for other cells to consume |
 | `input` | `js` | (none) | Comma-separated names; re-run this cell when any named input, `viewof`, or Python `define` value changes |
-| `trace` | `python`, `js` | `false` | Record execution so an enclosing `::: {.debug}` can step through it. Exactly one cell per block. |
 
 Anything not in this list warns. `fig-cap` / `tbl-cap` / `lst-cap` each *imply* a
 number even without a `label`: the caption alone is enough to make a numbered

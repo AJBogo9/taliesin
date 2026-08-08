@@ -1,6 +1,0 @@
-# A small multi-page exhibit: `::: {.debug}` algorithm stepper, across a Python capture,
-# a JavaScript generator capture, and every automatic data view. `url:` is deliberately
-# omitted so the standalone build stays offline-clean (no canonical/OG self-URL on a
-# self-contained exhibit).
-title: "Step through an algorithm"
-description: "Real functions, traced as they run: bars, boxes, a grid and pointer carets, built from the recorded execution instead of hand-drawn."

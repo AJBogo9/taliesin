@@ -40,17 +40,6 @@ pub struct JsOpts {
     pub name: Option<String>,
     pub viewof: Option<String>,
     pub inputs: Vec<String>,
-    /// `//| trace: true`: a `{js}` cell inside `::: {.debug}` whose generator is
-    /// captured client-side instead of mounted. Read at the branch that decides how
-    /// the cell is emitted (`mod.rs`), because that decision has to be made before
-    /// the emitted HTML carries the `data-tali-trace="1"` attribute `divs.rs` reads
-    /// for everything else (the two languages' traced cells are detected the same
-    /// way once rendered, but a `{js}` one needs a DIFFERENT render path to get there:
-    /// source display, not the live target-div-plus-script wrapper), so this field
-    /// exists only to make that upstream decision. `emit.rs` re-derives the same fact
-    /// from the raw literal rather than trusting this field, so there is still one
-    /// source of truth for the attribute itself.
-    pub trace: bool,
 }
 
 /// Metadata for wrapping a code cell's executed output as a numbered figure.
