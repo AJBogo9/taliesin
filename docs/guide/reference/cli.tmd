@@ -8,13 +8,13 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | Command | Effect |
 |---|---|
 | `preview <file.tmd> [port]` | Live preview server (default port 4321). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
-| `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload) |
+| `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload); the directory needs a `_site.yml` |
 | `run <file.tmd> [--cell N \| --line L \| --all] [--quiet] [--interrupt]` | Execute code cells **in the terminal**, against this project's warm session. No browser; outputs are cached so a later `build` re-executes nothing. Ctrl-C (or `--interrupt` from elsewhere) stops the run and keeps the kernel |
 | `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
-| `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
+| `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run] [--init]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload. `--init` runs the one-time Cloudflare setup instead of deploying |
 | `read <file.tmd> [--run]` | Project the document to plain text (agent-readable). Static by default; `--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is available, observes each `{js}` chart (`[js: produced, <svg W×H>]`), reporting what every cell produced (`--format json` for structured per-cell results) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
@@ -26,6 +26,30 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | `mcp` | Run a stdio **MCP server** exposing check/read/symbols/map/vocab/build tools |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
+
+A `<dir>` target needs a `_site.yml`: that file's presence is what makes a
+directory a project (see [Configuration](configuration.tmd)). Point `preview` or
+`build` at a directory that has none and the command refuses rather than
+guessing, and names two ways forward:
+
+```
+  error   corpus/agent has no _site.yml, so it is not a project.
+          to build one document:   taliesin build corpus/agent/<page>.tmd
+          to make it a site or book: add a _site.yml
+```
+
+Build (or preview) one document directly, or add a `_site.yml` to turn the
+directory into a project. If the directory instead sits inside an existing
+project, the message names that ancestor and the command to run there instead:
+
+```
+  error   corpus/tech-blog/posts has no _site.yml.
+          its ancestor corpus/tech-blog is a project. did you mean:
+            taliesin build corpus/tech-blog
+```
+
+`preview` reports the same two forms, with `preview` in place of `build`
+throughout (and a `serve:` tag ahead of the first line).
 
 `check` renders the document or site in memory and reports everything that flows
 through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /

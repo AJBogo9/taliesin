@@ -104,9 +104,15 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    `preview <file.tmd>` resolves to the file's enclosing `_site.yml`
                    project, opened at that page; with no ancestor `_site.yml` it is a
                    project of just that document (`Site::discover_single`), and a
-                   standalone `format: deck` file is served AS a deck. Previewing a
-                   file alone would be an orphan (no nav, dead cross-page links), which
-                   is why the companion already resolved to the project (item 150)
+                   standalone `format: deck` file is served AS a deck. That
+                   synthesized one-page project renders no site chrome (no navbar, no
+                   footer; the theme toggle and table of contents still show), so
+                   `preview <file>` and `build <file>` now emit the same page. A
+                   directory with no `_site.yml` is refused by both verbs, with
+                   guidance to build or preview one page inside it, or add a
+                   `_site.yml`. Previewing a file alone would be an orphan (no nav,
+                   dead cross-page links), which is why the companion already resolved
+                   to the project (item 150)
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks; plans
                    what re-runs via cumulative-hash keys (warm reuse + cold replay)
   src/freeze.rs    persistent execution cache (`_freeze/<page>.json`): rendered cell
