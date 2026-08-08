@@ -40,6 +40,12 @@ const SKIP_DIR_NAMES: &[&str] = &[
     ".vscode-test",
     // The ui-audit harness's gitignored scratch build (`tools/ui-audit/.work/`).
     ".work",
+    // Gitignored Python kernel virtualenvs (`.venv-audit/` for local audits;
+    // `.venv/` is what the interpreter resolver finds on its own). Skipped because
+    // pip's base64 package metadata in `*.dist-info/RECORD` files produces false
+    // positives matching the retired brand.
+    ".venv-audit",
+    ".venv",
 ];
 
 /// Directories never scanned, matched as a path prefix from the repo root: the dated
