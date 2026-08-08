@@ -6,8 +6,8 @@
 //! Why this is wider than `parallel_build_determinism.rs`. That suite proves the
 //! `--jobs 1` vs `--jobs N` *scheduling* invariant, but it only compares `.html` files.
 //! The outputs most exposed to a future ordering regression are the *aggregate* assets a
-//! single page never contains: `search-index.js`, the Atom feed
-//! (`index.xml`), `sitemap.xml`, and the `og/*.png` social cards. Each is assembled by
+//! single page never contains: `search-index.js`, the Atom feed (`index.xml`),
+//! `sitemap.xml` and `robots.txt`. Each is assembled by
 //! walking a collection (pages, xref targets, categories, discovered files) — so an
 //! accidental switch from a sorted structure to an unsorted `HashMap`/`HashSet`, or a
 //! reliance on raw `read_dir` order, would silently make the build non-reproducible while
@@ -49,7 +49,7 @@ fn tmp_dir(name: &str) -> PathBuf {
 ///   (`search-index.js`);
 /// - two content pages defining eight `.theorem`/`.definition` xref targets, cross-page
 ///   `@thm-…`/`@def-…` references → the xref registry resolved into each page;
-/// - a site `url:` → `sitemap.xml`, JSON-LD, and the `og/*.png` social cards.
+/// - a site `url:` → `sitemap.xml` + `robots.txt`.
 fn write_repro_site(root: &Path) {
     fs::create_dir_all(root.join("posts")).unwrap();
     fs::write(
@@ -264,19 +264,17 @@ fn the_repro_site_populates_every_guarded_aggregate() {
         "search-index.js is not a populated index"
     );
 
-    // Listing → Atom feed; site url → sitemap + at least one OG card.
+    // Listing → Atom feed; site url → sitemap + robots. (`llms.txt` and the `og/*.png`
+    // social cards were named here too until wave 4 cut both on 2026-08-08. The feed and
+    // the sitemap are what is left of the url:-gated `emit` closure, and both are still
+    // built by walking a collection, which is the property this test exists for.)
     assert!(
         out.contains_key("index.xml"),
         "no Atom feed emitted — the listing path is not exercised"
     );
     assert!(
-        out.contains_key("sitemap.xml") && out.contains_key("llms.txt"),
-        "sitemap.xml / llms.txt missing — SEO aggregate paths not exercised"
-    );
-    assert!(
-        out.keys()
-            .any(|k| k.starts_with("og/") && k.ends_with(".png")),
-        "no og/*.png social card emitted — the card renderer is not exercised"
+        out.contains_key("sitemap.xml") && out.contains_key("robots.txt"),
+        "sitemap.xml / robots.txt missing — the SEO aggregate path is not exercised"
     );
 
     let _ = fs::remove_dir_all(&base);

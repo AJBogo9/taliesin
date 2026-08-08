@@ -159,24 +159,25 @@ fn every_canary_the_gate_script_names_still_exists() {
 
     assert_eq!(
         canaries.len(),
-        5,
-        "expected one canary per interpreter gate (python, R, node) plus the two \
-         browser-backed capabilities that stand for chrome (the reactive client's render \
-         and the print track's pagination). Every canary that has ever been dropped was \
-         dropped because the ONLY thing it proved went away, never because another canary \
-         was made to cover for it — a canary repointed at a surviving test would leave two \
-         proving the same thing and one capability proving nothing. The `#| trace: true` \
-         settrace harness was the sixth until Wave 3 cut debug mode: it was independent of \
-         the plain python-kernel canary (that one proves a kernel runs, this one proved the \
-         harness runs inside it), so nothing inherits it and the python gate is unchanged — \
-         `CANARY_KERNEL` still fails when ipykernel is missing. `read --run`'s \
-         headless-`{{js}}` observation was chrome's own canary until Wave 2 cut the \
-         machine-facing verbs — the two that remain still fail when chrome is missing, so \
-         that gate is unchanged too. The math hover's browser render was the eleventh until \
-         Wave 4.1 cut the rasterizer, the figure lightbox's was the tenth until the visual \
-         minimalism pass deleted it, and the `{{pyodide}}` runtime's plus its two \
-         cargo-feature guards were the seventh through ninth until that language was \
-         withdrawn, got {canaries:?}"
+        4,
+        "expected one canary per interpreter gate (python, R, node) plus the ONE \
+         browser-backed capability that stands for chrome (the reactive client's render). \
+         Every canary that has ever been dropped was dropped because the ONLY thing it \
+         proved went away, never because another canary was made to cover for it — a canary \
+         repointed at a surviving test would leave two proving the same thing and one \
+         capability proving nothing. The print track's pagination was the fifth until Wave 4 \
+         cut the PDF track: it drove paged.js through CDP and nothing else did, so nothing \
+         inherits it, and the chrome gate is unchanged because `CANARY_REACTIVE` still fails \
+         when chrome is missing. The `#| trace: true` settrace harness was the sixth until \
+         Wave 3 cut debug mode: it was independent of the plain python-kernel canary (that \
+         one proves a kernel runs, this one proved the harness runs inside it), so nothing \
+         inherits it and the python gate is unchanged — `CANARY_KERNEL` still fails when \
+         ipykernel is missing. `read --run`'s headless-`{{js}}` observation was chrome's own \
+         canary until Wave 2 cut the machine-facing verbs. The math hover's browser render \
+         was the eleventh until Wave 4.1 cut the rasterizer, the figure lightbox's was the \
+         tenth until the visual minimalism pass deleted it, and the `{{pyodide}}` runtime's \
+         plus its two cargo-feature guards were the seventh through ninth until that \
+         language was withdrawn, got {canaries:?}"
     );
 
     let sources: Vec<String> = rust_sources()

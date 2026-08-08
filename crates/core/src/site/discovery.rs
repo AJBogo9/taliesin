@@ -67,14 +67,12 @@ pub(super) fn website_pages(
                 title,
                 date: fm.date,
                 description: fm.description,
-                authors: fm.authors,
                 card_image,
                 card_image_alt: fm.image_alt,
                 categories: fm.categories,
                 listings: fm.listings,
                 hero: fm.hero,
                 page_layout: fm.page_layout,
-                has_bibliography: fm.has_bibliography,
                 draft: fm.draft,
             })
         })

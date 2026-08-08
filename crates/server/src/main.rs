@@ -12,9 +12,7 @@ mod complete;
 mod doctor;
 mod exec;
 mod freeze;
-mod headless_js;
 mod http1;
-mod image_opt;
 mod interactive;
 mod interpreter;
 mod kernel;
@@ -41,10 +39,8 @@ mod lsp_select;
 mod lsp_trace;
 mod minify;
 mod packages;
-mod pdf;
 mod preview_diag;
 mod protocol;
-mod publish;
 mod run_cmd;
 mod run_control;
 mod run_print;
@@ -77,8 +73,6 @@ fn main() -> ExitCode {
             runtime_dirs::sweep_stale_runtime_dirs();
             build::cmd_build(&args)
         }
-        Some("pdf") => pdf::cmd_pdf(&args),
-        Some("publish") => publish::cmd_publish(&args),
         // `run` needs the same stale-runtime-dir sweep `build`/`preview` do: it may be
         // the thing that starts the session that owns the kernels.
         Some("run") => {
@@ -132,14 +126,12 @@ fn main() -> ExitCode {
 const COMMANDS: &[&str] = &[
     "build",
     "run",
-    "pdf",
     "check",
     "doctor",
     "lsp",
     "init",
     "new",
     "preview",
-    "publish",
     "help",
     "completions",
 ];
@@ -188,6 +180,15 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
         "`init` writes `.taliesin/tali-site.schema.json` for you",
     ),
     ("mcp", "`check --format json`, run from your agent"),
+    (
+        "publish",
+        "`build <dir> --out <dir>` writes a plain folder any static host serves \
+         (Netlify, GitHub Pages, Cloudflare Pages, rsync)",
+    ),
+    (
+        "pdf",
+        "nothing; print the built HTML to PDF from your browser",
+    ),
 ];
 
 /// The error for a command that is not one of [`COMMANDS`]: the retired-verb note when the
@@ -233,7 +234,6 @@ ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_CELL_SILENCE (per-cell seconds with NO output; default 600, 0 disables),
      TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
-     TALIESIN_JS_TIMEOUT (pdf's headless-Chrome page-layout seconds; default 10),
      TALIESIN_NO_CLEAR,
      TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
      TALIESIN_NO_EXEC (=--no-exec, never run code cells),
@@ -284,17 +284,6 @@ Preview & build
                              HTML; --jobs <N> caps parallel page renders (site
                              build); --no-exec renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
-  pdf    <file.tmd> [-o out.pdf] [--paper a4|letter|a5]
-                             a typeset, paginated PDF rendered FROM the built
-                             HTML: running heads, folios, cross-refs that name
-                             their page (\"Figure 3 (p. 12)\") and an automatic
-                             list of figures; default <name>.pdf beside the
-                             source; needs a local Chrome for page layout
-  publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--init] [--format json]
-                             build a site/book + deploy it to Cloudflare Pages
-                             behind a shared passcode (strict by default);
-                             --public deploys un-gated; --dry-run skips the deploy;
-                             --init runs the one-time Cloudflare setup instead
 
 Inspect
   check <file|dir> [--format human|json] [--errors-only|--strict] [--require-kernel] [--explain <CODE>]
@@ -413,24 +402,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin build . --jobs 4\n\
              \x20 taliesin build post.tmd --stdout --no-exec > post.html\n"
         }
-        "pdf" => {
-            "taliesin pdf <file.tmd> [-o out.pdf] [--paper a4|letter|a5]\n\
-             \n\
-             Render a typeset, paginated PDF *from the built HTML* — the same HTML the\n\
-             preview serves, laid out into pages. Running heads, folios, cross-references\n\
-             that name their page (\"Figure 3 (p. 12)\") and an automatic list of figures.\n\
-             Default output is <name>.pdf beside the source.\n\
-             \n\
-             Code cells run first (replaying from _freeze when unchanged), so figures are\n\
-             real rather than empty. A local Chrome does the page layout.\n\
-             \n\
-             Flags:\n\
-             \x20 -o, --out <path>  write the PDF here (default: <name>.pdf)\n\
-             \x20 --paper <size>    a4 (default), letter, or a5\n\
-             \n\
-             Example:\n\
-             \x20 taliesin pdf paper.tmd --paper letter\n"
-        }
         "check" => {
             "taliesin check <file.tmd | dir> [--format human|json] [--errors-only|--strict]\n\
              \x20                            [--require-kernel] [--explain <CODE>]\n\
@@ -523,35 +494,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin init my-book --template book\n"
-        }
-        "publish" => {
-            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--init] [--format json]\n\
-             \n\
-             Build a site or book and deploy it to Cloudflare Pages (Wrangler direct\n\
-             upload). Strict by default (a cell error or broken ref fails the deploy) and\n\
-             gated behind a shared passcode by default. One-way: it never writes to your\n\
-             source. The passcode lives only as a Cloudflare secret, never in your repo.\n\
-             \n\
-             Flags:\n\
-             \x20 --project-name <name>  Cloudflare Pages project (default: the dir-name slug)\n\
-             \x20 --out <dir>            build output dir (default: the project's _site/_book)\n\
-             \x20 --public               deploy a public, un-gated site (default: passcode-gated;\n\
-             \x20                        also settable as publish.gate: false in _site.yml)\n\
-             \x20 --no-strict            deploy even if the build has warnings (default: strict)\n\
-             \x20 --strict               ask for the default explicitly (with --no-strict, the\n\
-             \x20                        last one given wins)\n\
-             \x20 --dry-run              build + gate, print the deploy command, do not deploy\n\
-             \x20 --init                 run the one-time Cloudflare setup for this project and\n\
-             \x20                        stop (creates the Pages project, then prompts for the\n\
-             \x20                        passcode unless --public); neither builds nor deploys\n\
-             \x20 --format json         emit {diagnostics:[…]} from the build to stdout (agent/CI)\n\
-             \n\
-             One-time setup (per repo):\n\
-             \x20 export CLOUDFLARE_API_TOKEN=...   (also CLOUDFLARE_ACCOUNT_ID)\n\
-             \x20 taliesin publish <dir> --init     (--dry-run first to see the wrangler commands)\n\
-             \n\
-             Example:\n\
-             \x20 taliesin publish . --dry-run\n"
         }
         "completions" => {
             "taliesin completions <bash|zsh|fish|powershell> [--install]\n\
@@ -693,14 +635,16 @@ mod dispatch_tests {
         for (typed, want) in [
             ("preview-site", "preview"),
             ("build-site", "build"),
-            ("publish-site", "publish"),
             ("prev", "preview"),
             ("com", "completions"),
         ] {
             // The premise, measured rather than assumed: edit distance cannot see any of
-            // these. (`pre` and `co` are NOT in this list — both are two edits from `pdf`
-            // and `mcp` respectively, so `closest` answers them first and this rule never
-            // runs. That is deliberate: it only fills silence, it never overrides.)
+            // these, so the prefix rule only ever fills silence and never overrides a
+            // did-you-mean. (`pre` and `co` used to be excluded here because `pdf` and
+            // `mcp` were two edits away and `closest` answered them first. Both verbs are
+            // retired now — wave 2 took `mcp`, wave 4 took `pdf` — so the exclusion is
+            // spent; the shorter prefixes would pass too, and the assertion below is what
+            // would say so if that ever changed back.)
             assert_eq!(
                 taliesin_core::closest(typed, COMMANDS),
                 None,
@@ -1018,9 +962,10 @@ mod cli_microcopy_tests {
     #[test]
     fn every_parsed_flag_is_documented_in_its_subcommand_help() {
         let lists = parser_flag_lists();
-        // A scan that finds nothing would pass every assertion below it.
+        // A scan that finds nothing would pass every assertion below it. The floor was 7
+        // until wave 4 cut `publish` and `pdf`, each of which owned one const.
         assert!(
-            lists.len() >= 7,
+            lists.len() >= 6,
             "the flag-const scan collected only {} lists; the declaration shape moved",
             lists.len()
         );

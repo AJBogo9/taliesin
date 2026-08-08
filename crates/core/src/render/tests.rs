@@ -2153,9 +2153,9 @@ fn a_standalone_deck_gets_social_meta_but_a_site_deck_is_not_duplicated() {
         );
     }
 
-    // A site deck arrives with the richer block already on `include-in-header`. Simulated
-    // here with the same shape `site::meta::deck_social_head` emits; the basic set must
-    // then stay out of the way instead of emitting a second og:title.
+    // A page that already carries an `og:title` on `include-in-header` — the site's
+    // `social_head`, or one an author wrote — must suppress the basic set rather than stack
+    // with it.
     let site_deck = render_html_page(
         "---\ntitle: My Talk\ndescription: A talk about ports.\nformat: deck\n\
          include-in-header:\n  text: |\n    \

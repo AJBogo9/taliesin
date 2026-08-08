@@ -45,7 +45,6 @@ fn help_groups_commands_by_purpose() {
         "new ",
         "preview",
         "build ",
-        "publish",
         "check",
         "doctor",
         "lsp",

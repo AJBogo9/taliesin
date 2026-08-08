@@ -66,12 +66,9 @@ CANARY_NODE="only_a_textual_sink_becomes_a_live_region"
 # at all — every other test of those five features asserts what Rust EMITTED, and would stay
 # green with the whole client runtime broken. It is also, since Wave 2, the proof that Chrome
 # itself ran: `read --run`'s own browser canary went with the verb.
+# Since Wave 4 cut the print track it is also the ONLY chrome canary: the print driver was
+# the second, and it went with the thing it proved.
 CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
-# A second browser-backed capability, independent of the first: the print track. It is
-# the only thing that drives paged.js through CDP, and every other print test asserts what
-# Rust EMITTED into the stylesheet — all of which stays green with pagination entirely
-# broken, including the failure mode that produces a plausible but truncated PDF.
-CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
 
 PY="${TALIESIN_PYTHON:-python3}"
 R_BIN="${TALIESIN_R:-R}"
@@ -273,8 +270,7 @@ else
             "python kernel:$CANARY_KERNEL" \
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
-            "chrome (reactive client):$CANARY_REACTIVE" \
-            "chrome (print track):$CANARY_PRINT"; do
+            "chrome (reactive client):$CANARY_REACTIVE"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then
@@ -303,18 +299,7 @@ tsc_gate "tsc: web-client" web-client tsc-client.log
 tsc_gate "tsc: bundled assets JS" crates/core/assets/js tsc-assets.log
 
 # ---------------------------------------------------------------------------
-# 6. The publish passcode gate. Security-critical, and this dependency-free
-#    node:test file is its only functional test.
-# ---------------------------------------------------------------------------
-if [ "$ALLOW_MISSING" -eq 1 ] && ! have node; then
-    skip_gate "node --test: publish passcode" "node unavailable"
-else
-    run_gate "node --test: publish passcode" middleware.log \
-        node --test crates/server/src/assets/_middleware.test.mjs
-fi
-
-# ---------------------------------------------------------------------------
-# 7. The VS Code companion: build, type-check, and the OFFLINE TextMate grammar
+# 6. The VS Code companion: build, type-check, and the OFFLINE TextMate grammar
 #    tokenization test (which needs the base grammars fetched once).
 # ---------------------------------------------------------------------------
 if [ "$ALLOW_MISSING" -eq 1 ] && ! have npm; then
@@ -341,7 +326,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 8-9. Dependency advisories and dependency POLICY (deny.toml: redistributable
+# 7-8. Dependency advisories and dependency POLICY (deny.toml: redistributable
 #      licences only, no unknown registries or git sources).
 # ---------------------------------------------------------------------------
 if [ "$ALLOW_MISSING" -eq 1 ] && ! have cargo-audit; then

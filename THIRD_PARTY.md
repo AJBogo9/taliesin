@@ -16,7 +16,7 @@ The verbatim texts therefore ship beside the files they cover:
 Plot, Mermaid + the dependencies Mermaid inlines) and
 [`crates/core/assets/katex/LICENSE`](crates/core/assets/katex/LICENSE) (KaTeX).
 Fonts and syntax definitions already carried theirs
-(`assets/fonts/OFL.txt`, `assets/syntaxes/PowerShell.LICENSE.txt`).
+(`assets/fonts/newsreader-OFL-fontsource.txt`, `assets/syntaxes/PowerShell.LICENSE.txt`).
 
 - **KaTeX** (MIT, Copyright (c) 2013-2020 Khan Academy and other contributors).
   The stylesheet and WOFF2 fonts under `crates/core/assets/katex/` render math
@@ -33,29 +33,18 @@ Fonts and syntax definitions already carried theirs
   that has a diagram so it renders fully offline (content-gated); the live preview
   lazy-loads this same vendored copy from a same-origin route. License:
   <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>.
-- **paged.js** (`crates/core/assets/js/paged.polyfill.min.js`, MIT, v0.4.3, Copyright
-  (c) 2018 Adam Hyde). The CSS Paged Media polyfill behind `taliesin pdf`: it supplies
-  the Level 3 features Chrome does not implement natively — `string-set` running heads
-  and `target-counter()` page references (measured against Chrome 150, 2026-07-31).
-  **Unlike the other bundles here it is not shipped on built pages**; it is inlined only
-  into the transient paginated page the print track assembles. License:
-  <https://gitlab.coko.foundation/pagedjs/pagedjs/-/blob/main/LICENSE.md>.
 - **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
   glyph paths are embedded directly in source — the copy/check button in
   `code-enhance.js` and the callout-kind icons in `crates/core/src/render/divs.rs`.
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
 - **Newsreader** (SIL Open Font License 1.1, Copyright 2020 The Newsreader
-  Project Authors). Used two ways. (1) The variable serif TTF at
-  `crates/core/assets/fonts/Newsreader[opsz,wght].ttf` is rasterized at build time
-  for the headline/byline/footer text on the auto-generated social-card image
-  (`crates/core/src/site/card.rs`). (2) The **body typeface** for rendered pages:
-  the two variable woff2 faces
-  `crates/core/assets/fonts/newsreader-latin-wght-{normal,italic}.woff2` (roman +
-  italic, Latin subset, from `@fontsource-variable/newsreader@5.2.10`) are inlined
+  Project Authors). The **body typeface** for rendered pages: the two variable woff2
+  faces `crates/core/assets/fonts/newsreader-latin-wght-{normal,italic}.woff2` (roman
+  + italic, Latin subset, from `@fontsource-variable/newsreader@5.2.10`) are inlined
   as `data:` URIs into every page's CSS at build time (`build.rs`), so pages need no
   network for text. Full license text ships alongside them in
-  `crates/core/assets/fonts/OFL.txt` (and `newsreader-OFL-fontsource.txt`). License:
+  `crates/core/assets/fonts/newsreader-OFL-fontsource.txt`. License:
   <https://github.com/productiontype/Newsreader>.
 
 The other scripts under `crates/core/assets/js/` (the `code-enhance/` fragments,
@@ -128,12 +117,3 @@ One syntax definition is vendored directly, because neither set above has one
   syntect cannot consume as a syntax at all — its `plist-load` feature covers
   themes and metadata.
 
-Two further build dependencies power the auto-generated social-card raster
-pipeline (`crates/core/src/site/card.rs`), called out individually because they
-replace what would otherwise be an external image tool; both are pure Rust with
-no C toolchain or system library requirement, which is why they were picked:
-
-- **ab_glyph** (Apache-2.0). Rasterizes glyphs from the bundled Newsreader font
-  above into the card's headline/byline/footer text.
-- **png** (MIT OR Apache-2.0). Encodes the rendered 1200×630 RGBA card buffer
-  to the PNG served at `/og/<hash>.png`.

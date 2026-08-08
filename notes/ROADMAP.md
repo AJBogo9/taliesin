@@ -5,7 +5,7 @@
 > roadmap grows the tool, which is the opposite of the current work. **Do not work
 > its open items until the cut lands**, and re-read them afterwards against the
 > smaller surface: several presuppose subsystems that are being deleted (the
-> `print-pdf-track` item in particular, since the PDF track is cut in wave 4).
+> `print-pdf-track` item in particular, which cut wave 4 has now closed as CUT).
 
 > The successor to `native-rewrite.md` (complete 2026-06-24), which removed
 > every backwards-compat shim and closed every schema. **This roadmap cashes
@@ -284,14 +284,16 @@ each pinned by an added corpus document so breadth never outruns the regression 
   **Pinned: `corpus/callouts/kinds.qmd`** + unit tests; browser-verified light + dark.
   Color/spacing fine-craft still folds into `typography-craft-pass`. *Invariant held: the
   `:::` scanner contract + block model untouched; icons bundled offline.*
-- [ ] **`print-pdf-track` (med / large / low), DEFERRED to Wave 5 (decided
-  2026-06-24).** Produce a print/PDF *derived from the built HTML*, HTML staying the
-  single source of truth: a paged-media pass (print CSS `@page` rules + headless Chrome,
-  or `paged.js`) over `build` output, NOT a second compiler/format path. Page breaks,
-  running heads, figure/table placement honored via CSS; `{js}`/video degrade to a
-  poster/static frame. **Pin: `corpus/print/paged.qmd`.** *Invariant: HTML-only identity
-  preserved (PDF is a rendering of the HTML, not a parallel format); no preview
-  write-back; reuses the existing build artifact.*
+- [x] **`print-pdf-track` — CUT 2026-08-08 in cut wave 4.** It had shipped (`taliesin
+  pdf`, `render/print.rs`, the vendored paged.js polyfill, `corpus/print/paged.tmd`) and
+  was cut with the rest of the publishing/web-platform bundle: a browser's own print
+  dialogue renders the same built HTML, and the track cost a headless-Chrome dependency,
+  a vendored polyfill with its own attribution, and a `gates.sh` canary. **Before
+  reviving it, read `notes/retired/paged-js-traps.md`** — the two findings preserved
+  there (the `loading="lazy"` pagination deadlock, and what `auto: false` is and is *not*
+  for) cost real debugging and a naive reimplementation walks into both. The stale
+  `corpus/print/paged.qmd` pin this entry named never existed; the document was
+  `paged.tmd`.
 
 ### Pillar V, Identity, craft & OSS readiness
 
@@ -331,12 +333,14 @@ books as versioned spec, integrity debt paid.
   books to a versioned normative spec. (The `configuration.qmd`/`sites.qmd` fixes are
   handled once, by `prune-and-fix-stale-docs`.) *Invariant: authoring + version stamp;
   editor-only.*
-- [x] **`build-seo-completeness` (low / small / none). DONE (verified 2026-07-30 by a
-  real build of `corpus/cite-this`).** At publish time, when `url:` is set, the build emits
-  `sitemap.xml` (per-page `<loc>` + a validated `<lastmod>`, 404 excluded) + `robots.txt`
-  (allow-all + `Sitemap:`) + JSON-LD (`BlogPosting`, upgraded to `ScholarlyArticle` for a
-  cited post; `WebSite` + `Person` on the root index) — plus `llms.txt`, the Atom feeds and
-  the per-page citations sidecar, which were never in this entry's scope. `site/seo.rs` +
+- [x] **`build-seo-completeness` (low / small / none). DONE 2026-07-30, then CUT DOWN on
+  2026-08-08 in cut wave 4.** What survives: when `url:` is set the build emits
+  `sitemap.xml` (per-page `<loc>` + a validated `<lastmod>`, 404 excluded), `robots.txt`
+  (allow-all + `Sitemap:`), the Atom feeds, and a five-tag OpenGraph block (`og:title`,
+  `og:description`, `og:url`, `og:image` from the page's own `image:`, `twitter:card`).
+  What went: the JSON-LD `@graph`, `llms.txt`/`llms-full.txt`, the per-page
+  `<page>.citations.json` sidecar, the generated `og/<hash>.png` social cards and their
+  glyph rasterizer, and the PWA `manifest.webmanifest` + icons. `site/seo.rs` +
   `site/meta.rs`, written by `build.rs`; drafts and `_`/`.` names are already out of
   `site.pages`. *Invariant: build-time only; HTML-only.*
 
@@ -366,9 +370,8 @@ validation → jsonschema`) and the scope-skeptic's "land integrity debt first."
 - **Wave 4, Close the loop** (the deepest real capability move):
   `reverse-sync-coverage-audit` → `vscode-editor-companion` Phase 1 (coordinate with
   #1d). Phase 2 editor commands capped and deferred.
-- **Wave 5, Print/PDF track** (deferred, decided 2026-06-24): `print-pdf-track`
-  derived from the built HTML, pinned by `corpus/print/paged.qmd`. Scheduled when the
-  HTML output is stable enough to be worth pinning a paged rendering to it.
+- **Wave 5, Print/PDF track: CUT 2026-08-08** (cut wave 4). See the `print-pdf-track`
+  entry above; print from the browser instead.
 - **Later / demand-driven** (not scheduled): `docs-as-spec` (after validation settles)
   · everything in CUT/DEFER, revived only when a corpus doc or a measured penalty
   pulls it in. (`{glsl}` shipped 2026-07-29; `build-seo-completeness` is done — see its
@@ -380,8 +383,7 @@ work. #5 → Wave 0 (`third-party-truth`). #6 → Wave 3 (`typography-craft-pass
 Wave 2 (benchmark + hero demo).
 
 **Quick foundational wins:** all of Wave 0, plus `reverse-sync-coverage-audit` and
-`image-lightbox`. **Epics:** `vscode-editor-companion`, `docs-as-spec`,
-`print-pdf-track`.
+`image-lightbox`. **Epics:** `vscode-editor-companion`, `docs-as-spec`.
 
 ---
 
@@ -486,9 +488,10 @@ Wave 2 (benchmark + hero demo).
 - **The companion's editor commands metastasizing into WYSIWYG.** Phase 2's "reorder
   slide" must remain a `.qmd`-buffer text transform in the editor, the exact thing the
   removed drag-to-reorder feature got wrong. Cap the command set.
-- **Print track scope-creep into a real format.** `print-pdf-track` must stay a paged
-  rendering *of the built HTML*. The moment it forks into a separate Pandoc/Typst/LaTeX
-  path it has violated HTML-only, that is the line.
+- **Print track scope-creep into a real format.** Moot since the track was cut on
+  2026-08-08, and recorded because the line it drew still holds for any revival: a print
+  path must stay a paged rendering *of the built HTML*. The moment it forks into a
+  separate Pandoc/Typst/LaTeX path it has violated HTML-only, that is the line.
 
 **Explicitly OUT (non-goals)**
 

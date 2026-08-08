@@ -54,11 +54,6 @@ parking_lot = "0.12"
 # the tree transitively (via tokio), so this is a near-free direct dependency.
 libc = "0.2"
 
-# OG social-card rendering (crates/core/src/site/card.rs). Both pure-Rust, no C:
-# ab_glyph rasterizes glyphs from the bundled Newsreader TTF; png encodes the RGBA card.
-ab_glyph = "0.2"
-png = "0.17"
-
 # Image optimization (item 169). Core uses ONLY `image_dimensions`, a header read, to emit
 # intrinsic `width`/`height`; the server adds the `avif` + `rayon` features to transcode.
 # The decoder set is exactly what the corpus contains — `.svg` has no intrinsic pixel size

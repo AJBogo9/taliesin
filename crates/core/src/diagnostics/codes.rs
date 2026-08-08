@@ -17,7 +17,7 @@ pub const WARNING: &str = "warning";
 /// Advice, not a defect: printed like any other diagnostic but **never** fails a gate
 /// unless the run asks for it (`check --strict`). This is what lets an opt-in style rule
 /// ("weasel word `simply` (consider cutting)") exist at all — as an error it made
-/// `check`, `build --strict` and `publish` (strict by default) fail on a suggestion to
+/// `check` and `build --strict` fail on a suggestion to
 /// reword a sentence, so the only way to keep a green gate was to not turn the rule on.
 pub const SUGGESTION: &str = "suggestion";
 
@@ -94,7 +94,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     // phrase. One family, not three: the surface is the same and so is the edit (fix the
     // spelling inside the braces). It is a WARNING for the reason the `.input` and div
     // families are — the page still renders, so a one-letter typo must not gate
-    // `build --strict` / `publish`, which is what the old `(GENERIC, ERROR)` fall-through did.
+    // `build --strict`, which is what the old `(GENERIC, ERROR)` fall-through did.
     // Above the generic needles below because the quoted invocation is author-controlled
     // text (`{{< video math-intro.mp4 >}}` would otherwise classify as TAL-MATH).
     ("{{<", "TAL-SHORTCODE", WARNING),
@@ -172,7 +172,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("disagrees with its visible text", "TAL-A11Y-LABEL", WARNING),
     ("missing alt text", "TAL-A11Y-ALT", WARNING),
     ("looks like a placeholder", "TAL-A11Y-ALT", WARNING),
-    // Execution (`build`/`publish` only — `check` never runs a cell). Both messages embed
+    // Execution (`build` only — `check` never runs a cell). Both messages embed
     // the page label, so they sit above the generic needles like every other row that
     // quotes author-controlled text: a page called `math.tmd` would otherwise be TAL-MATH.
     // Two codes, not one, because the fix is in a different place: TAL-CELL-ERROR is the
@@ -266,8 +266,8 @@ const EXPLANATIONS: &[Explanation] = &[
                 the book outline and any cross-reference to it all render a blank row. \
                 Usually a heading whose text was cut without cutting the `#` line.",
         fix: "Give the heading a name, or delete the line. This is advice, not a defect: it \
-              is severity `suggestion`, so it never fails `check`, `build --strict` or \
-              `publish` unless you ask with `check --strict`.",
+              is severity `suggestion`, so it never fails `check` or `build --strict` \
+              unless you ask with `check --strict`.",
     },
     Explanation {
         code: "TAL-SHAPE-DUP",
@@ -324,7 +324,7 @@ const EXPLANATIONS: &[Explanation] = &[
               than a second `this chapter`). Do not paper over it with `aria-label`: a \
               label that disagrees with the visible text breaks voice control (WCAG 2.5.3, \
               Label in Name). This is advice, severity `suggestion`, so it never fails \
-              `check`, `build --strict` or `publish` unless you ask with `check --strict`.",
+              `check` or `build --strict` unless you ask with `check --strict`.",
     },
     Explanation {
         code: "TAL-PROSE-WEASEL",
@@ -336,7 +336,7 @@ const EXPLANATIONS: &[Explanation] = &[
                 have.",
         fix: "Cut the word and read the sentence again; it almost always survives unchanged. \
               This is advice, not a defect: it is severity `suggestion`, so it never fails \
-              `check`, `build --strict` or `publish` unless you ask with `check --strict`.",
+              `check` or `build --strict` unless you ask with `check --strict`.",
     },
     Explanation {
         code: "TAL-PROSE-REPEAT",
@@ -834,7 +834,7 @@ mod tests {
             ),
             ("TAL-SHAPE-ECHO", SUGGESTION)
         );
-        // Advice, never a gate: none of these may reach the `build --strict` / `publish` floor.
+        // Advice, never a gate: none of these may reach the `build --strict` floor.
         for (_, code, sev) in TABLE.iter().filter(|(_, c, _)| c.starts_with("TAL-SHAPE-")) {
             assert_eq!(*sev, SUGGESTION, "{code} must stay advisory");
         }
@@ -931,7 +931,7 @@ mod tests {
         // no-suggestion variant ends "(not in the bibliography)" and so hit the generic
         // `bibliography` needle as TAL-CITE-BIB/warning, while the *more* actionable
         // did-you-mean variant matched nothing and fell through to TAL-CHECK/**error**,
-        // failing `check`, `build --strict` and `publish` on a typo'd citation key.
+        // failing `check` and `build --strict` on a typo'd citation key.
         assert_eq!(
             classify("broken citation: @bishop2006patern (did you mean `@bishop2006pattern`?)"),
             ("TAL-CITE-KEY", WARNING)
@@ -1003,7 +1003,7 @@ mod tests {
         // Item 77 residual. Shortcode diagnostics had no family at all, so every one fell
         // through to `(GENERIC, ERROR)` — and ERROR is the wrong severity twice over: the
         // page still renders (the shortcode keeps the options it understood, or stays
-        // literal text), and `build --strict` / `publish` gate on errors, so a one-letter
+        // literal text), and `build --strict` gates on errors, so a one-letter
         // typo blocked a release. Same class as the `.input` / div families above.
         for m in [
             "unknown `{{< video >}}` option `control` (did you mean `controls`?) at line 5",

@@ -475,9 +475,6 @@ pub(crate) const STATUS_CSS: &str = "\
       background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); \
       border: 1px solid var(--tali-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
     .tali-dev-ctl:hover { border-color: var(--tali-accent, #4c8dff); } \
-    .tali-dev-card { display: block; max-width: 100%; height: auto; border-radius: 6px; \
-      border: 1px solid var(--tali-border, #e0e0e0); } \
-    .tali-dev-card[hidden] { display: none; } \
     .tali-dev-theme svg { width: 14px; height: 14px; } \
     #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
     #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg, #f5f5f5); \

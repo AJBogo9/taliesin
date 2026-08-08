@@ -857,42 +857,24 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
         "robots names sitemap"
     );
 
-    // llms.txt: identity from the home hero + linked posts.
-    let llms = site.llms_txt().expect("llms.txt");
-    assert!(llms.starts_with("# Andreas Bogossian"), "identity H1");
-    assert!(
-        llms.contains(&format!("]({base}/posts/")),
-        "posts linked absolutely"
-    );
-    assert!(!llms.contains("404"), "the 404 page is not in llms.txt");
-    // llms-full.txt: real prose, identity header.
-    let full = site.llms_full_txt().expect("llms-full.txt");
-    assert!(full.contains("Andreas Bogossian"), "identity header");
-    assert!(
-        full.len() > 2000,
-        "carries real page prose, got {} bytes",
-        full.len()
-    );
-
-    // JSON-LD in the rendered pages. `em-algorithm` declares a `bibliography:`, so it is a
-    // cited/scholarly document and upgrades from `BlogPosting` to `ScholarlyArticle`
-    // (author-free — no `author:` is set on any tech-blog post).
+    // The social block on a real post: its own title/description/URL, and the `image:`
+    // it actually sets, absolutized against the site `url:`.
     let post = site
         .render_page("posts/em-algorithm/index.tmd")
         .expect("post renders");
     assert!(
-        post.contains(r#""@type":"ScholarlyArticle""#),
-        "a bibliography-bearing post is a ScholarlyArticle"
+        post.contains(
+            r#"<meta property="og:url" content="https://andreasbogossian.com/posts/em-algorithm/">"#
+        ),
+        "the post's own canonical og:url: {post}"
     );
     assert!(
-        !post.contains(r#""@type":"BlogPosting""#),
-        "the scholarly post must not also carry BlogPosting"
+        post.contains(&format!(
+            r#"<meta property="og:image" content="{base}/posts/em-algorithm/thumbnail.webp">"#
+        )),
+        "og:image is the post's own front-matter image:"
     );
     let home = site.render_page("index.tmd").expect("home renders");
-    assert!(
-        home.contains(r#""@type":"WebSite""#) && home.contains(r#""@type":"Person""#),
-        "WebSite+Person on home"
-    );
 
     // Footer feed link honored (url: is set).
     let blog = site.render_page("blog.tmd").expect("blog renders");
@@ -941,32 +923,6 @@ fn page_titles_carry_the_site_name_suffix() {
     assert!(
         post.ends_with(&format!(" · {site_name}")) && post != site_name,
         "a post names page + site: {post:?}"
-    );
-}
-
-use taliesin_core::site::{card_rel_path, card_spec};
-
-/// The blog home ships a generated OG card (never the removed static `og-image.webp`),
-/// and its og:image URL is exactly the card path the build writes.
-#[test]
-fn home_og_image_is_the_generated_card() {
-    let site = Site::discover(&corpus_dir().join("tech-blog"));
-    let home = site
-        .pages
-        .iter()
-        .find(|p| p.url == "index.html")
-        .expect("home page");
-    let rel = card_rel_path(&card_spec(&site, home)); // "og/<hex>.png"
-    let html = site.render_page("index.tmd").unwrap();
-    assert!(
-        html.contains(&format!(
-            r#"property="og:image" content="https://andreasbogossian.com/{rel}""#
-        )),
-        "home og:image points at the generated card ({rel})"
-    );
-    assert!(
-        !html.contains("og-image.webp"),
-        "stale static card is not referenced"
     );
 }
 

@@ -9,8 +9,6 @@ pub(crate) struct FrontInfo {
     pub(crate) title: Option<String>,
     pub(crate) date: Option<String>,
     pub(crate) description: Option<String>,
-    /// Front-matter `author` (a scalar or a list): the byline, JSON-LD, the Atom feed.
-    pub(crate) authors: Vec<crate::author::Author>,
     pub(crate) image: Option<String>,
     /// Front-matter `image-alt`: alt text for the listing card image.
     pub(crate) image_alt: Option<String>,
@@ -23,10 +21,6 @@ pub(crate) struct FrontInfo {
     /// reports it as "not published". The live preview (`DraftMode::Include`) keeps it,
     /// badged. Ignored on an `{{< embed >}}` target (it ships with the page embedding it).
     pub(crate) draft: bool,
-    /// Whether the page declares a `bibliography:`, i.e. it is a cited/scholarly document.
-    /// Drives the `ScholarlyArticle` vs `BlogPosting` JSON-LD choice (author-free, so a
-    /// research post with no `author:` still upgrades).
-    pub(crate) has_bibliography: bool,
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
@@ -47,17 +41,20 @@ pub(crate) fn parse_front_matter(
     let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
         return FrontInfo::default();
     };
+    // Parsed for its DIAGNOSTICS only. Nothing in the site layer reads a page's authors
+    // since JSON-LD was cut on 2026-08-08 — `render/mod.rs` parses `author:` again for the
+    // byline — but an author sub-key typo is otherwise invisible (the value is just
+    // dropped), and the page rel tags the message the way a `listing:` warning is tagged.
+    warnings.extend(
+        crate::author::parse(val.get("author"))
+            .1
+            .into_iter()
+            .map(|m| format!("{label}: {m}")),
+    );
     FrontInfo {
         title: scalar(val.get("title")),
         date: scalar(val.get("date")),
         description: scalar(val.get("description")),
-        authors: {
-            let (list, msgs) = crate::author::parse(val.get("author"));
-            // The page rel tags the message the same way a `listing:` warning is tagged;
-            // an author sub-key typo is otherwise invisible (the value is just dropped).
-            warnings.extend(msgs.into_iter().map(|m| format!("{label}: {m}")));
-            list
-        },
         image: scalar(val.get("image")),
         image_alt: scalar(val.get("image-alt")),
         categories: string_list(val.get("categories")),
@@ -65,7 +62,6 @@ pub(crate) fn parse_front_matter(
         hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
         draft: bool_field(&val, "draft", false, label, warnings),
-        has_bibliography: val.get("bibliography").is_some(),
     }
 }
 

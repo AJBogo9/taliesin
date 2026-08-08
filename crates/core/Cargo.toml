@@ -16,8 +16,6 @@ serde_yaml = { workspace = true }
 sha2 = { workspace = true }
 syntect = { workspace = true }
 two-face = { workspace = true }
-ab_glyph = { workspace = true }
-png = { workspace = true }
 image = { workspace = true }
 # Already in the tree (transitively via comrak); used directly for NFC composition
 # of LaTeX accent macros in BibTeX fields (cite.rs). No new download.

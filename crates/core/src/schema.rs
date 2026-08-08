@@ -19,7 +19,7 @@ pub const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.js
 
 #[cfg(test)]
 mod generate {
-    use crate::site::{NATIVE_KEYS, PUBLISH_KEYS};
+    use crate::site::NATIVE_KEYS;
     use serde_json::{Map, Value, json};
 
     /// A `properties` object: every key in `keys` maps to `{}` (any value), then `overrides`
@@ -34,19 +34,6 @@ mod generate {
             map.insert((*k).to_string(), v.clone());
         }
         Value::Object(map)
-    }
-
-    /// A closed object schema: `type: object`, `additionalProperties: false`, exactly `keys`.
-    fn closed_object(keys: &[&str], overrides: &[(&str, Value)]) -> Value {
-        json!({
-            "type": "object",
-            "additionalProperties": false,
-            "properties": properties(keys, overrides),
-        })
-    }
-
-    fn boolean() -> Value {
-        json!({ "type": "boolean" })
     }
 
     pub fn site_config_schema() -> Value {
@@ -82,26 +69,12 @@ mod generate {
                 ]
             }
         });
-        // publish: a closed { provider, project, gate } block. `provider` is an enum (only
-        // cloudflare today); `project` is the Cloudflare Pages project name; `gate` is the
-        // passcode-gate toggle (false = deploy public).
-        let publish = closed_object(
-            PUBLISH_KEYS,
-            &[
-                (
-                    "provider",
-                    json!({ "type": "string", "enum": ["cloudflare"] }),
-                ),
-                ("project", json!({ "type": "string" })),
-                ("gate", boolean()),
-            ],
-        );
         json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Taliesin _site.yml",
             "type": "object",
             "additionalProperties": false,
-            "properties": properties(NATIVE_KEYS, &[("chapters", chapters), ("publish", publish)]),
+            "properties": properties(NATIVE_KEYS, &[("chapters", chapters)]),
         })
     }
 

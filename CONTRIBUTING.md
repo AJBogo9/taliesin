@@ -24,7 +24,7 @@ by nothing at all.
 ```
 
 This is the single command that runs everything: fmt, clippy, the workspace suite, both
-`tsc` type-checks, the publish-passcode test, the VS Code companion's grammar test, and
+`tsc` type-checks, the VS Code companion's grammar test, and
 `cargo audit` / `cargo deny`. **A plain `cargo test` is not enough.** The live-kernel,
 Node and headless-Chrome cases *skip silently* when their interpreter is missing, so a
 green `cargo test` on a machine without Python, R, Node or Chrome can be nearly empty of

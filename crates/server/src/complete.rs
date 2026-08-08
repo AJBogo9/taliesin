@@ -329,14 +329,12 @@ fn command_desc(cmd: &str) -> &'static str {
     match cmd {
         "build" => "build self-contained HTML (a dir builds the site)",
         "run" => "execute code cells in the terminal (warm session, no browser)",
-        "pdf" => "typeset, paginated PDF rendered from the built HTML",
         "check" => "list located diagnostics (non-zero if any)",
         "doctor" => "audit the environment for running code cells",
         "lsp" => "stdio LSP server (live diagnostics in any editor)",
         "init" => "scaffold a starter site",
         "new" => "scaffold one document",
         "preview" => "live preview server",
-        "publish" => "build + deploy to Cloudflare Pages",
         "help" => "show this help",
         "completions" => "print a shell completion script",
         _ => "",
@@ -376,10 +374,6 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
                 "stop the run in flight, keeping the warm kernel",
             ),
         ],
-        "pdf" => &[
-            ("--out", true, "write the PDF here (default <name>.pdf)"),
-            ("--paper", true, "page size: a4 (default), letter, or a5"),
-        ],
         "build" => &[
             ("--out", true, "write a portable folder to <dir>"),
             (
@@ -394,20 +388,6 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ),
             ("--bare", false, "emit zero-JS, CSS-only single-doc HTML"),
             ("--jobs", true, "cap parallel page renders"),
-            ("--format", true, "machine output format (json)"),
-            ("--json", false, "shorthand for --format json"),
-        ],
-        "publish" => &[
-            ("--project-name", true, "Cloudflare Pages project name"),
-            ("--out", true, "output dir"),
-            ("--public", false, "deploy un-gated (no passcode)"),
-            ("--no-strict", false, "do not fail on located warnings"),
-            ("--dry-run", false, "build but skip the deploy"),
-            (
-                "--init",
-                false,
-                "run the one-time Cloudflare setup, then stop",
-            ),
             ("--format", true, "machine output format (json)"),
             ("--json", false, "shorthand for --format json"),
         ],
@@ -515,7 +495,7 @@ fn positional_kind(sub: &str) -> Option<PathKind> {
     match sub {
         "preview" | "build" | "check" => Some(PathKind::FileOrDir),
         "run" => Some(PathKind::File),
-        "publish" | "init" => Some(PathKind::Dir),
+        "init" => Some(PathKind::Dir),
         _ => None,
     }
 }
@@ -1051,15 +1031,15 @@ mod brain_tests {
     #[test]
     fn dir_only_subcommands_hide_tmd_files() {
         let dir = fixture("dironly");
-        // `publish` deploys a project, so a single document is never the target.
-        let got = path_values(&dir, &["publish", ""]);
+        // `init` scaffolds into a project root, so a single document is never the target.
+        let got = path_values(&dir, &["init", ""]);
         assert!(
             !got.contains(&"index.tmd".to_string()),
-            "publish offers no .tmd file: {got:?}"
+            "init offers no .tmd file: {got:?}"
         );
         assert!(
             got.contains(&"site/".to_string()),
-            "publish still offers a site dir: {got:?}"
+            "init still offers a site dir: {got:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1235,9 +1215,10 @@ mod brain_tests {
                 }
                 let tok = &src[start..j];
                 // Flags that appear in help but are NOT taliesin subcommand flags: the
-                // global --help/--version, and flags inside external-tool command examples
-                // (wrangler's `--production-branch` in the publish setup hint).
-                const NON_TABLE_FLAGS: &[&str] = &["--help", "--version", "--production-branch"];
+                // global --help/--version. (`--production-branch` was here too, for
+                // wrangler's own command inside the `publish` setup hint; that verb went in
+                // wave 4, so no external tool's flags appear in the help text now.)
+                const NON_TABLE_FLAGS: &[&str] = &["--help", "--version"];
                 if tok.len() > 2 && !NON_TABLE_FLAGS.contains(&tok) {
                     mentioned.insert(tok.to_string());
                 }

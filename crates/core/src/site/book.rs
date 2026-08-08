@@ -296,14 +296,12 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
                 title: Some(c.title.clone()),
                 date: fm.date,
                 description: fm.description,
-                authors: fm.authors,
                 card_image: None,
                 card_image_alt: None,
                 categories: fm.categories,
                 listings: fm.listings,
                 hero: fm.hero,
                 page_layout: fm.page_layout,
-                has_bibliography: fm.has_bibliography,
                 draft: c.draft,
             }
         })

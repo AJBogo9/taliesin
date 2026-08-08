@@ -80,23 +80,6 @@ bundled stylesheet and script, which is why rendered pages need no network). Not
 fetched at runtime and there is no `node_modules`. Put `target/release/taliesin` on your
 `PATH` to call `taliesin` from anywhere.
 
-**One optional feature, off by default, because it is a third of the build.**
-`taliesin pdf` drives a local headless Chrome to lay out and print a paginated PDF from the
-built HTML. Its browser driver is the single most expensive thing in the dependency
-graph: turning it on takes the same cold build from 2m 34s to **3m 35s**, 305 crates to
-321, and the binary from 38 MB to 47.7 MB (measured on one machine at `-j3`, so treat the
-ratio as the durable part: it has held at exactly +16 crates across a year of drift). Since
-it *also* needs a system Chrome at runtime and most people never invoke it, you only pay
-for it if you ask:
-
-```sh
-cargo build --release --features taliesin-server/headless-js
-```
-
-The [release binaries](#install--prerequisites) are built with it, so a download is the complete tool.
-Without it every other command is unchanged and `pdf` says the binary was built without the
-driver, exactly as it does when no Chrome is installed.
-
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
 highlighting, decks, and sites render with no kernel at all; a kernel is needed only
 to *run* `{python}`/`{r}` code cells (without one they render as source). Each

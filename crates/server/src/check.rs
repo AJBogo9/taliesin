@@ -56,8 +56,8 @@ pub(crate) const LSP_SOURCE: &str = "taliesin";
 
 impl Diagnostic {
     /// Build a diagnostic, classifying its `code`/`severity` and lifting any inline
-    /// "did you mean" hint into a structured `suggestion` from the message. Shared with the
-    /// `build`/`publish` structured-error path.
+    /// "did you mean" hint into a structured `suggestion` from the message. Shared with
+    /// `build`'s structured-error path.
     pub(crate) fn new(file: String, line: Option<u32>, message: String) -> Self {
         use taliesin_core::diagnostics::codes;
         let (code, severity) = codes::classify(&message);
@@ -147,9 +147,9 @@ pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str)
 }
 
 /// Whether a render warning is **advice** rather than a defect (severity `suggestion`), so
-/// `build --strict` and `publish` must report it and not fail on it. The classification is
-/// the same one `check` uses, derived from the message, so the three commands cannot
-/// disagree about what blocks a release.
+/// `build --strict` must report it and not fail on it. The classification is the same one
+/// `check` uses, derived from the message, so the two commands cannot disagree about what
+/// blocks a release.
 pub(crate) fn is_advice(w: &taliesin_core::render::Warning) -> bool {
     use taliesin_core::diagnostics::codes;
     codes::classify(&w.message).1 == codes::SUGGESTION
@@ -160,8 +160,8 @@ pub(crate) fn blocking(warnings: &[taliesin_core::render::Warning]) -> usize {
     warnings.iter().filter(|w| !is_advice(w)).count()
 }
 
-/// Serialize just the diagnostics as `{ "diagnostics": [...] }` — the shape `build`/`publish`
-/// emit under `--format json` (no `environment`; a build already runs kernels, and the
+/// Serialize just the diagnostics as `{ "diagnostics": [...] }` — the shape `build`
+/// emits under `--format json` (no `environment`; a build already runs kernels, and the
 /// agent consuming a failing build wants the problems, not the interpreter probe). Reuses
 /// the exact per-diagnostic shape as `check`, so the two channels can't drift.
 pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
@@ -199,8 +199,8 @@ pub(crate) enum Scope {
 /// No code execution, no filesystem writes; the local-asset/media/link rules do stat the
 /// filesystem.
 ///
-/// This is the single definition of the superset, so `check`, `build --strict` and
-/// `publish` cannot drift on what counts as a defect. It deliberately excludes the two
+/// This is the single definition of the superset, so `check` and `build --strict` cannot
+/// drift on what counts as a defect. It deliberately excludes the two
 /// checks the callers already run themselves (`cite::validate_xrefs`, and the front-matter
 /// YAML parse), so nothing is counted twice.
 ///
@@ -2721,8 +2721,8 @@ mod tests {
             Warning::new("weasel word `simply` (consider cutting)".to_string()),
             Warning::new("repeated word `the`".to_string()),
         ];
-        // `--strict` (and `publish`, which is strict by default) fail on the broken ref and
-        // nothing else: advice is logged by the build and never blocks a release.
+        // `--strict` fails on the broken ref and nothing else: advice is logged by the
+        // build and never blocks a release.
         assert_eq!(blocking(&ws), 1);
         assert!(is_advice(&ws[1]) && is_advice(&ws[2]) && !is_advice(&ws[0]));
     }

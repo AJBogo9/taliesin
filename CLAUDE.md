@@ -10,7 +10,7 @@ track would render *from* the built HTML, never as a parallel format).
 > ## ⚠ THE PROJECT IS IN SCOPE REDUCTION. READ THIS BEFORE PLANNING ANY WORK.
 >
 > **Ruled 2026-08-08: the tool is being cut by roughly 40%** (~69,000 lines), from 18
-> CLI verbs to 9 (**12 as of Wave 2**) and 115 document features to ~55, to reach a surface
+> CLI verbs to 9 (**10 as of Wave 4**) and 115 document features to ~55, to reach a surface
 > small enough to polish before release. **This supersedes the growth framing below.** Do not add
 > features, do not "restore parity", and do not defend a feature on the grounds that a
 > corpus document pins it (that pinning is circular and is the very thing the audit
@@ -107,8 +107,12 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/site/        multi-page project (mod.rs): _site.yml config (config/), page
                    discovery, chrome, link rewrite, listings + `hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs),
-                   Atom feeds per dated listing (feed.rs),
-                   Cmd-K search (search.rs),
+                   Atom feeds per dated listing (feed.rs, which also owns
+                   `nav_ordered`), sitemap.xml + robots.txt (seo.rs),
+                   the five-tag OpenGraph head (meta.rs — `og:image` is the page's
+                   own front-matter `image:`; the generated social-card rasterizer,
+                   the JSON-LD graph, llms.txt and the PWA manifest were all cut in
+                   Wave 4), Cmd-K search (search.rs),
                    cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in
@@ -222,8 +226,6 @@ cargo run -p taliesin-server -- build  <file.tmd> [out.html]   # self-contained 
 cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
-cargo run -p taliesin-server -- map    <file.tmd | dir>        # project outline; a file lists its @-reference targets
-cargo run -p taliesin-server -- features <file.tmd | dir>      # what a document uses; and what NO document uses
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
@@ -286,9 +288,8 @@ mean almost nothing. The script arms all four `TALIESIN_REQUIRE_*` variables, as
 by name that each interpreter's canary test printed `... ok`, and treats a single
 ignored test as a failure. Reach for it instead of running these by hand: the
 live-kernel suites (Python and R, via `TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`),
-the headless-Chrome `{js}` path (`TALIESIN_REQUIRE_CHROME`), the two `tsc`
-type-checks above, `node --test crates/server/src/assets/_middleware.test.mjs` (the
-publish passcode gate), the VS Code companion's offline TextMate grammar test, and
+the headless-Chrome reactive-client path (`TALIESIN_REQUIRE_CHROME`), the two `tsc`
+type-checks above, the VS Code companion's offline TextMate grammar test, and
 `cargo audit` / `cargo deny check` (`deny.toml` is still the policy) on any
 dependency change. Never call one of these verified without its output.
 

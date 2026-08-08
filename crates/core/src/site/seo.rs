@@ -179,16 +179,6 @@ mod tests {
             !sm.contains("two words"),
             "no raw space may reach the sitemap XML: {sm}"
         );
-        // The same shared helper feeds llms.txt, so its link is encoded too.
-        let llms = site.llms_txt().expect("llms.txt emitted with url:");
-        assert!(
-            llms.contains("(https://ex.com/posts/two%20words/)"),
-            "the llms.txt link must be percent-encoded: {llms}"
-        );
-        assert!(
-            !llms.contains("two words/)"),
-            "no raw space may reach an llms.txt link: {llms}"
-        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

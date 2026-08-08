@@ -1,8 +1,9 @@
-//! Corpus pin for image optimization (backlog item 169), render half.
+//! Corpus pin for image annotation (backlog item 169).
 //!
-//! The corpus walker only *renders*, so this pins what a render can know: the intrinsic
-//! dimensions, the loading policy, and the LCP exception. The AVIF transcode is build-only
-//! and is pinned by `crates/server/src/image_opt.rs`'s own tests.
+//! This pins what a render can know: the intrinsic dimensions, the loading policy, and the
+//! LCP exception. It also had a build-only half — the AVIF transcode, pinned by
+//! `image_opt.rs`'s own tests — until that was cut on 2026-08-08; the build now copies each
+//! image across unchanged, so a render is the whole story.
 //!
 //! **Every assertion needles a full emitted tag.** A whole-page `contains("loading=\"lazy\"")`
 //! would pass on a page with no image at all, because every Taliesin page inlines the whole
@@ -24,7 +25,7 @@ fn the_first_image_is_eager_and_the_rest_are_lazy() {
     // Full tags. `fit-a.png` is 535x428 and is the document's first image.
     assert!(
         html.contains(
-            r#"<img src="fit-a.png" alt="A model fit, at a size that earns two width rungs." width="535" height="428" fetchpriority="high" />"#
+            r#"<img src="fit-a.png" alt="A model fit, wide enough to be worth measuring." width="535" height="428" fetchpriority="high" />"#
         ),
         "the first image must be eager, at its intrinsic size:\n{}",
         img_tags(&html)

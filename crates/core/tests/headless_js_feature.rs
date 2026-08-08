@@ -1,9 +1,14 @@
-//! The browser driver is an **opt-in build feature**, and that fact is written in five
+//! The browser driver is a **test-only build feature**, and that fact is written in four
 //! files that have to agree. Measured on a clean release build (2026-07-28, `-j3`):
 //! `chromiumoxide` + `chromiumoxide_cdp` are the two most expensive units in the entire
 //! 344-unit graph, and everything reachable only through them costs **81 of 336
-//! CPU-seconds — 24% of the build** — for `read --run`'s `{js}` observation, which also
-//! needs a system Chrome at runtime and which most users never invoke.
+//! CPU-seconds — 24% of the build**.
+//!
+//! **As of 2026-08-08 nothing a released binary can run touches it.** `read --run-js` went
+//! with the machine-facing verbs in Wave 2 and `pdf` went with the print track in Wave 4,
+//! so the only consumers left are the `deck_browser` and `reactive_browser` test binaries.
+//! That is why `release.yml` no longer asks for the feature and this file no longer checks
+//! that it does.
 //!
 //! Each direction of drift fails differently, and the quiet one is the dangerous one:
 //!
@@ -14,9 +19,6 @@
 //!   the two browser test binaries stop being built at all — `required-features` makes
 //!   cargo skip them without a word. `TALIESIN_REQUIRE_CHROME` cannot catch that, because
 //!   the tests it guards no longer exist to be skipped. The suite shrinks and stays green.
-//! - **Drop it from `release.yml`,** and every downloaded binary silently loses
-//!   `read --run-js` — the one audience that did not pay the build cost and therefore
-//!   should get the complete tool.
 //!
 //! This is the "a fix lands in one file and misses its sibling" failure this repo has hit
 //! three times, so it is gated on the shape rather than on the sentence.
@@ -84,7 +86,7 @@ fn the_headless_js_feature_is_not_on_by_default() {
 #[test]
 fn every_browser_test_binary_declares_the_feature_it_needs() {
     let m = server_manifest_code();
-    for name in ["print_pdf", "deck_browser", "reactive_browser"] {
+    for name in ["deck_browser", "reactive_browser"] {
         let decl = m
             .split("[[test]]")
             .find(|s| s.contains(&format!("name = \"{name}\"")))
@@ -102,9 +104,9 @@ fn every_browser_test_binary_declares_the_feature_it_needs() {
     }
 }
 
-/// Every place that runs the browser tests or ships a binary has to ask for the feature.
-/// Derived from the files themselves rather than restated, so a renamed feature fails here
-/// instead of going quiet.
+/// Every place that runs the browser tests has to ask for the feature. Derived from the
+/// files themselves rather than restated, so a renamed feature fails here instead of going
+/// quiet. `release.yml` is deliberately NOT in this list — see the module doc.
 #[test]
 fn every_caller_that_needs_the_driver_asks_for_it() {
     const FLAG: &str = "--features taliesin-server/headless-js";
@@ -138,8 +140,9 @@ fn every_caller_that_needs_the_driver_asks_for_it() {
          inert when the tests it guards were never built. Found: {ci_cmd}"
     );
 
-    // (c) The release build. A downloaded binary should be the complete tool: whoever
-    //     takes the tarball never paid the build cost the default exists to avoid.
+    // (c) The inverse, on the release build: asking for the feature there costs 24% of
+    //     every cross-build for a driver no shipped code path can reach. It is not a
+    //     capability loss, so it must not creep back in as one.
     let release = read(".github/workflows/release.yml");
     let build_cmd = release
         .lines()
@@ -147,8 +150,9 @@ fn every_caller_that_needs_the_driver_asks_for_it() {
         .find(|l| l.starts_with("run: cargo build --release"))
         .unwrap_or_else(|| panic!("release.yml no longer builds with `cargo build --release`"));
     assert!(
-        build_cmd.contains(FLAG),
-        "release.yml must build with `{FLAG}` — otherwise every published binary silently \
-         lacks `read --run-js`. Found: {build_cmd}"
+        !build_cmd.contains(FLAG),
+        "release.yml asks for `{FLAG}`, but no runtime code path uses the driver since \
+         `pdf` was cut on 2026-08-08 — every cross-build would pay 24% for a dependency \
+         the binary cannot reach. Found: {build_cmd}"
     );
 }

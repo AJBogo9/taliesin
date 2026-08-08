@@ -777,36 +777,10 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
         return false;
     }
     let copied = copy_local_assets(html, base, dir);
-    // AVIF derivatives + the `<picture>` that offers them, exactly as the site path does. The
-    // page sits at the output root here, so its `rel_dir` is empty. The cache lives beside the
-    // SOURCE (not the output): a portable folder is a deliverable and should not ship a build
-    // cache, and keying it to the source is what makes a rebuild into a fresh directory cheap.
-    let (optimized, images) = crate::image_opt::optimize(
-        html,
-        base,
-        dir,
-        Path::new(""),
-        Some(&base.join("_freeze").join(crate::image_opt::CACHE_SUBDIR)),
-    );
     let index = dir.join("index.html");
-    if let Err(e) = std::fs::write(&index, &optimized) {
+    if let Err(e) = std::fs::write(&index, html) {
         log::error(&format!("cannot write {}: {e}", index.display()));
         return false;
-    }
-    if images.images > 0 {
-        log::info(&format!(
-            "optimized {} image{} -> {} AVIF file{} ({} saved{})",
-            images.images,
-            if images.images == 1 { "" } else { "s" },
-            images.files(),
-            if images.files() == 1 { "" } else { "s" },
-            crate::image_opt::human_bytes(images.saved),
-            if images.cached > 0 {
-                format!(", {} from cache", images.cached)
-            } else {
-                String::new()
-            }
-        ));
     }
     log::built(&format!(
         "{}  ·  {copied} asset{}{}",
@@ -1134,10 +1108,6 @@ struct PageOutcome {
     /// The conditional `_assets/` blobs this page's HTML links, folded across the build so
     /// only the linked ones are written (item 137).
     used: AssetUse,
-    /// AVIF derivatives this page produced. Folded across the build for the report line AND —
-    /// load-bearing — for `sweep_stale`'s keep set, which would otherwise delete every one of
-    /// them on the same build that wrote them.
-    images: crate::image_opt::Stats,
 }
 
 /// Build one page: render its markdown, execute its code cells on a *fresh, page-private*
@@ -1171,7 +1141,6 @@ async fn build_one_page(
             kernel_failure: None,
             written: false,
             used: AssetUse::default(),
-            images: crate::image_opt::Stats::default(),
         };
     };
     let base = page.input.parent().unwrap_or(root);
@@ -1275,19 +1244,6 @@ async fn build_one_page(
     for w in offline_ref_warnings(&html, &page.rel) {
         warnings.push(w);
     }
-    // AVIF derivatives for this page's local raster images, and the `<picture>` that offers
-    // them. Build-only: one 1200x630 encode is ~0.9 s, so the preview serves the author's
-    // original bytes and core's identical `<img>` annotation keeps the two laying out the
-    // same. `rel_dir` is this page's directory under `out`, which is how a derivative gets
-    // its two names at once — page-relative for the `srcset`, output-relative for `keep`.
-    let rel_dir = Path::new(&page.url).parent().unwrap_or(Path::new(""));
-    let (html, image_stats) = crate::image_opt::optimize(
-        &html,
-        base,
-        out,
-        rel_dir,
-        Some(&freeze_dir.join(crate::image_opt::CACHE_SUBDIR)),
-    );
     // Which conditional blobs this page linked, read off the finished HTML (item 137). Taken
     // BEFORE the write, which moves `html`.
     let used = bundle.used_by(&html);
@@ -1315,7 +1271,6 @@ async fn build_one_page(
         kernel_failure,
         written,
         used,
-        images: image_stats,
     }
 }
 
@@ -1469,11 +1424,7 @@ fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundl
         "css",
         &crate::minify::minify_css(&taliesin_core::shared_site_css_linked_fonts(&font_hrefs)),
     )?;
-    let app_js = named(
-        "app",
-        "js",
-        &crate::minify::minify_js(&taliesin_core::core_enhance_js()),
-    )?;
+    let app_js = named("app", "js", &taliesin_core::core_enhance_js())?;
     // Named, not written: see `write_conditional`.
     let katex_css = hashed(
         "katex",
@@ -1491,11 +1442,7 @@ fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundl
                     &font_hrefs,
                 )),
             )?,
-            named(
-                "deck",
-                "js",
-                &crate::minify::minify_js(&taliesin_core::deck_shared_js()),
-            )?,
+            named("deck", "js", &taliesin_core::deck_shared_js())?,
         )
     } else {
         (String::new(), String::new())
@@ -1912,7 +1859,6 @@ async fn build_project_tree(
     // Item 137: the union of what the pages linked. `merge` is order-independent, so this
     // reaches the same set whichever order the concurrent builds completed in.
     let mut used = AssetUse::default();
-    let mut images = crate::image_opt::Stats::default();
     for outcome in outcomes.into_iter().flatten() {
         for w in &outcome.warnings {
             log::warn(w);
@@ -1921,7 +1867,6 @@ async fn build_project_tree(
         problems += outcome.problems;
         kernel_failure = kernel_failure.or(outcome.kernel_failure);
         used.merge(outcome.used);
-        images.merge(outcome.images);
         if outcome.written {
             pages += 1;
         }
@@ -1934,9 +1879,6 @@ async fn build_project_tree(
     // 3. Build each deck referenced by a `{{< embed >}}` to its own self-contained
     //    `.html` (not a chapter/page: no site chrome), so the embedding iframes
     //    resolve in the deployed tree.
-    // Collects both the deck cards written just below and the page cards written later, so
-    // the deploy-tree sweep keeps all of them (declared here because the deck loop needs it).
-    let mut card_paths: Vec<PathBuf> = Vec::new();
     let mut decks = 0usize;
     for deck in &site.decks {
         let Ok(src) = std::fs::read_to_string(&deck.input) else {
@@ -1947,7 +1889,7 @@ async fn build_project_tree(
             continue;
         };
         let base = deck.input.parent().unwrap_or(root);
-        let mut doc = taliesin_core::render_document_scoped_with_site(
+        let doc = taliesin_core::render_document_scoped_with_site(
             &src,
             base,
             None,
@@ -1994,37 +1936,6 @@ async fn build_project_tree(
             + crate::check::blocking(&deck_xrefs);
         kernel_failure = kernel_failure.or_else(|| ex.kernel_failure_report());
         problems += report_cell_errors(&doc.blocks, &deck.url);
-        // Give a shared deck link the same rich social treatment a page gets (a deck is
-        // built off-`Page` via the context-free template, so it emits no OG/Twitter meta
-        // otherwise). Url-gated: the branded card + absolute meta appear only when
-        // `_site.yml` sets `url:`; a url-less deck stays byte-identical to before.
-        if site.config.url.is_some() {
-            let lead = doc.subtitle.as_deref().or(doc.description.as_deref());
-            doc.includes.in_header.push_str(&site.deck_social_head(
-                &deck.url,
-                doc.title.as_deref(),
-                lead,
-            ));
-            let spec = taliesin_core::site::deck_card_spec(&site, doc.title.as_deref(), lead);
-            let rel = taliesin_core::site::card_rel_path(&spec);
-            let card_dest = out.join(&rel);
-            if let Some(parent) = card_dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let missing = taliesin_core::site::uncovered_glyphs(&spec);
-            if !missing.is_empty() {
-                let chars: Vec<String> = missing.iter().map(|c| format!("`{c}`")).collect();
-                log::warn(&format!(
-                    "{}: social card font has no glyph for {} (they render as blank boxes)",
-                    deck.input.display(),
-                    chars.join(" ")
-                ));
-            }
-            match std::fs::write(&card_dest, taliesin_core::site::render_card(&spec)) {
-                Ok(()) => card_paths.push(PathBuf::from(&rel)),
-                Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
-            }
-        }
         let stem = deck
             .url
             .rsplit('/')
@@ -2142,34 +2053,9 @@ async fn build_project_tree(
         ));
         problems += 1;
     }
-    // Installable-app packaging: `manifest.webmanifest` + the app icons at the output root,
-    // so a reader can install this site/book from Chrome's omnibox, iOS "Add to Home Screen"
-    // or Safari's "Add to Dock". Deliberately NOT gated on `url:` like the SEO sidecars
-    // below: every URL in a manifest resolves against the manifest itself, so a project with
-    // no configured site URL installs correctly anyway. No service worker ships with it —
-    // installing changes how a reader returns, not whether the site works offline (the
-    // built output is self-contained, so copying it is what offline means here).
-    let mut manifest_written: Vec<PathBuf> = Vec::new();
-    match std::fs::write(out.join("manifest.webmanifest"), site.manifest_json()) {
-        Ok(()) => manifest_written.push(PathBuf::from("manifest.webmanifest")),
-        Err(e) => log::warn(&format!("cannot write manifest.webmanifest: {e}")),
-    }
-    // The author's own `icon-192.png` + `icon-512.png` are already mirrored into the output
-    // by `mirror_assets`, so the bundled mark ships only when they supplied no usable set —
-    // and a project that declared a `favicon:` has supplied one by the other route, which is
-    // why this asks `ships_bundled()` rather than `author_supplied`. Writing it anyway would
-    // put Taliesin's mark in the deploy with nothing referencing it.
-    if site.manifest_icons().ships_bundled() {
-        for (name, bytes) in taliesin_core::site::BUNDLED_ICONS {
-            match std::fs::write(out.join(name), bytes) {
-                Ok(()) => manifest_written.push(PathBuf::from(name)),
-                Err(e) => log::warn(&format!("cannot write {name}: {e}")),
-            }
-        }
-    }
-    // SEO + discoverability sidecars: emitted only when `url:` is set (absolute URLs
-    // are mandatory for feeds/sitemap/JSON-LD). All auto-derived from the site's own
-    // content; the author writes nothing SEO-specific.
+    // SEO sidecars: emitted only when `url:` is set (absolute URLs are mandatory for a feed
+    // and a sitemap). Both are auto-derived from the site's own content; the author writes
+    // nothing SEO-specific.
     let mut seo_written: Vec<PathBuf> = Vec::new();
     if site.config.url.is_some() {
         let mut emit = |rel: &str, body: String| {
@@ -2190,72 +2076,6 @@ async fn build_project_tree(
         }
         if let Some(x) = site.robots() {
             emit("robots.txt", x);
-        }
-        if let Some(x) = site.llms_txt() {
-            emit("llms.txt", x);
-        }
-        if let Some(x) = site.llms_full_txt() {
-            emit("llms-full.txt", x);
-        }
-
-        // Per-page cited-references sidecar (reader-side AI/crawler legibility): the citation
-        // keys a page actually cites, as `<page>.citations.json`, so a machine can read a
-        // page's references without parsing its prose. Written via `emit` so the stale-sweep
-        // keeps it; skips pages that cite nothing.
-        for page in &site.pages {
-            if page.url == "404.html" {
-                continue;
-            }
-            let Ok(src) = std::fs::read_to_string(&page.input) else {
-                continue;
-            };
-            let keys = taliesin_core::cite::cited_keys_in_source(&src);
-            if keys.is_empty() {
-                continue;
-            }
-            if let Some(stem) = page.url.strip_suffix(".html") {
-                let body = serde_json::json!({ "page": page.url, "cited": keys });
-                emit(
-                    &format!("{stem}.citations.json"),
-                    serde_json::to_string_pretty(&body).unwrap_or_default(),
-                );
-            }
-        }
-
-        // OG social cards: one branded 1200x630 PNG per content page (og:image points
-        // at /og/<hash>.png). Identical specs dedupe by hash. A failed encode/write is a
-        // warning, never a build abort — the page still ships, its og:image just 404s.
-        let mut seen_cards: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for page in &site.pages {
-            if page.url == "404.html" {
-                continue;
-            }
-            let spec = taliesin_core::site::card_spec(&site, page);
-            let rel = taliesin_core::site::card_rel_path(&spec);
-            if !seen_cards.insert(rel.clone()) {
-                continue;
-            }
-            let dest = out.join(&rel);
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            // The bundled card font is Latin-only, and a missing glyph draws as a tofu box
-            // with a real advance — the card lays out and encodes "successfully" while
-            // reading as garbage. Nobody ever looks at a social card, so say so here or it
-            // is never caught. A diagnostic, not a knob: the author rephrases the title.
-            let missing = taliesin_core::site::uncovered_glyphs(&spec);
-            if !missing.is_empty() {
-                let chars: Vec<String> = missing.iter().map(|c| format!("`{c}`")).collect();
-                log::warn(&format!(
-                    "{}: social card font has no glyph for {} (they render as blank boxes)",
-                    page.input.display(),
-                    chars.join(" ")
-                ));
-            }
-            match std::fs::write(&dest, taliesin_core::site::render_card(&spec)) {
-                Ok(()) => card_paths.push(PathBuf::from(&rel)),
-                Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
-            }
         }
     }
     let seo_note = if seo_written.is_empty() {
@@ -2279,18 +2099,11 @@ async fn build_project_tree(
     keep.extend(site.pages.iter().map(|p| PathBuf::from(&p.url)));
     keep.extend(site.decks.iter().map(|d| PathBuf::from(&d.url)));
     keep.extend(asset_paths.iter().cloned());
-    keep.extend(card_paths.iter().cloned());
     keep.insert(PathBuf::from("404.html"));
     if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
         keep.insert(PathBuf::from("search-index.js"));
     }
     keep.extend(seo_written.iter().cloned());
-    keep.extend(manifest_written.iter().cloned());
-    // Load-bearing, not bookkeeping: an AVIF derivative is written by `build_one_page` and is
-    // absent from every other source of `keep`, so leaving it out here deletes the whole
-    // feature's output on the same build that produced it — silently, and with the entire
-    // `image_opt` unit suite still green, because no unit test runs the sweep.
-    keep.extend(images.written.iter().cloned());
     let swept = sweep_stale(&out, &keep);
     if swept > 0 {
         log::info(&format!(
@@ -2298,24 +2111,6 @@ async fn build_project_tree(
             if swept == 1 { "" } else { "s" }
         ));
     }
-    if images.images > 0 {
-        // Reported rather than silent: the saving is the whole point of the feature, and the
-        // cached count is what tells an author why the second build was fast.
-        log::info(&format!(
-            "optimized {} image{} -> {} AVIF file{} ({} saved{})",
-            images.images,
-            if images.images == 1 { "" } else { "s" },
-            images.files(),
-            if images.files() == 1 { "" } else { "s" },
-            crate::image_opt::human_bytes(images.saved),
-            if images.cached > 0 {
-                format!(", {} from cache", images.cached)
-            } else {
-                String::new()
-            }
-        ));
-    }
-
     // The site-wide half of the check-superset: rules only the whole page registry can
     // judge. A broken cross-page link is exactly the defect a `--strict` build used to
     // deploy with exit 0.
@@ -3659,17 +3454,13 @@ mod dx11_tests {
 mod asset_bundle_tests {
     use super::*;
 
-    /// The vendored libs ship already minified, so `write_asset_bundle` hashes and writes them
-    /// as-is rather than re-minifying. That was asserted only by a code comment, which is not
-    /// a thing that fails: this pins the bytes.
-    ///
-    /// Note what this does NOT rest on. `minify_js` is separately proven token-identical on
-    /// both bundles (`minify::tests::js_minify_is_token_identical_on_the_vendored_bundles_too`),
-    /// so the bypass is a build-cost choice — skipping a megabyte of pointless rescanning — and
-    /// not a safety rail. If a future change routes them through the minifier deliberately,
-    /// that is a trade to reconsider, not a bug to fix by re-adding the bypass.
+    /// Every `.js` asset is written verbatim — the vendored libs because they ship already
+    /// minified, and the hand-written bundles because `minify_js` was cut on 2026-08-08. That
+    /// was asserted only by a code comment, which is not a thing that fails: this pins the
+    /// bytes. The control is CSS, which IS still minified, so the assertions below cannot pass
+    /// against a `write_asset_bundle` that had stopped writing anything at all.
     #[test]
-    fn vendored_libs_are_written_verbatim_not_reminified() {
+    fn js_assets_are_written_verbatim_and_css_is_still_minified() {
         // pid + a stem, matching `tali-build-{pid}-{name}` / `tali-mirror-{pid}-{name}` in this
         // file: tests in one binary share a pid and run on threads, so a bare-pid path is safe
         // only while exactly one test uses it.
@@ -3705,11 +3496,15 @@ mod asset_bundle_tests {
             read(&bundle.jslibs_js) == taliesin_core::js_cell_libs_js(),
             "the {{js}}-cell libs were rewritten on the way to disk"
         );
-        // Control: the hand-written bundle IS minified, or the assertions above would pass
-        // just as well against a `write_asset_bundle` that had stopped minifying entirely.
         assert!(
-            read(&bundle.app_js) != taliesin_core::core_enhance_js(),
-            "app.js should have been minified"
+            read(&bundle.app_js) == taliesin_core::core_enhance_js(),
+            "app.js should ship verbatim now that minify_js is gone"
+        );
+        // Control: CSS IS still minified, or the assertions above would pass just as well
+        // against a `write_asset_bundle` that had stopped transforming anything at all.
+        assert!(
+            read(&bundle.app_css).len() < taliesin_core::shared_site_css().len(),
+            "app.css should still be minified"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

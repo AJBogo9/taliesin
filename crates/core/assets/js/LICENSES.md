@@ -19,10 +19,6 @@ header: every byte here is copied verbatim into every page Taliesin builds, so a
 would add ~1 KB to each page to assert a licence the exception exists to disclaim. The
 notice belongs here, where it costs a reader nothing.
 
-**One exception, `paged.polyfill.min.js`:** it is inlined only into the transient page the
-`taliesin pdf` print track assembles, never into a built page, so no reader pays per-page
-for it and it keeps its upstream `@license` banner.
-
 ---
 
 ## d3 v7.9.0 — `d3.min.js`
@@ -108,33 +104,3 @@ consult the upstream project for the authoritative text.
 Upstream ships a consolidated notices file; when bumping the vendored bundle, refresh
 this table from mermaid's own `THIRD-PARTY-NOTICES` for that release.
 
----
-
-## paged.js v0.4.3 — `paged.polyfill.min.js`
-
-Unlike every other bundle in this directory, paged.js is **not** copied into the pages
-Taliesin builds. It is inlined only into the transient paginated page the `taliesin pdf`
-print track assembles, which is terminal output and is never served. It is still
-redistributed in this repository, so its notice travels here like the others'.
-
-The MIT License (MIT)
-
-Copyright (c) 2018 Adam Hyde
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.

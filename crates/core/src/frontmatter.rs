@@ -203,6 +203,24 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
          `theorems: { shared: [...] }`",
     ),
     (
+        "author key",
+        "orcid",
+        "it was removed on 2026-08-08 with the JSON-LD block that was its only reader: put \
+         the ORCID in the author's `url:`, which the byline links",
+    ),
+    (
+        "author key",
+        "email",
+        "it was removed on 2026-08-08 with the JSON-LD block that was its only reader, and \
+         nothing replaces it: it was never rendered, deliberately",
+    ),
+    (
+        "config key",
+        "publish",
+        "it was removed on 2026-08-08 with the `taliesin publish` verb: `build <dir> --out \
+         <dir>` writes a plain folder any static host serves",
+    ),
+    (
         "mounts entry key",
         "at",
         "the `- { at:, path: }` list form was removed on 2026-08-02: write `mounts:` as a \

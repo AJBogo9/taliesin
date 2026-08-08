@@ -1199,14 +1199,16 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "raw cross-page .tmd link leaked"
     );
 
-    // OpenGraph / SEO meta for sharing: a post gets og:type=article, og:title,
-    // an absolute og:url + canonical (the site has a `url:`), a meta description,
-    // and a twitter card.
-    assert!(
-        post.contains("property=\"og:type\" content=\"article\""),
-        "post og:type should be article"
-    );
+    // OpenGraph meta for sharing, reduced on 2026-08-08 to the five tags an unfurl needs:
+    // og:title, og:description, an absolute og:url (the site has a `url:`), og:image from
+    // the page's own `image:`, and the twitter card kind. Plus `meta name="description"`,
+    // which is what a search result reads. `og:type`, `og:site_name`, `twitter:title`,
+    // `twitter:description`, `twitter:image` and `rel="canonical"` went with the rest.
     assert!(post.contains("property=\"og:title\""), "og:title missing");
+    assert!(
+        post.contains("property=\"og:description\""),
+        "og:description missing"
+    );
     assert!(
         post.contains("property=\"og:url\" content=\"https://"),
         "absolute og:url missing"
@@ -1218,10 +1220,6 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     assert!(
         post.contains("name=\"twitter:card\""),
         "twitter card missing"
-    );
-    assert!(
-        post.contains("rel=\"canonical\" href=\"https://"),
-        "canonical link missing"
     );
 
     // Reading-time estimate: a post's title block carries a subtle "N min read", rendered

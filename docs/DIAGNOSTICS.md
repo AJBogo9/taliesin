@@ -240,7 +240,7 @@ To fix: Fix the fragment to a real anchor on the target page, or add the id ther
 
 Two links on this page have the same accessible name and different destinations, so neither one says where it goes. A screen reader can list a page's links out of context, where the text is all the reader gets — and a sighted reader scanning for the link they already followed cannot tell the two apart either. Destinations are compared ignoring the `#fragment`, so two deep links into one page are deliberately NOT flagged.
 
-To fix: Make the link text name its own destination (`the execution model` rather than a second `this chapter`). Do not paper over it with `aria-label`: a label that disagrees with the visible text breaks voice control (WCAG 2.5.3, Label in Name). This is advice, severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
+To fix: Make the link text name its own destination (`the execution model` rather than a second `this chapter`). Do not paper over it with `aria-label`: a label that disagrees with the visible text breaks voice control (WCAG 2.5.3, Label in Name). This is advice, severity `suggestion`, so it never fails `check` or `build --strict` unless you ask with `check --strict`.
 
 ## TAL-MATH
 
@@ -280,7 +280,7 @@ To fix: Delete the duplicate. If the repetition is deliberate (a quoted stutter,
 
 The opt-in prose lint (`prose-lint:` in front matter) found one of a small closed list of hedges — `very`, `simply`, `obviously`, `basically` and friends. They read as emphasis but carry no information, and `obviously` additionally tells a reader who did not find it obvious that they should have.
 
-To fix: Cut the word and read the sentence again; it almost always survives unchanged. This is advice, not a defect: it is severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
+To fix: Cut the word and read the sentence again; it almost always survives unchanged. This is advice, not a defect: it is severity `suggestion`, so it never fails `check` or `build --strict` unless you ask with `check --strict`.
 
 ## TAL-REACTIVE
 
@@ -320,7 +320,7 @@ To fix: Name the section for what that section covers, or drop the heading and l
 
 A heading opens a section but carries no words, so the table of contents, the book outline and any cross-reference to it all render a blank row. Usually a heading whose text was cut without cutting the `#` line.
 
-To fix: Give the heading a name, or delete the line. This is advice, not a defect: it is severity `suggestion`, so it never fails `check`, `build --strict` or `publish` unless you ask with `check --strict`.
+To fix: Give the heading a name, or delete the line. This is advice, not a defect: it is severity `suggestion`, so it never fails `check` or `build --strict` unless you ask with `check --strict`.
 
 ## TAL-SHAPE-HOLLOW
 

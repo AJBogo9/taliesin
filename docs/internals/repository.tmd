@@ -161,7 +161,7 @@ in `notes/` so the root stays uncluttered:
   skips it, and `--no-verify` bypasses.
 - **`tools/gates.sh`**: the one script that runs *every* gate — the hook's three plus
   the live Python/R kernels, the headless-Chrome `{js}` path, both `tsc`
-  type-checks, the publish-passcode node test, the VS Code grammar test, `cargo
+  type-checks, the VS Code grammar test, `cargo
   audit` and `cargo deny`. Each of those skips silently without its interpreter, so
   the script arms all four `TALIESIN_REQUIRE_*` variables, checks each canary test
   reported `... ok`, and exits non-zero if anything was skipped or ignored.

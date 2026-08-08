@@ -1,6 +1,6 @@
 ---
 title: "CLI reference"
-description: "Every subcommand and flag: preview, build and publish, the check gate, and the lsp editor server."
+description: "Every subcommand and flag: preview and build, the check gate, and the lsp editor server."
 ---
 
 *Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
@@ -15,7 +15,6 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
-| `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run] [--init]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload. `--init` runs the one-time Cloudflare setup instead of deploying |
 | `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, and a `.taliesin/` holding the `_site.yml` JSON schema. `--template site\|book` adds that starter's pages; refuses to overwrite |
 | `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
@@ -95,10 +94,9 @@ sentence reads must not have the same power over CI as a broken cross-reference.
 | `warning` | Something will silently not work: an unknown key, a missing `alt` | by default; not under `--errors-only` |
 | `suggestion` | Advice you may decline: the opt-in `prose-lint:` findings | never, unless you pass `--strict` |
 
-A suggestion is always **printed**; only the exit code changes. `build --strict` and
-`publish` (strict by default) use the same rule, so a style suggestion can never block a
-release, and the summary says so rather than reporting advice as a problem beside an
-exit `0`:
+A suggestion is always **printed**; only the exit code changes. `build --strict` uses the
+same rule, so a style suggestion can never block a release, and the summary says so rather
+than reporting advice as a problem beside an exit `0`:
 
 ```
 doc.tmd:6: suggestion[TAL-PROSE-WEASEL]: weasel word `simply` (consider cutting)
@@ -347,39 +345,15 @@ contain a diagram. Nothing is fetched at view time. (The live preview serves the
 vendored copy from a same-origin route instead of inlining it, so the dev loop is offline
 without adding 2.5 MB to every page it re-serves.)
 
-## `taliesin pdf`: a typeset PDF, from the same HTML
-
-    taliesin pdf paper.tmd                    # → paper.pdf, A4
-    taliesin pdf paper.tmd --paper letter     # US Letter (or a5)
-    taliesin pdf paper.tmd -o out/final.pdf   # somewhere else
-
-This is a **paged rendering of the built HTML**, not a second output format. The same
-document the preview serves is laid out into pages by a local headless Chrome, so there is
-no `.tex` intermediate, no second compiler and nothing that can disagree with what you saw
-in the browser. What you get that a printed web page does not have:
-
-- **running heads and folios** — the current section at the top of each page, page numbers
-  at the foot, and neither on the title page;
-- **cross-references that name their page** — `@fig-scree` renders as
-  "Figure 3 (p. 12)" on paper and stays a link on screen;
-- **an automatic list of figures**, with true page numbers;
-- **widow and orphan control, hyphenation, and floats that never split** across a page.
-
-Code cells run first, replaying from `_freeze` when nothing has changed, so figures are
-real rather than empty. `{js}` cells print live: the browser genuinely executes them, so a
-Plot chart or a GLSL shader is captured as it painted. Video falls back to its poster frame.
-
-It needs a local Chrome for the page layout. Without one
-it says so and exits non-zero.
-
-**Not yet supported:** whole-book output (point it at one `.tmd`, not a directory) and an
-index.
-
 ## Publishing & sharing
 
 A `--out <dir>` folder (a single doc, a site, or a book) is **plain static HTML** — no
-server runtime, no build step to reproduce, no database. So *any* way of serving static
-files publishes it. Pick whichever fits how you already work:
+server runtime, no build step to reproduce, no database. That is the whole publishing
+story, and it is deliberate: Taliesin has no deploy command and no host it prefers, because
+a folder of files is already the most portable artefact there is. *Any* way of serving
+static files publishes it, and none of them can be discontinued out from under you.
+
+Pick whichever fits how you already work:
 
 - **Send it directly.** Zip the folder and email it, or drop it in a shared drive. The
   recipient opens `index.html` from disk — everything works offline (see above). Best for
@@ -402,63 +376,34 @@ files publishes it. Pick whichever fits how you already work:
 - **Your own server / object storage.** `rsync -a _site/ you@host:/var/www/mybook/`, or
   `aws s3 sync _site s3://your-bucket` behind a CDN. It's just files.
 
+Whichever you pick, wrap it in a two-line script and stop thinking about it:
+
+```sh
+#!/bin/sh
+set -e
+taliesin check mybook                       # fail before the readers do
+taliesin build mybook --out _site
+rsync -a --delete _site/ you@host:/var/www/mybook/
+```
+
+**A private draft for one reader.** There is no built-in passcode gate — every host above
+has one, and they are better at it than a document tool would be. Netlify and Vercel both
+offer password protection on a deploy; Cloudflare Pages does it with Access; a plain nginx
+does it with two lines of `basic_auth`. Or skip hosting entirely and send the folder: it
+opens from disk with everything working, which is often what "let me read your draft"
+actually means.
+
+**Printing to PDF.** Open the built page in a browser and print it. Taliesin ships no PDF
+command: HTML is the one output target, and a browser's print dialogue renders the same
+page you have been looking at. Set your own `@media print` rules through `_site.yml`'s
+`head:` if you want to tune the paper layout.
+
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
-`<meta>` tags (Open Graph / Twitter card image, canonical link) are only emitted when a
-`url:` is configured — `taliesin check` warns if you set a social `image:` without one.
+`<meta>` tags (`og:url`, `og:image`) plus `sitemap.xml`, `robots.txt` and the Atom feeds
+are only emitted when a `url:` is configured — `taliesin check` warns if you set a social
+`image:` without one.
 Run `taliesin check <dir>` first: a green check means no broken links, missing anchors, or
 other publish-blocking mistakes ship to your readers.
-
-### `taliesin publish`: one command to a passcode-gated URL
-
-For a private draft you want a supervisor or co-author to read at a stable URL,
-`taliesin publish <dir>` builds the site or book, gates it behind a shared passcode by
-default, and deploys it to [Cloudflare Pages](https://pages.cloudflare.com/) (free, works
-with a private repo). The passcode is stored as a Cloudflare secret, never in your repo,
-and the flow is one-way: publish never writes back to your source. The build is also
-strict by default, so a broken cross-reference or a failed code cell fails the deploy
-instead of shipping; pass `--no-strict` to deploy anyway.
-
-One-time setup per project (needs [Wrangler](https://developers.cloudflare.com/workers/wrangler/),
-Cloudflare's CLI, and a Cloudflare API token with the Pages:Edit permission). `--init` runs
-it for you, against the same project name the deploy will use:
-
-```sh
-export CLOUDFLARE_API_TOKEN=...      # also CLOUDFLARE_ACCOUNT_ID
-taliesin publish . --init --dry-run  # see the two wrangler commands first
-taliesin publish . --init            # create the project, then type the passcode once
-```
-
-`--init` neither builds nor deploys: it creates the Cloudflare Pages project and prompts
-for the passcode, and that is all. Re-running it after the project exists will report that
-`project create` was refused, which is expected; the passcode step is the one you re-run to
-rotate the secret. With `--public` there is no passcode, so `--init` only creates the
-project.
-
-Then, every time you want to update the live copy:
-
-```sh
-taliesin publish .                   # build, gate, deploy; prints https://my-book.pages.dev
-taliesin publish . --dry-run         # build + gate + print the deploy command, no deploy
-taliesin publish . --public          # build + deploy WITHOUT the passcode gate (public URL)
-```
-
-The Cloudflare project name defaults to a slug of the directory name; override it with
-`--project-name` or a `publish:` block in `_site.yml`:
-
-```yaml
-publish:
-  provider: cloudflare
-  project: my-book
-```
-
-Add `gate: false` to that block (or pass `--public` on the command line) to deploy a
-public, un-gated site instead; either way `publish` prints a loud warning so a public
-deploy is never silent.
-
-Your readers open the URL, type the passcode once in the browser's password prompt (no
-account needed), and see the current build. A shared passcode keeps casual strangers out;
-it is forwardable and is not per-person access control, which is the right level for a
-work-in-progress draft to a supervisor.
 
 ## Starting from something: `init` and `new`
 
@@ -611,7 +556,6 @@ See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 | `TALIESIN_CELL_SILENCE` | How long a cell may produce **no output at all** before it is interrupted, in seconds (default 600; `0` disables). This is the default liveness cap: the budget resets on every line a cell prints, so a long job that reports progress is never interrupted, while a genuinely wedged one still is |
 | `TALIESIN_CELL_TIMEOUT` | Optional per-cell **wall-clock** cap in seconds, **off by default**. Set it to bound a cell's total runtime regardless of how much it prints (`0` disables). A streaming runaway is already caught by the output caps, so this is for bounding cost, not for safety |
 | `TALIESIN_RENDER_TIMEOUT` | Per-render wall-clock cap in seconds (default 30; `0` disables it). Rendering is not execution: it never legitimately takes seconds, so this is a watchdog against a pathological document, not a budget to tune. A render that exceeds it is abandoned with a located diagnostic instead of hanging the preview |
-| `TALIESIN_JS_TIMEOUT` | How long `pdf` waits for headless Chrome to lay a page out, in seconds (default 10). Separate from `TALIESIN_CELL_TIMEOUT` so a long kernel budget doesn't also stretch the browser wait |
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |

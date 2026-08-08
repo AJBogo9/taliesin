@@ -7,7 +7,49 @@ use super::{Page, Site};
 use crate::escape_attr as esc;
 use std::collections::HashSet;
 
+/// Normalise a nav href or page rel to a comparison key (`blog.tmd` / `blog.html` /
+/// `blog/index` → `blog`).
+fn nav_key(s: &str) -> &str {
+    s.trim_end_matches(".tmd")
+        .trim_end_matches(".html")
+        .trim_end_matches("/index")
+}
+
 impl Site {
+    /// Pages in nav order (with their nav label), then any remaining discovered pages
+    /// (label `None`). External nav links are skipped.
+    ///
+    /// It lived in `llms.rs` until that file was cut on 2026-08-08; `feed_hosts` was always
+    /// its other caller, so it moved here rather than going with it. The order is the
+    /// author's own nav order, which is why the feeds come out in the sequence a reader
+    /// would expect rather than in filesystem order.
+    pub(crate) fn nav_ordered(&self) -> Vec<(&Page, Option<&str>)> {
+        let mut out: Vec<(&Page, Option<&str>)> = Vec::new();
+        for item in self.config.nav.left.iter().chain(&self.config.nav.right) {
+            let Some(href) = item.href.as_deref() else {
+                continue;
+            };
+            if href.starts_with("http") {
+                continue;
+            }
+            let want = nav_key(href);
+            if let Some(p) = self.pages.iter().find(|p| nav_key(&p.rel) == want)
+                && !out.iter().any(|(q, _)| q.rel == p.rel)
+            {
+                out.push((p, item.text.as_deref()));
+            }
+        }
+        for p in &self.pages {
+            if p.url == "404.html" {
+                continue; // the error page is not site content
+            }
+            if !out.iter().any(|(q, _)| q.rel == p.rel) {
+                out.push((p, None));
+            }
+        }
+        out
+    }
+
     /// The canonical origin (`config.url` with any trailing slash trimmed). A blank
     /// `url:` is treated as unset (it would yield relative artifact URLs).
     pub(crate) fn canonical_base(&self) -> Option<&str> {

@@ -244,11 +244,12 @@ pub(super) fn deck_page_from_doc(
     // the context-free block a standalone page uses — no `og:url`/`og:image`, because a
     // single file has no site URL to absolutize against.
     //
-    // A deck built inside a SITE has already had the richer, URL-aware block pushed onto
-    // `include-in-header` (`site::meta::deck_social_head`, which also has the branded
-    // card), and it reaches this same function. Emitting the basic set unconditionally
-    // would give that deck two `og:title`s, so the richer block wins by suppressing this
-    // one rather than by ordering.
+    // A page that already carries an `og:title` on `include-in-header` — an author's own
+    // block, or the site's (`site::meta::social_head`) — reaches this same function.
+    // Emitting the basic set unconditionally would give it two `og:title`s, so whatever is
+    // already there wins by suppressing this one rather than by ordering. (Until wave 4 a
+    // site deck got a richer URL-aware block of its own, `deck_social_head`; it went with
+    // the social-card rasterizer, so a deck now emits this basic set like any other file.)
     let social = if doc.includes.in_header.contains("og:title") {
         String::new()
     } else {

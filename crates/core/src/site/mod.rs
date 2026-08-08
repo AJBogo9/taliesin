@@ -54,8 +54,6 @@ pub struct Page {
     pub date: Option<String>,
     /// Front-matter `description` (shown on a listing card).
     pub description: Option<String>,
-    /// Front-matter `author`(s), for scholarly `citation_author` meta (Google Scholar).
-    pub(crate) authors: Vec<crate::author::Author>,
     /// Front-matter `image`, resolved to a site-root-relative path (for cards).
     pub card_image: Option<String>,
     /// Front-matter `image-alt`: alt text for the listing card image (a11y). `None`
@@ -70,9 +68,6 @@ pub struct Page {
     pub hero: Option<HeroSpec>,
     /// `page-layout:` (`full` widens the content column; default reading width).
     pub page_layout: Option<String>,
-    /// Whether the page declares a `bibliography:` (a cited/scholarly document). Drives the
-    /// `ScholarlyArticle` vs `BlogPosting` JSON-LD choice.
-    pub has_bibliography: bool,
     /// `draft: true` in front matter. `false` for every published page; `true` only for a
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.
@@ -199,24 +194,16 @@ pub fn page_search_fragment(
 }
 
 mod book;
-mod card;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book, chapter_heading};
-pub use card::{
-    CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec,
-    deck_card_spec, render_card, uncovered_glyphs,
-};
 mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
 mod feed;
-mod llms;
-mod manifest;
 mod meta;
 mod search;
 mod seo;
 mod xref;
-pub use manifest::{BUNDLED_ICONS, ICON_192, ICON_512, ICON_MASKABLE_512, Icons};
 use xref::scan_xref_targets;
 pub use xref::{
     ScannedAnchor, XrefTarget, anchors_defined_elsewhere_in_project, scan_page_anchors,
@@ -737,7 +724,6 @@ impl Site {
             );
         }
         includes.in_header.push_str(&meta::social_head(self, page));
-        includes.in_header.push_str(&meta::jsonld_head(self, page));
         includes.in_header.push_str(&meta::feed_head(self));
         // The cross-page search index (+ how to resolve a result's page URL from
         // this page's depth). Empty when there are no entries; injected only where
@@ -805,21 +791,6 @@ impl Site {
         Some(self.render_page_doc(page, doc))
     }
 
-    /// The OpenGraph/Twitter social-meta block for an embedded deck built beside this
-    /// site's pages. A deck is not a [`Page`], so it has its own entry point (delegating to
-    /// [`meta::deck_social_head`]); the build's deck loop pushes the result onto the deck
-    /// `doc`'s head include. `deck_url` is the deck's site-root-relative output URL,
-    /// `title`/`lead` its front-matter title + subtitle. Url-gated: a branded card only when
-    /// `_site.yml` sets `url:`.
-    pub fn deck_social_head(
-        &self,
-        deck_url: &str,
-        title: Option<&str>,
-        lead: Option<&str>,
-    ) -> String {
-        meta::deck_social_head(self, deck_url, title, lead)
-    }
-
     /// Finish a page whose `doc.blocks` are already produced — and possibly
     /// code-executed (the static build runs cells, then calls this): apply the
     /// site front-matter expansion (`listing:`), wrap in chrome, and
@@ -859,12 +830,7 @@ impl Site {
         doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
-        let mut ctx = self.page_chrome(page);
-        // Same reasoning for the install head (`manifest.webmanifest` + the iOS icon/label +
-        // the theme-colour pair): the manifest is a build artifact, and a live preview that
-        // emitted it would let Chrome install `localhost`, leaving the reader an app that
-        // breaks the moment the dev server stops.
-        ctx.includes.in_header.push_str(&self.manifest_head(page));
+        let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
         (rewrite_tmd_links(&html), warnings)
@@ -2126,67 +2092,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn page_image_absolute_or_relative_never_leaks_into_og_image() {
-        // Batch 7 fixed a bug where a page `image:` broke og:image (an absolute URL got
-        // mangled into `{base}/https://…`, a relative one needed `url:`). The og-card
-        // generator (Task 5) replaced the image source entirely: og:image/twitter:image
-        // now always point at the build-generated card, and the page's own `image:`
-        // (absolute or relative) never reaches those tags — it stays the in-page/listing
-        // thumbnail only. This test now guards that boundary instead.
-        use std::fs;
-        let root = std::env::temp_dir().join(format!("tali-ogimg-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        fs::write(
-            root.join("_site.yml"),
-            "title: Demo\nurl: https://example.com\n",
-        )
-        .unwrap();
-        fs::write(
-            root.join("abs.tmd"),
-            "---\ntitle: Abs\nimage: https://cdn.example.com/card.png\n---\n\nBody.\n",
-        )
-        .unwrap();
-        fs::write(
-            root.join("rel.tmd"),
-            "---\ntitle: Rel\nimage: thumb.webp\n---\n\nBody.\n",
-        )
-        .unwrap();
-
-        let site = Site::discover(&root);
-        let head = |rel: &str| {
-            let p = site.pages.iter().find(|p| p.rel == rel).expect("page");
-            (
-                meta::social_head(&site, p),
-                card_rel_path(&card_spec(&site, p)),
-            )
-        };
-        let (abs_head, abs_card) = head("abs.tmd");
-        assert!(
-            abs_head.contains(&format!(
-                r#"property="og:image" content="https://example.com/{abs_card}""#
-            )),
-            "og:image is the generated card: {abs_head}"
-        );
-        assert!(
-            !abs_head.contains("cdn.example.com"),
-            "the page's absolute image: does not leak into og:image: {abs_head}"
-        );
-        let (rel_head, rel_card) = head("rel.tmd");
-        assert!(
-            rel_head.contains(&format!(
-                r#"property="og:image" content="https://example.com/{rel_card}""#
-            )),
-            "og:image is the generated card: {rel_head}"
-        );
-        assert!(
-            !rel_head.contains("thumb.webp"),
-            "the page's relative image: does not leak into og:image: {rel_head}"
-        );
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
     fn draft_yes_is_treated_as_draft_and_warns() {
         // Batch 5: `draft: yes` is a STRING in YAML 1.2 (not a bool), so it used to
         // slip through as draft=false and silently publish. It must be caught: excluded
@@ -2568,48 +2473,6 @@ pub(crate) mod tests {
         let src = std::fs::read_to_string(&page.input).unwrap();
         let doc = crate::render::render_document_with_includes(&src, &site.root);
         site.render_page_doc_warned(page, doc)
-    }
-
-    /// The preview render path must never emit the install head. A manifest served from
-    /// `localhost` lets Chrome install the dev server, and that installed app breaks
-    /// permanently the moment the server stops.
-    #[test]
-    fn only_the_static_build_path_emits_the_install_head() {
-        let root = write_site(
-            "install-head",
-            &[
-                ("_site.yml", "title: Demo\n"),
-                ("index.tmd", "---\ntitle: Home\n---\n\n# Home\n\nHi.\n"),
-            ],
-        );
-        let site = Site::discover(&root);
-        let (preview_html, _) = render_page(&site, "index.tmd");
-
-        let page = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
-        let src = std::fs::read_to_string(&page.input).unwrap();
-        let doc = crate::render::render_document_with_includes(&src, &site.root);
-        let ext = render::ExternalAssets {
-            app_css: "_assets/app.a.css",
-            katex_css: "_assets/katex.b.css",
-            app_js: "_assets/app.c.js",
-            mermaid_js: "_assets/mermaid.d.js",
-            jslibs_js: "_assets/jslibs.e.js",
-            deck_css: "",
-            deck_js: "",
-            font_preload: "",
-        };
-        let (build_html, _) = site.render_page_doc_external(page, doc, ext);
-        let _ = std::fs::remove_dir_all(&root);
-
-        assert!(
-            build_html.contains("rel=\"manifest\""),
-            "the static build path must emit the install head: {build_html}"
-        );
-        assert!(
-            !preview_html.contains("rel=\"manifest\""),
-            "preview must not offer an installable manifest: {preview_html}"
-        );
-        assert!(!preview_html.contains("apple-touch-icon"), "{preview_html}");
     }
 
     #[test]

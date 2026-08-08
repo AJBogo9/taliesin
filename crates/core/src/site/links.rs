@@ -433,14 +433,12 @@ mod tests {
                 title: None,
                 date: None,
                 description: None,
-                authors: Vec::new(),
                 card_image: None,
                 card_image_alt: None,
                 categories: Vec::new(),
                 listings: Vec::new(),
                 hero: None,
                 page_layout: None,
-                has_bibliography: false,
                 draft: false,
             }
         }

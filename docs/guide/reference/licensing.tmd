@@ -43,8 +43,7 @@ In short:
   copyright line, or an offer of source anywhere in a page you build.
 - **Publishing is not a section 13 trigger.** Hosting output that contains Taliesin's
   runtime does not, by itself, oblige you to offer anyone source.
-- **It applies however you produced the output** — `build`, `render`, `preview` or
-  `publish`.
+- **It applies however you produced the output** — `build` or `preview`.
 
 You may publish, sell, host or relicense what you build, under any terms you choose.
 

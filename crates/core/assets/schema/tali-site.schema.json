@@ -77,24 +77,6 @@
     "logo": {},
     "mounts": {},
     "nav": {},
-    "publish": {
-      "additionalProperties": false,
-      "properties": {
-        "gate": {
-          "type": "boolean"
-        },
-        "project": {
-          "type": "string"
-        },
-        "provider": {
-          "enum": [
-            "cloudflare"
-          ],
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "python": {},
     "r": {},
     "title": {},

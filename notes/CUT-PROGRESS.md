@@ -85,7 +85,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 1 | Anti-drift simplification + doctrine + dead code | **done** 2026-08-08 | `cut/wave-1-antidrift` | **−1,118** (+400 / −1,518, 30 files) | a retirement now costs ONE register line; **no tombstone test is owed** |
 | 2 | Machine-facing verbs (keep one JSON surface) | **done** 2026-08-08 | `cut/wave-2-machine-verbs` | **−7,796** (+685 / −8,481, 79 files) | 18 verbs → **12**; `map` + `vocab` re-homed into the LSP |
 | 3 | Debug mode | **done** 2026-08-08 | `cut/wave-3-debug` | **−5,374** (+118 / −5,492, 45 files) | `DEBUG_CSS` was ungated in **three** places, not two; proven **−7,245 B** of shipped CSS per page |
-| 4 | Publishing + web-platform ops | not started | | | `image_opt` lands here, once |
+| 4 | Publishing + web-platform ops | **done** 2026-08-08 | `cut/wave-4-publishing` | **−9,576** (+808 / −10,384, 91 files) | 12 verbs → **10**; `headless_js.rs` went with `pdf.rs`; gates 9 → **8**, canaries 5 → **4** |
 | 5 | The deck engine | not started | | | biggest churn win: 122 commits |
 | 6 | Reactive tail, R, Chrome kill | not started | | | drops 2 gate runtimes |
 | 7 | Vocabulary contraction | not started | | | needs wave 1 first |
@@ -103,10 +103,10 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   through the bundle partition. `runspec.rs` and `run_control.rs` are **not** run-only
   (the preview server's Run buttons use them) so they survive regardless. Adjudicate
   before executing.
-- **File-to-bundle collisions to resolve before waves 4/5/7/11/12:** `card.rs` and
-  `manifest.rs` (publishing vs site-layer), `image_opt.rs` (publishing vs
-  content-shortcodes), `corpus/course/` + `corpus/tarn/` (justification deletes them
-  while theorems and narrative rewrite them). Assign each to exactly one wave.
+- **File-to-bundle collisions to resolve before waves 5/7/11/12:** `corpus/course/` +
+  `corpus/tarn/` (justification deletes them while theorems and narrative rewrite them).
+  Assign each to exactly one wave. **`card.rs`, `manifest.rs` and `image_opt.rs` are
+  RESOLVED — all three were deleted in wave 4**, so any later step naming them is spent.
   - **`docs/guide/using/from-quarto.tmd` — RESOLVED, assigned to wave 1, deleted there.**
     Six later bundles have a removal step saying "add the migration row to
     `from-quarto.tmd`". **Skip every one of them; the page does not exist.** The register
@@ -114,19 +114,30 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
     the moment they hit the retired key, which no page can beat.
 - **Re-measure the warm pool on the preview path** before wave 11 if you want the
   number. The directive says cut regardless; measure only if you want to know the cost.
-- **Wave 6 inherits TWO chrome canaries, and wave 3 confirmed both still fire.** `gates.sh`
-  is down to **5** canaries (python, R, node, reactive, print). Wave 3 dropped
-  `CANARY_DEBUG_TRACE` without repointing it, per the precedent wave 2 set — see the
-  reasoning now written into `gate_script.rs`'s count assertion, which states the rule
-  outright: *a canary is dropped only when the sole thing it proved goes away, never by
-  repointing it at a surviving test.* A later wave that deletes a capability should read
+- **Wave 6 inherits exactly ONE chrome canary now.** `gates.sh` is down to **4** canaries
+  (python, R, node, reactive); wave 4 dropped `CANARY_PRINT` with the print track, and
+  `CANARY_REACTIVE` is the only thing left that proves Chrome ran. Waves 2, 3 and 4 each
+  dropped a canary without repointing it, per the rule written into `gate_script.rs`'s
+  count assertion: *a canary is dropped only when the sole thing it proved goes away, never
+  by repointing it at a surviving test.* A later wave that deletes a capability should read
   that string before touching the count.
-- **Wave 6's Chrome kill now has one fewer thing to delete and one more to check.** Wave 2
-  removed the `{js}` observation path from `headless_js.rs` (that was wave 6's STAGE 5), so
-  what is left there is only the launch policy `pdf.rs` uses. Wave 6 also inherits the two
-  surviving chrome canaries in `gates.sh` (reactive + print), not three.
+- **Wave 6's Chrome kill is now nearly done, and what remains is smaller than its plan
+  says.** Wave 2 removed the `{js}` observation path from `headless_js.rs` (wave 6's
+  STAGE 5) and **wave 4 deleted the whole file** with `pdf.rs`, its only consumer. What is
+  left for wave 6: the `deck_browser` / `reactive_browser` test binaries, the
+  `headless-js` cargo feature, the `chromiumoxide` dependency, `TALIESIN_REQUIRE_CHROME`,
+  and `CANARY_REACTIVE`. Note `release.yml` **no longer passes `--features
+  taliesin-server/headless-js`**: nothing a released binary can run touches the driver
+  since `pdf` went, so paying 24% of every cross-build for it was pure waste.
+  `headless_js_feature.rs` now asserts the *absence* of that flag on the release build.
 - **Before wave 7 retires more nested vocabulary, sweep `docs/guide` for indented retired
-  keys by hand.** Still open — carried from wave 1; no gate sees an indented key.
+  keys by hand.** Still open — carried from wave 1; no gate sees an indented key. Wave 4
+  hit this exact hole: retiring the `orcid:`/`email:` author sub-keys needed a hand edit of
+  `docs/guide/reference/frontmatter.tmd` and `corpus/structured-authors/paper.tmd`, and no
+  gate would have caught either.
+- **Decide whether `Site::nav_ordered` still belongs where it is.** It lived in `llms.rs`
+  and moved to `feed.rs` in wave 4 because `feed_hosts` was its other caller. If wave 11's
+  site-layer reduction touches feeds, that is the moment to look at it again.
 
 ## Hedges to take before wave 1
 
@@ -414,3 +425,141 @@ via chrome-devtools MCP: zero console messages, 3 `{js}` cell scripts, 3 mounted
 The `has_client_cells(body)`-as-sole-gate change was the risk here and it holds in both
 directions: a prose page in `corpus/tech-blog` ships 0 copies of the runtime, a `{js}` page
 ships it.
+
+### Wave 4 — 2026-08-08, `cut/wave-4-publishing`
+
+**Measured reclaim: −9,576 lines** (`+808 / −10,384` over 91 files, `git show --numstat`
+on the commit itself) against the ~8,190 estimate, plus a **451,664-byte** Newsreader TTF
+that no line count sees. **Excluding `notes/` — which grew by 254 lines on purpose, for the
+preserved paged.js traps and this entry — the code reclaim is −9,831** (`+514 / −10,345`).
+By area: `crates/server/src` −3,667, `crates/core/src` −3,286, `crates/server/tests`
+−1,149, `crates/core/tests` −465, `crates/core/assets` −386, `docs` −100, `corpus` −73,
+root md/toml −50, `web-client` −31, `editor` −18, `tools` −15.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **4/4** canaries,
+**105 suites / 2,037 passed / 0 failed / 0 ignored**, exit 0. Measure wave 5 against
+**2,037, four canaries and eight gates**. (A bare default-feature `cargo test --workspace`
+is **103 suites / 2,027 passed**.)
+
+**Twelve CLI verbs are now ten.** `publish` and `pdf` are gone, one `RETIRED_COMMANDS`
+line each. The `publish:` config key got one scoped `RETIRED_KEYS` entry under the
+`config key` scope, and the bundled `editor/vscode/schema/tali-site.schema.json` copy was
+re-synced by hand — `cargo test --workspace` stayed green while it was stale, exactly as
+CLAUDE.md warns, and only the companion's `node --test` catches it.
+
+**THE SWEEP, VERIFIED IN BOTH DIRECTIONS, because it was the whole risk of this wave.**
+`find <out> -type f | sort` over `docs/internals/_book` + `corpus/tech-blog/_site` before
+and after: **117 files → 77**. Every one of the 40 removals is on the allowed list —
+16 `og/*.png`, 2 `manifest.webmanifest`, 3 `icon-*.png`, 2 `llms*.txt`,
+5 `*.citations.json`, 12 `*.avif` — plus the expected `app.<hash>.js` rename. **No
+`.html`, no `search-index.js`, no `sitemap.xml`, no `robots.txt`, no Atom feed and no
+mirrored source asset disappeared.** Then the second direction, which a fresh-directory
+build cannot show: rebuilding **in place** over the existing tree produced a byte-identical
+file list, so no surviving keep-contributor lost its writer.
+
+**Six things that were not true, or that the playbook did not know.** Same genus as waves
+1–3:
+
+1. **`headless_js.rs` was `pdf.rs`'s alone, and all 559 lines went with it.** The
+   playbook's "must survive" list named five non-pdf consumers of the launch policy; three
+   no longer existed (`read --run-js` and `query.rs` went in wave 2, the LSP's rasterized
+   KaTeX hover in wave 4.1) and the other two, `deck_browser.rs` and `reactive_browser.rs`,
+   use `chromiumoxide` **directly** — they only mirror `chrome_path` in a comment.
+   `every_browser_await_is_bounded` went with the file, correctly: it scanned only those
+   two files. The `headless-js` feature and the `chromiumoxide` dep stay, because both test
+   binaries declare `required-features`.
+2. **So `release.yml` should no longer ask for the driver, and now does not.** With no
+   runtime consumer left, `--features taliesin-server/headless-js` cost 24% of every
+   cross-build for a dependency the shipped binary cannot reach.
+   `headless_js_feature.rs`'s clause (c) is inverted rather than deleted: it now fails if
+   the flag creeps *back* onto the release build. Its old rationale ("otherwise every
+   published binary silently lacks `read --run-js`") had been false since wave 2.
+3. **`Site::nav_ordered` lived in `llms.rs` and `feed.rs` calls it.** Deleting `llms.rs`
+   broke the Atom feeds' page ordering at compile time — loudly, so no harm, but nothing in
+   the plan mentioned it. It now lives in `feed.rs`, which was always its other caller.
+4. **`docs/DIAGNOSTICS.md` is a GENERATED golden and I edited it by hand first.** The three
+   "or `publish`" removals belong in `codes.rs`'s `Explanation` prose; editing the output
+   made `diagnostics_md_matches_committed` fail, which is the gate working. Fixed at the
+   source, then re-blessed with `TALIESIN_BLESS=1`. **This is wave 3's own recorded
+   precedent** ("retire a diagnostic code by deleting its rows, its `Explanation` and its
+   pin, and re-bless"), and I walked past it once.
+5. **Two `deny.toml` advisory ignores died with their dependencies**, and cargo-deny says
+   so out loud rather than silently: `RUSTSEC-2026-0192` (ttf-parser, via `ab_glyph`) went
+   with the card rasterizer, and `RUSTSEC-2024-0436` (paste, via `image`'s `avif` feature →
+   `ravif` → `rav1e`) went with `image_opt`. An un-encountered ignore is a warning, not a
+   failure, so a wave that removes a dependency should check that log.
+6. **`Page.authors`, `Page.has_bibliography` and the `orcid:`/`email:` author sub-keys all
+   became dead in the same edit.** Their only reader was `jsonld_head`. The first two were
+   deleted outright (clippy caught `authors`; `has_bibliography` is `pub`, so nothing would
+   have). The two sub-keys got `RETIRED_KEYS` entries under the `author key` scope — a key
+   left parsed, honored-looking and inert is precisely what the site-level `image:`
+   retirement was written against. `author:` itself, `affiliation:`, `url:`, `equal:` and
+   `contribution:` are untouched and still render.
+
+**The two judgement calls, and how they went.**
+
+- **`og:image` feeds from the page's own front-matter `image:`**, as ruled. The retired
+  site-level `image:` in `config/mod.rs` stays retired. The emitter is **6 tags, ~45
+  lines**: `og:title`, `og:description`, `og:url`, `og:image`, `twitter:card`, and
+  `<meta name="description">`. That last one is the one addition to the ruling's list of
+  five, at one line: it is what a search result actually reads, which is the same job the
+  surviving `seo.rs` sitemap exists to do. An absolute `image:` is used verbatim; a page
+  with none degrades to `twitter:card: summary`; the 404 page advertises nothing.
+- **The paged.js traps were preserved before deletion, as a step and not a nicety.**
+  `notes/retired/paged-js-traps.md` carries the `PAGED_CONFIG`, `PAGED_START`, `eager_media`
+  and `max_float_height` comments verbatim. `notes/ROADMAP.md`'s `print-pdf-track` entry
+  now points at it and is closed as CUT; `build-seo-completeness` is closed as CUT-DOWN
+  naming exactly what survived.
+
+**What was given up, stated plainly.**
+
+**AVIF (`image_opt.rs`), which the auditor's own dissent said was the one line of the
+verdict they would concede.** What goes with it, measured rather than asserted: **513 kB
+saved on one 17-page site**, 12 derivative files, and about **7% of the original PNG**
+on this repository's images (a 294 KB screenshot shipped as 22 KB). It had no vocabulary,
+no verb, no config key and no doc page, so the demand-signal test this whole audit runs on
+could never have been applied to it — a writer never met it. Its module header recorded
+real evidence for the encoder choice (image-webp is lossless-only; libwebp needs a C
+toolchain on the macOS cross-builds; ravif hard-fails without nasm; q72/s4 came from three
+measured encodes on a real corpus image), and that reasoning cost something to acquire.
+The case against it rested on `_freeze/` co-tenancy and the sweep interaction — arguments
+about where the code lived, not about whether a reader benefited — and an hour moving
+`CACHE_SUBDIR` out of `_freeze/` would have neutralised both. Ruled cut by the author on
+2026-08-08 and executed. `_freeze/` is `freeze.rs`'s alone again. The docs now tell the
+truth: `taliesin build` copies your bytes across unchanged, and shrinking an image is
+yours to do before you reference it.
+
+**`taliesin publish`'s passcode-gated draft workflow — the one genuinely writer-shaped
+thing in this bundle.** "Send my editor a private link to an unfinished post" is a real
+need that a generic static host does not hand you free, and `cli.tmd`'s publish section
+was the only place in the docs describing a complete writer workflow end to end. Zero
+adoption and an external wrangler dependency made it the wrong place to spend a finite
+perfection budget, but the need does not disappear with the code. The host-agnostic
+publishing prose was kept and **expanded** so it reads as the recommendation rather than
+the fallback: it now opens by saying a folder of files *is* the whole publishing story,
+carries a copy-paste deploy script, and answers the private-draft case directly (every
+host above it has password protection; or send the folder, which is often what "let me
+read your draft" means). It also answers printing: open the built page and print it.
+
+**Dropping `minify_js` costs real bytes, and more than the playbook implies.** Measured on
+`corpus/tech-blog`, the shared `app.js` goes **46,329 → 93,684 bytes raw, and 13,176 →
+29,669 gzipped — +16,493 gzipped bytes per site.** It is one shared asset, not per page,
+and the CSS bundle is byte-identical at 56,429 (so `minify_css` is untouched and still
+pays). But the playbook's "the CSS half carries roughly three quarters of the measured
+gzipped saving on its own" was not re-verified here, and the JS quarter was worth 16.5 kB
+gzipped on a real site. What is bought for it: 235 lines of stateful JS tokenizer (ASI-safe
+newline preservation, regex-vs-division disambiguation, nested template interpolation), its
+acorn token-stream oracle over Node, its mutation canary, and the only place in this
+repository where a silent mis-tokenization could ship a broken script no page visibly
+failed on. If the byte cost ever matters, the honest fix is `esbuild --minify` at build
+time, not re-deriving the tokenizer.
+
+**Three smaller losses.** The PWA install path is gone (`manifest.webmanifest`, the three
+bundled icons, and the "bring your own icon" documentation), so a reader can no longer
+install a built site as an app — no service worker ever shipped with it, so this only
+changed how a reader *returns*, never whether the site worked. `llms.txt`/`llms-full.txt`
+and the per-page `<page>.citations.json` sidecar are gone, so a crawler reading a built
+site now reads its HTML like everyone else. And JSON-LD went entirely, which is the one
+structured-data surface a search engine reads directly — `sitemap.xml`, `robots.txt`, the
+Atom feeds and the OpenGraph block all survive, so discoverability is reduced rather than
+removed.

@@ -107,10 +107,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-n",
     "data-tali-op",
     "data-tali-out",
-    // The print track's pagination-complete stamp (backlog 159): `PagedConfig.after` sets
-    // it, and `pdf.rs`'s in-page wait polls for it before capturing. Deliberately the same
-    // idiom as `data-tali-done` above.
-    "data-tali-paged",
     "data-tali-ran",
     "data-tali-search",
     "data-tali-settings",

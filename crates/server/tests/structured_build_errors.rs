@@ -78,8 +78,13 @@ fn single_doc_build_json_emits_structured_diagnostics() {
     );
 }
 
+/// The SITE build's structured diagnostics, located to their page. Distinct from the
+/// single-document case above: a site build fans out over pages and folds the results back,
+/// which is where a per-page `file` can be lost. It drove `publish --dry-run --format json`
+/// until wave 4 cut that verb on 2026-08-08 — `build --format json` was always the same
+/// code path, and is now the only caller of it.
 #[test]
-fn site_publish_dry_run_json_emits_structured_diagnostics() {
+fn site_build_json_emits_structured_diagnostics_located_to_their_page() {
     let dir = tmp_dir("site");
     fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
     fs::write(
@@ -88,26 +93,26 @@ fn site_publish_dry_run_json_emits_structured_diagnostics() {
     )
     .unwrap();
 
-    let publish = stdout_json(
+    let build = stdout_json(
         taliesin()
-            .arg("publish")
+            .arg("build")
             .arg(&dir)
-            .arg("--dry-run")
+            .arg("--no-exec")
             .args(["--format", "json"]),
     );
-    let diags = publish["diagnostics"].as_array().expect("array");
+    let diags = build["diagnostics"].as_array().expect("array");
     assert!(
         diags.iter().any(|d| d["message"]
             .as_str()
             .unwrap_or("")
             .contains("duplicate heading id")),
-        "publish --dry-run --format json reports the site's diagnostics: {publish}"
+        "build --format json reports the site's diagnostics: {build}"
     );
     assert!(
         diags
             .iter()
             .all(|d| d["file"].as_str() == Some("index.tmd")),
-        "diagnostics are located to their page: {publish}"
+        "diagnostics are located to their page: {build}"
     );
 }
 

@@ -18,7 +18,6 @@
 //! author:                                 # structured
 //!   - name: Ada Lovelace
 //!     affiliation: Analytical Engine Institute
-//!     orcid: 0000-0002-1825-0097
 //!     url: https://example.org/ada
 //!     equal: true
 //!   - name: Charles Babbage
@@ -39,15 +38,7 @@
 /// The sub-keys a structured author entry may carry. A typo here is worth a warning
 /// rather than silence: the value is dropped, and the only symptom is an affiliation
 /// that never appears on the page.
-pub(crate) const AUTHOR_KEYS: &[&str] = &[
-    "name",
-    "affiliation",
-    "orcid",
-    "url",
-    "email",
-    "equal",
-    "contribution",
-];
+pub(crate) const AUTHOR_KEYS: &[&str] = &["name", "affiliation", "url", "equal", "contribution"];
 
 /// One declared author. `name` is the only required part; everything else is absent in
 /// the scalar spellings above and stays absent rather than being invented.
@@ -55,9 +46,7 @@ pub(crate) const AUTHOR_KEYS: &[&str] = &[
 pub(crate) struct Author {
     pub name: String,
     pub affiliations: Vec<String>,
-    pub orcid: Option<String>,
     pub url: Option<String>,
-    pub email: Option<String>,
     /// `equal: true` — an equal-contribution marker, the one piece of author metadata a
     /// paper page carries that is about the *authorship* rather than the person.
     pub equal: bool,
@@ -115,9 +104,7 @@ fn push_one(v: &serde_yaml::Value, warnings: &mut Vec<String>, out: &mut Vec<Aut
                 let Some(key) = k.as_str() else { continue };
                 match key {
                     "name" => a.name = scalar(val).unwrap_or_default(),
-                    "orcid" => a.orcid = scalar(val),
                     "url" => a.url = scalar(val),
-                    "email" => a.email = scalar(val),
                     "equal" => {
                         a.equal = val
                             .as_bool()
@@ -225,12 +212,11 @@ mod tests {
     }
 
     #[test]
-    fn a_structured_entry_carries_its_affiliation_and_ids() {
+    fn a_structured_entry_carries_its_affiliation_and_url() {
         let (a, w) = parse_str(concat!(
             "author:\n",
             "  - name: Ada Lovelace\n",
             "    affiliation: Analytical Engine Institute\n",
-            "    orcid: 0000-0002-1825-0097\n",
             "    url: https://example.org/ada\n",
             "    equal: true\n",
         ));
@@ -240,9 +226,7 @@ mod tests {
             vec![Author {
                 name: "Ada Lovelace".into(),
                 affiliations: vec!["Analytical Engine Institute".into()],
-                orcid: Some("0000-0002-1825-0097".into()),
                 url: Some("https://example.org/ada".into()),
-                email: None,
                 equal: true,
                 contribution: None,
             }]

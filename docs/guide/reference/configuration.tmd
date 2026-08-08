@@ -32,7 +32,7 @@ table below repeats the front-matter keys most often paired with project config.
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
 | `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized so an author carrying it over from another tool is told the truth rather than nothing; delete it |
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; set `image-alt` whenever you set `image:` (an `image:` with no `image-alt:` warns; use `image-alt: ""` to declare it decorative) |
-| `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings) **and out of `check`**, which names what it held back; `preview` still shows it, badged, and lints it |
+| `draft` | `true` keeps the page (or book chapter) out of a `build` (output, nav, listings) **and out of `check`**, which names what it held back; `preview` still shows it, badged, and lints it |
 
 ### Code-cell options
 
@@ -165,49 +165,6 @@ closed-vocabulary check covers unknown cell `#|` options, unknown immediate chil
 `execute:` / `listing:` / `hero:`, and `format:` sub-keys (nothing reads those, so a
 green check must not certify them). (The Internals book covers the design, and the
 drift-locked Draft 2020-12 `_site.yml` schema, in its *Validation & schemas* chapter.)
-
-## Installing a site as an app
-
-Every built site and book ships a `manifest.webmanifest`, so a reader can install it and
-come back to it without hunting for a bookmark:
-
-| Where | How it appears |
-|---|---|
-| Chrome / Edge, desktop and Android | An **Install** button in the address bar; the site opens in its own window with a taskbar or launcher icon |
-| iOS / iPadOS | Share, then **Add to Home Screen**. Manual only: Safari never prompts |
-| macOS Safari | **Add to Dock** |
-| Firefox on desktop | Manifests are ignored. Nothing breaks; there is simply no install button |
-
-Installing changes how a reader *returns* to your site. It does **not** make the site work
-offline. The built pages are self-contained, so a reader who wants them offline can save
-the output directory, or use the browser's own Save Page.
-
-Nothing to configure: the app name comes from `title:`, the label from the part of it
-before the first colon ("Taliesin: The User Guide" becomes "Taliesin"), and the scope from
-wherever the site is deployed, so a book published under `/docs/guide/` installs as its own
-app.
-
-### Bringing your own icon
-
-By default an installed site wears the Taliesin mark. To use your own, drop two PNGs next
-to `_site.yml`:
-
-```
-icon-192.png            192 x 192
-icon-512.png            512 x 512
-icon-maskable-512.png   512 x 512, optional
-```
-
-Both of the first two are required. With only one, the built-in mark is used instead,
-because Chrome will not offer to install at all unless both sizes are present, and a
-half-replaced icon set would mix your mark with Taliesin's.
-
-The optional maskable icon is the one Android crops to a circle, so keep its artwork inside
-the middle 80%. Make every image square and fully opaque: transparent corners render black
-on an iOS home screen.
-
-`favicon:` is separate and still controls the browser tab icon. It can stay an SVG;
-manifests do not accept SVG, which is why the app icons are their own files.
 
 ## Editor autocomplete (config schema)
 

@@ -56,14 +56,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
-      # `--features taliesin-server/headless-js`: the browser driver is off by default so
-      # that building from source does not pay 24% of the build for a feature most users
-      # never invoke, but a DOWNLOADED binary should be the complete tool — the person who
-      # takes the tarball did not pay that cost and cannot re-enable it without rebuilding.
-      # (It still needs a system Chrome at runtime; without one `read --run-js` reports
-      # `skipped`, exactly as before.)
+      # NO `--features taliesin-server/headless-js`, deliberately. It used to be here so a
+      # DOWNLOADED binary would be the complete tool, but as of 2026-08-08 no shipped code
+      # path calls the browser driver at all: `read --run-js` went in Wave 2 and `pdf` in
+      # Wave 4, leaving only the `deck_browser` / `reactive_browser` TEST binaries, which a
+      # release never builds. Turning it on here would cost 24% of every cross-build for a
+      # dependency the binary cannot reach. `ci.yml` still passes it, because that is where
+      # the tests that need it run.
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server --features taliesin-server/headless-js
+        run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server
       # The tarball carries the licence and the third-party notices next to the binary:
       # Taliesin is AGPL-3.0 and vendors third-party assets, so a bare binary would be a
       # distribution without the terms it is distributed under.

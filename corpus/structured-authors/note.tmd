@@ -3,6 +3,6 @@ title: "A field note"
 date: 2026-05-01
 ---
 
-This page sets a `title:` and a `date:` but no `author:` of its own, so the JSON-LD
-`author` falls back to the site-level `author:` in `_site.yml`. No `bibliography:`,
-so it types as a `BlogPosting` rather than a `ScholarlyArticle`.
+This page sets a `title:` and a `date:` but no `author:` of its own, so its byline
+falls back to the site-level `author:` in `_site.yml`. (It used to pin the JSON-LD author
+chain too; that block was cut on 2026-08-08 with the rest of the social-metadata layer.)

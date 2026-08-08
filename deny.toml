@@ -19,20 +19,11 @@ ignore = [
     # can't drop them without replacing the highlighter.
     "RUSTSEC-2024-0320", # yaml-rust 0.4.5 unmaintained (syntect→comrak); no upgrade available
     "RUSTSEC-2025-0141", # bincode 1.x unmaintained (syntect→comrak); no upgrade available
-    # Rides in through `ab_glyph` (OG-card glyph rasterization, crates/core/src/site/card.rs)
-    # via `owned_ttf_parser`; ab_glyph is pure-Rust with no C dep, which is why it was picked
-    # over alternatives, so we tolerate this until ab_glyph migrates off it.
-    "RUSTSEC-2026-0192", # ttf-parser unmaintained (ab_glyph→owned_ttf_parser); no safe upgrade available
     # Rides in through `zeromq` (warm Jupyter kernel transport, crates/server/src/kernel.rs).
     # The double-free is in scc's panicking-comparator path; our map keys are non-panicking
     # `Vec<u8>` identities and the peers are loopback-only, self-spawned kernels, so that path
     # is unreachable. No fixed `scc` is published yet; revisit when one is.
     "RUSTSEC-2026-0205", # scc 3.7.3 double-free (zeromq→scc); panicking-comparator path unreachable
-    # Rides in through `image`'s `avif` feature (build-time AVIF transcode, item 169) via
-    # `ravif` → `rav1e`. `paste` is an archived proc-macro that pastes identifiers together:
-    # it is feature-complete, has no vulnerability, and rav1e pins it, so there is no upgrade
-    # to take. Revisit when rav1e moves to `pastey`.
-    "RUSTSEC-2024-0436", # paste 1.0.15 unmaintained (image→ravif→rav1e); no safe upgrade available
 ]
 
 [licenses]

@@ -45,7 +45,7 @@ page sets:
 
 | Mode | Used by | `draft: true` pages |
 |---|---|---|
-| `DraftMode::Exclude` | `build`, `publish`, `check`, `map` (plain `Site::discover`) | dropped from `self.pages`, recorded in `Site::excluded_drafts` |
+| `DraftMode::Exclude` | `build`, `check` (plain `Site::discover`) | dropped from `self.pages`, recorded in `Site::excluded_drafts` |
 | `DraftMode::Include` | `preview` (`Site::discover_with`) | kept, tagged `Page.draft`, badged in the view |
 
 The exclusion is structural, not cosmetic: in `Exclude`, `website_pages` returns `None`
@@ -118,7 +118,7 @@ flattened to the native shape.
 `validate_keys` is deliberately a **warning, not an error**: every top-level key in
 `_site.yml` is checked against the `NATIVE_KEYS` constant (`title`, `author`,
 `description`, `url`, `favicon`, `logo`, `head`, `nav`, `footer`, `chapters`, `mounts`,
-`publish`, `python`, `r`, `bibliography`), and an unknown one is reported but the rest of
+`python`, `r`, `bibliography`), and an unknown one is reported but the rest of
 the config still parses. A key the config *used* to honour is answered from
 `frontmatter::RETIRED_KEYS` under the `config key` scope, so it gets the reason it went
 and what to write instead rather than a rename hint. Otherwise the "did you mean" comes
@@ -306,13 +306,24 @@ its subsections, a parent there says "N words total" while a leaf says "N words"
 
 ## Social & SEO metadata
 
-Each page emits OpenGraph, Twitter-card, and `canonical` tags (`meta.rs`), taken from the
-page's own front matter (`title`, `description`) and falling back to the `_site.yml` config.
-The social-card image (`og:image`, `twitter:image`) is auto-generated per page. `og:type`
-is `article` when the page carries a `date:`, and `website` otherwise. The absolute-URL tags
-(`og:url`, `og:image`, `canonical`) are emitted **only when a `url:` is configured**, since
-social scrapers need absolute URLs; without a `url:` the page still carries its relative
-title/description metadata.
+Each page emits five tags and no more (`meta.rs`): `og:title`, `og:description`, `og:url`,
+`og:image` and `twitter:card`, plus `<meta name="description">` because that is what a
+search result reads. Titles and descriptions come from the page's own front matter and fall
+back to the `_site.yml` config; `og:image` is the page's own `image:`, absolutized.
+
+`og:url` and `og:image` are emitted **only when a `url:` is configured**, since a social
+scraper needs absolute URLs, and `twitter:card` degrades from `summary_large_image` to
+`summary` when there is no image — which is the right shape for a link with no picture, not
+a defect. The 404 page advertises no image, matching its exclusion from the sitemap.
+
+**This was reduced on 2026-08-08**, from a block that also carried `og:type`,
+`og:site_name`, `og:image:width`/`height`, `twitter:title`/`description`/`image`,
+`<link rel="canonical">` and a schema.org JSON-LD `@graph` (`BlogPosting`, upgraded to
+`ScholarlyArticle` for a cited post; `WebSite` + `Person` on the root index). The
+per-page `og:image` used to be a **generated** 1200x630 PNG, rasterized from a bundled
+Newsreader TTF at build time and written to `og/<hash>.png`; the page's own `image:` was
+deliberately excluded from it. Now it is the only source, so nothing here is generated and
+nothing here can drift from a file on disk.
 
 ## Mounts
 
