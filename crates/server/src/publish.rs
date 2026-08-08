@@ -393,7 +393,7 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         .unwrap_or_else(|| root.join(site.output_dir()));
 
     // Build (reuses the full site build, including its own discover + strict handling).
-    let outcome = crate::build::run_site_build(root, out.to_str(), strict, None);
+    let outcome = crate::build::run_site_build(root, out.to_str(), strict, None, "publish");
     if json {
         // Structured diagnostics to stdout (human log stays on stderr).
         println!("{}", crate::check::diagnostics_json(&outcome.diagnostics));

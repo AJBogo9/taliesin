@@ -145,7 +145,15 @@ inventory of `build corpus/agent/executed-read.tmd`, by grep count:
 | `tali-search-btn` | 0 |
 | `tali-site-footer` | 0 |
 | `tali-theme-toggle` | 2 |
-| `tali-toc` | 4 |
+| `tali-toc` | 0 |
+
+A bare class-name grep counts CSS rules as well as markup, and `tali-toc` is a case in
+point: `grep -c` reports 4 there, but all four are the bundled TOC stylesheet
+(`.tali-toc-expanded`, `.tali-toc-active`, …), not emitted markup, so the row above is
+the markup count instead. This is the same flaw `project_required.rs`'s live-preview
+test already caught for `tali-site-nav`/`tali-site-footer` (a bare `contains` matches
+their CSS rules too, chrome or not), so a bare substring grep should never be trusted
+alone for this kind of measurement.
 
 The footer matters as much as the header: `preview <file>` emits `tali-site-footer`
 twice where `build <file>` emits it zero times. A site footer on a document that

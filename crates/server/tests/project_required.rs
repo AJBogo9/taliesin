@@ -111,6 +111,47 @@ fn build_of_a_real_project_still_works() {
     );
 }
 
+/// Regression: `publish` used to bypass this rule entirely (it checked only
+/// `root.is_dir()`, then called straight into `run_site_build`, which warned, synthesized
+/// a one-page site, and proceeded toward deploying it). That is the worst place for the
+/// rule to leak, since `publish` ships to the internet, and the tool already claimed (in
+/// its own `root.is_dir()` error) a requirement it did not enforce.
+///
+/// `--out` is pointed at a scratch dir (never created by the child process, otherwise) so
+/// this test also proves nothing was built: the guard now lives inside `run_site_build`
+/// itself, ahead of the build it shares with `build`, so a rejection here happens before
+/// any file is written and, regardless of `--dry-run` (passed anyway so this test can
+/// never reach a real deploy), before any network call.
+#[test]
+fn publish_of_a_non_project_directory_is_rejected_with_guidance() {
+    let out =
+        std::env::temp_dir().join(format!("tali-publish-not-a-project-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&out);
+    let out_s = out.to_string_lossy().into_owned();
+
+    let (ok, _out, stderr) = run(&["publish", &corpus("agent"), "--out", &out_s, "--dry-run"]);
+    assert!(!ok, "a bare directory (no _site.yml) must fail");
+    assert!(stderr.contains("no _site.yml"), "says why: {stderr}");
+    assert!(
+        stderr.contains("<page>.tmd"),
+        "offers the name-one-document fix: {stderr}"
+    );
+    assert!(
+        stderr.contains("add a _site.yml"),
+        "offers the make-it-a-project fix: {stderr}"
+    );
+    assert!(
+        stderr.contains("taliesin publish"),
+        "names `publish`, not `build`, as the verb to retry: {stderr}"
+    );
+    assert!(
+        !out.exists(),
+        "the refusal must happen before anything is built: {out_s}"
+    );
+
+    let _ = fs::remove_dir_all(&out);
+}
+
 #[test]
 fn preview_of_a_non_project_directory_is_rejected_with_guidance() {
     // Must fail before binding a port, so this returns rather than serving forever.

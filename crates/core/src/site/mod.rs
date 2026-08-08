@@ -171,7 +171,14 @@ pub struct Site {
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
     /// True when this is a one-document project synthesized by
-    /// [`Site::discover_single`] for a file with no `_site.yml` anywhere above it.
+    /// [`Site::discover_single`] because the file's own parent directory has no
+    /// `_site.yml`. The check is local to that one directory, not a walk up the
+    /// tree: a caller that invokes `discover_single` on a file already nested
+    /// inside a real project still gets `standalone: true` here (harmlessly, e.g.
+    /// `crates/server/src/query.rs`'s `map`, which never reads this field).
+    /// `preview`/`build` only reach `discover_single` after their own ancestor
+    /// walk ([`enclosing_site_root`]) found no `_site.yml` anywhere above the
+    /// file, which is what makes the field mean "no project at all" for them.
     ///
     /// Such a document belongs to no project, so it gets no project chrome: the navbar
     /// would brand it "Home" and link to the page you are already on, the burger would

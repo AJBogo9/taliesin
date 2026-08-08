@@ -780,10 +780,16 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
     } else {
         // `join` rather than string concatenation, so the suggestion reads
         // `corpus/agent/<page>.tmd` whether or not the author typed a trailing slash.
+        let label1 = format!("to {verb} one document:");
+        let label2 = "to make it a site or book:";
+        // Right-pad the shorter label so both suggested commands start in the same
+        // column regardless of the verb's length: a hardcoded gap only lined up for
+        // `preview` (24 chars) and drifted for `build` (22 chars).
+        let width = label1.chars().count().max(label2.chars().count());
         format!(
             "{shown} has no _site.yml, so it is not a project.\n\
-             to {verb} one document:   taliesin {verb} {example}\n\
-             to make it a site or book: add a _site.yml",
+             {label1:<width$} taliesin {verb} {example}\n\
+             {label2:<width$} add a _site.yml",
             example = path.join("<page>.tmd").display()
         )
     };

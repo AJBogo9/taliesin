@@ -513,7 +513,7 @@ fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usiz
 /// `<stem>.html` beside the source.
 pub(crate) fn build_json(path: &Path) -> String {
     if path.is_dir() {
-        let outcome = run_site_build(path, None, false, None);
+        let outcome = run_site_build(path, None, false, None, "build");
         return crate::check::diagnostics_json(&outcome.diagnostics);
     }
     let src = match std::fs::read_to_string(path) {
@@ -1567,15 +1567,41 @@ pub(crate) fn draft_report_line(excluded: &[String]) -> Option<String> {
 }
 
 /// Run a directory (site/book) build to disk, returning whether it succeeded + its
-/// structured diagnostics. Shared by `cmd_build`'s directory branch and `publish` (which
-/// needs the success signal, not just an opaque `ExitCode`, plus the freedom to keep
-/// working with the output dir afterward).
+/// structured diagnostics. Shared by `cmd_build`'s directory branch, `build_json` (the MCP
+/// `build` tool), and `publish` (which needs the success signal, not just an opaque
+/// `ExitCode`, plus the freedom to keep working with the output dir afterward). `verb` is
+/// the CLI verb the caller was invoked as (`"build"`/`"publish"`), so a rejection names the
+/// right command to retry.
+///
+/// This is THE enforcement point for "a directory is a project, and a project is what
+/// `_site.yml` declares": every caller inherits the guard by construction rather than
+/// having to remember to add it. `cmd_build`'s own directory branch still checks this
+/// first too (it must run ahead of `--bare`/`--stdout`, which the guard here, reached only
+/// after those, would otherwise shadow; see `project_required.rs`'s
+/// `stdout_conflicts_are_loud`), so for `build` this is a redundant backstop. It is not
+/// redundant for `publish`, which used to call straight into the site build and skip the
+/// check entirely: `publish` on a directory with no `_site.yml` warned, synthesized a
+/// one-page site, and deployed it. `project_required.rs`'s
+/// `publish_of_a_non_project_directory_is_rejected_with_guidance` pins the fix.
 pub(crate) fn run_site_build(
     root: &Path,
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
+    verb: &str,
 ) -> SiteBuildOutcome {
+    if !root.join("_site.yml").is_file() {
+        let msg = crate::serve::not_a_project_error(root, verb);
+        log::error(&msg);
+        return SiteBuildOutcome {
+            ok: false,
+            diagnostics: vec![crate::check::Diagnostic::new(
+                root.display().to_string(),
+                None,
+                msg,
+            )],
+        };
+    }
     // Executing code cells needs the async kernel, so the whole site build runs on a
     // tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
     // concurrent page builds (each its own kernel) actually overlap on the CPU.
@@ -1607,7 +1633,7 @@ fn build_site(
     jobs: Option<usize>,
     json: bool,
 ) -> ExitCode {
-    let outcome = run_site_build(root, out_override, strict, jobs);
+    let outcome = run_site_build(root, out_override, strict, jobs, "build");
     if json {
         println!("{}", crate::check::diagnostics_json(&outcome.diagnostics));
     }
