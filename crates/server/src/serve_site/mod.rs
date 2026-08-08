@@ -441,6 +441,12 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
             }
         }
     };
+    // Keep the as-typed root for the guard's error message, before it is made absolute:
+    // `build` never canonicalizes the path it echoes back, so canonicalizing here first
+    // would have the two verbs answer the same "not a project" question with two
+    // different-looking paths for the same directory, and an absolute path is just noise
+    // in a terminal for something the author typed relatively.
+    let shown = root.clone();
     let root = root.canonicalize().unwrap_or(root);
     // A directory target is a project; a project is what `_site.yml` declares. Refuse before
     // binding a port, so the author gets the fix instead of a 404 page at `/` whose only link
@@ -448,7 +454,7 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
     if scope.is_none() && !root.join("_site.yml").is_file() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            crate::serve::not_a_project_error(&root, "preview"),
+            crate::serve::not_a_project_error(&shown, "preview"),
         ));
     }
     // Only an OUT-of-project document narrows discovery. A document inside a project must

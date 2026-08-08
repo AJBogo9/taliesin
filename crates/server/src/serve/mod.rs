@@ -706,22 +706,29 @@ pub(crate) fn bad_format_error(got: Option<&str>) -> String {
 /// suggestion leads with it instead of the generic pair.
 pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
     let shown = path.display();
-    if let Some(root) = taliesin_core::site::enclosing_site_root(path) {
-        return format!(
+    let body = if let Some(root) = taliesin_core::site::enclosing_site_root(path) {
+        format!(
             "{shown} has no _site.yml.\n\
              its ancestor {root} is a project. did you mean:\n  \
              taliesin {verb} {root}",
             root = root.display()
-        );
-    }
-    // `join` rather than string concatenation, so the suggestion reads
-    // `corpus/agent/<page>.tmd` whether or not the author typed a trailing slash.
-    format!(
-        "{shown} has no _site.yml, so it is not a project.\n\
-         to {verb} one document:   taliesin {verb} {example}\n\
-         to make it a site or book: add a _site.yml",
-        example = path.join("<page>.tmd").display()
-    )
+        )
+    } else {
+        // `join` rather than string concatenation, so the suggestion reads
+        // `corpus/agent/<page>.tmd` whether or not the author typed a trailing slash.
+        format!(
+            "{shown} has no _site.yml, so it is not a project.\n\
+             to {verb} one document:   taliesin {verb} {example}\n\
+             to make it a site or book: add a _site.yml",
+            example = path.join("<page>.tmd").display()
+        )
+    };
+    // Hang every continuation line under `crate::log`'s 10-column tag gutter
+    // ("  " + a 7-wide tag + " "), so a multi-line error reads as one block instead of
+    // half a message sitting flush against the left margin (same treatment as
+    // `exec.rs`'s `kernel_failure_report`, and for the same reason). Done here, once,
+    // rather than at each call site, so `build` and `preview` cannot drift or forget it.
+    body.replace('\n', "\n          ")
 }
 
 #[cfg(test)]
@@ -923,6 +930,16 @@ mod protocol_contract {
             msg.contains("taliesin preview corpus/agent/"),
             "offers the name-one-document fix, with the verb: {msg}"
         );
+        // Every continuation line hangs under `crate::log`'s 10-column tag gutter
+        // ("  " + a 7-wide tag + " "), so a multi-line error reads as one block instead
+        // of half a message sitting flush against the left margin (`log::error` prints
+        // `"  {tag:<7} {msg}"`, and `msg.replace('\n', ...)` never runs on the first line).
+        for cont in msg.lines().skip(1) {
+            assert!(
+                cont.starts_with("          "),
+                "continuation line must hang under the 10-column gutter: {cont:?} in {msg:?}"
+            );
+        }
     }
 
     #[test]
@@ -939,6 +956,13 @@ mod protocol_contract {
             msg.contains("did you mean"),
             "leads with the ancestor as the likely intent: {msg}"
         );
+        // Same gutter-hang treatment as the other branch, above.
+        for cont in msg.lines().skip(1) {
+            assert!(
+                cont.starts_with("          "),
+                "continuation line must hang under the 10-column gutter: {cont:?} in {msg:?}"
+            );
+        }
     }
 }
 

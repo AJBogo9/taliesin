@@ -33,6 +33,26 @@ fn corpus(rel: &str) -> String {
     format!("{}/../../corpus/{rel}", env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Every continuation line of a `log::error` message hangs under its 10-column tag
+/// gutter (`"  " + a 7-wide tag + " "`), so a multi-line error reads as one block
+/// instead of half a message sitting flush against the left margin. `first` is the
+/// index of the message's own first line within `stderr` (the caller may have other
+/// log lines, or a `serve: ` prefix, ahead of it).
+fn assert_continuations_hang_under_the_gutter(stderr: &str, first_line_needle: &str) {
+    let lines: Vec<&str> = stderr.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.contains(first_line_needle))
+        .unwrap_or_else(|| panic!("stderr must contain {first_line_needle:?}: {stderr}"));
+    for cont in &lines[start + 1..] {
+        assert!(
+            cont.starts_with("          "),
+            "continuation line must hang under the 10-column gutter, not sit flush left: \
+             {cont:?} in {stderr}"
+        );
+    }
+}
+
 #[test]
 fn build_of_a_non_project_directory_is_rejected_with_guidance() {
     let (ok, _out, stderr) = run(&["build", &corpus("agent")]);
@@ -46,6 +66,7 @@ fn build_of_a_non_project_directory_is_rejected_with_guidance() {
         stderr.contains("add a _site.yml"),
         "offers the make-it-a-project fix: {stderr}"
     );
+    assert_continuations_hang_under_the_gutter(&stderr, "has no _site.yml");
 }
 
 #[test]
@@ -76,6 +97,35 @@ fn preview_of_a_non_project_directory_is_rejected_with_guidance() {
     assert!(
         stderr.contains("<page>.tmd"),
         "offers the name-one-document fix: {stderr}"
+    );
+    assert_continuations_hang_under_the_gutter(&stderr, "has no _site.yml");
+}
+
+/// Defect regression: `preview`'s `resolve_target` used to canonicalize its root
+/// BEFORE building this message, so the same non-project directory read back as the
+/// as-typed path from `build` and a fully resolved absolute path from `preview` — the
+/// two verbs disagreeing about the very same input, which is exactly what this branch
+/// (`build`/`preview` refuse a non-project directory identically) must not do. Both
+/// must now echo the directory exactly as the author typed it.
+#[test]
+fn build_and_preview_report_the_same_path_for_the_same_directory() {
+    // Deliberately NOT canonical (carries a `../../`), so a regression that
+    // resolves the path before rendering the message would visibly disagree.
+    let dir = corpus("agent");
+    let expected_line = format!("{dir} has no _site.yml, so it is not a project.");
+
+    let (build_ok, _o, build_err) = run(&["build", &dir]);
+    assert!(!build_ok, "a bare directory (no _site.yml) must fail");
+    assert!(
+        build_err.contains(&expected_line),
+        "build must echo the path exactly as typed: {build_err}"
+    );
+
+    let (preview_ok, _o, preview_err) = run(&["preview", &dir, "4399"]);
+    assert!(!preview_ok, "a bare directory (no _site.yml) must fail");
+    assert!(
+        preview_err.contains(&expected_line),
+        "preview must echo the SAME path as build, not a canonicalized one: {preview_err}"
     );
 }
 
