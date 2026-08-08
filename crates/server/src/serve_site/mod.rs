@@ -1712,7 +1712,7 @@ async fn build_page(
         &src,
         &doc.blocks,
         &base,
-        crate::check::Scope::InSite,
+        crate::lint::Scope::InSite,
     );
     // Resolve the run's cap against the RENDERED blocks — the same list the executor is
     // about to walk — so `--cell 3` and the engine cannot disagree about which fence is

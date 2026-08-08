@@ -243,7 +243,7 @@ pipeline's [include-resolution stage](rendering.tmd#stage-by-stage).
 The other thing the same module returns: a located diagnostic for an
 `{{< include >}}` that *couldn't* be expanded (an unsafe path, a cycle, or an
 unreadable file). `resolve_warned` hands one back per dropped directive so the
-build, the preview, and `check` can surface it as a click-to-source row instead
+the build, the preview, and the lint can surface it as a click-to-source row instead
 of silently shipping the literal `{{< include … >}}`.
 
 ```rust

@@ -65,6 +65,11 @@ struct BuildArgs<'a> {
     /// `--format json` emits the build's static-lint diagnostics as `{diagnostics:[...]}`
     /// to stdout (for an agent/CI) instead of only the human log. Default `"human"`.
     format: &'a str,
+    /// `--check-only`: lint and write nothing. The front door the retired `check` verb was,
+    /// as `lint::cmd_check_only` over the same validator set this build runs, with no output
+    /// tree, no kernel and no asset bundle. Refuses every "where to write" flag rather than
+    /// silently ignoring one (see [`parse_build_args`]).
+    check_only: bool,
 }
 
 /// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
@@ -78,6 +83,7 @@ const BUILD_FLAGS: &[&str] = &[
     "--json",
     "--no-exec",
     "--stdout",
+    "--check-only",
 ];
 
 /// Output-path extensions that name a format Taliesin does not produce (DX11). `build`
@@ -127,6 +133,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut bare = false;
     let mut no_exec = false;
     let mut stdout = false;
+    let mut check_only = false;
     let mut jobs_result: Result<Option<usize>, String> = Ok(None);
     let mut format: &str = "human";
     let mut it = args[2..].iter();
@@ -168,6 +175,9 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             // the `render` verb was, minus a second code path — pair it with `--no-exec` for
             // `render`'s static, kernel-free dump.
             "--stdout" => stdout = true,
+            // `--check-only`: lint, write nothing. Never executes a cell, so it needs no
+            // `--no-exec` (and accepts one, which agrees with it rather than contradicting it).
+            "--check-only" => check_only = true,
             // An unrecognized `--flag` is a hard error with a did-you-mean, not silently
             // dropped (a typo'd `--stict` would otherwise build without the intended flag).
             s if s.starts_with("--") => {
@@ -216,6 +226,22 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             );
         }
     }
+    // `--check-only` writes nothing, so every flag that says *where* to write contradicts it.
+    // Named loudly rather than ignored: a `build x --check-only --out dist` that quietly
+    // produced no `dist/` is the trap the `--stdout` conflict above was written against, and
+    // `--bare`/`--jobs` describe output that never happens.
+    if check_only
+        && let Some(other) = out_dir
+            .map(|d| format!("--out {d}"))
+            .or_else(|| positionals.get(1).map(|o| format!("`{o}`")))
+            .or_else(|| stdout.then(|| "--stdout".to_string()))
+            .or_else(|| bare.then(|| "--bare".to_string()))
+            .or_else(|| jobs.map(|n| format!("--jobs {n}")))
+    {
+        return Err(format!(
+            "error: --check-only writes nothing, but {other} describes output. Drop one."
+        ));
+    }
     Ok(BuildArgs {
         path,
         out_html: positionals.get(1).copied(),
@@ -226,6 +252,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
         jobs,
         stdout,
         format,
+        check_only,
     })
 }
 
@@ -247,6 +274,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         jobs,
         stdout,
         format,
+        check_only,
     } = match parse_build_args(args) {
         Ok(p) => p,
         Err(msg) => {
@@ -263,6 +291,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         unsafe { std::env::set_var("TALIESIN_NO_EXEC", "1") };
     }
     let json = format == "json";
+    // `--check-only` is the static-lint front door: it shares `build`'s arg parsing, its
+    // validator set and its `--format json` shape, and diverges before anything is written or
+    // executed. Dispatched here, ahead of the project/single-doc split, because
+    // `lint::collect_diagnostics` already handles both.
+    if check_only {
+        return crate::lint::cmd_check_only(Path::new(path), format, strict);
+    }
     // A directory is a multi-page site project (`_site.yml` + `.tmd` pages);
     // a single `.tmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
@@ -299,7 +334,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
-            log::error(&crate::check::cannot_read(Path::new(path), &e));
+            log::error(&crate::lint::cannot_read(Path::new(path), &e));
             return ExitCode::FAILURE;
         }
     };
@@ -345,7 +380,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // pipes cleanly). The page is still written — `--format json` only changes the
     // *reporting* channel, not what a build produces.
     if json {
-        println!("{}", crate::check::diagnostics_json(&diagnostics));
+        println!("{}", crate::lint::diagnostics_json(&diagnostics));
     }
 
     // `--stdout`: the page IS the output, so nothing is written and nothing is copied
@@ -556,12 +591,12 @@ fn not_run_reason(html: &str) -> Option<&'static str> {
 fn cell_error_diagnostics(
     blocks: &[taliesin_core::Block],
     page_label: &str,
-) -> Vec<crate::check::Diagnostic> {
+) -> Vec<crate::lint::Diagnostic> {
     blocks
         .iter()
         .filter(|b| is_cell_error_output(&b.html))
         .map(|b| {
-            crate::check::Diagnostic::new(
+            crate::lint::Diagnostic::new(
                 page_label.to_string(),
                 None,
                 cell_error_message(page_label, b),
@@ -582,7 +617,7 @@ enum BuildResult {
         problems: usize,
         /// The located diagnostics, structured, for `--format json`. Same set the human
         /// log emits, in the same order.
-        diagnostics: Vec<crate::check::Diagnostic>,
+        diagnostics: Vec<crate::lint::Diagnostic>,
         /// Set when the document has executable cells whose kernel could not start: the
         /// full "here is everything I searched" report. The page is still written (as
         /// under `--strict`), then the build exits non-zero with this message.
@@ -640,13 +675,13 @@ fn build_page_executing(
         let mut problems = 0usize;
         // The same diagnostics, structured, for `--format json` — collected in the exact
         // order they are logged so the two channels agree.
-        let mut diagnostics: Vec<crate::check::Diagnostic> = Vec::new();
+        let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
         // Malformed front-matter YAML: the live servers + `check` report this, but a
         // single-doc `build` used to skip it, so a typo'd `---` block built clean and
         // even passed `--strict`. Surface it (located) and count it toward --strict.
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
             log::warn(&format!("{label}:{line}: {message}"));
-            diagnostics.push(crate::check::Diagnostic::new(
+            diagnostics.push(crate::lint::Diagnostic::new(
                 label.to_string(),
                 Some(line),
                 message,
@@ -664,18 +699,18 @@ fn build_page_executing(
         for w in &doc.warnings {
             // Located, as `check` reports them: a `--strict` failure should name the line.
             log::warn(&locate(w, label));
-            diagnostics.push(crate::check::diag_from(w, label));
+            diagnostics.push(crate::lint::diag_from(w, label));
         }
         // Advice (severity `suggestion`) is reported but never blocks: a rule that suggests
         // a reword must not fail a build, or the only way to keep CI green is to leave the
         // rule off. Same classification `check` gates on, so the two cannot disagree.
-        problems += crate::check::blocking(&doc.warnings);
+        problems += crate::lint::blocking(&doc.warnings);
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
         for w in &xrefs {
             log::warn(&locate(w, label));
-            diagnostics.push(crate::check::diag_from(w, label));
+            diagnostics.push(crate::lint::diag_from(w, label));
         }
         problems += xrefs.len();
         // The rest of the check-superset. These ran only in `check`, so a `--strict` build
@@ -683,17 +718,17 @@ fn build_page_executing(
         // and a green `--strict` reasonably reads as "safe to ship". Run *before* the code
         // cells execute, exactly as `check` does, so a figure a cell generates is never
         // linted as if the author had written it.
-        let statics = crate::check::page_static_diagnostics(
+        let statics = crate::lint::page_static_diagnostics(
             src,
             &doc.blocks,
             base,
-            crate::check::Scope::Standalone,
+            crate::lint::Scope::Standalone,
         );
         for w in &statics {
             log::warn(&locate(w, label));
-            diagnostics.push(crate::check::diag_from(w, label));
+            diagnostics.push(crate::lint::diag_from(w, label));
         }
-        problems += crate::check::blocking(&statics);
+        problems += crate::lint::blocking(&statics);
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex = exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), stem))
             .in_dir(base);
@@ -1057,7 +1092,7 @@ struct PageOutcome {
     /// first, then render/cross-ref warnings), replayed by the caller in page order.
     warnings: Vec<String>,
     /// The same findings, structured, for `--format json` — in the same order as `warnings`.
-    diagnostics: Vec<crate::check::Diagnostic>,
+    diagnostics: Vec<crate::lint::Diagnostic>,
     problems: usize,
     /// Set when this page has executable cells whose kernel could not start: the full
     /// "here is everything I searched" report. Folded across the build into one fatal
@@ -1085,10 +1120,10 @@ async fn build_one_page(
     bundle: &AssetBundle,
 ) -> PageOutcome {
     let mut warnings = Vec::new();
-    let mut diagnostics: Vec<crate::check::Diagnostic> = Vec::new();
+    let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
     let Ok(src) = std::fs::read_to_string(&page.input) else {
         let msg = format!("cannot read {}", page.input.display());
-        diagnostics.push(crate::check::Diagnostic::new(
+        diagnostics.push(crate::lint::Diagnostic::new(
             page.rel.clone(),
             None,
             msg.clone(),
@@ -1116,7 +1151,7 @@ async fn build_one_page(
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
         problems += 1;
         warnings.push(format!("{}:{line}: {message}", page.rel));
-        diagnostics.push(crate::check::Diagnostic::new(
+        diagnostics.push(crate::lint::Diagnostic::new(
             page.rel.clone(),
             Some(line),
             message,
@@ -1127,11 +1162,11 @@ async fn build_one_page(
     // rewrites to `other.html`, so only `validate_cross_page_links` can judge it, and that
     // runs once for the whole project after every page is built.
     let statics =
-        crate::check::page_static_diagnostics(&src, &doc.blocks, base, crate::check::Scope::InSite);
-    problems += crate::check::blocking(&statics);
+        crate::lint::page_static_diagnostics(&src, &doc.blocks, base, crate::lint::Scope::InSite);
+    problems += crate::lint::blocking(&statics);
     for w in &statics {
         warnings.push(locate(w, &page.rel));
-        diagnostics.push(crate::check::diag_from(w, &page.rel));
+        diagnostics.push(crate::lint::diag_from(w, &page.rel));
     }
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
@@ -1156,7 +1191,7 @@ async fn build_one_page(
         if is_cell_error_output(&b.html) {
             problems += 1;
             let msg = cell_error_message(&page.rel, b);
-            diagnostics.push(crate::check::Diagnostic::new(
+            diagnostics.push(crate::lint::Diagnostic::new(
                 page.rel.clone(),
                 None,
                 msg.clone(),
@@ -1187,9 +1222,9 @@ async fn build_one_page(
         // Located, the way `check` reports them. These carry a file + line and were being
         // flattened to `page.rel: message`, so a `--strict` failure named no line to fix.
         warnings.push(locate(w, &page.rel));
-        diagnostics.push(crate::check::diag_from(w, &page.rel));
+        diagnostics.push(crate::lint::diag_from(w, &page.rel));
     }
-    problems += crate::check::blocking(&render_warnings);
+    problems += crate::lint::blocking(&render_warnings);
     // Offline-guarantee, per page: flag any external reference this page keeps, exactly like the
     // single-doc build, so the common multi-page deploy (`build <dir>`) is covered too.
     // Informational — deferred into the page's warnings, never counted in `problems`/`--strict`.
@@ -1207,7 +1242,7 @@ async fn build_one_page(
         Ok(()) => true,
         Err(e) => {
             let msg = format!("cannot write {}: {e}", dest.display());
-            diagnostics.push(crate::check::Diagnostic::new(
+            diagnostics.push(crate::lint::Diagnostic::new(
                 page.rel.clone(),
                 None,
                 msg.clone(),
@@ -1231,7 +1266,7 @@ async fn build_one_page(
 /// page order.
 pub(crate) struct SiteBuildOutcome {
     pub ok: bool,
-    pub diagnostics: Vec<crate::check::Diagnostic>,
+    pub diagnostics: Vec<crate::lint::Diagnostic>,
 }
 
 /// The resolved shared-asset filenames (content-hashed), computed once per site build.
@@ -1435,7 +1470,7 @@ pub(crate) fn run_site_build(
         log::error(&msg);
         return SiteBuildOutcome {
             ok: false,
-            diagnostics: vec![crate::check::Diagnostic::new(
+            diagnostics: vec![crate::lint::Diagnostic::new(
                 root.display().to_string(),
                 None,
                 msg,
@@ -1455,7 +1490,7 @@ pub(crate) fn run_site_build(
             log::error(&msg);
             return SiteBuildOutcome {
                 ok: false,
-                diagnostics: vec![crate::check::Diagnostic::new(
+                diagnostics: vec![crate::lint::Diagnostic::new(
                     root.display().to_string(),
                     None,
                     msg,
@@ -1475,7 +1510,7 @@ fn build_site(
 ) -> ExitCode {
     let outcome = run_site_build(root, out_override, strict, jobs, "build");
     if json {
-        println!("{}", crate::check::diagnostics_json(&outcome.diagnostics));
+        println!("{}", crate::lint::diagnostics_json(&outcome.diagnostics));
     }
     if outcome.ok {
         ExitCode::SUCCESS
@@ -1527,14 +1562,14 @@ async fn build_project_tree(
     let site = taliesin_core::Site::discover(root);
     // Structured diagnostics accumulated in deterministic order (config → pages → site-wide),
     // for `--format json`. Mirrors the human log the build already emits.
-    let mut diagnostics: Vec<crate::check::Diagnostic> = Vec::new();
+    let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
     let mut config_problems = 0usize;
     for w in &site.warnings {
         if taliesin_core::site::is_malformed_config_warning(w) {
             config_problems += 1;
-            diagnostics.push(crate::check::Diagnostic::new(
+            diagnostics.push(crate::lint::Diagnostic::new(
                 "_site.yml".to_string(),
                 None,
                 w.clone(),
@@ -1562,7 +1597,7 @@ async fn build_project_tree(
             )
         };
         log::error(&msg);
-        diagnostics.push(crate::check::Diagnostic::new(
+        diagnostics.push(crate::lint::Diagnostic::new(
             root.display().to_string(),
             None,
             msg,
@@ -1581,7 +1616,7 @@ async fn build_project_tree(
     if let Err(e) = std::fs::create_dir_all(&out) {
         let msg = format!("cannot create {}: {e}", out.display());
         log::error(&msg);
-        diagnostics.push(crate::check::Diagnostic::new(
+        diagnostics.push(crate::lint::Diagnostic::new(
             root.display().to_string(),
             None,
             msg,
@@ -1604,7 +1639,7 @@ async fn build_project_tree(
             out.display()
         );
         log::error(&msg);
-        diagnostics.push(crate::check::Diagnostic::new(
+        diagnostics.push(crate::lint::Diagnostic::new(
             root.display().to_string(),
             None,
             msg,
@@ -1638,7 +1673,7 @@ async fn build_project_tree(
         Err(e) => {
             let msg = format!("cannot write {}/_assets: {e}", out.display());
             log::error(&msg);
-            diagnostics.push(crate::check::Diagnostic::new(
+            diagnostics.push(crate::lint::Diagnostic::new(
                 root.display().to_string(),
                 None,
                 msg,
@@ -1774,7 +1809,7 @@ async fn build_project_tree(
                 problems += 1;
                 let msg = format!("page build task failed: {e}");
                 log::error(&msg);
-                diagnostics.push(crate::check::Diagnostic::new(
+                diagnostics.push(crate::lint::Diagnostic::new(
                     root.display().to_string(),
                     None,
                     msg,
@@ -1860,7 +1895,7 @@ async fn build_project_tree(
     if let Err(e) = bundle.write_conditional(&out, used) {
         let msg = format!("cannot write {}/_assets: {e}", out.display());
         log::error(&msg);
-        diagnostics.push(crate::check::Diagnostic::new(
+        diagnostics.push(crate::lint::Diagnostic::new(
             root.display().to_string(),
             None,
             msg,
@@ -1924,12 +1959,12 @@ async fn build_project_tree(
     for (rel, w) in site.validate_cross_page_links() {
         problems += 1;
         log::warn(&locate(&w, &rel));
-        diagnostics.push(crate::check::diag_from(&w, &rel));
+        diagnostics.push(crate::lint::diag_from(&w, &rel));
     }
     for w in site.validate_shared_bibliography() {
         problems += 1;
         log::warn(&locate(&w, "_site.yml"));
-        diagnostics.push(crate::check::diag_from(&w, "_site.yml"));
+        diagnostics.push(crate::lint::diag_from(&w, "_site.yml"));
     }
 
     // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.
@@ -2980,37 +3015,6 @@ mod build_diag_tests {
         let blocks = vec![unavailable, raised];
         assert_eq!(report_cell_errors(&blocks, "p.tmd"), 2);
         assert_eq!(cell_error_diagnostics(&blocks, "p.tmd").len(), 2);
-    }
-
-    #[test]
-    fn the_two_execution_failures_carry_distinct_stable_codes() {
-        // DIAG-1 again, on the channel `check` cannot reach: these are the only diagnostics
-        // that exist solely on the `build`/`publish` path, so the check-side fixture sweep
-        // structurally cannot see them, and both fell through to TAL-CHECK with a docs_url
-        // pointing at "an uncatalogued diagnostic". They get separate codes because an agent
-        // routes them to different places: one edits the cell, the other fixes the machine.
-        use taliesin_core::diagnostics::codes;
-        let code_of = |b: &Block| codes::classify(&cell_error_message("p.tmd", b)).0;
-        let wrap =
-            |inner: String| output_block(&format!("<div class=\"tali-output\">{inner}</div>"));
-        assert_eq!(
-            code_of(&wrap(
-                "<pre class=\"tali-error\">ValueError: bad value</pre>".to_string()
-            )),
-            "TAL-CELL-ERROR"
-        );
-        for html in [
-            crate::exec::kernel_unavailable_html("python", None),
-            crate::exec::KERNEL_DIED_HTML.to_string(),
-            crate::exec::execution_error_html("timed out"),
-        ] {
-            assert_eq!(code_of(&wrap(html)), "TAL-KERNEL");
-        }
-        // A page label is interpolated into every one of these messages, so a page named
-        // after a diagnostic family must not hijack the code (the same trap the shape rows
-        // are ordered against).
-        let msg = cell_error_message("math", &wrap("<pre class=\"tali-error\">x</pre>".into()));
-        assert_eq!(codes::classify(&msg).0, "TAL-CELL-ERROR", "{msg}");
     }
 
     #[test]

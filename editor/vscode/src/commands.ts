@@ -148,15 +148,6 @@ export function registerCommands(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("taliesin.check", () => {
-      const doc = vscode.window.activeTextEditor?.document;
-      if (!doc || !isSourceFile(doc.fileName)) {
-        vscode.window.showWarningMessage("Taliesin: open a .tmd file first.");
-        return;
-      }
-      runInTerminal("Taliesin check", ["check", doc.fileName], path.dirname(doc.fileName));
-    }),
-
     vscode.commands.registerCommand("taliesin.doctor", () => {
       const cwd =
         vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? path.dirname(process.cwd());

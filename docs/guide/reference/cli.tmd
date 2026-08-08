@@ -1,6 +1,6 @@
 ---
 title: "CLI reference"
-description: "Every subcommand and flag: preview and build, the check gate, and the lsp editor server."
+description: "Every subcommand and flag: preview and build, the pre-publish lint gate, and the lsp editor server."
 ---
 
 *Reference: CLI · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
@@ -15,7 +15,7 @@ description: "Every subcommand and flag: preview and build, the check gate, and 
 | `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
-| `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
+| `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write **nothing**: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml` and an `index.tmd`, and nothing else; refuses to overwrite |
 | `new post <slug>` | Scaffold one dated post, correct on its first save; refuses to overwrite |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
@@ -44,42 +44,45 @@ project, the message names that ancestor and the command to run there instead:
 `preview` reports the same two forms, with `preview` in place of `build`
 throughout (and a `serve:` tag ahead of the first line).
 
-`check` renders the document or site in memory and reports everything that flows
-through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /
-container keys (with did-you-mean), unknown callout kinds, broken `@xref`
-cross-references, unknown shortcodes, a missing `bibliography:`, duplicate heading
-`{#id}`s, broken in-page `#anchor` links, and opt-in `prose-lint:` findings. It also
-catches these **publish-blocking** mistakes:
+## `--check-only`: the pre-publish gate
+
+`taliesin build <file|dir> --check-only` renders the document or project in memory, reports
+everything that flows through the diagnostics channel, and **writes nothing**: no `_site/`,
+no `.html`, no `_freeze/` entry. It never starts a kernel either, so `--no-exec` is implied
+rather than needed, and it refuses `--out` / `--stdout` / `--bare` / `--jobs` instead of
+accepting a flag that describes output it will not produce.
+
+It reports unknown front-matter / `_site.yml` / cell-option / container keys (with
+did-you-mean), unknown callout kinds, broken `@xref` cross-references, unknown shortcodes, a
+missing `bibliography:`, duplicate heading `{#id}`s, broken in-page `#anchor` links, and
+opt-in `prose-lint:` findings. It also catches these **publish-blocking** mistakes:
 
 | Rule | Flags |
 |---|---|
-| Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: `check` stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
+| Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: the lint stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
 | Missing local video | A `<video src>` / `<video><source></video>` / `poster=` whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
-| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `define` may publish the name). |
+| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a `{python}` cell that calls `define(` (a runtime `define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"). The static half of the live preview's a11y audit. |
-| Missing alt text | A hand-written / passthrough `<img>` with no `alt` attribute, so a screen reader can't describe it (a decorative image should set `alt=""`). Markdown `![…](…)` always emits an `alt`, so this catches raw `<img>` only. |
-| No accessible name | An `<a href>` / `<button>` in content with empty text and no `aria-label` / `title` / labelled image (e.g. an icon-only link), which a screen reader announces as just "link" / "button". |
+| Missing or placeholder alt text | A hand-written / passthrough `<img>` with no `alt` attribute, so a screen reader can't describe it (a decorative image should set `alt=""`); or an `alt` that names the medium rather than the content (`alt="image"`, or an echo of the filename). Markdown `![…](…)` always emits an `alt`, so the first half catches raw `<img>` only. |
+| A retired cell language | A cell written in a language Taliesin used to run and has since withdrawn, answered with the replacement to use rather than with spelling advice about a spelling that was right. |
 
-It does **not** execute code cells (it is fast, kernel-free,
-and deterministic, so runtime cell errors stay in `preview`/`build`). Output is a
-greppable `path:line: severity[CODE]: message` linter line by default, closed by a
-per-severity summary (`3 problems (1 error, 2 warnings)`) and a `taliesin check
---explain <CODE>` footer; or a `{ "diagnostics": [{file, line, message, code, severity,
-docs_url}], "environment": [...] }` object with `--format json`. It exits `0` when
-nothing above the severity floor fired, so it drops straight into CI or a pre-commit hook:
+Output is a greppable `path:line: severity: message` linter line by default, closed by a
+per-severity summary (`3 problems (1 error, 2 warnings)`); or a
+`{ "diagnostics": [{file, line, message, severity, col?, end_col?, suggestion?}] }` object
+with `--format json`, which is the tool's one machine-readable surface. It exits `0` when
+nothing that gates fired, so it drops straight into CI or a pre-commit hook.
 
 Each human `path` is rooted on the target **as you typed it**, so it opens from wherever
-you ran the command: `taliesin check docs/guide` from the repository root reports
-`docs/guide/using/formats.tmd:12:`, not a bare `using/formats.tmd` that only resolves
-inside the project. (The `file` in `--format json` stays relative to the target, since
-whoever passed the target can resolve against it.)
+you ran the command: `taliesin build docs/guide --check-only` from the repository root
+reports `docs/guide/using/formats.tmd:12:`, not a bare `using/formats.tmd` that only
+resolves inside the project. (The `file` in `--format json` stays relative to the target,
+since whoever passed the target can resolve against it.)
 
 ```sh
-taliesin check .                          # fails (exit 1) on any error or warning
-taliesin check . --strict                 # …and on suggestions too
-taliesin check . --errors-only            # …on errors alone; warnings neither shown nor gated
-taliesin check . --format json > problems.json
+taliesin build . --check-only                    # fails (exit 1) on any error or warning
+taliesin build . --check-only --strict           # …and on suggestions too
+taliesin build . --check-only --format json > problems.json
 ```
 
 ## What fails the run
@@ -87,85 +90,66 @@ taliesin check . --format json > problems.json
 There are three severities, and they exist to keep the gate honest: advice about how a
 sentence reads must not have the same power over CI as a broken cross-reference.
 
-| Severity | Means | Fails `check` |
+| Severity | Means | Fails the run |
 |---|---|---|
 | `error` | The document is wrong: a broken ref, a dead link, unparseable YAML | always |
-| `warning` | Something will silently not work: an unknown key, a missing `alt` | by default; not under `--errors-only` |
-| `suggestion` | Advice you may decline: the opt-in `prose-lint:` findings | never, unless you pass `--strict` |
+| `warning` | Something will silently not work: an unknown key, a missing `alt` | always |
+| `suggestion` | Advice you may decline: the opt-in `prose-lint:` findings, a `.bib` entry nothing cites | never, unless you pass `--strict` |
 
 A suggestion is always **printed**; only the exit code changes. `build --strict` uses the
 same rule, so a style suggestion can never block a release, and the summary says so rather
 than reporting advice as a problem beside an exit `0`:
 
 ```
-doc.tmd:6: suggestion[TAL-PROSE-WEASEL]: weasel word `simply` (consider cutting)
+doc.tmd:6: suggestion: weasel word `simply` (consider cutting)
 1 suggestion (advice; nothing here fails the run)
 ```
 
-`--format json` stays valid JSON even when `check` itself can't run: an unreadable or
-missing path (or an empty site) is reported as a single `{"error": "…"}` object on
-**stdout** (with a non-zero exit), so `taliesin check x --format json | jq` never chokes
-on a stray human message. Human format keeps that error on stderr.
+Severity is carried by the validator that found the defect, not derived from the wording of
+its message. Diagnostics used to also carry a stable `TAL-*` code and a link into a
+generated catalogue, expandable offline with `check --explain <CODE>`; all three went on
+2026-08-08. What an author needs from a diagnostic is the fix, and every message that has a
+mechanical one now names it inline, as a did-you-mean or as the replacement to use for
+something that was withdrawn.
 
-`check` is a static linter, so it does **not** spawn interpreters — the environment audit
-lives in `taliesin doctor`. It does, though, tell you **which** interpreter it would use.
-Whenever the target contains `{python}` cells, the human output ends with a
-footer naming the resolved interpreter per language:
+`--format json` stays valid JSON even when the lint itself can't run: an unreadable or
+missing path (or an empty project) is reported as a single `{"error": "…"}` object on
+**stdout** (with a non-zero exit), so `taliesin build x --check-only --format json | jq`
+never chokes on a stray human message. Human format keeps that error on stderr.
 
-```
-no problems found
+The lint is static, so it does **not** spawn interpreters and says nothing about whether a
+kernel works. That audit is `taliesin doctor`, which resolves the interpreter each language
+would run on and probes it. See the [configuration reference](configuration.html) for how
+the interpreter is chosen.
 
-Environment (not probed):
-  python: /home/you/.venv/bin/python (project .venv)
-run `taliesin doctor` to check these kernels are ready
-```
-
-Naming it costs nothing and answers the question a silent pass could not: a document whose
-only cell cannot run used to report `no problems found` and exit 0, while `build` on the
-same file warned twice. The footer deliberately carries **no verdict** — nothing spawned
-that binary, so `check` does not claim to know whether it works. A wrong `TALIESIN_PYTHON`
-or a stale `.venv` is visible at a glance; whether the kernel is ready is `doctor`'s answer.
-
-Two paths do probe. `--format json` always carries the full `environment` array (the
-resolved interpreter, where it came from, and whether its `ipykernel` package is
-importable), because agents want it; and `--require-kernel` probes to
-gate on it. Under `--require-kernel` the human output replaces the footer above with only
-the **degraded** languages (an all-green probe is `doctor`'s business) and points at
-`taliesin doctor` for the full audit. See the [configuration
-reference](configuration.html) for how the interpreter is chosen.
-
-**A project-supplied interpreter is reported, not run.** When the interpreter comes from
-the project being checked — a `_site.yml` `python:` field, or the project's own
-`.venv` — `check` names it but never spawns it, and its `runs` is `null` with a
-`not_probed` reason. Spawning a binary a *document's* author named is execution, and
-`check` is the pass you run on a project before you have read it. `--require-kernel` (or
-`taliesin doctor`) is the opt-in that probes it. An interpreter you chose yourself
-(`TALIESIN_PYTHON`, or the `python3` on your `PATH`) is probed as before.
-
-At a glance, here is everything `check` looks at, grouped by what it protects:
+At a glance, here is everything the lint looks at, grouped by what it protects:
 
 | Category | Catches |
 |---|---|
 | **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names, YAML parse errors |
-| **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:` |
+| **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:`, a bare `@key` that renders as literal text |
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
 | **Local media** | Missing local images (`src`/`href`) and `<video>` files |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
-| **Accessibility** | An `<img>` with no `alt`, a mid-document heading-level skip, an `<a>`/`<button>` with no accessible name |
+| **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
+| **Withdrawn vocabulary** | A retired front-matter key, `:::` class, shortcode or cell language, each answered with what replaced it |
 | **Opt-in** | `prose-lint:` findings (weasel words, repeated words, your own banned list) — all severity `suggestion` |
 
-External `http(s)://` links are never fetched (`check` stays offline and
-deterministic), and it never executes code cells. On its own, `check` exits `1` if it
-finds an error or a warning in any of those categories; it is the kernel-free gate.
+**Every one of those names a defect you cannot see in the rendered page.** That is the test
+this set is kept by, and it is what a family of lints cut on 2026-08-08 failed: an empty or
+duplicated heading, a `$…$` KaTeX cannot parse (it renders as a red error span), a typo'd
+fence language (it renders unhighlighted), two links that read the same, and an icon-only
+control with no accessible name. All five described something you could read back in the
+preview, and the preview's own a11y audit is where the last one lives now.
 
-`--strict` also exists on **`build`**, where it means the same thing one step further
-along: it promotes a normally non-fatal build into a hard failure, so the page is still
-written but `build` exits non-zero if **any located warning** fired or **any code cell
-errored** at runtime. Advice is exempt there too.
-Because `build` does run cells, `--strict` adds the one thing `check` structurally
-can't see (a cell that *throws*) on top of the located diagnostics, which makes
-`taliesin check . && taliesin build . --strict` a thorough two-stage CI gate: `check`
-fails fast and kernel-free on structure, then a strict `build` proves every cell
+`--strict` also exists on a **writing** build, where it means the same thing one step
+further along: it promotes a normally non-fatal build into a hard failure, so the page is
+still written but `build` exits non-zero if **any located warning** fired or **any code
+cell errored** at runtime. Advice is exempt there too. Because a writing build runs cells,
+`--strict` adds the one thing a static lint structurally can't see (a cell that *throws*)
+on top of the located diagnostics, which makes
+`taliesin build . --check-only && taliesin build . --strict` a thorough two-stage CI gate:
+the lint fails fast and kernel-free on structure, then a strict build proves every cell
 actually runs.
 
 `--version` / `-V` prints the version followed by the git commit it was built from,
@@ -177,7 +161,7 @@ Taliesin 0.2.0 (cdf0a13)
 
 `--help` / `-h` (or no arguments) prints the
 top-level usage. Putting `--help` / `-h` **after** a subcommand
-(`taliesin build --help`, `taliesin check -h`, …) prints a focused page for just that
+(`taliesin build --help`, `taliesin run -h`, …) prints a focused page for just that
 command: its synopsis, its flags, and a one-line example. If
 the default port (or one you pass) is already in use, what happens depends on who holds
 it. A preview of the *same* project is replaced, so re-running `preview` hands back the
@@ -211,8 +195,8 @@ you.** Taliesin is honest about this rather than pretending to a sandbox it does
   sanitizer that a document's own author can work around buys a false sense of safety.
 - **Two things are enforced rather than documented**, because they are the tool being
   steered *outside* the document by its metadata rather than the document running its own
-  code: a `mounts:` path may not leave the directory beside the project, and `check` never
-  spawns an interpreter the project itself named.
+  code: a `mounts:` path may not leave the directory beside the project, and a
+  `--check-only` lint never spawns an interpreter at all.
 
 The practical reading: `--no-exec` is the right flag for *skimming* a stranger's document,
 and a container or a throwaway user is the right answer for *trusting* one.
@@ -376,7 +360,7 @@ Whichever you pick, wrap it in a two-line script and stop thinking about it:
 ```sh
 #!/bin/sh
 set -e
-taliesin check mybook                       # fail before the readers do
+taliesin build mybook --check-only          # fail before the readers do
 taliesin build mybook --out _site
 rsync -a --delete _site/ you@host:/var/www/mybook/
 ```
@@ -395,10 +379,10 @@ page you have been looking at. Set your own `@media print` rules through `_site.
 
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
 `<meta>` tags (`og:url`, `og:image`) plus `sitemap.xml`, `robots.txt` and the Atom feeds
-are only emitted when a `url:` is configured — `taliesin check` warns if you set a social
+are only emitted when a `url:` is configured — the lint warns if you set a social
 `image:` without one.
-Run `taliesin check <dir>` first: a green check means no broken links, missing anchors, or
-other publish-blocking mistakes ship to your readers.
+Run `taliesin build <dir> --check-only` first: a green lint means no broken links, missing
+anchors, or other publish-blocking mistakes ship to your readers.
 
 ## Starting from something: `init` and `new`
 
@@ -415,9 +399,9 @@ page by dropping another `.tmd` beside `index.tmd`, add a top nav with a `nav:` 
 turn the project into a book by listing the pages under `chapters:`. See
 [Configuration](configuration.tmd).
 
-The scaffold is correct on its first save: it renders, and `taliesin check` passes on it
+The scaffold is correct on its first save: it renders, and `build --check-only` passes on it
 with no diagnostics. That is not a promise, it is a test: `crates/server/tests/new_cli.rs`
-runs the real binary and then the real `check` over what it wrote, so a front-matter key the
+runs the real binary and then the real lint over what it wrote, so a front-matter key the
 validator would reject cannot survive in the scaffold. A slug must be lowercase letters,
 digits and hyphens (it becomes the page's URL), and like `init`, `new` refuses to overwrite
 an existing file.
@@ -462,7 +446,7 @@ works from anywhere.
 ## `taliesin lsp`: the editor server
 
 `lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
-editor gets live `.tmd` diagnostics as you type, the same validators as `check`, run on
+editor gets live `.tmd` diagnostics as you type, the same validators the gate runs, on
 the unsaved buffer — plus completion, hover, go-to-definition, symbols, rename, inlay
 hints, folding and the Run-Cell code lens. It is parse-only: no kernel, no code
 execution, and it never edits your source.

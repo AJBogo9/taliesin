@@ -227,14 +227,15 @@ impl Printer {
         }
     }
 
-    /// The `path:line: error[CODE]: message` line for a failed cell, or `None` when the
-    /// session gave no position to name.
+    /// The `path:line: error: message` line for a failed cell, or `None` when the session
+    /// gave no position to name.
     ///
-    /// **Which code** is decided by whether the cell produced anything. The catalogue draws
-    /// the line in exactly this place: `TAL-CELL-ERROR` is "the author's code raising", which
-    /// means a traceback arrived; `TAL-KERNEL` is "the environment failing to run it at all",
-    /// which means nothing did. Guessing the other way round would send an author to debug
-    /// code that never ran.
+    /// **Which message** is decided by whether the cell produced anything: "raised an uncaught
+    /// exception" means a traceback arrived, "did not run" means nothing did. Guessing the other
+    /// way round would send an author to debug code that never ran, and the two go to different
+    /// places: one edits the cell, the other fixes the machine. (Each carried a distinct
+    /// `TAL-*` code until 2026-08-08; the wording is the distinction now, and it is the half an
+    /// author reads. `editor/vscode/src/kernelfail.ts` keys its doctor hint off it.)
     fn failure_line(&self, v: &serde_json::Value, id: &str, ordinal: &str) -> Option<String> {
         let line = v.get("line").and_then(|l| l.as_u64()).unwrap_or(0);
         if line == 0 {
@@ -247,21 +248,20 @@ impl Printer {
             None => self.page.clone(),
         };
         let shown = file.strip_prefix(&self.root).unwrap_or(&file);
-        let (code, what) = match self.produced.contains(id) {
-            true => ("TAL-CELL-ERROR", "code cell raised an uncaught exception"),
-            false => ("TAL-KERNEL", "code cell did not run"),
+        let what = match self.produced.contains(id) {
+            true => "code cell raised an uncaught exception",
+            false => "code cell did not run",
         };
         Some(format!(
-            "{}:{line}: error[{code}]: {what} ({ordinal})",
+            "{}:{line}: error: {what} ({ordinal})",
             shown.display()
         ))
     }
 
     fn cell_output(&mut self, v: &serde_json::Value) {
         let id = v.get("cell_id").and_then(|c| c.as_str()).unwrap_or("");
-        // Recorded before the `--quiet` return: this is what tells `TAL-CELL-ERROR` (the
-        // author's code threw) from `TAL-KERNEL` (nothing ran it), and a quiet run must
-        // report the same code a loud one does.
+        // Recorded before the `--quiet` return: this is what tells "the author's code threw"
+        // from "nothing ran it", and a quiet run must report the same thing a loud one does.
         self.produced.insert(id.to_string());
         if self.quiet {
             return;
@@ -761,9 +761,8 @@ mod tests {
             .failure_line(&serde_json::json!({ "line": 12 }), "c1", "cell 1/3")
             .expect("a located failure");
         assert_eq!(
-            line,
-            "posts/a.tmd:12: error[TAL-CELL-ERROR]: code cell raised an uncaught exception (cell 1/3)",
-            "must match `^([^\\s:][^:]*):(\\d+): (error|warning|suggestion)\\[([^\\]]+)\\]: (.*)$`"
+            line, "posts/a.tmd:12: error: code cell raised an uncaught exception (cell 1/3)",
+            "must match `^([^\\s:][^:]*):(\\d+): (error|warning|suggestion): (.*)$`"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -779,7 +778,7 @@ mod tests {
             .failure_line(&serde_json::json!({ "line": 4 }), "c1", "cell 1")
             .expect("a located failure");
         assert!(
-            line.contains("error[TAL-KERNEL]"),
+            line.contains("error: code cell did not run"),
             "no output means nothing ran it: {line}"
         );
     }

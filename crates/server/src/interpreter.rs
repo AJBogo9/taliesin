@@ -29,32 +29,8 @@ pub enum Provenance {
 }
 
 impl Provenance {
-    /// Whether the *project being checked* chose this interpreter, as opposed to the user.
-    ///
-    /// The distinction only matters where taliesin spawns the binary as a side effect of a
-    /// command the user did not think of as executing anything: `check` is the kernel-free,
-    /// network-free pass an agent runs first on an unknown project, and a `_site.yml`
-    /// `python:` field is a string that project's author wrote (item 81). A `.venv` counts
-    /// too — it is the common *legitimate* case, and also just a path inside a directory
-    /// someone else may have sent you. `TALIESIN_PYTHON` and the bare `python3` fallback are
-    /// the user's own choice, so spawning those is not a surprise.
-    ///
-    /// An [`AncestorVenv`](Provenance::AncestorVenv) counts as project-supplied too, and the
-    /// call is deliberate. It is tempting to read an ancestor venv as "above the payload,
-    /// therefore mine" — but the walk starts at the *target* the user named, and
-    /// `check untrusted/docs/book` climbs through `untrusted/`, so the venv it finds can sit
-    /// squarely inside the directory someone sent you. The two cases are indistinguishable
-    /// from the path alone, so this fails closed: the conservative branch costs only a live
-    /// probe inside `check`, which `doctor` still performs on demand.
-    pub fn is_project_supplied(self) -> bool {
-        matches!(
-            self,
-            Provenance::Field | Provenance::Venv | Provenance::AncestorVenv
-        )
-    }
-
     /// Human label naming where the interpreter came from, for the kernel-start log
-    /// line and `check`'s Environment section (e.g. `.venv`, `TALIESIN_PYTHON`).
+    /// line and `doctor`'s report (e.g. `.venv`, `TALIESIN_PYTHON`).
     pub fn label(self) -> &'static str {
         match self {
             Provenance::Field => "_site.yml python:",
@@ -591,14 +567,6 @@ mod tests {
         let root = tree("absolute-field");
         let r = resolve_python_env(Some("/opt/py/bin/python"), &book_under(&root), None);
         assert_eq!(r.path, PathBuf::from("/opt/py/bin/python"));
-    }
-
-    #[test]
-    fn an_ancestor_venv_is_treated_as_project_supplied() {
-        // Fails closed: the walk climbs through the target the user named, so an
-        // "ancestor" venv can still be inside a directory someone else sent you.
-        assert!(Provenance::AncestorVenv.is_project_supplied());
-        assert_eq!(Provenance::AncestorVenv.label(), "ancestor .venv");
     }
 
     #[test]

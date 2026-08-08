@@ -10,17 +10,20 @@
 use std::fs;
 use std::process::Command;
 
-/// Every subcommand whose first positional is a single `.tmd` file *and* which routes a
-/// missing one through `check::cannot_read`. Kept as a list because an integration test
+/// Every front door whose first positional is a single `.tmd` file *and* which routes a
+/// missing one through `lint::cannot_read`. Kept as a list because an integration test
 /// cannot reach the bin crate's `COMMANDS`; the floor below is what stops the list quietly
 /// shrinking to one.
 ///
-/// Wave 5 removed `render`, `blocks` and `symbols`; the Wave 2 cut removed `read` and `map`,
-/// which is why the floor below is two rather than four. Measured 2026-08-03, the front doors
-/// that take a path and still do NOT suggest: `run` ("no such file") and `pdf`. They are a
-/// pre-existing gap, not a regression from either cut, and are listed here so the next reader
-/// sees the omission is known rather than assuming this list is exhaustive.
-const FILE_COMMANDS: &[&str] = &["build", "check"];
+/// **Two invocations of `build`, not two verbs, and that is not padding.** A writing build
+/// reaches `cannot_read` from `cmd_build`'s own `read_to_string`; `--check-only` reaches it
+/// from `lint::collect_diagnostics`, a different call site that the retired `check` verb used
+/// to own. Wave 5 removed `render`, `blocks` and `symbols`, wave 2 removed `read` and `map`,
+/// and wave 9 retired `check` into the flag below. Measured 2026-08-03, the front door that
+/// takes a path and still does NOT suggest: `run` ("no such file"). That is a pre-existing
+/// gap, not a regression from any cut, and it is named here so the next reader sees the
+/// omission is known rather than assuming this list is exhaustive.
+const FILE_COMMANDS: &[&[&str]] = &[&["build"], &["build", "--check-only"]];
 
 #[test]
 fn every_file_front_door_suggests_the_near_miss() {
@@ -33,10 +36,11 @@ fn every_file_front_door_suggests_the_near_miss() {
         FILE_COMMANDS.len() >= 2,
         "the list of front doors under test must not silently shrink"
     );
-    for cmd in FILE_COMMANDS {
+    for argv in FILE_COMMANDS {
+        let cmd = argv.join(" ");
         let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
             .current_dir(&dir)
-            .arg(cmd)
+            .args(*argv)
             // A transposed extension: distance 2 from the real `intro.tmd`.
             .arg("intro.tdm")
             .output()
@@ -60,7 +64,7 @@ fn every_file_front_door_suggests_the_near_miss() {
     // the bare error it replaced.
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .current_dir(&dir)
-        .args(["check", "completely-unrelated.tmd"])
+        .args(["build", "completely-unrelated.tmd", "--check-only"])
         .output()
         .expect("run taliesin");
     let combined = String::from_utf8_lossy(&out.stderr).to_string();

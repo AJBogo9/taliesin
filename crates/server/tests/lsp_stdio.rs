@@ -921,13 +921,15 @@ fn code_lens_offers_the_run_command_over_the_wire() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The `--explain` body reaches the hover over the real wire (backlog item 220).
+/// A diagnostic reaches the hover over the real wire (backlog item 220).
 ///
-/// The catalogue's cause and fix used to be reachable only from a terminal (`check --explain`)
-/// or a browser (`code_description`), which is the trip Barik et al. measured people stop
-/// making. `hover` is where the pointer already is.
+/// The message used to be joined by a catalogued cause + fix for the diagnostic's `TAL-*`
+/// code; that catalogue went on 2026-08-08 and the message is the whole answer now, so what
+/// this pins is that the squiggle's own text arrives at the pointer at all. That is the half
+/// worth a wire test: the hover reads `published`, not a fresh lint, so a regression in the
+/// publish path shows up here and nowhere else.
 #[test]
-fn hover_on_a_squiggle_carries_the_explain_body() {
+fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     let doc = std::fs::canonicalize(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/typos.tmd"),
     )
@@ -972,16 +974,13 @@ fn hover_on_a_squiggle_carries_the_explain_body() {
     let hover = response(&stdout, 2);
     let md = hover["contents"]["value"].as_str().unwrap_or("");
     assert!(
-        md.contains("TAL-FM-KEY"),
-        "the code under the pointer: {hover:?}"
+        md.contains("unknown front-matter key `treme`"),
+        "the diagnostic under the pointer: {hover:?}"
     );
-    let fix = taliesin_core::diagnostics::codes::explain("TAL-FM-KEY")
-        .expect("the catalogue documents TAL-FM-KEY")
-        .fix;
     assert!(
-        md.contains(fix),
-        "the canonical fix must travel with it, or this is one more restatement of the \
-         message the author already read: {md:?}"
+        md.contains("did you mean `theme`"),
+        "the fix travels with it, inline in the message, which is the whole reason the \
+         separate catalogue could go: {md:?}"
     );
 }
 

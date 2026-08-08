@@ -31,19 +31,25 @@ pub(super) fn resolve_theme(
         // (the same distinction the bibliography reader draws, `render/mod.rs`).
         path if path.ends_with(".css") || path.ends_with(".scss") => {
             let Some(base) = base_dir else {
-                warnings.push(Warning::new(format!("theme file not found: {path}")));
+                warnings.push(
+                    Warning::new(format!("theme file not found: {path}")).severity(Severity::Error),
+                );
                 return String::new();
             };
             match crate::includes::try_join_in(base, path, root) {
                 Ok(p) => match std::fs::read_to_string(&p) {
                     Ok(css) => css,
                     Err(_) => {
-                        warnings.push(Warning::new(format!("theme file not found: {path}")));
+                        warnings.push(
+                            Warning::new(format!("theme file not found: {path}"))
+                                .severity(Severity::Error),
+                        );
                         String::new()
                     }
                 },
                 Err(reason) => {
-                    warnings.push(Warning::new(refused_theme(path, reason)));
+                    warnings
+                        .push(Warning::new(refused_theme(path, reason)).severity(Severity::Error));
                     String::new()
                 }
             }

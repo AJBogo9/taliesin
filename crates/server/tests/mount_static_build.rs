@@ -145,28 +145,33 @@ fn strict_no_longer_fails_a_site_just_for_having_a_mount() {
     );
 }
 
-/// The retired diagnostic. `TAL-MOUNT-PREVIEW` said "this mount is preview-only and its
-/// links will 404" and sent the author off to write the shell script; both halves are now
-/// false. A stale diagnostic is worse than none, so it is gone from `check` in both output
-/// formats.
+/// The retired diagnostic. It said "this mount is preview-only and its links will 404" and
+/// sent the author off to write a shell script; both halves are now false. A stale diagnostic
+/// is worse than none, so it is gone from the lint in both output formats.
 #[test]
-fn check_no_longer_reports_a_mount_as_preview_only() {
+fn the_lint_no_longer_reports_a_mount_as_preview_only() {
     let site = site_with_a_mount("check");
-    let (ok, _o, stderr) = run(&["check", site.to_str().unwrap()]);
+    let (ok, _o, stderr) = run(&["build", site.to_str().unwrap(), "--check-only"]);
     assert!(ok, "a site with a buildable mount is clean: {stderr}");
     assert!(
-        !stderr.contains("TAL-MOUNT-PREVIEW") && !stderr.contains("preview-only"),
-        "the retired code must not survive anywhere in the human output: {stderr}"
+        !stderr.contains("preview-only"),
+        "the retired finding must not survive anywhere in the human output: {stderr}"
     );
 
-    let (_ok, stdout, _e) = run(&["check", site.to_str().unwrap(), "--format", "json"]);
+    let (_ok, stdout, _e) = run(&[
+        "build",
+        site.to_str().unwrap(),
+        "--check-only",
+        "--format",
+        "json",
+    ]);
     let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
-    let codes: Vec<&str> = parsed["diagnostics"]
+    let messages: Vec<&str> = parsed["diagnostics"]
         .as_array()
-        .map(|ds| ds.iter().filter_map(|d| d["code"].as_str()).collect())
+        .map(|ds| ds.iter().filter_map(|d| d["message"].as_str()).collect())
         .unwrap_or_default();
     assert!(
-        !codes.contains(&"TAL-MOUNT-PREVIEW"),
+        !messages.iter().any(|m| m.contains("preview-only")),
         "nor in the machine output: {stdout}"
     );
 }

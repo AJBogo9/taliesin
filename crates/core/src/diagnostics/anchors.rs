@@ -1,7 +1,7 @@
 //! In-page anchor-link validation (`[text](#anchor)` targets that match no element id).
 
 use super::helpers::{collect_attr_values, start_line};
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 
 /// Same-page `href="#fragment"` values (without `#`) from MANUAL `<a>` links only.
 /// `@fig-`/`@sec-`/`@tbl-` cross-references (anchors carrying `tali-xref`) are skipped:
@@ -61,7 +61,8 @@ pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
             }
             let w = Warning::new(format!(
                 "broken in-page link: #{frag} (no element with that id on this page)"
-            ));
+            ))
+            .severity(Severity::Error);
             out.push(match line {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,

@@ -14,7 +14,7 @@
 //! Neither touches the BibTeX parser or the CSL formatter.
 
 use super::Site;
-use crate::render::Warning;
+use crate::render::{Severity, Warning};
 use std::path::{Path, PathBuf};
 
 /// Resolve `_site.yml`'s `bibliography:` entries against the site root, dropping (with a
@@ -155,7 +155,9 @@ impl Site {
         }
         let uncited = bib.uncited(&cited);
         if !uncited.is_empty() {
-            out.push(Warning::new(crate::cite::uncited_message(&uncited)));
+            out.push(
+                Warning::new(crate::cite::uncited_message(&uncited)).severity(Severity::Suggestion),
+            );
         }
         out
     }

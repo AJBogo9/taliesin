@@ -33,7 +33,12 @@ enum Outcome {
     TimedOut,
 }
 
-/// Run `taliesin check` over one hostile document, bounded by a wall clock.
+/// Run the static lint over one hostile document, bounded by a wall clock.
+///
+/// `build --check-only` rather than a plain `build`, deliberately: it exercises the whole
+/// render pipeline and writes nothing, so a case cannot leave a file behind and the exit
+/// code means "the pipeline survived" rather than "the write succeeded". It was
+/// `taliesin check` until that verb was retired on 2026-08-08.
 ///
 /// `budget` is deliberately generous relative to a real render (AP1's largest measurement is
 /// an 8000-block document at 647 ms release), so a trip here means a genuine hang, not a
@@ -53,14 +58,15 @@ fn check_case(src: &[u8], env: &[(&str, &str)], budget: Duration) -> Outcome {
         .expect("write case");
 
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_taliesin"));
-    cmd.arg("check")
+    cmd.arg("build")
         .arg(&file)
+        .arg("--check-only")
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     for (k, v) in env {
         cmd.env(k, v);
     }
-    let mut child = cmd.spawn().expect("spawn taliesin check");
+    let mut child = cmd.spawn().expect("spawn the lint");
 
     let start = Instant::now();
     let outcome = loop {
@@ -89,8 +95,11 @@ fn check_case(src: &[u8], env: &[(&str, &str)], budget: Duration) -> Outcome {
 
 fn assert_graceful(name: &str, src: &[u8], env: &[(&str, &str)], budget: Duration) {
     match check_case(src, env, budget) {
-        // `check` exits 0 with no problems and 1 when it reported some. Both mean the
-        // pipeline survived the document and said something about it.
+        // The lint exits 0 with no problems and 1 when it reported some. Both mean the
+        // pipeline survived the document and said something about it. **A third code would
+        // fail here**, which is what keeps this from passing vacuously on a mistyped verb:
+        // an unknown command exits 1 too, so the argv above is pinned by
+        // `missing_input_suggests.rs`'s front-door list rather than by this exit check alone.
         Outcome::Exited(0 | 1) => {}
         Outcome::Signalled(sig) => panic!(
             "case `{name}` killed by signal {sig} — a crash, not a diagnostic \

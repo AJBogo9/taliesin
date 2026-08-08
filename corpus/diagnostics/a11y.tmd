@@ -3,10 +3,11 @@ title: "Accessibility diagnostics demo"
 ---
 
 This page deliberately contains accessibility problems so both the preview's
-client-side a11y audit (the dev-menu panel) and the static `taliesin check` a11y gate
-(`validate_a11y`) have something to flag. It lives in `corpus/diagnostics/`, which is
-exempt from the corpus clean-render guards. Each located finding (the ones tied to a
-block) jumps to its source line on click, like any other diagnostic.
+client-side a11y audit (the dev-menu panel) and the static a11y gate (`validate_a11y`,
+run by every build and by `build --check-only`) have something to flag. It lives in
+`corpus/diagnostics/`, which is exempt from the corpus clean-render guards. Each located
+finding (the ones tied to a block) jumps to its source line on click, like any other
+diagnostic.
 
 ## A section with a raw image
 
@@ -25,9 +26,8 @@ nothing.
 
 This heading is an `h4` directly under the `h2` above, skipping `h3`.
 
-Here is [](#) — a link with no text, so it has no accessible name. And here is a
-<button></button> with no label, which a screen reader announces as just "button".
-
-Finally, a <div role="button"></div> and a <span role="link"></span>: ARIA roles make a
-plain element interactive, but with no accessible name a screen reader announces them as a
-bare "button" / "link" (the static gate flags `[role=button|link|tab]` without a name too).
+The accessible-name rules that used to live here (an icon-only link, an unlabelled
+`<button>`, and the `[role=button|link|tab]` variants of both) were cut on 2026-08-08
+with the rest of the diagnostics contraction, along with WCAG 2.5.3's label-in-name
+mismatch. The preview's client-side audit is where an interactive-element defect is
+found now.

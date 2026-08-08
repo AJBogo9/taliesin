@@ -1,7 +1,7 @@
 //! Local `<img>` asset existence validation.
 
 use super::helpers::{is_local_ref, start_line};
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 use std::path::Path;
 
 /// Unique local `src="..."` values from `<img>` tags only. Restricted to images on
@@ -48,7 +48,8 @@ pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
             }
             let w = Warning::new(format!(
                 "local asset not found: `{path}` (no such file under the document directory)"
-            ));
+            ))
+            .severity(Severity::Error);
             out.push(match line {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,

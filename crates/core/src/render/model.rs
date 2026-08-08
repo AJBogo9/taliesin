@@ -190,6 +190,33 @@ pub enum OutputMode {
     Bare,
 }
 
+/// How severe a diagnostic is: the one axis a gate and an editor squiggle both read.
+///
+/// Carried on the [`Warning`] itself rather than derived from its message at the reporting
+/// boundary. Until 2026-08-08 it was derived, by a 190-row table of message substrings that
+/// mapped each family to a `TAL-*` code and a severity, and that indirection is what this
+/// replaces: the validator that knows the defect is the thing that knows how bad it is, and a
+/// reworded message can no longer silently reclassify a family.
+///
+/// [`Warning`] defaults to [`Severity::Warning`], so only the sites that mean something else
+/// say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    /// A defect: something is broken in the output (a dead link, a missing asset, an
+    /// unresolvable cross-reference, a cell that raised).
+    Error,
+    /// The default: the page renders, but not the way the author wrote it (an unknown key,
+    /// a retired class, a missing `alt`).
+    #[default]
+    Warning,
+    /// Advice, never a defect: printed like any other diagnostic and **never** counted
+    /// against a gate. This is what lets a rule whose fix is "consider rewording" exist at
+    /// all: as anything higher it turned a green gate red, so the only way to keep the gate
+    /// green was to leave the rule off.
+    Suggestion,
+}
+
 /// A non-fatal render warning, optionally carrying a click-to-source location.
 /// When `line` is `Some`, the dev server renders it as a clickable diagnostic
 /// (jump-to-source); `file` is doc-base-relative (matching `Block::source_file`)
@@ -204,6 +231,9 @@ pub struct Warning {
     pub col: Option<u32>,
     /// 1-based, exclusive end column; set together with `col`.
     pub end_col: Option<u32>,
+    /// How bad it is. [`Severity::Warning`] unless a validator says otherwise, which is why
+    /// the ~85 sites that mean exactly that never mention it.
+    pub severity: Severity,
 }
 
 impl Warning {
@@ -214,6 +244,7 @@ impl Warning {
             line: None,
             col: None,
             end_col: None,
+            severity: Severity::default(),
         }
     }
 
@@ -228,6 +259,12 @@ impl Warning {
     pub fn span(mut self, col: u32, end_col: u32) -> Self {
         self.col = Some(col);
         self.end_col = Some(end_col);
+        self
+    }
+
+    /// Override the default [`Severity::Warning`].
+    pub fn severity(mut self, severity: Severity) -> Self {
+        self.severity = severity;
         self
     }
 }

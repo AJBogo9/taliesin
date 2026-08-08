@@ -43,7 +43,7 @@ page sets:
 
 | Mode | Used by | `draft: true` pages |
 |---|---|---|
-| `DraftMode::Exclude` | `build`, `check` (plain `Site::discover`) | dropped from `self.pages`, recorded in `Site::excluded_drafts` |
+| `DraftMode::Exclude` | `build`, `build --check-only` (plain `Site::discover`) | dropped from `self.pages`, recorded in `Site::excluded_drafts` |
 | `DraftMode::Include` | `preview` (`Site::discover_with`) | kept, tagged `Page.draft`, badged in the view |
 
 The exclusion is structural, not cosmetic: in `Exclude`, `website_pages` returns `None`
@@ -91,7 +91,7 @@ front-matter linter and the CLI's unknown-command suggestion use: the nearest kn
 within **Levenshtein edit distance 2** (so `favicn` suggests `favicon`, but a key two-plus
 edits away suggests nothing rather than guessing wildly). Two harder failures also degrade
 gracefully rather than aborting: a missing `_site.yml` and a YAML file that does not parse
-both warn and fall back to a `SiteConfig::default()`, so `check` and `preview` still run
+both warn and fall back to a `SiteConfig::default()`, so the lint and `preview` still run
 and surface the problem instead of crashing.
 
 ::: {.callout-note}
@@ -191,7 +191,7 @@ reference can point at a label defined on a page that has not been rendered yet:
    The registry is looser than the scan in one way, so the harvest re-applies
    `is_ref_anchor`: a Markdown-table caption registers any id, and a `{#my-table}` that no
    `@`-reference can reach must not be advertised as a target. It runs once from
-   `discover`, so `build`, `preview`, and `check` all resolve identically.
+   `discover`, so `build`, `preview`, and the lint all resolve identically.
 
 3. **Rewrite during page render.** When a page is rendered, `cite::process` has already
    turned each `@sec-` reference into a bare-label link that carries a `data-tali-xref`

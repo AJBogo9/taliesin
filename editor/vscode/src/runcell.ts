@@ -39,10 +39,10 @@ function binaryPath(): string {
  *
  * **The problem matchers, and the one condition on them.** `run_print.rs` now prints a failed
  * cell twice: `✗ cell 3/12` for the human reading the terminal, and
- * `posts/a.tmd:12: error[TAL-CELL-ERROR]: …` for the editor reading over their shoulder — which
- * is exactly the shape `$taliesin` already matches. That was the change this file used to say
- * was owed ("a change to what `run` PRINTS, in Rust, not a matcher declared here"), so the
- * matchers can finally be attached.
+ * `posts/a.tmd:12: error: …` for the editor reading over their shoulder — which is exactly the
+ * shape `$taliesin` already matches. That was the change this file used to say was owed ("a
+ * change to what `run` PRINTS, in Rust, not a matcher declared here"), so the matchers can
+ * finally be attached.
  *
  * They are still **not free to attach on spec**: measured, a task carrying them in a window with
  * no workspace folder (where `${workspaceFolder}` cannot resolve) reported no process at all,

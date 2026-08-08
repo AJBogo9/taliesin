@@ -104,21 +104,6 @@ fn intentionally_plain_fences_emit_no_scopes() {
     }
 }
 
-/// The pin doc must not itself trip the code-language validator: every token in it is
-/// either a real syntax or an intentionally-plain one.
-#[test]
-fn the_pin_doc_reports_no_unknown_languages() {
-    let path = corpus_dir().join("highlight.tmd");
-    let src = fs::read_to_string(&path).unwrap();
-    let doc = taliesin_core::render_document_with_includes(&src, path.parent().unwrap());
-    let ws = taliesin_core::diagnostics::validate_code_languages(&doc.blocks);
-    assert!(
-        ws.is_empty(),
-        "{:?}",
-        ws.iter().map(|w| &w.message).collect::<Vec<_>>()
-    );
-}
-
 /// Item 127 (2026-07-28). ` ```rust,ignore ` is the shared convention of mdBook, rustdoc,
 /// Pandoc, Docusaurus and GitHub, and Taliesin took the whole info string as the language:
 /// measured on `rust-lang/book`, **329 of 457** reported problems were this one shape, and on

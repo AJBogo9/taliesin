@@ -1,80 +1,20 @@
-//! The LSP's diagnostic surface beyond `publishDiagnostics`: the `--explain` body in the
-//! hover, and the 3.17 **pull** model (`textDocument/diagnostic` + `workspace/diagnostic`).
-//!
-//! **Why the explanation belongs in the hover.** Each of the catalogued `TAL-*` codes already
-//! carries a cause and a canonical fix, and `check --explain <CODE>` prints them — in a
-//! terminal, for a code the author read in their editor. The diagnostic's `code_description`
-//! link is the same trip by another route: it opens a browser. Barik et al. (ICSE 2017,
-//! eye-tracking) measured that reading an error message already costs about as much as reading
-//! source, which makes the moment you ask someone to leave the editor the moment they stop.
-//! The text is already in the binary; this puts it where the squiggle is.
+//! The LSP's diagnostic surface beyond `publishDiagnostics`: the 3.17 **pull** model
+//! (`textDocument/diagnostic` + `workspace/diagnostic`).
 //!
 //! **Why the pull model.** `publishDiagnostics` can only ever speak about documents the editor
 //! has opened, so a 25-chapter book shows problems for the two chapters on screen and silence
-//! for the other 23 — while `check <dir>` answers the whole question in a third of a second.
+//! for the other 23 — while a project lint answers the whole question in a third of a second.
 //! `workspace/diagnostic` is the primitive built for exactly that, and it also inverts the
 //! ownership of *invalidation*: the client asks, instead of the server guessing which open
 //! buffer a `git pull` just invalidated.
+//!
+//! The hover used to carry a second body: a `TAL-*` code's catalogued cause and canonical fix,
+//! the same rows `check --explain` printed. Both went on 2026-08-08 with the code catalogue.
+//! What replaces it is the diagnostic message itself, which names the fix inline (a
+//! did-you-mean, or a retirement note out of the register), so there is one text to keep true
+//! instead of two.
 
 use std::path::{Path, PathBuf};
-
-/// The `check --explain` body for a diagnostic code, as hover markdown. `None` for a code with
-/// no catalogue row, which is the honest answer rather than an empty section.
-///
-/// Reads [`taliesin_core::diagnostics::codes::explain`] — the same rows `check --explain` and
-/// the generated `docs/DIAGNOSTICS.md` come from, so the editor, the CLI and the catalogue
-/// cannot drift into three answers.
-pub(crate) fn explanation_markdown(code: &str) -> Option<String> {
-    let e = taliesin_core::diagnostics::codes::explain(code)?;
-    Some(format!(
-        "**{}** — {}\n\n{}\n\n**Fix.** {}",
-        e.code, e.title, e.cause, e.fix
-    ))
-}
-
-/// The explanations for every one of *our* diagnostics whose range covers `pos`, innermost
-/// first, deduplicated by code.
-///
-/// Other providers' diagnostics are skipped on `source`: an editor attaches several to the
-/// same buffer, and explaining someone else's code out of Taliesin's catalogue would be a
-/// confident wrong answer. Same guard, and the same reason, as `resolve_code_actions`.
-pub(crate) fn explanations_at(
-    diagnostics: &[lsp_types::Diagnostic],
-    pos: lsp_types::Position,
-) -> Vec<String> {
-    let mut hits: Vec<&lsp_types::Diagnostic> = diagnostics
-        .iter()
-        .filter(|d| d.source.as_deref() == Some(crate::check::LSP_SOURCE))
-        .filter(|d| d.range.start <= pos && pos <= d.range.end)
-        .collect();
-    // Innermost first: a precise token span is a better answer than the whole-line squiggle
-    // it sits inside, and the editor shows the first section highest.
-    hits.sort_by_key(|d| {
-        (
-            d.range.end.line - d.range.start.line,
-            d.range
-                .end
-                .character
-                .saturating_sub(d.range.start.character),
-        )
-    });
-    let mut seen: Vec<&str> = Vec::new();
-    let mut out = Vec::new();
-    for d in hits {
-        let code = match &d.code {
-            Some(lsp_types::NumberOrString::String(s)) => s.as_str(),
-            _ => continue,
-        };
-        if seen.contains(&code) {
-            continue;
-        }
-        seen.push(code);
-        if let Some(md) = explanation_markdown(code) {
-            out.push(md);
-        }
-    }
-    out
-}
 
 /// The narrowest range among our diagnostics covering `pos`, so a hover that carries *only* an
 /// explanation still highlights the token it is about rather than nothing.
@@ -84,7 +24,7 @@ pub(crate) fn narrowest_range_at(
 ) -> Option<lsp_types::Range> {
     diagnostics
         .iter()
-        .filter(|d| d.source.as_deref() == Some(crate::check::LSP_SOURCE))
+        .filter(|d| d.source.as_deref() == Some(crate::lint::LSP_SOURCE))
         .filter(|d| d.range.start <= pos && pos <= d.range.end)
         .min_by_key(|d| {
             (
@@ -113,7 +53,7 @@ pub(crate) fn diagnose_file(
 ) -> Vec<lsp_types::Diagnostic> {
     let lines: Vec<&str> = text.split('\n').collect();
     let site = sites.get(path);
-    crate::check::buffer_diagnostics_in_site(path, text, site)
+    crate::lint::buffer_diagnostics_in_site(path, text, site)
         .iter()
         .map(|d| d.to_lsp(&lines))
         .collect()
@@ -236,85 +176,36 @@ pub(crate) fn result_id(project_stamp: u64, page: &Path, buffer: Option<&str>) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lsp_types::{Diagnostic, NumberOrString, Position, Range};
+    use lsp_types::{Diagnostic, Position, Range};
 
-    fn diag(code: &str, line: u32, start: u32, end: u32) -> Diagnostic {
+    /// A diagnostic of ours with a `line`-local `[start, end)` range.
+    fn diag(line: u32, start: u32, end: u32) -> Diagnostic {
         Diagnostic {
             range: Range::new(Position::new(line, start), Position::new(line, end)),
-            code: Some(NumberOrString::String(code.to_string())),
-            source: Some(crate::check::LSP_SOURCE.to_string()),
+            source: Some(crate::lint::LSP_SOURCE.to_string()),
             message: "m".to_string(),
             ..Default::default()
         }
     }
 
     #[test]
-    fn the_explanation_carries_both_halves_of_the_catalogue_row() {
-        let md = explanation_markdown("TAL-FM-KEY").expect("a catalogued code");
-        assert!(md.starts_with("**TAL-FM-KEY**"), "{md}");
-        assert!(
-            md.contains("**Fix.**"),
-            "the fix is the half that tells an author what to type: {md}"
-        );
-        // The cause is the other half; without it the hover is a restatement of the message.
-        let e = taliesin_core::diagnostics::codes::explain("TAL-FM-KEY").unwrap();
-        assert!(md.contains(e.cause), "{md}");
-    }
-
-    #[test]
-    fn an_uncatalogued_code_gets_no_section_rather_than_an_empty_one() {
-        assert!(explanation_markdown("TAL-NOT-A-CODE").is_none());
-    }
-
-    #[test]
-    fn only_our_own_diagnostics_are_explained() {
-        // An editor attaches several providers to the same buffer. Explaining someone else's
-        // code out of Taliesin's catalogue would be a confident wrong answer.
-        let mut theirs = diag("TAL-FM-KEY", 0, 0, 5);
-        theirs.source = Some("eslint".to_string());
-        assert!(explanations_at(&[theirs], Position::new(0, 2)).is_empty());
-    }
-
-    #[test]
-    fn a_position_outside_every_range_gets_nothing() {
-        assert!(explanations_at(&[diag("TAL-FM-KEY", 3, 0, 5)], Position::new(0, 2)).is_empty());
-    }
-
-    #[test]
-    fn the_precise_span_is_explained_before_the_line_it_sits_inside() {
-        let found = explanations_at(
-            &[
-                diag("TAL-SHAPE-EMPTY", 0, 0, 40),
-                diag("TAL-FM-KEY", 0, 4, 9),
-            ],
-            Position::new(0, 5),
-        );
-        assert_eq!(found.len(), 2, "both cover the cursor: {found:?}");
-        assert!(
-            found[0].starts_with("**TAL-FM-KEY**"),
-            "the narrow one first: {found:?}"
-        );
-    }
-
-    #[test]
-    fn the_same_code_twice_is_explained_once() {
-        let found = explanations_at(
-            &[diag("TAL-FM-KEY", 0, 0, 9), diag("TAL-FM-KEY", 0, 2, 5)],
-            Position::new(0, 3),
-        );
-        assert_eq!(found.len(), 1, "one section per code: {found:?}");
-    }
-
-    #[test]
     fn the_narrowest_range_is_the_one_a_hover_highlights() {
-        let r = narrowest_range_at(
-            &[
-                diag("TAL-SHAPE-EMPTY", 0, 0, 40),
-                diag("TAL-FM-KEY", 0, 4, 9),
-            ],
-            Position::new(0, 5),
-        )
-        .expect("a covering range");
+        let r = narrowest_range_at(&[diag(0, 0, 40), diag(0, 4, 9)], Position::new(0, 5))
+            .expect("a covering range");
         assert_eq!((r.start.character, r.end.character), (4, 9));
+    }
+
+    /// Another provider's diagnostic is not ours to anchor a hover on. An editor attaches
+    /// several to the same buffer, and the `source` guard is the only thing separating them.
+    #[test]
+    fn only_our_own_diagnostics_anchor_a_hover() {
+        let mut theirs = diag(0, 0, 5);
+        theirs.source = Some("eslint".to_string());
+        assert!(narrowest_range_at(&[theirs], Position::new(0, 2)).is_none());
+    }
+
+    #[test]
+    fn a_position_outside_every_range_anchors_nothing() {
+        assert!(narrowest_range_at(&[diag(3, 0, 5)], Position::new(0, 2)).is_none());
     }
 }

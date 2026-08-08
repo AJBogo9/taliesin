@@ -67,11 +67,23 @@ if [ "$pushing_main" -eq 0 ]; then
     exit 0
 fi
 
-echo "pre-push: gating main (fmt, clippy, test). Bypass with --no-verify."
-echo "  [1/3] cargo fmt --check"
+echo "pre-push: gating main (fmt, clippy, test, docs lint). Bypass with --no-verify."
+echo "  [1/4] cargo fmt --check"
 cargo fmt --all -- --check
-echo "  [2/3] cargo clippy --workspace --all-targets -- -D warnings"
+echo "  [2/4] cargo clippy --workspace --all-targets -- -D warnings"
 cargo clippy --workspace --all-targets -- -D warnings
-echo "  [3/3] cargo test --workspace"
+echo "  [3/4] cargo test --workspace"
 cargo test --workspace
+
+# The document gate the `check` verb never had wired anywhere. `docs/guide` is this
+# project's own manual, authored in `.tmd`, so a broken cross-reference or a dead link in
+# it ships to a reader the same way a bug ships to a user, and until 2026-08-08 nothing
+# automatic looked. `--check-only` renders in memory and writes NOTHING, so the hook leaves
+# no `_site/` behind; `--no-exec` is redundant with it and passed anyway, because a hook
+# that silently gained a kernel dependency would start failing for the wrong reason.
+# `--strict` is deliberately absent: advice must not block a push.
+#
+# Built with the same profile the tests just used, so this costs a link and not a rebuild.
+echo "  [4/4] cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec"
+cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
 echo "pre-push: all checks passed."

@@ -157,8 +157,8 @@ surface".
    features are actually proved: a unit test can show the server answers, but only a real
    host shows VS Code asked it and rendered the reply. It asserts every contributed command
    registers, that a `.tmd` resolves to the `taliesin` language, that *Open Preview* opens a
-   webview panel, and — all via the language server — that diagnostics carry their `TAL-*`
-   code, that cell options / div classes / math commands / paths / shortcode names /
+   webview panel, and — all via the language server — that diagnostics arrive located and
+   named, that cell options / div classes / math commands / paths / shortcode names /
    cell-option values complete (and that math does **not** complete in prose), that an
    `{{< include >}}` path is painted as a document link and named on hover, and that
    renaming a cross-reference anchor rewrites its definition and every reference.

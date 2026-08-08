@@ -19,14 +19,14 @@ import { DIAGNOSTIC_LINE, resolveUnique } from "../diaglink";
 const REPO_ROOT = path.join(__dirname, "..", "..", "..", "..");
 
 test("check's located form matches, and yields the file and the line", () => {
-  const m = DIAGNOSTIC_LINE.exec("posts/intro.tmd:12: warning[TAL-XREF]: unresolved @fig-a");
+  const m = DIAGNOSTIC_LINE.exec("posts/intro.tmd:12: warning: unresolved @fig-a");
   assert.ok(m, "the located form must match");
   assert.strictEqual(m[1], "posts/intro.tmd");
   assert.strictEqual(m[2], "12");
 });
 
 test("check's unlocated form matches, with no line", () => {
-  const m = DIAGNOSTIC_LINE.exec("posts/intro.tmd: error[TAL-FM]: bad front matter");
+  const m = DIAGNOSTIC_LINE.exec("posts/intro.tmd: error: bad front matter");
   assert.ok(m, "the unlocated form must match");
   assert.strictEqual(m[1], "posts/intro.tmd");
   assert.strictEqual(m[2], undefined);
@@ -55,16 +55,16 @@ test("a location must start the line, so a path inside a message is not matched"
 test("the Rust format strings this pattern was written against have not moved", () => {
   // The other half of the gate. If a format changes, the samples above become fiction and the
   // pattern may match nothing while every test here still passes, so pin the literals.
-  const check = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/check.rs"), "utf8");
+  const lint = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/lint.rs"), "utf8");
   const build = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/build.rs"), "utf8");
 
   assert.ok(
-    check.includes('"{}:{}: {}[{}]: {}\\n"'),
-    "check.rs no longer prints `file:line: severity[CODE]: message`; revisit DIAGNOSTIC_LINE"
+    lint.includes('"{}:{}: {}: {}\\n"'),
+    "lint.rs no longer prints `file:line: severity: message`; revisit DIAGNOSTIC_LINE"
   );
   assert.ok(
-    check.includes('"{}: {}[{}]: {}\\n"'),
-    "check.rs no longer prints the unlocated `file: severity[CODE]: message`; revisit DIAGNOSTIC_LINE"
+    lint.includes('"{}: {}: {}\\n"'),
+    "lint.rs no longer prints the unlocated `file: severity: message`; revisit DIAGNOSTIC_LINE"
   );
   assert.ok(
     build.includes('"{}:{line}: {message}"'),
@@ -78,15 +78,15 @@ test("the Rust format strings this pattern was written against have not moved", 
     "utf8"
   );
   assert.ok(
-    runPrint.includes('"{}:{line}: error[{code}]: {what} ({ordinal})"'),
-    "run_print.rs no longer prints a failed cell as `file:line: error[CODE]: …`; a failed " +
+    runPrint.includes('"{}:{line}: error: {what} ({ordinal})"'),
+    "run_print.rs no longer prints a failed cell as `file:line: error: …`; a failed " +
       "cell then cannot reach the Problems panel at all"
   );
   // And the property the pattern depends on most: no column is printed anywhere. A `:col` group
   // would match none of the three forms.
   assert.ok(
-    !check.includes('"{}:{}:{}: '),
-    "check.rs appears to print a column now; DIAGNOSTIC_LINE has no column group"
+    !lint.includes('"{}:{}:{}: '),
+    "lint.rs appears to print a column now; DIAGNOSTIC_LINE has no column group"
   );
 });
 

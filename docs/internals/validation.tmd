@@ -118,7 +118,7 @@ a hit inside an included partial is attributed back to that partial's file and l
 same source-map the block model uses. Only the **top-level** document's `prose-lint:` key
 controls whether it runs, though: an included partial can't turn the linter on or off.
 The warnings flow through the normal `doc.warnings` channel, so they appear in both the
-live preview's dev panel and `taliesin check`.
+live preview's dev panel and `build --check-only`.
 
 ## The clean break: no legacy-tolerance tier
 
@@ -178,15 +178,15 @@ Wave 2 scope cut. The authoring side is covered in the [Configuration
 reference](../guide/reference/configuration.html); the config validator's role in a
 multi-page project is in [the multi-page subsystem](sites.tmd).
 
-## `taliesin check`: the static preflight superset
+## `build --check-only`: the static preflight superset
 
-`taliesin check <file|dir>` renders the document **in memory**, with **no code
-execution**, lists every located diagnostic (greppable `path:line: message` lines, or
-`--format json` for a CI gate), and exits non-zero if any are found. It is a strict
-*superset* of what preview and build surface: it collects `doc.warnings` (every validator
-above) **and** a family of static document lints that only `check` runs, all on the same
-click-to-source channel. The lints live in `crates/core/src/diagnostics/` and are read-only static
-analysis over the rendered block model, plus the cross-page checks in the site layer:
+`taliesin build <file|dir> --check-only` renders the document **in memory**, with **no code
+execution**, lists every located diagnostic (greppable `path:line: severity: message` lines,
+or `--format json` for a CI gate), writes nothing, and exits non-zero if any of them gates.
+It is a strict *superset* of what preview and build surface: it collects `doc.warnings`
+(every validator above) **and** the static document lints, all on the same click-to-source
+channel. The lints live in `crates/core/src/diagnostics/` and are read-only static analysis
+over the rendered block model, plus the cross-page checks in the site layer:
 
 | Check | Function | What it catches |
 |---|---|---|
@@ -197,30 +197,54 @@ analysis over the rendered block model, plus the cross-page checks in the site l
 | Local video | `validate_local_media` | a `<video src>` / `<source src>` / `poster=` whose file is missing |
 | Local links | `validate_local_links` | a relative `[text](other.tmd)` link whose target file (or its `.tmd` source) is missing |
 | Reactive graph | `validate_js_reactive_graph` | a `{js}` cell's `//\| input:` naming nothing defined, or a dependency cycle |
-| Accessibility | `validate_a11y` | a heading-level skip, an `<a>`/`<button>` with no accessible name, an `<img>` with no `alt` |
-| Code languages | `validate_code_languages` | a fence whose language resolves to no syntax, so it silently renders unhighlighted (a typo like ` ```pyton `). Tokens that are plain on purpose (`text`, `txt`, `plain`, `console`, `output`, `none`) never warn |
-| Math | `validate_math` | a `$…$` / `$$…$$` expression KaTeX cannot parse |
-| Citations | `citations_without_bibliography` | references present but no `bibliography:` declared, by the page **or** its project |
+| Accessibility | `validate_a11y` | a heading-level skip, or an `<img>` with no `alt` (or a placeholder one) |
+| Retired cell languages | `validate_retired_cell_langs` | a cell in a language Taliesin used to run and has withdrawn, answered with the replacement rather than with spelling advice |
+| Citations | `citations_without_bibliography`, `bare_citation_key_not_rendered` | references present but no `bibliography:` declared, by the page **or** its project; a bare `@key` that renders as literal text |
 
-Each lint is conservative by design, so a green `check` is a no-false-positive promise.
+**Every one of these names a defect you cannot see in the rendered page.** That is the test
+the surviving set is kept by, and it is what a family of lints cut on 2026-08-08 failed:
+document shape (an empty or duplicated heading), a KaTeX expression that fails to parse (it
+renders as a red error span), a typo'd fence language (it renders unhighlighted), an
+ambiguous pair of link texts, and an interactive element with no accessible name. All five
+described something the author could read back in the preview.
+
+Each lint is conservative by design, so a green run is a no-false-positive promise.
 Two patterns recur: anything a static (no-execution) pass can't resolve is **skipped**
 rather than guessed at, so the internal-anchor and dangling-input checks bail out for any
 document with executable cells (a `{python}` cell can emit an id, or a `define`
 can publish a name, at runtime); and image-only asset checks skip `<audio>`/streamed
 media a static pass can't verify. A `.html` link whose `.tmd` source exists on disk is
 accepted (the site build will emit the page), so an intra-project link is never
-false-flagged. External links are never fetched: `check` stays offline and deterministic.
+false-flagged. External links are never fetched: the lint stays offline and deterministic.
 
-A site `check` runs the same per-page lints over every discovered page, then adds the
+Over a project it runs the same per-page lints on every discovered page, then adds the
 cross-page link + anchor existence check (`Site::validate_cross_page_links`), which a
-single-doc `check` can't do because only the page registry knows each `.tmd`'s real
+single-document run can't do because only the page registry knows each `.tmd`'s real
 output URL. A directory that has a `_quarto.yml` but no `_site.yml` gets the generic
-"no `_site.yml`" diagnostic (no special migration breadcrumb). Using `check` in
+"no `_site.yml`" diagnostic (no special migration breadcrumb). Using it in
 practice is covered in the guide's [CLI reference](../guide/reference/cli.html).
+
+### Severity is a field, not a classification
+
+Every diagnostic carries a `Severity` on the `Warning` itself (`Error`, `Warning` by default,
+or `Suggestion`), set by the validator that found the defect. `--strict` widens the
+gate to include `Suggestion`; without it, advice is printed and never fails a run, which is
+the whole reason the third level exists: a rule whose fix is "consider rewording" that turns
+a green gate red is a rule you turn off.
+
+It used to be **derived**: a 190-row table of message substrings mapped each family to a
+stable `TAL-*` code and a severity at the reporting boundary, with a hand-written
+cause-and-fix page per code, a `check --explain <CODE>` reader for them, and a generated
+markdown catalogue the codes anchored into. All of it went on 2026-08-08. The table's own
+comments record what the indirection cost: rows had to be *ordered* so that a message
+quoting the author's own heading ("Math") did not classify as a math diagnostic, and a
+family whose message was reworded could silently be promoted into a gating error. The
+message now carries its own fix inline, as a did-you-mean or as a removal note read out of
+the retirement register, which is the text an author reads anyway.
 
 ## `taliesin lsp`: live diagnostics in any editor
 
-`check` is the batch gate; `taliesin lsp` is the same validators, live. It runs an
+`--check-only` is the batch gate; `taliesin lsp` is the same validators, live. It runs an
 offline **Language Server Protocol** server over stdio, so an LSP editor (Neovim, Helix
 and VS Code today; Zed needs a published extension to register a new server at all) gets
 `.tmd` diagnostics **as you type**, on the unsaved buffer, before you save or render.
@@ -231,19 +255,19 @@ meet it. It is parse-only: **no kernel, no code execution**, and
 **read-only** (the single-editing-surface invariant holds, the server never writes to
 your source).
 
-The server reuses the exact seam `check` uses. `check::buffer_diagnostics` lints an
-editor buffer in memory, a thin wrapper over `collect_file_diagnostics_from_src`; the
-LSP server calls it on every edit, then projects each `check::Diagnostic` to an LSP one with `Diagnostic::to_lsp`
-(1-based line/column → 0-based range; a precise `[col, end_col)` span when the validator
-located a token, else the whole line; `severity`, the stable `TAL-*` `code`, and a
-`codeDescription` link to the diagnostics catalog). So the squiggles are byte-for-byte
-the same findings `check` and the render path emit, one source of truth.
+The server reuses the exact seam the batch gate uses. `lint::buffer_diagnostics_in_site`
+lints an editor buffer in memory, a thin wrapper over `collect_file_diagnostics_in_site`; the
+LSP server calls it on every edit, then projects each `lint::Diagnostic` to an LSP one with
+`Diagnostic::to_lsp` (1-based line/column → 0-based range; a precise `[col, end_col)` span
+when the validator located a token, else the whole line, and the columns converted to the
+UTF-16 units LSP counts in). So the squiggles are byte-for-byte the same findings the gate and
+the render path emit, one source of truth.
 
 ```{mermaid}
 %%| fig-cap: "One buffer-linting seam feeds the batch gate and the LSP server alike."
 flowchart LR
-  seam["check::buffer_diagnostics<br/>(in-memory render + validators)"]
-  seam --> cli["taliesin check<br/>(the batch gate, from disk)"]
+  seam["lint::buffer_diagnostics_in_site<br/>(in-memory render + validators)"]
+  seam --> cli["build --check-only<br/>(the batch gate, from disk)"]
   seam --> lsp["taliesin lsp<br/>(didOpen / didChange → publishDiagnostics)"]
   lsp --> ed["Neovim · Helix · Zed · VS Code"]
 ```

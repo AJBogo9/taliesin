@@ -792,24 +792,21 @@ fn a_leftover_pyodide_cell_is_told_it_was_withdrawn_not_that_it_is_a_typo() {
         &format!("intro\n\n```{{{lang}}}\nimport numpy as np\n```\n"),
         Path::new("."),
     );
-    let ws = taliesin_core::diagnostics::validate_code_languages(&doc.blocks);
+    let ws = taliesin_core::diagnostics::validate_retired_cell_langs(&doc.blocks);
     let w = ws
         .iter()
         .find(|w| w.message.contains("was removed"))
         .unwrap_or_else(|| panic!("expected a retirement warning, got {:?}", ws));
-    // **The severity, which is the half a unit test alone missed.** Classified, this message
-    // is TAL-CELL-RETIRED/WARNING. Unclassified it falls through to `(GENERIC, ERROR)` and
-    // fails `check`, `build --strict` and `publish` on a document that merely has not been
-    // migrated — measured by running `taliesin check` on a leftover cell, which reported
-    // `error[TAL-CHECK]` before the classifier row existed. Asserting the pair (not just that
-    // a diagnostic fired) is what makes this fail for that regression.
+    // **The severity, which is the half a unit test alone missed.** A retired cell language
+    // is a WARNING: an ERROR fails `build --strict` on a document whose only sin is being out
+    // of date, which is measured behaviour and not a hypothetical: before this classification
+    // existed, a leftover cell reported as an error and failed the build. Until 2026-08-08 the
+    // severity was derived from the message by a substring table, so a reworded note could
+    // silently promote it; now it is a field, and this asserts the field.
     assert_eq!(
-        taliesin_core::diagnostics::codes::classify(&w.message),
-        (
-            "TAL-CELL-RETIRED",
-            taliesin_core::diagnostics::codes::WARNING
-        ),
-        "a retired cell language must not fall through to the generic error: {}",
+        w.severity,
+        taliesin_core::Severity::Warning,
+        "a retired cell language must not be an error: {}",
         w.message
     );
     // The replacement must be NAMED. A retirement note that only says "gone" leaves the

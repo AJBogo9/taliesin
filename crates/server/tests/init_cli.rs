@@ -36,9 +36,9 @@ fn run(args: &[&str]) -> (bool, String, String) {
 
 fn check_is_clean(path: &Path) -> (bool, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
-        .args(["check", path.to_str().unwrap()])
+        .args(["build", path.to_str().unwrap(), "--check-only"])
         .output()
-        .expect("run taliesin check");
+        .expect("run the lint");
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stderr).into_owned(),

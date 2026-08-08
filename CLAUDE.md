@@ -96,6 +96,13 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
   src/highlight.rs server-side syntax highlighting (syntect → `tali-hl-` scope classes)
+  src/diagnostics/ the static validators `lint::page_static_diagnostics` runs: headings,
+                   anchors, assets, media, links, the `{js}` reactive graph, a11y (alt text
+                   + heading skips), bibliography, and `RETIRED_CELL_LANGS`. **The keep test
+                   is "a defect the author cannot see in the rendered page"**. That is why
+                   wave 9 cut document shape, KaTeX render failure, link-text collision,
+                   accessible-name and the generic unknown-fence-language lint, and why the
+                   media + reactive rules stayed
   src/cite/        citations ([@key]) + cross-references (@fig-, @sec-): a module dir
                    (parse/render/format/validate/author/clean)
   src/site/        multi-page project (mod.rs): _site.yml config (config/), page
@@ -153,6 +160,15 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    one memoized subprocess per interpreter per process
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
+  src/lint.rs      the SHARED static-lint kernel, not a verb: `Diagnostic`, `diag_from`,
+                   `blocking` (what fails `--strict`), `page_static_diagnostics` (the
+                   check-superset, ONE definition for `build`, `build --check-only`, the
+                   preview and the LSP), `buffer_diagnostics_in_site` (the LSP's seam) and
+                   `cmd_check_only` (the ~40-line front door). It was `check.rs`, a 5-flag
+                   verb with an interpreter probe, until wave 9. **Severity is a field on
+                   `render::Warning`**, set by the validator that found the defect: there is
+                   no `TAL-*` code catalogue and no `docs/DIAGNOSTICS.md` any more, and a
+                   reworded message can no longer silently reclassify a family
   src/lsp*.rs      `taliesin lsp`: the offline, kernel-free LSP server (lsp.rs dispatch +
                    capabilities; lsp_complete/lsp_nav/lsp_links/lsp_outline/lsp_pos/
                    lsp_memo/lsp_hints/lsp_fold/lsp_refs/lsp_select/lsp_lens/lsp_diag).
@@ -218,6 +234,8 @@ cargo run -p taliesin-server -- build  <file.tmd> [out.html]   # self-contained 
 cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
+cargo run -p taliesin-server -- build  <dir> --check-only      # THE PRE-PUBLISH GATE: lint, write nothing, exit non-zero
+                                                               #   (+ --strict to fail on advice, + --format json for one machine surface)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
@@ -263,7 +281,10 @@ hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-cl
 **`.githooks/pre-push` is the only gate that runs automatically today.** It is wired
 via `core.hooksPath`, so it is invisible in `.git/hooks`: a push that includes `main`
 runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
-warnings`, and `cargo test --workspace` first, and a WIP-branch push skips it.
+warnings`, `cargo test --workspace`, and (new in wave 9) `build docs/guide --check-only
+--no-exec` first, and a WIP-branch push skips it. That last step is the DOCUMENT gate the
+`check` verb never had wired anywhere: a broken cross-reference in this project's own
+manual used to reach a reader with every gate green.
 `git push --no-verify` bypasses. Note `core.hooksPath` is **unset in a fresh clone**,
 so this hook does not exist for anyone but the author.
 

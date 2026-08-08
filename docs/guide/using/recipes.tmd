@@ -286,7 +286,7 @@ bibliography: references.bib
 
 `bibliography:` enables `[@key]` citations and appends an auto-generated References
 section. (References always render in a single built-in IEEE style; a `csl:` key is
-recognized but not supported, so `check` warns on it.) Inline and display math use
+recognized but not supported, so the build warns on it.) Inline and display math use
 `$…$` and `$$…$$`,
 rendered server-side, so the HTML carries the math with no client-side library:
 
@@ -301,7 +301,7 @@ As @eq-ols shows, the fit is linear in $y$.
 
 Give a display equation `{#eq-name}` and reference it as `@eq-ols`. The same numbered
 cross-reference scheme covers figures (`@fig-`) and sections (`@sec-`); a reference
-to a label that does not exist is reported by `check`. A static image becomes a
+to a label that does not exist is reported as a broken cross-reference. A static image becomes a
 numbered figure with a Markdown caption and an `{#fig-shape}` id:
 
 ```markdown

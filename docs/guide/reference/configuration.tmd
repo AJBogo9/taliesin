@@ -29,9 +29,9 @@ table below repeats the front-matter keys most often paired with project config.
 | `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section (rendered in a single built-in IEEE style) |
 | `page-layout` | `full` widens the content column (the full page width, good for listing indexes and wide tables/figures); omit it for the default centered reading width set by `--tali-maxw` |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
-| `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized so an author carrying it over from another tool is told the truth rather than nothing; delete it |
+| `csl` | **Recognized, but not supported: the build warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized so an author carrying it over from another tool is told the truth rather than nothing; delete it |
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; set `image-alt` whenever you set `image:` (an `image:` with no `image-alt:` warns; use `image-alt: ""` to declare it decorative) |
-| `draft` | `true` keeps the page (or book chapter) out of a `build` (output, nav, listings) **and out of `check`**, which names what it held back; `preview` still shows it, badged, and lints it |
+| `draft` | `true` keeps the page (or book chapter) out of a `build` (output, nav, listings) **and out of the `--check-only` lint**, which names what it held back; `preview` still shows it, badged, and lints it |
 
 ### Code-cell options
 
@@ -117,7 +117,7 @@ its own `bibliography:` gets both, with the page's entry winning on a shared key
 way to correct one reference for one post without editing the file every other page
 reads.
 
-Two read-only checks come with it, reported against `_site.yml` by `taliesin check`
+Two read-only checks come with it, reported against `_site.yml` by the lint
 and `build`. A **duplicate key** inside the shared file would otherwise silently
 last-write-win. An entry **no page cites** is dead weight; that one is site-wide by
 necessity, since a shared entry one page cites is in use however many pages leave it
@@ -138,7 +138,7 @@ its own without fighting your global shell:
 Because a project `.venv` (or a `python:` pin) beats a global `TALIESIN_PYTHON`, a
 committed project reproduces the same interpreter on any machine. The chosen
 interpreter and where it came from are logged the first time the kernel
-starts (`python -> /proj/.venv/bin/python  (from .venv)`), and `taliesin check` prints
+starts (`python -> /proj/.venv/bin/python  (from .venv)`), and `taliesin doctor` prints
 an **Environment** section listing it plus whether its Jupyter kernel package is
 importable. A single `.tmd` with no `_site.yml` uses the same order minus the field
 (`.venv` beside the file, then env, then default).

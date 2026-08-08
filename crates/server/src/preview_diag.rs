@@ -6,7 +6,7 @@
 //! `Warning -> Diagnostic` mapping both serve paths already inline for render/xref
 //! warnings. See docs/superpowers/specs/2026-07-18-dx1-live-preview-validation-design.md
 
-use crate::check::{Scope, page_static_diagnostics};
+use crate::lint::{Scope, page_static_diagnostics};
 use crate::protocol::Diagnostic;
 use std::path::Path;
 

@@ -18,8 +18,14 @@ constraints, not feature retentions:
   replacing 2,800). That is not keeping `check`; it is replacing it with something
   1/70th the size. Deleting the verb with no replacement leaves the project with no
   pre-publish gate at all, and nine waves' verification recipes call it.
+  **PAID in wave 9: `build <file|dir> --check-only`**, a ~40-line `lint::cmd_check_only`
+  plus one `parse_build_args` arm. A FLAG, not a tenth verb, so wave 8's target of nine
+  survives.
 - Keep exactly one machine-readable output (`--format json` on the survivor). Going to
   zero breaks the author's own AI-assisted workflow within a week.
+  **PAID in wave 9: `build … --format json`**, carrying `severity`, `file`, `line`,
+  `col`/`end_col` and the structured `suggestion`. It lost `code` and `docs_url` with the
+  catalogue, so an agent matching a family now matches a message prefix.
 
 Everything else in §9 is decided: **deck cut entirely** (not reduced), **theorems cut**,
 **debug stepper cut**, **`{r}` cut**, **`--host` cut**, **panel-tabset cut**,
@@ -90,7 +96,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 6 | Reactive tail, R, Chrome kill | **done** 2026-08-08 | `cut/wave-6-reactive-r-chrome` | **−4,146** (+960 / −5,106, 100 files) | gate runtimes 4 → **2**, canaries 4 → **2**, gates 8 → 8; `chromiumoxide` and the `headless-js` feature are gone |
 | 7 | Vocabulary contraction | **done** 2026-08-08 | `cut/wave-7-vocabulary` | **−5,703** (+788 / −6,491, 127 files) | 14 registered retirements in one commit; `DIV_FEATURE_CLASSES` 7 → **3**, `RETIRED_XREF_PREFIXES` 3 → **7**, shortcodes 3 → **2**; **−5,866 B of CSS off every page** |
 | 8 | CLI ergonomics + scaffolding | **done** 2026-08-08 | `cut/wave-8-cli-scaffolding` | **−2,349** (+397 / −2,746, 40 files, 16 deleted) | 10 verbs → **9, the ruling's target**; `doctor.rs` + `packages.rs` untouched as ruled; `dialoguer` gone; `init` templates 3 → **1**, `new` kinds 3 → **1** |
-| 9 | Diagnostics catalogue (keep lint front door) | not started | | | save `codes.rs` prose first |
+| 9 | Diagnostics catalogue (keep lint front door) | **done** 2026-08-08 | `cut/wave-9-diagnostics` | **−4,957** (+1,288 / −6,245, 93 files, 13 deleted) | verbs stay **9**: `check` retired into `build --check-only`; `check.rs` → `lint.rs`, 1,189 → **620** impl lines; severity is a FIELD, the `TAL-*` catalogue is gone |
 | 10 | LSP long tail | not started | | | |
 | 11 | Serve layer, opened once | not started | | | only wave that opens `exec_pool.rs` |
 | 12 | Justification layer (corpus, docs, tests) | not started | | | genuinely last |
@@ -150,6 +156,22 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   text and would pass on any claim at all; `commands_help_lists_every_subcommand` ties names
   to `COMMANDS`. Nothing ties a sentence to a behavior. Two known holes now (this and the
   one above), both cheap to walk into and neither worth new machinery. Grep instead.
+- **AN INTEGRATION TEST THAT SHELLS OUT TO A VERB CAN PASS VACUOUSLY ONCE THAT VERB IS
+  RETIRED. New in wave 9, applies to every wave after it.** An unknown command exits 1, so
+  any test whose success condition is "exit 0 or 1" (`hostile_input.rs`: fifteen hostile
+  documents, "the pipeline survived") or "this string is absent from stderr"
+  (`mount_static_build.rs`: a retired code) keeps passing against a binary that never read
+  the input. **Before retiring a verb, grep the test tree for it and read each call site's
+  success condition, not just its name.** Four of the six wave 9 found failed loudly; two
+  did not.
+- **A DERIVED CLASSIFICATION CAN BE WRONG IN THE CORPUS WITH EVERY GATE GREEN.** `codes.rs`'s
+  ordered substring table filed `corpus/diagnostics/links.tmd:28`'s dangling reactive input
+  as `warning[TAL-SHORTCODE]`, because the message quotes `{{< input >}}` and the shortcode
+  row sat above the reactive one. The cycle half of the same family, two lines below,
+  reported `error[TAL-REACTIVE]` correctly. Nothing could see it: both the code and the
+  severity looked plausible. **When a property is derived from prose, the derivation is a
+  place bugs live silently**, which is the argument that made wave 9 worth doing, found by
+  doing it.
 - **Removing a SHORT flag from a parser that takes bare positionals is a reclassification.**
   Wave 8's `-y`/`--yes`: with the flag merely deleted, `taliesin init -y` would have created
   a directory named `-y`. Both scaffolders now reject any leading-dash token. A later wave
@@ -165,7 +187,9 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
       indexes these three files, and `notes/ROADMAP.md` is marked paused.
 - [ ] Write `tools/build-site.sh` before `mounts:` goes, and wire it into
       `.githooks/pre-push`. `build.rs:1651` records that the shell-script alternative is
-      what once shipped this project's own call-to-action with a 404.
+      what once shipped this project's own call-to-action with a 404. **Wave 9 opened that
+      hook** and added a fourth step (`build docs/guide --check-only --no-exec`), so the
+      shape to copy is already there.
 - [ ] **A fence attribute has no validator at all, and `code-line-numbers=` just became the
       first retirement that spelling cannot report.** The `#|` form answers with its
       `RETIRED_KEYS` note; `{.python code-line-numbers="1|2"}` is silent. Every other fence
@@ -1248,3 +1272,260 @@ hang.
 **Nine corpus documents (104 lines) across `corpus/scaffold/`, `corpus/scaffold-site/` and
 `corpus/scaffold-book/`**, and `docs/guide/reference/shell-completion.tmd`. The guide is down
 one chapter and the reference nav on the other seven pages lost the link.
+
+### Wave 9, 2026-08-08, `cut/wave-9-diagnostics`
+
+**Measured reclaim: −4,957 lines** (`+1,288 / −6,245` over 93 files, **13 deleted outright**)
+against the ~7,850 estimate. By area: `crates/core/src` −2,268, `crates/server/src` −982,
+`crates/server/tests` −553, `crates/core/tests` −442, root md/hooks −307,
+`editor/vscode` −301, `corpus` −122, `docs/guide` −6, `docs/internals` **+24** (the
+validation chapter was rewritten, not deleted, see the judgement calls). `notes/` is
+excluded, as in every figure above.
+
+**The estimate missed by ~2,900 lines and every line of the gap is deliberate.** Five things
+were kept that the playbook deletes, and each is named with its reason under the judgement
+calls: `media.rs` + `reactive.rs` whole (263, the bundle's own coordination overrides),
+`code_lang.rs`'s retirement register **and its scan** (87), `docs/internals/validation.tmd`
+(254), `diaglink.ts` + `termlinks.ts` (114), and the collectors + printer that make
+`--check-only` a front door rather than a flag on a writing build (~250).
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries
+(`kernel_executes_state_errors_and_interrupts_runaway_cell` and
+`only_a_textual_sink_becomes_a_live_region` both printed `... ok`), **86 suites / 1,666
+passed / 0 failed / 0 ignored**, exit 0. Measure wave 10 against **1,666, two canaries and
+eight gates**; a bare `cargo test --workspace` gives the same figure. The 105-test drop from
+wave 8's 1,771 is `check_superset.rs` (432) and `check_cli.rs` (600) going whole, plus the
+trims to `diagnostics/tests.rs` and `lint.rs`'s own module.
+
+**NINE CLI VERBS ARE STILL NINE.** `check` is retired into a **flag**:
+`build <file|dir> --check-only` lints, writes nothing, and takes `--strict` and
+`--format json` the same way. That is the standing directive's first exception paid at its
+stated price: the front door is a ~40-line `cmd_check_only` plus one `parse_build_args` arm,
+where the verb was 2,661 lines. `crates/server/src/check.rs` → `crates/server/src/lint.rs`,
+**620 impl lines** (from 1,189) and the module doc rewritten from "the `check` subcommand" to
+what it actually is: the shared static-lint kernel with four consumers.
+
+**THE MOAT IS BYTE-IDENTICAL TO MAIN,** checked as an explicit `git diff --stat` over the
+path list and not asserted: `crates/core/assets/`, `web-client/`, `serve_site/exec_pool.rs`,
+`freeze.rs`, `exec.rs`, `kernel.rs`, `diff.rs`, `packages.rs`, `doctor.rs`.
+`MAX_WARM_PAGES` is still 6 and `FORMAT_VERSION` still 4. So this wave ships **no asset
+change at all** and there is no per-page byte win to report, the same shape as wave 8.
+
+**Measured, not asserted.** The shipped **binary** is where it lands: two cold
+`cargo build --release` runs into separate target dirs, same toolchain, `main` (in a throwaway
+worktree) against this branch: **30,897,448 → 30,792,128 bytes, −105,320 (−0.34%)**. That is
+the 518-line `EXPLANATIONS` table, the 51-row `TABLE`, the `--explain` reader and the
+interpreter probe leaving the executable. (A first attempt built main twice, into two
+different target dirs, and reported a delta of exactly 0. Worth keeping: it is also a clean
+demonstration that this build is byte-reproducible, so the −105,320 is signal.)
+
+**THE PRE/POST DIAGNOSTIC DIFF, WHICH IS THE WHOLE VERIFICATION OF THE WAVE.** Captured from
+the surviving path (`build --strict --no-exec`) over all twelve projects plus every loose
+`corpus/` document, 168 lines pre. The diff contains **only**: the cut families
+(`empty heading` ×1, `duplicate heading text` ×1, `repeats the page title` ×1, `has no content
+under it` ×2, `caption is only its label` ×1, `ambiguous link text` ×1, `math failed to
+render` ×1, `unknown code language` ×1, `has no accessible name` ×4), the three deleted
+fixtures' whole blocks, the `--strict: N problems` counts that follow from those removals,
+and a one-line shift in `a11y.tmd` / `check-superset.tmd` because both fixtures were
+re-prosed. **Every surviving diagnostic is byte-identical.** The `[TAL-…]` bracket the plan
+expected to see disappear never appeared in this capture at all: `build`'s human log prints
+`log::warn`'s level, never the diagnostic's own severity or code. Only `check`'s formatter
+did, and it is the one this wave rewrote.
+
+**Then the severity census, which is where the wave found a real bug.** Same corpus through
+`--format json` on both sides, compared as `(severity, file:line, message)`: 60 unique
+diagnostics pre, 46 post, and after the allowed removals **exactly one row changed
+severity**.
+
+**FINDING: the derived-severity table was misclassifying a live corpus diagnostic, and the
+field-based severity corrects it.** `corpus/diagnostics/links.tmd:28`'s dangling reactive
+input reported as `warning[TAL-SHORTCODE]` and now reports as `error`. The cause is the
+failure mode `codes.rs`'s own comments were written against: `classify` is an *ordered*
+first-hit-wins substring scan, the message is
+
+```
+unknown reactive input `undefined_name`: no `{js}` cell or `{{< input >}}` defines it
+```
+
+and the row `("{{<", "TAL-SHORTCODE", WARNING)` sits **above** `("unknown reactive input",
+"TAL-REACTIVE", ERROR)`. So the diagnostic quoted the tool's own shortcode syntax and was
+filed as a shortcode typo. Two halves of one family came out at two severities under two
+codes, in the corpus, today: the *cycle* half reported `error[TAL-REACTIVE]` correctly two
+lines below. Nothing could see it, because both the code and the severity looked plausible on
+their own. Neither spelling changes a gate (error and warning both gate by default), so what
+it cost was the printed word and the LSP squiggle colour. **This is the argument for the
+refactor, found by doing it rather than by reasoning about it.**
+
+**Eight things that were not true, or that the playbook did not know.** Same genus as waves
+1 to 8:
+
+1. **The two coordination overrides were larger than "~130 lines back": both files survive
+   WHOLE.** `media.rs` (82) *is* the raw-`<video>`/`poster=` scan and `reactive.rs` (181) *is*
+   the dangling-input + cycle rules, so there was no sub-part to trim. `page_static_diagnostics`
+   therefore lands at **10 validators, not 8** (the plan's figure), and the two overrides are
+   3 of the 10.
+2. **Deleting `validate_code_languages` would have retired `RETIRED_CELL_LANGS` into
+   silence, one wave after wave 6 built it.** The register's only emitter lived inside the
+   function the plan deletes, so `{r}`, `{glsl}` and `{pyodide}` would have gone back to
+   "your kernel is broken" with the register still sitting in the tree. Split instead: the
+   generic unknown-fence-language lint is cut (the defect is visible, the block renders
+   unhighlighted), the register's scan survives as `validate_retired_cell_langs`. That is
+   CUT-PROGRESS rule 6 and the whole register doctrine, not a feature retention.
+3. **`Diagnostic::new`'s severity had to be ERROR, and that is a fact about its call sites,
+   not a default.** All ~20 surviving callers are hard failures the tool found *outside* a
+   validator: cannot read, cannot write, cannot create, malformed front-matter YAML, a cell
+   that raised, a kernel that would not start, no publishable pages, a page task that
+   panicked, a refusal to build in place. Under the old table every one of those fell through
+   to `(GENERIC, ERROR)`, so ERROR is the faithful translation *and* the honest one. Pinned by
+   `a_hard_failure_gates_without_being_classified`, because a constructor that defaulted to
+   `Warning` would silently stop failing a `--check-only` run on a page it could not read.
+4. **`validate_shared_bibliography` was losing its severity before this wave, through
+   `Diagnostic::new(…, w.message)`.** The site-wide "declared but never cited" is the one
+   SUGGESTION in the whole surviving set, and taking `w.message` out of the `Warning` dropped
+   the classification the message would otherwise have carried. It goes through `diag_from`
+   now. (Under the old table it re-derived correctly from the message, so this was latent
+   rather than broken; with severity as a field it would have become a real regression.)
+5. **The path gate caught my own stale reference, which is the one gate in this repo that
+   has now paid for itself twice.** `stale_docs.rs`'s backticked-path scan failed on
+   `docs/internals/validation.tmd: docs/DIAGNOSTICS.md`, a file this wave deletes, named in
+   a sentence this wave *wrote* to explain the deletion. Wave 1's finding 1 recorded that the
+   fenced "Where things are" map is still ungated; a backticked path in prose is not, and it
+   works.
+6. **Six integration tests shelled out to `taliesin check` and two of them would have passed
+   VACUOUSLY.** `hostile_input.rs` accepts exit 0 or 1 as "the pipeline survived", and an
+   unknown command exits 1: every one of its fifteen hostile documents would have been
+   "handled" by a binary that never read them. `mount_static_build.rs`'s
+   `!stderr.contains("TAL-MOUNT-PREVIEW")` is the same shape in the other direction (a
+   retired code is absent from an error message too). The other four fail loudly, which is
+   why they were found. All six are repointed at `build … --check-only`.
+7. **`missing_input_suggests.rs`'s floor is met by two *invocations of one verb*, and that is
+   not padding.** `build x.tdm` reaches `cannot_read` from `cmd_build`'s own
+   `read_to_string`; `build x.tdm --check-only` reaches it from `lint::collect_diagnostics`,
+   the call site the retired verb owned. Two code paths, two front doors an author types. The
+   list is `&[&["build"], &["build", "--check-only"]]` now.
+8. **`every_parsed_flag_is_documented_in_its_subcommand_help`'s floor drops 6 → 5**, and the
+   *wrapped-synopsis* test lost its only subject: `command_synopsis` joins a synopsis that
+   wraps onto an indented continuation, and `check`'s was the one that did. `build`'s now
+   does, because `--check-only` pushed it over, so the test is repointed there and asserts
+   `--check-only`/`--strict`/`--jobs`/`--no-exec`/`--format json` are all reachable only by
+   joining.
+
+**Five judgement calls, and how they went.**
+
+- **`build --check-only`, not a `taliesin lint` verb.** Wave 8 reached the ruling's target of
+  nine verbs; a tenth would give it back for a command that shares `build`'s arg parsing, its
+  validator set and its `--format json` shape. The flag also lets the gate be *stated* as
+  what it is: the same build, stopped before it writes. It **refuses** `--out` / `--stdout` /
+  `--bare` / `--jobs` rather than ignoring them, because `build x --check-only --out dist`
+  that quietly produces no `dist/` is the trap `--stdout`'s existing conflict check was
+  written against.
+- **`--errors-only`, `--require-kernel`, `--explain` and the whole interpreter probe are
+  gone, and `--strict` is the only knob left.** The probe is `doctor`'s job and always was;
+  `--errors-only` existed so a suggestion could not fail CI, which is what `Severity` does
+  structurally now; `--explain` had nothing left to read. Three flags to one, and `Floor`'s
+  three-state enum collapses to a `bool`.
+- **`docs/internals/validation.tmd` was REWRITTEN, not deleted.** The playbook deletes all
+  254 lines, but only the last 76 were about the verb: the rest documents the closed
+  vocabularies, the did-you-mean rules, the retirement registers, the prose linter and the
+  `_site.yml` schema, all of which are live. Deleting the chapter to remove two sections
+  would have taken the only prose explanation of the machinery every later wave depends on.
+  The two sections are rewritten and a new one, **"Severity is a field, not a
+  classification"**, records what the table cost.
+- **`diaglink.ts` + `termlinks.ts` KEPT; `checkstatus.ts` + `decorations.ts` cut.** The
+  playbook deletes all four as "the check chain". Only two of them were: Explorer badges
+  re-lint the whole project on every save to decorate a tree the author is not reading, and
+  the Problems panel already holds the same findings on demand. The terminal-link half is not
+  about the verb at all: its pattern is `^(\S+?\.tmd)(?::(\d+))?:\s`, severity-agnostic and
+  code-free, and the pre-push wiring below makes it *more* useful, not less. `taliesin.check`
+  the command, the `taliesin.explorerBadges` setting and `walkthroughs/check.md` go with them.
+- **The `[CODE]` bracket comes out of `taliesin run` too, and the problem matchers with it.**
+  `run_print.rs` hand-wrote `error[TAL-CELL-ERROR]` / `error[TAL-KERNEL]` to be matchable by
+  `$taliesin`, so the matcher regexes lose their code group in the same commit. The
+  distinction those codes carried survives where it is read: the message says "raised an
+  uncaught exception" or "did not run", and `kernelfail.ts` keys its doctor hint on those two
+  strings instead of on a wrapped `code` object. That removes a fork the companion had to
+  understand (the language client delivered `code` as `{value, target}`, a problem matcher as
+  a bare string) and `kernelfail.test.ts` is the drift gate on the Rust format strings.
+
+**Wired: the document gate the `check` verb never had.** `.githooks/pre-push` gains a fourth
+step, `build docs/guide --check-only --no-exec`, so a broken cross-reference or a dead link in
+this project's own manual cannot reach a reader with every gate green. `--strict` is
+deliberately absent: advice must not block a push.
+
+**Proven by running the commands, not by grepping.**
+
+```
+taliesin check .          → `check` was removed: `build <file|dir> --check-only` lints
+                            without writing, and takes `--strict` and `--format json`
+                            the same way                                        (exit 1)
+taliesin check --explain TAL-FM-KEY → the same note (a retired verb answers by name)
+taliesin build docs/guide --check-only            → no problems found            (exit 0)
+taliesin build docs/guide --check-only --out /tmp/zzz
+                          → error: --check-only writes nothing, but --out /tmp/zzz
+                            describes output. Drop one.   (and /tmp/zzz never existed)
+taliesin build docs/guide --check-only --stdout    → the same refusal
+```
+
+And the `new --help` claim, checked end to end from a clean temp dir rather than restated:
+`init smoke` + `new post hello` writes three files, `build . --check-only` reports
+`no problems found` and exits 0, `--format json` emits `{"diagnostics": []}`, and `find`
+shows the same three files afterwards.
+
+**Swept and clean:** all five retirement registers (`RETIRED_KEYS`, `RETIRED_DIV_CLASSES`,
+`RETIRED_COMMANDS`, `RETIRED_NEW_KINDS`, `RETIRED_CELL_LANGS`) name nothing this wave
+removed, checked by reading each note body, per wave 8's lesson; every surviving `--help`
+block, run through the real binary and grepped for `check`/`TAL-`/`explain`/`badge`;
+`tools/ui-audit/`, which names nothing this wave removed (waves 7 and 8 found it empty too);
+`tools/gates.sh` and `.github/workflows/ci.yml`, neither of which ever invoked the verb; and
+the `data-*` census in `token_contract.rs`, unchanged, as it must be, because this wave
+removed no emitter. `docs/superpowers/` is byte-identical.
+
+**The cargo-deny log was checked, per wave 4's lesson, and this wave removes no dependency.**
+`advisories ok, bans ok, licenses ok, sources ok`. The one
+`license-exception-not-encountered` warning is still `libfuzzer-sys`, still **pre-existing and
+unrelated** (not in `Cargo.lock`, no fuzz target in the tree). `deny.toml` was not edited, so
+the stale row is carried forward exactly as wave 6 left it.
+
+**What was given up, stated plainly.**
+
+**518 lines of hand-written cause-and-fix prose, one per diagnostic code, and it is the one
+loss in this wave that is genuinely irreversible in a way the validators are not.** The
+ruling's dissent called it a week of writing and that is the right order of magnitude. It was
+reachable three ways (`check --explain <CODE>`, a `codeDescription` link from every squiggle,
+and the generated `docs/DIAGNOSTICS.md`), and `lsp_diag.rs`'s header recorded the research the
+hover placement rested on: Barik et al. (ICSE 2017, eye-tracking) measured that reading an
+error message costs about as much as reading source, which makes the moment you send someone
+to a browser the moment they stop. Preserved verbatim in
+`notes/retired/diagnostics-explanations.rs` before the wave started, so it is recoverable as
+text; what is not recoverable cheaply is the judgement of which cause and which canonical fix
+each family deserved.
+
+**The stable code itself, which was the tool's agent-facing contract.** An agent matching on
+`.diagnostics[].code` now matches on message prefixes instead, which is exactly the fragility
+the codes existed to remove. The trade is that the codes were *derived from those same
+prefixes* by an ordered substring table, so the stability was one indirection deep and the
+finding above shows it was already wrong in the corpus. `--format json` survives as the one
+machine surface, with `severity`, `file`, `line`, `col`/`end_col` and the structured
+`suggestion` an editor applies as a quick fix.
+
+**Four a11y rules and two structural families, one of which had a measured provenance.**
+The accessible-name rules (icon-only `<a>`/`<button>`, plus the `[role=button|link|tab]`
+variants) and WCAG 2.5.3's label-in-name mismatch are gone; `visible_label`'s
+`aria-hidden`-subtree handling encoded a real shipped defect (the search button's `⌘K` hint
+was *painted* but is not part of the accessible name, so counting it accused the correct fix
+of being the defect). `docs/guide/reference/accessibility.tmd`'s 2.4.4 row now rests on the
+audit rather than on a linter. `math_render.rs` went on the "you can see it" test, which is
+true (KaTeX paints a red error span) and is the weakest application of that test in the wave:
+a reader sees it, an author skimming their own long page may not.
+
+**`--errors-only` as an escape hatch.** A project with a warning it has decided to live with
+can no longer gate on errors alone; it fixes the warning or drops `--check-only` from CI.
+Measured on this repository: zero of the twelve projects need it.
+
+**A note for a later wave.** Five `Warning` construction sites fall through to `Error` today
+without any validator having chosen it: the footnote-flattened warning (`render/mod.rs`, the
+note *renders*, just inline, so `Warning` is arguably right), `theme file not found` ×2 plus
+the refused-theme message, `duplicate cross-reference label`, and the listing's
+`has no title:`. None fires anywhere in the corpus, so none was observable in the diff above,
+and all five are left at `Error` deliberately: preserving the old fall-through is a
+translation, and re-tuning severities is not a cut wave's job.

@@ -2,52 +2,36 @@
 // once-per-session latch that decides whether to say anything about it.
 //
 // Kept free of `vscode` (like `taskspecs.ts` and `diaglink.ts`) so `node --test` can cover
-// the two things that actually break here: the wrapped `code` shape, and the latch.
-
-/**
- * The code shapes a diagnostic's `code` really arrives in.
- *
- * MEASURED in a real Extension Host, not assumed. `check.rs` wires `code_description` from
- * each code's docs URL, so vscode-languageclient converts a Taliesin diagnostic into
- * `code: { value: "TAL-KERNEL", target: Uri }` — an **object**, never a bare string. A
- * problem matcher, the other producer, writes a plain string. Both have to be understood,
- * because nothing downstream can tell which one published a given diagnostic.
- */
-export type DiagnosticCode = string | number | { value: string | number } | undefined | null;
+// the two things that actually break here: the message match, and the latch.
 
 /** The part of a `vscode.Diagnostic` this file needs, so the pure half stays pure. */
 export interface CodedDiagnostic {
-  code?: DiagnosticCode;
   message: string;
 }
 
 /**
- * The code for a cell that never ran because the environment could not run it.
+ * The message openings that mean "the environment could not run this cell", as distinct from
+ * the author's code raising. That is exactly the population `doctor` can help.
  *
- * `crates/core/src/diagnostics/codes.rs` gives it to both "code cell did not run" and "code
- * cell did not complete", and to nothing else: it is the environment failing, as distinct
- * from the author's code raising. That is exactly the population `doctor` can help.
+ * Matched on the MESSAGE, and it has to be. Until 2026-08-08 this keyed on a `TAL-KERNEL`
+ * code that arrived (measured in a real Extension Host) as `{ value, target }` from the
+ * language client and as a bare string from a problem matcher, so both shapes had to be
+ * understood; the code catalogue is gone and the message is the whole diagnostic now, which
+ * removes that fork entirely. `crates/server/src/build.rs`'s `cell_error_message` and
+ * `run_print.rs`'s `failure_line` are the two producers, and `src/test/kernelfail.test.ts`
+ * is the drift gate that pins these strings against them.
  */
-export const KERNEL_CODE = "TAL-KERNEL";
-
-/** The code as a plain string, whichever of the two shapes it arrived in. */
-function codeValue(code: DiagnosticCode): string | null {
-  if (typeof code === "string") return code;
-  if (typeof code === "number") return String(code);
-  if (code && typeof code === "object" && "value" in code) return String(code.value);
-  return null;
-}
+export const KERNEL_MESSAGES = ["code cell did not run", "code cell did not complete"] as const;
 
 /**
  * The message of the first kernel failure in `diags`, or `null` if there is none.
  *
  * The **message** rather than a boolean on purpose: the notification quotes the engine's own
- * words. The cause and the fix live in the Rust diagnostic catalogue, and a sentence written
- * here would be a second copy of them, free to drift.
+ * words, so a sentence written here cannot drift from the one the author already read.
  */
 export function kernelFailure(diags: readonly CodedDiagnostic[]): string | null {
   for (const d of diags) {
-    if (codeValue(d.code) === KERNEL_CODE) return d.message;
+    if (KERNEL_MESSAGES.some((m) => d.message.includes(m))) return d.message;
   }
   return null;
 }

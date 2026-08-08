@@ -31,22 +31,22 @@ light and dark themes. Plus the project's own static rule set
 **What this covers, precisely.** It evaluates the **chrome and layout Taliesin
 generates** — the navigation, the reading controls, the theme system, the page
 scaffolding. It cannot evaluate what you write. Alt text, heading order, link text and
-media captions are the author's responsibility; Taliesin *lints* for them
-(`TAL-A11Y-ALT`, `TAL-A11Y-NAME`, the heading-skip rule) and reports them through
-`taliesin check`, but a linter cannot guarantee an author wrote a good description.
+media captions are the author's responsibility; Taliesin *lints* for two of them (a missing
+or placeholder `alt`, and a heading-level skip) on every build and through
+`build --check-only`, but a linter cannot guarantee an author wrote a good description.
 
 ## Conformance table
 
 | Criterion | Conformance | Remarks |
 |---|---|---|
-| 1.1.1 Non-text Content | **Partially supports** | Tool chrome supplies an accessible name for every control it emits. Author images are linted (`TAL-A11Y-ALT`) but cannot be enforced |
+| 1.1.1 Non-text Content | **Partially supports** | Tool chrome supplies an accessible name for every control it emits. Author images are linted for a missing or placeholder `alt` but cannot be enforced |
 | 1.3.1 Info and Relationships | Supports | Semantic landmarks, `<section>` extents and a real heading hierarchy; verified across 54 pages |
 | 1.4.3 Contrast (Minimum) | Supports | Zero contrast violations in **both** themes, desktop and mobile |
 | 1.4.10 Reflow | Supports | No horizontal overflow at mobile widths (measured 2026-07-26) |
 | 1.4.11 Non-text Contrast | Supports | No violations |
 | 2.1.1 Keyboard | **Partially supports** | The reader controls and the Cmd-K palette are keyboard-first and pinned by tests, but a full keyboard walkthrough of every surface has not been run |
 | 2.4.2 Page Titled | Supports | Titles compose as `"{page} · {site}"`, page name first |
-| 2.4.4 Link Purpose | Supports | No violations; the static `validate_link_text_collisions` rule covers the ambiguous-link-text case |
+| 2.4.4 Link Purpose | Supports | No violations. The static ambiguous-link-text lint was cut on 2026-08-08 (it named something an author reads back in the preview), so this rests on the audit rather than on a linter |
 | 2.4.6 Headings and Labels | Supports | Clean; heading-skip is linted on every page |
 | 2.5.3 Label in Name | Supports | The search control's visible `⌘K` hint is `aria-hidden`, so it is not part of the accessible name |
 | 3.1.1 Language of Page | Supports | Page builders always set `lang`, honouring a front-matter `lang:` |

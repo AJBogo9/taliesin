@@ -66,7 +66,7 @@ notes.tmd:14: unknown cell option `labl` (did you mean `label`?)
 ```
 
 The cell still renders exactly as before, the warning just points at the line. In
-live preview you can click it straight to the source. `taliesin check` surfaces the
+live preview you can click it straight to the source. The build surfaces the
 same warning as a publish gate. (Front-matter and `_site.yml` keys are validated
 the same way; see the [Configuration reference](configuration.tmd).)
 
@@ -230,7 +230,7 @@ The two readers are not interchangeable. `tali.value("NAME")` reads an input val
 a value published by another cell's `//| name:`.
 
 A `//| input:` that names something no cell, `viewof`, or `{{< input >}}` control
-defines is flagged by `check` as a dangling reactive input, and a cycle among
+defines is flagged as a dangling reactive input, and a cycle among
 `{js}` cells (each consuming the other) is flagged too. The dangling-input check is
 suppressed when the document contains any Python or R cell, since a runtime
 `define` call could publish the name; the cycle check always runs. See

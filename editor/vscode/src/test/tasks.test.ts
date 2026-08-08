@@ -1,10 +1,11 @@
 // The task provider's pure half, and the problem matcher it ships with.
 //
-// **Every diagnostic string below is REAL `taliesin check` output**, copied from a run against
-// `corpus/` and `docs/guide`, not invented. The plan for this feature guessed the format as
-// `WARNING[TAL0042]` and was wrong twice over: the severity word is lowercase, and the codes
-// are `TAL-XREF-UNDEF`-shaped. A matcher tested only against a hand-written fixture is a
-// matcher tested against your assumption of the format.
+// **Every diagnostic string below is REAL `taliesin build … --check-only` output**, copied from
+// a run against `corpus/` and `docs/guide`, not invented. The plan for this feature guessed the
+// format as `WARNING[TAL0042]` and was wrong three times over: the severity word is lowercase,
+// there is no code bracket at all (the `TAL-*` catalogue went on 2026-08-08), and a message is
+// full of colons. A matcher tested only against a hand-written fixture is a matcher tested
+// against your assumption of the format.
 import { test } from "node:test";
 import assert from "node:assert";
 import * as fs from "node:fs";
@@ -19,7 +20,6 @@ interface Pattern {
   file: number;
   line?: number;
   severity?: number;
-  code?: number;
   message: number;
 }
 interface Matcher {
@@ -54,11 +54,13 @@ test("three tasks are offered for a project root", () => {
   assert.deepStrictEqual(names, ["check", "build", "build --out"]);
 });
 
-test("the check task targets the project root, not a single file", () => {
-  // `check <file.tmd>` is a different, narrower thing: it cannot see cross-page anchors, so
-  // it reports every legitimate cross-chapter reference as broken.
+test("the check task lints without writing, and targets the project root", () => {
+  // Two properties, both load-bearing. `--check-only` means the task cannot leave a `_site/`
+  // behind (it was the `check` verb until 2026-08-08, which wrote nothing by construction).
+  // And the target is the ROOT, never a single file: a single-file lint cannot see cross-page
+  // anchors, so it reports every legitimate cross-chapter reference as broken.
   const check = taskSpecs("/r").find((t) => t.name === "check")!;
-  assert.deepStrictEqual(check.args, ["check", "/r"]);
+  assert.deepStrictEqual(check.args, ["build", "/r", "--check-only"]);
 });
 
 test("the build --out task writes to _site under the project, not the cwd", () => {
@@ -110,8 +112,9 @@ test("a nested project is run from the workspace folder, named relative to it", 
   assert.strictEqual(cwd, "/w");
   assert.strictEqual(target, "docs/guide");
   assert.deepStrictEqual(taskSpecs(target).find((t) => t.name === "check")!.args, [
-    "check",
+    "build",
     "docs/guide",
+    "--check-only",
   ]);
 });
 
@@ -137,39 +140,49 @@ test("the containing folder is chosen by directory boundary, not by string prefi
   assert.strictEqual(target, "book");
 });
 
-test("the problem matcher matches real located check output for every severity", () => {
+test("the problem matcher matches real located lint output for every severity", () => {
   const re = new RegExp(locatedPattern().regexp);
   const p = locatedPattern();
-  const cases: [string, string, string, string, string][] = [
+  const cases: [string, string, string, string][] = [
     [
-      "index.tmd:103: error[TAL-XREF-UNDEF]: broken cross-reference: @fig-nope (no such figure/section/…)",
+      "index.tmd:103: error: broken cross-reference: @fig-nope (no such figure/section/…)",
       "index.tmd",
       "103",
       "error",
-      "TAL-XREF-UNDEF",
     ],
     [
-      "diagnostics/a11y.tmd:13: warning[TAL-A11Y-ALT]: image is missing alt text (add alt text, or alt=\"\" if decorative)",
+      "diagnostics/a11y.tmd:13: warning: image is missing alt text (add alt text, or alt=\"\" if decorative)",
       "diagnostics/a11y.tmd",
       "13",
       "warning",
-      "TAL-A11Y-ALT",
     ],
     [
-      "posts/fourier-transform/index.tmd:9: suggestion[TAL-CITE-UNUSED]: 3 bibliography entries are declared but never cited: `@brigham1988fast`",
+      "posts/fourier-transform/index.tmd:9: suggestion: 3 bibliography entries are declared but never cited: `@brigham1988fast`",
       "posts/fourier-transform/index.tmd",
       "9",
       "suggestion",
-      "TAL-CITE-UNUSED",
     ],
   ];
-  for (const [line, file, lineNo, severity, code] of cases) {
+  for (const [line, file, lineNo, severity] of cases) {
     const m = re.exec(line);
     assert.ok(m, `the pattern does not match real output: ${line}`);
     assert.strictEqual(m[p.file], file);
     assert.strictEqual(m[p.line!], lineNo);
     assert.strictEqual(m[p.severity!], severity);
-    assert.strictEqual(m[p.code!], code);
+  }
+});
+
+test("the matcher declares no code group, because the output carries no code", () => {
+  // The `TAL-*` catalogue went on 2026-08-08. A pattern still requiring `severity[CODE]:`
+  // matches nothing at all, which is silent: the task runs, exits non-zero, and the Problems
+  // panel stays empty.
+  for (const p of [locatedPattern(), unlocatedPattern()]) {
+    assert.strictEqual(
+      (p as Pattern & { code?: number }).code,
+      undefined,
+      `the pattern must not ask for a code group: ${p.regexp}`
+    );
+    assert.ok(!p.regexp.includes("\\["), `no code bracket in the pattern: ${p.regexp}`);
   }
 });
 
@@ -178,18 +191,18 @@ test("the message group keeps a message that itself contains a colon", () => {
   // stopped at the first one would truncate almost every diagnostic in the Problems panel.
   const p = locatedPattern();
   const m = new RegExp(p.regexp).exec(
-    "index.tmd:103: error[TAL-XREF-UNDEF]: broken cross-reference: @fig-nope (x)"
+    "index.tmd:103: error: broken cross-reference: @fig-nope (x)"
   );
   assert.strictEqual(m![p.message], "broken cross-reference: @fig-nope (x)");
 });
 
-test("the located pattern declares no column, because check output has none", () => {
-  // `format_human` emits `file:line: severity[CODE]: message`. A pattern requiring `:col`
-  // matches nothing at all, which is the failure this assertion exists to prevent.
+test("the located pattern declares no column, because the lint output has none", () => {
+  // `format_human` emits `file:line: severity: message`. A pattern requiring `:col` matches
+  // nothing at all, which is the failure this assertion exists to prevent.
   assert.strictEqual(
     (locatedPattern() as Pattern & { column?: number }).column,
     undefined,
-    "check output carries no column; a pattern that requires one matches nothing"
+    "the output carries no column; a pattern that requires one matches nothing"
   );
 });
 
@@ -203,18 +216,15 @@ test("the problem matcher does not match a line that only looks like a diagnosti
   const re = new RegExp(locatedPattern().regexp);
   assert.strictEqual(re.exec("2 problems (2 errors)"), null);
   assert.strictEqual(re.exec("  at some/file.rs:12: something"), null);
-  assert.strictEqual(
-    re.exec("For more information about a diagnostic, try `taliesin check --explain <CODE>`."),
-    null
-  );
+  assert.strictEqual(re.exec("no problems found"), null);
+  assert.strictEqual(re.exec("  built   _site  ·  19 pages  ·  215ms"), null);
 });
 
 test("an unlocated diagnostic is matched by its own pattern", () => {
-  // `check` also emits `file: severity[CODE]: message` with no line, for a finding about a
-  // file as a whole (a `_site.yml` problem). The located pattern must NOT match it, and a
-  // second pattern must, or those findings never reach the Problems panel.
-  const real =
-    "_site.yml: warning[TAL-CONFIG-KEY]: unknown config key `naav` (did you mean `nav`?)";
+  // The lint also emits `file: severity: message` with no line, for a finding about a file as
+  // a whole (a `_site.yml` problem). The located pattern must NOT match it, and a second
+  // pattern must, or those findings never reach the Problems panel.
+  const real = "_site.yml: error: unknown config key `naav` (did you mean `nav`?)";
   assert.strictEqual(
     new RegExp(locatedPattern().regexp).exec(real),
     null,
@@ -224,7 +234,7 @@ test("an unlocated diagnostic is matched by its own pattern", () => {
   const m = new RegExp(p.regexp).exec(real);
   assert.ok(m, "no matcher handles an unlocated diagnostic");
   assert.strictEqual(m[p.file], "_site.yml");
-  assert.strictEqual(m[p.severity!], "warning");
+  assert.strictEqual(m[p.severity!], "error");
 });
 
 test("every task the provider offers is declared by the manifest's task type", () => {

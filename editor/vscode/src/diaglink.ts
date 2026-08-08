@@ -15,9 +15,9 @@ import * as fs from "node:fs";
  * them emits one:
  *
  * ```text
- * posts/intro.tmd:12: warning[TAL-XREF]: unresolved @fig-a   check.rs, located
- * posts/intro.tmd: error[TAL-FM]: bad front matter           check.rs, unlocated
- * chapters/two.tmd:7: include not resolved                   build.rs
+ * posts/intro.tmd:12: warning: unresolved @fig-a   lint.rs, located
+ * posts/intro.tmd: error: bad front matter        lint.rs, unlocated
+ * chapters/two.tmd:7: include not resolved        build.rs
  * ```
  *
  * Anchored at the start of the line, which makes it correct whether or not

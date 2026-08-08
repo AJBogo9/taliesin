@@ -113,7 +113,7 @@ display(HTML(summary.to_html(index=False, border=0)))
 
 `#| tbl-cap:` captions whatever the cell **publishes**, and the shortest way to
 write a table in either language publishes something you did not mean. Both traps
-are quiet: the page builds, `taliesin check` is clean, and the defect is visible
+are quiet: the page builds, the lint is clean, and the defect is visible
 only in the rendered output.
 
 In Python, a bare `df` on its own line emits pandas' own repr: a table tagged

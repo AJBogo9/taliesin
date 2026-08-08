@@ -80,7 +80,7 @@ that updates as you drag, so the reader always sees the current value beside the
 with no readout.
 
 A **`select`** gives a closed set of choices. Its `options` are a comma-separated list,
-and `options` is required for this type (omit it and `check` warns). `value` picks the
+and `options` is required for this type (omit it and the build warns). `value` picks the
 initially selected option:
 
 ```markdown

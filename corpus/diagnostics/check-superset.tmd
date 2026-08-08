@@ -2,8 +2,9 @@
 title: "check-superset diagnostics"
 ---
 
-This document deliberately trips every static `taliesin check` superset validator. It
-lives in `corpus/diagnostics/`, which is exempt from the corpus clean-render guards.
+This document deliberately trips every static superset validator that reports a defect
+you cannot see in the rendered page. It lives in `corpus/diagnostics/`, which is exempt
+from the corpus clean-render guards.
 
 ## Heading {#dup}
 
@@ -18,11 +19,7 @@ A [broken in-page jump](#no-such-anchor) that lands nowhere, and a missing image
 
 Cited [@ghost2020] with no `bibliography:` declared, so the reference renders as a raw key.
 
-Broken inline math $\frac{$ that KaTeX cannot parse (server-side math-render diagnostic).
-
-A fenced block whose language token is a typo. It renders, just unhighlighted, so only
-`validate_code_languages` can tell you the highlighting isn't broken: the label is.
-
-```pyton
-x = 1
-```
+Two families that used to be pinned here went on 2026-08-08: a malformed `$\frac{$`
+(KaTeX renders it as a red error span, so the author can see it) and a typo'd fence
+language (` ```pyton ` renders unhighlighted, which is visible too). What stays is the
+set nothing in the page reveals.

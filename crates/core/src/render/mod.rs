@@ -15,7 +15,7 @@ mod model;
 pub(crate) use model::CellRole;
 pub use model::{
     AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode,
-    PageIncludes, RenderedDoc, SiteDefaults, Warning,
+    PageIncludes, RenderedDoc, Severity, SiteDefaults, Warning,
 };
 
 fn parse_options() -> Options<'static> {
@@ -839,7 +839,8 @@ fn render_internal_impl(
                                 Warning::new(format!(
                                     "duplicate heading id \u{201c}{id}\u{201d} (using \u{201c}{deduped}\u{201d}; in-page links to \u{201c}{id}\u{201d} may not resolve)"
                                 ))
-                                .at(source_file.clone(), buf_start as u32),
+                                .at(source_file.clone(), buf_start as u32)
+                                .severity(Severity::Error),
                             );
                         }
                         deduped
@@ -2425,7 +2426,8 @@ fn register_xref(
             Warning::new(format!(
                 "duplicate cross-reference label \u{201c}{anchor}\u{201d} (using the first definition)"
             ))
-            .at(file.map(str::to_string), line),
+            .at(file.map(str::to_string), line)
+            .severity(Severity::Error),
         );
     } else {
         reg.insert(anchor.to_string(), number);

@@ -1,7 +1,7 @@
 //! Local `<video>`/`<source>`/`poster=` media existence validation.
 
 use super::helpers::{is_local_ref, start_line, tag_attr};
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 use std::path::Path;
 
 /// Unique local **video** refs (`src=`/`poster=`) on every `<video …>` tag plus any
@@ -71,7 +71,8 @@ pub fn validate_local_media(blocks: &[Block], base: &Path) -> Vec<Warning> {
             }
             let w = Warning::new(format!(
                 "local video not found: `{path}` (no such file under the document directory)"
-            ));
+            ))
+            .severity(Severity::Error);
             out.push(match line {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,

@@ -1,7 +1,7 @@
 //! Static cross-reference validation: flag `data-tali-xref` markers left unresolved.
 
 use super::sourcepos_start_line;
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 use std::collections::BTreeSet;
 
 /// Scan rendered blocks for cross-references left unresolved — the `data-tali-xref`
@@ -52,7 +52,8 @@ pub fn validate_xrefs_known_elsewhere(
             let w = Warning::new(match suggest(&a, &anchors) {
                 Some(near) => format!("broken cross-reference: @{a} (did you mean `@{near}`?)"),
                 None => format!("broken cross-reference: @{a} (no such figure/section/\u{2026})"),
-            });
+            })
+            .severity(Severity::Error);
             match line {
                 Some(l) => w.at(file, l),
                 None => w,

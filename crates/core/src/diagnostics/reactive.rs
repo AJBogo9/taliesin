@@ -1,7 +1,7 @@
 //! Static validation of the `{js}` reactive graph (dangling inputs + dependency cycles).
 
 use super::helpers::{collect_attr_values, start_line};
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 
 /// One `{js}` cell's reactive wiring, distilled from the block model for the static graph
 /// check: the names it `defines` (its `//| name` and/or `//| viewof`), the names it
@@ -106,7 +106,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
                         "unknown reactive input `{inp}`: no `{{js}}` cell or `{{{{< input >}}}}` defines it"
                     ),
                 };
-                let w = Warning::new(msg);
+                let w = Warning::new(msg).severity(Severity::Error);
                 out.push(match n.line {
                     Some(l) => w.at(n.file.clone(), l),
                     None => w,
@@ -158,7 +158,8 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
         let w = Warning::new(format!(
             "reactive dependency cycle involving `{}`: `{{js}}` cells form a loop, so none can run",
             n.label
-        ));
+        ))
+        .severity(Severity::Error);
         out.push(match n.line {
             Some(l) => w.at(n.file.clone(), l),
             None => w,

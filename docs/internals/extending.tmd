@@ -115,7 +115,7 @@ It holds open `.tmd` buffers warm and answers:
 
 | capability | what it gives the author |
 |---|---|
-| `publishDiagnostics` | every `check` finding, live as you type, with its `TAL-*` code and a link to the catalog. **Coalesced**, not per-keystroke: this path runs a full render *plus* a walk of every page in the project (so a cross-page `@sec-` is not wrongly reported as broken), which is far too much to pay per keypress. Edits inside a 120 ms window collapse to one publish; `didOpen` still publishes immediately, because opening a document is one event rather than a burst |
+| `publishDiagnostics` | every static finding, live as you type, located to the token where the validator could name one. **Coalesced**, not per-keystroke: this path runs a full render *plus* a walk of every page in the project (so a cross-page `@sec-` is not wrongly reported as broken), which is far too much to pay per keypress. Edits inside a 120 ms window collapse to one publish; `didOpen` still publishes immediately, because opening a document is one event rather than a burst |
 | `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
 | `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
@@ -282,9 +282,9 @@ exact source line. So adding one is two steps, in order.
      and consulted while planning what re-runs. Add your read there if the option changes
      *whether or how* a cell runs.
 
-A render-only option needs no kernel and shows up immediately in `build`/`check`; an
+A render-only option needs no kernel and shows up immediately in `build`; an
 execution option only takes effect under `preview`/`build` with a live kernel. Pin the new
-option with a corpus document that uses it (the corpus is the spec), and `check` will keep
+option with a corpus document that uses it (the corpus is the spec), and the lint will keep
 it from regressing into an unknown-key warning.
 
 ::: {.callout-note}

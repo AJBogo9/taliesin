@@ -3,7 +3,7 @@
 //! recognized-but-inert `csl:` key.
 
 use super::helpers::start_line;
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 use std::path::Path;
 
 /// Citations are present (`cite::process` appended the `tali-references` section), the page
@@ -112,7 +112,8 @@ pub fn bare_citation_key_not_rendered(src: &str, blocks: &[Block], base: &Path) 
             let w = Warning::new(format!(
                 "`@{key}` is not a citation, so it renders as literal text \
                  (did you mean `[@{key}]`?)"
-            ));
+            ))
+            .severity(Severity::Error);
             out.push(match start_line(&b.sourcepos) {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,

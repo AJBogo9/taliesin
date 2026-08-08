@@ -20,7 +20,6 @@ import { registerTerminalLinks } from "./termlinks";
 import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
 import { registerRunCell } from "./runcell";
-import { registerDecorations } from "./decorations";
 import { registerDoctorHint } from "./doctorhint";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
@@ -92,13 +91,12 @@ export function activate(context: vscode.ExtensionContext) {
   // is one of the few surfaces LSP has no concept of, but every row in it is a projection of
   // what the server replied, and every row navigates: nothing here writes to a document.
   registerSidebar(context);
-  // `check` and `build` as tasks, so project-wide findings reach the Problems panel for files
-  // that are not open. The language server only ever diagnoses buffers it has been sent.
+  // The project lint and `build` as tasks, so project-wide findings reach the Problems panel
+  // for files that are not open. The language server only ever diagnoses buffers it has been
+  // sent. (Explorer badges showing each file's worst severity went on 2026-08-08: they re-lint
+  // the whole project on every save to decorate a tree the author is not reading, and the
+  // Problems panel already holds the same findings.)
   registerTasks(context);
-  // Project health with zero interaction: each `.tmd` wears its worst check severity. The
-  // language server only sees buffers it has been sent, so a page never opened is invisible
-  // to it; `check` sees the whole project.
-  registerDecorations(context);
   // A cell that could not run for want of a kernel is the one diagnostic with a command
   // behind it. Offer that command, once per session, instead of leaving `doctor` reachable
   // only to whoever already knows it exists.

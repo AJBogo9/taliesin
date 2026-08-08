@@ -4,7 +4,7 @@
 //! sourcepos is untouched.
 
 use super::{Bibliography, sourcepos_start_line};
-use crate::render::{Block, Warning, escape_attr as esc};
+use crate::render::{Block, Severity, Warning, escape_attr as esc};
 use std::collections::HashMap;
 
 /// Cross-reference kind prefixes -> display label, in canonical order. The single source
@@ -123,7 +123,7 @@ pub fn process(
     let mut warnings: Vec<Warning> = Vec::new();
     let uncited = bib.uncited_local(&order);
     if !uncited.is_empty() {
-        let w = Warning::new(super::uncited_message(&uncited));
+        let w = Warning::new(super::uncited_message(&uncited)).severity(Severity::Suggestion);
         warnings.push(match bib_line {
             Some(l) => w.at(None, l),
             None => w,

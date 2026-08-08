@@ -56,23 +56,6 @@ pub(crate) fn heading_level(html: &str) -> Option<u8> {
     }
 }
 
-/// The visible text content of an HTML fragment, i.e. everything outside `<...>` tags
-/// with runs of whitespace collapsed. Used to decide whether an interactive element has
-/// a non-empty accessible name from its text alone, and to read heading / caption text.
-pub(crate) fn strip_tags(html: &str) -> String {
-    let mut out = String::new();
-    let mut depth = 0u32;
-    for ch in html.chars() {
-        match ch {
-            '<' => depth += 1,
-            '>' => depth = depth.saturating_sub(1),
-            c if depth == 0 => out.push(c),
-            _ => {}
-        }
-    }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 /// The value of attribute `attr` (e.g. `"src=\""`) on the tag opened at the start of
 /// `tag` (everything before the first `>`), if present. Used to read `src`/`poster` off
 /// a `<video>`/`<source>` tag.
@@ -81,4 +64,20 @@ pub(crate) fn tag_attr<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
     let rest = &tag[pos..];
     let len = rest.find('"')?;
     Some(&rest[..len])
+}
+
+/// The replacement from an inline "did you mean `X`?" hint, e.g. `treme` -> `theme`,
+/// `@fig-reslts` -> `@fig-results`. `None` when the message carries no such hint.
+///
+/// A plain scan over the message, independent of which validator wrote it: every
+/// did-you-mean in this tree is spelled the same way on purpose, and this is what turns one
+/// into a structured `suggestion` an editor can apply as a quick fix. It is also why no
+/// retirement note may be *phrased* as a did-you-mean (see `RETIRED_KEYS`): a note is prose
+/// to read, not a token to substitute.
+pub fn extract_suggestion(message: &str) -> Option<String> {
+    let key = "did you mean `";
+    let at = message.find(key)? + key.len();
+    let rest = &message[at..];
+    let end = rest.find('`')?;
+    Some(rest[..end].to_string())
 }

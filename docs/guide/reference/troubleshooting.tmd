@@ -9,22 +9,29 @@ The preview surfaces most problems as a small **diagnostics** note in the corner
 (non-fatal) or a dismissible **error overlay** (a failed render). Here are the
 common ones.
 
-## Decoding a diagnostic code
+## Reading a diagnostic
 
-Every diagnostic `taliesin check` reports carries a stable `TAL-*` code (for
-example `TAL-XREF-UNREF`, `TAL-FM-KEY`, `TAL-A11Y-ALT`). To expand any code into
-its cause and canonical fix, offline and without a file, ask `check --explain`:
+Every diagnostic names its file, its line, its severity and, where there is a mechanical
+fix, the fix itself, inline:
 
 ```sh
-taliesin check --explain TAL-XREF-UNREF   # one code
-taliesin check --explain                  # list every code
+taliesin build . --check-only            # every located problem, nothing written
+taliesin build . --check-only --strict   # …and advice fails the run too
 ```
 
-The explanation honours `--format json`, and the same codes appear in the
-`code` field of `check --format json` output, so an editor or agent can link
-straight to the fix. This is the canonical, always-current catalogue: it is
-generated from the validator itself, so it never drifts from what `check`
-enforces.
+```
+posts/intro.tmd:3: warning: unknown front-matter key `treme` (did you mean `theme`?)
+posts/intro.tmd:18: error: broken cross-reference: @fig-reslts (did you mean `@fig-results`?)
+```
+
+A near-miss gets a did-you-mean, and something Taliesin has **withdrawn** gets the
+replacement to use instead, with the date it went. Those are different answers on purpose: a
+did-you-mean is a spelling correction an editor can apply for you (your editor offers it as a
+quick fix over `taliesin lsp`), a removal note is a paragraph you have to read.
+
+Diagnostics carried a stable `TAL-*` code and a generated catalogue page until 2026-08-08,
+expandable offline with `check --explain <CODE>`. Both went: what an author needs from a
+diagnostic is the fix, and the message is where the fix is.
 
 ## Code cells show as source / "kernel unavailable"
 

@@ -1,7 +1,7 @@
 //! Duplicate heading-id detection.
 
 use super::helpers::start_line;
-use crate::render::{Block, Warning};
+use crate::render::{Block, Severity, Warning};
 
 /// The `id="..."` attribute of a heading block (`<h1>`..`<h6>`), or None for a
 /// non-heading block or a heading with no id. Reads only the opening tag and matches
@@ -34,7 +34,8 @@ pub fn validate_duplicate_heading_ids(blocks: &[Block]) -> Vec<Warning> {
         if !seen.insert(id) {
             let w = Warning::new(format!(
                 "duplicate heading id `{id}`: an earlier heading already uses it, so anchors, the TOC, and cross-references jump to the first"
-            ));
+            ))
+            .severity(Severity::Error);
             out.push(match start_line(&b.sourcepos) {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,

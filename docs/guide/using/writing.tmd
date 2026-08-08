@@ -29,7 +29,9 @@ paint is already coloured, and the light/dark toggle restyles code with nothing 
 re-run.
 
 A fence whose language token isn't recognised still renders, just unhighlighted.
-That is easy to mistake for broken highlighting, so `taliesin check` reports it:
+That is easy to mistake for broken highlighting. Taliesin no longer reports it: the lint that
+did was cut on 2026-08-08, because an unhighlighted block is something you can see. So the fix
+is to check the label yourself:
 ` ```pyton ` gets a located "unknown code language" warning. When a block is meant
 to be plain (a terminal transcript, sample output), label it `text` or `console`
 and it stays plain without a warning.
@@ -319,7 +321,7 @@ usually just text, and silently turning it into a table is worse than one extra 
 **Paste a BibTeX entry** and it is appended to the bibliography your front matter names,
 with `[@key]` inserted at the cursor. Both edits are one undo. If the key is already in the
 `.bib` you get the citation and no duplicate entry, since a duplicate key is something
-`check` would report.
+the lint would report.
 
 **Drop any file** from the Explorer to get a reference to it, plus a verdict on whether
 the build will be able to ship it: a file outside the document's folder is one the build
@@ -341,5 +343,5 @@ Two limits worth knowing, so they do not read as bugs:
   stops. It does not create a `.bib` and edit your front matter to point at it; the
   existing "citations but no bibliography" diagnostic tells you what is missing.
 
-Finally, a `page.tmd:12:` location in the preview or `check` output is **clickable**, so a
+Finally, a `page.tmd:12:` location in the preview or in build/lint output is **clickable**, so a
 diagnostic in the terminal takes you to the line.

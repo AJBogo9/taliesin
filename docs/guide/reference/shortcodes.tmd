@@ -16,7 +16,7 @@ pass from surprising you:
   also why you can document a shortcode in prose without arming it.
 - **Unknown is loud, not silent.** A `{{< … >}}` naming no built-in is left in the
   page verbatim **and** reported as a located diagnostic, so a typo shows up in the dev
-  menu, the build log, and `taliesin check` rather than shipping as literal text. A name
+  menu, the build log, and the `--check-only` lint rather than shipping as literal text. A name
   Taliesin *used* to expand answers with its removal note instead of a bare "unknown", so
   a leftover `{{< video >}}` tells you to write the `<video>` tag yourself. The one
   exception is `{{< include >}}`, which an earlier pass resolves and reports on its

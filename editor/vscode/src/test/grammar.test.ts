@@ -295,7 +295,8 @@ test("Phase 2 (injection): @xref refs scoped; email is NOT a ref", async () => {
 
 // Seven of the twelve prefixes outlive the constructs that could define them — prp/exm/rem
 // since 2026-08-03, thm/lem/cor/def since 2026-08-08 with the theorem environments — and they
-// stay XREF-ONLY so a dangling @thm-x still errors TAL-XREF-UNDEF instead of degrading silently
+// stay XREF-ONLY so a dangling @thm-x is still reported as a broken cross-reference instead of
+// degrading silently
 // to text (cite/render.rs's XREF_LABELS doc comment). 97d8a697 dropped three of them from this
 // grammar's regex while 5330fd4a restored them in XREF_LABELS, so the two drifted out of step —
 // this pins them back together.

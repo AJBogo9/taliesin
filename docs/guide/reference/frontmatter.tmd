@@ -53,7 +53,7 @@ or `{ file: … }` map, or a list of those.
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card, and the `og:image` a shared link unfurls with (absolutized against `_site.yml`'s `url:`; an absolute URL is used as written) |
 | `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`** — an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
-| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `check` — a page that does not ship should not fail a pre-flight, and `check` names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing |
+| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `build --check-only` — a page that does not ship should not fail a pre-flight, and the lint names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
 ### Raw-HTML includes
@@ -73,7 +73,7 @@ colours and type, prefer a [`theme:`](../using/theming.tmd) over raw CSS.
 |---|---|---|
 | `toc` | bool | Forces the table of contents on or off for this page. Leave it out and it is **automatic**: an article page with enough headings gets one. No effect in a book chapter: a book navigates by its Chapters drawer |
 | `bibliography` | string \| list | A `.bib` file (or list of them) enabling `[@key]` citations and an auto-generated References section |
-| `csl` | string | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized rather than merely unknown because it names a real thing you brought from another tool, and "recognized, not honoured" is a more honest answer than a rename hint; delete it |
+| `csl` | string | **Recognized, but not supported: the build warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized rather than merely unknown because it names a real thing you brought from another tool, and "recognized, not honoured" is a more honest answer than a rename hint; delete it |
 
 ### Code execution
 
@@ -261,7 +261,7 @@ Two deliberate exceptions:
   options, so Taliesin leaves everything under `format:` alone rather than guess at a
   vocabulary it does not own.
 - **`csl:` is recognized but not supported.** There is no CSL engine: references always
-  render in the single built-in IEEE style. `check` warns on the key (it is not offered
+  render in the single built-in IEEE style. The build warns on the key (it is not offered
   as a completion either), so the no-op is visible rather than silent. It stays in the
   known set on purpose: `css` is one edit away from `csl`, so dropping it would make the
   did-you-mean answer a citation-style key with "did you mean `css`?", which is worse

@@ -1,9 +1,9 @@
-// Taliesin's build and check commands as VS Code tasks, so project-wide health does not need
+// Taliesin's build and lint commands as VS Code tasks, so project-wide health does not need
 // a trip to the terminal.
 //
-// The point is the problem matcher more than the tasks: `check` finds problems on pages that
-// are **not open**, and the language server only ever diagnoses buffers it has been sent. Run
-// the check task and those findings land in the Problems panel with real file locations.
+// The point is the problem matcher more than the tasks: a project lint finds problems on pages
+// that are **not open**, and the language server only ever diagnoses buffers it has been sent.
+// Run the check task and those findings land in the Problems panel with real file locations.
 //
 // The task shapes themselves are a pure function in `taskspecs.ts`, unit-tested against the
 // manifest so the offered set and the declared `enum` cannot drift apart.
@@ -51,7 +51,7 @@ function buildTask(spec: TaskSpec, cwd: string, binary: string): vscode.Task {
     spec.name,
     TASK_TYPE,
     new vscode.ShellExecution(binary, spec.args, { cwd }),
-    // Both matchers: `check` emits located and unlocated diagnostics, and a run that reported
+    // Both matchers: the lint emits located and unlocated diagnostics, and a run that reported
     // only the located half would quietly drop every `_site.yml` finding.
     ["$taliesin", "$taliesin-unlocated"]
   );
@@ -64,7 +64,7 @@ function buildTask(spec: TaskSpec, cwd: string, binary: string): vscode.Task {
   return task;
 }
 
-/** Offer `check`, `build` and `build --out` for the active project. */
+/** Offer the lint, `build` and `build --out` for the active project. */
 export function registerTasks(context: vscode.ExtensionContext): void {
   const binary = () =>
     vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");

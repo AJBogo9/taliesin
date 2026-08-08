@@ -320,22 +320,23 @@ fn nonstrict_site_build_summarizes_problems() {
 }
 
 #[test]
-fn check_rejects_unknown_flag_with_suggestion() {
+fn the_lint_rejects_an_unknown_flag_with_a_suggestion() {
     let dir = tmp_dir("checkflag");
     let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     let res = taliesin()
-        .arg("check")
+        .arg("build")
         .arg(&doc)
+        .arg("--check-only")
         .arg("--formt") // typo for --format
         .arg("json")
         .output()
-        .expect("run check");
+        .expect("run the lint");
     let err = String::from_utf8_lossy(&res.stderr);
     let _ = fs::remove_dir_all(&dir);
     assert!(
         !res.status.success(),
-        "an unknown check flag must fail, stderr was:\n{err}"
+        "an unknown flag must fail, stderr was:\n{err}"
     );
     assert!(
         err.contains("--formt") && err.contains("--format"),
@@ -367,11 +368,12 @@ fn preview_rejects_unknown_flag_with_suggestion() {
     );
 }
 
-/// The confidence gap: `check` chained ten static validators that ran nowhere else, so a
+/// The confidence gap: the static validators once ran only inside the `check` verb, so a
 /// `build --strict` exited 0 while shipping a broken `<img>`. A green `--strict` reads as
-/// "safe to ship", so it must fail on exactly what `check` fails on.
+/// "safe to ship", so it must fail on exactly what `--check-only` fails on. Both go through
+/// `lint::page_static_diagnostics` now, and this is what keeps that true end to end.
 #[test]
-fn strict_build_fails_on_everything_check_fails_on() {
+fn strict_build_fails_on_everything_the_lint_fails_on() {
     let dir = tmp_dir("strict-superset");
     fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
     fs::write(
@@ -391,8 +393,13 @@ fn strict_build_fails_on_everything_check_fails_on() {
     .unwrap();
 
     let out = dir.join("_out");
-    let check = taliesin().arg("check").arg(&dir).output().unwrap();
-    assert!(!check.status.success(), "check must fail on this site");
+    let check = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg("--check-only")
+        .output()
+        .unwrap();
+    assert!(!check.status.success(), "the lint must fail on this site");
 
     let strict = taliesin()
         .args(["build"])
@@ -408,24 +415,27 @@ fn strict_build_fails_on_everything_check_fails_on() {
         String::from_utf8_lossy(&strict.stderr)
     );
 
-    // Every diagnostic `check` reports is reported by the build, located. The two surfaces
-    // decorate the SAME located defect differently, in three ways now:
-    //   * `check`'s linter line is `file:line: severity[CODE]: message` (PL1), while
-    //     `build --strict` logs it via `log::warn` as `warn  file:line: message` (the log
-    //     level already conveys severity), so the `severity[CODE]: ` insertion is stripped;
-    //   * `check` roots each path on the target as typed (here an absolute temp dir) so the
+    // Every diagnostic the lint reports is reported by the build, located. The two surfaces
+    // decorate the SAME located defect differently, in two ways:
+    //   * the lint's linter line is `file:line: severity: message`, while `build --strict`
+    //     logs it via `log::warn` as `warn  file:line: message` (the log level already
+    //     conveys severity), so the `severity: ` insertion is stripped below;
+    //   * the lint roots each path on the target as typed (here an absolute temp dir) so the
     //     path opens from wherever the command ran, while `build`'s log label is still
     //     project-relative. That divergence is why the target prefix comes off below.
     // The identity under test is the SET OF LOCATED DEFECTS, not how either spells a path.
     let prefix = format!("{}/", dir.display());
     let check_msgs: Vec<String> = String::from_utf8_lossy(&check.stderr)
         .lines()
-        .filter(|l| l.contains("error[") || l.contains("warning["))
+        .filter(|l| l.contains(": error: ") || l.contains(": warning: "))
         .map(|l| {
             let l = l.trim();
             let (loc, rest) = l.split_once(": ").expect("a located finding line");
             let loc = loc.strip_prefix(&prefix).unwrap_or(loc);
-            let msg = rest.split_once("]: ").map(|(_, m)| m).unwrap_or(rest);
+            let msg = rest
+                .strip_prefix("error: ")
+                .or_else(|| rest.strip_prefix("warning: "))
+                .unwrap_or(rest);
             format!("{loc}: {msg}")
         })
         .collect();
@@ -469,7 +479,12 @@ fn strict_single_doc_build_fails_on_a_missing_image() {
     let doc = dir.join("doc.tmd");
     fs::write(&doc, "---\ntitle: T\n---\n\n![img](missing.png)\n").unwrap();
 
-    let check = taliesin().arg("check").arg(&doc).output().unwrap();
+    let check = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--check-only")
+        .output()
+        .unwrap();
     assert!(!check.status.success());
 
     let strict = taliesin()

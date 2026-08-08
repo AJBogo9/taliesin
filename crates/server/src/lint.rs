@@ -1,38 +1,43 @@
-//! The `check` subcommand: static, kernel-free document linting (the "check-superset").
+//! The shared static-lint kernel: one definition of a document defect, for
+//! `build --check-only`, `build --strict`, the live preview and the LSP alike.
 //!
-//! **What:** renders a file or site in memory and lists every located diagnostic — the
-//! render warning channel plus the static validators (xrefs, duplicate ids, anchors,
-//! assets, media, links, reactive graph, a11y, citations, front-matter YAML) — exiting
-//! non-zero on any finding. A CI / pre-publish gate; no code execution.
+//! **What:** renders a file or a project in memory and returns every located diagnostic:
+//! the render warning channel plus the static validators (xrefs, duplicate ids, anchors,
+//! assets, media, links, reactive graph, a11y, citations, front-matter YAML). No code
+//! execution, no output written; the only IO is stat-ing referenced local files.
 //!
-//! **How to use:** `main()` dispatches `check` to [`cmd_check`]; `--format human|json`.
+//! **How to use:** it is a library with four consumers, not a verb. `build` calls
+//! [`page_static_diagnostics`] on every page it renders and counts [`blocking`] against
+//! `--strict`; `build --check-only` ([`cmd_check_only`]) is the front door that reports
+//! without writing; the preview server and `lsp` reach it through
+//! [`buffer_diagnostics_in_site`].
+//!
+//! Until 2026-08-08 this was `crates/server/src/check.rs`, the implementation of a `check`
+//! subcommand with five flags, an interpreter probe, an `--explain` catalogue and a 190-row
+//! message-substring table that derived a `TAL-*` code and a severity for every diagnostic.
+//! The verb is retired (`RETIRED_COMMANDS` points at `build --check-only`), the probe belongs
+//! to `doctor`, and severity is now a field on [`taliesin_core::render::Warning`] set by the
+//! validator that found the defect.
 //!
 //! **Depends on:** [`taliesin_core`] for rendering + the `diagnostics`/`cite` validators
 //! + `Site`, [`crate::log`], and `serde_json` for the JSON formatter.
 
 use crate::log;
-use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
+use taliesin_core::render::Severity;
 
 /// One located diagnostic, ready to print or serialize. Under `--format json` it is
-/// agent-grade: a stable `code`, a `severity`, and (for a "did you mean" typo) a
-/// structured `suggestion` (`{ replacement }`). `--format human` ignores those extra
-/// fields, so its output is byte-identical to before. (Keys serialize alphabetically:
-/// `format_json` routes through `serde_json::json!`, whose object is key-sorted.)
+/// agent-grade: a `severity` and (for a "did you mean" typo) a structured `suggestion`
+/// (`{ replacement }`). (Keys serialize alphabetically: the formatters route through
+/// `serde_json::json!`, whose object is key-sorted.)
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct Diagnostic {
-    code: &'static str,
-    /// Where to read more about this `code`: the committed diagnostics catalog anchored by
-    /// the lowercased code (`…/DIAGNOSTICS.md#tal-fm-key`). Computed from `code`, so it can
-    /// never drift; the same text is available offline via `check --explain <code>`.
-    docs_url: String,
-    severity: &'static str,
+    severity: Severity,
     file: String,
     line: Option<u32>,
     /// 1-based `[col, end_col)` character span on `line`, present only when the underlying
-    /// warning located a precise token (front-matter key typos). Omitted otherwise, so an
-    /// un-columned diagnostic's JSON is byte-identical to before E3.
+    /// warning located a precise token (front-matter key typos). Omitted otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     col: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,18 +60,17 @@ pub(crate) struct Suggestion {
 pub(crate) const LSP_SOURCE: &str = "taliesin";
 
 impl Diagnostic {
-    /// Build a diagnostic, classifying its `code`/`severity` and lifting any inline
-    /// "did you mean" hint into a structured `suggestion` from the message. Shared with
-    /// `build`'s structured-error path.
+    /// Build an **error** diagnostic, lifting any inline "did you mean" hint into a
+    /// structured `suggestion`. Every caller is a hard failure the tool discovered outside a
+    /// validator: an unreadable or unwritable path, malformed front-matter YAML, a cell that
+    /// raised, a kernel that would not start, a project with no publishable pages. A
+    /// diagnostic that came from a validator carries its own severity and goes through
+    /// [`diag_from`] instead.
     pub(crate) fn new(file: String, line: Option<u32>, message: String) -> Self {
-        use taliesin_core::diagnostics::codes;
-        let (code, severity) = codes::classify(&message);
-        let suggestion =
-            codes::extract_suggestion(&message).map(|replacement| Suggestion { replacement });
+        let suggestion = taliesin_core::diagnostics::extract_suggestion(&message)
+            .map(|replacement| Suggestion { replacement });
         Diagnostic {
-            code,
-            docs_url: codes::docs_url(code),
-            severity,
+            severity: Severity::Error,
             file,
             line,
             col: None,
@@ -77,13 +81,11 @@ impl Diagnostic {
     }
 
     /// Project this diagnostic to LSP for the `lsp` server. `lines` is the buffer split
-    /// on `\n` (needed to clamp the line and to bound a whole-line span). Mirrors the
-    /// companion's `check.ts` mapping: 1-based line → 0-based, clamped to the buffer;
-    /// a precise 1-based `[col, end_col)` → 0-based when present, else the whole line.
+    /// on `\n` (needed to clamp the line and to bound a whole-line span). 1-based line →
+    /// 0-based, clamped to the buffer; a precise 1-based `[col, end_col)` → 0-based when
+    /// present, else the whole line.
     pub(crate) fn to_lsp(&self, lines: &[&str]) -> lsp_types::Diagnostic {
-        use lsp_types::{
-            CodeDescription, DiagnosticSeverity, NumberOrString, Position, Range, Url,
-        };
+        use lsp_types::{DiagnosticSeverity, Position, Range};
         let last = lines.len().saturating_sub(1) as u32;
         let line0 = self.line.unwrap_or(1).saturating_sub(1).min(last);
         // `col`/`end_col` are 1-based *character* columns; LSP columns are UTF-16 code units,
@@ -105,15 +107,14 @@ impl Diagnostic {
             }
         };
         let severity = Some(match self.severity {
-            "error" => DiagnosticSeverity::ERROR,
-            "warning" => DiagnosticSeverity::WARNING,
-            "info" => DiagnosticSeverity::INFORMATION,
-            _ => DiagnosticSeverity::HINT,
+            Severity::Error => DiagnosticSeverity::ERROR,
+            Severity::Warning => DiagnosticSeverity::WARNING,
+            Severity::Suggestion => DiagnosticSeverity::HINT,
         });
         // Carry a one-click fix on `data` (the client echoes it back in a codeAction request)
         // ONLY when a suggestion has a precise column span — then `range` above is exactly the
         // token to overwrite. Without a column we cannot locate the token unambiguously, so we
-        // attach nothing rather than offer an imprecise fix (mirrors the companion).
+        // attach nothing rather than offer an imprecise fix.
         let data = match (&self.suggestion, self.col, self.end_col) {
             (Some(s), Some(_), Some(_)) => {
                 Some(serde_json::json!({ "replacement": s.replacement }))
@@ -123,10 +124,6 @@ impl Diagnostic {
         lsp_types::Diagnostic {
             range,
             severity,
-            code: Some(NumberOrString::String(self.code.to_string())),
-            code_description: Url::parse(&self.docs_url)
-                .ok()
-                .map(|href| CodeDescription { href }),
             source: Some(LSP_SOURCE.to_string()),
             message: self.message.clone(),
             data,
@@ -141,18 +138,16 @@ pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str)
         w.line,
         w.message.clone(),
     );
+    d.severity = w.severity;
     d.col = w.col;
     d.end_col = w.end_col;
     d
 }
 
-/// Whether a render warning is **advice** rather than a defect (severity `suggestion`), so
-/// `build --strict` must report it and not fail on it. The classification is the same one
-/// `check` uses, derived from the message, so the two commands cannot disagree about what
-/// blocks a release.
+/// Whether a render warning is **advice** rather than a defect, so `build --strict` reports
+/// it and does not fail on it.
 pub(crate) fn is_advice(w: &taliesin_core::render::Warning) -> bool {
-    use taliesin_core::diagnostics::codes;
-    codes::classify(&w.message).1 == codes::SUGGESTION
+    w.severity == Severity::Suggestion
 }
 
 /// How many of `warnings` block a `--strict` build (i.e. all but the advice).
@@ -160,27 +155,25 @@ pub(crate) fn blocking(warnings: &[taliesin_core::render::Warning]) -> usize {
     warnings.iter().filter(|w| !is_advice(w)).count()
 }
 
-/// Serialize just the diagnostics as `{ "diagnostics": [...] }` — the shape `build`
-/// emits under `--format json` (no `environment`; a build already runs kernels, and the
-/// agent consuming a failing build wants the problems, not the interpreter probe). Reuses
-/// the exact per-diagnostic shape as `check`, so the two channels can't drift.
+/// Serialize just the diagnostics as `{ "diagnostics": [...] }`: the shape `build` emits
+/// under `--format json`, and the tool's one machine-readable surface.
 pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
     let payload = serde_json::json!({ "diagnostics": diags });
     serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{\"diagnostics\":[]}".to_string())
 }
 
-/// Render `path` (a file or a site directory) in memory and return every located
+/// Render `path` (a file or a project directory) in memory and return every located
 /// diagnostic. No code execution, no output written. `Err` for an unreadable file or
-/// an empty site.
-fn collect_diagnostics(path: &Path, scope: &mut CheckScope) -> Result<Vec<Diagnostic>, String> {
+/// an empty project.
+fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     if path.is_dir() {
-        collect_site_diagnostics(path, scope)
+        collect_site_diagnostics(path)
     } else {
-        // Site-aware when the file is a page of a project, so `check <file.tmd>` and
-        // `check <dir>` answer the same question about that page.
+        // Site-aware when the file is a page of a project, so `--check-only` on a file and on
+        // its project answer the same question about that page.
         let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
         let site = enclosing_site_of(path);
-        collect_file_diagnostics_in_site(path, &src, Some(scope), site.as_ref())
+        collect_file_diagnostics_in_site(path, &src, site.as_ref())
     }
 }
 
@@ -196,14 +189,15 @@ pub(crate) enum Scope {
 /// No code execution, no filesystem writes; the local-asset/media/link rules do stat the
 /// filesystem.
 ///
-/// This is the single definition of the superset, so `check` and `build --strict` cannot
-/// drift on what counts as a defect. It deliberately excludes the two
-/// checks the callers already run themselves (`cite::validate_xrefs`, and the front-matter
-/// YAML parse), so nothing is counted twice.
+/// This is the single definition of the superset, so `build --check-only` and
+/// `build --strict` cannot drift on what counts as a defect. It deliberately excludes the
+/// two checks the callers already run themselves (`cite::validate_xrefs`, and the
+/// front-matter YAML parse), so nothing is counted twice.
 ///
-/// Run it on the document **before** its code cells execute, as `check` does: a matplotlib
-/// figure spliced in by a cell is generated output, and linting it for alt text would
-/// report a defect the author cannot fix in the source.
+/// Run it on the document **before** its code cells execute: a matplotlib figure spliced in
+/// by a cell is generated output, and linting it for alt text would report a defect the
+/// author cannot fix in the source. Do not relocate the call sites in `serve_site/mod.rs`
+/// or `build.rs` while changing this list.
 ///
 /// [`Scope::InSite`] omits `validate_local_links`. An intra-site `[x](other.tmd)` link
 /// rewrites to `other.html`, and only the site's page registry knows the real URLs, so on
@@ -226,10 +220,7 @@ pub(crate) fn page_static_diagnostics(
     }
     out.extend(dx::validate_js_reactive_graph(blocks));
     out.extend(dx::validate_a11y(blocks));
-    out.extend(dx::validate_link_text_collisions(blocks));
-    out.extend(dx::validate_document_shape(blocks));
-    out.extend(dx::validate_math(blocks));
-    out.extend(dx::validate_code_languages(blocks));
+    out.extend(dx::validate_retired_cell_langs(blocks));
     out.extend(dx::citations_without_bibliography(src, blocks));
     out.extend(dx::bare_citation_key_not_rendered(src, blocks, base));
     // No `csl:` rule here: it lives on the render path (`frontmatter::validate_front_matter`),
@@ -299,21 +290,16 @@ pub(crate) fn cannot_read(path: &Path, e: &std::io::Error) -> String {
 fn collect_file_diagnostics_in_site(
     path: &Path,
     src: &str,
-    scope: Option<&mut CheckScope>,
     site: Option<&taliesin_core::Site>,
 ) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_single_doc(src, base);
-    // Free: this render already happened for the lints below.
-    if let Some(scope) = scope {
-        scope.note_languages(&doc.blocks);
-    }
     let path_str = path.display().to_string();
     // A document inside a site project may legitimately refer across its pages, so
     // resolve what the project defines before calling anything broken: this path is the
-    // editor's every-keystroke validator (and `check <file.tmd>`), and it used to report
-    // every valid cross-page `@sec-`/`@fig-`/`@tbl-` as an error while `check <dir>` on
-    // the same tree was clean. Outside a project the scan is empty and nothing changes.
+    // editor's every-keystroke validator, and it used to report every valid cross-page
+    // `@sec-`/`@fig-`/`@tbl-` as an error while the same tree linted clean as a project.
+    // Outside a project the scan is empty and nothing changes.
     let elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(path);
     let xref = taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &elsewhere);
     let page = site.and_then(|s| s.page_for_input(path));
@@ -352,26 +338,20 @@ fn collect_file_diagnostics_in_site(
 /// [`collect_file_diagnostics_in_site`] so that one place decides it: a `draft: true`
 /// chapter sits inside a project and is still linted standalone.
 ///
-/// `DraftMode::Exclude`, matching `check <dir>` rather than the preview: this is the seam
-/// whose whole claim is "the same validators as `check`".
+/// `DraftMode::Exclude`, matching a project lint rather than the preview.
 ///
-/// Discovery costs a full walk, and it is paid per call. Measured end to end on
-/// `docs/guide`: `check <file.tmd>` goes from **14 ms to 213 ms**, against 387 ms for
-/// `check <dir>`. That is the price of the two commands giving the same answer about the
-/// same page, and it is worth it on a one-shot command — but it is far too slow to pay per
-/// keystroke, so the language server passes a stat-validated `lsp_project::SiteCache`
-/// instead of calling this. A file outside any project still costs nothing (11 ms).
+/// Discovery costs a full walk, and it is paid per call — far too slow to pay per keystroke,
+/// so the language server passes a stat-validated `lsp_project::SiteCache` instead of
+/// calling this. A file outside any project costs nothing.
 fn enclosing_site_of(path: &Path) -> Option<taliesin_core::Site> {
     let root = taliesin_core::site::enclosing_site_root_across_git(path.parent()?)?;
     Some(taliesin_core::Site::discover(&root))
 }
 
 /// Lint an in-memory editor buffer as if it were the file at `path`, returning the
-/// diagnostics directly. Used by the `lsp` server on every `didOpen`/`didChange`. This is
-/// the whole of what the retired `check --stdin` was for: the CLI grew that flag before
-/// `taliesin lsp` existed, and once the LSP owned on-type diagnostics nothing invoked it. The buffer path can't fail to render,
-/// but a hypothetical error surfaces as one line-1 diagnostic (parity with the
-/// companion's check-error handling) rather than vanishing.
+/// diagnostics directly. Used by the `lsp` server on every `didOpen`/`didChange`. The buffer
+/// path can't fail to render, but a hypothetical error surfaces as one line-1 diagnostic
+/// rather than vanishing.
 ///
 /// `site` is the enclosing project or `None`; see [`collect_file_diagnostics_in_site`].
 pub(crate) fn buffer_diagnostics_in_site(
@@ -379,98 +359,38 @@ pub(crate) fn buffer_diagnostics_in_site(
     src: &str,
     site: Option<&taliesin_core::Site>,
 ) -> Vec<Diagnostic> {
-    match collect_file_diagnostics_in_site(path, src, None, site) {
+    match collect_file_diagnostics_in_site(path, src, site) {
         Ok(diags) => diags,
         Err(e) => vec![Diagnostic::new(path.display().to_string(), Some(1), e)],
     }
 }
 
-/// What a check deliberately did not look at. Filled in by whichever `collect_*` ran, so
-/// the facts come from the discovery that already happened — a second `Site::discover`
-/// just to learn them was measured at **+50 to +83 ms** (~20% of a whole check) on the
-/// three largest projects in the tree, which is far too much for a line most projects
-/// never print.
-#[derive(Default)]
-pub(crate) struct CheckScope {
-    /// `draft: true` pages held out of the published set, and so out of this check.
-    pub excluded_drafts: Vec<String>,
-    /// Executable languages (`python`/`r`) seen anywhere in the checked target, in
-    /// first-seen order — the input to the Environment report.
-    ///
-    /// Recorded **from the walk the diagnostics already did**, which is the whole reason item
-    /// 122's cost objection evaporated: `collect_environment` used to re-render every page of
-    /// a site purely to learn this, measured at **+50%** on a site check. The rendered block
-    /// model is right there in `collect_site_diagnostics`; reading two booleans off it is free.
-    ///
-    pub used_languages: Vec<&'static str>,
-    /// The project's `_site.yml` `python:` pin, so resolution needs no second
-    /// `Site::discover`. `None` for a single file, which has no project to pin it.
-    pub python_pin: Option<String>,
-}
-
-impl CheckScope {
-    /// Merge one page's languages in, preserving first-seen order and skipping duplicates.
-    fn note_languages(&mut self, blocks: &[taliesin_core::Block]) {
-        for lang in used_languages(blocks) {
-            if !self.used_languages.contains(&lang) {
-                self.used_languages.push(lang);
-            }
-        }
-    }
-}
-
-/// The one-line "here is what I did **not** look at" note for a site check, or `None` when
-/// nothing was held back.
+/// Every located diagnostic in a project, page by page, in `site.pages` order.
 ///
-/// A `check` that reports nothing is read as "this project is clean", so every deliberate
-/// omission has to be visible or the verdict is wider than the work. Item 109 was the
-/// expensive version of this lesson: a site check silently skipped the embedded decks it
-/// built, and a deck with six real defects reported "no problems found", exit 0.
-///
-/// **Drafts are deliberately excluded, and that is the ruling, not an oversight.** A
-/// `draft: true` page is not in the published set, so linting it would report defects in
-/// something that does not ship, and the live preview (`DraftMode::Include`) already lints
-/// it where the author is writing it. What was wrong was doing that *silently* — `build`
-/// has always said `N drafts not published`, and `check` said nothing at all.
-///
-/// Pure, so the wording is unit-testable without a filesystem.
-fn scope_note(excluded_drafts: &[String]) -> Option<String> {
-    if excluded_drafts.is_empty() {
-        return None;
-    }
-    let n = excluded_drafts.len();
-    Some(format!(
-        "not checked: {n} draft{} ({}) — `draft: true` pages are not published, so they are \
-         not linted here; the live preview lints them as you write",
-        if n == 1 { "" } else { "s" },
-        excluded_drafts.join(", ")
-    ))
-}
-
-fn collect_site_diagnostics(
-    root: &Path,
-    scope: &mut CheckScope,
-) -> Result<Vec<Diagnostic>, String> {
+/// Renders each page the way the build and the preview do, with the project's own
+/// `render_defaults()` and chapter scoping, or it reports diagnostics for a document nobody
+/// ships (a page inheriting the project `bibliography:` looked uncited) and prints numbers no
+/// reader sees ("Theorem 2.3").
+fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
     let site = taliesin_core::Site::discover(root);
-    // Free: this discovery already ran, and it is the only thing that knows what it dropped —
-    // or which interpreters the project pinned.
-    scope.excluded_drafts = site.excluded_drafts.clone();
-    scope.python_pin = site.config.python.clone();
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {}", root.display()));
     }
+    // Drafts (`draft: true`) are held out of the published set and so out of this lint. A
+    // lint that reports nothing is read as "this project is clean", so the omission is
+    // printed rather than left implicit; the live preview lints them where they are written.
+    if let Some(line) = crate::build::draft_report_line(&site.excluded_drafts) {
+        log::info(&line);
+    }
     // A bare directory of `.tmd` pages is a legitimate project, so a missing `_site.yml` is
-    // an advisory, not a defect: reporting it made `check` print "1 problem" and exit 1 on
-    // a perfectly good tree, while `build` had always declined to count it.
+    // an advisory, not a defect: reporting it printed "1 problem" and exited 1 on a
+    // perfectly good tree, while `build` had always declined to count it.
     let mut out: Vec<Diagnostic> = site
         .warnings
         .iter()
         .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
         .map(|m| Diagnostic::new("_site.yml".to_string(), None, m.clone()))
         .collect();
-    // The project's own policies, bound once: `check` must render each page the way the
-    // build and the preview do, or it reports diagnostics for a document nobody ships (a
-    // page inheriting the project `bibliography:` looked uncited here).
     let defaults = site.render_defaults();
     for page in &site.pages {
         let Ok(src) = std::fs::read_to_string(&page.input) else {
@@ -485,17 +405,12 @@ fn collect_site_diagnostics(
             out.push(Diagnostic::new(page.rel.clone(), Some(line), message));
         }
         let base = page.input.parent().unwrap_or(root);
-        // Scope a numbered book chapter's floats + theorems to its chapter ("Theorem 2.3"),
-        // matching the build + live-preview paths, so `check` reports the same numbers a
-        // reader sees.
         let doc = taliesin_core::render_document_scoped_with_site(
             &src,
             base,
             site.chapter_for(page),
             Some(&defaults),
         );
-        // Free: this page is already rendered, so the Environment report costs no second walk.
-        scope.note_languages(&doc.blocks);
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
         for w in &page_static_diagnostics(&src, &doc.blocks, base, Scope::InSite) {
@@ -506,12 +421,6 @@ fn collect_site_diagnostics(
             out.push(diag_from(w, &page.rel));
         }
     }
-    // No `mounts:` finding here any more. It used to report TAL-MOUNT-PREVIEW — a mount is
-    // preview-only, so every link into it 404s in the deploy (item 149) — and that stopped
-    // being true when `build` learned to build the mounts too. A diagnostic that names a
-    // defect the tool no longer has is worse than none: it sends the author to write the
-    // shell script the build already replaced.
-
     // Cross-page relative-link + anchor existence, resolved against the site page
     // registry (file links here, not the single-doc `validate_local_links`: a `.tmd`
     // link rewrites to its built `.html` and only the registry knows the real urls).
@@ -522,194 +431,14 @@ fn collect_site_diagnostics(
     // that is where it is declared. Unused-entry is site-wide by necessity: a shared entry
     // one page cites is used, however many pages leave it alone.
     for w in site.validate_shared_bibliography() {
-        out.push(Diagnostic::new("_site.yml".to_string(), None, w.message));
+        out.push(diag_from(&w, "_site.yml"));
     }
     Ok(out)
 }
 
-/// One line of the informational Environment section: the interpreter `check`
-/// resolved for a language the document runs, and whether its Jupyter kernel package
-/// is importable. Serialized into `--format json` and printed after the diagnostics.
-#[derive(serde::Serialize)]
-struct EnvEntry {
-    lang: &'static str,
-    path: String,
-    provenance: String,
-    /// `Some(true/false)`: the interpreter binary spawned + returned a version (it exists
-    /// and runs); `Some(false)` means the binary itself is absent/broken and
-    /// `kernel_pkg_ok` is moot. **`None` means no probe was run**, so runnability is
-    /// unknown — see `not_probed` (item 81).
-    runs: Option<bool>,
-    /// `ipykernel` (python) / `IRkernel` (r).
-    kernel_pkg: &'static str,
-    kernel_pkg_ok: Option<bool>,
-    version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-    /// Why this interpreter was resolved but not spawned, and how to ask for a probe.
-    /// Absent when it was probed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    not_probed: Option<String>,
-    /// What the upward `.venv` walk examined and where it stopped, e.g.
-    /// `searched /a/b, /a; stopped at /a (.git)`. Python only (R performs no walk), and
-    /// present whether or not the walk won — a *successful-looking* wrong pick is exactly
-    /// the case where "which venv did you consider?" needs answering.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    venv_search: Option<String>,
-}
-
-impl EnvEntry {
-    /// Whether this entry reports a kernel that is *known* not ready.
-    ///
-    /// An unprobed entry (item 81) is **unknown**, not degraded: nothing spawned that
-    /// binary, so printing "interpreter not found or failed to run" for it would be the
-    /// same class of misreport as the promise item 79 fixes.
-    fn known_not_ready(&self) -> bool {
-        self.runs == Some(false) || self.kernel_pkg_ok == Some(false)
-    }
-
-    /// Whether a probe confirmed a ready kernel. `--require-kernel` needs this positive
-    /// form: "not confirmed ready" must fail the gate, whether the probe said no or never ran.
-    fn confirmed_ready(&self) -> bool {
-        self.runs == Some(true) && self.kernel_pkg_ok == Some(true)
-    }
-}
-
-/// Which executable languages (`python`/`r`) a document actually uses, in first-seen
-/// order. Scans the rendered block model's cells (so `{{< include >}}`d cells count),
-/// stopping once both are seen.
-fn used_languages(blocks: &[taliesin_core::Block]) -> Vec<&'static str> {
-    let mut seen = Vec::new();
-    for c in blocks.iter().flat_map(|b| b.cells()) {
-        if let Some(lang) = crate::exec::kernel_lang(&c.lang)
-            && !seen.contains(&lang)
-        {
-            seen.push(lang);
-            if seen.len() == 2 {
-                break;
-            }
-        }
-    }
-    seen
-}
-
-/// Whether an [`env_entry`] may SPAWN the interpreter it resolved.
-///
-/// The three states exist because "report the environment" and "run something" are separate
-/// decisions that two booleans kept conflating. Item 122 is the case that forced them apart:
-/// naming the interpreter a document would use costs nothing and is what a user needs when a
-/// cell cannot run, while spawning it on every keystroke is what PL14 removed.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum ProbePolicy {
-    /// Resolve and report; spawn nothing. The default human `check` — a static linter that
-    /// says which interpreter *would* be used and states plainly that it did not run it.
-    Never,
-    /// Spawn, except an interpreter the checked *project* chose (item 81). `--format json`.
-    UnlessProjectSupplied,
-    /// Spawn whatever was resolved: the user asked with `--require-kernel`.
-    Always,
-}
-
-/// Build one `EnvEntry` for `lang` given the resolved interpreter, spawning it only when
-/// `policy` allows (item 81 for the project-supplied case, item 122 for the default case).
-///
-/// [`ProbePolicy::UnlessProjectSupplied`] is item 81's rule: a *project-supplied* interpreter
-/// — a `_site.yml` `python:`/`r:` field, or the project's own `.venv` — is reported but never
-/// spawned, because `check` is the kernel-free pass an agent runs first on a project it has
-/// not read, and `Command::new(bin)` on a string that project's author wrote is execution the
-/// user did not ask for. Resolution, path and provenance are unchanged under every policy, so
-/// the report always says exactly which interpreter *would* be used.
-fn env_entry(
-    lang: &'static str,
-    resolved: &crate::interpreter::Resolved,
-    policy: ProbePolicy,
-) -> EnvEntry {
-    let kernel_pkg = "ipykernel";
-    let base = EnvEntry {
-        lang,
-        path: resolved.path.display().to_string(),
-        provenance: resolved.provenance.label().to_string(),
-        runs: None,
-        kernel_pkg,
-        kernel_pkg_ok: None,
-        version: None,
-        error: None,
-        not_probed: None,
-        venv_search: resolved.trail.ancestor.as_ref().map(|v| v.summary()),
-    };
-    if policy == ProbePolicy::Never {
-        return EnvEntry {
-            not_probed: Some(
-                "not probed: `check` is a static linter and does not spawn interpreters. \
-                 Run `taliesin doctor`, or pass --require-kernel, to probe it"
-                    .to_string(),
-            ),
-            ..base
-        };
-    }
-    if resolved.provenance.is_project_supplied() && policy != ProbePolicy::Always {
-        return EnvEntry {
-            not_probed: Some(format!(
-                "not probed: this interpreter was chosen by the project ({}), and `check` \
-                 does not run a project-supplied binary. Pass --require-kernel, or run \
-                 `taliesin doctor`, to probe it",
-                resolved.provenance.label()
-            )),
-            ..base
-        };
-    }
-    let p = crate::interpreter::probe(resolved);
-    EnvEntry {
-        runs: Some(p.runs),
-        kernel_pkg_ok: Some(p.kernel_pkg_ok),
-        version: p.version,
-        error: p.error,
-        ..base
-    }
-}
-
-/// The informational Environment section for a file or site: for each executable
-/// language the target uses, the resolved interpreter and — when `policy` allows the spawn
-/// — its kernel-package probe. Never affects `check`'s exit code.
-///
-/// Everything this needs was learned by the diagnostics walk and handed over in `scope`:
-/// which languages appear, and the project's `python:` pin. It renders nothing itself.
-/// That is deliberate and load-bearing — the earlier version re-rendered every page of a site
-/// to recover the language list, which is the **+50%** that made item 122 look expensive.
-/// Empty when the target has no executable cells.
-fn collect_environment(path: &Path, scope: &CheckScope, policy: ProbePolicy) -> Vec<EnvEntry> {
-    // Interpreter resolution is relative to the *project*: the directory itself for a site,
-    // the containing directory for a single file (matching what `exec` will do at run time).
-    let project_dir = if path.is_dir() {
-        path
-    } else {
-        path.parent().unwrap_or_else(|| Path::new("."))
-    };
-    scope
-        .used_languages
-        .iter()
-        .map(|&lang| {
-            let resolved =
-                crate::interpreter::resolve_python(scope.python_pin.as_deref(), project_dir);
-            env_entry(lang, &resolved, policy)
-        })
-        .collect()
-}
-
-/// Serialize `check --format json` as `{ "diagnostics": [...], "environment": [...] }`.
-/// The Environment array is informational (it never changes the exit code); a consumer
-/// that only wants problems reads `.diagnostics`.
-fn format_json(diags: &[Diagnostic], environment: &[EnvEntry]) -> String {
-    let payload = serde_json::json!({
-        "diagnostics": diags,
-        "environment": environment,
-    });
-    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
-}
-
-/// Serialize a `check --format json` failure (an unreadable path, an empty site) as a
+/// Serialize a `--format json` failure (an unreadable path, an empty project) as a
 /// single `{"error": "<message>"}` object, so the JSON stream a caller pipes to `jq`
-/// stays valid even when `check` couldn't run. The message is JSON-escaped (quotes,
+/// stays valid even when nothing could be linted. The message is JSON-escaped (quotes,
 /// newlines), never raw-concatenated.
 pub(crate) fn json_error(message: &str) -> String {
     serde_json::json!({ "error": message }).to_string()
@@ -718,19 +447,18 @@ pub(crate) fn json_error(message: &str) -> String {
 /// The path to print for one diagnostic: the one the reader would type from the directory
 /// they ran the command in.
 ///
-/// A site's diagnostics are located against the **project root** (`sub/page.tmd`), which names
-/// nothing from anywhere else: `taliesin check docs/guide` run from the repo printed
-/// `sub/page.tmd:5:`, a path no terminal can open and no editor can resolve. Re-rooting it on
-/// the target *as typed* gives `docs/guide/sub/page.tmd:5:` — the tsc/cargo convention, and
-/// what a problem-matcher resolving against the invocation directory needs.
+/// A project's diagnostics are located against the **project root** (`sub/page.tmd`), which
+/// names nothing from anywhere else: run from the repo, that printed `sub/page.tmd:5:`, a path
+/// no terminal can open and no editor can resolve. Re-rooting it on the target *as typed*
+/// gives `docs/guide/sub/page.tmd:5:` — the tsc/cargo convention, and what a problem-matcher
+/// resolving against the invocation directory needs.
 ///
 /// `root` is `None` for the single-file path, which already reports the path as
-/// given; re-rooting it onto its own directory would double the prefix. `check .` keeps
+/// given; re-rooting it onto its own directory would double the prefix. A `.` target keeps
 /// printing a bare `sub/page.tmd`, so every existing grep of that output still matches.
 ///
 /// The JSON format is deliberately untouched: its consumer passed the root itself and resolves
-/// against it (`editor/vscode/src/checkstatus.ts` does exactly that), so a path relative to the
-/// project is the right contract there.
+/// against it, so a path relative to the project is the right contract there.
 fn displayed_path(file: &str, root: Option<&Path>) -> String {
     let Some(root) = root else {
         return file.to_string();
@@ -751,11 +479,18 @@ fn human_root(target: &Path) -> Option<&Path> {
     target.is_dir().then_some(target)
 }
 
-/// Greppable linter lines that also surface the DX6 machinery the JSON path already carries:
-/// the `severity` word and the stable `TAL-*` code. The `file:line:` prefix stays first (the
-/// linter convention VS Code problem-matchers / gcc / tsc key off), with `severity[CODE]:`
-/// inserted before the message (the gcc/clang shape). The `docs_url` is JSON-only; it never
-/// leaks here — the code + `--explain` footer are the human path back to the catalog.
+/// The severity word a human line prints.
+fn severity_word(s: Severity) -> &'static str {
+    match s {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
+        Severity::Suggestion => "suggestion",
+    }
+}
+
+/// Greppable linter lines: `file:line: severity: message`. The `file:line:` prefix stays
+/// first (the linter convention VS Code problem-matchers / gcc / tsc key off), with the
+/// severity word before the message (the gcc/clang shape).
 ///
 /// `root` re-roots each path onto the target as typed; see [`displayed_path`].
 fn format_human(diags: &[Diagnostic], color: bool, root: Option<&Path>) -> String {
@@ -763,58 +498,48 @@ fn format_human(diags: &[Diagnostic], color: bool, root: Option<&Path>) -> Strin
     for d in diags {
         // Paint just the severity word (rustc/cargo/tsc all colorize severity). `color` is
         // TTY-gated by the caller, so the non-TTY greppable contract stays byte-identical —
-        // the `file:line: severity[CODE]:` shape a problem-matcher keys off is untouched.
+        // the `file:line: severity:` shape a problem-matcher keys off is untouched.
+        let word = severity_word(d.severity);
         let sev = if color {
             let code = match d.severity {
-                "error" => "\x1b[31m",   // red
-                "warning" => "\x1b[33m", // yellow
-                _ => "\x1b[90m",         // grey (info)
+                Severity::Error => "\x1b[31m",      // red
+                Severity::Warning => "\x1b[33m",    // yellow
+                Severity::Suggestion => "\x1b[90m", // grey
             };
-            format!("{code}{}\x1b[0m", d.severity)
+            format!("{code}{word}\x1b[0m")
         } else {
-            d.severity.to_string()
+            word.to_string()
         };
         let file = displayed_path(&d.file, root);
         match d.line {
-            Some(l) => s.push_str(&format!(
-                "{}:{}: {}[{}]: {}\n",
-                file, l, sev, d.code, d.message
-            )),
-            None => s.push_str(&format!("{}: {}[{}]: {}\n", file, sev, d.code, d.message)),
+            Some(l) => s.push_str(&format!("{}:{}: {}: {}\n", file, l, sev, d.message)),
+            None => s.push_str(&format!("{}: {}: {}\n", file, sev, d.message)),
         }
     }
     s
 }
 
-/// The human summary line + `--explain` footer printed after the per-diagnostic block. Split
-/// the bare `N problem(s)` into a per-severity breakdown (`(1 error, 2 warnings)`) — keeping
-/// the leading `N problem(s)` token so existing greps still match — and, when anything is
-/// reported, teach the `--explain` command (rustc's "For more information…"). Every line above
-/// shows a concrete `[CODE]` to substitute. Pure, so the split + footer are unit-testable.
+/// The summary line printed after the per-diagnostic block: a per-severity breakdown
+/// (`3 problems (1 error, 2 warnings)`) keeping the leading `N problem(s)` token so existing
+/// greps still match. Pure, so the split is unit-testable.
 fn human_summary(diags: &[Diagnostic]) -> String {
-    use taliesin_core::diagnostics::codes;
     let plural = |n: usize| if n == 1 { "" } else { "s" };
     if diags.is_empty() {
         return "no problems found\n".to_string();
     }
-    let errors = diags.iter().filter(|d| d.severity == codes::ERROR).count();
-    let warnings = diags
-        .iter()
-        .filter(|d| d.severity == codes::WARNING)
-        .count();
-    let suggestions = diags
-        .iter()
-        .filter(|d| d.severity == codes::SUGGESTION)
-        .count();
+    let count = |s: Severity| diags.iter().filter(|d| d.severity == s).count();
+    let errors = count(Severity::Error);
+    let warnings = count(Severity::Warning);
+    let suggestions = count(Severity::Suggestion);
     let mut parts = Vec::new();
-    if errors > 0 {
-        parts.push(format!("{errors} error{}", plural(errors)));
-    }
-    if warnings > 0 {
-        parts.push(format!("{warnings} warning{}", plural(warnings)));
-    }
-    if suggestions > 0 {
-        parts.push(format!("{suggestions} suggestion{}", plural(suggestions)));
+    for (n, word) in [
+        (errors, "error"),
+        (warnings, "warning"),
+        (suggestions, "suggestion"),
+    ] {
+        if n > 0 {
+            parts.push(format!("{n} {word}{}", plural(n)));
+        }
     }
     let n = diags.len();
     // Don't call advice a "problem". When nothing above `suggestion` fired, the run passed;
@@ -832,187 +557,39 @@ fn human_summary(diags: &[Diagnostic]) -> String {
         s
     };
     s.push('\n');
-    s.push_str(
-        "\nFor more information about a diagnostic, try `taliesin check --explain <CODE>`.\n",
-    );
     s
 }
 
-/// Render `check --explain`: expand one diagnostic code into cause + canonical fix
-/// (rustc `--explain` style), or list every code when `code` is `None` (an index). `Ok`
-/// text goes to stdout and exits 0; `Err(message)` is an unknown code, which the caller
-/// routes through the same human/json error split as a render failure (non-zero exit).
-///
-/// `format` is `"human"` or `"json"` (already validated). The catalog + the `docs_url`
-/// both come from `taliesin_core::diagnostics::codes`, so the offline `--explain` text and
-/// the JSON `docs_url` on every diagnostic never disagree.
-fn explain_output(code: Option<&str>, format: &str) -> Result<String, String> {
-    use taliesin_core::diagnostics::codes;
-    match code {
-        // Expand one code.
-        Some(c) => {
-            let Some(e) = codes::explain(c) else {
-                let all = codes::all_codes();
-                let hint = match taliesin_core::closest(&c.to_ascii_uppercase(), &all) {
-                    Some(near) => format!("unknown diagnostic code `{c}` (did you mean `{near}`?)"),
-                    None => format!("unknown diagnostic code `{c}`"),
-                };
-                return Err(format!(
-                    "{hint}\nrun `taliesin check --explain` to list every code"
-                ));
-            };
-            let url = codes::docs_url(e.code);
-            if format == "json" {
-                Ok(serde_json::to_string_pretty(&serde_json::json!({
-                    "code": e.code,
-                    "title": e.title,
-                    "cause": e.cause,
-                    "fix": e.fix,
-                    "docs_url": url,
-                }))
-                .unwrap_or_else(|_| "{}".to_string()))
-            } else {
-                Ok(format!(
-                    "{}: {}\n\n{}\n\nTo fix: {}\n\nLearn more: {url}\n",
-                    e.code, e.title, e.cause, e.fix
-                ))
-            }
-        }
-        // Index: list every code.
-        None => {
-            let all = codes::all_codes();
-            if format == "json" {
-                let codes: Vec<_> = all
-                    .iter()
-                    .filter_map(|c| codes::explain(c))
-                    .map(|e| {
-                        serde_json::json!({
-                            "code": e.code,
-                            "title": e.title,
-                            "docs_url": codes::docs_url(e.code),
-                        })
-                    })
-                    .collect();
-                Ok(
-                    serde_json::to_string_pretty(&serde_json::json!({ "codes": codes }))
-                        .unwrap_or_else(|_| "{\"codes\":[]}".to_string()),
-                )
-            } else {
-                let mut s = String::new();
-                for c in &all {
-                    if let Some(e) = codes::explain(c) {
-                        s.push_str(&format!("{:<18} {}\n", e.code, e.title));
-                    }
-                }
-                s.push_str("\nRun `taliesin check --explain <CODE>` for the cause + fix.\n");
-                Ok(s)
-            }
-        }
-    }
+/// Which reported diagnostics **fail** the run: everything but advice, or everything at all
+/// under `--strict`. Advice is always printed (advice you cannot see is advice you cannot act
+/// on) and only gates when the run asks for it, which is the whole point of the third severity.
+fn gating(diags: &[Diagnostic], strict: bool) -> usize {
+    diags
+        .iter()
+        .filter(|d| strict || d.severity != Severity::Suggestion)
+        .count()
 }
 
-/// Every long flag `check` accepts (drives the unknown-flag did-you-mean).
-const CHECK_FLAGS: &[&str] = &[
-    "--format",
-    "--json",
-    "--explain",
-    "--errors-only",
-    "--strict",
-    "--require-kernel",
-];
-
-/// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
-/// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
-/// (no code execution).
-pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
-    let mut path: Option<&str> = None;
-    let mut format = "human";
-    let mut explain = false;
-    let mut explain_code: Option<&str> = None;
-    // DX18 exit-gating knobs. `--errors-only` narrows the floor to errors (dropping warnings
-    // from the output too); `--strict` widens it to include advice; `--require-kernel`
-    // promotes a missing kernel for a used language from informational to a failure.
-    let mut floor = Floor::Warnings;
-    let mut require_kernel = false;
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--format" => {
-                if let Some(v) = it.next() {
-                    format = v;
-                }
-            }
-            // `--json`: clig.dev shorthand for `--format json`.
-            "--json" => format = "json",
-            "--errors-only" => floor = Floor::Errors,
-            "--strict" => floor = Floor::All,
-            "--require-kernel" => require_kernel = true,
-            // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next
-            // token as the code only when it isn't itself a flag, so `--explain --format json`
-            // is the index in JSON (code = None), not "code = `--format`".
-            "--explain" => {
-                explain = true;
-                if let Some(next) = it.clone().next()
-                    && !next.starts_with('-')
-                {
-                    explain_code = Some(next.as_str());
-                    it.next();
-                }
-            }
-            // An unrecognized `--flag` is a hard error with a did-you-mean (not silently
-            // dropped — a typo'd `--formt json` would otherwise run with default human output).
-            s if s.starts_with("--") => {
-                log::error(&crate::serve::unknown_flag_error(s, CHECK_FLAGS));
-                return ExitCode::FAILURE;
-            }
-            s => {
-                if path.is_none() {
-                    path = Some(s);
-                }
-            }
-        }
-    }
-    if format != "human" && format != "json" {
-        log::error(&crate::serve::bad_format_error(Some(format)));
-        return ExitCode::FAILURE;
-    }
-    // `--explain` is a code lookup, not a lint: print cause + fix (or the code index) and
-    // exit, needing no path. A positional path, if also given, is ignored (as with rustc).
-    if explain {
-        return match explain_output(explain_code, format) {
-            Ok(text) => {
-                print!("{text}");
-                ExitCode::SUCCESS
-            }
-            // Unknown code: mirror the render-error split so `--format json | jq` stays valid.
-            Err(e) => {
-                if format == "json" {
-                    println!("{}", json_error(&e));
-                } else {
-                    log::error(&e);
-                }
-                ExitCode::FAILURE
-            }
-        };
-    }
-    let Some(path) = path else {
-        return crate::usage_error("check");
-    };
-    let target = Path::new(path);
-    // Filled in by the site path; stays empty for a single file, which has no published-set
-    // notion to hold anything back from.
-    let mut scope = CheckScope::default();
+/// `build <file|dir> --check-only`: render in memory, report every located diagnostic, write
+/// nothing, and exit non-zero if any of them gates (a CI / pre-publish gate). Static only:
+/// no kernel is started and no cell runs, so `--no-exec` is implied rather than needed.
+///
+/// This is the front door the retired `check` verb was: ~40 lines over the same
+/// [`collect_diagnostics`] kernel `build` itself uses, instead of a second subcommand with
+/// its own flag set, interpreter probe and code catalogue. `--format json` is the tool's one
+/// machine-readable surface; `--strict` widens the gate to include advice.
+pub(crate) fn cmd_check_only(target: &Path, format: &str, strict: bool) -> ExitCode {
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
-    let collected = crate::serve::guarded(|| collect_diagnostics(target, &mut scope))
-        .map_err(|panic| format!("render panicked on {path}: {panic}"))
+    let collected = crate::serve::guarded(|| collect_diagnostics(target))
+        .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
         .and_then(|r| r);
     let diags = match collected {
         Ok(d) => d,
-        // Honour `--format json` on the error path too: a human stderr line would
-        // corrupt a `check … --format json | jq` stream (and leave stdout empty), so
-        // emit a `{"error": …}` object to stdout. Human format keeps the stderr message.
+        // Honour `--format json` on the error path too: a human stderr line would corrupt a
+        // `--format json | jq` stream (and leave stdout empty), so emit an `{"error": …}`
+        // object to stdout. Human format keeps the stderr message.
         Err(e) => {
             if format == "json" {
                 println!("{}", json_error(&e));
@@ -1022,169 +599,23 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // WHICH interpreter the document would use is always reported; whether anything SPAWNS it
-    // is the separate decision `ProbePolicy` carries (item 122). PL14 tied the two together and
-    // so bought its "no spawn on every keystroke" win by going silent — a document whose only
-    // code cell could not run printed "no problems found", exit 0, while `build` warned twice.
-    let policy = if require_kernel {
-        ProbePolicy::Always
-    } else if format == "json" {
-        // A bare `--format json` resolves a project-supplied interpreter without running it
-        // (item 81); only `--require-kernel` opts into that spawn.
-        ProbePolicy::UnlessProjectSupplied
-    } else {
-        // The default human run: name it, never spawn it.
-        ProbePolicy::Never
-    };
-    let environment = collect_environment(target, &scope, policy);
-    // `--errors-only` drops warnings from what is shown AND from the exit decision.
-    let diags = at_severity_floor(diags, floor);
-    let kernel_fail = kernel_gate_fails(&environment, require_kernel);
     if format == "json" {
         // JSON to stdout only, so it pipes cleanly.
-        println!("{}", format_json(&diags, &environment));
+        println!("{}", diagnostics_json(&diags));
     } else {
-        // Greppable `path:line: severity[CODE]: message` lines to stderr (linter-style), then a
-        // per-severity summary + the `--explain` footer (both in `human_summary`). The severity
-        // word is colorized only at a TTY (and not under NO_COLOR), so piped/redirected output
-        // stays byte-identical for problem-matchers.
-        let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        // Greppable `path:line: severity: message` lines to stderr (linter-style), then the
+        // per-severity summary. The severity word is colorized only at a TTY (and not under
+        // NO_COLOR), so piped/redirected output stays byte-identical for problem-matchers.
+        let color = std::io::IsTerminal::is_terminal(&std::io::stderr())
+            && std::env::var_os("NO_COLOR").is_none();
         eprint!("{}", format_human(&diags, color, human_root(target)));
         eprint!("{}", human_summary(&diags));
-        // What this run deliberately did not cover.
-        if let Some(note) = scope_note(&scope.excluded_drafts) {
-            eprintln!("{note}");
-        }
-        if policy == ProbePolicy::Never {
-            // Item 122. The document runs code, so say what it would run it WITH and be
-            // explicit that nothing was spawned. This is the line whose absence let `check`
-            // answer "no problems found" for a document whose only cell cannot execute: the
-            // interpreter is named, so a wrong `TALIESIN_PYTHON` or a stale `.venv` is visible
-            // at a glance, and the verdict `check` has not earned is not asserted.
-            //
-            // No probe means no `runs`/`kernel_pkg_ok` to report, which is the honest shape —
-            // reporting "ready" here would be the same class of misreport as item 79's.
-            if !environment.is_empty() {
-                eprintln!("\nEnvironment (not probed):");
-                for e in &environment {
-                    eprintln!("  {}: {} ({})", e.lang, e.path, e.provenance);
-                    // Where the upward `.venv` walk looked and stopped. Without it, a
-                    // resolution that skipped the venv the author can see is named but
-                    // not explained.
-                    if let Some(v) = &e.venv_search {
-                        eprintln!("    .venv search: {v}");
-                    }
-                }
-                eprintln!("run `taliesin doctor` to check these kernels are ready");
-            }
-        } else {
-            // Under a probing policy (`--require-kernel`), surface just the DEGRADED languages
-            // — an all-green probe is `doctor`'s business, not a linter's — then point at
-            // `doctor` for the full audit.
-            let degraded: Vec<&EnvEntry> =
-                environment.iter().filter(|e| e.known_not_ready()).collect();
-            if !degraded.is_empty() {
-                eprintln!("\nEnvironment (kernels not ready):");
-                for e in &degraded {
-                    let pkg = if e.runs == Some(false) {
-                        // The interpreter binary itself is absent/broken, so the kernel
-                        // package is moot; name that instead of a misleading "pkg MISSING".
-                        "interpreter not found or failed to run".to_string()
-                    } else {
-                        format!("{} MISSING", e.kernel_pkg)
-                    };
-                    eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
-                    if let Some(v) = &e.venv_search {
-                        eprintln!("    .venv search: {v}");
-                    }
-                }
-                eprintln!("run `taliesin doctor` for the full environment audit");
-            }
-        }
-        // Make the reason legible when `--require-kernel` is the *only* thing failing (0
-        // diagnostics would otherwise print "no problems found" then exit non-zero).
-        if kernel_fail {
-            let unready: Vec<&str> = environment
-                .iter()
-                .filter(|e| !e.confirmed_ready())
-                .map(|e| e.lang)
-                .collect();
-            eprintln!(
-                "\n--require-kernel: no runnable kernel for {}",
-                unready.join(", ")
-            );
-        }
     }
-    // Fail on any reported diagnostic AT OR ABOVE the chosen severity floor (so advice is
-    // printed and does not fail the run) OR, under `--require-kernel`, a used language whose
-    // kernel isn't ready.
-    if gating(&diags, floor).next().is_none() && !kernel_fail {
+    if gating(&diags, strict) == 0 {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
-}
-
-/// Which severities fail the run. Three states, because two could not express "print the
-/// advice but do not fail on it": with only `--errors-only` and the default, a rule whose
-/// whole point is to suggest a rewrite turned a green gate red, so the only way to keep CI
-/// green was to leave the rule off. Printed output is unaffected except under
-/// `--errors-only`, which has always narrowed what it shows as well.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Floor {
-    /// `--errors-only`: report and fail on errors alone.
-    Errors,
-    /// The default: report everything, fail on errors and warnings (never on advice).
-    Warnings,
-    /// `--strict`: report everything and fail on all of it, advice included.
-    All,
-}
-
-impl Floor {
-    /// The severity string this floor gates at (see `codes::gates_at`).
-    fn severity(self) -> &'static str {
-        use taliesin_core::diagnostics::codes;
-        match self {
-            Floor::Errors => codes::ERROR,
-            Floor::Warnings => codes::WARNING,
-            Floor::All => codes::SUGGESTION,
-        }
-    }
-}
-
-/// The diagnostics `check` **reports**. `--errors-only` drops warnings from the output as
-/// well as the gate (its long-standing behaviour); every other floor shows everything,
-/// because advice you cannot see is advice you cannot act on. Pure, so it is unit-testable.
-fn at_severity_floor(diags: Vec<Diagnostic>, floor: Floor) -> Vec<Diagnostic> {
-    if floor == Floor::Errors {
-        diags
-            .into_iter()
-            .filter(|d| d.severity == taliesin_core::diagnostics::codes::ERROR)
-            .collect()
-    } else {
-        diags
-    }
-}
-
-/// The reported diagnostics that actually **fail** the run at this floor. Separate from
-/// [`at_severity_floor`] on purpose: a suggestion is printed and does not gate, which is
-/// the whole point of the third state.
-fn gating(diags: &[Diagnostic], floor: Floor) -> impl Iterator<Item = &Diagnostic> {
-    let at = floor.severity();
-    diags
-        .iter()
-        .filter(move |d| taliesin_core::diagnostics::codes::gates_at(d.severity, at))
-}
-
-/// Whether `--require-kernel` should fail the run: it is set AND some used language's
-/// interpreter is absent/broken or its Jupyter kernel package isn't importable. Off by
-/// default, so kernel readiness stays informational and a Python-less CI box can still lint.
-fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
-    // Positive form on purpose: the gate asks "is a kernel confirmed ready", so an entry
-    // that was never probed fails it. Under `--require-kernel` every entry *is* probed
-    // (item 81's skip is exactly what that flag opts out of), so this cannot silently
-    // downgrade the gate to a pass — it can only refuse to guess.
-    require_kernel && environment.iter().any(|e| !e.confirmed_ready())
 }
 
 #[cfg(test)]
@@ -1234,11 +665,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// The tests care about diagnostics, not scope, so they keep the old one-argument
-    /// spelling and discard the scope. Shadows the parent fn by name on purpose.
-    fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
-        super::collect_diagnostics(path, &mut CheckScope::default())
-    }
     use std::fs;
     use std::path::PathBuf;
 
@@ -1277,10 +703,13 @@ mod tests {
         super::buffer_diagnostics_in_site(path, src, site)
     }
 
+    /// The broken-cross-reference findings, matched on the message rather than on a code:
+    /// the `TAL-*` catalogue went on 2026-08-08, and this phrase is the one `cite::validate`
+    /// emits (both its did-you-mean and its no-such-target arm open with it).
     fn broken_xrefs(diags: &[Diagnostic]) -> Vec<&str> {
         diags
             .iter()
-            .filter(|d| d.code == "TAL-XREF-UNDEF")
+            .filter(|d| d.message.starts_with("broken cross-reference:"))
             .map(|d| d.message.as_str())
             .collect()
     }
@@ -1366,7 +795,9 @@ mod tests {
         let src = fs::read_to_string(dir.join("a.tmd")).unwrap();
         let diags = buffer_diagnostics(&dir.join("a.tmd"), &src);
         assert!(
-            diags.iter().any(|d| d.code == "TAL-LINK-ANCHOR"),
+            diags
+                .iter()
+                .any(|d| d.message.starts_with("broken link anchor:")),
             "an anchor no page in the project defines must reach the editor: {:?}",
             diags.iter().map(|d| &d.message).collect::<Vec<_>>()
         );
@@ -1391,7 +822,7 @@ mod tests {
         let diags = buffer_diagnostics(&dir.join("a.tmd"), &src);
         let link: Vec<&str> = diags
             .iter()
-            .filter(|d| d.code == "TAL-LINK")
+            .filter(|d| d.message.starts_with("broken link:"))
             .map(|d| d.message.as_str())
             .collect();
         assert_eq!(link.len(), 1, "exactly one broken-link finding: {link:?}");
@@ -1423,7 +854,9 @@ mod tests {
         let unsaved = "---\ntitle: A\n---\n\nSee [gone](b.html#sec-ghost).\n";
         let diags = buffer_diagnostics(&dir.join("a.tmd"), unsaved);
         assert!(
-            diags.iter().any(|d| d.code == "TAL-LINK-ANCHOR"),
+            diags
+                .iter()
+                .any(|d| d.message.starts_with("broken link anchor:")),
             "a link typed into the buffer must be judged: {:?}",
             diags.iter().map(|d| &d.message).collect::<Vec<_>>()
         );
@@ -1438,24 +871,28 @@ mod tests {
         let fixed = "---\ntitle: A\n---\n\nSee [real](b.html#sec-real).\n";
         let after = buffer_diagnostics(&dir.join("a.tmd"), fixed);
         assert!(
-            !after.iter().any(|d| d.code == "TAL-LINK-ANCHOR"),
+            !after
+                .iter()
+                .any(|d| d.message.starts_with("broken link anchor:")),
             "a link fixed in the buffer must clear before saving: {:?}",
             after.iter().map(|d| &d.message).collect::<Vec<_>>()
         );
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// The claim `docs/guide/reference/cli.tmd` makes about `taliesin lsp`, pinned: "the
-    /// same validators as `check`, run on the unsaved buffer". Measured false before this —
-    /// the buffer path missed `TAL-LINK-ANCHOR` entirely and described a broken link with a
-    /// rule that does not apply to a site page — so it is asserted rather than restated.
+    /// The claim `docs/guide/reference/cli.tmd` makes about `taliesin lsp`, pinned: the same
+    /// validators the project lint runs, on the unsaved buffer. Measured false before this:
+    /// the buffer path missed the broken-cross-page-anchor rule entirely and described a
+    /// broken link with a rule that does not apply to a site page, so it is asserted rather
+    /// than restated.
     ///
-    /// Compared as a SET OF CODES for one page, not message-for-message: `check <dir>`
-    /// renders each page with the project's numbering and defaults, so a message may name
-    /// "Figure 2.1" where the buffer path says "Figure 1". What must not differ is which
-    /// defects each one finds.
+    /// Compared as a set of message *openings* for one page, not message-for-message: a
+    /// project lint renders each page with the project's numbering and defaults, so a message
+    /// may name "Figure 2.1" where the buffer path says "Figure 1". What must not differ is
+    /// which defects each one finds. (It was a set of `TAL-*` codes until the catalogue went
+    /// on 2026-08-08; the message opening is the same partition by another name.)
     #[test]
-    fn the_editor_finds_the_same_defects_on_a_page_as_check_does() {
+    fn the_editor_finds_the_same_defects_on_a_page_as_a_project_lint_does() {
         let dir = tmp_project(
             "parity",
             &[
@@ -1477,16 +914,21 @@ mod tests {
         let page = dir.join("page.tmd");
         let src = fs::read_to_string(&page).unwrap();
 
+        // The family, not the whole sentence: everything up to the first backtick or colon.
+        let family = |d: &Diagnostic| {
+            let m = &d.message;
+            m[..m.find(['`', ':']).unwrap_or(m.len())]
+                .trim()
+                .to_string()
+        };
         let mut site_codes: Vec<String> = collect_diagnostics(&dir)
             .expect("site ok")
-            .into_iter()
+            .iter()
             .filter(|d| d.file.contains("page.tmd"))
-            .map(|d| d.code.to_string())
+            .map(family)
             .collect();
-        let mut buffer_codes: Vec<String> = buffer_diagnostics(&page, &src)
-            .into_iter()
-            .map(|d| d.code.to_string())
-            .collect();
+        let mut buffer_codes: Vec<String> =
+            buffer_diagnostics(&page, &src).iter().map(family).collect();
         site_codes.sort();
         site_codes.dedup();
         buffer_codes.sort();
@@ -1522,9 +964,7 @@ mod tests {
     #[test]
     fn to_lsp_uses_a_precise_span_when_columned() {
         let d = super::Diagnostic {
-            code: "TAL-FM-KEY",
-            docs_url: "https://example.test/DIAGNOSTICS.md#tal-fm-key".to_string(),
-            severity: "warning",
+            severity: Severity::Warning,
             file: "buf.tmd".to_string(),
             line: Some(2),
             col: Some(1),
@@ -1538,15 +978,12 @@ mod tests {
         assert_eq!(lsp.range.start, lsp_types::Position::new(1, 0));
         assert_eq!(lsp.range.end, lsp_types::Position::new(1, 6));
         assert_eq!(lsp.severity, Some(lsp_types::DiagnosticSeverity::WARNING));
-        assert_eq!(
-            lsp.code,
-            Some(lsp_types::NumberOrString::String("TAL-FM-KEY".to_string()))
-        );
         assert_eq!(lsp.source.as_deref(), Some("taliesin"));
-        assert_eq!(
-            lsp.code_description.map(|c| c.href.to_string()),
-            Some("https://example.test/DIAGNOSTICS.md#tal-fm-key".to_string())
-        );
+        // The `TAL-*` code and its `code_description` link went with the catalogue on
+        // 2026-08-08: a code an editor shows with nothing to look it up in is a token the
+        // author cannot act on, and the link opened a browser out of the editor.
+        assert!(lsp.code.is_none(), "no code: {lsp:?}");
+        assert!(lsp.code_description.is_none(), "no doc link: {lsp:?}");
     }
 
     #[test]
@@ -1556,9 +993,7 @@ mod tests {
         // emitted column by one extra unit. `😀tittle`: `tittle` is char cols [2,8), which is
         // UTF-16 cols [2,8) (0-based) once the emoji's second unit is counted.
         let d = super::Diagnostic {
-            code: "TAL-FM-KEY",
-            docs_url: "https://example.test/x".to_string(),
-            severity: "warning",
+            severity: Severity::Warning,
             file: "buf.tmd".to_string(),
             line: Some(1),
             col: Some(2),
@@ -1577,9 +1012,7 @@ mod tests {
         // `😀 hello` is 7 scalars but 8 UTF-16 units; the uncolumned whole-line span must end
         // at the UTF-16 length, not the char count.
         let d = super::Diagnostic {
-            code: "TAL-XREF-UNDEF",
-            docs_url: "https://example.test/x".to_string(),
-            severity: "error",
+            severity: Severity::Error,
             file: "buf.tmd".to_string(),
             line: Some(1),
             col: None,
@@ -1595,9 +1028,7 @@ mod tests {
     #[test]
     fn to_lsp_carries_a_precise_fix_on_data_but_never_an_imprecise_one() {
         let base = super::Diagnostic {
-            code: "TAL-FM-KEY",
-            docs_url: "https://example.test/x".to_string(),
-            severity: "warning",
+            severity: Severity::Warning,
             file: "buf.tmd".to_string(),
             line: Some(2),
             col: Some(1),
@@ -1632,9 +1063,7 @@ mod tests {
     #[test]
     fn to_lsp_spans_the_whole_line_when_uncolumned() {
         let d = super::Diagnostic {
-            code: "TAL-XREF-UNDEF",
-            docs_url: "https://example.test/x".to_string(),
-            severity: "error",
+            severity: Severity::Error,
             file: "buf.tmd".to_string(),
             line: Some(3),
             col: None,
@@ -1656,93 +1085,28 @@ mod tests {
         d
     }
 
+    /// The human line carries the severity word and the JSON carries the severity field, and
+    /// neither carries a `TAL-*` code or a `docs_url` any more: the catalogue those pointed
+    /// into went on 2026-08-08, and a code with nothing to look it up in is a token an author
+    /// cannot act on.
     #[test]
-    fn human_surfaces_code_and_severity_while_json_alone_carries_the_docs_url() {
-        use taliesin_core::diagnostics::codes;
-        // A broken xref -> TAL-XREF-UNDEF (severity error); its JSON diagnostic carries a
-        // docs_url anchored by the lowercased code. PL1: the human line now surfaces the
-        // severity word + the code so the reader can `--explain` it, but never the url (the
-        // code + footer are the human path back to the catalog; the url stays JSON-only).
-        let d = Diagnostic::new(
-            "a.tmd".into(),
-            Some(2),
-            "broken cross-reference: @fig-x".into(),
+    fn severity_reaches_both_channels_and_no_code_or_url_survives() {
+        let d = diag_from(
+            &taliesin_core::render::Warning::new("broken cross-reference: @fig-x")
+                .at(Some("a.tmd".into()), 2)
+                .severity(taliesin_core::Severity::Error),
+            "a.tmd",
         );
-        let json = format_json(std::slice::from_ref(&d), &[]);
+        let json = diagnostics_json(std::slice::from_ref(&d));
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-        let url = parsed["diagnostics"][0]["docs_url"].as_str().unwrap_or("");
-        assert!(
-            url.starts_with(codes::DIAGNOSTICS_DOC_URL),
-            "docs_url present: {json}"
-        );
-        assert!(
-            url.ends_with("#tal-xref-undef"),
-            "anchored by lowercased code: {json}"
-        );
+        let one = &parsed["diagnostics"][0];
+        assert_eq!(one["severity"], "error", "{json}");
+        assert!(one.get("code").is_none(), "no code key: {json}");
+        assert!(one.get("docs_url").is_none(), "no docs_url key: {json}");
         let human = format_human(std::slice::from_ref(&d), false, None);
-        assert!(!human.contains("http"), "no url in human output: {human}");
-        assert!(
-            human.contains("error[TAL-XREF-UNDEF]"),
-            "human surfaces severity + code: {human}"
-        );
-    }
-
-    #[test]
-    fn explain_known_code_human_has_cause_fix_and_url() {
-        let text = explain_output(Some("TAL-XREF-UNREF"), "human").expect("known code");
-        assert!(text.starts_with("TAL-XREF-UNREF:"), "titled block: {text}");
-        assert!(text.contains("To fix:"), "has a fix: {text}");
-        assert!(
-            text.contains("Learn more: https://github.com/AJBogo9/taliesin"),
-            "has a docs url: {text}"
-        );
-    }
-
-    #[test]
-    fn explain_known_code_json_is_structured_and_case_insensitive() {
-        // Lowercase input resolves; the JSON echoes the canonical uppercase code + the fields.
-        let text = explain_output(Some("tal-fm-key"), "json").expect("known code");
-        let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
-        assert_eq!(v["code"], "TAL-FM-KEY");
-        assert!(v["title"].is_string() && v["cause"].is_string() && v["fix"].is_string());
-        assert!(
-            v["docs_url"]
-                .as_str()
-                .unwrap_or("")
-                .ends_with("#tal-fm-key"),
-            "docs_url anchored: {text}"
-        );
-    }
-
-    #[test]
-    fn explain_unknown_code_is_err_with_did_you_mean() {
-        // A near-miss of a real code draws a suggestion; the message names the bad input.
-        let err = explain_output(Some("TAL-XREF-UNDEFF"), "human").expect_err("unknown");
-        assert!(err.contains("TAL-XREF-UNDEFF"), "names the bad code: {err}");
-        assert!(err.contains("did you mean"), "suggests a near-miss: {err}");
-        assert!(err.contains("--explain"), "points at the index: {err}");
-    }
-
-    #[test]
-    fn explain_no_code_lists_every_code() {
-        use taliesin_core::diagnostics::codes;
-        // Human index: one line per code, each naming the code.
-        let human = explain_output(None, "human").expect("index");
-        for c in codes::all_codes() {
-            assert!(human.contains(c), "index lists {c}: {human}");
-        }
-        // JSON index: an array of {code,title,docs_url} of the full length.
-        let json = explain_output(None, "json").expect("index");
-        let v: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-        let arr = v["codes"].as_array().expect("codes array");
         assert_eq!(
-            arr.len(),
-            codes::all_codes().len(),
-            "every code listed: {json}"
-        );
-        assert!(
-            arr[0]["docs_url"].is_string(),
-            "each carries a docs_url: {json}"
+            human, "a.tmd:2: error: broken cross-reference: @fig-x\n",
+            "the greppable `file:line: severity: message` shape, with no bracket"
         );
     }
 
@@ -1793,7 +1157,7 @@ mod tests {
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
         let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";
-        let diags = collect_file_diagnostics_in_site(&f, buffer, None, None).expect("ok");
+        let diags = collect_file_diagnostics_in_site(&f, buffer, None).expect("ok");
         assert!(
             diags.iter().any(|d| d.message.contains("titel")),
             "the buffer's front-matter typo must be linted, not the clean disk file: {diags:?}"
@@ -2015,12 +1379,12 @@ mod tests {
 
     #[test]
     fn collect_diagnostics_surfaces_a11y_rules() {
-        // One doc tripping each new static a11y rule: a raw `<img>` with no alt, an authored
-        // `##`->`####` heading skip, and an empty (icon-only) link. `check` must surface them
-        // all, located, while leaving an `alt`-bearing image and a single-level heading step
-        // alone. The doc has a title block, so heading demotion (#11) renders `##`/`####` as
-        // h3/h5: the skip is preserved (difference-invariant) and reported at the shipped levels.
-        let dir = tmp("check-a11y");
+        // One doc tripping each surviving static a11y rule: a raw `<img>` with no alt and an
+        // authored `##`->`####` heading skip. Both must be surfaced, located, while an
+        // `alt`-bearing image and a single-level heading step are left alone. The doc has a
+        // title block, so heading demotion renders `##`/`####` as h3/h5: the skip is preserved
+        // (difference-invariant) and reported at the shipped levels.
+        let dir = tmp("lint-a11y");
         let f = dir.join("doc.tmd");
         fs::write(
             &f,
@@ -2028,8 +1392,7 @@ mod tests {
              ## Section\n\n\
              <img src=\"raw.png\">\n\n\
              ![described](ok.png) and a [real link](page.html).\n\n\
-             #### Skips a level\n\n\
-             Here is [](#) an icon-only link.\n",
+             #### Skips a level\n",
         )
         .unwrap();
         let diags = collect_diagnostics(&f).expect("ok");
@@ -2039,8 +1402,7 @@ mod tests {
             has("heading level skips from h2 to h4"),
             "heading skip: {diags:?}"
         );
-        assert!(has("link has no accessible name"), "empty link: {diags:?}");
-        // The markdown image (auto-alt) and the text link must NOT be flagged.
+        // The markdown image (auto-alt) must NOT be flagged.
         assert_eq!(
             diags
                 .iter()
@@ -2049,19 +1411,10 @@ mod tests {
             1,
             "only the raw alt-less img: {diags:?}"
         );
-        assert_eq!(
-            diags
-                .iter()
-                .filter(|d| d.message.contains("link has no accessible name"))
-                .count(),
-            1,
-            "only the empty link: {diags:?}"
-        );
         assert!(
             diags
                 .iter()
-                .filter(|d| d.message.contains("has no accessible name")
-                    || d.message.contains("missing alt text")
+                .filter(|d| d.message.contains("missing alt text")
                     || d.message.contains("heading level skips"))
                 .all(|d| d.line.is_some() && d.file.contains("doc.tmd")),
             "a11y diagnostics located to file+line: {diags:?}"
@@ -2070,11 +1423,12 @@ mod tests {
     }
 
     #[test]
-    fn corpus_a11y_pin_doc_trips_each_rule_through_check() {
+    fn corpus_a11y_pin_doc_trips_each_rule_through_the_front_door() {
         // The corpus pin (`corpus/diagnostics/a11y.tmd`, exempt from the no-false-positive
-        // guard) must fire every a11y rule through the real `collect_diagnostics` flow.
+        // guard) must fire every surviving a11y rule through the real `collect_diagnostics`
+        // flow, not only through a unit test over hand-written HTML.
         let doc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/a11y.tmd");
-        let diags = collect_diagnostics(&doc).expect("pin doc checks");
+        let diags = collect_diagnostics(&doc).expect("pin doc lints");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
         assert!(
@@ -2085,22 +1439,11 @@ mod tests {
             has("heading level skips from h2 to h4"),
             "heading skip: {diags:?}"
         );
-        assert!(has("link has no accessible name"), "empty link: {diags:?}");
+        // The accessible-name rules went on 2026-08-08, so the pin must not still be
+        // reporting them: a leftover finding here would mean a leftover emitter.
         assert!(
-            has("button has no accessible name"),
-            "empty button: {diags:?}"
-        );
-        // The `[role=button|link|tab]` path fires the same rule on a `<div role="button">` /
-        // `<span role="link">` with no name — so BOTH the native and the role-based elements
-        // are flagged (count >= 2 each). Pins `role_interactives` end-to-end through the doc.
-        let count = |needle: &str| diags.iter().filter(|d| d.message.contains(needle)).count();
-        assert!(
-            count("button has no accessible name") >= 2,
-            "native <button> + <div role=button> should both flag: {diags:?}"
-        );
-        assert!(
-            count("link has no accessible name") >= 2,
-            "native <a> + <span role=link> should both flag: {diags:?}"
+            !has("has no accessible name") && !has("disagrees with its visible text"),
+            "the accessible-name family is gone: {diags:?}"
         );
     }
 
@@ -2197,141 +1540,44 @@ mod tests {
     }
 
     #[test]
-    fn format_json_emits_diagnostics_and_environment_object() {
-        // The JSON top level is `{ diagnostics: [...], environment: [...] }` (ruled
-        // 2026-07-12): diagnostics keep their file/line/message shape under a named key,
-        // and the informational environment probe rides alongside.
-        let diags = vec![
-            Diagnostic::new("a.tmd".into(), Some(3), "weasel word `very`".into()),
-            Diagnostic::new("b.tmd".into(), None, "needs a \"name\"".into()),
-        ];
-        let json = format_json(&diags, &[]);
-        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-        assert_eq!(parsed["diagnostics"][0]["file"], "a.tmd");
-        assert_eq!(parsed["diagnostics"][0]["line"], 3);
-        // Agent-grade fields ride alongside the file/line/message.
-        assert!(
-            parsed["diagnostics"][0]["code"]
-                .as_str()
-                .is_some_and(|c| c.starts_with("TAL-")),
-            "each diagnostic carries a stable code: {json}"
-        );
-        assert!(
-            matches!(
-                parsed["diagnostics"][0]["severity"].as_str(),
-                Some("error" | "warning" | "suggestion")
-            ),
-            "each diagnostic carries a severity: {json}"
-        );
-        assert_eq!(parsed["diagnostics"][1]["line"], serde_json::Value::Null);
-        assert_eq!(parsed["diagnostics"][1]["message"], "needs a \"name\"");
-        assert!(
-            parsed["environment"].is_array(),
-            "environment rides alongside diagnostics as an array"
-        );
-    }
-
-    /// Run the real two-step the CLI runs: the diagnostics walk fills `CheckScope`, then the
-    /// Environment report reads it. Going through `collect_diagnostics` rather than calling
-    /// `collect_environment` with a hand-built scope is the point — it pins the *handoff*,
-    /// which is where item 122's whole cost argument lives. A walk that forgot to record its
-    /// languages would leave these green if the scope were faked here.
-    fn environment_for(path: &Path, policy: ProbePolicy) -> Vec<EnvEntry> {
-        let mut scope = CheckScope::default();
-        // `super::` on purpose: this module has a one-arg `collect_diagnostics` shim that
-        // would shadow the real walk, and the real walk is exactly what fills the scope.
-        super::collect_diagnostics(path, &mut scope).expect("target lints");
-        collect_environment(path, &scope, policy)
-    }
-
-    #[test]
-    fn environment_is_empty_for_a_doc_with_no_code_cells() {
-        let dir = tmp("env-nocells");
-        let f = dir.join("x.tmd");
-        std::fs::write(&f, "# Title\n\nJust prose, no cells.\n").unwrap();
-        assert!(
-            environment_for(&f, ProbePolicy::Always).is_empty(),
-            "a doc with no python/r cells reports no Environment entries"
-        );
-    }
-
-    #[test]
-    fn environment_lists_python_for_a_python_cell_doc() {
-        let dir = tmp("env-pycell");
-        let f = dir.join("x.tmd");
-        std::fs::write(&f, "# T\n\n```{python}\nprint(1)\n```\n").unwrap();
-        let env = environment_for(&f, ProbePolicy::Always);
-        assert_eq!(
-            env.len(),
-            1,
-            "one entry for the single python language used"
-        );
-        assert_eq!(env[0].lang, "python");
-        // Path + provenance are populated; kernel_pkg_ok reflects the box (may be false
-        // in CI). The section is informational, so we assert shape, not availability.
-        assert!(!env[0].path.is_empty());
-    }
-
-    #[test]
-    fn never_policy_resolves_the_interpreter_and_spawns_nothing() {
-        // Item 122's core contract at unit level: the entry is fully populated with WHICH
-        // interpreter would run (path + provenance) and carries no verdict about whether it
-        // works. `runs`/`kernel_pkg_ok` staying `None` is what keeps `check` kernel-free.
-        let dir = tmp("env-never");
-        let f = dir.join("x.tmd");
-        std::fs::write(&f, "# T\n\n```{python}\nprint(1)\n```\n").unwrap();
-        let env = environment_for(&f, ProbePolicy::Never);
-        assert_eq!(env.len(), 1);
-        assert!(!env[0].path.is_empty(), "the interpreter is still named");
-        assert_eq!(
-            env[0].runs, None,
-            "nothing was spawned, so nothing is known"
-        );
-        assert_eq!(env[0].kernel_pkg_ok, None);
-        assert!(
-            env[0].not_probed.is_some(),
-            "and the report says so out loud"
-        );
-    }
-
-    #[test]
     fn format_human_lists_located_lines() {
-        // Unmatched messages classify to (TAL-CHECK, error). PL1: the `file:line:` linter
-        // prefix stays first, with `severity[CODE]:` before the message (located + unlocated).
+        // The `file:line:` linter prefix stays first, with the severity word before the
+        // message (located and unlocated alike). No `[CODE]` bracket: the catalogue a code
+        // pointed into went on 2026-08-08.
         let diags = vec![
             Diagnostic::new("a.tmd".into(), Some(3), "m1".into()),
             Diagnostic::new("b.tmd".into(), None, "m2".into()),
         ];
         let text = format_human(&diags, false, None);
         assert!(
-            text.contains("a.tmd:3: error[TAL-CHECK]: m1"),
-            "located line carries severity + code: {text}"
+            text.contains("a.tmd:3: error: m1"),
+            "located line carries the severity word: {text}"
         );
         assert!(
-            text.contains("b.tmd: error[TAL-CHECK]: m2"),
-            "unlocated line carries severity + code: {text}"
+            text.contains("b.tmd: error: m2"),
+            "unlocated line carries the severity word: {text}"
         );
     }
 
     #[test]
-    fn a_site_check_prints_paths_relative_to_where_the_command_ran() {
-        // A site's diagnostics are located against the PROJECT ROOT. Printed bare, they name
-        // nothing: `taliesin check docs/guide` from the repo said `sub/page.tmd:5:`, which no
-        // terminal can open and which an editor's problem-matcher resolves onto a file that
-        // does not exist. Both the located and the unlocated line carry the prefix — the
-        // unlocated form is how a `_site.yml` finding is reported, and dropping the prefix
-        // from just that one is the shape this asserts against.
+    fn a_project_lint_prints_paths_relative_to_where_the_command_ran() {
+        // A project's diagnostics are located against the PROJECT ROOT. Printed bare, they name
+        // nothing: run from the repo, `docs/guide` said `sub/page.tmd:5:`, which no terminal
+        // can open and which an editor's problem-matcher resolves onto a file that does not
+        // exist. Both the located and the unlocated line carry the prefix: the unlocated form
+        // is how a `_site.yml` finding is reported, and dropping the prefix from just that one
+        // is the shape this asserts against.
         let diags = vec![
             Diagnostic::new("sub/page.tmd".into(), Some(5), "m1".into()),
             Diagnostic::new("_site.yml".into(), None, "m2".into()),
         ];
         let text = format_human(&diags, false, Some(Path::new("docs/guide")));
         assert!(
-            text.contains("docs/guide/sub/page.tmd:5: error[TAL-CHECK]: m1"),
+            text.contains("docs/guide/sub/page.tmd:5: error: m1"),
             "located line names the path the reader would type: {text}"
         );
         assert!(
-            text.contains("docs/guide/_site.yml: error[TAL-CHECK]: m2"),
+            text.contains("docs/guide/_site.yml: error: m2"),
             "unlocated line is re-rooted too: {text}"
         );
     }
@@ -2398,74 +1644,33 @@ mod tests {
             !plain.contains('\x1b'),
             "plain output must carry no ANSI: {plain:?}"
         );
-        assert!(plain.contains("a.tmd:3: error[TAL-CHECK]: m1"));
+        assert!(plain.contains("a.tmd:3: error: m1"));
         let colored = format_human(&diags, true, None);
         assert!(
             colored.contains("\x1b[31merror\x1b[0m"),
             "severity must be painted: {colored:?}"
         );
-        // Only the severity word is wrapped — the file:line prefix and code stay bare.
-        assert!(colored.contains("a.tmd:3: \x1b[31merror\x1b[0m[TAL-CHECK]: m1"));
-    }
-
-    /// The scope note exists so "no problems found" cannot be read as "nothing was
-    /// skipped". Nothing held back means no line at all — a check that covered everything
-    /// should not spend a line saying so.
-    #[test]
-    fn the_scope_note_names_held_back_drafts_and_is_silent_when_there_are_none() {
-        assert_eq!(scope_note(&[]), None, "nothing skipped ⇒ no line");
-
-        let one = scope_note(&["wip.tmd".to_string()]).expect("a draft was held back");
-        assert!(one.starts_with("not checked: 1 draft ("), "singular: {one}");
-        assert!(one.contains("wip.tmd"), "names the file: {one}");
-        // The *reason* is the load-bearing half: without it the line reads as a defect
-        // report rather than a deliberate exclusion the author chose with `draft: true`.
-        assert!(one.contains("not published"), "states why: {one}");
-
-        let two = scope_note(&["a.tmd".to_string(), "posts/b/index.tmd".to_string()])
-            .expect("two drafts were held back");
-        assert!(two.starts_with("not checked: 2 drafts ("), "plural: {two}");
-        assert!(
-            two.contains("a.tmd") && two.contains("posts/b/index.tmd"),
-            "names every file, not just a count: {two}"
-        );
+        // Only the severity word is wrapped; the file:line prefix stays bare.
+        assert!(colored.contains("a.tmd:3: \x1b[31merror\x1b[0m: m1"));
     }
 
     #[test]
-    fn human_summary_splits_by_severity_and_points_at_explain() {
+    fn human_summary_splits_by_severity() {
         // Mixed set: a broken xref (error) + an unknown front-matter key (warning). The summary
-        // keeps the leading `N problem(s)` token, breaks it out per severity, and prints the
-        // `--explain` footer so the DX6 catalog is reachable from human output.
-        let diags = vec![
-            Diagnostic::new(
-                "a.tmd".into(),
-                Some(2),
-                "broken cross-reference: @fig-x".into(),
-            ),
-            Diagnostic::new(
-                "a.tmd".into(),
-                Some(1),
-                "unknown front-matter key: pyton".into(),
-            ),
-        ];
+        // keeps the leading `N problem(s)` token a grep matches, and breaks it out per severity.
+        let diags = vec![error_diag(), warning_diag()];
         let s = human_summary(&diags);
         assert!(s.contains("2 problems"), "leading count kept: {s}");
         assert!(
             s.contains("(1 error, 1 warning)"),
             "per-severity breakdown: {s}"
         );
-        assert!(
-            s.contains("taliesin check --explain <CODE>"),
-            "teaches --explain: {s}"
-        );
-        // A single warning pluralizes correctly and still shows the footer.
-        let one = human_summary(&[Diagnostic::new(
-            "a.tmd".into(),
-            Some(1),
-            "unknown front-matter key: pyton".into(),
-        )]);
+        // The `--explain <CODE>` footer went with the code catalogue on 2026-08-08: there is
+        // nothing to look a code up in, so pointing at one would be a dead end.
+        assert!(!s.contains("--explain"), "no dead footer: {s}");
+        // A single warning pluralizes correctly.
+        let one = human_summary(std::slice::from_ref(&diags[1]));
         assert!(one.contains("1 problem (1 warning)"), "singular: {one}");
-        // No diagnostics: the clean line, and NO --explain footer (nothing to explain).
         let none = human_summary(&[]);
         assert_eq!(none, "no problems found\n");
     }
@@ -2513,68 +1718,55 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    // --- DX18 exit-gating ---
+    // --- the exit gate ---
 
+    /// A diagnostic at each severity, built the way the validators build them: severity is a
+    /// field on the `Warning` now, not a classification of its message.
+    fn at(severity: taliesin_core::Severity, message: &str) -> Diagnostic {
+        diag_from(
+            &taliesin_core::render::Warning::new(message.to_string())
+                .at(Some("a.tmd".into()), 1)
+                .severity(severity),
+            "a.tmd",
+        )
+    }
     fn error_diag() -> Diagnostic {
-        // Classifies as TAL-XREF-UNDEF / ERROR.
-        Diagnostic::new(
-            "a.tmd".into(),
-            Some(1),
-            "broken cross-reference: @fig-x".into(),
+        at(
+            taliesin_core::Severity::Error,
+            "broken cross-reference: @fig-x",
         )
     }
     fn warning_diag() -> Diagnostic {
-        // Classifies as TAL-FM-KEY / WARNING.
-        Diagnostic::new(
-            "a.tmd".into(),
-            Some(1),
-            "unknown front-matter key `x`".into(),
+        at(
+            taliesin_core::Severity::Warning,
+            "unknown front-matter key `x`",
         )
     }
-
     fn suggestion_diag() -> Diagnostic {
-        // Classifies as TAL-PROSE-WEASEL / SUGGESTION.
-        Diagnostic::new(
-            "a.tmd".into(),
-            Some(1),
-            "weasel word `simply` (consider cutting)".into(),
+        at(
+            taliesin_core::Severity::Suggestion,
+            "bibliography entry `@x` is declared but never cited",
         )
     }
 
-    #[test]
-    fn errors_only_drops_warnings_but_keeps_the_default_inclusive() {
-        let both = vec![error_diag(), warning_diag()];
-        // Default: every diagnostic is reported + gated on.
-        assert_eq!(at_severity_floor(both.clone(), Floor::Warnings).len(), 2);
-        // --errors-only: warnings vanish from the reported (and thus gated) set.
-        let errs = at_severity_floor(both, Floor::Errors);
-        assert_eq!(errs.len(), 1);
-        assert_eq!(errs[0].severity, taliesin_core::diagnostics::codes::ERROR);
-        // A warning-only doc becomes empty under --errors-only (so the run passes).
-        assert!(at_severity_floor(vec![warning_diag()], Floor::Errors).is_empty());
-    }
-
+    /// Advice is always printed and only gates when the run asks. That is the whole point of
+    /// the third severity: a rule whose fix is "consider rewording" must not turn a green CI
+    /// gate red, or the only way to stay green is to leave the rule off.
     #[test]
     fn advice_is_always_printed_and_only_gates_under_strict() {
         let all = vec![error_diag(), warning_diag(), suggestion_diag()];
-        // Printed: the default and --strict both show everything. Advice you cannot see is
-        // advice you cannot act on, so the third state changes the GATE, not the output.
-        assert_eq!(at_severity_floor(all.clone(), Floor::Warnings).len(), 3);
-        assert_eq!(at_severity_floor(all.clone(), Floor::All).len(), 3);
-        // Gated: default = error + warning; --strict = all three; --errors-only = the error.
-        assert_eq!(gating(&all, Floor::Warnings).count(), 2);
-        assert_eq!(gating(&all, Floor::All).count(), 3);
-        assert_eq!(gating(&all, Floor::Errors).count(), 1);
+        // Printed: `format_human` shows everything at either setting, because advice you cannot
+        // see is advice you cannot act on, so `--strict` changes the GATE, not the output.
+        assert_eq!(format_human(&all, false, None).lines().count(), 3);
+        assert_eq!(gating(&all, false), 2, "default: the error and the warning");
+        assert_eq!(gating(&all, true), 3, "--strict: the advice too");
     }
 
     #[test]
     fn an_advice_only_document_passes_the_default_gate_but_fails_strict() {
-        // The whole point of the third state: a rule that suggests a reword must not turn a
-        // green CI gate red, or the only way to stay green is to leave the rule off.
         let advice = vec![suggestion_diag(), suggestion_diag()];
-        assert_eq!(at_severity_floor(advice.clone(), Floor::Warnings).len(), 2);
-        assert_eq!(gating(&advice, Floor::Warnings).count(), 0);
-        assert_eq!(gating(&advice, Floor::All).count(), 2);
+        assert_eq!(gating(&advice, false), 0);
+        assert_eq!(gating(&advice, true), 2);
         // …and the summary says so rather than calling advice a "problem" beside an exit 0.
         let s = human_summary(&advice);
         assert!(s.contains("2 suggestions"), "counts the advice: {s}");
@@ -2585,77 +1777,32 @@ mod tests {
         assert!(!s.contains("problem"), "advice is not a problem: {s}");
     }
 
+    /// Every direct `Diagnostic::new` call site is a hard failure the tool found outside a
+    /// validator (an unreadable path, malformed YAML, a cell that raised), so the constructor
+    /// is an ERROR and gates by default. Until 2026-08-08 that came from an unclassified
+    /// message falling through to `(GENERIC, ERROR)`; it is explicit now, and this pins it,
+    /// because a constructor that defaulted to `Warning` would silently stop failing a
+    /// `--check-only` run on a page it could not read.
     #[test]
-    fn an_unclassified_severity_still_gates() {
-        // A diagnostic nobody catalogued is not something to silently stop failing on.
-        use taliesin_core::diagnostics::codes;
-        assert!(codes::gates_at("nonsense-severity", codes::WARNING));
-        assert_eq!(
-            codes::severity_rank("nonsense-severity"),
-            codes::severity_rank(codes::ERROR)
-        );
+    fn a_hard_failure_gates_without_being_classified() {
+        let d = Diagnostic::new("a.tmd".into(), None, "cannot read a.tmd".into());
+        assert_eq!(d.severity, taliesin_core::Severity::Error);
+        assert_eq!(gating(std::slice::from_ref(&d), false), 1);
     }
 
     #[test]
     fn build_strict_counts_defects_and_ignores_advice() {
+        use taliesin_core::Severity;
         use taliesin_core::render::Warning;
         let ws = vec![
-            Warning::new("broken cross-reference: @fig-x".to_string()),
-            Warning::new("weasel word `simply` (consider cutting)".to_string()),
-            Warning::new("repeated word `the`".to_string()),
+            Warning::new("broken cross-reference: @fig-x".to_string()).severity(Severity::Error),
+            Warning::new("unknown front-matter key `x`".to_string()),
+            Warning::new("bibliography entry `@x` is declared but never cited".to_string())
+                .severity(Severity::Suggestion),
         ];
-        // `--strict` fails on the broken ref and nothing else: advice is logged by the
-        // build and never blocks a release.
-        assert_eq!(blocking(&ws), 1);
-        assert!(is_advice(&ws[1]) && is_advice(&ws[2]) && !is_advice(&ws[0]));
-    }
-
-    fn env_fixture(runs: bool, kernel_pkg_ok: bool) -> EnvEntry {
-        EnvEntry {
-            lang: "python",
-            path: "/usr/bin/python3".into(),
-            provenance: "default".into(),
-            runs: Some(runs),
-            kernel_pkg: "ipykernel",
-            kernel_pkg_ok: Some(kernel_pkg_ok),
-            version: None,
-            error: None,
-            not_probed: None,
-            venv_search: None,
-        }
-    }
-
-    /// An entry that was resolved but never spawned (item 81): the project supplied the
-    /// interpreter and the user did not opt in.
-    fn env_fixture_unprobed() -> EnvEntry {
-        EnvEntry {
-            runs: None,
-            kernel_pkg_ok: None,
-            not_probed: Some("not probed: …".into()),
-            ..env_fixture(false, false)
-        }
-    }
-
-    #[test]
-    fn require_kernel_gate_is_off_by_default_and_needs_a_used_language() {
-        let ready = [env_fixture(true, true)];
-        let no_interp = [env_fixture(false, false)];
-        let no_pkg = [env_fixture(true, false)];
-        // Off by default: never gates, even with a broken kernel.
-        assert!(!kernel_gate_fails(&no_interp, false));
-        // On + everything ready: passes.
-        assert!(!kernel_gate_fails(&ready, true));
-        // On + a used language whose interpreter or kernel package is missing: fails.
-        assert!(kernel_gate_fails(&no_interp, true));
-        assert!(kernel_gate_fails(&no_pkg, true));
-        // On but no code cells (empty environment): nothing to require, so it passes.
-        assert!(!kernel_gate_fails(&[], true));
-        // An unprobed entry is "not confirmed ready", so the gate refuses rather than
-        // guessing (item 81). Unreachable in practice — `--require-kernel` is the opt-in
-        // that makes every entry probed — which is why it is asserted here instead.
-        assert!(kernel_gate_fails(&[env_fixture_unprobed()], true));
-        // …and it is not *degraded* either: nothing spawned it, so the human "kernels not
-        // ready" block must not claim the interpreter was missing.
-        assert!(!env_fixture_unprobed().known_not_ready());
+        // `--strict` fails on the broken ref and the unknown key, never on the advice: a
+        // shared `.bib` whose entries most pages leave alone would otherwise be unusable.
+        assert_eq!(blocking(&ws), 2);
+        assert!(is_advice(&ws[2]) && !is_advice(&ws[0]) && !is_advice(&ws[1]));
     }
 }

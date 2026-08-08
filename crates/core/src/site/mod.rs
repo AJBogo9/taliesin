@@ -18,7 +18,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::render::{self, Block, SiteCtx, Warning, block_heading_level, escape_attr as esc};
+use crate::render::{
+    self, Block, Severity, SiteCtx, Warning, block_heading_level, escape_attr as esc,
+};
 
 /// Whether discovery keeps `draft: true` pages (`Include`, the preview view) or drops
 /// them from the page set (`Exclude`, the published view: build/publish/check/map).
@@ -941,7 +943,8 @@ impl Site {
                     };
                     let w = Warning::new(format!(
                         "broken link: `{path}` resolves to `{target_url}`, which is no page in this site{hint}"
-                    ));
+                    ))
+                    .severity(Severity::Error);
                     out.push((
                         rel.clone(),
                         match line {
@@ -964,7 +967,8 @@ impl Site {
                 {
                     let w = Warning::new(format!(
                         "broken link anchor: `#{frag}` is no element id on `{target_url}`"
-                    ));
+                    ))
+                    .severity(Severity::Error);
                     out.push((
                         rel.clone(),
                         match line {
@@ -1390,10 +1394,13 @@ impl Site {
             if p.title.is_none() {
                 // A card needs a title to render, so a titleless post was silently
                 // dropped from the listing — surface it rather than lose the post.
-                warnings.push(Warning::new(format!(
-                    "`{}` has no `title:` and is omitted from the listing on `{}`",
-                    p.rel, host.rel
-                )));
+                warnings.push(
+                    Warning::new(format!(
+                        "`{}` has no `title:` and is omitted from the listing on `{}`",
+                        p.rel, host.rel
+                    ))
+                    .severity(Severity::Error),
+                );
                 continue;
             }
             items.push(p);

@@ -1,8 +1,8 @@
 //! `build`/`publish --format json` emit the build's static-lint diagnostics as
 //! `{diagnostics:[{code,severity,file,line,message,suggestion?}]}` to stdout (for an
-//! agent/CI), reusing `check`'s exact per-diagnostic shape so the two channels can't drift.
-//! The build set is a *superset* of `check`'s (it adds embed + cell-error outputs), so
-//! every diagnostic `check` reports must also appear in the build's JSON.
+//! agent/CI), reusing the lint's exact per-diagnostic shape so the two channels can't drift.
+//! The build set is a *superset* of the lint's (it adds cell-error outputs), so every
+//! diagnostic `build --check-only` reports must also appear in a writing build's JSON.
 
 use std::collections::HashSet;
 use std::fs;
@@ -42,7 +42,7 @@ fn messages(v: &serde_json::Value) -> HashSet<String> {
 #[test]
 fn single_doc_build_json_emits_structured_diagnostics() {
     let dir = tmp_dir("single");
-    // A dup heading id + a missing image: both static (kernel-free), in check's standalone set.
+    // A dup heading id + a missing image: both static (kernel-free), in the standalone set.
     let doc = dir.join("doc.tmd");
     fs::write(
         &doc,
@@ -61,15 +61,30 @@ fn single_doc_build_json_emits_structured_diagnostics() {
     let diags = build["diagnostics"].as_array().expect("array");
     assert!(!diags.is_empty(), "build reports diagnostics: {build}");
     for d in diags {
+        // Severity + file + message: the three fields an agent triages on. The `TAL-*` code
+        // and its `docs_url` were here until 2026-08-08; both went with the catalogue, so a
+        // consumer keying on `code` would break loudly rather than reading a stale token.
         assert!(
-            d["code"].as_str().is_some_and(|c| c.starts_with("TAL-")),
-            "each carries a code: {d}"
+            matches!(
+                d["severity"].as_str(),
+                Some("error" | "warning" | "suggestion")
+            ),
+            "each carries a severity: {d}"
         );
+        assert!(d["code"].is_null(), "no code survives the catalogue: {d}");
+        assert!(d["docs_url"].is_null(), "nor a docs_url: {d}");
         assert!(d["file"].as_str().is_some(), "each carries a file: {d}");
     }
 
-    // check's diagnostics for the same doc are a SUBSET of the build's (build is a superset).
-    let check = stdout_json(taliesin().arg("check").arg(&doc).args(["--format", "json"]));
+    // The lint's diagnostics for the same doc are a SUBSET of the build's (build is a
+    // superset: it also runs the cells).
+    let check =
+        stdout_json(
+            taliesin()
+                .arg("build")
+                .arg(&doc)
+                .args(["--check-only", "--format", "json"]),
+        );
     let (build_msgs, check_msgs) = (messages(&build), messages(&check));
     assert!(
         check_msgs.is_subset(&build_msgs),

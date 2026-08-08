@@ -6,7 +6,6 @@
 
 mod build;
 mod build_budget;
-mod check;
 mod cli;
 mod doctor;
 mod exec;
@@ -14,6 +13,7 @@ mod freeze;
 mod http1;
 mod interpreter;
 mod kernel;
+mod lint;
 mod log;
 mod lsp;
 mod lsp_cells;
@@ -77,7 +77,6 @@ fn main() -> ExitCode {
             runtime_dirs::sweep_stale_runtime_dirs();
             run_cmd::cmd_run(&args)
         }
-        Some("check") => check::cmd_check(&args),
         Some("doctor") => doctor::cmd_doctor(&args),
         Some("lsp") => lsp::cmd_lsp(&args),
         Some("init") => cli::cmd_init(&args),
@@ -118,7 +117,7 @@ fn main() -> ExitCode {
 
 /// Every subcommand name, for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "build", "run", "check", "doctor", "lsp", "init", "new", "preview", "help",
+    "build", "run", "doctor", "lsp", "init", "new", "preview", "help",
 ];
 
 /// Subcommands that used to exist, and the one line that says what replaced them.
@@ -155,7 +154,10 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
         "map",
         "nothing on the CLI; `taliesin lsp` answers the project outline in your editor",
     ),
-    ("features", "`check --format json` is the machine surface"),
+    (
+        "features",
+        "`build <dir> --check-only --format json` is the machine surface",
+    ),
     (
         "vocab",
         "`taliesin lsp` serves the same vocabulary as completions",
@@ -164,11 +166,19 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
         "schema",
         "nothing on the CLI; the VS Code companion bundles the `_site.yml` schema",
     ),
-    ("mcp", "`check --format json`, run from your agent"),
+    (
+        "mcp",
+        "`build <dir> --check-only --format json`, run from your agent",
+    ),
     (
         "publish",
         "`build <dir> --out <dir>` writes a plain folder any static host serves \
          (Netlify, GitHub Pages, Cloudflare Pages, rsync)",
+    ),
+    (
+        "check",
+        "`build <file|dir> --check-only` lints without writing, and takes `--strict` \
+         and `--format json` the same way",
     ),
     (
         "pdf",
@@ -201,9 +211,9 @@ fn unknown_command_message(other: &str) -> String {
 /// already worked changes. Candidates are [`COMMANDS`], so a retired verb is never the
 /// answer here either (`serve-site` must not resolve to the `serve` that was cut).
 ///
-/// Ambiguity yields nothing rather than a coin flip: `b` opens `build` alone today, but `c`
-/// opened both `check` and the since-retired `completions`, and picking one would have taught
-/// a rule that is not real.
+/// Ambiguity yields nothing rather than a coin flip: `b` opens `build` alone today, but `l`
+/// opens `lsp` alone only because `lint` is a flag rather than a verb, and picking a winner
+/// when two do match would teach a rule that is not real.
 fn extended_command(other: &str) -> Option<&'static str> {
     if other.len() < 2 {
         return None;
@@ -264,21 +274,19 @@ Preview & build
                              --no-exec renders code cells as source,
                              kernel and {js} alike, but does not strip raw
                              HTML: see `Documents you did not write`)
-  build  <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]
+  build  <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]
                              render a self-contained HTML file (a dir builds the
                              whole SITE to _site/); default <name>.html beside
                              the source; --out <dir> writes a portable folder;
                              --stdout writes the page to stdout instead of a file;
-                             --strict exits non-zero on a cell error or located
-                             warning; --bare emits zero-JS, CSS-only single-doc
+                             --check-only lints and writes nothing (the
+                             pre-publish gate); --strict exits non-zero on a
+                             cell error or located warning; --bare emits zero-JS, CSS-only single-doc
                              HTML; --jobs <N> caps parallel page renders (site
                              build); --no-exec renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
 
 Inspect
-  check <file|dir> [--format human|json] [--errors-only|--strict] [--require-kernel] [--explain <CODE>]
-                             list located diagnostics; exits non-zero if any
-                             (--explain <CODE> prints a diagnostic code's cause + fix)
   doctor [dir] [--format human|json]  audit the environment for running code cells
                              (interpreters, ipykernel/IRkernel, active conda/venv)
 
@@ -366,7 +374,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin run analysis.tmd --interrupt\n"
         }
         "build" => {
-            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
+            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only]\n\
+             \x20                            [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -376,7 +385,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --stdout     write the page to stdout instead of to a file (single\n\
              \x20              document only). With --no-exec this is the one-shot,\n\
              \x20              kernel-free HTML dump the `render` verb used to be\n\
-             \x20 --strict     exit non-zero on a cell error or located warning (CI gate)\n\
+             \x20 --check-only lint and write NOTHING: render in memory, print every located\n\
+             \x20              diagnostic, exit non-zero if any of them gates. The pre-publish\n\
+             \x20              gate. Never starts a kernel, so --no-exec is implied, and it\n\
+             \x20              refuses --out/--stdout/--bare/--jobs (nothing is written)\n\
+             \x20 --strict     exit non-zero on a cell error or located warning (CI gate);\n\
+             \x20              with --check-only, also fail on advice (suggestions)\n\
              \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
              \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
@@ -388,47 +402,16 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example:\n\
              \x20 taliesin build post.tmd --strict\n\
              \x20 taliesin build . --jobs 4\n\
-             \x20 taliesin build post.tmd --stdout --no-exec > post.html\n"
-        }
-        "check" => {
-            "taliesin check <file.tmd | dir> [--format human|json] [--errors-only|--strict]\n\
-             \x20                            [--require-kernel] [--explain <CODE>]\n\
-             \n\
-             Render in memory and list every located diagnostic; exits non-zero if any\n\
-             ERROR or WARNING is found (a CI / pre-publish gate). A SUGGESTION is advice:\n\
-             it is printed and never fails the run unless you ask with --strict. Does NOT\n\
-             execute code cells.\n\
-             \n\
-             If the target contains {python}/{r} cells, an Environment footer names the\n\
-             interpreter each language WOULD run on. It is not spawned, so the footer says\n\
-             nothing about whether it works -- ask `taliesin doctor` or --require-kernel.\n\
-             \n\
-             Flags:\n\
-             \x20 --format human   path:line: message lines to stderr (default). Each path is\n\
-             \x20                  rooted on the target as you typed it, so it opens from where\n\
-             \x20                  you are (`check docs/guide` -> `docs/guide/sub/page.tmd:5:`)\n\
-             \x20 --format json    {diagnostics:[{code,docs_url,severity,file,line,message,\n\
-             \x20                     suggestion?}], environment:[...]} object to stdout (jq).\n\
-             \x20                  `file` is relative to the TARGET, which the caller passed\n\
-             \x20 --errors-only    report + gate on errors only; warnings no longer fail\n\
-             \x20 --strict         also fail on suggestions (the strictest gate)\n\
-             \x20 --require-kernel also fail if a used language's Jupyter kernel isn't ready\n\
-             \x20                  (interpreter + ipykernel/IRkernel); off by default\n\
-             \x20 --explain <CODE> expand a diagnostic code (e.g. TAL-XREF-UNREF) into its\n\
-             \x20                  cause + canonical fix, rustc-style; bare lists every code.\n\
-             \x20                  Honours --format json. Needs no file.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin check . --format json | jq\n\
-             \x20 taliesin check src/ --errors-only --require-kernel\n\
-             \x20 taliesin check --explain TAL-FM-KEY\n"
+             \x20 taliesin build post.tmd --stdout --no-exec > post.html\n\
+             \x20 taliesin build docs/guide --check-only --strict\n\
+             \x20 taliesin build . --check-only --format json | jq\n"
         }
         "lsp" => {
             "taliesin lsp\n\
              \n\
              Run a local, offline LSP (Language Server Protocol) server over stdio so any\n\
              LSP editor (Neovim, Helix, Zed, VS Code) gets live .tmd diagnostics as you\n\
-             type — the same validators as `check`, on the unsaved buffer. Parse-only: no\n\
+             type — the same validators the build gate runs, on the unsaved buffer. Parse-only: no\n\
              kernel, no code execution, read-only (it never edits your source). JSON-RPC on\n\
              stdout, logs on stderr.\n\
              \n\
@@ -439,7 +422,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
             "taliesin new post <slug> [--dir <root>] [--draft] [--json]\n\
              \n\
              Scaffold one dated blog post that is correct on its first save: it renders, and\n\
-             `taliesin check` passes on it with no diagnostics. It lands in\n\
+             `build --check-only` passes on it with no diagnostics. It lands in\n\
              posts/<slug>/index.tmd, dated today. Refuses to overwrite an existing file.\n\
              \n\
              Flags:\n\
@@ -492,8 +475,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
 /// focused help.
 ///
 /// Not `lines().next()`: a synopsis too long for one line wraps onto an indented continuation,
-/// and reading only the first line silently truncated it. `check`'s wrapped continuation is
-/// where `--require-kernel`/`--explain` lived.
+/// and reading only the first line silently truncated it. The retired `check` verb's wrapped
+/// continuation is where two of its flags lived, and reading one line advertised neither.
 pub(crate) fn command_synopsis(cmd: &str) -> Option<String> {
     let help = subcommand_help(cmd)?;
     let joined = help
@@ -742,7 +725,7 @@ mod cli_microcopy_tests {
     /// looked at.
     #[test]
     fn help_verb_with_a_subcommand_resolves_to_that_subcommands_help() {
-        for cmd in ["build", "preview", "check"] {
+        for cmd in ["build", "preview", "run"] {
             assert!(
                 subcommand_help(cmd).is_some(),
                 "`help {cmd}` needs a focused page to resolve to"
@@ -910,9 +893,10 @@ mod cli_microcopy_tests {
     fn every_parsed_flag_is_documented_in_its_subcommand_help() {
         let lists = parser_flag_lists();
         // A scan that finds nothing would pass every assertion below it. The floor was 7
-        // until wave 4 cut `publish` and `pdf`, each of which owned one const.
+        // until wave 4 cut `publish` and `pdf`, each of which owned one const, and 6 until
+        // wave 9 retired `check` and folded its gate into `build --check-only`.
         assert!(
-            lists.len() >= 6,
+            lists.len() >= 5,
             "the flag-const scan collected only {} lists; the declaration shape moved",
             lists.len()
         );
@@ -941,7 +925,8 @@ mod cli_microcopy_tests {
     /// No subcommand hand-writes its missing-positional `usage:` line: every one derives from
     /// the `--help` synopsis via [`usage_line`], so the two cannot drift. They already had,
     /// in both directions — the hand-written `preview` line advertised a `--port` its help
-    /// omitted, while the hand-written `check` line dropped five flags its help documented.
+    /// omitted, while the retired `check` verb's hand-written line dropped five flags its own
+    /// help documented.
     #[test]
     fn no_subcommand_hand_writes_its_own_usage_line() {
         // Assembled by `concat!`, so this test's own needle does not appear contiguously in
@@ -1082,19 +1067,25 @@ mod cli_microcopy_tests {
             "the derived `build` usage synopsis must carry --format json"
         );
         // A synopsis too long for one line wraps onto an indented continuation, and reading
-        // only the first line dropped it: `check`'s `--require-kernel`/`--explain` live
-        // there, so `check` with no path advertised two of its flags.
-        let check_synopsis = command_synopsis("check").expect("check synopsis");
-        for flag in ["--errors-only", "--strict", "--require-kernel", "--explain"] {
+        // only the first line dropped it. `build` is where that lives now: its flags run onto
+        // a second line, so `--jobs`/`--no-exec`/`--format json` are only reachable by joining.
+        let build_synopsis = command_synopsis("build").expect("build synopsis");
+        for flag in [
+            "--check-only",
+            "--strict",
+            "--jobs",
+            "--no-exec",
+            "--format json",
+        ] {
             assert!(
-                check_synopsis.contains(flag),
-                "the derived `check` synopsis must carry {flag} from its wrapped continuation: \
-                 {check_synopsis}"
+                build_synopsis.contains(flag),
+                "the derived `build` synopsis must carry {flag} from its wrapped continuation: \
+                 {build_synopsis}"
             );
         }
         assert!(
-            !check_synopsis.contains('\n'),
-            "a synopsis is one line once joined: {check_synopsis}"
+            !build_synopsis.contains('\n'),
+            "a synopsis is one line once joined: {build_synopsis}"
         );
     }
 }

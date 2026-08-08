@@ -96,7 +96,7 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         // cross-page `@sec-` means editing chapter 3 changes chapter 12's answer.
         diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
             lsp_types::DiagnosticOptions {
-                identifier: Some(crate::check::LSP_SOURCE.to_string()),
+                identifier: Some(crate::lint::LSP_SOURCE.to_string()),
                 inter_file_dependencies: true,
                 workspace_diagnostics: true,
                 // The one operation here long enough to have a middle: linting every page of
@@ -1587,13 +1587,16 @@ fn project_refs(
     Some(serde_json::json!({ "root": scan.root.to_string_lossy(), "targets": targets }))
 }
 
-/// Hover: the token under the cursor, plus the `check --explain` body of any diagnostic that
-/// covers it.
+/// Hover: the token under the cursor, plus the message of any diagnostic that covers it.
 ///
 /// The two are merged rather than chosen between, because a hover is the one surface where
 /// both questions get asked at the same position — "what is `@fig-2`" and "why is it
-/// squiggled" — and answering only the first is what sent an author to the browser. The
-/// explanation is a *section under* the token's answer, never in place of it.
+/// squiggled". The diagnostic is a *section under* the token's answer, never in place of it.
+///
+/// The message is the whole explanation now. It used to be joined by a catalogued cause + fix
+/// for the diagnostic's `TAL-*` code, and both went with that catalogue on 2026-08-08: every
+/// message that has a mechanical fix already names it inline (a did-you-mean, or a removal note
+/// out of the retirement register), so the second body was mostly a restatement to keep true.
 fn resolve_hover(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     project: &mut crate::lsp_project::ProjectCache,
@@ -1610,16 +1613,38 @@ fn resolve_hover(
     // would put a whole-project walk on the pointer-move path.
     let empty = Vec::new();
     let diagnostics = published.get(uri).unwrap_or(&empty);
-    let explanations = crate::lsp_diag::explanations_at(diagnostics, pos);
-    if explanations.is_empty() {
+    let range = crate::lsp_diag::narrowest_range_at(diagnostics, pos);
+    // Innermost first, deduplicated on the text: a precise token span is a better answer than
+    // the whole-line squiggle it sits inside, and two providers can publish the same sentence.
+    let mut covering: Vec<&lsp_types::Diagnostic> = diagnostics
+        .iter()
+        .filter(|d| d.source.as_deref() == Some(crate::lint::LSP_SOURCE))
+        .filter(|d| d.range.start <= pos && pos <= d.range.end)
+        .collect();
+    covering.sort_by_key(|d| {
+        (
+            d.range.end.line - d.range.start.line,
+            d.range
+                .end
+                .character
+                .saturating_sub(d.range.start.character),
+        )
+    });
+    let mut messages: Vec<&str> = Vec::new();
+    for d in covering {
+        if !messages.contains(&d.message.as_str()) {
+            messages.push(&d.message);
+        }
+    }
+    if messages.is_empty() {
         return token;
     }
-    let body = explanations.join("\n\n---\n\n");
+    let body = messages.join("\n\n---\n\n");
     match token {
         Some(t) => {
             let head = match t.contents {
                 HoverContents::Markup(m) => m.value,
-                // Neither other variant is ever constructed below; keep the explanation
+                // Neither other variant is ever constructed below; keep the diagnostic
                 // rather than dropping it if that ever changes.
                 _ => String::new(),
             };
@@ -1638,7 +1663,7 @@ fn resolve_hover(
                 kind: MarkupKind::Markdown,
                 value: body,
             }),
-            range: crate::lsp_diag::narrowest_range_at(diagnostics, pos),
+            range,
         }),
     }
 }
@@ -1829,7 +1854,7 @@ fn resolve_code_actions(
     let mut actions = Vec::new();
     for diag in &params.context.diagnostics {
         // The same `source` `Diagnostic::to_lsp` stamps. Anything else is not ours to fix.
-        if diag.source.as_deref() != Some(crate::check::LSP_SOURCE) {
+        if diag.source.as_deref() != Some(crate::lint::LSP_SOURCE) {
             continue;
         }
         if !ranges_intersect(&diag.range, &params.range) {
@@ -2844,13 +2869,13 @@ mod tests {
         }
     }
 
-    /// A published diagnostic's stable `TAL-*` code, or "" when it carries none.
-    fn code_of(d: &lsp_types::Diagnostic) -> String {
-        match &d.code {
-            Some(lsp_types::NumberOrString::String(s)) => s.clone(),
-            Some(lsp_types::NumberOrString::Number(n)) => n.to_string(),
-            None => String::new(),
-        }
+    /// Whether any published diagnostic is a broken cross-page anchor. Matched on the message
+    /// opening, because a diagnostic carries no `code` since the `TAL-*` catalogue went on
+    /// 2026-08-08; this is the phrase `Site::validate_cross_page_links` writes.
+    fn has_broken_anchor(diags: &[lsp_types::Diagnostic]) -> bool {
+        diags
+            .iter()
+            .any(|d| d.message.starts_with("broken link anchor:"))
     }
 
     fn shutdown(client: &Connection) {
@@ -3724,14 +3749,14 @@ mod tests {
         let lines: Vec<&str> = crlf.split('\n').collect();
         // 1-based line 2 is the blank line between the heading and the prose: with the CR
         // counted it spanned one column of nothing.
-        let blank = crate::check::Diagnostic::new("d.tmd".into(), Some(2), "x".into());
+        let blank = crate::lint::Diagnostic::new("d.tmd".into(), Some(2), "x".into());
         assert_eq!(
             blank.to_lsp(&lines).range.end.character,
             0,
             "an empty CRLF line spans nothing, not one column"
         );
         // 1-based line 1 is the heading: it spans its visible text, not text + CR.
-        let on_heading = crate::check::Diagnostic::new("d.tmd".into(), Some(1), "x".into());
+        let on_heading = crate::lint::Diagnostic::new("d.tmd".into(), Some(1), "x".into());
         assert_eq!(
             on_heading.to_lsp(&lines).range.end.character,
             heading.chars().count() as u32,
@@ -3754,7 +3779,7 @@ mod tests {
         let uri = Url::parse("file:///tmp/tali-lsp-ca-scope.tmd").unwrap();
         let ours = |line: u32| lsp_types::Diagnostic {
             range: Range::new(Position::new(line, 0), Position::new(line, 5)),
-            source: Some(crate::check::LSP_SOURCE.to_string()),
+            source: Some(crate::lint::LSP_SOURCE.to_string()),
             message: "unknown front-matter key `titel`".to_string(),
             data: Some(serde_json::json!({ "replacement": "title" })),
             ..Default::default()
@@ -4485,12 +4510,11 @@ mod tests {
     // "the first entry that isn't this one") looks correct from the positive case alone — and
     // would invent documentation for a key that has none, which is worse than saying nothing.
     //
-    // What it *does* get is the other half of item 220: an unknown key is a `TAL-FM-KEY`
-    // diagnostic, and the diagnostic's cause + canonical fix are now in the hover rather than
-    // behind a link out of the editor. That is a different answer from a key's docs, and this
-    // test is where the two must not be confused for one another.
+    // What it *does* get is the other half of item 220: an unknown key is a diagnostic, and
+    // the diagnostic reaches the hover rather than only the gutter. That is a different answer
+    // from a key's docs, and this test is where the two must not be confused for one another.
     #[test]
-    fn hover_on_an_undocumented_frontmatter_key_explains_the_diagnostic_instead() {
+    fn hover_on_an_undocumented_frontmatter_key_shows_the_diagnostic_instead() {
         let (server, client) = Connection::memory();
         let thread = std::thread::spawn(move || run(server));
         handshake(&client);
@@ -4500,23 +4524,15 @@ mod tests {
         did_open(&client, &uri, text);
         let _ = recv_publish(&client);
 
-        let h = hover_raw_at(&client, &uri, 53, 1, 2).expect("the diagnostic explanation");
+        let h = hover_raw_at(&client, &uri, 53, 1, 2).expect("the diagnostic under the pointer");
         let md = hover_markdown(&h);
         assert!(
             !md.contains("`frobnicate:`"),
             "an undocumented key must not be handed another key's documentation: {md:?}"
         );
         assert!(
-            md.starts_with("**TAL-FM-KEY**"),
+            md.contains("unknown front-matter key `frobnicate`"),
             "the squiggle under the pointer is what the author is asking about: {md:?}"
-        );
-        let fix = taliesin_core::diagnostics::codes::explain("TAL-FM-KEY")
-            .expect("the catalogue documents TAL-FM-KEY")
-            .fix;
-        assert!(
-            md.contains(fix),
-            "the canonical fix is the half that says what to type; without it this is a \
-             restatement of the message the author already read: {md:?}"
         );
 
         shutdown(&client);
@@ -5646,10 +5662,7 @@ mod tests {
         did_open(&client, &a_uri, a_src.to_owned());
         let first = recv_publish(&client);
         assert!(
-            first
-                .diagnostics
-                .iter()
-                .any(|d| code_of(d) == "TAL-LINK-ANCHOR"),
+            has_broken_anchor(&first.diagnostics),
             "the buffer should open with a broken cross-page anchor: {:?}",
             first
                 .diagnostics
@@ -5680,10 +5693,7 @@ mod tests {
         let after = recv_publish(&client);
         assert_eq!(after.uri, a_uri, "the open buffer is the one re-published");
         assert!(
-            !after
-                .diagnostics
-                .iter()
-                .any(|d| code_of(d) == "TAL-LINK-ANCHOR"),
+            !has_broken_anchor(&after.diagnostics),
             "an external fix must clear the squiggle it caused: {:?}",
             after
                 .diagnostics
@@ -5864,14 +5874,16 @@ mod tests {
             serde_json::json!({ "textDocument": { "uri": uri } }),
         );
         assert_eq!(report["kind"], "full", "a full report: {report}");
-        let codes: Vec<String> = report["items"]
+        let messages: Vec<String> = report["items"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|d| d["code"].as_str().unwrap_or("").to_string())
+            .map(|d| d["message"].as_str().unwrap_or("").to_string())
             .collect();
         assert!(
-            codes.iter().any(|c| c == "TAL-FM-KEY"),
+            messages
+                .iter()
+                .any(|m| m.contains("unknown front-matter key")),
             "the pull answer must carry the finding: {report}"
         );
         // Nothing else was sent: no publishDiagnostics reached this client at any point.
@@ -5913,8 +5925,10 @@ mod tests {
             .find(|r| r["uri"] == serde_json::json!(b))
             .unwrap_or_else(|| panic!("b.tmd must be reported though nobody opened it: {report}"));
         assert_eq!(row["kind"], "full");
-        assert_eq!(
-            row["items"][0]["code"], "TAL-FM-KEY",
+        assert!(
+            row["items"][0]["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("unknown front-matter key")),
             "with its own finding: {row}"
         );
         assert!(
@@ -6042,7 +6056,12 @@ mod tests {
             row["kind"], "full",
             "the edited buffer must be re-linted, not answered `unchanged`: {second}"
         );
-        assert_eq!(row["items"][0]["code"], "TAL-FM-KEY", "{row}");
+        assert!(
+            row["items"][0]["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("unknown front-matter key")),
+            "{row}"
+        );
         shutdown(&client);
         thread.join().unwrap().unwrap();
         let _ = std::fs::remove_dir_all(&root);

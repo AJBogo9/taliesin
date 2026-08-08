@@ -207,9 +207,8 @@ pub fn cell_state(
 ///
 /// `taliesin run` is the reason it exists: it printed `✗ cell 3`, which no problem matcher
 /// can match, so a failed cell could not reach an editor's Problems panel however the task
-/// was configured (`editor/vscode/src/runcell.ts` says exactly this). A location plus the
-/// catalogued `TAL-CELL-ERROR` code is a line the existing `$taliesin` matcher already
-/// understands.
+/// was configured (`editor/vscode/src/runcell.ts` says exactly this). A location plus a
+/// severity word is a line the existing `$taliesin` matcher already understands.
 ///
 /// `file` is the cell's own source file when it came in through an `{{< include >}}` and
 /// `None` when it is the page itself — the same rule `Warning.file` follows, so a spliced-in
