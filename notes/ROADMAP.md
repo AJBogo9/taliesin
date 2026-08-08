@@ -1,5 +1,12 @@
 # Taliesin roadmap
 
+> **⚠ PAUSED 2026-08-08 for the duration of the scope reduction.** The project is
+> cutting ~40% of its surface before release; see `notes/CUT-PROGRESS.md`. This
+> roadmap grows the tool, which is the opposite of the current work. **Do not work
+> its open items until the cut lands**, and re-read them afterwards against the
+> smaller surface: several presuppose subsystems that are being deleted (the
+> `print-pdf-track` item in particular, since the PDF track is cut in wave 4).
+
 > The successor to `native-rewrite.md` (complete 2026-06-24), which removed
 > every backwards-compat shim and closed every schema. **This roadmap cashes
 > those closures into capability** and grows the tool deliberately on its own terms.

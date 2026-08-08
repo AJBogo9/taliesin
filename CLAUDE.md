@@ -7,7 +7,31 @@ per-edit startup cost (warm server + Jupyter kernel). It is **not** a general do
 compiler: HTML is the only output target (no LaTeX/Typst/Word/ePub; a future print/PDF
 track would render *from* the built HTML, never as a parallel format).
 
-**Scope is corpus-plus-roadmap.** "Done" still means the documents under `corpus/`
+> ## ⚠ THE PROJECT IS IN SCOPE REDUCTION. READ THIS BEFORE PLANNING ANY WORK.
+>
+> **Ruled 2026-08-08: the tool is being cut by roughly 40%** (~69,000 lines), from 18
+> CLI verbs to 9 and 115 document features to ~55, to reach a surface small enough to
+> polish before release. **This supersedes the growth framing below.** Do not add
+> features, do not "restore parity", and do not defend a feature on the grounds that a
+> corpus document pins it (that pinning is circular and is the very thing the audit
+> disproved).
+>
+> **Standing directive from the author:** *"always lean towards cutting. I'd rather have
+> a polished lean product, and then add features when I have real users that need them
+> than having a bloated product with features that nobody uses."* When a call is close,
+> cut.
+>
+> Read in this order:
+> 1. `notes/CUT-PROGRESS.md` — the durable state: what has landed, what is next, the rules.
+> 2. `notes/2026-08-08-scope-ruling.md` — the verdicts, the evidence, the corrections.
+> 3. `notes/2026-08-08-cut-playbook.md` — the 182 file-level removal steps, by wave.
+>
+> **One wave per session, one branch, one commit, `./tools/gates.sh` green before and
+> after.** `notes/ROADMAP.md` is PAUSED for the duration; its open items are not to be
+> worked until the cut lands.
+
+**Scope was corpus-plus-roadmap** (paused, see the box above). "Done" still means the
+documents under `corpus/`
 render correctly: the corpus is the regression net and the arbiter of done. But the
 corpus now *leads* as well as records: each new capability ships pinned by a target
 corpus document added in the same change, so scope can grow deliberately toward "wider
