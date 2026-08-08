@@ -32,8 +32,7 @@ rather not install it on `PATH`.
 ## Set up a kernel (for code execution)
 
 Prose, math, diagrams, and `{js}` cells need no setup. To *execute*
-`{python}` / `{r}` cells you point the server at a Jupyter kernel. A one-time
-Python setup:
+`{python}` cells you point the server at a Jupyter kernel. A one-time setup:
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
@@ -41,17 +40,10 @@ pip install ipykernel numpy matplotlib   # + whatever your cells import
 export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
 ```
 
-For R cells, run `install.packages("IRkernel")` (then `IRkernel::installspec()`)
-in your R and point `TALIESIN_R` at that R binary:
-
-```sh
-export TALIESIN_R="$(which R)"          # or a full path, e.g. /usr/local/bin/R
-```
-
-`{python}` and `{r}` cells each run against their own warm kernel, so a document
-can mix both. Without a kernel, cells render as highlighted source and the preview
-shows a quiet "kernel unavailable" note instead of failing, so you can always start
-writing and add a kernel later. The kernel setup is covered in more depth (and with
+A document's `{python}` cells run against one warm kernel, reused across edits.
+Without a kernel, cells render as highlighted source and the preview shows a quiet
+"kernel unavailable" note instead of failing, so you can always start writing and
+add a kernel later. The kernel setup is covered in more depth (and with
 the same callout) in [Executable content](code.tmd).
 
 ## Environment variables
@@ -62,7 +54,6 @@ the defaults work, and the only ones most projects ever set are the kernel paths
 | Variable | Default | What it does |
 |---|---|---|
 | `TALIESIN_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
-| `TALIESIN_R` | `R` | R binary (with `IRkernel`) used for `{r}` cells |
 | `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). The budget resets on every line printed, so a long job that reports progress is never interrupted; `0` disables the cap |
 | `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell **wall-clock** cap in seconds, off by default; bounds total runtime regardless of output |
 | `TALIESIN_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
@@ -226,9 +217,9 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
-`build` **executes code cells**, so if your pages run `{python}` / `{r}`, add a
-step to install that interpreter plus `ipykernel` / `IRkernel` and set
-`TALIESIN_PYTHON` / `TALIESIN_R`, otherwise those cells render as source in CI.
+`build` **executes code cells**, so if your pages run `{python}`, add a step to
+install that interpreter plus `ipykernel` and set `TALIESIN_PYTHON`, otherwise those
+cells render as source in CI.
 
 ::: {.callout-note}
 The interactive `{js}`/Three.js demos need to be served over `http(s)` (not opened

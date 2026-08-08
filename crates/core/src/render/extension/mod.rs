@@ -571,7 +571,9 @@ fn input_shortcode(
             num_attr("value")
         ),
         other => {
-            // slider/range/number: numeric, sharing min/max/step/value
+            // slider/number: numeric, sharing min/max/step/value. A `slider` is HTML's
+            // `type="range"`; the two are the same control under different names, which is
+            // why offering both spellings to the author bought nothing.
             let html_type = if other == "number" { "number" } else { "range" };
             format!(
                 "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-tali-input=\"{name_a}\" type=\"{html_type}\"{}{}{}{}>",
@@ -585,7 +587,7 @@ fn input_shortcode(
     // A slider's value is not visible in the control itself, so it gets a readout. `for`
     // ties it to the control it reflects, so AT announces them together.
     let readout = match kind.as_str() {
-        "slider" | "range" => format!(
+        "slider" => format!(
             "<output class=\"tali-input-out\" for=\"{ctrl_id}\" data-tali-out>{}</output>",
             html_escape(value.as_deref().unwrap_or(""))
         ),

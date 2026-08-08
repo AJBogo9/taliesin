@@ -160,11 +160,12 @@ in `notes/` so the root stays uncluttered:
   `cargo clippy -D warnings`, and `cargo test --workspace` first; a WIP-branch push
   skips it, and `--no-verify` bypasses.
 - **`tools/gates.sh`**: the one script that runs *every* gate — the hook's three plus
-  the live Python/R kernels, the headless-Chrome `{js}` path, both `tsc`
-  type-checks, the VS Code grammar test, `cargo
+  the live Python kernel, both `tsc` type-checks, the VS Code grammar test, `cargo
   audit` and `cargo deny`. Each of those skips silently without its interpreter, so
-  the script arms all four `TALIESIN_REQUIRE_*` variables, checks each canary test
-  reported `... ok`, and exits non-zero if anything was skipped or ignored.
+  the script arms both `TALIESIN_REQUIRE_*` variables, checks each canary test
+  reported `... ok`, and exits non-zero if anything was skipped or ignored. It needs
+  two external runtimes, Python and Node; it needed four until the `{r}` cell language
+  and the headless-browser test driver were cut on 2026-08-08.
 - **`.github/workflows/ci.yml`**: the same set again, as seven parallel jobs, for the
   fresh-clone build and for contributor pull requests. Every job is guarded on
   `github.event.repository.private != true`, so it is inert while this repo is
@@ -183,11 +184,11 @@ exists:
 
 | Variable | Effect |
 |---|---|
-| `TALIESIN_PYTHON` / `TALIESIN_R` | The interpreter for `{python}` / `{r}` cells (defaults: `python3`, `R`). |
+| `TALIESIN_PYTHON` | The interpreter for `{python}` cells (default: `python3`). |
 | `TALIESIN_CELL_SILENCE` | Seconds a cell may produce no output before interrupt (default `600`; `0` disables). The default liveness cap. |
 | `TALIESIN_CELL_TIMEOUT` | Optional per-cell wall-clock cap in seconds (**off** by default; `0` disables). |
 | `TALIESIN_NO_CACHE` | Ignore and skip the `_freeze/` execution cache. |
-| `TALIESIN_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them, `{python}`/`{r}` and `{js}` alike. Independent of `--host`, which does **not** turn it on (a `--host` preview without it only logs a warning). Not an HTML sanitizer. |
+| `TALIESIN_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them, `{python}` and `{js}` alike. Independent of `--host`, which does **not** turn it on (a `--host` preview without it only logs a warning). Not an HTML sanitizer. |
 | `TALIESIN_NO_CLEAR` | Keep the dev-server banner from clearing the terminal. |
 
 A few more are for build and test time rather than authoring: `TALIESIN_GIT_SHA`

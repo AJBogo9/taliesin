@@ -456,7 +456,7 @@ suite("Taliesin companion (integration)", () => {
         .map((c) => (typeof c === "string" ? c : (c as vscode.MarkdownString).value))
         .join("\n");
       // Two legitimate shapes, and which one arrives depends on the binary under test: a
-      // build with `headless-js` on a host with Chrome rasterizes the real KaTeX render,
+      // a build on a host with Chrome once rasterized the real KaTeX render,
       // everything else falls back to the Unicode approximation. Waiting only for the
       // glyphs would time out precisely when the better path is working.
       const rendered = joined.includes("α+β");
@@ -842,7 +842,7 @@ suite("Taliesin companion (integration)", () => {
     const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
     const runCell = lenses.filter((l) => l.command?.title === "▶ Run Cell");
 
-    // The fixture has three runnable cells: `{python}`, `{python}`, `{r}`.
+    // The fixture has three runnable cells, all `{python}`.
     assert.strictEqual(runCell.length, 3, "expected one Run Cell button per executable cell");
 
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(RUNCELL_FIXTURE));

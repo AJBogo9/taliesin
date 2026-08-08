@@ -1,4 +1,4 @@
-//! The single source of truth for *which* Python/R interpreter a document runs
+//! The single source of truth for *which* Python interpreter a document runs
 //! against, and a read-only probe of that interpreter's Jupyter kernel package.
 //!
 //! Pure and fully unit-testable: resolution is env/field/existence logic (the env
@@ -11,27 +11,20 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-/// The two languages taliesin can execute against a Jupyter kernel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lang {
-    Python,
-    R,
-}
-
 /// Where a resolved interpreter path came from, in precedence order. Carried so the
 /// kernel-start log line and `check`'s Environment section can name the source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provenance {
-    /// A `_site.yml` `python:` / `r:` field (highest precedence).
+    /// A `_site.yml` `python:` field (highest precedence).
     Field,
-    /// A project-local `<dir>/.venv/bin/python` (Python only).
+    /// A project-local `<dir>/.venv/bin/python`.
     Venv,
-    /// The `TALIESIN_PYTHON` / `TALIESIN_R` env var.
+    /// The `TALIESIN_PYTHON` env var.
     Env,
-    /// A `.venv` found by walking *up* from the project dir (Python only), e.g. the
-    /// repository root's venv for a book that lives at `docs/book`.
+    /// A `.venv` found by walking *up* from the project dir, e.g. the repository root's
+    /// venv for a book that lives at `docs/book`.
     AncestorVenv,
-    /// The bare `python3` / `R` fallback (no concrete choice was made).
+    /// The bare `python3` fallback (no concrete choice was made).
     Default,
 }
 
@@ -62,16 +55,13 @@ impl Provenance {
 
     /// Human label naming where the interpreter came from, for the kernel-start log
     /// line and `check`'s Environment section (e.g. `.venv`, `TALIESIN_PYTHON`).
-    pub fn label(self, lang: Lang) -> &'static str {
-        match (self, lang) {
-            (Provenance::Field, Lang::Python) => "_site.yml python:",
-            (Provenance::Field, Lang::R) => "_site.yml r:",
-            (Provenance::Venv, _) => ".venv",
-            (Provenance::Env, Lang::Python) => "TALIESIN_PYTHON",
-            (Provenance::Env, Lang::R) => "TALIESIN_R",
-            (Provenance::AncestorVenv, _) => "ancestor .venv",
-            (Provenance::Default, Lang::Python) => "python3",
-            (Provenance::Default, Lang::R) => "R",
+    pub fn label(self) -> &'static str {
+        match self {
+            Provenance::Field => "_site.yml python:",
+            Provenance::Venv => ".venv",
+            Provenance::Env => "TALIESIN_PYTHON",
+            Provenance::AncestorVenv => "ancestor .venv",
+            Provenance::Default => "python3",
         }
     }
 }
@@ -126,15 +116,15 @@ impl VenvSearch {
 /// from drifting away from the logic it describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Trail {
-    /// The `_site.yml` `python:`/`r:` field, already resolved against the project dir.
+    /// The `_site.yml` `python:` field, already resolved against the project dir.
     pub field: Option<PathBuf>,
-    /// `<project_dir>/.venv/bin/python{,3}`, when present (Python only).
+    /// `<project_dir>/.venv/bin/python{,3}`, when present.
     pub local_venv: Option<PathBuf>,
-    /// `TALIESIN_PYTHON` / `TALIESIN_R`, when set.
+    /// `TALIESIN_PYTHON`, when set.
     pub env: Option<PathBuf>,
-    /// The upward walk (Python only; `None` for R, which has no venv convention).
+    /// The upward walk.
     pub ancestor: Option<VenvSearch>,
-    /// The bare `python3` / `R` last resort.
+    /// The bare `python3` last resort.
     pub fallback: PathBuf,
 }
 
@@ -142,7 +132,7 @@ impl Trail {
     /// The ordered, human-readable "here is everything I looked at" report, for the
     /// build's hard failure and for `doctor`. One line per source, in the precedence
     /// order the resolver actually applied.
-    pub fn report(&self, lang: Lang, chosen: Provenance) -> String {
+    pub fn report(&self, chosen: Provenance) -> String {
         let mark = |p: Provenance| if p == chosen { " <- used" } else { "" };
         let shown = |o: &Option<PathBuf>| match o {
             Some(p) => p.display().to_string(),
@@ -150,26 +140,22 @@ impl Trail {
         };
         let mut lines = vec![format!(
             "  1. {:<22} {}{}",
-            Provenance::Field.label(lang),
+            Provenance::Field.label(),
             shown(&self.field),
             mark(Provenance::Field)
         )];
-        // The two venv steps exist for Python only; R has no venv convention, so
-        // printing "not found" for them would invent a search that never happened.
-        if lang == Lang::Python {
-            lines.push(format!(
-                "  2. {:<22} {}{}",
-                "<project>/.venv",
-                self.local_venv
-                    .as_ref()
-                    .map_or_else(|| "not found".to_string(), |p| p.display().to_string()),
-                mark(Provenance::Venv)
-            ));
-        }
+        lines.push(format!(
+            "  2. {:<22} {}{}",
+            "<project>/.venv",
+            self.local_venv
+                .as_ref()
+                .map_or_else(|| "not found".to_string(), |p| p.display().to_string()),
+            mark(Provenance::Venv)
+        ));
         lines.push(format!(
             "  {}. {:<22} {}{}",
             lines.len() + 1,
-            Provenance::Env.label(lang),
+            Provenance::Env.label(),
             shown(&self.env),
             mark(Provenance::Env)
         ));
@@ -178,7 +164,7 @@ impl Trail {
             lines.push(format!(
                 "  {}. {:<22} {}{}\n       ({where_})",
                 lines.len() + 1,
-                Provenance::AncestorVenv.label(lang),
+                Provenance::AncestorVenv.label(),
                 s.found
                     .as_ref()
                     .map_or_else(|| "not found".to_string(), |p| p.display().to_string()),
@@ -188,7 +174,7 @@ impl Trail {
         lines.push(format!(
             "  {}. {:<22} {}{}",
             lines.len() + 1,
-            Provenance::Default.label(lang),
+            Provenance::Default.label(),
             self.fallback.display(),
             mark(Provenance::Default)
         ));
@@ -209,9 +195,9 @@ impl Resolved {
     /// A `Resolved` for an interpreter chosen *outside* the search — the shape the
     /// `doctor`/`exec` unit tests need, where a concrete path is handed in directly and
     /// no source was ever consulted. Test-only: production code must go through
-    /// [`resolve_python`]/[`resolve_r`], which is the whole point of this module.
+    /// [`resolve_python`], which is the whole point of this module.
     #[cfg(test)]
-    pub(crate) fn fixed(path: impl Into<PathBuf>, provenance: Provenance, lang: Lang) -> Self {
+    pub(crate) fn fixed(path: impl Into<PathBuf>, provenance: Provenance) -> Self {
         Resolved {
             path: path.into(),
             provenance,
@@ -220,10 +206,7 @@ impl Resolved {
                 local_venv: None,
                 env: None,
                 ancestor: None,
-                fallback: PathBuf::from(match lang {
-                    Lang::Python => "python3",
-                    Lang::R => "R",
-                }),
+                fallback: PathBuf::from("python3"),
             },
         }
     }
@@ -260,18 +243,6 @@ pub fn resolve_python(field: Option<&str>, project_dir: &Path) -> Resolved {
         field,
         project_dir,
         std::env::var_os("TALIESIN_PYTHON").as_deref(),
-    )
-}
-
-/// Resolve the R interpreter: `field` -> `TALIESIN_R` -> `R`. No `.venv` step and no
-/// upward walk — there is no R venv convention, so a `.venv` above an R project is
-/// somebody else's Python. `project_dir` is used only to resolve a relative `r:` field
-/// against the config's own directory, exactly as `python:` is resolved.
-pub fn resolve_r(field: Option<&str>, project_dir: &Path) -> Resolved {
-    resolve_r_env(
-        field,
-        project_dir,
-        std::env::var_os("TALIESIN_R").as_deref(),
     )
 }
 
@@ -396,31 +367,6 @@ fn ancestor_venv(dir: &Path) -> VenvSearch {
     }
 }
 
-/// Testable core of [`resolve_r`] with the env value injected.
-fn resolve_r_env(field: Option<&str>, project_dir: &Path, env: Option<&OsStr>) -> Resolved {
-    let trail = Trail {
-        // R gains the config-relative field rule and nothing else: `r: "../tools/R"` had
-        // the identical cwd bug, and fixing one field but not its twin is a trap.
-        field: field_path(field, &taliesin_core::includes::absolutize(project_dir)),
-        local_venv: None,
-        env: env.map(PathBuf::from),
-        ancestor: None,
-        fallback: PathBuf::from("R"),
-    };
-    let (path, provenance) = if let Some(f) = trail.field.clone() {
-        (f, Provenance::Field)
-    } else if let Some(e) = trail.env.clone() {
-        (e, Provenance::Env)
-    } else {
-        (trail.fallback.clone(), Provenance::Default)
-    };
-    Resolved {
-        path,
-        provenance,
-        trail,
-    }
-}
-
 /// A read-only introspection of a resolved interpreter: does it run, what version,
 /// and is its Jupyter kernel package importable. Never executes the user's document.
 #[derive(Debug, Clone)]
@@ -439,14 +385,14 @@ pub struct Probe {
 /// Probe a resolved interpreter: `<bin> --version`, then an import of its Jupyter
 /// kernel package. Tolerates a missing binary / import error (never panics, never
 /// blocks `check`'s exit code).
-pub fn probe(resolved: &Resolved, lang: Lang) -> Probe {
+pub fn probe(resolved: &Resolved) -> Probe {
     use std::process::Command;
     let bin = &resolved.path;
 
     // 1. Version / runnability. A spawn failure (binary absent) is captured, not fatal.
     let (runs, version, mut error) = match Command::new(bin).arg("--version").output() {
         Ok(out) => {
-            // Python prints version on stdout (3.4+) or stderr (older); R on stdout.
+            // Python prints its version on stdout (3.4+) or on stderr (older).
             let mut v = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if v.is_empty() {
                 v = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -462,17 +408,10 @@ pub fn probe(resolved: &Resolved, lang: Lang) -> Probe {
     };
 
     // 2. Kernel-package import (only if the binary runs). Environment introspection
-    //    only: importing ipykernel/IRkernel does not run the document.
+    //    only: importing ipykernel does not run the document.
     let mut kernel_pkg_ok = false;
     if runs {
-        let import = match lang {
-            Lang::Python => Command::new(bin).args(["-c", "import ipykernel"]).output(),
-            // `--vanilla` keeps startup deterministic; `-e` runs the import statement.
-            Lang::R => Command::new(bin)
-                .args(["--vanilla", "--slave", "-e", "library(IRkernel)"])
-                .output(),
-        };
-        match import {
+        match Command::new(bin).args(["-c", "import ipykernel"]).output() {
             Ok(out) if out.status.success() => kernel_pkg_ok = true,
             Ok(out) => {
                 let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -648,16 +587,6 @@ mod tests {
     }
 
     #[test]
-    fn a_relative_r_field_resolves_against_the_project_dir_too() {
-        // Same config-relative rule, same reason. R gains no venv step from this — only
-        // the fix for a field value that was unusable unless absolute.
-        let root = tree("relative-field-r");
-        let r = resolve_r_env(Some("../tools/R"), &book_under(&root), None);
-        assert_eq!(r.provenance, Provenance::Field);
-        assert_eq!(r.path, root.join("docs/tools/R"));
-    }
-
-    #[test]
     fn an_absolute_field_is_left_exactly_as_written() {
         let root = tree("absolute-field");
         let r = resolve_python_env(Some("/opt/py/bin/python"), &book_under(&root), None);
@@ -665,30 +594,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_r_has_no_upward_search() {
-        // Criterion 6: R gets no `.venv` step and no walk. There is no R venv convention,
-        // so a `.venv` anywhere above is somebody else's Python.
-        let root = tree("r-no-upward");
-        venv_at(&root, "python");
-        marker(&root, ".git");
-        let r = resolve_r_env(None, &book_under(&root), None);
-        assert_eq!(r.provenance, Provenance::Default);
-        assert_eq!(r.path, PathBuf::from("R"));
-        assert!(
-            r.trail.ancestor.is_none(),
-            "R must not even record a walk it never performs"
-        );
-    }
-
-    #[test]
     fn an_ancestor_venv_is_treated_as_project_supplied() {
         // Fails closed: the walk climbs through the target the user named, so an
         // "ancestor" venv can still be inside a directory someone else sent you.
         assert!(Provenance::AncestorVenv.is_project_supplied());
-        assert_eq!(
-            Provenance::AncestorVenv.label(Lang::Python),
-            "ancestor .venv"
-        );
+        assert_eq!(Provenance::AncestorVenv.label(), "ancestor .venv");
     }
 
     #[test]
@@ -697,7 +607,7 @@ mod tests {
         venv_at(&root, "python");
         marker(&root, ".git");
         let r = resolve_python_env(None, &book_under(&root), None);
-        let report = r.trail.report(Lang::Python, r.provenance);
+        let report = r.trail.report(r.provenance);
         // Order is the contract: an error that lists sources out of order teaches the
         // reader the wrong precedence.
         let idx = |needle: &str| {
@@ -757,35 +667,18 @@ mod tests {
     }
 
     #[test]
-    fn resolve_r_has_no_venv_step() {
-        // A .venv beside the project must NOT be picked for R (no R venv convention).
-        let dir = venv_dir("r-no-venv", "python");
-        let with_env = resolve_r_env(None, &dir, Some(OsStr::new("/usr/bin/R")));
-        assert_eq!(with_env.provenance, Provenance::Env);
-        let no_env = resolve_r_env(None, &dir, None);
-        assert_eq!(no_env.provenance, Provenance::Default);
-        assert_eq!(no_env.path, std::path::PathBuf::from("R"));
-    }
-
-    #[test]
     fn provenance_labels() {
-        assert_eq!(Provenance::Field.label(Lang::Python), "_site.yml python:");
-        assert_eq!(Provenance::Field.label(Lang::R), "_site.yml r:");
-        assert_eq!(Provenance::Venv.label(Lang::Python), ".venv");
-        assert_eq!(Provenance::Env.label(Lang::Python), "TALIESIN_PYTHON");
-        assert_eq!(Provenance::Env.label(Lang::R), "TALIESIN_R");
-        assert_eq!(Provenance::Default.label(Lang::Python), "python3");
-        assert_eq!(Provenance::Default.label(Lang::R), "R");
+        assert_eq!(Provenance::Field.label(), "_site.yml python:");
+        assert_eq!(Provenance::Venv.label(), ".venv");
+        assert_eq!(Provenance::Env.label(), "TALIESIN_PYTHON");
+        assert_eq!(Provenance::AncestorVenv.label(), "ancestor .venv");
+        assert_eq!(Provenance::Default.label(), "python3");
     }
 
     #[test]
     fn probe_of_a_missing_binary_reports_not_runnable_without_panicking() {
-        let r = Resolved::fixed(
-            "/nonexistent/tali/python-xyz",
-            Provenance::Field,
-            Lang::Python,
-        );
-        let p = probe(&r, Lang::Python);
+        let r = Resolved::fixed("/nonexistent/tali/python-xyz", Provenance::Field);
+        let p = probe(&r);
         assert!(!p.runs, "a missing binary must not report as runnable");
         assert!(!p.kernel_pkg_ok);
         assert!(
@@ -801,8 +694,8 @@ mod tests {
             eprintln!("SKIPPED (no live interpreter): set TALIESIN_PYTHON to probe ipykernel");
             return;
         };
-        let r = Resolved::fixed(PathBuf::from(py), Provenance::Env, Lang::Python);
-        let p = probe(&r, Lang::Python);
+        let r = Resolved::fixed(PathBuf::from(py), Provenance::Env);
+        let p = probe(&r);
         assert!(p.runs, "a real python should run --version");
         assert!(p.version.is_some(), "version string captured");
         // kernel_pkg_ok reflects reality; we only assert that when false an error is

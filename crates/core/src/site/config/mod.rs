@@ -67,8 +67,6 @@ pub struct SiteConfig {
     /// Project-pinned Python interpreter (`python:` in `_site.yml`), highest
     /// precedence in interpreter resolution. `None` falls back to `.venv`/env/default.
     pub python: Option<String>,
-    /// Project-pinned R interpreter (`r:` in `_site.yml`). `None` falls back to env/`R`.
-    pub r: Option<String>,
     /// Project-wide `bibliography:` — `.bib` path(s) relative to the site root, shared by
     /// every page. It is a layer *under* each page's own `bibliography:`, so a post can
     /// cite a shared key and still add or override entries locally
@@ -250,7 +248,6 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "chapters",
     "mounts",
     "python",
-    "r",
     // No `theorems:`. The book-wide numbering policy went with front-matter
     // `theorems.numbered` on 2026-08-02; `shared:` is per-chapter and stays there.
     "bibliography",
@@ -425,7 +422,6 @@ fn parse_native(
         chapters,
         mounts: mounts_from(value.get("mounts")),
         python: str_of("python"),
-        r: str_of("r"),
         bibliography: crate::site::frontmatter::string_list(value.get("bibliography")),
     }
 }
@@ -680,13 +676,12 @@ mod config_tests {
     }
 
     #[test]
-    fn parses_python_and_r_interpreter_pins() {
+    fn parses_the_python_interpreter_pin() {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
-            serde_yaml::from_str("title: X\npython: .venv/bin/python\nr: /usr/bin/R\n").unwrap();
+            serde_yaml::from_str("title: X\npython: .venv/bin/python\n").unwrap();
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
         assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
-        assert_eq!(cfg.r.as_deref(), Some("/usr/bin/R"));
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
     }
 

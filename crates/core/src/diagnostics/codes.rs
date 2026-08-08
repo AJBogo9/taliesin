@@ -639,7 +639,7 @@ const EXPLANATIONS: &[Explanation] = &[
     Explanation {
         code: "TAL-CELL-ERROR",
         title: "a code cell raised an uncaught exception",
-        cause: "A `{python}`/`{r}` cell ran and threw, so its traceback is baked into the \
+        cause: "A `{python}` cell ran and threw, so its traceback is baked into the \
                 built page where its output should be. The build still writes the page (the \
                 traceback is real output, and hiding it would ship a silently wrong \
                 document), but the page is not publishable as it stands. `check` never \
@@ -656,9 +656,9 @@ const EXPLANATIONS: &[Explanation] = &[
                 wrong with the cell's code — this is an environment failure, and the page \
                 carries a visible diagnostic where the output would be rather than dropping \
                 it silently.",
-        fix: "Point Taliesin at a working interpreter (`TALIESIN_PYTHON` / `TALIESIN_R`, or \
-              `python:` / `r:` in `_site.yml`) and make sure its Jupyter kernel package is \
-              installed (`ipykernel` for Python, `IRkernel` for R). `taliesin doctor` \
+        fix: "Point Taliesin at a working interpreter (`TALIESIN_PYTHON`, or `python:` in \
+              `_site.yml`) and make sure its Jupyter kernel package is \
+              installed (`ipykernel`). `taliesin doctor` \
               reports what it can find.",
     },
     Explanation {

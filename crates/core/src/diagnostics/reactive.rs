@@ -30,7 +30,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
         .filter_map(|b| {
             let cell = b.cell.as_ref()?;
             // Every client-side language shares the `//| name`/`viewof`/`input` wiring, so
-            // a `{glsl}` shader taking a `//| input:` uniform is a node in the same graph
+            // a second registered language taking a `//| input:` is a node in the same graph
             // and gets the same dangling-input / cycle diagnostics.
             crate::render::client_lang(&cell.lang)?;
             let mut defines = Vec::new();
@@ -79,8 +79,8 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     //
     // The predicate is "a KERNEL cell that CALLS `define(`", narrowed from "any kernel
     // cell" on 2026-08-03. Two earlier spellings were each wrong in their own direction.
-    // `lang != "js"` suppressed the check on any page carrying a `{glsl}` shader, which
-    // publishes nothing at runtime. Then "any kernel cell" suppressed it on every page
+    // `lang != "js"` suppressed the check on any page carrying a second CLIENT language,
+    // which publishes nothing at runtime. Then "any kernel cell" suppressed it on every page
     // with a `{python}` cell at all — which is every real blog post in the corpus, so the
     // check was off exactly where documents are longest and a typo'd input most likely.
     // Reading the cell's own literal is what distinguishes "this document uses the bridge"

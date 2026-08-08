@@ -44,12 +44,11 @@ pub(super) struct ExecPool {
     /// paying a cold boot. `None` (the `Default`, and when the interpreter is the bare
     /// default / the forkserver can't boot) → every page cold-starts, exactly as before.
     warm_pool: Option<Arc<crate::warm_pool::WarmPool>>,
-    /// The resolved Python/R interpreters (from `_site.yml` python:/r: / .venv / env /
+    /// The resolved Python interpreter (from `_site.yml` python: / .venv / env /
     /// default), applied to every page executor so the pool and the executors agree on
     /// which interpreter runs. `None` (the unit-test `Default`) leaves each executor on
     /// the env/default that `Executor::build` computes, i.e. no override.
     python: Option<crate::interpreter::Resolved>,
-    r: Option<crate::interpreter::Resolved>,
 }
 
 impl ExecPool {
@@ -59,13 +58,11 @@ impl ExecPool {
         freeze_dir: PathBuf,
         warm_pool: Option<Arc<crate::warm_pool::WarmPool>>,
         python: crate::interpreter::Resolved,
-        r: crate::interpreter::Resolved,
     ) -> Self {
         ExecPool {
             freeze_dir,
             warm_pool,
             python: Some(python),
-            r: Some(r),
             ..Default::default()
         }
     }
@@ -81,8 +78,8 @@ impl ExecPool {
         };
         let mut ex = ex.in_dir(work_dir);
         ex.set_warm_pool(self.warm_pool.clone());
-        if let (Some(py), Some(r)) = (&self.python, &self.r) {
-            ex.set_interpreters(py.clone(), r.clone());
+        if let Some(py) = &self.python {
+            ex.set_interpreters(py.clone());
         }
         ex
     }

@@ -159,9 +159,7 @@ test("Phase 1: a braced ```{python} cell embeds source.python (the delta over ba
   assert.ok(hasScope(toks, "python", "keyword.other.taliesin.cell"), "the {python} header is scoped as a cell keyword");
 });
 
-test("Phase 1: ```{r} and ```{js} cells embed their languages", async () => {
-  const r = await tokenizeTmd("```{r}\nx <- 1\n```\n");
-  assert.ok(hasScope(r, "<-", "meta.embedded.block.r"), "{r} body embeds r");
+test("Phase 1: a ```{js} cell embeds its language", async () => {
   const js = await tokenizeTmd("```{js}\nconst x = 1\n```\n");
   assert.ok(hasScope(js, "const", "meta.embedded.block.js"), "{js} body embeds js");
 });

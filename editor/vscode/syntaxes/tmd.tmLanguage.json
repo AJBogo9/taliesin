@@ -32,7 +32,6 @@
       "comment": "Braced executable cells ```{lang}. Base markdown only matches BARE info strings (```python) — the braced form is Taliesin's. Specific langs embed their real grammar; a generic fallback still scopes the fence + #| options for any other {lang}. {=html}/{=latex} raw-output attrs are NOT langs (cell_extract.rs returns None) and fall through to markdown (their info starts with '=', excluded by the letter-led capture).",
       "patterns": [
         { "include": "#cell_python" },
-        { "include": "#cell_r" },
         { "include": "#cell_js" },
         { "include": "#cell_julia" },
         { "include": "#cell_mermaid" },
@@ -52,18 +51,6 @@
       "name": "markup.fenced_code.block.tmd",
       "contentName": "meta.embedded.block.python",
       "patterns": [{ "include": "#cell_option" }, { "include": "source.python" }]
-    },
-    "cell_r": {
-      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(r)\\b[^}]*\\}\\s*$",
-      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
-      "beginCaptures": {
-        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
-        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
-      },
-      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
-      "name": "markup.fenced_code.block.tmd",
-      "contentName": "meta.embedded.block.r",
-      "patterns": [{ "include": "#cell_option" }, { "include": "source.r" }]
     },
     "cell_js": {
       "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(js|javascript|ojs)\\b[^}]*\\}\\s*$",

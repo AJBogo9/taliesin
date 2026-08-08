@@ -17,11 +17,10 @@ np.arange(5).sum()
 ```
 
 On save, **only cells whose source changed (plus downstream cells) re-execute**,
-and the kernel never cold-starts. Both `{python}` and `{r}` cells run, each
-against its own warm kernel: point the server at a Python with `ipykernel` via
-`TALIESIN_PYTHON` and (for R) an R with `IRkernel` via `TALIESIN_R`. A cell in any
-other language, or with no kernel available, renders as highlighted source rather
-than failing. With `TALIESIN_PYTHON` set, Taliesin also pre-warms a small pool of
+and the kernel never cold-starts. `{python}` cells run against a warm kernel: point
+the server at a Python with `ipykernel` via `TALIESIN_PYTHON`. A cell in any other
+language, or with no kernel available, renders as highlighted source rather than
+failing. With `TALIESIN_PYTHON` set, Taliesin also pre-warms a small pool of
 Python kernels at startup (forked from one preloaded interpreter), so even the
 *first* edit of a session is near-instant instead of paying the `import` cost;
 without it, Python and R cells just cold-start on demand as before.

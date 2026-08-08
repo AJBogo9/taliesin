@@ -7,7 +7,7 @@ live in this file, which ships beside them.
 
 This covers the redistributed third-party bundles only. Taliesin's own scripts in this
 directory (`mermaid.js`, `tali-js.js`, `tabset.js`, `walkthrough.js`,
-`scrolly.js`, `glsl.js`, `numerics.js`, and the `code-enhance/` fragments) — and the
+`scrolly.js`, and the `code-enhance/` fragments) — and the
 stylesheets in `../css/` — are covered by the project's own `LICENSE` at the repository
 root.
 

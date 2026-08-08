@@ -129,7 +129,6 @@ pub(crate) struct CacheProbe {
     page: PathBuf,
     root: Option<PathBuf>,
     python_pin: Option<String>,
-    r_pin: Option<String>,
     interp: HashMap<&'static str, String>,
     freeze: Option<(PathBuf, Option<std::time::SystemTime>, u64, Vec<String>)>,
 }
@@ -142,7 +141,6 @@ impl CacheProbe {
         CacheProbe {
             page: path.to_path_buf(),
             python_pin: site.and_then(|s| s.config.python.clone()),
-            r_pin: site.and_then(|s| s.config.r.clone()),
             root,
             interp: HashMap::new(),
             freeze: None,
@@ -167,10 +165,6 @@ impl CacheProbe {
         let id = match (dir, lang) {
             (Some(dir), "python") => {
                 let r = crate::interpreter::resolve_python(self.python_pin.as_deref(), &dir);
-                probe_identity(lang, &r.path)
-            }
-            (Some(dir), "r") => {
-                let r = crate::interpreter::resolve_r(self.r_pin.as_deref(), &dir);
                 probe_identity(lang, &r.path)
             }
             _ => lang.to_string(),
@@ -240,7 +234,6 @@ fn read_freeze_keys(page: &Path, root: &Option<PathBuf>) -> Vec<String> {
         page: page.to_path_buf(),
         root: root.clone(),
         python_pin: None,
-        r_pin: None,
         interp: HashMap::new(),
         freeze: None,
     };

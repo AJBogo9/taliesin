@@ -87,7 +87,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 3 | Debug mode | **done** 2026-08-08 | `cut/wave-3-debug` | **−5,374** (+118 / −5,492, 45 files) | `DEBUG_CSS` was ungated in **three** places, not two; proven **−7,245 B** of shipped CSS per page |
 | 4 | Publishing + web-platform ops | **done** 2026-08-08 | `cut/wave-4-publishing` | **−9,576** (+808 / −10,384, 91 files) | 12 verbs → **10**; `headless_js.rs` went with `pdf.rs`; gates 9 → **8**, canaries 5 → **4** |
 | 5 | The deck engine | **done** 2026-08-08 | `cut/wave-5-deck` | **−11,553** (+657 / −12,210, 161 files) | the biggest wave so far; `DocFormat` deleted outright, not collapsed; `code-line-numbers` went with it |
-| 6 | Reactive tail, R, Chrome kill | not started | | | drops 2 gate runtimes |
+| 6 | Reactive tail, R, Chrome kill | **done** 2026-08-08 | `cut/wave-6-reactive-r-chrome` | **−4,146** (+960 / −5,106, 100 files) | gate runtimes 4 → **2**, canaries 4 → **2**, gates 8 → 8; `chromiumoxide` and the `headless-js` feature are gone |
 | 7 | Vocabulary contraction | not started | | | needs wave 1 first |
 | 8 | CLI ergonomics + scaffolding | not started | | | keep `doctor.rs` |
 | 9 | Diagnostics catalogue (keep lint front door) | not started | | | save `codes.rs` prose first |
@@ -115,27 +115,15 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
     the moment they hit the retired key, which no page can beat.
 - **Re-measure the warm pool on the preview path** before wave 11 if you want the
   number. The directive says cut regardless; measure only if you want to know the cost.
-- **Wave 6's Chrome kill is down to one test binary.** Wave 5 deleted `deck_browser.rs`, so
-  `reactive_browser.rs` is the SOLE consumer of `headless-js` + `chromiumoxide`. Both were
-  deliberately kept: cutting them here would have meant cutting wave 6's own subject.
-  `headless_js_feature.rs`'s binary list is now a one-element `BROWSER_TEST_BINARIES` const,
-  so adding or removing one is a row.
-- **Wave 6 inherits exactly ONE chrome canary now.** `gates.sh` is down to **4** canaries
-  (python, R, node, reactive); wave 4 dropped `CANARY_PRINT` with the print track, and
-  `CANARY_REACTIVE` is the only thing left that proves Chrome ran. Waves 2, 3 and 4 each
-  dropped a canary without repointing it, per the rule written into `gate_script.rs`'s
-  count assertion: *a canary is dropped only when the sole thing it proved goes away, never
-  by repointing it at a surviving test.* A later wave that deletes a capability should read
-  that string before touching the count.
-- **Wave 6's Chrome kill is now nearly done, and what remains is smaller than its plan
-  says.** Wave 2 removed the `{js}` observation path from `headless_js.rs` (wave 6's
-  STAGE 5) and **wave 4 deleted the whole file** with `pdf.rs`, its only consumer. What is
-  left for wave 6: the `deck_browser` / `reactive_browser` test binaries, the
-  `headless-js` cargo feature, the `chromiumoxide` dependency, `TALIESIN_REQUIRE_CHROME`,
-  and `CANARY_REACTIVE`. Note `release.yml` **no longer passes `--features
-  taliesin-server/headless-js`**: nothing a released binary can run touches the driver
-  since `pdf` went, so paying 24% of every cross-build for it was pure waste.
-  `headless_js_feature.rs` now asserts the *absence* of that flag on the release build.
+- **Chrome is GONE from the tree, and there is no automated browser test net at all.**
+  Wave 6 deleted `reactive_browser.rs`, `headless_js_feature.rs`, the `headless-js` cargo
+  feature and the `chromiumoxide` dependency together. `gates.sh` and `ci.yml` pass no
+  feature flag any more — the default-feature build IS the whole workspace. **Nothing tests
+  that a `{js}` cell's teardown runs on a block diff**; see the open hedge below.
+- **`gate_script.rs`'s REQUIRE scan reads raw source text, including its own file.** Naming
+  a retired `TALIESIN_REQUIRE_*` variable in full, even inside a comment explaining that it
+  is retired, puts it straight back into the scanned set and fails the arming loop on a gate
+  that no longer exists. Say "the R gate", not the variable. Recorded in the file too.
 - **Before wave 7 retires more nested vocabulary, sweep `docs/guide` for indented retired
   keys by hand.** Still open — carried from wave 1; no gate sees an indented key. Wave 4
   hit this exact hole: retiring the `orcid:`/`email:` author sub-keys needed a hand edit of
@@ -706,3 +694,183 @@ and both books were clean under the newly-armed rules on the first run.
 **in-place** rebuild over the existing output produced a byte-identical 53-file list, so no
 surviving keep-contributor lost its writer, and no `deck`/`embed` artefact remains in the
 output tree.
+
+### Wave 6 — 2026-08-08, `cut/wave-6-reactive-r-chrome`
+
+**Measured reclaim: −4,146 lines** (`+960 / −5,106` over 100 files, 16 deleted outright)
+against the ~4,700 estimate, plus a **5,422,412-byte** `ToyCar.glb` that no line count
+sees. By area: `crates/server/tests` −1,155, `corpus` −1,043, `crates/core/assets` −892,
+root md/toml −342, `crates/server/src` −267, `crates/core/tests` −254, `docs/guide` −123,
+`tools` −35, `web-client` −19, `editor/vscode` −18, `site` −17, `crates/core/src` **+19**
+(the register entries and the block-model retirement scan cost more than the glsl/numerics
+wiring they replaced).
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries,
+**94 suites / 1,909 passed / 0 failed / 0 ignored**, exit 0. Measure wave 7 against
+**1,909, two canaries and eight gates**. There is no longer any difference between this
+figure and a bare `cargo test --workspace` — the feature-gated browser binaries that made
+the two disagree since wave 0 are gone, so the number a stranger sees is now the number the
+gate certifies.
+
+**THE HEADLINE CHECK, which is the point of the wave.** `./tools/gates.sh` needs **two**
+external runtimes now, not four: Python and Node. R + IRkernel and a system Chrome are
+prerequisites of nothing, and the script says so in its own header rather than skipping
+silently. Canaries are **2** (`CANARY_KERNEL`, `CANARY_NODE`); `CANARY_R` and
+`CANARY_REACTIVE` were **dropped, not repointed**, per the rule in `gate_script.rs`'s count
+assertion — after this wave the tree has no browser-driving test to repoint the Chrome
+canary at, which is exactly the condition that rule describes. The workspace test line lost
+`--features taliesin-server/headless-js` because there is no such feature: `chromiumoxide`,
+the `headless-js` flag, `reactive_browser.rs` and `headless_js_feature.rs` all went
+together, and the default-feature build is now the whole workspace.
+
+**THE FOUR PROHIBITIONS HELD, and each was checked rather than asserted.**
+
+1. `interp_identity`'s `{lang}::{path}::{version}` is byte-identical; the only diff near it
+   is a new comment.
+2. `Executor::langs` and `FreezeCache::packages` are still `HashMap`s with one key, with the
+   reason written on the field.
+3. `git diff crates/server/src/serve_site/exec_pool.rs` is **8 lines, all parameter drops**.
+   `MAX_WARM_PAGES` and the eviction loop are untouched.
+4. `FORMAT_VERSION` is still 4 and the digest still `71f1fe21dc878fcd`; neither needed
+   editing, which is the signal the ruling asked for.
+
+**FREEZE-KEY PROOF, run on real pages rather than reasoned about.** Keys for
+`corpus/posts/{em-algorithm,fourier-transform,pca-geometry}` were captured before the cut
+and diffed after: **every pre-cut key survives, in order, with no substitutions** (the diff
+is pure additions from cells that had no entry yet). The decisive half is the rebuild log —
+all three pages report `restored N cached cells · 0 re-ran`, so every key the post-cut
+binary computed matched one the pre-cut binary wrote. A changed `interp_identity` shape
+would have missed all of them.
+
+**Six things that were not true, or that the playbook did not know.** Same genus as waves
+1–5:
+
+1. **A `RETIRED_CELL_LANGS` entry for `{r}` alone would have warned on every R LISTING in
+   the manual, and the obvious fix opens a second hole.** ` ```r ` and ` ```{r} ` both emit
+   `class="language-r"`, so the existing HTML scan cannot tell a display fence from a cell —
+   and this repo *teaches* R code (`corpus/single-page-report` shows four brms blocks;
+   `highlight.rs` keeps `r` in the syntect set on purpose). Keying the retirement on
+   `data-tali-cell` separates them, but a cell with `#| echo: false` / `#| include: false`
+   emits no listing at all: **measured, 3 of the 4 `{r}` cells in
+   `corpus/single-page-report` warned and the hidden one did not.** The check now reads
+   `Block::cells()`, which is echo-blind and descends into `:::` containers (`b.cell` alone
+   would miss a cell inside a callout). Proven both directions on a scratch doc: the two
+   cells warn once each with `TAL-CELL-RETIRED`, the two display fences are silent.
+2. **The playbook's "port TWO assertions from `r_kernel.rs`" was half spent.** The
+   `is_traced` guard it names does not exist — it went with debug mode in wave 3. The
+   alt-text assertion did port, and it is the one thing in that file that was never about R:
+   the bug lived in `render_media`'s **generic** PNG fallback (`kernel.rs:1511`), which every
+   inline image except matplotlib's reaches. The replacement uses PIL, because matplotlib's
+   twin-render path bypasses the fallback and would pass against the very code the bug lived
+   in. It is `crates/server/tests/executed_figure_alt.rs`, and it is **proven able to fail**:
+   putting `alt="output"` back turns it red.
+3. **`three_scene_theme.rs`'s undercount is fixed by DERIVING the list, not by extending
+   it.** A hand-kept four-path list is what produced the undercount in the first place;
+   `helper_copies()` now walks `corpus/`, `site/` and `docs/`. Proven, by printing what it
+   finds: it picks up `corpus/posts/pca-geometry/_includes/three-scene.tmd`, the fifth copy
+   the list omitted, which had been drifting unpinned under a gate whose own doc comment
+   claimed it covered every copy. The byte-identical pin is now grouped by CONTENT (extended
+   vs base variant) rather than by a named pair, because deleting `corpus/graphics3d/` left
+   the extended variant with a single copy — and it still fails loudly if a future edit
+   merges the two variants, which was the other half of what the paired pin bought.
+4. **`gate_script.rs`'s REQUIRE scan reads raw source text, including its own file.** Writing
+   the retired variable names in full inside a comment *explaining that they are retired* put
+   both straight back into `found` and failed the arming loop on gates that no longer exist.
+   The comment now says "the R gate" and carries a warning for the next person.
+5. **`OWN_JS` in `third_party.rs` still listed `deck.js`,** deleted in wave 5. Harmless (the
+   list is an exemption set, so a stale entry asserts nothing) but it would have masked a
+   future vendored file of that name. Removed with `glsl.js`/`numerics.js`.
+6. **`repro.rs`'s `"r"` arms were KEPT, against the playbook's step 3.** `collect()` gathers
+   every non-client-language cell whether or not it executes — `{julia}` and `{sql}` reach it
+   today — so deleting the arms would hand a leftover `{r}` cell a `.txt` download claiming
+   nothing, which is the opposite of what that fallback exists for. The test that drove them
+   moved from `{r}` to `{julia}` and its doc comment now says why.
+
+**The cargo-deny log was checked, per wave 4's lesson, and dropping `chromiumoxide`
+orphaned nothing.** All three ignored advisories (`RUSTSEC-2024-0320`, `RUSTSEC-2025-0141`,
+`RUSTSEC-2026-0205`) ride in through `syntect` and `zeromq`, not the browser driver, so all
+three are still *encountered* and the gate is silent about them. `Cargo.lock` lost **268
+lines** with the driver's whole tree. One `license-exception-not-encountered` warning does
+fire, for `libfuzzer-sys` — but that is **pre-existing and unrelated**: the crate is not in
+`Cargo.lock` at all and this repository has no fuzz target, so the exception was already
+stale before this wave. It is a warning, not a failure; a later wave touching `deny.toml`
+should drop the row.
+
+**Three judgement calls, and how they went.**
+
+- **The site's Three.js hero stays; `corpus/graphics3d/` goes.** Wave 5 already established
+  that `site/index.tmd`'s live scene is the landing page's above-the-fold artefact and that
+  the closing paragraph names it, so deleting the hero would have re-opened the question wave
+  5 closed. `site/_includes/three-scene.tmd` survives, the `gallery/graphics3d` mount, the
+  gallery section and the showcase paragraph pointing at it do not, and `THIRD_PARTY.md`
+  loses its ToyCar attribution with the asset.
+- **NO new register for the `range` alias.** `unknown_key_message` is already **scoped**, so
+  a `("input type", "range", …)` row in `RETIRED_KEYS` is the entire cost and the diagnostic
+  comes out as `TAL-INPUT-TYPE` with the removal note instead of a did-you-mean. This is the
+  same reasoning wave 5 used to decline a shortcode register, reached from the other
+  direction: there the vocabulary was closed and already spoke, here the register already
+  covered the scope.
+- **`window.taliJs.registerLanguage` is deleted, not kept as a seam.** `glsl.js` was its only
+  caller; the `{js}` language registers into the internal `languages` map directly. The
+  server-side `CLIENT_LANGS` registry **is** kept as a one-entry registry, per the ruling —
+  `client_lang.rs`'s own history records that the pre-registry `lang == "js"` spelling was
+  silently wrong once.
+
+**Measured, not asserted, and the shape of the saving is not where the plan implied.**
+`corpus/tech-blog` rebuilt with the release binary: `_assets/app.<hash>.css`
+**54,951 → 53,478 bytes**, **−1,473 off every page** (the `.tali-math`, `.tali-mini-table`
+and `.tali-glsl-canvas` blocks leaving `base.css`, which drops 79,534 → 77,105 at source).
+The shared **`app.<hash>.js` is byte-identical at 93,172**, which is the part worth knowing:
+neither `numerics.js` nor `tali-js.js` was ever in it. `numerics.js` (16,229 B) rode in the
+conditional `jslibs.<hash>.js`, so its saving lands only on `{js}` pages, and `tali-js.js`
+(39,133 → 28,505 B, **−10,628**) is emitted **inline per page**, so that one is per-page on
+`{js}` pages too. `glsl.js` (8,795 B) shipped only on shader pages, of which none remain.
+`corpus/analyst` and `corpus/single-page-report` were rebuilt through a live kernel after
+conversion: zero warnings, zero error boxes, figure and table numbering unchanged
+(Table 1/2/3, Figure 1/2 on the readout).
+
+**The corpus conversion was verified against a live R render, not eyeballed.** `corpus/analyst`'s
+three `{r}` cells became Python and the fit reproduces R's `lm()` **to every printed digit**:
+intercept 4.675811, us-east −0.113122, ap-south 0.365546, canary 0.092340, per-week
+−0.020258, and both half-quarter canary factors (1.161646 and 1.041428) with identical
+confidence intervals. The model is written out as a design matrix rather than handed to a
+formula library, because `statsmodels` is not in this repo's venv and a five-column OLS is
+clearer written down than described.
+
+**`corpus/single-page-report`'s seed changed, deliberately.** R's `set.seed(20260803)` has no
+numpy equivalent, and the document's prose quotes the *result* — "a band roughly 0.9 wide",
+"σ ≈ 0.22", the second repeated in `_data-modeling.tmd`. `default_rng(20260826)` was chosen
+by scanning seeds for an observed region-mean band of 0.877 (σ ≈ 0.219), so the document's
+own arithmetic stays true across two files rather than needing three prose rewrites.
+
+**What was given up, stated plainly.**
+
+**The second implementation, and with it the only thing that kept `kernel.rs`'s
+"ZMQ is language-agnostic" claim honest.** The dissent's strongest point stands: R had no UI,
+no CSS, no client code and 20 of `kernel.rs`'s 2,487 lines, so its polish *was* Python's
+polish — and it had already paid for itself twice, catching the `#| trace: true` harness bug
+and the generic `alt="output"` a11y bug that affected every non-matplotlib image. What the cut
+actually buys is the `gates.sh` prerequisite and the second-arm audit tax. The alt-text half is
+preserved and proven; the language-agnosticism claim is not.
+
+**The `--no-exec` glsl twin, which was the only row that could catch that flag being
+re-spelled `lang == "js"` instead of driven off `CLIENT_LANGS`.** With one registered language
+the two spellings are indistinguishable by test. `no_exec_js_cells.rs` now carries a comment
+saying a second language added to the registry **owes this file a row**, which is the moment
+the distinction becomes observable again.
+
+**Every automated browser test.** Nothing now tests that a `{js}` cell's teardown runs on a
+block diff — the load-bearing path at four call sites in `client.js`'s diff-apply. This is the
+open hedge below, and it is the largest single loss of coverage in the whole cut.
+
+**`num`, `tali.tex`, `tali.table`, `tali.state`, `{glsl}` and `corpus/graphics3d/`.** The
+numerics namespace held a seeded PRNG whose whole point was that a published explorable
+resamples reproducibly; that argument survives the code. `tali.tex` closed the gap against
+Jupyter's rich-display protocol for the two shapes a scientific cell returns, over the bundled
+KaTeX fonts and with no parser. The 3-D gallery was four documents and a 5.4 MB sample model.
+
+**A pre-existing inaccuracy this wave surfaced but did not fix.** `corpus/analyst/index.tmd`
+says the second-half canary interval "covers 1.0". It does not, and did not before the
+conversion either: measured identically in R and in Python it is [1.003, 1.081], p = 0.036.
+Changing an analytical conclusion in a document written to be read is the author's call, not
+a cut wave's.

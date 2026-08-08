@@ -82,13 +82,11 @@ fetched at runtime and there is no `node_modules`. Put `target/release/taliesin`
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
 highlighting, and sites render with no kernel at all; a kernel is needed only
-to *run* `{python}`/`{r}` code cells (without one they render as source). Each
-language runs against its own warm kernel:
+to *run* `{python}` code cells (without one they render as source), which use one
+warm kernel reused across edits:
 
 - **`{python}` cells** need a Python with [`ipykernel`](https://pypi.org/project/ipykernel/)
   (`python3 -m pip install ipykernel`).
-- **`{r}` cells** need an R with [IRkernel](https://irkernel.github.io)
-  (`install.packages("IRkernel")`).
 
 `{js}` cells run in the browser and need no kernel.
 
@@ -97,7 +95,6 @@ language runs against its own warm kernel:
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `TALIESIN_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
-| `TALIESIN_R` | `R` | Interpreter used for `{r}` cells. |
 | `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). This is the default liveness cap: a cell that keeps printing is never interrupted, however long it runs. `0` disables it. |
 | `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell wall-clock cap in seconds, off by default. Set it to bound total runtime regardless of output; `0` disables it. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
@@ -182,7 +179,7 @@ books, authored in `.tmd` and built with Taliesin itself.
 
 ## Documents you did not write
 
-**Previewing a `.tmd` runs it.** `{python}` / `{r}` cells execute against a Jupyter
+**Previewing a `.tmd` runs it.** `{python}` cells execute against a Jupyter
 kernel with your permissions, a `{js}` cell runs in your browser, and raw HTML (plus
 anything a document injects through `include-in-header` / `css:`) passes through
 verbatim — so opening a document someone sent you is the same kind of decision as

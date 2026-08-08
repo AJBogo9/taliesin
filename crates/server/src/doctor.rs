@@ -8,7 +8,7 @@
 //! are injected, so the severity logic is unit-tested without spawning or touching process
 //! env. `cmd_doctor` is the thin I/O wrapper. Never executes the user's document.
 
-use crate::interpreter::{Lang, Probe, Provenance, Resolved};
+use crate::interpreter::{Probe, Provenance, Resolved};
 use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
@@ -59,50 +59,34 @@ struct Check {
     executes: Option<bool>,
 }
 
-/// The `pip install` / `install.packages` line that installs the missing kernel package into
-/// the exact interpreter that was probed.
-fn kernel_install_fix(lang: Lang, r: &Resolved) -> String {
-    match lang {
-        Lang::Python => format!("{} -m pip install ipykernel", r.path.display()),
-        Lang::R => format!("{} -e \"install.packages('IRkernel')\"", r.path.display()),
-    }
+/// The `pip install` line that installs the missing kernel package into the exact
+/// interpreter that was probed.
+fn kernel_install_fix(r: &Resolved) -> String {
+    format!("{} -m pip install ipykernel", r.path.display())
 }
 
 /// The fix when the *default* interpreter is simply absent (nothing was configured).
-fn absent_default_fix(lang: Lang) -> &'static str {
-    match lang {
-        Lang::Python => "install Python 3, then: python3 -m pip install ipykernel",
-        Lang::R => "install R, then in R: install.packages(\"IRkernel\")",
-    }
+fn absent_default_fix() -> &'static str {
+    "install Python 3, then: python3 -m pip install ipykernel"
 }
 
 /// The fix when the interpreter *works* but nothing in the project chose it. Names the
 /// in-repo, committable options first — the upward `.venv` walk and a project-dir-relative
 /// `python:` exist precisely so neither of these needs a per-machine symlink or wrapper.
-fn project_env_fix(lang: Lang) -> String {
-    match lang {
-        Lang::Python => "create a .venv at the project or repository root, or set \
-                         `python:` in _site.yml (a relative path resolves against it)"
-            .to_string(),
-        Lang::R => "set `r:` in _site.yml (a relative path resolves against it)".to_string(),
-    }
+fn project_env_fix() -> String {
+    "create a .venv at the project or repository root, or set `python:` in _site.yml (a \
+     relative path resolves against it)"
+        .to_string()
 }
 
 /// Map a resolved interpreter + its probe to one audit line (pure; the severity model).
-fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
-    let name = match lang {
-        Lang::Python => "python",
-        Lang::R => "r",
-    };
-    let pkg = match lang {
-        Lang::Python => "ipykernel",
-        Lang::R => "IRkernel",
-    };
-    let where_ = format!("{} ({})", r.path.display(), r.provenance.label(lang));
-    // Where the upward `.venv` walk looked and where it stopped. Python only (R performs
-    // no walk), and shown on every python line — including the ones that resolved fine —
-    // because "why did it pick that one?" is exactly the question a *successful-looking*
-    // wrong pick raises.
+fn interpreter_check(r: &Resolved, p: &Probe) -> Check {
+    let name = "python";
+    let pkg = "ipykernel";
+    let where_ = format!("{} ({})", r.path.display(), r.provenance.label());
+    // Where the upward `.venv` walk looked and where it stopped. Shown on every line —
+    // including the ones that resolved fine — because "why did it pick that one?" is
+    // exactly the question a *successful-looking* wrong pick raises.
     let searched = r
         .trail
         .ancestor
@@ -133,7 +117,7 @@ fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
                      this interpreter{searched}"
                 )
             },
-            fix: (!chosen).then(|| project_env_fix(lang)),
+            fix: (!chosen).then(project_env_fix),
             executes: Some(true),
         };
     }
@@ -142,7 +126,7 @@ fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
             name,
             status: Status::Warn,
             detail: format!("{where_}\n{ver}{pkg} MISSING{searched}"),
-            fix: Some(kernel_install_fix(lang, r)),
+            fix: Some(kernel_install_fix(r)),
             executes: Some(false),
         };
     }
@@ -157,7 +141,7 @@ fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
             name,
             status: Status::Warn,
             detail: format!("{where_}\n{err}  ·  {name} cells will render as source{searched}"),
-            fix: Some(absent_default_fix(lang).to_string()),
+            fix: Some(absent_default_fix().to_string()),
             executes: Some(false),
         }
     } else {
@@ -168,7 +152,7 @@ fn interpreter_check(lang: Lang, r: &Resolved, p: &Probe) -> Check {
             detail: format!("{where_}\n{err}{searched}"),
             fix: Some(format!(
                 "point {} at a real interpreter, or unset it",
-                r.provenance.label(lang)
+                r.provenance.label()
             )),
             executes: Some(false),
         }
@@ -240,7 +224,7 @@ fn summary(checks: &[Check]) -> String {
         Some(true) => format!("{lang} cells will execute"),
         _ => format!("{lang} cells will render as source"),
     };
-    format!("{}; {}.", say("python", "python"), say("r", "R"))
+    format!("{}.", say("python", "python"))
 }
 
 fn print_human(checks: &[Check]) {
@@ -316,17 +300,14 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
         site.as_ref().and_then(|s| s.config.python.as_deref()),
         dir,
     );
-    let r = crate::interpreter::resolve_r(site.as_ref().and_then(|s| s.config.r.as_deref()), dir);
-    let py_probe = crate::interpreter::probe(&py, Lang::Python);
-    let r_probe = crate::interpreter::probe(&r, Lang::R);
+    let py_probe = crate::interpreter::probe(&py);
 
     let venv = std::env::var("VIRTUAL_ENV").ok();
     let conda_prefix = std::env::var("CONDA_PREFIX").ok();
     let conda_name = std::env::var("CONDA_DEFAULT_ENV").ok();
 
     let mut checks = vec![
-        interpreter_check(Lang::Python, &py, &py_probe),
-        interpreter_check(Lang::R, &r, &r_probe),
+        interpreter_check(&py, &py_probe),
         active_env_check(
             venv.as_deref(),
             conda_prefix.as_deref(),
@@ -365,10 +346,8 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
     // environment.
     let mut packages: Vec<(&'static str, crate::packages::Manifest)> = Vec::new();
     if json {
-        for (name, lang, resolved) in [("python", Lang::Python, &py), ("r", Lang::R, &r)] {
-            if let Some(m) = crate::packages::manifest(lang, &resolved.path) {
-                packages.push((name, m));
-            }
+        if let Some(m) = crate::packages::manifest(&py.path) {
+            packages.push(("python", m));
         }
         print_json(&checks, &packages);
     } else {
@@ -387,7 +366,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn resolved(path: &str, provenance: Provenance) -> Resolved {
-        Resolved::fixed(PathBuf::from(path), provenance, Lang::Python)
+        Resolved::fixed(PathBuf::from(path), provenance)
     }
 
     #[test]
@@ -404,7 +383,7 @@ mod tests {
             kernel_pkg_ok: true,
             error: None,
         };
-        let c = interpreter_check(Lang::Python, &resolved("python3", Provenance::Default), &p);
+        let c = interpreter_check(&resolved("python3", Provenance::Default), &p);
         assert_eq!(c.status, Status::Warn);
         assert!(
             c.fix.is_some(),
@@ -432,7 +411,7 @@ mod tests {
             kernel_pkg_ok: true,
             error: None,
         };
-        let c = interpreter_check(Lang::Python, &r, &p);
+        let c = interpreter_check(&r, &p);
         assert!(
             c.detail.contains("stopped at") && c.detail.contains(&root.display().to_string()),
             "the line must name where the upward .venv search stopped: {}",
@@ -454,11 +433,7 @@ mod tests {
             kernel_pkg_ok: true,
             error: None,
         };
-        let c = interpreter_check(
-            Lang::Python,
-            &resolved("/proj/.venv/bin/python", Provenance::Venv),
-            &p,
-        );
+        let c = interpreter_check(&resolved("/proj/.venv/bin/python", Provenance::Venv), &p);
         assert_eq!(c.status, Status::Ok);
         assert!(c.detail.contains("ipykernel present"), "{}", c.detail);
         assert!(c.fix.is_none());
@@ -473,11 +448,7 @@ mod tests {
             kernel_pkg_ok: false,
             error: None,
         };
-        let c = interpreter_check(
-            Lang::Python,
-            &resolved("/proj/.venv/bin/python", Provenance::Venv),
-            &p,
-        );
+        let c = interpreter_check(&resolved("/proj/.venv/bin/python", Provenance::Venv), &p);
         assert_eq!(c.status, Status::Warn);
         assert_eq!(
             c.fix.as_deref(),
@@ -493,7 +464,7 @@ mod tests {
             kernel_pkg_ok: false,
             error: Some("cannot run /bad/python: No such file or directory".into()),
         };
-        let c = interpreter_check(Lang::Python, &resolved("/bad/python", Provenance::Env), &p);
+        let c = interpreter_check(&resolved("/bad/python", Provenance::Env), &p);
         assert_eq!(
             c.status,
             Status::Error,
@@ -509,15 +480,15 @@ mod tests {
             runs: false,
             version: None,
             kernel_pkg_ok: false,
-            error: Some("cannot run R: No such file or directory".into()),
+            error: Some("cannot run python3: No such file or directory".into()),
         };
-        let c = interpreter_check(Lang::R, &resolved("R", Provenance::Default), &p);
+        let c = interpreter_check(&resolved("python3", Provenance::Default), &p);
         assert_eq!(
             c.status,
             Status::Warn,
             "an absent default is not a misconfiguration"
         );
-        assert!(c.fix.as_deref().unwrap().contains("IRkernel"));
+        assert!(c.fix.as_deref().unwrap().contains("ipykernel"));
     }
 
     #[test]
@@ -581,27 +552,16 @@ mod tests {
             executes,
         };
         assert_eq!(
-            summary(&[
-                check("python", Some(true)),
-                check("r", Some(false)),
-                check("env", None),
-            ]),
-            "python cells will execute; R cells will render as source."
+            summary(&[check("python", Some(true)), check("env", None)]),
+            "python cells will execute."
         );
-        // Swapped, so a summary reading the wrong check cannot pass both halves.
+        // The other direction, so a summary that ignored `executes` altogether — or read
+        // the wrong check — cannot pass both halves. An interpreter present but missing
+        // its kernel package renders as source, and saying otherwise promises execution
+        // that will not happen.
         assert_eq!(
-            summary(&[
-                check("python", Some(false)),
-                check("r", Some(true)),
-                check("env", None),
-            ]),
-            "python cells will render as source; R cells will execute."
-        );
-        // An interpreter present but missing its kernel package renders as source, and
-        // saying otherwise promises execution that will not happen.
-        assert_eq!(
-            summary(&[check("python", Some(false)), check("r", Some(false))]),
-            "python cells will render as source; R cells will render as source."
+            summary(&[check("python", Some(false)), check("env", None)]),
+            "python cells will render as source."
         );
     }
 
@@ -615,7 +575,7 @@ mod tests {
             executes: None,
         };
         let warn = Check {
-            name: "r",
+            name: "env",
             status: Status::Warn,
             detail: String::new(),
             fix: None,

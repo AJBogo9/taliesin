@@ -24,32 +24,13 @@ interface Window {
   TALIESIN_DRAFTS?: Array<{ url: string; title: string }>;
 
   /** Client-side cell runtime API (defined by tali-js.js): teardown a removed cell
-   *  subtree, reset the whole runtime on a full re-mount (to avoid leaking WebGL
-   *  contexts / RAF loops across edits + reconnects), and register a client-side cell
-   *  LANGUAGE. `registerLanguage` is the seam `glsl.js` mounts on: the
-   *  `mime` must match the `<script type>` that language's `render/client_lang.rs`
-   *  entry emits. `hooks` is the fourth argument tali-js.js's own `TaliLangSetup`
-   *  typedef declares (language-only; never placed on `api`, which author cell
-   *  source receives verbatim) — a language that does not need it, like `{glsl}`,
-   *  simply declares a shorter `setup` and ignores it, which a JS function assigned
-   *  to a longer parameter list is free to do. */
+   *  subtree, and reset the whole runtime on a full re-mount (to avoid leaking WebGL
+   *  contexts / RAF loops across edits + reconnects). Both are called from client.js's
+   *  diff-apply path. */
   taliJs?: {
     teardown?: (n: Element) => void;
     reset?: () => void;
-    registerLanguage?: (
-      mime: string,
-      setup: (
-        src: string,
-        api: any,
-        opts: { name: string | null; viewof: string | null; inputs: string[]; kind: string },
-        hooks: { publish: (n: string, v: any) => Promise<void> },
-      ) => { run: () => any; dispose?: () => void },
-    ) => void;
   };
-  /** The curated numerics namespace `{js}` cells draw with (numerics.js), handed to a
-   *  cell body as `num` beside `Plot` and `d3`. Typed loosely on purpose: it is a plain
-   *  data-and-functions object, and pinning its shape here would fork the definition. */
-  taliNum?: any;
   /** Theme API from the head script (`theme_head`). The reader's *choice* may be
    *  `"auto"`; the resolved *mode* that paints never is. Passing `"auto"` (or any
    *  unrecognized value) to `taliSetTheme` clears the saved choice. */

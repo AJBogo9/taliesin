@@ -38,7 +38,6 @@ const CELL_REGIONS = "taliesin/cellRegions";
 const LANGUAGE_IDS: Record<string, string> = {
   python: "python",
   py: "python",
-  r: "r",
   js: "javascript",
   javascript: "javascript",
   ts: "typescript",

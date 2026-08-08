@@ -230,7 +230,7 @@ fn extended_command(other: &str) -> Option<&'static str> {
 /// diff it against the variables the code actually reads: `TALIESIN_MERMAID_URL` shipped
 /// user-facing but undocumented because nothing tied the two together.
 const ENV_HELP: &str = "\
-ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
+ENV: TALIESIN_PYTHON (python kernel),
      TALIESIN_CELL_SILENCE (per-cell seconds with NO output; default 600, 0 disables),
      TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
@@ -688,14 +688,9 @@ mod cli_microcopy_tests {
             "TALIESIN_REQUIRE_KERNEL",
             // Like TALIESIN_REQUIRE_KERNEL: a CI-only gate that turns a "tool missing, so
             // skip" into a hard failure (here, Node for the JS-equivalence guard). Not a
-            // knob a user of the binary ever sets.
+            // knob a user of the binary ever sets. Read from `crates/core/tests/`, which
+            // this walk never sees, so the exemption is belt-and-braces.
             "TALIESIN_REQUIRE_NODE",
-            // Same shape again, for the browser. The `{js}` observation canary is gated
-            // from `crates/server/tests/`, which this walk never sees; the math hover's
-            // canary has to live in `src/` (a bin crate cannot reach `pub(crate)` from an
-            // integration test), so the scanner meets this one and must be told it is a
-            // test gate rather than a user-facing knob.
-            "TALIESIN_REQUIRE_CHROME",
         ];
 
         fn walk(dir: &std::path::Path, out: &mut std::collections::BTreeSet<String>) {

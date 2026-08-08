@@ -346,14 +346,9 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
         "python",
         "Executed by a Jupyter kernel; output is spliced in.",
     ),
-    ("r", "Executed by an IRkernel; output is spliced in."),
     (
         "js",
         "Reactive cell, run in the reader's browser (no kernel).",
-    ),
-    (
-        "glsl",
-        "Fragment shader drawn to a live canvas in the reader's browser (no kernel).",
     ),
     ("mermaid", "Diagram rendered at build time."),
     ("bash", "Highlighted only; not executed."),
@@ -555,7 +550,8 @@ mod tests {
         }
         // The reverse direction: a kernel language missing from the list would never be
         // offered, and the loop above could not see it.
-        for lang in ["python", "r"] {
+        {
+            let lang = "python";
             assert!(
                 executes_to_kernel(lang),
                 "`{lang}` is expected to be a kernel language"

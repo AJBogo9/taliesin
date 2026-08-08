@@ -101,6 +101,12 @@ output block, so no slot is emitted for one — an element that could never fill
 
 ::: {.callout-note}
 ```{js}
-return tali.table([1, 2, 3].map((n) => ({ n, doubled: n * 2 })));
+const ul = document.createElement("ul");
+for (const n of [1, 2, 3]) {
+  const li = document.createElement("li");
+  li.textContent = `${n} doubled is ${n * 2}`;
+  ul.appendChild(li);
+}
+return ul;
 ```
 :::

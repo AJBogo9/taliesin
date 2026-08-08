@@ -32,25 +32,20 @@ pub struct ClientLang {
 
 /// The registered client-side cell languages.
 ///
-/// **Deliberately short, and every entry must earn its bytes.** `{sql}`/DuckDB and
-/// `{ts}`/esbuild stay cut until a corpus document needs one (each is a multi-MB vendored
-/// payload and its own licence question); `{glsl}` earned its place by needing neither,
-/// because WebGL is a browser API, so the whole language costs one small enhancer and no
-/// vendored bytes. `{pyodide}` was the one entry that DID pay the multi-MB price (a CPython
-/// WASM build) and it was **withdrawn**: see [`crate::diagnostics::RETIRED_CELL_LANGS`] for
-/// what an author who still has one gets told, and `notes/DO-NOT-REBUILD.md` for the ruling.
-pub(crate) const CLIENT_LANGS: &[ClientLang] = &[
-    ClientLang {
-        lang: "js",
-        mime: "application/tali-js",
-        class: "tali-js-cell",
-    },
-    ClientLang {
-        lang: "glsl",
-        mime: "application/tali-glsl",
-        class: "tali-glsl-cell",
-    },
-];
+/// **One entry, and the registry is kept anyway.** The alternative is spelling `lang ==
+/// "js"` back into the six places listed above, which is the shape this module's own
+/// history records as silently wrong once. Every entry must earn its bytes:
+/// `{sql}`/DuckDB and `{ts}`/esbuild stay cut until a corpus document needs one (each is a
+/// multi-MB vendored payload and its own licence question). Two entries were withdrawn:
+/// `{pyodide}`, which paid the multi-MB price for a CPython WASM build, and `{glsl}`, whose
+/// shader enhancer cost no vendored bytes but served one purpose-built corpus page and
+/// nothing a person wrote to be read. See [`crate::diagnostics::RETIRED_CELL_LANGS`] for
+/// what an author who still has one gets told.
+pub(crate) const CLIENT_LANGS: &[ClientLang] = &[ClientLang {
+    lang: "js",
+    mime: "application/tali-js",
+    class: "tali-js-cell",
+}];
 
 /// The registry entry for a fence language, or `None` for a kernel/highlight-only one.
 pub fn client_lang(lang: &str) -> Option<&'static ClientLang> {
@@ -75,9 +70,8 @@ pub fn has_client_cells(body: &str) -> bool {
 }
 
 /// True if a rendered body carries a cell of one named client-side language. Gates that
-/// language's own payload (d3 + Plot for `{js}`, `glsl.js` for `{glsl}`), so a shader page
-/// does not ship half a megabyte of plotting library and a chart page does not ship a
-/// WebGL enhancer.
+/// language's own payload (d3 + Plot for `{js}`), so a page carrying only some other
+/// registered language does not ship half a megabyte of plotting library.
 pub fn has_client_cells_of(body: &str, lang: &str) -> bool {
     client_lang(lang).is_some_and(|c| body.contains(c.mime))
 }

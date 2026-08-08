@@ -15,19 +15,18 @@
 //   (none)            -> one-shot: runs once; re-runs when a Python define lands.
 //
 // Cell scope: { get(n), set(n,v), value(n), defines, onInput(names,cb), container,
-// invalidation, state(k,init), setState(k,v), tex(v,opts), table(rows,opts) }. Registered
-// through the same taliEnhancers registry as mermaid; idempotent (a `data-tali-ran` guard)
-// so it is safe to re-run after every mount.
+// invalidation }. Registered through the same taliEnhancers registry as mermaid;
+// idempotent (a `data-tali-ran` guard) so it is safe to re-run after every mount.
 //
 // `publish` is deliberately absent from that list: it is a language-only hook, passed to a
 // language's `setup` as a fourth argument and never placed on the author-facing scope.
 //
 // This file is also the CLIENT HALF of the cell-language registry (`render/client_lang.rs`
-// is the server half). `{js}` is one entry in `languages` below; `{glsl}` registers itself
-// from `glsl.js` via `window.taliJs.registerLanguage`. Everything outside a language's own
-// `setup` — mounting the returned node, publishing `//| name`, registering `//| viewof`,
-// the dependency graph, the live region, the error box, teardown — is written once against
-// the shared wrapper contract, so a new language is a registration and not surgery.
+// is the server half). `{js}` is its one entry in `languages` below. Everything outside a
+// language's own `setup` — mounting the returned node, publishing `//| name`, registering
+// `//| viewof`, the dependency graph, the live region, the error box, teardown — is written
+// once against the shared wrapper contract, so a second language is a registration and not
+// surgery.
 (function () {
   "use strict";
   var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -47,9 +46,6 @@
    */
   /** @type {Record<string, TaliLangSetup>} */
   var languages = {};
-  // Set once `enhance` has completed a pass, so a language registered afterwards knows it
-  // has cells to catch up on. See `registerLanguage`.
-  var enhancedOnce = false;
 
   /**
    * @typedef {Object} TaliJsCell
@@ -83,7 +79,7 @@
   function rt() {
     if (!window.__talijs) {
       window.__talijs = {
-        scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [], state: {},
+        scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [],
       };
     }
     return /** @type {TaliJsRuntime} */ (window.__talijs);
@@ -186,176 +182,11 @@
     if (changed) runSequentially(r.cells);
   }
 
-  // --- rich output helpers (item 157) ---------------------------------------
-  // `tali.tex(v)` typesets a NUMBER, VECTOR or MATRIX; `tali.table(rows)` renders an array
-  // of records/rows. Between them they close the gap against Jupyter's rich-display MIME
-  // protocol for the two shapes a scientific cell actually returns, over the existing
-  // DOM-return contract and with no new machinery.
-  //
-  // **Why this is not KaTeX running in the browser.** Only KaTeX's CSS + fonts are bundled
-  // (23 KB + faces), never its ~280 KB parser, and a `{js}` page already carries ~490 KB
-  // of d3 + Plot. But the grammar here is CLOSED — a number, a 1-D array, a 2-D array,
-  // with an optional `label` left-hand side — so it needs no parser: the GLYPHS come from
-  // KaTeX's own fonts (the same faces `$...$` uses, so on a page with prose math the two
-  // match exactly) and the bracket + grid LAYOUT is ours in `base.css`. `.tali-math`'s
-  // stack falls back to a serif, so a page with no prose math — hence no KaTeX sheet —
-  // degrades to Times rather than to a broken box, and there is nothing on such a page for
-  // it to look inconsistent WITH. That is why no asset gate had to learn about this.
-  //
-  // It is not a TeX renderer and must not grow into one: real math is `$...$` in prose.
-
-  /** @param {number} x @param {number} [digits] */
-  function fmtNum(x, digits) {
-    if (!isFinite(x)) return x !== x ? "NaN" : (x > 0 ? "∞" : "−∞");
-    var d = digits === undefined ? 3 : digits;
-    if (Number.isInteger(x) && Math.abs(x) < 1e6) return String(x).replace("-", "−");
-    var mag = Math.abs(x);
-    var s = mag !== 0 && (mag < 1e-4 || mag >= 1e6) ? x.toExponential(d) : x.toFixed(d);
-    return s.replace("-", "−"); // U+2212 MINUS SIGN: a hyphen is not a minus
-  }
-
-  /** Write a scalar into `el`, lifting any `e±NN` into a real superscript.
-   * @param {HTMLElement} el @param {any} x @param {number} [digits] */
-  function appendScalar(el, x, digits) {
-    if (typeof x !== "number") { el.textContent = String(x); return; }
-    var s = fmtNum(x, digits);
-    var m = /^(.*)e([+−-]?\d+)$/.exec(s);
-    if (!m) { el.textContent = s; return; }
-    el.textContent = m[1] + " × 10";
-    var sup = document.createElement("sup");
-    sup.textContent = m[2].replace("+", "").replace("-", "−");
-    el.appendChild(sup);
-  }
-
-  /** A value's matrix rows, or null when it is a scalar. @param {any} v */
-  function asRows(v) {
-    if (!Array.isArray(v)) return null;
-    if (v.length && Array.isArray(v[0])) return v;
-    return [v]; // a 1-D array reads as a row vector
-  }
-
-  /** @param {any} v @param {{label?: string, digits?: number}} [opts] */
-  function texValue(v, opts) {
-    var o = opts || {};
-    var root = document.createElement("span");
-    root.className = "tali-math";
-    if (o.label) {
-      var lhs = document.createElement("span");
-      lhs.className = "tali-math-var";
-      lhs.textContent = o.label;
-      var rel = document.createElement("span");
-      rel.className = "tali-math-rel";
-      rel.textContent = "=";
-      root.appendChild(lhs);
-      root.appendChild(rel);
-    }
-    var rows = asRows(v);
-    if (!rows) {
-      var scalar = document.createElement("span");
-      scalar.className = "tali-math-num";
-      appendScalar(scalar, v, o.digits);
-      root.appendChild(scalar);
-      return root;
-    }
-    var wrap = document.createElement("span");
-    wrap.className = "tali-math-matrix";
-    var grid = document.createElement("span");
-    grid.className = "tali-math-grid";
-    var width = rows.reduce(function (w, r2) { return Math.max(w, r2.length); }, 0);
-    grid.style.gridTemplateColumns = "repeat(" + width + ", auto)";
-    rows.forEach(function (row) {
-      for (var i = 0; i < width; i++) {
-        var c = document.createElement("span");
-        c.className = "tali-math-num";
-        appendScalar(c, row[i] === undefined ? "" : row[i], o.digits);
-        grid.appendChild(c);
-      }
-    });
-    var l = document.createElement("span");
-    l.className = "tali-math-delim";
-    var r2 = document.createElement("span");
-    r2.className = "tali-math-delim";
-    wrap.appendChild(l);
-    wrap.appendChild(grid);
-    wrap.appendChild(r2);
-    root.appendChild(wrap);
-    return root;
-  }
-
-  /** The column keys for a row list, in first-seen order. @param {any[]} data */
-  function inferColumns(data) {
-    var first = data[0];
-    if (Array.isArray(first)) {
-      var width = data.reduce(function (w, r) { return Math.max(w, (r || []).length); }, 0);
-      return Array.from({ length: width }, function (_, i) { return i; });
-    }
-    if (first && typeof first === "object") {
-      /** @type {string[]} */
-      var keys = [];
-      data.forEach(function (row) {
-        if (row && typeof row === "object") {
-          Object.keys(row).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
-        }
-      });
-      return keys;
-    }
-    return ["value"];
-  }
-
-  /** @param {any} rows @param {{columns?: any[], limit?: number, digits?: number}} [opts] */
-  function miniTable(rows, opts) {
-    var o = opts || {};
-    var data = Array.isArray(rows) ? rows : [rows];
-    var limit = o.limit === undefined ? 20 : o.limit;
-    var cols = o.columns || inferColumns(data);
-    var structured = data.length > 0 && data[0] !== null && typeof data[0] === "object";
-    var wrap = document.createElement("div");
-    wrap.className = "tali-mini-table";
-    var table = document.createElement("table");
-    var thead = document.createElement("thead");
-    var hrow = document.createElement("tr");
-    cols.forEach(function (c) {
-      var th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = typeof c === "number" ? String(c + 1) : String(c);
-      hrow.appendChild(th);
-    });
-    thead.appendChild(hrow);
-    table.appendChild(thead);
-    var tbody = document.createElement("tbody");
-    data.slice(0, limit).forEach(function (row) {
-      var tr = document.createElement("tr");
-      cols.forEach(function (c) {
-        var td = document.createElement("td");
-        var v = structured ? (row || {})[c] : row;
-        if (typeof v === "number") {
-          td.className = "tali-mini-num";
-          appendScalar(td, v, o.digits);
-        } else {
-          td.textContent = v === undefined || v === null ? "" : String(v);
-        }
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    // Never silently truncate: a table that shows 20 of 5,000 rows and says so is honest;
-    // one that just stops is a lie the reader cannot see.
-    if (data.length > limit) {
-      var cap = document.createElement("caption");
-      cap.textContent =
-        "showing " + limit + " of " + data.length + " rows";
-      table.appendChild(cap);
-    }
-    wrap.appendChild(table);
-    return wrap;
-  }
-
   /**
    * @param {TaliJsRuntime} r @param {HTMLElement} container
-   * @param {() => (Promise<void> | null)} getInv @param {string} cellKey
+   * @param {() => (Promise<void> | null)} getInv
    */
-  function makeApi(r, container, getInv, cellKey) {
+  function makeApi(r, container, getInv) {
     return {
       /** @param {string} n */
       get: function (n) { return r.scope[n]; },
@@ -374,37 +205,6 @@
       },
       container: container,
       get invalidation() { return getInv(); },
-      // --- cross-re-run state (item 156) -------------------------------------
-      // A cell body re-runs from scratch on every scheduled pass, which is what keeps
-      // this a scheduler and not a reactive VM — but it also means an ITERATIVE demo (an
-      // EM sweep, a gradient-descent trace) had nowhere to keep the thing it is
-      // iterating. `invalidation` could only tear down. These two formalize the gap.
-      //
-      // Deliberately NOT general mutable dataflow, and the three limits are the design:
-      // (1) the store is **per cell** — two cells using "theta" do not collide, and
-      //     sharing a value across cells stays `//| name:` + `tali.get`, which the graph
-      //     can see and order; a store both cells wrote would be an invisible edge.
-      // (2) writing it **schedules nothing** — no downstream cell re-runs because state
-      //     changed, so no write can start a cascade.
-      // (3) its lifetime is the cell's DOM lifetime. The key is the container id, which
-      //     is derived from the block's content hash: editing the cell mints a new id AND
-      //     disposes the old cell, so state clears on edit with nothing to remember to
-      //     clear. A re-run keeps the id, so the accumulation survives exactly one frame
-      //     to the next.
-      /** @param {string} k @param {any} [initial] */
-      state: function (k, initial) {
-        var bucket = r.state[cellKey] || (r.state[cellKey] = {});
-        if (!Object.prototype.hasOwnProperty.call(bucket, k)) bucket[k] = initial;
-        return bucket[k];
-      },
-      /** @param {string} k @param {any} v */
-      setState: function (k, v) {
-        (r.state[cellKey] || (r.state[cellKey] = {}))[k] = v;
-        return v;
-      },
-      // --- rich output helpers (item 157) ------------------------------------
-      tex: texValue,
-      table: miniTable,
     };
   }
 
@@ -480,7 +280,7 @@
       currentInv = new Promise(function (res) { resolveInv = res; });
       return currentInv;
     }
-    var api = makeApi(r, container, function () { return currentInv; }, container.id);
+    var api = makeApi(r, container, function () { return currentInv; });
     // Hand the source to the registered language. `setup` is where a language does its
     // one-time work — compiling the author's JS into an AsyncFunction, linking a shader
     // program — so it is the first thing that can fail, and a failure here used to escape
@@ -565,13 +365,11 @@
       // Resolve the outstanding `invalidation` (running the author's
       // `invalidation.then(() => renderer.dispose())` teardown) so the cell can be
       // dropped, then let the LANGUAGE tear down whatever the author cannot see (a WebGL
-      // context, a shader program), and drop this cell's `tali.state` bucket — the
-      // "cleared on cell edit" half of item 156's lifecycle. Idempotent: nulls the
-      // resolver so a later dispose is a no-op.
+      // context held by an `import()`ed three.js renderer). Idempotent: nulls the resolver
+      // so a later dispose is a no-op.
       dispose: function () {
         if (resolveInv) { resolveInv(); resolveInv = null; }
         if (impl.dispose) impl.dispose();
-        delete r.state[container.id];
       },
     };
     r.cells.push(cell);
@@ -621,47 +419,24 @@
   }
 
   // `{js}` itself: the author's source becomes an async function over the drawing globals.
-  // `num` (the bundled numerics namespace, item 154) sits beside Plot/d3 as one more
-  // drawing global — nothing about the graph or the scheduler knows it exists.
   //
   // Author source receives `api` verbatim as `tali`. That is safe because the one
   // capability author source must not have — `publish`, which SCHEDULES a downstream pass —
   // is not on `api` at all; it is a language-only hook passed as `setup`'s fourth argument.
   languages["application/tali-js"] = function (src, api) {
-    var fn = new AsyncFunction(
-      "tali", "Plot", "d3", "num", "container", "invalidation",
-      src
-    );
+    var fn = new AsyncFunction("tali", "Plot", "d3", "container", "invalidation", src);
     return {
       run: function () {
-        return fn(api, window.Plot, window.d3, window.taliNum, api.container, api.invalidation);
+        return fn(api, window.Plot, window.d3, api.container, api.invalidation);
       },
     };
   };
 
-  // Public API for the live-preview client (web-client/client.js) and for the other
-  // client-side cell languages: two teardown hooks (one for a block about to be
-  // replaced/removed, one before a full re-mount) plus the language registry itself.
+  // Public API for the live-preview client (web-client/client.js): two teardown hooks, one
+  // for a block about to be replaced/removed and one before a full re-mount.
   window.taliJs = window.taliJs || {};
   window.taliJs.teardown = teardownIn;
   window.taliJs.reset = resetRuntime;
-  /**
-   * Register a client-side cell language. `mime` must match the `<script type>` its
-   * server-side registry entry emits (`render/client_lang.rs`), which is the one place the
-   * two halves have to agree. Idempotent by key; a language file that loads twice (preview
-   * live-swap) re-registers the same setup rather than doubling anything.
-   * @param {string} mime @param {TaliLangSetup} setup
-   */
-  window.taliJs.registerLanguage = function (mime, setup) {
-    languages[mime] = setup;
-    // A language file that loads AFTER the first enhance pass — an `include-after-body`
-    // extension script, a live-preview swap — would otherwise leave every cell of its
-    // language unmounted forever, since nothing re-scans on its own. The
-    // `:not([data-tali-ran])` guard makes this catch-up pass idempotent for the languages
-    // that already ran. Before the first pass there is nothing to catch up on, and running
-    // here would only move the mount earlier than `taliEnhanceCode` intends.
-    if (enhancedOnce) enhance(document);
-  };
 
   // Run a list of cells in document order, awaiting each — so `//| name:` outputs
   // are stored before dependent cells run.
@@ -778,10 +553,10 @@
     /** @type {TaliJsCell[]} */
     var fresh = [];
     // Every registered client-side language in ONE document-order pass, so a page mixing
-    // `{js}` and `{glsl}` still mounts its cells in the order they were authored (which is
-    // the producer-before-consumer convention the initial run relies on). Selecting per
-    // language would group by language instead, and a `{glsl}` cell reading a `//| name:`
-    // published by a later-selected `{js}` cell would read undefined on first paint.
+    // two languages still mounts its cells in the order they were authored (which is the
+    // producer-before-consumer convention the initial run relies on). Selecting per
+    // language would group by language instead, and a cell reading a `//| name:` published
+    // by a later-selected cell of another language would read undefined on first paint.
     var selector = Object.keys(languages)
       .map(function (m) { return 'script[type="' + m + '"]:not([data-tali-ran])'; })
       .join(",");
@@ -798,7 +573,6 @@
     runSequentially(fresh.filter(function (c) {
       return !r.graph || r.graph.cyclic.indexOf(c) < 0;
     }));
-    enhancedOnce = true;
   }
 
   if (window.taliEnhancers && window.taliEnhancers.register) {

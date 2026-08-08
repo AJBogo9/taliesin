@@ -74,8 +74,9 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
 /// coordinate) were retired on 2026-08-03: neither had a use outside its own fixture, and
 /// each carried a special case through the emitter, the a11y markup and the URL-state
 /// serializer. A document that wants a frame pump drives one from a `{js}` cell.
-pub(crate) const INPUT_TYPES: &[&str] =
-    &["slider", "range", "number", "checkbox", "text", "select"];
+/// `range` was retired on 2026-08-08: it was a second spelling of `slider` and nothing but
+/// its own fixture used it, so it bought a synonym in five registration sites.
+pub(crate) const INPUT_TYPES: &[&str] = &["slider", "number", "checkbox", "text", "select"];
 
 /// Enumerate a cell's leading option keys with each key's 0-based line offset within
 /// `literal` (the fence body). Mirrors `cell_option`'s scan: only the contiguous

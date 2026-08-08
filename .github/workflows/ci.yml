@@ -58,20 +58,10 @@ jobs:
       - name: Test
         env:
           TALIESIN_REQUIRE_NODE: "1"
-          # The fourth interpreter gate, added when this workflow was restored (it did
-          # not exist when the file was deleted). `read --run` drives a real headless
-          # Chrome for `{js}` cells; the runner image ships google-chrome, and the
-          # launcher already passes --no-sandbox/--disable-dev-shm-usage, so no extra
-          # setup step is needed. Without the variable the live cases skip silently,
-          # which is the failure mode every other gate here exists to prevent.
-          TALIESIN_REQUIRE_CHROME: "1"
-        # The browser driver is off by default (24% of a clean release build), and the
-        # two browser test binaries declare it in `required-features`, so without this
-        # flag cargo skips building them and TALIESIN_REQUIRE_CHROME guards nothing.
-        run: cargo test --workspace --features taliesin-server/headless-js
-      # Deliberately DEFAULT features, so the no-driver build (what a plain `cargo
-      # install` produces) is the configuration this lints. The step above compiles
-      # every target with the driver on, so between them both are covered.
+        # No feature flag: the headless-Chrome test driver and the `headless-js` feature
+        # that guarded it were both cut on 2026-08-08, so the default-feature build is now
+        # the whole workspace and there is nothing left for a browser gate to arm.
+        run: cargo test --workspace
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -109,33 +99,6 @@ jobs:
           # the first read deterministic; every other kernel cell here finishes in well under 3s.
           TALIESIN_CELL_TIMEOUT: "3"
         run: cargo test -p taliesin-server
-
-  # The R twin of the `kernel` job above. `{r}` cells and TALIESIN_R are advertised as
-  # first-class in the README, but nothing exercised the R path: no setup-r, no
-  # TALIESIN_R-gated test, no assertion on KernelSpec::r()'s argv — while Python had a
-  # canary built specifically so its coverage could never silently reach zero. The guard
-  # existed for the language we look at. TALIESIN_REQUIRE_R=1 makes a missing R a HARD
-  # FAIL rather than a skip, for the same reason.
-  kernel-r:
-    if: github.event.repository.private != true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: "release"
-      # The package alone is what matters: Taliesin launches the kernel directly, so
-      # `IRkernel::installspec()` is a no-op here (a documented drift the 07-07 audit
-      # already caught in the User Guide) and would additionally need Jupyter present.
-      - name: Install IRkernel
-        run: Rscript -e 'install.packages("IRkernel", repos = "https://cloud.r-project.org")'
-      - name: Test with a live R kernel
-        env:
-          TALIESIN_R: R
-          TALIESIN_REQUIRE_R: "1"
-        run: cargo test -p taliesin-server --test r_kernel
 
   # Type-check the preview client JS (client.js + the sibling shipped scripts:
   # search.js, toc-spy.js). They carry `// @ts-check` and have silently

@@ -47,15 +47,14 @@ struct LangCode {
 
 /// The file extension a language's script is offered under. Known languages get their real
 /// extension; anything else falls back to `.txt` rather than inventing one — a registered
-/// client language (`{glsl}`) or a future kernel should not silently produce a filename
-/// that claims to be something the reader's tools will act on.
+/// client language or a future kernel should not silently produce a filename that claims to
+/// be something the reader's tools will act on.
 fn extension(lang: &str) -> &'static str {
     match lang {
         "python" => "py",
         "r" => "R",
         "js" | "javascript" => "js",
         "julia" => "jl",
-        "glsl" => "glsl",
         _ => "txt",
     }
 }
@@ -67,7 +66,6 @@ fn display(lang: &str) -> String {
         "r" => "R".to_string(),
         "js" | "javascript" => "JavaScript".to_string(),
         "julia" => "Julia".to_string(),
-        "glsl" => "GLSL".to_string(),
         other => other.to_string(),
     }
 }
@@ -81,8 +79,8 @@ fn display(lang: &str) -> String {
 fn collect(blocks: &[Block]) -> Vec<LangCode> {
     let mut out: Vec<LangCode> = Vec::new();
     for cell in blocks.iter().flat_map(|b| b.cells()) {
-        // A browser-run language (`{js}`, `{glsl}`) is deliberately excluded, and the reason
-        // is that this box's one claim would be FALSE for it. A kernel language is a script:
+        // A browser-run language (`{js}`) is deliberately excluded, and the reason is that
+        // this box's one claim would be FALSE for it. A kernel language is a script:
         // each cell sees the state the ones above it left, so document order is program
         // order. `{js}` is a reactive GRAPH — the runtime orders cells by dependency, and a
         // cell referencing a `viewof` input or the page's DOM has no meaning outside the
@@ -241,13 +239,16 @@ mod tests {
         );
     }
 
-    /// Two kernels in one document are two programs; concatenating them would produce one
-    /// file that is valid in neither.
+    /// Two languages in one document are two programs; concatenating them would produce
+    /// one file that is valid in neither. `{julia}` is not executed here — the box offers a
+    /// script for any kernel-shaped language, executed or merely shown — which is exactly
+    /// why its extension must be its own rather than a generic `.txt`.
     #[test]
     fn each_language_gets_its_own_download() {
-        let html = block_html("```{python}\nx = 1\n```\n\n```{r}\ny <- 2\n```\n").expect("a box");
+        let html =
+            block_html("```{python}\nx = 1\n```\n\n```{julia}\ny = 2\n```\n").expect("a box");
         assert_eq!(payload(&html, "py").trim(), "x = 1");
-        assert_eq!(payload(&html, "R").trim(), "y <- 2");
+        assert_eq!(payload(&html, "jl").trim(), "y = 2");
     }
 
     /// A `{js}` document offers no download, because the box's claim — "in the order it

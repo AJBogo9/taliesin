@@ -95,10 +95,17 @@ fn the_gate_script_arms_every_require_gate_in_the_tree() {
     found.sort();
 
     // A tree with no REQUIRE gates would make the loop below vacuous, and this test would
-    // pass while proving nothing.
+    // pass while proving nothing. Two of them, since 2026-08-08: the R gate went with the
+    // `{r}` cell language and the Chrome gate with the headless-browser test driver, and
+    // neither has anything left in the tree to arm. This floor is a vacuous-run guard, not
+    // a target — it only ever moves DOWN when a runtime leaves.
+    //
+    // **Do not name a retired gate in full here.** The scan above reads raw source text,
+    // so writing its variable name in a comment in this very file puts it straight back
+    // into `found` and fails the loop below on a gate that no longer exists.
     assert!(
-        found.len() >= 4,
-        "expected at least the four known interpreter gates, found {found:?}"
+        found.len() >= 2,
+        "expected at least the two known interpreter gates (python, node), found {found:?}"
     );
 
     for var in &found {
@@ -143,9 +150,9 @@ fn contributing_wires_the_hooks_path_and_points_at_the_gate_script() {
     );
 }
 
-/// Every canary the script names still exists. The script's proof that (say) the R kernel
-/// ran is `grep 'test r_cells_execute_and_persist_state_across_cells ... ok'`; rename that
-/// test and the proof becomes an assertion about a name nothing emits.
+/// Every canary the script names still exists. The script's proof that (say) the Python
+/// kernel ran is `grep 'test kernel_executes_state_errors_and_interrupts_runaway_cell ...
+/// ok'`; rename that test and the proof becomes an assertion about a name nothing emits.
 #[test]
 fn every_canary_the_gate_script_names_still_exists() {
     let script = read("tools/gates.sh");
@@ -159,25 +166,29 @@ fn every_canary_the_gate_script_names_still_exists() {
 
     assert_eq!(
         canaries.len(),
-        4,
-        "expected one canary per interpreter gate (python, R, node) plus the ONE \
-         browser-backed capability that stands for chrome (the reactive client's render). \
-         Every canary that has ever been dropped was dropped because the ONLY thing it \
-         proved went away, never because another canary was made to cover for it — a canary \
-         repointed at a surviving test would leave two proving the same thing and one \
-         capability proving nothing. The print track's pagination was the fifth until Wave 4 \
-         cut the PDF track: it drove paged.js through CDP and nothing else did, so nothing \
-         inherits it, and the chrome gate is unchanged because `CANARY_REACTIVE` still fails \
-         when chrome is missing. The `#| trace: true` settrace harness was the sixth until \
-         Wave 3 cut debug mode: it was independent of the plain python-kernel canary (that \
-         one proves a kernel runs, this one proved the harness runs inside it), so nothing \
-         inherits it and the python gate is unchanged — `CANARY_KERNEL` still fails when \
-         ipykernel is missing. `read --run`'s headless-`{{js}}` observation was chrome's own \
-         canary until Wave 2 cut the machine-facing verbs. The math hover's browser render \
-         was the eleventh until Wave 4.1 cut the rasterizer, the figure lightbox's was the \
-         tenth until the visual minimalism pass deleted it, and the `{{pyodide}}` runtime's \
-         plus its two cargo-feature guards were the seventh through ninth until that \
-         language was withdrawn, got {canaries:?}"
+        2,
+        "expected one canary per interpreter gate, and the gate script now needs exactly two \
+         external runtimes: python and node. Every canary that has ever been dropped was \
+         dropped because the ONLY thing it proved went away, never because another canary \
+         was made to cover for it — a canary repointed at a surviving test would leave two \
+         proving the same thing and one capability proving nothing. Wave 6 dropped the last \
+         two on that rule at once. `CANARY_R` proved an IRkernel executed and kept state; \
+         `{{r}}` was withdrawn, so nothing inherits it and there is no second kernel language \
+         for it to stand for. `CANARY_REACTIVE` was the sole surviving proof that Chrome ran \
+         at all, and it went with `reactive_browser.rs`, the `headless-js` feature and the \
+         `chromiumoxide` dependency — after which the tree has no browser-driving test to \
+         repoint it at, which is the whole reason it is dropped rather than moved. The print \
+         track's pagination was the fifth until Wave 4 cut the PDF track: it drove paged.js \
+         through CDP and nothing else did. The `#| trace: true` settrace harness was the \
+         sixth until Wave 3 cut debug mode: it was independent of the plain python-kernel \
+         canary (that one proves a kernel runs, this one proved the harness runs inside it), \
+         so nothing inherits it and the python gate is unchanged — `CANARY_KERNEL` still \
+         fails when ipykernel is missing. `read --run`'s headless-`{{js}}` observation was \
+         chrome's own canary until Wave 2 cut the machine-facing verbs. The math hover's \
+         browser render was the eleventh until Wave 4.1 cut the rasterizer, the figure \
+         lightbox's was the tenth until the visual minimalism pass deleted it, and the \
+         `{{pyodide}}` runtime's plus its two cargo-feature guards were the seventh through \
+         ninth until that language was withdrawn, got {canaries:?}"
     );
 
     let sources: Vec<String> = rust_sources()

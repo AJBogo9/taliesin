@@ -7,7 +7,7 @@ Our `post.tmd` has a single `{python}` cell. This chapter is what happens when i
 runs, and, more to the point, the lengths Taliesin goes to so that it usually
 *doesn't have to*.
 
-Executing `{python}` / `{r}` cells is the most involved subsystem and lives
+Executing `{python}` cells is the most involved subsystem and lives
 entirely in the **server** (`crates/server`), in two layers: the **executor**
 (`exec.rs`) decides *what* to run and splices outputs back into the block list;
 the **kernel** (`kernel.rs`) is one warm Jupyter process it talks to over ZMQ.
@@ -22,7 +22,6 @@ output caches that let it skip work, one in memory and one on disk:
 ```rust
 struct Executor {
     python: PathBuf,            // TALIESIN_PYTHON (default python3)
-    r: PathBuf,                 // TALIESIN_R (default R)
     langs: HashMap<&'static str, LangState>,  // "python" / "r" → warm kernel + ran-list
     freeze: FreezeCache,        // persistent _freeze/ output cache (on disk)
     no_exec: bool,              // TALIESIN_NO_EXEC / --no-exec: render cells as source
@@ -233,7 +232,7 @@ written), and "Restart kernel" forces a fresh run rather than a replay.
 client connections. `start()`:
 
 1. picks free ports and writes a Jupyter `connection.json`,
-2. spawns the interpreter (`python -m ipykernel` / `R -e IRkernel::main()`) with
+2. spawns the interpreter (`python -m ipykernel`) with
    **stderr piped**, and with its **working directory set to the document's own
    directory** (each `Executor` is created `.in_dir(...)` of its page) so a cell's
    relative file writes, audio from `scipy.io.wavfile`, a `savefig` / `ggsave`

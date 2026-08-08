@@ -699,10 +699,7 @@ fn build_page_executing(
             .in_dir(base);
         // Single-file build: no _site.yml, so resolve from the doc's own dir
         // (.venv / env / default), the same set_interpreters path the site build uses.
-        ex.set_interpreters(
-            crate::interpreter::resolve_python(None, base),
-            crate::interpreter::resolve_r(None, base),
-        );
+        ex.set_interpreters(crate::interpreter::resolve_python(None, base));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         // Executable cells that could not execute: fatal, not a warning (see
         // `kernel_failure_report`). Carried out rather than reported here so the page is
@@ -1145,12 +1142,12 @@ async fn build_one_page(
     // page with code cells starts near-instantly instead of cold-booting. `None`
     // (unset interpreter / inert pool) cold-starts exactly as before.
     exec.set_warm_pool(warm_pool);
-    // Resolve this project's interpreters (from _site.yml python:/r:, a .venv, env, or
+    // Resolve this project's interpreter (from _site.yml python:, a .venv, env, or
     // default) against the site root, matching the warm pool the orchestrator booted.
-    exec.set_interpreters(
-        crate::interpreter::resolve_python(site.config.python.as_deref(), root),
-        crate::interpreter::resolve_r(site.config.r.as_deref(), root),
-    );
+    exec.set_interpreters(crate::interpreter::resolve_python(
+        site.config.python.as_deref(),
+        root,
+    ));
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     let kernel_failure = exec.kernel_failure_report();
     // A crashed cell bakes its traceback into the page; collect a located line + count it

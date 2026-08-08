@@ -21,7 +21,7 @@ writes back to the source.
 The extension also **owns editor syntax highlighting for `.tmd`** via a `taliesin` language
 (`contributes.languages` / `contributes.grammars`). The grammar is a thin superset: it
 `include`s VS Code's built-in **MIT** `text.html.markdown` for all CommonMark, then adds only
-the Taliesin deltas — braced exec cells (` ```{python} `/`{r}`/`{js}`/…, with real embedded
+the Taliesin deltas — braced exec cells (` ```{python} `/`{js}`/…, with real embedded
 inner-language color and `#|`/`//|`/`%%|` cell options scoped as directives), `:::` fenced divs
 + `{.class #id key=val}` attrs, `$…$`/`$$…$$` math (with `{#eq-…}` labels), `{{< shortcodes >}}`,
 `@fig-`/`@sec-`/… cross-refs and `[@cite]` citations. Leading `---` YAML

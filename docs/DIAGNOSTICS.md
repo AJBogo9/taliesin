@@ -62,7 +62,7 @@ To fix: Change the kind to a supported one (a typo draws the nearest match; a re
 
 **a code cell raised an uncaught exception**
 
-A `{python}`/`{r}` cell ran and threw, so its traceback is baked into the built page where its output should be. The build still writes the page (the traceback is real output, and hiding it would ship a silently wrong document), but the page is not publishable as it stands. `check` never reports this: it does not execute cells.
+A `{python}` cell ran and threw, so its traceback is baked into the built page where its output should be. The build still writes the page (the traceback is real output, and hiding it would ship a silently wrong document), but the page is not publishable as it stands. `check` never reports this: it does not execute cells.
 
 To fix: Fix the cell's code and rebuild. To see the failure without a browser, `taliesin build <file> --strict` fails the run and names the cell.
 
@@ -208,7 +208,7 @@ To fix: Use a supported input type (the message suggests the nearest, e.g. `slid
 
 The cell was not executed at all: no kernel could be started for its language (a missing or wrong interpreter path is the usual cause), the kernel exited mid-build, or the execute request itself failed. Nothing is wrong with the cell's code — this is an environment failure, and the page carries a visible diagnostic where the output would be rather than dropping it silently.
 
-To fix: Point Taliesin at a working interpreter (`TALIESIN_PYTHON` / `TALIESIN_R`, or `python:` / `r:` in `_site.yml`) and make sure its Jupyter kernel package is installed (`ipykernel` for Python, `IRkernel` for R). `taliesin doctor` reports what it can find.
+To fix: Point Taliesin at a working interpreter (`TALIESIN_PYTHON`, or `python:` in `_site.yml`) and make sure its Jupyter kernel package is installed (`ipykernel`). `taliesin doctor` reports what it can find.
 
 ## TAL-LINK
 

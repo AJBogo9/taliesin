@@ -69,19 +69,3 @@ const p = document.createElement("p");
 p.textContent = `k=${tali.value("k")} n=${tali.value("n")} on=${tali.value("on")}`;
 return p;
 ```
-
-## `range` is `slider` under another name
-
-`type="range"` is an accepted alias for `type="slider"`, so a document carried over from
-a tool that spells it the HTML way keeps working instead of drawing an unknown-type
-warning. Both spellings dispatch to the same control, which is what this pins: the one
-below is indistinguishable from `k` above.
-
-{{< input name="r" type="range" min="0" max="1" step="0.1" value="0.4" label="r (range)" >}}
-
-```{js}
-//| input: r
-const p = document.createElement("p");
-p.textContent = "r = " + tali.value("r");
-return p;
-```

@@ -206,7 +206,7 @@ mod tests {
             blk(1, None),
             blk(3, Some("python")),
             blk(7, None),
-            blk(9, Some("r")),
+            blk(9, Some("python")),
             blk(13, Some("bash")),
             blk(17, Some("python")),
         ]
@@ -264,7 +264,7 @@ mod tests {
     fn cell_ordinals_skip_non_executable_fences() {
         // `{bash}` is a cell block but no kernel runs it, so it must not consume an
         // ordinal — otherwise `--cell 3` means a different cell to the user than to the
-        // engine. Cells are the python@1, r@3, python@5 blocks.
+        // engine. Cells are the python@1, python@3, python@5 blocks.
         let d = doc();
         assert_eq!(resolve(RunScope::ThroughCell(1), &d), Resolved::Cap(1));
         assert_eq!(resolve(RunScope::ThroughCell(2), &d), Resolved::Cap(3));
@@ -289,7 +289,7 @@ mod tests {
     fn a_line_inside_a_cell_resolves_to_that_cell() {
         let d = doc();
         assert_eq!(resolve(RunScope::ThroughLine(3), &d), Resolved::Cap(1));
-        // Inside the r cell's body: the last cell starting at or before line 10.
+        // Inside the second cell's body: the last cell starting at or before line 10.
         assert_eq!(resolve(RunScope::ThroughLine(10), &d), Resolved::Cap(3));
         assert_eq!(resolve(RunScope::ThroughLine(17), &d), Resolved::Cap(5));
     }

@@ -141,7 +141,7 @@ pub fn render_document(src: &str) -> RenderedDoc {
 ///
 /// Read in `crates/core` — not only in the server's executor — because a `{js}` cell is a
 /// **code cell whose runtime is the browser** rather than a kernel. Before this, `--no-exec`
-/// stopped `{python}`/`{r}` and emitted `{js}` unchanged while
+/// stopped `{python}` and emitted `{js}` unchanged while
 /// `docs/guide/reference/cli.tmd` called the flag a way to "preview untrusted docs safely"
 /// (item 79, measured: `crates/core` contained zero references to the variable). A flag
 /// named "no exec" that runs half the document's code is worse than no flag.
@@ -168,7 +168,7 @@ pub fn no_exec_in_force() -> bool {
 /// so labelling one as a figure/table must NOT burn a number or register a phantom
 /// anchor.
 pub fn executes_to_kernel(lang: &str) -> bool {
-    matches!(lang, "python" | "r")
+    lang == "python"
 }
 
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
@@ -1952,14 +1952,13 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{glsl_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{walk_s}{tabset_s}{scrolly_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
             String::new()
         },
         talijs_s = gate(has_client_cells(body), TALIESIN_JS),
-        glsl_s = gate(has_client_cells_of(body, "glsl"), GLSL_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
@@ -1999,26 +1998,15 @@ pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
 const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
 const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
-/// The curated numerics/stats namespace `{js}` cells draw with (`num`): distributions,
-/// summary statistics, a seeded PRNG and small dense linear algebra. First-party and
-/// tiny, so it rides with d3/Plot on the same `{js}` gate rather than earning its own.
-const NUMERICS_JS: &str = include_str!("../../assets/js/numerics.js");
-/// `{glsl}` cells: compiles a fragment shader onto a `<canvas>` and drives its uniforms
-/// from the same reactive graph. Registers into `tali-js.js`'s language registry, so it is
-/// gated on `{glsl}` cells being present rather than shipping with every `{js}` page.
-const GLSL_JS: &str = include_str!("../../assets/js/glsl.js");
 
-/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot + the
-/// first-party numerics global. Emit only when a page actually has `{js}` cells (gated on
-/// [`has_js_cells`]). The enhancer itself rides in [`code_scripts`].
+/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. Emit only when
+/// a page actually has `{js}` cells (gated on [`has_js_cells`]). The enhancer itself rides
+/// in [`code_scripts`].
 pub(crate) fn js_cell_head() -> String {
-    format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>\n<script>{NUMERICS_JS}</script>")
+    format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>")
 }
 
-/// True if a rendered body contains native `{js}` cells (gates the Plot/d3/numerics libs).
-///
-/// Deliberately **narrower** than [`has_client_cells`]: a `{glsl}`-only page needs the
-/// shared runtime but not half a megabyte of plotting library.
+/// True if a rendered body contains native `{js}` cells (gates the Plot/d3 libs).
 pub fn has_js_cells(body: &str) -> bool {
     has_client_cells_of(body, "js")
 }
@@ -2157,12 +2145,11 @@ pub fn mermaid_bundle_js() -> String {
 }
 
 /// The `{js}` drawing globals for the conditional `jslibs.<hash>.js` (ships only on pages
-/// with `{js}` cells): vendored d3 + Observable Plot, plus the first-party numerics
-/// namespace. **Must stay the External-mode twin of [`js_cell_head`]** — a global present
-/// on one path and absent on the other is a cell that works in preview and is `undefined`
-/// in the built site, which no render test would see.
+/// with `{js}` cells): vendored d3 + Observable Plot. **Must stay the External-mode twin of
+/// [`js_cell_head`]** — a global present on one path and absent on the other is a cell that
+/// works in preview and is `undefined` in the built site, which no render test would see.
 pub fn js_cell_libs_js() -> String {
-    format!("{D3_JS}\n;\n{PLOT_JS}\n;\n{NUMERICS_JS}")
+    format!("{D3_JS}\n;\n{PLOT_JS}")
 }
 
 /// True if a rendered body contains a mermaid diagram (gates the mermaid file link).

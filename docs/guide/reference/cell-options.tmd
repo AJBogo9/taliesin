@@ -20,7 +20,7 @@ prefix. By convention the prefix is the cell's own comment marker plus a pipe:
 
 | Cell language | Prefix | Example |
 |---|---|---|
-| `{python}`, `{r}` | `#\|` | `#\| echo: false` |
+| `{python}` | `#\|` | `#\| echo: false` |
 | `{js}` | `//\|` | `//\| viewof: harmonics` |
 | `{mermaid}` | `%%\|` | `%%\| label: fig-flow` |
 
@@ -215,7 +215,7 @@ sits in front matter.
 
 The three `{js}`-only options wire a cell into the in-browser reactive graph
 instead of the kernel. They run client-side, so `echo` / `include` / `cache` (which
-are about the Python/R kernel) are not honoured on a `{js}` cell. A `{js}` cell
+are about the Python kernel) are not honoured on a `{js}` cell. A `{js}` cell
 renders only its output container; its source is never shown as a listing, so there
 is nothing for `echo` to hide.
 

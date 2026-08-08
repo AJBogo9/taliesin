@@ -46,12 +46,3 @@ across both languages, and cross-referenced from the prose and from a second pag
 
 [Open the readout &rarr;](gallery/analyst/)
 
-## Live 3-D graphics
-
-Interactive graphics that run **client-side in the built page**: a ball-and-stick
-**molecule** viewer you can spin and fullscreen, a **Lorenz attractor** drawn as it
-integrates, a **CAD** model loaded beside a spur gear the document *computes* from
-three numbers, and seven **sorting algorithms** replayed from their real traces.
-Every moving part is authored in `.tmd` with `{js}` cells.
-
-[Open the graphics &rarr;](gallery/graphics3d/)

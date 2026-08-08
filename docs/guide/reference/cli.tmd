@@ -110,7 +110,7 @@ on a stray human message. Human format keeps that error on stderr.
 
 `check` is a static linter, so it does **not** spawn interpreters — the environment audit
 lives in `taliesin doctor`. It does, though, tell you **which** interpreter it would use.
-Whenever the target contains `{python}` or `{r}` cells, the human output ends with a
+Whenever the target contains `{python}` cells, the human output ends with a
 footer naming the resolved interpreter per language:
 
 ```
@@ -127,21 +127,21 @@ same file warned twice. The footer deliberately carries **no verdict** — nothi
 that binary, so `check` does not claim to know whether it works. A wrong `TALIESIN_PYTHON`
 or a stale `.venv` is visible at a glance; whether the kernel is ready is `doctor`'s answer.
 
-Two paths do probe. `--format json` always carries the full `environment` array (for each
-language used: the resolved interpreter, where it came from, and whether its `ipykernel` /
-`IRkernel` package is importable), because agents want it; and `--require-kernel` probes to
+Two paths do probe. `--format json` always carries the full `environment` array (the
+resolved interpreter, where it came from, and whether its `ipykernel` package is
+importable), because agents want it; and `--require-kernel` probes to
 gate on it. Under `--require-kernel` the human output replaces the footer above with only
 the **degraded** languages (an all-green probe is `doctor`'s business) and points at
 `taliesin doctor` for the full audit. See the [configuration
 reference](configuration.html) for how the interpreter is chosen.
 
 **A project-supplied interpreter is reported, not run.** When the interpreter comes from
-the project being checked — a `_site.yml` `python:` / `r:` field, or the project's own
+the project being checked — a `_site.yml` `python:` field, or the project's own
 `.venv` — `check` names it but never spawns it, and its `runs` is `null` with a
 `not_probed` reason. Spawning a binary a *document's* author named is execution, and
 `check` is the pass you run on a project before you have read it. `--require-kernel` (or
 `taliesin doctor`) is the opt-in that probes it. An interpreter you chose yourself
-(`TALIESIN_PYTHON` / `TALIESIN_R`, or the `python3` on your `PATH`) is probed as before.
+(`TALIESIN_PYTHON`, or the `python3` on your `PATH`) is probed as before.
 
 At a glance, here is everything `check` looks at, grouped by what it protects:
 
@@ -202,7 +202,7 @@ document someone sent you is the same kind of decision as running a script they 
 you.** Taliesin is honest about this rather than pretending to a sandbox it does not have
 (see also [`SECURITY.md`](https://github.com/AJBogo9/taliesin/blob/main/SECURITY.md)):
 
-- **Code cells execute.** `{python}` / `{r}` run against a Jupyter kernel with your
+- **Code cells execute.** `{python}` runs against a Jupyter kernel with your
   permissions; a `{js}` cell runs in your browser on the preview's origin.
 - **Raw HTML passes through**, because Markdown says it does. So does anything a project
   injects via `_site.yml` `head:` — that markup is inserted verbatim.
@@ -311,7 +311,7 @@ special matplotlib backend, and they look bad for a dense plot.)
 
 The VS Code companion puts **▶ Run Cell** and **Run Above** over every executable
 cell, which save the buffer and run the command above. They appear over
-`{python}` and `{r}` only, never over a plain ` ```python ` display block or a
+`{python}` only, never over a plain ` ```python ` display block or a
 `{bash}` fence, because the button asks the server which fences a kernel actually
 runs.
 
@@ -520,7 +520,7 @@ keeps those results in a collection of its own, so a server doing both would sho
 finding twice.
 
 **The Run buttons are a code lens, and a lens names a command.** Above every
-`{python}`/`{r}`/`{js}` fence the server offers **▶ Run Cell**, **Run Above**, and a
+`{python}`/`{js}` fence the server offers **▶ Run Cell**, **Run Above**, and a
 **⚡ cached** label when `_freeze/` already holds that cell's output. Clicking one is the
 client's job: it invokes `taliesin.runCell` with `[uri, line]`, so an editor wires that
 command once to
@@ -547,7 +547,6 @@ See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 | Variable | Purpose |
 |---|---|
 | `TALIESIN_PYTHON` | Python with `ipykernel` for `{python}` cells (default `python3`) |
-| `TALIESIN_R` | R with `IRkernel` for `{r}` cells (default `R`) |
 | `TALIESIN_CELL_SILENCE` | How long a cell may produce **no output at all** before it is interrupted, in seconds (default 600; `0` disables). This is the default liveness cap: the budget resets on every line a cell prints, so a long job that reports progress is never interrupted, while a genuinely wedged one still is |
 | `TALIESIN_CELL_TIMEOUT` | Optional per-cell **wall-clock** cap in seconds, **off by default**. Set it to bound a cell's total runtime regardless of how much it prints (`0` disables). A streaming runaway is already caught by the output caps, so this is for bounding cost, not for safety |
 | `TALIESIN_RENDER_TIMEOUT` | Per-render wall-clock cap in seconds (default 30; `0` disables it). Rendering is not execution: it never legitimately takes seconds, so this is a watchdog against a pathological document, not a budget to tune. A render that exceeds it is abandoned with a located diagnostic instead of hanging the preview |

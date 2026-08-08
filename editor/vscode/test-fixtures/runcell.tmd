@@ -28,6 +28,6 @@ b = a + 1
 print("never executed")
 ```
 
-```{r}
-x <- 1
+```{python}
+z = 2
 ```

@@ -57,8 +57,8 @@ reachable here and nowhere else.
 
 ### `Cell`
 
-The executable payload of a code cell (`` ```{python} ``, `` ```{r} ``, `` ```{js} ``).
-The core records it; the server runs `{python}`/`{r}` against a kernel and the
+The executable payload of a code cell (`` ```{python} ``, `` ```{js} ``).
+The core records it; the server runs `{python}` against a kernel and the
 client runs `{js}` in the browser.
 
 ```rust

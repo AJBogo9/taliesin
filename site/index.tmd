@@ -109,7 +109,7 @@ Taliesin website.
 
 ## Edit the code. The output re-runs in place.
 
-A `{python}` or `{r}` cell runs against a warm kernel. Change a parameter and only
+A `{python}` cell runs against a warm kernel. Change a parameter and only
 that cell (and the figure it produced) re-renders. The rest of the page never
 moves, and the kernel never cold-starts.
 

@@ -5,10 +5,10 @@
 //! HTML (a broken scrolly wrapper, a dropped reactive cell shell) renders a
 //! structurally valid document and passes. These snapshots pin the bytes.
 //!
-//! Scope is deliberately `{js}`: `exec.rs` maps only `python`/`r` to a kernel, so
-//! these documents' cells never execute during a core render and the snapshots stay
-//! hermetic: no Jupyter kernel, no CI kernel job. An `{r}`/`{python}` snapshot would
-//! either need a kernel or would silently pin the "kernel unavailable" fallback.
+//! Scope is deliberately `{js}`: `exec.rs` maps only `python` to a kernel, so these
+//! documents' cells never execute during a core render and the snapshots stay hermetic:
+//! no Jupyter kernel, no CI kernel job. A `{python}` snapshot would either need a kernel
+//! or would silently pin the "kernel unavailable" fallback.
 //!
 //! Snapshots are plain files under `tests/snapshots/`. Rewrite them after an
 //! intentional change with:

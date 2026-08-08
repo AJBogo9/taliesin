@@ -482,12 +482,6 @@ return el;
 
 :::
 
-That is one interactive graphic; the **[Live 3-D graphics gallery](gallery/graphics3d/)**
-has three more, each a real `.tmd` document you can open: a spin-and-fullscreen
-**molecule** viewer, a **CAD** model loaded beside a spur gear the page computes from
-three numbers, and seven **sorting algorithms** replayed from their real
-comparison-and-swap traces (with optional sound).
-
 ## It is all just Taliesin
 
 Every demo on this page is plain text in one `.tmd` file, served by Taliesin itself,

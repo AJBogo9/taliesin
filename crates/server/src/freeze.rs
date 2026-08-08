@@ -401,8 +401,13 @@ mod tests {
             reloaded.recorded_packages("python"),
             Some("deadbeefdeadbeef")
         );
+        // Deliberately a language that is NOT executed here. `{r}` was this row until it
+        // was withdrawn on 2026-08-08, and with only one live kernel language left this
+        // assertion is the last thing in the tree that can tell a correct per-language map
+        // from a scalar wearing one — so it is retargeted rather than deleted, at a token
+        // no interpreter will ever record.
         assert_eq!(
-            reloaded.recorded_packages("r"),
+            reloaded.recorded_packages("julia"),
             None,
             "per language, not global"
         );

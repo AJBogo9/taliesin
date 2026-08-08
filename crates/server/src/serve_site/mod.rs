@@ -1412,25 +1412,18 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         // this task and dropped on channel close (server shutdown), which kills every
         // forkserver daemon + idle kernel. If `TALIESIN_PYTHON` is unset or the forkserver
         // can't boot, `warm_pool_for_preview` is inert and every page cold-starts.
-        let mut specs: Vec<(
-            Arc<Project>,
-            crate::interpreter::Resolved,
-            crate::interpreter::Resolved,
-        )> = Vec::new();
+        let mut specs: Vec<(Arc<Project>, crate::interpreter::Resolved)> = Vec::new();
         for project in std::iter::once(&app.root).chain(app.mounts.iter().map(|m| &m.project)) {
-            let (py, r) = {
+            let py = {
                 let s = project.site.lock();
-                (
-                    crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir),
-                    crate::interpreter::resolve_r(s.config.r.as_deref(), &project.dir),
-                )
+                crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
             };
-            specs.push((project.clone(), py, r));
+            specs.push((project.clone(), py));
         }
         let root_py = specs[0].1.clone();
         let warm_pool = crate::warm_pool::warm_pool_for_preview(&root_py).await;
         let mut pools: HashMap<ProjectKey, ExecPool> = HashMap::new();
-        for (project, py, r) in &specs {
+        for (project, py) in &specs {
             let wp = if py.path == root_py.path {
                 warm_pool.clone()
             } else {
@@ -1438,7 +1431,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
             };
             pools.insert(
                 project.key.clone(),
-                ExecPool::new(project.dir.join("_freeze"), wp, py.clone(), r.clone()),
+                ExecPool::new(project.dir.join("_freeze"), wp, py.clone()),
             );
         }
         while let Some(msg) = build_rx.recv().await {
@@ -2610,9 +2603,6 @@ mod project_tests {
         assert!(is_cell_free(&render("---\ntitle: T\n---\n\nJust prose.\n")));
         assert!(!is_cell_free(&render(
             "---\ntitle: T\n---\n\n```{python}\nprint(1)\n```\n"
-        )));
-        assert!(!is_cell_free(&render(
-            "---\ntitle: T\n---\n\n```{r}\nprint(1)\n```\n"
         )));
         // `{js}` runs in the BROWSER, so a page full of reactive cells needs the kernel
         // lane exactly as much as a prose page does — which is most of what makes this

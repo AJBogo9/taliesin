@@ -92,6 +92,19 @@ pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 /// `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
 /// derives the tombstone from this table, so no hand-written test is owed.
 pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
+    // --- The reactive tail and the second kernel language, retired 2026-08-08.
+    (
+        "input type",
+        "range",
+        "it was removed on 2026-08-08: it was a second spelling of `slider`, which emits \
+         exactly the same control. Write `type=\"slider\"`",
+    ),
+    (
+        "config key",
+        "r",
+        "it was removed on 2026-08-08 with the `{r}` cell language: only `{python}` runs \
+         against a kernel now, so set `python:` (or `TALIESIN_PYTHON`) instead",
+    ),
     // --- The slide-deck engine, retired 2026-08-08. `_site.yml` keeps its own `footer:`
     // and `logo:`; only the per-document deck chrome goes.
     (

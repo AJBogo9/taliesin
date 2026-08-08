@@ -24,21 +24,6 @@ fn readout() -> String {
     analyst().render_page("index.tmd").expect("readout renders")
 }
 
-/// The load-bearing new shape: `{python}` and `{r}` cells in ONE document. Every other
-/// corpus doc is single-language (the R cells under `single-page-report/`, the Python posts
-/// under `posts/`), so per-language executor routing had no document that mixed them.
-#[test]
-fn one_document_carries_both_python_and_r_cells() {
-    let src = std::fs::read_to_string(corpus_dir().join("analyst/index.tmd"))
-        .expect("readout source readable");
-    assert!(
-        src.contains("```{python}") && src.contains("```{r}"),
-        "the readout must keep BOTH languages — that combination is the whole point of \
-         this pin, and dropping either one silently reduces it to a doc the corpus \
-         already has"
-    );
-}
-
 /// One table counter spans the authored `: caption {#tbl-x}` path and the executed
 /// `#| label: tbl-x` path, numbering them in document order. The two paths live in
 /// different functions (`apply_table_captions`'s Markdown arm vs its cell arm) and no
@@ -60,19 +45,23 @@ fn authored_and_executed_tables_share_one_counter_in_document_order() {
     }
 }
 
-/// Figures are numbered across the two languages in document order too: the matplotlib
-/// figure is Figure 1 and the ggplot figure that follows it is Figure 2. A per-language
-/// counter would number both of them 1.
+/// Figures from separate cells are numbered in document order across the whole page: the
+/// weekly-p95 figure is Figure 1 and the split-halves figure that follows it is Figure 2.
+/// A per-CELL counter would number both of them 1.
+///
+/// This pinned "across two LANGUAGES" until `{r}` was withdrawn on 2026-08-08 and the
+/// readout's model cells were rewritten in Python. The counter is language-blind, so what
+/// it really asserts is unchanged; only the sentence describing it was ever about R.
 #[test]
-fn figures_from_two_languages_share_one_counter() {
+fn figures_from_separate_cells_share_one_counter() {
     let h = readout();
     assert!(
         h.contains("href=\"#fig-p95\" class=\"tali-xref\">Figure&nbsp;1<"),
-        "the {{python}} figure is Figure 1: {h}"
+        "the first cell's figure is Figure 1: {h}"
     );
     assert!(
         h.contains("href=\"#fig-effects\" class=\"tali-xref\">Figure&nbsp;2<"),
-        "the {{r}} figure that follows it is Figure 2, not a second Figure 1: {h}"
+        "the figure that follows it is Figure 2, not a second Figure 1: {h}"
     );
 }
 
@@ -158,12 +147,23 @@ fn the_authored_table_carries_its_id_and_folded_caption() {
 fn the_generating_script_is_shown_but_never_executed() {
     let methods = std::fs::read_to_string(corpus_dir().join("analyst/methods.tmd"))
         .expect("methods source readable");
+    // Scoped to the section that carries the script, not to the whole page. The page also
+    // holds the diagnostics cells, which DO execute and are meant to — asserting over the
+    // file would have made this pass only while `methods.tmd` had no live cells at all,
+    // which stopped being true when the R diagnostics were rewritten in Python.
+    let section = methods
+        .split_once("## How the file was generated")
+        .expect("methods.tmd has the generating-script section")
+        .1;
+    let section = section
+        .split_once("\n## ")
+        .map_or(section, |(before, _)| before);
     assert!(
-        methods.contains("```python\n"),
-        "the generating script is shown as a plain fenced block: {methods}"
+        section.contains("```python\n"),
+        "the generating script is shown as a plain fenced block: {section}"
     );
     assert!(
-        !methods.contains("```{python}"),
+        !section.contains("```{python}"),
         "the generating script must NOT become an executable cell — it would rewrite \
          data/latency.csv on every build, and both pages' numbers are quoted in prose"
     );

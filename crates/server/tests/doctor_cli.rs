@@ -24,7 +24,6 @@ fn doctor_reports_interpreters_and_active_env() {
         .arg("doctor")
         .arg(&dir)
         .env_remove("TALIESIN_PYTHON")
-        .env_remove("TALIESIN_R")
         .output()
         .expect("run doctor");
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -35,10 +34,6 @@ fn doctor_reports_interpreters_and_active_env() {
     assert!(
         stdout.contains("ipykernel"),
         "names the python kernel pkg (present / MISSING / install fix):\n{stdout}"
-    );
-    assert!(
-        stdout.contains("IRkernel"),
-        "names the R kernel pkg:\n{stdout}"
     );
     assert!(
         stdout.contains("env"),
@@ -65,7 +60,7 @@ fn doctor_json_lists_the_checks() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stdout is valid JSON");
     assert!(v["ok"].is_boolean(), "has a top-level ok: {v}");
     let checks = v["checks"].as_array().expect("checks array");
-    for name in ["python", "r", "env"] {
+    for name in ["python", "env"] {
         assert!(
             checks.iter().any(|c| c["name"] == name),
             "json has a `{name}` check: {v}"

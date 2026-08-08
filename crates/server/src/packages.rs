@@ -18,7 +18,6 @@
 //! One subprocess per interpreter per process, memoized. Not `pip list`: `importlib.metadata`
 //! is stdlib, so it answers for an interpreter with no pip, and it does not pay pip's import.
 
-use crate::interpreter::Lang;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
@@ -48,46 +47,31 @@ for n in sorted(seen):
     print(n + '\\t' + seen[n])
 ";
 
-/// `installed.packages()` is the R equivalent and needs no extra package. `--vanilla` so a
-/// user's `.Rprofile` cannot print into the answer, `--slave` so R does not echo the code.
-const R_PROBE: &str = "\
-ip <- installed.packages()[, c('Package', 'Version'), drop = FALSE]
-ip <- ip[order(rownames(ip)), , drop = FALSE]
-cat(paste(ip[, 'Package'], ip[, 'Version'], sep = '\\t'), sep = '\\n')
-";
-
 /// The manifest for `program`, memoized process-wide.
 ///
 /// `None` means *we could not ask* — the interpreter is missing, or the probe failed — and it
 /// is deliberately not cached, for the same reason `exec::probe_interp_id` does not cache a
 /// failed version probe: a transient failure must not become this process's permanent answer.
 /// A `None` here costs the environment warning and nothing else; it never changes what runs.
-pub(crate) fn manifest(lang: Lang, program: &Path) -> Option<Manifest> {
+pub(crate) fn manifest(program: &Path) -> Option<Manifest> {
     static CACHE: OnceLock<Mutex<BTreeMap<String, Manifest>>> = OnceLock::new();
-    let key = format!("{lang:?}\u{0}{}", program.display());
+    let key = program.display().to_string();
     let cache = CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
     if let Some(m) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Some(m);
     }
-    let out = match lang {
-        Lang::Python => std::process::Command::new(program)
-            .args(["-c", PYTHON_PROBE])
-            .stdin(std::process::Stdio::null())
-            .output()
-            .ok()?,
-        Lang::R => std::process::Command::new(program)
-            .args(["--vanilla", "--slave", "-e", R_PROBE])
-            .stdin(std::process::Stdio::null())
-            .output()
-            .ok()?,
-    };
+    let out = std::process::Command::new(program)
+        .args(["-c", PYTHON_PROBE])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
     let m = parse(&String::from_utf8_lossy(&out.stdout));
     // An interpreter with genuinely nothing installed is not a thing (Python ships its own
-    // distributions; R ships base packages), so an empty parse means the probe printed
-    // something we could not read — which must not be memoized as "this environment is empty".
+    // distributions), so an empty parse means the probe printed something we could not
+    // read — which must not be memoized as "this environment is empty".
     if m.packages.is_empty() {
         return None;
     }

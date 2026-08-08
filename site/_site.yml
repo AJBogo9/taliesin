@@ -8,14 +8,13 @@ url: "https://taliesin.sh"
 favicon: favicon.svg
 
 # Serve the two sibling docs books + the gallery exhibits so the nav links resolve, live
-# in `preview` and on disk after `taliesin build site` (one command builds all eight).
+# in `preview` and on disk after `taliesin build site` (one command builds all seven).
 mounts:
   docs/guide: ../docs/guide
   docs/internals: ../docs/internals
   gallery/course: ../corpus/course
   gallery/tarn: ../corpus/tarn
   gallery/descent: ../corpus/descent
-  gallery/graphics3d: ../corpus/graphics3d
   gallery/analyst: ../corpus/analyst
 
 nav:

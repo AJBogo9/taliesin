@@ -16,7 +16,7 @@ hero:
 The default output: prose with everything a technical piece actually needs. Write
 Markdown and get a clean reading column with web-native typography. Add display and
 inline math, mermaid diagrams, numbered figures, callouts, and `[@key]` citations
-with a real bibliography. Drop in `{python}` or `{r}` cells and their output (including matplotlib figures) renders inline and re-runs only when the code changes.
+with a real bibliography. Drop in `{python}` cells and their output (including matplotlib figures) renders inline and re-runs only when the code changes.
 
 ```yaml
 ---

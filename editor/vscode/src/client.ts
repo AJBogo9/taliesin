@@ -71,7 +71,7 @@ async function start(output: vscode.LogOutputChannel): Promise<void> {
     synchronize: {
       fileEvents: vscode.workspace.createFileSystemWatcher("**/{*.tmd,_site.yml,*.bib}"),
     },
-    // Completion inside a `{python}` / `{r}` / `{js}` cell is forwarded to whoever owns that
+    // Completion inside a `{python}` / `{js}` cell is forwarded to whoever owns that
     // language and merged with ours. Ours still answers in a cell (that is where `#|` cell
     // options live), so this adds rather than replaces. See embedded.ts for why this one
     // feature cannot live in the server.

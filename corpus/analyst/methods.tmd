@@ -89,72 +89,90 @@ The readout fits `log(p95) ~ region + channel + week` by least squares in @sec-m
 the model behind @tbl-coefs, and the reason @fig-p95 is read the way it is. Three
 assumptions carry it, and the residuals are where they show.
 
-```{r}
+```{python}
 #| label: diag-fit
 #| include: false
 
-suppressPackageStartupMessages({
-  library(readr)
-  library(dplyr)
-  library(ggplot2)
-  library(patchwork)
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+# Neutral on both themes; see the readout's setup cell for why the recolour hook
+# means only the DATA colours have to survive a theme flip unaided.
+INK = "#7d7d7d"
+REGION_COLOUR = {"eu-west": "#3b82c4", "us-east": "#c4713b", "ap-south": "#5a9e6f"}
+
+matplotlib.rcParams.update({
+    "figure.facecolor": "none",
+    "axes.facecolor": "none",
+    "savefig.facecolor": "none",
+    "savefig.transparent": True,
+    "text.color": INK,
+    "axes.labelcolor": INK,
+    "axes.edgecolor": INK,
+    "xtick.color": INK,
+    "ytick.color": INK,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.color": INK,
+    "grid.alpha": 0.22,
+    "grid.linewidth": 0.6,
+    "font.size": 9,
+    "figure.dpi": 150,
 })
 
-options(repr.plot.width = 7, repr.plot.height = 3.4)
+# This page stands alone: it re-reads the CSV and re-fits rather than reaching for the
+# readout's kernel state, because each page gets its own execution.
+latency = pd.read_csv("data/latency.csv")
+clean = latency[~((latency.week == 33) & (latency.region == "ap-south"))]
 
-INK <- "#7d7d7d"  # neutral on both themes; see the readout's setup cell
+design = np.column_stack([
+    np.ones(len(clean)),
+    (clean.region == "us-east").astype(float).to_numpy(),
+    (clean.region == "ap-south").astype(float).to_numpy(),
+    (clean.channel == "canary").astype(float).to_numpy(),
+    (clean.week - 27).astype(float).to_numpy(),
+])
+observed = np.log(clean.p95_ms.to_numpy())
 
-clean <- read_csv("data/latency.csv", show_col_types = FALSE) |>
-  filter(!(week == 33 & region == "ap-south")) |>
-  mutate(
-    region  = factor(region, levels = c("eu-west", "us-east", "ap-south")),
-    channel = factor(channel, levels = c("stable", "canary")),
-    week_c  = week - 27
-  )
-
-fit <- lm(log(p95_ms) ~ region + channel + week_c, data = clean)
-
-diag <- clean |>
-  mutate(fitted = fitted(fit), resid = resid(fit))
-
-bare <- theme_minimal(base_size = 9) +
-  theme(
-    plot.background  = element_rect(fill = "transparent", colour = NA),
-    panel.background = element_rect(fill = "transparent", colour = NA),
-    panel.grid.minor = element_blank(),
-    panel.grid.major = element_line(colour = INK, linewidth = 0.18),
-    text      = element_text(colour = INK),
-    axis.text = element_text(colour = INK),
-    plot.title = element_text(size = 9, colour = INK)
-  )
+beta, *_ = np.linalg.lstsq(design, observed, rcond=None)
+fitted = design @ beta
+residual = observed - fitted
 ```
 
-```{r}
+```{python}
 #| label: fig-residuals
 #| fig-cap: "Left: residuals against fitted values, testing constant variance on the log scale. Right: the same residuals as a normal quantile-quantile plot. Both are drawn from the pooled model in the readout."
 #| echo: false
 
-p_scale <- ggplot(diag, aes(x = fitted, y = resid)) +
-  geom_hline(yintercept = 0, linetype = "dashed", colour = INK, linewidth = 0.4) +
-  geom_point(aes(colour = region), size = 1.3, alpha = 0.85) +
-  scale_colour_manual(values = c("eu-west"  = "#3b82c4",
-                                 "us-east"  = "#c4713b",
-                                 "ap-south" = "#5a9e6f")) +
-  labs(title = "Residuals vs fitted", x = "Fitted log p95", y = "Residual") +
-  bare + theme(legend.position = "none")
+fig, (ax_scale, ax_qq) = plt.subplots(1, 2, figsize=(7.0, 3.4))
 
-p_qq <- ggplot(diag, aes(sample = resid)) +
-  stat_qq(size = 1.3, colour = "#3b82c4", alpha = 0.85) +
-  stat_qq_line(colour = INK, linewidth = 0.4, linetype = "dashed") +
-  labs(title = "Normal Q-Q", x = "Theoretical quantile", y = "Sample quantile") +
-  bare
+ax_scale.axhline(0, linestyle="--", color=INK, linewidth=0.4)
+for region, colour in REGION_COLOUR.items():
+    rows = (clean.region == region).to_numpy()
+    ax_scale.scatter(fitted[rows], residual[rows], s=8, color=colour, alpha=0.85)
+ax_scale.set_title("Residuals vs fitted")
+ax_scale.set_xlabel("Fitted log p95")
+ax_scale.set_ylabel("Residual")
 
-# A patchwork composition draws its OWN background on top of the device, so making the
-# two sub-plots transparent is not enough: the wrapper needs telling as well.
-(p_scale | p_qq) +
-  plot_annotation(theme = theme(
-    plot.background = element_rect(fill = "transparent", colour = NA)
-  ))
+# The Q-Q line is drawn through the first and third quartiles, which is what R's
+# `stat_qq_line` does — a least-squares line through all the points would be pulled
+# by the very tails the plot exists to show.
+theoretical, sample = stats.probplot(residual, dist="norm", fit=False)
+ax_qq.scatter(theoretical, sample, s=8, color="#3b82c4", alpha=0.85)
+qx, qy = np.percentile(theoretical, [25, 75]), np.percentile(sample, [25, 75])
+slope = (qy[1] - qy[0]) / (qx[1] - qx[0])
+ax_qq.plot(theoretical, qy[0] + slope * (theoretical - qx[0]),
+           linestyle="--", color=INK, linewidth=0.4)
+ax_qq.set_title("Normal Q-Q")
+ax_qq.set_xlabel("Theoretical quantile")
+ax_qq.set_ylabel("Sample quantile")
+
+fig.tight_layout()
+plt.show()
 ```
 
 @fig-residuals says the log transform did its job: the residual spread is flat across
@@ -172,8 +190,7 @@ quoting an interval to three decimals.
 ::: {.callout-note}
 ## Reproducing this
 
-Both pages read `data/latency.csv` from the project directory. The Python cells need
-`pandas` and `matplotlib`; the R cells need `readr`, `dplyr`, `broom`, `ggplot2`,
-`patchwork`, and `knitr`. With those present, `taliesin preview .` renders the whole
-report, re-executing only the cells you actually edit.
+Both pages read `data/latency.csv` from the project directory. The cells need
+`pandas`, `numpy`, `scipy` and `matplotlib`. With those present, `taliesin preview .`
+renders the whole report, re-executing only the cells you actually edit.
 :::

@@ -1,68 +1,90 @@
-```{r}
+```{python}
 #| label: setup
 #| include: false
 
-library(dplyr)
-library(ggplot2)
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
-set.seed(20260803)
+matplotlib.rcParams.update({
+    "figure.facecolor": "none",
+    "axes.facecolor": "none",
+    "savefig.transparent": True,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "font.size": 9,
+    "figure.dpi": 150,
+})
 
-regions <- c("eu-north", "eu-west", "us-east", "us-west", "ap-south")
-region_mean <- setNames(rnorm(length(regions), mean = 5.1, sd = 0.35), regions)
-n_per_region <- c(420, 380, 510, 240, 90)
+rng = np.random.default_rng(20260826)
 
-latency <- do.call(rbind, lapply(seq_along(regions), function(i) {
-  data.frame(
-    region = regions[i],
-    ms = rlnorm(n_per_region[i], meanlog = region_mean[regions[i]], sdlog = 0.45)
-  )
-}))
+REGIONS = ["eu-north", "eu-west", "us-east", "us-west", "ap-south"]
+N_PER_REGION = [420, 380, 510, 240, 90]
+
+region_mean = dict(zip(REGIONS, rng.normal(5.1, 0.35, len(REGIONS))))
+
+latency = pd.concat(
+    [
+        pd.DataFrame({"region": region, "ms": rng.lognormal(region_mean[region], 0.45, n)})
+        for region, n in zip(REGIONS, N_PER_REGION)
+    ],
+    ignore_index=True,
+)
 ```
 
-The sample holds `r nrow(latency)` requests across five regions. The counts are
+The sample holds 1,640 requests across five regions. The counts are
 deliberately unbalanced: `ap-south` carries fewer than a fifth of the observations of
 `us-east`, which is the asymmetry the three models are being asked to handle.
 
-```{r}
+```{python}
 #| label: fig-latency-by-region
 #| fig-cap: "Latency distribution by region"
 
-ggplot(latency, aes(x = region, y = ms)) +
-  geom_boxplot(outlier.alpha = 0.2) +
-  scale_y_log10() +
-  labs(x = NULL, y = "response time (ms, log scale)") +
-  theme_minimal()
+fig, ax = plt.subplots(figsize=(6.4, 3.2))
+ax.boxplot(
+    [latency.ms[latency.region == region] for region in REGIONS],
+    tick_labels=REGIONS,
+    flierprops={"markersize": 2, "alpha": 0.2},
+)
+ax.set_yscale("log")
+ax.set_ylabel("response time (ms, log scale)")
+fig.tight_layout()
+plt.show()
 ```
 
 Plotted on a log scale the per-region distributions are close to symmetric, which is
 the first evidence that a log-normal response is the right observation model rather
 than a normal one on the raw milliseconds.
 
-```{r}
+```{python}
 #| label: fig-sample-sizes
 #| fig-cap: "Observations per region"
 
-ggplot(latency, aes(x = region)) +
-  geom_bar() +
-  labs(x = NULL, y = "requests") +
-  theme_minimal()
+fig, ax = plt.subplots(figsize=(6.4, 2.8))
+ax.bar(REGIONS, [int((latency.region == region).sum()) for region in REGIONS])
+ax.set_ylabel("requests")
+fig.tight_layout()
+plt.show()
 ```
 
 The imbalance matters because a no-pooling fit spends exactly as much prior on
 `ap-south` as on `us-east` and therefore reports a much wider interval for it. Whether
 that width is honest or merely wasteful is the question the model comparison settles.
 
-```{r}
+```{python}
 #| label: fig-region-means
 #| fig-cap: "Observed mean log-latency per region"
 
-latency |>
-  group_by(region) |>
-  summarise(mean_log = mean(log(ms))) |>
-  ggplot(aes(x = region, y = mean_log)) +
-  geom_point(size = 3) +
-  labs(x = NULL, y = "mean log(ms)") +
-  theme_minimal()
+observed_mean = (
+    latency.assign(log_ms=np.log(latency.ms)).groupby("region").log_ms.mean()
+)
+
+fig, ax = plt.subplots(figsize=(6.4, 2.8))
+ax.plot(REGIONS, [observed_mean[region] for region in REGIONS], "o", markersize=7)
+ax.set_ylabel("mean log(ms)")
+fig.tight_layout()
+plt.show()
 ```
 
 The observed region means sit in a band roughly $0.9$ wide on the log scale. Taken as a

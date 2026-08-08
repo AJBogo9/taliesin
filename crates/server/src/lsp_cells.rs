@@ -148,7 +148,10 @@ mod tests {
     #[test]
     fn only_braced_kernel_languages_are_executable() {
         // The Run button hangs off this flag, so the distinction has to be exact: a
-        // display block and a `{bash}` cell both look like code and neither runs.
+        // display block, a `{bash}` cell and a RETIRED cell language all look like code
+        // and none of them runs. `{r}` is the retired row, kept here on purpose: it was
+        // executable until 2026-08-08, so it is the case a stale executable-language list
+        // would get wrong.
         let src = "```{python}\nx=1\n```\n\n```python\nx=1\n```\n\n                   ```{bash}\nls\n```\n\n```{r}\nx<-1\n```\n";
         let got: Vec<(String, bool)> = cell_regions(src)
             .into_iter()
@@ -160,7 +163,7 @@ mod tests {
                 ("python".to_string(), true),
                 ("python".to_string(), false),
                 ("bash".to_string(), false),
-                ("r".to_string(), true),
+                ("r".to_string(), false),
             ],
             "executable must mean `a kernel runs this`, not `this is code`"
         );

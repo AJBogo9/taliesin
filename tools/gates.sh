@@ -3,10 +3,15 @@
 # tools/gates.sh — the ONE committed script that runs every gate in this repo.
 #
 # Why it exists: the gates are healthy but several of them SKIP SILENTLY when an
-# interpreter is absent (no Python with ipykernel, no R with IRkernel, no Node, no
-# Chrome). A stranger who clones this repo and runs `cargo test` gets a green run that
-# proves far less than it looks like it proves, and nothing tells them so. This script
-# refuses to be green unless every gate actually ran.
+# interpreter is absent (no Python with ipykernel, no Node). A stranger who clones this
+# repo and runs `cargo test` gets a green run that proves far less than it looks like it
+# proves, and nothing tells them so. This script refuses to be green unless every gate
+# actually ran.
+#
+# **It needs TWO external runtimes: Python (with ipykernel) and Node.** It needed four
+# until 2026-08-08, when the `{r}` cell language and the headless-Chrome test driver were
+# both cut; R + IRkernel and a system Chrome are no longer prerequisites of anything here,
+# and neither is silently optional — there is nothing left for them to gate.
 #
 #   ./tools/gates.sh                  run every gate; a missing prerequisite is a failure
 #   ./tools/gates.sh --allow-missing  run what you can; the verdict is INCOMPLETE, exit 2
@@ -23,9 +28,9 @@
 #   2. `cargo test --lib -p taliesin-server` ERRORS: the server is a *bin* crate, so
 #      `--lib` selects no target. The unit tests inside it are reached by a plain
 #      `cargo test --workspace` (or `-p taliesin-server --bins`), never by `--lib`.
-#   3. A green `cargo test` says nothing about whether the live-kernel/Node/Chrome cases
-#      ran. Each of them is guarded by a TALIESIN_REQUIRE_* variable that turns a missing
-#      interpreter into a hard failure — this script sets all four, and then additionally
+#   3. A green `cargo test` says nothing about whether the live-kernel/Node cases ran.
+#      Each of them is guarded by a TALIESIN_REQUIRE_* variable that turns a missing
+#      interpreter into a hard failure — this script sets both, and then additionally
 #      asserts by name that each canary test printed `... ok` and that the run reported
 #      ZERO ignored tests. "0 ignored" is the proof the gates ran rather than skipped.
 #
@@ -59,19 +64,9 @@ done
 # set, a missing interpreter makes the canary FAIL rather than skip, so "canary passed"
 # and "gate ran" are the same statement. Names are pinned by gate_script.rs.
 CANARY_KERNEL="kernel_executes_state_errors_and_interrupts_runaway_cell"
-CANARY_R="r_cells_execute_and_persist_state_across_cells"
 CANARY_NODE="only_a_textual_sink_becomes_a_live_region"
-# The first browser-backed capability: the reactive client. It is the only thing that runs a
-# `{glsl}` shader, the `animate` pump, the `point` pad, `tali.state` and the numerics bundle
-# at all — every other test of those five features asserts what Rust EMITTED, and would stay
-# green with the whole client runtime broken. It is also, since Wave 2, the proof that Chrome
-# itself ran: `read --run`'s own browser canary went with the verb.
-# Since Wave 4 cut the print track it is also the ONLY chrome canary: the print driver was
-# the second, and it went with the thing it proved.
-CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
 
 PY="${TALIESIN_PYTHON:-python3}"
-R_BIN="${TALIESIN_R:-R}"
 
 LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/taliesin-gates.XXXXXX")"
 PASSED=()
@@ -95,7 +90,7 @@ yellow() { printf '%s%s%s\n' "$C_YELLOW" "$*" "$C_OFF"; }
 # point of this script is that a green run means every gate ran.
 # ---------------------------------------------------------------------------
 MISSING=()
-# Counted separately from the rest, because only these four decide whether the workspace
+# Counted separately from the rest, because only these two decide whether the workspace
 # suite can be run with its REQUIRE gates armed. A missing `cargo-deny` must not cost you
 # the test gate as well.
 MISSING_INTERPRETERS=0
@@ -124,10 +119,6 @@ have "$PY" && "$PY" -c 'import ipykernel' >/dev/null 2>&1
 require $? "a Python with ipykernel (TALIESIN_PYTHON=$PY)" \
     "$PY -m pip install ipykernel  — or point TALIESIN_PYTHON at one that has it" interpreter
 
-have "$R_BIN" && "$R_BIN" -q -s -e 'library(IRkernel)' >/dev/null 2>&1
-require $? "an R with IRkernel (TALIESIN_R=$R_BIN)" \
-    "R -e 'install.packages(\"IRkernel\")'  — or point TALIESIN_R at one that has it" interpreter
-
 have node
 require $? "node" "install Node 20+ (https://nodejs.org)" interpreter
 
@@ -136,21 +127,6 @@ require $? "npx" "ships with Node 20+"
 
 have npm
 require $? "npm" "ships with Node 20+"
-
-# Mirrors headless_js.rs::chrome_path — CHROME_PATH wins, else the first candidate on PATH.
-chrome_found=1
-if [ -n "${CHROME_PATH:-}" ]; then
-    [ -x "$CHROME_PATH" ] && chrome_found=0
-else
-    for c in google-chrome google-chrome-stable chromium chromium-browser; do
-        if have "$c"; then
-            chrome_found=0
-            break
-        fi
-    done
-fi
-require $chrome_found "a system Chrome" \
-    "install google-chrome or chromium, or set CHROME_PATH to a browser binary" interpreter
 
 have cargo-audit
 require $? "cargo-audit" "cargo install cargo-audit --locked"
@@ -212,42 +188,33 @@ run_gate "cargo clippy -D warnings" clippy.log \
     cargo clippy --workspace --all-targets -- -D warnings
 
 # ---------------------------------------------------------------------------
-# 3. The workspace suite, with all four interpreter gates armed.
+# 3. The workspace suite, with both interpreter gates armed.
 #
-# --test-threads=1 because several tests own process-global state (CHROME_PATH,
-# the cell-timeout OnceLock, the kernel pool), and a raced run is how this suite
-# produces both flakes and vacuous passes.
+# --test-threads=1 because several tests own process-global state (the cell-timeout
+# OnceLock, the kernel pool), and a raced run is how this suite produces both flakes and
+# vacuous passes.
 #
-# `--features taliesin-server/headless-js` because the browser driver is OFF by
-# default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
-# `reactive_browser` declares it in `required-features` — so without this flag cargo
-# would quietly skip building it and the chrome canary below would go missing. That
-# pairing is deliberate: forgetting the feature turns this gate RED rather than
-# shrinking the suite silently.
-#
-# Between the two gates both configurations are covered: clippy (gate 2) runs with
-# DEFAULT features, i.e. the no-driver build; this one compiles every target with the
-# driver on.
+# There is no feature flag to pass any more. Until 2026-08-08 this line carried
+# `--features taliesin-server/headless-js`, because the browser test driver was off by
+# default and the chrome canary would otherwise have gone missing. Both the driver and the
+# test binary behind it are gone, so the default-feature build IS the whole workspace.
 # ---------------------------------------------------------------------------
-TEST_NAME="cargo test --workspace (all four gates)"
+TEST_NAME="cargo test --workspace (both gates)"
 if [ "$MISSING_INTERPRETERS" -gt 0 ] && [ "$ALLOW_MISSING" -eq 1 ]; then
     # Arming a REQUIRE_* gate whose interpreter is absent turns the canary into a
     # failure, which would report as "a gate failed" when the truth is "a gate could
     # not run". Keep those two verdicts distinct.
-    skip_gate "$TEST_NAME" "an interpreter is missing; the four REQUIRE gates cannot be armed"
+    skip_gate "$TEST_NAME" "an interpreter is missing; the two REQUIRE gates cannot be armed"
 else
     TALIESIN_PYTHON="$PY" \
-        TALIESIN_R="$R_BIN" \
         TALIESIN_REQUIRE_KERNEL=1 \
-        TALIESIN_REQUIRE_R=1 \
         TALIESIN_REQUIRE_NODE=1 \
-        TALIESIN_REQUIRE_CHROME=1 \
         run_gate "$TEST_NAME" test.log \
-        cargo test --workspace --features taliesin-server/headless-js -- --test-threads=1
+        cargo test --workspace -- --test-threads=1
     test_rc=$?
 
     # Only assert on the output when cargo itself succeeded: a build failure produces a
-    # log with no test lines at all, and reporting four missing canaries on top of it
+    # log with no test lines at all, and reporting two missing canaries on top of it
     # buries the actual error.
     if [ "$test_rc" -eq 0 ]; then
         log="$LOG_DIR/test.log"
@@ -267,9 +234,7 @@ else
         #     only proof that its interpreter was exercised.
         for pair in \
             "python kernel:$CANARY_KERNEL" \
-            "R kernel:$CANARY_R" \
-            "node:$CANARY_NODE" \
-            "chrome (reactive client):$CANARY_REACTIVE"; do
+            "node:$CANARY_NODE"; do
             what="${pair%%:*}"
             canary="${pair#*:}"
             if ! grep -Eq "^test [A-Za-z0-9_:]*${canary} \.\.\. ok$" "$log"; then

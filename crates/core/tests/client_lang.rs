@@ -1,21 +1,22 @@
 //! The client-side cell-language registry (backlog item 153), pinned at the seams a
 //! second language actually crosses.
 //!
-//! **Why these and not "does `{glsl}` render".** The registry's whole claim is that adding
-//! a language is a *registration* rather than surgery, which means the interesting failures
-//! are all of the form "one of the six places that used to say `lang == "js"` did not move".
-//! Each test below is one of those places, and each was confirmed to fail by putting the
-//! `js`-only spelling back:
+//! **Why the registry is still tested with one language in it.** `{glsl}` was withdrawn on
+//! 2026-08-08, so `CLIENT_LANGS` has a single entry — but the registry's whole claim is
+//! that adding a language is a *registration* rather than surgery, and the interesting
+//! failures are all of the form "one of the six places that used to say `lang == "js"` did
+//! not move". Each seam below is one of those places. The rows that could only be driven
+//! from a shader went with `{glsl}`; what is left is the language-blind half, which is what
+//! a future second language would land on.
 //!
-//! | seam                          | what breaks if it stays `js`-only                    |
+//! | seam                          | what it pins                                         |
 //! |-------------------------------|------------------------------------------------------|
-//! | the plain-cell arm            | a `{glsl}` cell renders as highlighted source         |
-//! | the figure gate               | `label: fig-` on a shader burns no number, warns      |
-//! | `--no-exec`                   | a shader still emits its script under `--no-exec`     |
-//! | the runtime asset gate        | a `{glsl}`-only page ships no runtime at all          |
-//! | the `{js}` asset gate         | a shader page ships 490 KB of d3 + Plot for nothing   |
-//! | `reactive.rs::runtime_defines`| every dangling-input warning on the page disappears   |
-//! | `strip_client_scripts`        | `--bare`'s zero-`<script>` contract breaks silently   |
+//! | the mime handshake            | Rust's `<script type>` is what `tali-js.js` looks up  |
+//! | the disjointness rule         | a client language never reaches `exec.rs`             |
+//! | the `{js}` asset gate         | a prose page ships neither runtime nor libraries      |
+//! | inline vs External globals    | a global present in preview and absent in the build   |
+//! | `strip_client_scripts`        | `--bare`'s zero-`<script>` contract, driven off the registry |
+//! | `reactive.rs::runtime_defines`| the dangling-input warning is not suppressed wholesale |
 
 use taliesin_core::OutputMode;
 use taliesin_core::render::{
@@ -27,7 +28,7 @@ fn render(src: &str) -> taliesin_core::RenderedDoc {
     taliesin_core::render_document_with_includes(src, std::path::Path::new("."))
 }
 
-const SHADER: &str = "```{glsl}\nvoid main() { gl_FragColor = vec4(1.0); }\n```\n";
+const CHART: &str = "```{js}\nreturn document.createElement(\"p\");\n```\n";
 
 // ---------------------------------------------------------------------------
 // the registry itself
@@ -39,86 +40,30 @@ const SHADER: &str = "```{glsl}\nvoid main() { gl_FragColor = vec4(1.0); }\n```\
 #[test]
 fn every_registered_mime_is_looked_up_by_the_client_runtime() {
     let runtime = include_str!("../assets/js/tali-js.js");
-    let glsl = include_str!("../assets/js/glsl.js");
-    for lang in ["js", "glsl"] {
-        let spec = client_lang(lang).expect("registered");
-        assert!(
-            runtime.contains(spec.mime) || glsl.contains(spec.mime),
-            "`{}` is registered server-side as `{}` but no client file registers that mime",
-            spec.lang,
-            spec.mime
-        );
-    }
+    // One statement per registered language; the registry has one entry today.
+    let spec = client_lang("js").expect("registered");
+    assert!(
+        runtime.contains(spec.mime),
+        "`{}` is registered server-side as `{}` but the client runtime never looks that \
+         mime up",
+        spec.lang,
+        spec.mime
+    );
 }
 
 /// A client-side language's kernel is the browser, so it must never be in the set the
-/// executor will try to run. The two sets being disjoint is what keeps `{glsl}` out of
+/// executor will try to run. The two sets being disjoint is what keeps the registry out of
 /// `exec.rs` without `exec.rs` having to know it exists.
 #[test]
 fn client_langs_never_reach_a_kernel() {
-    for lang in ["js", "glsl"] {
-        assert!(client_lang(lang).is_some(), "{lang} should be registered");
-        assert!(
-            !executes_to_kernel(lang),
-            "`{lang}` is a client-side language and must not be in the executable set"
-        );
-    }
-    for lang in ["python", "r"] {
-        assert!(
-            client_lang(lang).is_none(),
-            "`{lang}` runs against a kernel and must not be in the client registry"
-        );
-    }
-}
-
-// ---------------------------------------------------------------------------
-// emission
-// ---------------------------------------------------------------------------
-
-#[test]
-fn a_glsl_cell_emits_the_shared_wrapper_contract() {
-    let h = render(SHADER).body_html();
+    assert!(client_lang("js").is_some(), "`js` should be registered");
     assert!(
-        h.contains("<script type=\"application/tali-glsl\""),
-        "the shader's own mime: {h}"
+        !executes_to_kernel("js"),
+        "`js` is a client-side language and must not be in the executable set"
     );
     assert!(
-        h.contains("class=\"cell tali-glsl-cell\"") && h.contains("class=\"tali-js-out\""),
-        "the SAME wrapper shape a `{{js}}` cell uses: {h}"
-    );
-    assert!(
-        h.contains("gl_FragColor"),
-        "the author source rides verbatim: {h}"
-    );
-}
-
-/// `//` is GLSL's comment marker too, so the shared `//|` directive parser already reads a
-/// shader's reactive options — the graph does not care which language publishes a name.
-#[test]
-fn a_glsl_cell_takes_the_same_reactive_options() {
-    let h = render("```{glsl}\n//| name: shade\n//| input: k\nvoid main() {}\n```\n").body_html();
-    assert!(h.contains("data-name=\"shade\""), "published name: {h}");
-    assert!(h.contains("data-inputs=\"k\""), "consumed inputs: {h}");
-}
-
-#[test]
-fn a_labelled_glsl_cell_becomes_a_numbered_figure() {
-    let doc = render(
-        "```{glsl}\n//| label: fig-shader\n//| fig-cap: A shader.\nvoid main() {}\n```\n\nSee @fig-shader.\n",
-    );
-    let h = doc.body_html();
-    assert!(h.contains("<figure"), "wrapped as a float: {h}");
-    assert!(h.contains("id=\"fig-shader\""), "anchored: {h}");
-    assert!(
-        h.contains("Figure&nbsp;1") || h.contains("Figure&nbsp;1:"),
-        "numbered: {h}"
-    );
-    assert!(
-        doc.warnings
-            .iter()
-            .all(|w| !w.message.contains("fig-shader")),
-        "a materializing float must not warn: {:?}",
-        doc.warnings
+        client_lang("python").is_none(),
+        "`python` runs against a kernel and must not be in the client registry"
     );
 }
 
@@ -131,48 +76,32 @@ fn a_labelled_glsl_cell_becomes_a_numbered_figure() {
 // asset gates
 // ---------------------------------------------------------------------------
 
-/// The point of two gates rather than one: a shader page needs the runtime and must NOT
-/// pay for the plotting libraries, and a chart page must not pay for the WebGL enhancer.
+/// Two gates rather than one, kept apart even at one language: `has_client_cells` gates the
+/// shared runtime and `has_js_cells` gates the ~490 KB of d3 + Plot that only `{js}` draws
+/// with. Collapsing them would make a future language without drawing libraries pay for
+/// them, which is the shape the registry exists to prevent.
 #[test]
-fn the_two_asset_gates_are_independent() {
-    let shader = render(SHADER).body_html();
-    let chart = render("```{js}\nreturn document.createElement(\"p\");\n```\n").body_html();
-
-    assert!(has_client_cells(&shader), "a shader page needs the runtime");
-    assert!(
-        !has_js_cells(&shader),
-        "a shader page must NOT drag in d3 + Plot"
-    );
-    assert!(has_client_cells_of(&shader, "glsl"));
-
+fn the_runtime_and_the_drawing_libraries_are_gated_separately() {
+    let chart = render(CHART).body_html();
     assert!(has_client_cells(&chart) && has_js_cells(&chart));
-    assert!(
-        !has_client_cells_of(&chart, "glsl"),
-        "a chart page must NOT ship the WebGL enhancer"
-    );
+    assert!(has_client_cells_of(&chart, "js"));
+
+    let prose = render("Just prose.\n").body_html();
+    assert!(!has_client_cells(&prose) && !has_js_cells(&prose));
 }
 
-/// A `{glsl}`-only page in a static Build still ships the runtime AND the shader enhancer.
-/// This is the gate that would have shipped a dead canvas: `code_scripts_for` opens every
-/// gate in Preview, so only the Build arm can catch it.
+/// A `{js}` page in a static Build ships the shared runtime; a prose page ships none of it.
+/// `code_scripts_for` opens every gate in Preview, so only the Build arm can catch a gate
+/// that has stopped closing.
 #[test]
-fn a_build_of_a_shader_page_ships_the_runtime_and_the_enhancer() {
-    let body = render(SHADER).body_html();
-    let scripts = code_scripts_for(&body, OutputMode::Build);
+fn a_build_of_a_cell_page_ships_the_runtime_and_a_prose_page_does_not() {
+    let scripts = code_scripts_for(&render(CHART).body_html(), OutputMode::Build);
     assert!(
         scripts.contains("tali-js cell error:"),
-        "the shared runtime must ship for a shader-only page"
-    );
-    assert!(
-        scripts.contains("application/tali-glsl"),
-        "glsl.js (which registers that mime) must ship"
+        "the shared runtime must ship for a page with client cells"
     );
 
     let prose = code_scripts_for(&render("Just prose.\n").body_html(), OutputMode::Build);
-    assert!(
-        !prose.contains("application/tali-glsl"),
-        "a prose page must ship neither"
-    );
     assert!(!prose.contains("tali-js cell error:"));
 }
 
@@ -185,11 +114,7 @@ fn the_inline_and_external_js_globals_agree() {
     let external = taliesin_core::js_cell_libs_js();
     // One marker per global the cell scope hands a `{js}` cell, each a literal that exists
     // only in that library's own source (never in a comment about it).
-    for (global, marker) in [
-        ("d3", "d3.min.js"),
-        ("Plot", "@observablehq/plot"),
-        ("num", "window.taliNum"),
-    ] {
+    for (global, marker) in [("d3", "d3.min.js"), ("Plot", "@observablehq/plot")] {
         assert!(
             external.contains(marker),
             "`{global}` is a `{{js}}` drawing global on the inline path but is missing from \
@@ -209,7 +134,7 @@ fn the_inline_and_external_js_globals_agree() {
 /// mode nobody looks at, because it exists to be pasted into someone else's page.
 /// Driven off the registry now, and this is the test that says so.
 #[test]
-fn bare_output_strips_every_client_language_not_just_js() {
+fn bare_output_strips_every_registered_client_language() {
     let page = |src: &str| {
         taliesin_core::render_doc_to_page(
             &taliesin_core::render_document(src),
@@ -218,28 +143,20 @@ fn bare_output_strips_every_client_language_not_just_js() {
         )
     };
 
-    // The known-positive rows: both languages ARE live in a normal render.
-    let live = render(SHADER).body_html();
+    // The known-positive row, without which the assertion below passes on a renderer that
+    // has simply stopped emitting cells at all.
     assert!(
-        live.contains("<script"),
-        "baseline: a shader emits a script"
+        render(CHART).body_html().contains("<script"),
+        "baseline: a client cell emits a script in a normal render"
     );
 
-    let cases: [(&str, &str); 2] = [
-        ("glsl", SHADER),
-        (
-            "js",
-            "```{js}\nreturn document.createElement(\"p\");\n```\n",
-        ),
-    ];
-
-    for (label, src) in cases {
-        let out = page(src);
-        assert!(
-            !out.contains("<script"),
-            "--bare must emit zero <script>, but the {label} cell left one: {out}"
-        );
-    }
+    // One statement per registered language. `strip_client_scripts` (page.rs) folds over
+    // `CLIENT_LANGS` itself, so a second registration is covered by adding a line here.
+    let out = page(CHART);
+    assert!(
+        !out.contains("<script"),
+        "--bare must emit zero <script>, but the js cell left one: {out}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -269,36 +186,11 @@ fn a_js_only_page_still_reports_its_dangling_input() {
     );
 }
 
-/// `reactive.rs` suppressed the dangling-input check whenever ANY cell was `lang != "js"`,
-/// reading that as "a kernel cell could publish names at runtime". A `{glsl}` cell is not
-/// `js` and publishes nothing at runtime, so under the old spelling its mere presence
-/// silently switched the whole check off for the page.
-#[test]
-fn a_glsl_cell_does_not_suppress_the_dangling_input_check() {
-    let msgs =
-        dangling("```{glsl}\nvoid main() {}\n```\n\n```{js}\n//| input: nope\nreturn 1;\n```\n");
-    assert!(
-        msgs.iter().any(|m| m.contains("`nope`")),
-        "a shader on the page must not switch the check off: {msgs:?}"
-    );
-}
-
-/// The other half: a shader is a node in the same graph, so its own `//| input:` is
-/// checked like any cell's.
-#[test]
-fn a_glsl_cells_own_dangling_input_is_reported() {
-    let msgs = dangling("```{glsl}\n//| input: missing\nvoid main() {}\n```\n");
-    assert!(
-        msgs.iter().any(|m| m.contains("`missing`")),
-        "expected the shader's dangling input to be reported: {msgs:?}"
-    );
-}
-
 /// A kernel cell suppresses the check only when it CALLS `define(`, narrowed from "any
 /// kernel cell" on 2026-08-03. The conservatism is right where the bridge is really used
-/// and wrong everywhere else: spelled `lang != "js"` it went silent on a `{glsl}` page
-/// (the bug the test above covers), and spelled "any kernel cell" it went silent on every
-/// real blog post in the corpus, which is precisely where a typo'd input hides best.
+/// and wrong everywhere else: spelled `lang != "js"` it went silent on any page carrying a
+/// second client language, and spelled "any kernel cell" it went silent on every real blog
+/// post in the corpus, which is precisely where a typo'd input hides best.
 #[test]
 fn only_a_python_cell_that_calls_define_suppresses_the_dangling_input_check() {
     let suppressed =
@@ -313,18 +205,5 @@ fn only_a_python_cell_that_calls_define_suppresses_the_dangling_input_check() {
     assert!(
         reported.iter().any(|m| m.contains("`nope`")),
         "a cell that defines nothing must not suppress it: {reported:?}"
-    );
-}
-
-/// A `{glsl}` cell publishing a `//| name:` satisfies a `{js}` cell that consumes it —
-/// the registry's real claim: ONE graph, not one graph per language.
-#[test]
-fn a_name_published_by_a_shader_satisfies_a_js_consumer() {
-    let msgs = dangling(
-        "```{glsl}\n//| name: shade\nvoid main() {}\n```\n\n```{js}\n//| input: shade\nreturn 1;\n```\n",
-    );
-    assert!(
-        msgs.is_empty(),
-        "a cross-language edge should resolve: {msgs:?}"
     );
 }

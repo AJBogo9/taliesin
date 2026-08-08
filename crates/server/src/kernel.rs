@@ -174,22 +174,6 @@ fn push_rich(outputs: &mut Vec<Output>, rich_bytes: &mut usize, capped: &mut boo
     }
 }
 
-/// R's inline graphics device is opened with an **opaque white** background
-/// (`repr.plot.bg` defaults to `"white"`), so a figure whose own backgrounds the author
-/// made transparent still rasterises onto a white slab — on a page whose default theme
-/// is dark. Ask the device for transparency instead: the R counterpart of the
-/// `InlineBackend.print_figure_kwargs` facecolor that [`MPL_THEME_PREAMBLE`] already
-/// gives Python.
-///
-/// **This is additive, not a restyle.** A default `ggplot` (whose `theme_grey` paints
-/// its own white `plot.background`) and base-R graphics still rasterise opaque —
-/// measured through a real kernel, both stay 8-bit RGB with no alpha channel at all.
-/// All this removes is the white the *device* painted underneath a figure that had
-/// already asked to be transparent. Pinned by `tests/r_kernel.rs`.
-const R_TRANSPARENT_DEVICE_PREAMBLE: &str = r#"
-options(repr.plot.bg = "transparent")
-"#;
-
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
 /// `<script type="tali-define">` HTML output the native `{js}` runtime consumes
@@ -514,29 +498,11 @@ impl KernelSpec {
         }
     }
 
-    /// The kernel-spec name (`python3` / `ir`), used to stamp connection files for
+    /// The kernel-spec name (`python3`), used to stamp connection files for
     /// the warm-pool's forkserver-spawned kernels just as `start` stamps them
     /// (called from `warm_pool::PoolInner::warm_one`).
     pub(crate) fn kernel_name(&self) -> &'static str {
         self.kernel_name
-    }
-
-    /// R via `R --slave -e 'IRkernel::main()'` (the IRkernel kernelspec invocation).
-    pub fn r(program: &Path) -> KernelSpec {
-        KernelSpec {
-            program: program.to_path_buf(),
-            kernel_name: "ir",
-            argv: |conn| {
-                vec![
-                    "--slave".into(),
-                    "-e".into(),
-                    "IRkernel::main()".into(),
-                    "--args".into(),
-                    conn.display().to_string(),
-                ]
-            },
-            preambles: &[R_TRANSPARENT_DEVICE_PREAMBLE],
-        }
     }
 }
 
@@ -2334,15 +2300,6 @@ mod tests {
         assert!(
             !args.iter().any(|a| a == "--IPKernelApp.parent_handle=1"),
             "parent_handle=1 is disabled in ipykernel 7; pass the real pid"
-        );
-
-        // R/IRkernel has no `ParentPollerUnix` equivalent, so its argv must NOT carry
-        // the ipykernel-only flag (it would be an unknown option to R).
-        let r = KernelSpec::r(Path::new("R"));
-        let rargs = (r.argv)(Path::new("/tmp/tali-kernel-y/connection.json"));
-        assert!(
-            !rargs.iter().any(|a| a.contains("parent_handle")),
-            "R kernel argv must not carry the ipykernel-only parent_handle flag; got {rargs:?}"
         );
     }
 

@@ -29,7 +29,7 @@ enforces.
 ## Code cells show as source / "kernel unavailable"
 
 There is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python that has
-`ipykernel` (and `TALIESIN_R` for R with `IRkernel`):
+`ipykernel`:
 
 ```sh
 pip install ipykernel
@@ -68,7 +68,7 @@ touch **Restart kernel** for this: a crash recovers on its own with the next sav
 
 A failed *start* (a missing or misconfigured interpreter, not a mid-run crash) is
 different: Taliesin backs off for about 20 seconds before retrying, so a genuinely
-broken `TALIESIN_PYTHON`/`TALIESIN_R` doesn't re-hang every save. During the
+broken `TALIESIN_PYTHON` doesn't re-hang every save. During the
 backoff the cells render as source with the "kernel unavailable" diagnostic. Fix
 the interpreter and the next save within a few tries recovers on its own; or hit
 **Restart kernel** to clear the backoff and try immediately.

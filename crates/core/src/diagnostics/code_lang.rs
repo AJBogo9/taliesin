@@ -24,11 +24,15 @@ use crate::render::{Block, Warning};
 /// code from passthrough HTML, and no corpus or docs page hits it, so the scan is
 /// left simple rather than made structural. If it ever bites, that is the fix.
 fn fence_languages(html: &str) -> Vec<&str> {
-    const ATTR: &str = "class=\"language-";
+    scan_attr(html, "class=\"language-")
+}
+
+/// Every `"`-terminated value following `attr` in `html`.
+fn scan_attr<'a>(html: &'a str, attr: &str) -> Vec<&'a str> {
     let mut out = Vec::new();
     let mut i = 0;
-    while let Some(pos) = html[i..].find(ATTR) {
-        let start = i + pos + ATTR.len();
+    while let Some(pos) = html[i..].find(attr) {
+        let start = i + pos + attr.len();
         let Some(len) = html[start..].find('"') else {
             break;
         };
@@ -56,13 +60,26 @@ fn fence_languages(html: &str) -> Vec<&str> {
 /// "is a retired cell language", which is what `diagnostics::codes` needles to classify the
 /// family: without a stable phrase every entry here would have to be added to that table by
 /// hand, and one that was forgotten would fall through to `(GENERIC, ERROR)` and fail
-/// `check`/`build --strict`/`publish` on a document whose only sin is being out of date.
-pub const RETIRED_CELL_LANGS: &[(&str, &str)] = &[(
-    "pyodide",
-    "it ran Python in the reader's browser and was removed along with its vendored runtime. \
-     Use `{js}` for computation that runs in the reader's browser, or `{python}` for \
-     computation that runs against a kernel at build time",
-)];
+/// `check`/`build --strict` on a document whose only sin is being out of date.
+pub const RETIRED_CELL_LANGS: &[(&str, &str)] = &[
+    (
+        "pyodide",
+        "it ran Python in the reader's browser and was removed along with its vendored \
+         runtime. Use `{js}` for computation that runs in the reader's browser, or \
+         `{python}` for computation that runs against a kernel at build time",
+    ),
+    (
+        "glsl",
+        "it compiled a fragment shader onto a live <canvas> and was removed on 2026-08-08. \
+         Use a `{js}` cell, which can reach WebGL (or three.js) directly",
+    ),
+    (
+        "r",
+        "it executed against an IRkernel and was removed on 2026-08-08. Use `{python}` for \
+         computation that runs against a kernel at build time, or a plain ```r block to \
+         display R code without running it",
+    ),
+];
 
 /// The retirement note for a [`RETIRED_CELL_LANGS`] entry, or `None` if `lang` was never
 /// retired.
@@ -82,19 +99,36 @@ pub fn retired_cell_lang(lang: &str) -> Option<&'static str> {
 pub fn validate_code_languages(blocks: &[Block]) -> Vec<Warning> {
     let mut out = Vec::new();
     for b in blocks {
-        for lang in fence_languages(&b.html) {
-            // Retired first: a withdrawn language may still be a syntect-known token (as
-            // `pyodide` is not, but a future one could be), and the specific note must win
-            // over both the generic arm and silence.
+        // Retired CELLS first, and only cells. Two things make this the block model's
+        // question rather than the emitted HTML's:
+        //
+        // 1. A withdrawn language is very often still a syntect-known token (`r` and
+        //    `glsl` both are, `pyodide` is not), and nothing in the HTML separates
+        //    ` ```{r} ` from a plain ` ```r ` display fence — both carry
+        //    `class="language-r"`. What a retirement withdrew is *execution*, so a
+        //    listing that merely SHOWS R code must stay silent.
+        // 2. A cell with `#| echo: false` or `#| include: false` emits no listing at
+        //    all, so an HTML scan reports nothing for it — which is the exact silence
+        //    this register exists to prevent, and measured: three of the four `{r}`
+        //    cells in `corpus/single-page-report` warned and the hidden one did not.
+        //
+        // `Block::cells` is the one accessor that answers it, and it descends into `:::`
+        // containers, which reading `b.cell` directly would miss.
+        let mut retired = Vec::new();
+        for lang in b.cells().map(|c| c.lang.as_str()) {
             if let Some(note) = retired_cell_lang(lang) {
+                retired.push(lang);
                 let w = Warning::new(format!("`{{{lang}}}` is a retired cell language: {note}"));
                 out.push(match start_line(&b.sourcepos) {
                     Some(l) => w.at(b.source_file.clone(), l),
                     None => w,
                 });
-                continue;
             }
-            if known_language(lang) {
+        }
+        for lang in fence_languages(&b.html) {
+            // Already reported as a retired cell on this block; the generic "check the
+            // spelling" arm would otherwise double up on a language syntect never knew.
+            if retired.contains(&lang) || known_language(lang) {
                 continue;
             }
             let w = Warning::new(format!(

@@ -115,7 +115,6 @@
         "embeddedLanguages": {
           "meta.embedded.block.frontmatter": "yaml",
           "meta.embedded.block.python": "python",
-          "meta.embedded.block.r": "r",
           "meta.embedded.block.js": "javascript",
           "meta.embedded.block.julia": "julia",
           "meta.embedded.block.mermaid": "mermaid",

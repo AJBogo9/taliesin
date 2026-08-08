@@ -321,7 +321,7 @@ fig-…` and `#| fig-cap: "…"` options; see [Running code](code.tmd) and
 
 - [Books & sites](formats.tmd): the full feature set behind recipes 2 and 3.
 - [Running code](code.tmd): cells, outputs, and the execution cache for any recipe
-  with `{python}` / `{r}`.
+  with `{python}`.
 - [Interactive content](interactive.tmd): live `{js}` cells and reactive inputs to
   add to a post.
 - [Configuration reference](../reference/configuration.tmd): every `_site.yml` key, in

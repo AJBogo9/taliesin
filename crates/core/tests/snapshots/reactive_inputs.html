@@ -41,14 +41,3 @@ return p;
 p.textContent = `k=${tali.value("k")} n=${tali.value("n")} on=${tali.value("on")}`;
 return p;
 </script></div>
-<h2 id="range-is-slider-under-another-name" data-block-id="b-1b3a2c7e48e6" data-sourcepos="73:1-73:41" data-section-end="b-d1fd14d945eb"><code>range</code> is <code>slider</code> under another name</h2>
-<p data-block-id="b-1b8a1d0eddde" data-sourcepos="75:1-78:42"><code>type="range"</code> is an accepted alias for <code>type="slider"</code>, so a document carried over from
-a tool that spells it the HTML way keeps working instead of drawing an unknown-type
-warning. Both spellings dispatch to the same control, which is what this pins: the one
-below is indistinguishable from <code>k</code> above.</p>
-<div class="tali-input" data-block-id="b-c84470e819ea" data-sourcepos="80:1-80:289"><label class="tali-input-label" for="tali-in-r">r (range)</label><input id="tali-in-r" class="tali-input-control" data-tali-input="r" type="range" min="0" max="1" step="0.1" value="0.4"><output class="tali-input-out" for="tali-in-r" data-tali-out>0.4</output></div>
-
-<div data-block-id="b-d1fd14d945eb" data-sourcepos="82:1-87:3" class="cell tali-js-cell"><div class="tali-js-out" id="tali-js-b-d1fd14d945eb"></div><script type="application/tali-js" data-target="tali-js-b-d1fd14d945eb" data-inputs="r">const p = document.createElement("p");
-p.textContent = "r = " + tali.value("r");
-return p;
-</script></div>

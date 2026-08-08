@@ -56,10 +56,9 @@ sweeps stale output, deleting anything under the output directory it did not its
 so a mount built first would be silently swept away. `build` does this in the right order and
 `crates/server/tests/mount_static_build.rs` pins it by building twice into one directory.
 
-The `analyst` exhibit is the only one whose pages **execute**, and in two languages: it
-needs a python with `ipykernel` (`TALIESIN_PYTHON`) plus `pandas`/`matplotlib`, and an R
-with `IRkernel` (`TALIESIN_R`) plus `readr`/`dplyr`/`broom`/`ggplot2`/`patchwork`/`knitr`.
-Without them its figures and tables build as "cell did not run" placeholders.
+The `analyst` exhibit is the only one whose pages **execute**: it needs a python with
+`ipykernel` (`TALIESIN_PYTHON`) plus `pandas`/`numpy`/`scipy`/`matplotlib`. Without them
+its figures and tables build as "cell did not run" placeholders.
 
 Deploy `_site/` to any static host with directory indexing.
 

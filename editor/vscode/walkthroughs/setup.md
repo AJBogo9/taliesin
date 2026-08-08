@@ -5,7 +5,7 @@ hover, rename, table formatting — is answered by `taliesin lsp`, so the extens
 `taliesin` binary on your `PATH`.
 
 Run **Taliesin: Diagnose Setup** to see what it found: the binary, its version, and which
-Jupyter kernels are available for `{python}` and `{r}` cells.
+A Jupyter kernel is available for `{python}` cells.
 
 If it is not found, set `taliesin.path` in your **user** settings. It is machine-scoped on
 purpose: a repository you open cannot redirect the binary this extension executes.

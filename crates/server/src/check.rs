@@ -403,10 +403,9 @@ pub(crate) struct CheckScope {
     /// model is right there in `collect_site_diagnostics`; reading two booleans off it is free.
     ///
     pub used_languages: Vec<&'static str>,
-    /// The project's `_site.yml` `python:` / `r:` pins, so resolution needs no second
-    /// `Site::discover`. `None` for a single file, which has no project to pin them.
+    /// The project's `_site.yml` `python:` pin, so resolution needs no second
+    /// `Site::discover`. `None` for a single file, which has no project to pin it.
     pub python_pin: Option<String>,
-    pub r_pin: Option<String>,
 }
 
 impl CheckScope {
@@ -457,7 +456,6 @@ fn collect_site_diagnostics(
     // or which interpreters the project pinned.
     scope.excluded_drafts = site.excluded_drafts.clone();
     scope.python_pin = site.config.python.clone();
-    scope.r_pin = site.config.r.clone();
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {}", root.display()));
     }
@@ -626,16 +624,11 @@ fn env_entry(
     resolved: &crate::interpreter::Resolved,
     policy: ProbePolicy,
 ) -> EnvEntry {
-    let lang_enum = if lang == "r" {
-        crate::interpreter::Lang::R
-    } else {
-        crate::interpreter::Lang::Python
-    };
-    let kernel_pkg = if lang == "r" { "IRkernel" } else { "ipykernel" };
+    let kernel_pkg = "ipykernel";
     let base = EnvEntry {
         lang,
         path: resolved.path.display().to_string(),
-        provenance: resolved.provenance.label(lang_enum).to_string(),
+        provenance: resolved.provenance.label().to_string(),
         runs: None,
         kernel_pkg,
         kernel_pkg_ok: None,
@@ -660,12 +653,12 @@ fn env_entry(
                 "not probed: this interpreter was chosen by the project ({}), and `check` \
                  does not run a project-supplied binary. Pass --require-kernel, or run \
                  `taliesin doctor`, to probe it",
-                resolved.provenance.label(lang_enum)
+                resolved.provenance.label()
             )),
             ..base
         };
     }
-    let p = crate::interpreter::probe(resolved, lang_enum);
+    let p = crate::interpreter::probe(resolved);
     EnvEntry {
         runs: Some(p.runs),
         kernel_pkg_ok: Some(p.kernel_pkg_ok),
@@ -680,10 +673,10 @@ fn env_entry(
 /// — its kernel-package probe. Never affects `check`'s exit code.
 ///
 /// Everything this needs was learned by the diagnostics walk and handed over in `scope`:
-/// which languages appear, and the project's `python:`/`r:` pins. It renders nothing itself.
+/// which languages appear, and the project's `python:` pin. It renders nothing itself.
 /// That is deliberate and load-bearing — the earlier version re-rendered every page of a site
 /// to recover the language list, which is the **+50%** that made item 122 look expensive.
-/// Empty when the target has no python/r cells.
+/// Empty when the target has no executable cells.
 fn collect_environment(path: &Path, scope: &CheckScope, policy: ProbePolicy) -> Vec<EnvEntry> {
     // Interpreter resolution is relative to the *project*: the directory itself for a site,
     // the containing directory for a single file (matching what `exec` will do at run time).
@@ -696,11 +689,8 @@ fn collect_environment(path: &Path, scope: &CheckScope, policy: ProbePolicy) -> 
         .used_languages
         .iter()
         .map(|&lang| {
-            let resolved = if lang == "r" {
-                crate::interpreter::resolve_r(scope.r_pin.as_deref(), project_dir)
-            } else {
-                crate::interpreter::resolve_python(scope.python_pin.as_deref(), project_dir)
-            };
+            let resolved =
+                crate::interpreter::resolve_python(scope.python_pin.as_deref(), project_dir);
             env_entry(lang, &resolved, policy)
         })
         .collect()

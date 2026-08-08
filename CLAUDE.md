@@ -177,7 +177,7 @@ editor/vscode/   the VS Code companion. It implements NO language features of it
                  `src/client.ts` is a `vscode-languageclient` over `taliesin lsp`. What is
                  left in TS is what LSP has no concept of — the preview webview +
                  bidirectional source sync, editor commands, and `src/embedded.ts`, which
-                 forwards completion inside a `{python}`/`{r}`/`{js}` cell to whoever owns
+                 forwards completion inside a `{python}`/`{js}` cell to whoever owns
                  that language (LSP cannot express "go ask Pylance"). Even that keeps the
                  knowledge in Rust: cell locations come from the server's
                  `taliesin/cellRegions` (`lsp_cells.rs`), never from a fence scan in TS.
@@ -234,9 +234,10 @@ stale page. Rebuild the binary first, then the site. (A live `preview` hot-swaps
 so this bites the build-and-inspect loop, not the dev loop.)
 
 Executing code cells needs a matching Jupyter kernel: `{python}` cells need a
-Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`); `{r}` cells need an
-R with `IRkernel` (`TALIESIN_R`, default `R`). Each language runs against its own
-warm kernel. Without a kernel, cells render as source and the preview shows a
+Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`). `{r}` was the second
+kernel language and was cut in Wave 6, so `Executor::langs` and `FreezeCache::packages`
+are one-key maps that **must stay maps** — see the wave-6 prohibitions. Without a
+kernel, cells render as source and the preview shows a
 "kernel unavailable" diagnostic. A cell is capped on **silence, not runtime**: one
 that produces no output for `TALIESIN_CELL_SILENCE` seconds (default 600; `0`
 disables) is interrupted (SIGINT), while a long cell that prints progress resets that

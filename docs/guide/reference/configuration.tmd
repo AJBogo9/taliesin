@@ -125,18 +125,19 @@ alone. It is advice rather than an error, so it never fails a build unless you a
 with `--strict`. A page's *own* `bibliography:` gets the same never-cited check scoped
 to that page. Neither check ever edits a `.bib`.
 
-**Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`, an
-`{r}` cell an R with `IRkernel`. Taliesin picks each interpreter by the first source
-that exists, so a project can pin its own without fighting your global shell:
+**Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`.
+Taliesin picks the interpreter by the first source that exists, so a project can pin
+its own without fighting your global shell:
 
-1. the `_site.yml` `python:` / `r:` field;
-2. a project-local `.venv` (`<project>/.venv/bin/python`, then `.venv/bin/python3`); Python only, no R convention;
-3. the `TALIESIN_PYTHON` / `TALIESIN_R` environment variable;
-4. the bare `python3` / `R` on your `PATH`.
+1. the `_site.yml` `python:` field;
+2. a project-local `.venv` (`<project>/.venv/bin/python`, then `.venv/bin/python3`);
+3. the `TALIESIN_PYTHON` environment variable;
+4. an ancestor `.venv`, found by walking up from the project directory;
+5. the bare `python3` on your `PATH`.
 
 Because a project `.venv` (or a `python:` pin) beats a global `TALIESIN_PYTHON`, a
 committed project reproduces the same interpreter on any machine. The chosen
-interpreter and where it came from are logged the first time each language's kernel
+interpreter and where it came from are logged the first time the kernel
 starts (`python -> /proj/.venv/bin/python  (from .venv)`), and `taliesin check` prints
 an **Environment** section listing it plus whether its Jupyter kernel package is
 importable. A single `.tmd` with no `_site.yml` uses the same order minus the field

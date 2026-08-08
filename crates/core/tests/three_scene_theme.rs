@@ -5,7 +5,7 @@
 //! `alpha: true` cleared to an opaque dark rectangle. On a light page that is a black
 //! slab: measured on the showcase Lorenz canvas at `body` background `rgb(255,255,255)`,
 //! `readPixels` returned `[11,15,26,255]`. The same held for the three `pca-geometry`
-//! scenes (`[17,24,39,255]`, the `0x111827` default) and the `graphics3d/` gallery.
+//! scenes (`[17,24,39,255]`, the `0x111827` default).
 //!
 //! The fix is that transparency is not a knob: the canvas is always transparent and the
 //! page background (which already flips with the theme via `--tali-*`) shows through. So
@@ -16,10 +16,16 @@
 //! * the helper's DOM chrome is token-driven, so it flips instead of shipping a fixed
 //!   dark chip on white.
 //!
-//! `three-scene.tmd` lives in four copies in two variants. `corpus/_includes` <->
-//! `corpus/tech-blog/_includes` is already pinned byte-identical by
-//! `corpus.rs::twinned_corpus_sources_stay_byte_identical`; `site/_includes` <->
-//! `corpus/graphics3d/_includes` was pinned by nothing, so it is pinned here.
+//! `three-scene.tmd` lives in several copies in two variants: an EXTENDED one
+//! (`controls`/`autoRotate`/`rebuild`/`loadGLTF`, used by the marketing site) and a base
+//! one. The copies are **discovered by walking the tree**, not listed. That is the fix for
+//! a real defect: the list used to name four paths while five files existed, and
+//! `corpus/posts/pca-geometry/_includes/three-scene.tmd` drifted unpinned under a gate
+//! whose own assertion claimed it covered every copy. A walk cannot undercount.
+//!
+//! `corpus/_includes` <-> `corpus/tech-blog/_includes` is also pinned byte-identical by
+//! `corpus.rs::twinned_corpus_sources_stay_byte_identical`; the pca-geometry copy is
+//! pinned only here, because it has no twin under that test's paired roots.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,25 +35,29 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Every copy of the `makeScene3D` helper, as (label, source).
-fn helper_copies() -> Vec<(&'static str, String)> {
-    const PATHS: &[&str] = &[
-        "site/_includes/three-scene.tmd",
-        "corpus/graphics3d/_includes/three-scene.tmd",
-        "corpus/_includes/three-scene.tmd",
-        "corpus/tech-blog/_includes/three-scene.tmd",
-    ];
+/// Every copy of the `makeScene3D` helper, as (repo-relative path, source), found by
+/// walking rather than by a hand-kept list — see this file's header for why.
+fn helper_copies() -> Vec<(String, String)> {
     let root = repo_root();
-    let copies: Vec<(&'static str, String)> = PATHS
-        .iter()
-        .map(|rel| {
-            let src = fs::read_to_string(root.join(rel))
-                .unwrap_or_else(|e| panic!("read {rel}: {e}; a rename must update this pin"));
-            (*rel, src)
+    let mut copies: Vec<(String, String)> = all_docs()
+        .into_iter()
+        .filter(|(_, src)| src.contains("makeScene3D"))
+        .filter(|(p, _)| p.ends_with("three-scene.tmd"))
+        .map(|(p, src)| {
+            let rel = Path::new(&p)
+                .strip_prefix(&root)
+                .map(|r| r.display().to_string())
+                .unwrap_or(p);
+            (rel, src)
         })
         .collect();
+    copies.sort();
     // A rename must not silently make this file vacuous.
-    assert_eq!(copies.len(), 4, "expected four copies of the helper");
+    assert!(
+        copies.len() >= 4,
+        "expected at least four copies of the helper, found {}: {copies:#?}",
+        copies.len()
+    );
     copies
 }
 
@@ -161,27 +171,49 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
     }
 }
 
-/// The two *extended* copies (the ones with `controls`/`autoRotate`/`rebuild`/`loadGLTF`)
-/// are hand-kept identical and nothing pinned that, so a theme fix could land in one and
-/// rot the other exactly the way the older pair's pin exists to prevent.
+/// Copies of the SAME variant are hand-kept identical and must stay so, or a theme fix
+/// lands in one and rots the others. Grouped by content rather than by a listed pair,
+/// because the variant a given copy belongs to is a property of the file, not of a name:
+/// the base variant has three copies today and the extended one (the marketing site's,
+/// carrying `controls`/`autoRotate`/`rebuild`/`loadGLTF`) has one.
+///
+/// The extended variant HAD a second copy under `corpus/graphics3d/`, which was cut on
+/// 2026-08-08. One copy cannot drift, so the assertion below simply has nothing to compare
+/// for it — but it still fails loudly if a future edit merges the two variants, which is
+/// the other half of what the old paired pin was buying.
 #[test]
-fn the_extended_three_scene_copies_stay_byte_identical() {
-    let root = repo_root();
-    let a = root.join("site/_includes/three-scene.tmd");
-    let b = root.join("corpus/graphics3d/_includes/three-scene.tmd");
-    let (sa, sb) = (fs::read(&a).unwrap(), fs::read(&b).unwrap());
-    assert_eq!(
-        sa, sb,
-        "site/_includes/three-scene.tmd and corpus/graphics3d/_includes/three-scene.tmd \
-         have drifted; a fix landed in one copy only"
+fn same_variant_three_scene_copies_stay_byte_identical() {
+    let copies = helper_copies();
+
+    let mut extended: Vec<&(String, String)> = Vec::new();
+    let mut base: Vec<&(String, String)> = Vec::new();
+    for c in &copies {
+        if ["autoRotate", "loadGLTF", "frameObject", "function rebuild("]
+            .iter()
+            .all(|m| c.1.contains(m))
+        {
+            extended.push(c);
+        } else {
+            base.push(c);
+        }
+    }
+
+    // Both variants must still exist, or a drive-by "sync" merged them and this test
+    // would pass by having nothing left to compare.
+    assert!(
+        !extended.is_empty() && !base.is_empty(),
+        "the two three-scene variants must not be merged; found extended={:?} base={:?}",
+        extended.iter().map(|c| &c.0).collect::<Vec<_>>(),
+        base.iter().map(|c| &c.0).collect::<Vec<_>>()
     );
-    // Guard against the pin passing because both files are the *older* variant: that
-    // would mean a drive-by "sync" silently dropped the extended features.
-    let src = String::from_utf8(sa).unwrap();
-    for marker in ["autoRotate", "loadGLTF", "frameObject", "function rebuild("] {
-        assert!(
-            src.contains(marker),
-            "the extended helper lost `{marker}`; the two variants must not be merged"
-        );
+
+    for group in [&extended, &base] {
+        let (first_path, first_src) = group[0];
+        for (path, src) in group.iter().skip(1) {
+            assert_eq!(
+                src, first_src,
+                "{path} has drifted from {first_path}; a fix landed in one copy only"
+            );
+        }
     }
 }

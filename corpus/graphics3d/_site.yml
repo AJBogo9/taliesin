@@ -1,5 +1,0 @@
-# A small multi-page exhibit: interactive graphics that run client-side in the
-# built page. `url:` is deliberately omitted so the standalone build stays
-# offline-clean (no canonical/OG self-URL on a self-contained exhibit).
-title: "Live 3D graphics"
-description: "Interactive graphics authored in .tmd and run client-side: spin-and-zoom molecules, a Lorenz attractor, a CAD viewer with a live parametric gear, and instrumented sorting algorithms."
