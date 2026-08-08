@@ -138,7 +138,7 @@ in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either sign
 `taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
 other editor's filetype produces), so the server is never silently inert.
 
-Five requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
+Eight requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
 method. Each exists because the protocol has no way to express what it does, and each is
 answered by the same server:
 
@@ -150,6 +150,8 @@ answered by the same server:
 | `taliesin/renameFileEdits` | the edits that keep a renamed or moved file's references correct: every `{{< include >}}`, `{{< embed >}}`, relative link and `_site.yml` entry pointing at it, plus the file's own outgoing relative references when it changed directory. A rename is a one-shot event, so this walks the project instead of maintaining an index, which is why it needs none of the parked project-index work. Both link spellings are handled, because a cross-page link is authored as `.html` while an include names the `.tmd` (`lsp_rename_file.rs`) |
 | `taliesin/projectOutline` | the whole book as a tree, grouped by page and in reading order — `chapters:` resolved from the same `Book` the drawer and prev/next use, with a page absent from that list sorted last and flagged `listed: false` so the client can name it rather than drop it — plus the numbered-float index. Not `workspace/symbol`: that method deliberately answers a *flat, queried* list, which is the wrong shape for a view the author browses rather than searches |
 | `taliesin/projectRefs` | every cross-reference target with the uses pointing at it, **dangling ones included**. The dangling half is why the server grew a full-document `xref_occurrences` scan beside the targeted `anchor_occurrences`: a reference whose target exists nowhere has an id no caller could have thought to ask for |
+| `taliesin/siteMap` | where each publishable page of a project is served: `rel` (the source path) paired with `url`. It is what makes "Preview" open at chapter 7 instead of the book's cover, and it has to be answered here because `.tmd`→`.html`, book chapter numbering, `index` handling and the draft exclusion all live in Rust — a client deriving the URL itself is the second implementation this whole rewrite existed to delete |
+| `taliesin/mathCommands` | every KaTeX command the renderer supports, with the category and rendered glyph the Insert Math Symbol picker searches on. A symbol you cannot spell is not reachable by completion — you have to already know that ⊗ is `\otimes` — so the picker needs the whole table at once, which is the one shape completion cannot serve |
 
 `taliesin/sectionEdit` refuses rather than guesses. Moving past a shallower heading would
 re-parent the section, so it answers a JSON-RPC `RequestFailed` whose message names both
@@ -179,7 +181,7 @@ error branch: a failed render emits no `<math>` at all, so "found MathML" alread
 `editor/vscode/` is the **Taliesin Companion**, and it implements no language features of
 its own — `src/client.ts` is a thin `vscode-languageclient` over `taliesin lsp`. That was
 not always true: the same features were once re-implemented in TypeScript, shelling out to
-`taliesin vocab | symbols | check`, alongside the Rust server that already did all of it.
+`taliesin`'s own CLI verbs, alongside the Rust server that already did all of it.
 Two copies of one contract with no gate between them can only drift, and they had.
 
 What is left in the extension is what the protocol has no concept of:
@@ -195,9 +197,10 @@ What is left in the extension is what the protocol has no concept of:
   **What it spawns is the project, not the buffer**, whenever the document sits under a
   `_site.yml` (`projectRootFor`, nearest ancestor, never `.git`): one server serves the whole
   book and the webview opens at that page's URL, so a chapter previews with its nav instead of
-  as an orphan. The URL comes from `taliesin map <root> --format json` — a *lookup*, never a
-  `.tmd`→`.html` rule reimplemented in TypeScript, which is the same discipline the LSP
-  rewrite enforced. The registry is keyed by project root so a second chapter reveals the
+  as an orphan. The URL comes from `taliesin/siteMap` — a *lookup*, never a `.tmd`→`.html`
+  rule reimplemented in TypeScript, which is the same discipline the LSP rewrite enforced.
+  (It was a `taliesin map --format json` spawn until Wave 2 cut that verb; the capability
+  moved onto the wire the client already holds open, which is where it belonged.) The registry is keyed by project root so a second chapter reveals the
   preview it already has; anything that leaves the document without a URL (an unusable map, a
   draft, an `{{< embed >}}`ed deck) falls back to a single-file preview rather than to no
   preview. Because one preview now spans many documents, forward sync anchors on the page the
@@ -212,8 +215,8 @@ What is left in the extension is what the protocol has no concept of:
   `appendText` is a literal and cannot count from `1.` to `2.`, and the alternative is
   binding Enter itself to a command, which puts the most-used key in the editor behind our
   own fall-through logic for the suggest widget, snippet placeholders and multi-cursor.
-- **`contributes.yamlValidation` for `_site.yml`**, pointing at a copy of the same schema
-  `taliesin schema` emits. It is a copy because the manifest needs a file inside the
+- **`contributes.yamlValidation` for `_site.yml`**, pointing at a copy of the schema
+  `crates/core` bundles. It is a copy because the manifest needs a file inside the
   extension, so a gate in `src/test/manifest.test.ts` fails when it drifts from
   `crates/core/assets/schema/`. Only `_site.yml` is matched, because that is the only name
   the site loader opens — validating `_site.yaml` would bless a file Taliesin never reads.

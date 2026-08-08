@@ -26,13 +26,11 @@
 //! ([`escape_attr`] / [`html_escape`]); the list above is the deliberate
 //! exception.
 
-pub mod agents;
 pub(crate) mod author;
 pub mod cite;
 pub mod diagnostics;
 pub mod diff;
 pub mod ext;
-pub mod features;
 pub mod frontmatter;
 pub mod hash;
 pub mod highlight;
@@ -49,13 +47,18 @@ pub mod vocab;
 pub use diff::{BlockOp, diff_blocks};
 pub use frontmatter::{closest, closest_of};
 pub use includes::single_doc_root;
+/// The built-in shortcodes the renderer dispatches on, re-exported because the LSP's
+/// completion list is a second copy of this set and nothing else ties the two together
+/// (`lsp_complete.rs`'s `shortcode_names_and_cell_option_values_are_non_empty_closed_sets`).
+/// `render::extension` itself stays crate-private.
+pub use render::extension::SHORTCODE_NAMES;
 pub use render::{
-    AssetMode, Block, DeckParts, DocFormat, ExecOutput, ExternalAssets, FONT_FILES, OutputMode,
+    AssetMode, Block, DeckParts, DocFormat, ExternalAssets, FONT_FILES, OutputMode,
     PREVIEW_MERMAID_PATH, PageParts, RenderedDoc, SEARCH_JS, ScriptSummary, TOC_SPY_JS,
-    assemble_deck_page, assemble_html_page, classify_exec_output, code_scripts, core_enhance_js,
-    deck_overlay_html, deck_shared_css, deck_shared_css_linked_fonts, deck_shared_js, escape_attr,
-    favicon_link, has_mermaid, html_escape, html_page_from_doc_in_site_external, js_cell_libs_js,
-    katex_css, mermaid_bundle_js, mermaid_min_js, render_deck_to_page_external, render_doc_to_page,
+    assemble_deck_page, assemble_html_page, code_scripts, core_enhance_js, deck_overlay_html,
+    deck_shared_css, deck_shared_css_linked_fonts, deck_shared_js, escape_attr, favicon_link,
+    has_mermaid, html_escape, html_page_from_doc_in_site_external, js_cell_libs_js, katex_css,
+    mermaid_bundle_js, mermaid_min_js, render_deck_to_page_external, render_doc_to_page,
     render_doc_to_page_external, render_document, render_document_scoped_with_site,
     render_document_with_includes, render_document_with_includes_scoped, render_html_page,
     render_html_page_with_includes, render_single_doc, script_summary, shared_site_css,

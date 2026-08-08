@@ -784,28 +784,6 @@ pub(crate) fn json_error(message: &str) -> String {
     serde_json::json!({ "error": message }).to_string()
 }
 
-/// Produce `check`'s `--format json` payload for `target` (a file or a site dir): the exact
-/// `{diagnostics, environment}` object (or a `{"error": …}` envelope on failure), so the MCP
-/// `check` tool and the CLI can't drift. Mirrors `cmd_check`'s json branch.
-pub(crate) fn check_json(target: &Path) -> String {
-    let mut scope = CheckScope::default();
-    let collected = crate::serve::guarded(|| collect_diagnostics(target, &mut scope))
-        .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
-        .and_then(|r| r);
-    match collected {
-        // `UnlessProjectSupplied`: this is the MCP `check` tool's path, described to the agent
-        // only as "Validate". An agent pointed at an unknown project has made no choice to run
-        // anything in it, so a project-supplied interpreter is reported, not spawned
-        // (item 81). There is no opt-in here by design — an agent that wants a live probe
-        // has `doctor`.
-        Ok(diags) => format_json(
-            &diags,
-            &collect_environment(target, &scope, ProbePolicy::UnlessProjectSupplied),
-        ),
-        Err(e) => json_error(&e),
-    }
-}
-
 /// The path to print for one diagnostic: the one the reader would type from the directory
 /// they ran the command in.
 ///

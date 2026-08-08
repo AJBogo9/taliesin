@@ -49,59 +49,7 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
 /// it in [`expand_in_line`], and `include` is resolved a whole pass earlier
 /// (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would report two
 /// of the four as not existing.
-pub(crate) const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "include"];
-
-/// Every `key=` argument a built-in shortcode accepts, qualified by the shortcode that
-/// takes it (`video.poster`), for [`crate::features`]'s catalogue.
-///
-/// Qualified for the same reason nested front-matter keys are: `title=` on an
-/// `{{< embed >}}` is an iframe title, and an unqualified row would report a single
-/// adoption number for two features that happen to share a spelling. Bare flags are
-/// included too, since writing one is a use.
-pub(crate) fn shortcode_argument_names() -> Vec<String> {
-    SHORTCODE_SPECS
-        .iter()
-        .flat_map(|(name, keys, flags)| {
-            keys.iter()
-                .chain(flags.iter())
-                .map(move |k| format!("{name}.{k}"))
-        })
-        .collect()
-}
-
-/// Every `{{< name args… >}}` written in `src`, as `(name, args)`, for the
-/// feature-adoption report (`crate::features`).
-///
-/// Applies the expander's own two skip rules so a shortcode shown as an EXAMPLE is not
-/// counted as a use: a fenced code block is literal, and so is an inline backtick span.
-/// This is what stops `docs/guide/reference/shortcodes.tmd` (which shows every shortcode
-/// in backticks and fences) from reading as the heaviest user of all of them.
-/// The per-line walk is [`each_shortcode`], shared with [`embed_targets`]. This function
-/// used to carry its own hand-copied copy of that loop, which advanced the cursor one
-/// *byte* at a time and so panicked mid-codepoint on any line holding both `{{<` and a
-/// non-ASCII character: ordinary prose, and it aborted `taliesin features` on 3 of the
-/// 25 `docs/guide` pages. Keep the single walker.
-pub(crate) fn scan_shortcodes(src: &str) -> Vec<(String, Vec<String>)> {
-    let mut out = Vec::new();
-    let mut in_code = false;
-    for line in src.lines() {
-        let t = line.trim_start();
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            continue;
-        }
-        if in_code || !line.contains("{{<") {
-            continue;
-        }
-        each_shortcode(line, |inner| {
-            let toks = tokenize_args(inner);
-            if let Some((name, args)) = toks.split_first() {
-                out.push((name.clone(), args.to_vec()));
-            }
-        });
-    }
-    out
-}
+pub const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "include"];
 
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.

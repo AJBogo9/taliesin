@@ -980,3 +980,83 @@ fn hover_on_a_squiggle_carries_the_explain_body() {
          message the author already read: {md:?}"
     );
 }
+
+/// `taliesin/siteMap` answers where each page of a project is served, and
+/// `taliesin/mathCommands` answers with the symbol picker's table.
+///
+/// Both are Wave 2 re-homings: the companion used to spawn `taliesin map --format json` and
+/// `taliesin vocab` for exactly these two answers, and both verbs went with the
+/// machine-facing cut. The capabilities did not — one decides which chapter the preview
+/// opens at, the other fills the Insert Math Symbol quick-pick — so they moved onto the wire
+/// the companion already holds open. This is what is left of `map_cli.rs`'s coverage, kept
+/// because the answer is load-bearing for the preview and TypeScript must never re-derive it.
+///
+/// `corpus/demo-book` pins both halves in one list: `chapters:` fixes the order (the
+/// `.tmd`→`.html` mapping and book numbering that live in Rust), and `appendix.tmd` is
+/// `draft: true`, so a map that leaked it would open the preview at a page no build writes.
+#[test]
+fn site_map_and_math_commands_answer_over_the_wire() {
+    let root = std::fs::canonicalize(format!(
+        "{}/../../corpus/demo-book",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .expect("the demo-book fixture exists");
+    let uri = format!("file://{}", root.display());
+    let input = format!(
+        "{}{}{}{}{}{}",
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "capabilities": {} }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "method": "initialized", "params": {}
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "taliesin/siteMap",
+            "params": { "uri": uri }
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 3, "method": "taliesin/mathCommands", "params": null
+        })),
+        frame(serde_json::json!({
+            "jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": null
+        })),
+        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
+    );
+    let (code, stdout, stderr) = lsp_session(&input);
+    assert_eq!(code, Some(0), "stderr:\n{stderr}");
+
+    let map = response(&stdout, 2);
+    let pages = map["pages"].as_array().expect("a pages array: {map}");
+    let urls: Vec<&str> = pages.iter().filter_map(|p| p["url"].as_str()).collect();
+    assert_eq!(
+        urls,
+        [
+            "index.html",
+            "intro.html",
+            "methods.html",
+            "results.html",
+            "summary.html"
+        ],
+        "pages follow `chapters:`, and the `draft: true` appendix is not one: {map}"
+    );
+    // The companion looks its own document up by `rel`, so the pairing is the whole answer.
+    assert_eq!(
+        pages
+            .iter()
+            .find(|p| p["rel"] == "methods.tmd")
+            .map(|p| p["url"].clone()),
+        Some(serde_json::json!("methods.html")),
+        "a chapter's source path must resolve to its url: {map}"
+    );
+
+    let math = response(&stdout, 3);
+    let commands = math.as_array().expect("a mathCommands array");
+    assert!(
+        commands
+            .iter()
+            .any(|c| c["name"] == "\\frac"
+                || c["snippet"].as_str().is_some_and(|s| s.contains("frac"))),
+        "the picker's table came back empty or unrecognizable: {math}"
+    );
+}

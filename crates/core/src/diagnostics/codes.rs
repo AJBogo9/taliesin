@@ -702,7 +702,7 @@ const EXPLANATIONS: &[Explanation] = &[
                 document), but the page is not publishable as it stands. `check` never \
                 reports this: it does not execute cells.",
         fix: "Fix the cell's code and rebuild. To see the failure without a browser, \
-              `taliesin read --run <file>` prints a `[cell error: …]` line per cell.",
+              `taliesin build <file> --strict` fails the run and names the cell.",
     },
     Explanation {
         code: "TAL-KERNEL",

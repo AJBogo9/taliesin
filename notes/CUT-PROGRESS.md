@@ -83,7 +83,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 |---|---|---|---|---|---|
 | 0 | Establish `gates.sh` baseline + `pre-cut` tag | **done** 2026-08-08 | `main` | n/a | green at `3ccfa595`; needs `TALIESIN_PYTHON` (see Baseline) |
 | 1 | Anti-drift simplification + doctrine + dead code | **done** 2026-08-08 | `cut/wave-1-antidrift` | **−1,118** (+400 / −1,518, 30 files) | a retirement now costs ONE register line; **no tombstone test is owed** |
-| 2 | Machine-facing verbs (keep one JSON surface) | not started | | | |
+| 2 | Machine-facing verbs (keep one JSON surface) | **done** 2026-08-08 | `cut/wave-2-machine-verbs` | **−7,796** (+685 / −8,481, 79 files) | 18 verbs → **12**; `map` + `vocab` re-homed into the LSP |
 | 3 | Debug mode | not started | | | also fixes unconditional `DEBUG_CSS` |
 | 4 | Publishing + web-platform ops | not started | | | `image_opt` lands here, once |
 | 5 | The deck engine | not started | | | biggest churn win: 122 commits |
@@ -114,6 +114,12 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
     the moment they hit the retired key, which no page can beat.
 - **Re-measure the warm pool on the preview path** before wave 11 if you want the
   number. The directive says cut regardless; measure only if you want to know the cost.
+- **Wave 6's Chrome kill now has one fewer thing to delete and one more to check.** Wave 2
+  removed the `{js}` observation path from `headless_js.rs` (that was wave 6's STAGE 5), so
+  what is left there is only the launch policy `pdf.rs` uses. Wave 6 also inherits the two
+  surviving chrome canaries in `gates.sh` (reactive + print), not three.
+- **Before wave 7 retires more nested vocabulary, sweep `docs/guide` for indented retired
+  keys by hand.** Still open — carried from wave 1; no gate sees an indented key.
 
 ## Hedges to take before wave 1
 
@@ -213,3 +219,82 @@ first test (README platform matrix vs the release workflow) is genuine anti-drif
 loss. Its second asserted that the release tarball packages `LICENSE` + `THIRD_PARTY.md`
 beside the binary — an AGPL distribution claim, now unguarded. It is cheap to restore as
 ~10 lines if that matters at release time.
+
+### Wave 2 — 2026-08-08, `cut/wave-2-machine-verbs`
+
+**Measured reclaim: −7,796 lines** (`+685 / −8,481` over 79 files) against the ~6,900
+estimate. By area (disjoint, summing to −7,796): `crates/server/src` −2,491,
+`crates/core/assets` −2,002 (the two golden dumps), `crates/core/src` −1,388,
+`crates/server/tests` −1,311, `docs` −305, `editor/vscode` −133, `crates/core/tests` −102,
+`corpus` −56, `tools`/`CLAUDE.md`/`README.md` −4.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** 9/9 gates, **6/6** canaries,
+**114 suites / 2,238 passed / 0 failed / 0 ignored**, exit 0. Measure the next wave against
+2,238 and six canaries, not 2,339 and seven — this wave deleted ~101 tests along with the
+verbs and dropped `CANARY_CHROME` (see finding 3).
+
+**Eighteen CLI verbs are now twelve.** `read`, `map`, `features`, `vocab`, `schema` and
+`mcp` are gone, each with a one-line `RETIRED_COMMANDS` entry and nothing else — the wave 1
+machinery held. `check --format json` is the surviving machine surface, as ruled.
+
+**Five things that were not true, or that the playbook got wrong.** Same genus as wave 1's
+list, and the reason to keep reading rather than executing the playbook verbatim:
+
+1. **The playbook's `text.rs` instructions contradict themselves, and following both would
+   have changed `llms-full.txt`.** STEP 4(d) says to delete `classify_exec_output`/
+   `ExecOutput` *and* to "change nothing between lines 63 and 599" — but `project_block`,
+   which lives at 63, **calls** `classify_exec_output`. It is not `read`-only: it is what
+   turns an executed cell's output block into `[figure fig-x: produced]` in the projection
+   that `site/llms.rs` ships as `llms-full.txt`. Both are kept, demoted from `pub` to
+   module-private. Only `project_with_js` (the headless `{js}` interleave) really was
+   verb-only and went.
+2. **The dissent's mitigation was already half paid, and the other half was missing.**
+   `read_run.rs` contains **no freeze-cache assertions at all** — the two the dissent asked
+   to "port" do not exist there. What does exist is `freeze_cold_replay.rs`, already
+   build-driven and already covering "a cold replay hits the cache" and "an edited cell
+   busts". The genuinely unguarded property was the **downstream** half: cell 2's source is
+   byte-identical across both builds, so a key over that code alone would replay yesterday's
+   number. `editing_an_upstream_cell_re_executes_the_cells_below_it` now drives that through
+   a real `build` (proven able to fail: expecting the stale `3458` panics).
+3. **The chrome canary was dropped, not repointed.** `read_run_js` was the *only* test of
+   the capability it stood for, so pointing `CANARY_CHROME` at a surviving browser test
+   would have made two canaries prove the same thing. `gates.sh` is down to **6 canaries**
+   and the chrome gate is unchanged: `CANARY_REACTIVE` and `CANARY_PRINT` both still fail
+   when Chrome is missing. `gate_script.rs`'s count and prose follow the precedent already
+   written into that assertion.
+4. **Deleting the `map` verb broke a companion unit test that could not be re-pointed.**
+   `map.ts` now imports `vscode` (for `Uri.file`) and `./client`, both of which use the
+   `vscode` module as a *value* — so `out/test/map.test.js` can no longer load under plain
+   `node --test`. The file is deleted; its validation half (`sitePages`) still has its own
+   tests in `paths.test.ts`, now taking a parsed value instead of a JSON string, and the
+   wire half is covered in Rust by a new `lsp_stdio.rs` test over `corpus/demo-book`
+   (chapter order + the `draft: true` appendix excluded — what `map_cli.rs`'s 242 lines were
+   really for).
+5. **`manifest.test.ts` read the deleted vocabulary dump.** Its snippet gates checked every
+   callout kind, div class, cell option and xref prefix a shipped snippet inserts against
+   `tali-vocab.json`. They now parse the Rust consts directly (`CALLOUT_KINDS`,
+   `THEOREM_KINDS`, `CELL_OPTION_KEYS`, `DIV_CLASS_NAMES`, `XREF_LABELS` minus
+   `RETIRED_XREF_PREFIXES`) with the same regex technique `cargoCommands()` already used —
+   one indirection fewer, since the JSON was generated from those lists. Verified the parsed
+   sets by hand: 3 callouts, 5 theorem kinds, 14 cell options, 9 div classes, 9 live xref
+   prefixes.
+
+**Dead code the cut exposed, removed in the same commit:** `build::build_json` and
+`check::check_json` (the MCP `build`/`check` tool wrappers — note `check --format json`
+goes through `cmd_check`, not through these), `cite::xref_prefixes`,
+`vocab::{cell_language_names, div_attribute_names}`, `extension::{shortcode_argument_names,
+scan_shortcodes}`, `divs::{scan_div_attrs, scan_code_fences}`, `headless_js::chrome_available`.
+
+**Corrections landed for later waves.** `CLAUDE.md`'s `vocab.rs` note said 11-of-16;
+re-measured and it is **9-of-14**. The five-drift-gate paragraph is now four (the
+`agents_md` golden went with `AGENTS.md`). The banner records 12 verbs.
+
+**What was given up, stated plainly.** Three things.
+`missing_input_suggests.rs`'s floor drops from four front doors to **two** (`build`,
+`check`): `read` and `map` were half that gate's population, and `run`/`pdf` still do not
+suggest a near-miss — a pre-existing gap, now a larger fraction of the surface.
+`corpus/reader/xref-targets.tmd` went with `map`; the cell-label→xref-target path it pinned
+is still covered by `corpus/analyst` (executed `#| label: tbl-` floats, cross-page) and by
+`lsp_nav.rs`'s definition-site tests, so this is a fixture loss rather than a coverage loss.
+And the author's own agent loop drops from a turnkey MCP server to shelling out to
+`check --format json`, which is the trade the ruling made deliberately.

@@ -382,7 +382,7 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
   which page is on screen — which is what anchors forward search.
 - **Page selection (editor → preview).** `tali-navigate { type, url }` asks the client
   to load another page of the same project, `url` being root-relative exactly as
-  `taliesin map --format json` reports it. The client resolves it against its own
+  `taliesin/siteMap` reports it. The client resolves it against its own
   origin and refuses anything that leaves it, so this can only ever move the preview
   within itself. It exists because a webview panel and its iframe are different
   origins: the host cannot set `contentWindow.location` itself.

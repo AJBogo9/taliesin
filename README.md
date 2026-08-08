@@ -29,8 +29,7 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   corpus, **7.1% of lines carry any construct beyond plain CommonMark** — and all six of
   those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
   yourself with `python3 tools/portability-census.py`. Your writing is
-  Markdown in your repository; built pages are static HTML that needs no runtime, and
-  `taliesin read --format json` projects a document to structured text.
+  Markdown in your repository, and built pages are static HTML that needs no runtime.
 - **Speed, in absolutes and with no multiplier.** A 15-page book builds in **0.25 s**
   (16.7 ms/page); `preview` is serving in **1–5 ms** for a single document and **≈200 ms**
   for a 23-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **32 KB**
@@ -82,8 +81,8 @@ fetched at runtime and there is no `node_modules`. Put `target/release/taliesin`
 `PATH` to call `taliesin` from anywhere.
 
 **One optional feature, off by default, because it is a third of the build.**
-`read --run-js` can drive a local headless Chrome to check whether a `{js}` cell actually
-painted a chart. Its browser driver is the single most expensive thing in the dependency
+`taliesin pdf` drives a local headless Chrome to lay out and print a paginated PDF from the
+built HTML. Its browser driver is the single most expensive thing in the dependency
 graph: turning it on takes the same cold build from 2m 34s to **3m 35s**, 305 crates to
 321, and the binary from 38 MB to 47.7 MB (measured on one machine at `-j3`, so treat the
 ratio as the durable part: it has held at exactly +16 crates across a year of drift). Since
@@ -95,8 +94,8 @@ cargo build --release --features taliesin-server/headless-js
 ```
 
 The [release binaries](#install--prerequisites) are built with it, so a download is the complete tool.
-Without it every other command is unchanged and `read --run-js` still answers — each
-`{js}` cell just reports `skipped`, exactly as it does when no Chrome is installed.
+Without it every other command is unchanged and `pdf` says the binary was built without the
+driver, exactly as it does when no Chrome is installed.
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
 highlighting, decks, and sites render with no kernel at all; a kernel is needed only
@@ -125,7 +124,7 @@ language runs against its own warm kernel:
 **Quick start.** Scaffold a starter site and preview it:
 
 ```sh
-taliesin init my-site        # _site.yml, index.tmd, AGENTS.md + .taliesin/ schemas
+taliesin init my-site        # _site.yml, index.tmd + .taliesin/ editor schema
 taliesin preview my-site     # live preview at http://localhost:4321
 ```
 

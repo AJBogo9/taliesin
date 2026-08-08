@@ -1,8 +1,8 @@
 //! A missing interpreter is announced ONCE per run, and the one line it prints is the
 //! actionable one.
 //!
-//! It used to print twice on `build <file>` and `read --run`: a terse line at the point of
-//! failure (`python kernel unavailable (<err>); cells render as source only`) and then the
+//! It used to print twice on `build <file>` (and on the since-retired `read --run`): a terse
+//! line at the point of failure (`python kernel unavailable (<err>); cells render as source only`) and then the
 //! full `Executor::diagnostic()` line at the caller. The terse one said strictly less — no
 //! interpreter path, no env var, no `doctor` pointer — so it was pure repetition. A *site*
 //! build had the mirror defect: it printed only the terse form, once per page, and never
@@ -71,20 +71,6 @@ fn a_single_doc_build_announces_the_missing_kernel_exactly_once() {
             "the surviving line must be the actionable one (missing {needle:?}): {line}"
         );
     }
-}
-
-#[test]
-fn read_run_announces_the_missing_kernel_exactly_once() {
-    let dir = tmp_dir("read");
-    let doc = dir.join("doc.tmd");
-    fs::write(&doc, CELL).unwrap();
-
-    let stderr = stderr_of(taliesin().arg("read").arg("--run").arg(&doc));
-    assert_eq!(
-        announcements(&stderr).len(),
-        1,
-        "one announcement, not two:\n{stderr}"
-    );
 }
 
 /// A site build states it once for the whole run, not once per page. The interpreter and

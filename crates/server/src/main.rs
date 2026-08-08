@@ -39,14 +39,12 @@ mod lsp_refs;
 mod lsp_rename_file;
 mod lsp_select;
 mod lsp_trace;
-mod mcp;
 mod minify;
 mod packages;
 mod pdf;
 mod preview_diag;
 mod protocol;
 mod publish;
-mod query;
 mod run_cmd;
 mod run_control;
 mod run_print;
@@ -76,7 +74,6 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match args.get(1).map(String::as_str) {
-        Some("read") => query::cmd_read(&args),
         Some("build") => {
             runtime_dirs::sweep_stale_runtime_dirs();
             build::cmd_build(&args)
@@ -89,13 +86,8 @@ fn main() -> ExitCode {
             runtime_dirs::sweep_stale_runtime_dirs();
             run_cmd::cmd_run(&args)
         }
-        Some("schema") => query::cmd_schema(&args),
-        Some("vocab") => query::cmd_vocab(),
-        Some("map") => query::cmd_map(&args),
-        Some("features") => query::cmd_features(&args),
         Some("check") => check::cmd_check(&args),
         Some("doctor") => doctor::cmd_doctor(&args),
-        Some("mcp") => mcp::cmd_mcp(&args),
         Some("lsp") => lsp::cmd_lsp(&args),
         Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
@@ -139,17 +131,11 @@ fn main() -> ExitCode {
 
 /// Every subcommand name, for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "read",
     "build",
     "run",
     "pdf",
-    "schema",
-    "vocab",
     "check",
     "doctor",
-    "map",
-    "features",
-    "mcp",
     "lsp",
     "init",
     "new",
@@ -181,10 +167,28 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
         "`build <file.tmd> --stdout --no-exec` writes the same page to stdout",
     ),
     ("blocks", "`taliesin lsp` publishes the block model now"),
-    ("symbols", "`map <file.tmd>` lists the same targets"),
+    (
+        "symbols",
+        "`taliesin lsp` completes cross-reference targets after `@`",
+    ),
     ("serve", "use `preview`"),
     ("dev", "use `preview`"),
-    ("skim", "`read` projects a document to plain text"),
+    ("skim", "nothing; read the `.tmd` source"),
+    ("read", "nothing; read the `.tmd` source"),
+    (
+        "map",
+        "nothing on the CLI; `taliesin lsp` answers the project outline in your editor",
+    ),
+    ("features", "`check --format json` is the machine surface"),
+    (
+        "vocab",
+        "`taliesin lsp` serves the same vocabulary as completions",
+    ),
+    (
+        "schema",
+        "`init` writes `.taliesin/tali-site.schema.json` for you",
+    ),
+    ("mcp", "`check --format json`, run from your agent"),
 ];
 
 /// The error for a command that is not one of [`COMMANDS`]: the retired-verb note when the
@@ -230,7 +234,7 @@ ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
      TALIESIN_CELL_SILENCE (per-cell seconds with NO output; default 600, 0 disables),
      TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
      TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
-     TALIESIN_JS_TIMEOUT (read --run {js} headless-Chrome settle seconds; default 10),
+     TALIESIN_JS_TIMEOUT (pdf's headless-Chrome page-layout seconds; default 10),
      TALIESIN_NO_CLEAR,
      TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
      TALIESIN_NO_EXEC (=--no-exec, never run code cells),
@@ -299,20 +303,8 @@ Inspect
                              (--explain <CODE> prints a diagnostic code's cause + fix)
   doctor [dir] [--format human|json]  audit the environment for running code cells
                              (interpreters, ipykernel/IRkernel, active conda/venv)
-  map   <file.tmd | dir> [--format human|json]  whole-project outline: pages, nav,
-                             xref graph (a single file is a project of one page,
-                             so it lists that document's @-reference targets)
-  read   <file.tmd | dir> [--run] [--format human|json]  project the document to plain
-                             text (agent-readable; --run executes cells + reports
-                             produced figures/output; --format json emits
-                             {path, executed, cells, text}; a dir reads the book)
-  features <file.tmd | dir> [--format human|json]  which constructs a document
-                             uses, and which constructs no document uses
 
-Editor & agent
-  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)
-  vocab                      emit editor autocomplete vocabulary as JSON (companion)
-  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)
+Editor
   lsp                        stdio LSP server: live .tmd diagnostics in any editor
   completions <shell> [--install]  print (or --install) a shell completion script
                              (subcommand + flag + .tmd-aware path completion; --install writes it for you)
@@ -473,24 +465,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin check src/ --errors-only --require-kernel\n\
              \x20 taliesin check --explain TAL-FM-KEY\n"
         }
-        "mcp" => {
-            "taliesin mcp\n\
-             \n\
-             Run a local, offline stdio MCP (Model Context Protocol) server so an MCP host\n\
-             drives Taliesin's read/validate/build loop without shelling out. Exposes six\n\
-             tools — check, read, symbols, map, vocab, build — and NO write/edit/preview\n\
-             tool: the .tmd stays your direct edit surface. JSON-RPC on stdout, logs on\n\
-             stderr.\n\
-             \n\
-             NOT a sandbox, so do not allowlist it as one. That edit-surface guarantee is\n\
-             about the .tmd, not containment: there is no project root, so every tool reads\n\
-             any path you hand it (including outside the project), and build writes HTML\n\
-             beside that path and executes the document's code cells. Contain it with the\n\
-             host's own sandbox and working directory.\n\
-             \n\
-             Example (in an MCP host's config):\n\
-             \x20 { \"command\": \"taliesin\", \"args\": [\"mcp\"] }\n"
-        }
         "lsp" => {
             "taliesin lsp\n\
              \n\
@@ -502,87 +476,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example (Neovim, via nvim-lspconfig or vim.lsp.start):\n\
              \x20 cmd = { \"taliesin\", \"lsp\" }\n"
-        }
-        "map" => {
-            "taliesin map <file.tmd | dir> [--format human|json]\n\
-             \n\
-             The whole-project outline in one read-only call: the page list in nav /\n\
-             chapter order (rel, url, title, date, categories, layout), nav + mounts, the\n\
-             cross-reference graph (each anchor → where it's defined), and embedded\n\
-             decks. Reuses site discovery; no kernel, no code execution.\n\
-             \n\
-             A single .tmd is a project of one page, so `map <file>` answers \"what can I\n\
-             cross-reference in this document\" — every `{#sec-…}` anchor and `#| label:`\n\
-             with the number Taliesin resolved for it, under `xref_targets`.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin map . --format json | jq '.pages[].url'\n\
-             \x20 taliesin map post.tmd --format json | jq '.xref_targets | keys'\n"
-        }
-        "features" => {
-            "taliesin features <file.tmd | dir> [--format human|json]\n\
-             \n\
-             Which constructs a document uses, and — the half that matters more — which\n\
-             constructs NO document uses. Every front-matter key, div class, callout and\n\
-             theorem kind, cell language, cell option, shortcode, input type and\n\
-             cross-reference kind taliesin implements, against the documents that write it.\n\
-             Parse-only: no kernel, no code execution, no render.\n\
-             \n\
-             The shape follows the target rather than a flag: a directory reports the\n\
-             adoption table (feature-first, zero rows included), a single file reports what\n\
-             that one document uses. The JSON is the same shape for both.\n\
-             \n\
-             Unlike map/skim/read a bare directory is fine — a project uses its own page\n\
-             order, any other directory is walked in path order.\n\
-             \n\
-             A report, not a gate: it exits 0 whatever it finds.\n\
-             \n\
-             Examples:\n\
-             \x20 taliesin features corpus\n\
-             \x20 taliesin features . --json | jq '.groups[].features[] | select(.documents == [])'\n"
-        }
-        "read" => {
-            "taliesin read <file.tmd | dir> [--run] [--format human|json]\n\
-             \n\
-             Project the rendered document to structured plain text (headings, resolved\n\
-             \"Figure N\"/cross-reference numbers, callouts, fenced code, math as raw TeX),\n\
-             so an agent can read what it made with no browser and no HTML. A VIEW, not an\n\
-             output format. Static by default: like render it does NOT execute code cells.\n\
-             A directory that is a site reads as the whole book, in chapter order.\n\
-             \n\
-             Flags:\n\
-             \x20 --run            execute the document's cells first, so the projection\n\
-             \x20                  carries real outputs, and report the figures/output each\n\
-             \x20                  cell produced ({js} cells are observed in headless Chrome\n\
-             \x20                  when one is available, else reported as skipped)\n\
-             \x20 --format human|json  json emits {path, executed, cells, text} (agent/jq),\n\
-             \x20                  where text is exactly the human projection;\n\
-             \x20                  --json is shorthand for --format json\n\
-             \n\
-             Example:\n\
-             \x20 taliesin read post.tmd\n\
-             \x20 taliesin read post.tmd --run --format json | jq '.cells[].kind'\n"
-        }
-        "schema" => {
-            "taliesin schema [--out <dir>]\n\
-             \n\
-             Emit the bundled JSON Schemas for taliesin's YAML config (document front\n\
-             matter + _site.yml) so an editor's YAML language server can validate them.\n\
-             Prints both to stdout, or writes two files with --out <dir>.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin schema --out .schemas\n"
-        }
-        "vocab" => {
-            "taliesin vocab\n\
-             \n\
-             Emit taliesin's editor vocabulary (front-matter keys, cell options, callout\n\
-             and theorem kinds, div classes, cross-reference prefixes) as one JSON blob,\n\
-             for the VS Code companion's autocomplete. Generated from the validator's own\n\
-             lists, so it never drifts from what `check` enforces.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin vocab | jq .cellOptions\n"
         }
         "new" => {
             "taliesin new [post|page|deck|paper] [slug] [--dir <root>] [--draft] [--json] [-y]\n\
@@ -775,7 +668,7 @@ mod dispatch_tests {
             "the retired note replaces the did-you-mean, it does not follow it"
         );
         assert!(unknown_command_message("render").contains("--stdout"));
-        assert!(unknown_command_message("symbols").contains("map"));
+        assert!(unknown_command_message("symbols").contains("lsp"));
         // A retired name is not a live command, or `main()` would dispatch it and the
         // `--help`/COMMANDS gates would demand a page for it.
         for (name, note) in RETIRED_COMMANDS {
@@ -1119,16 +1012,16 @@ mod cli_microcopy_tests {
 
     /// Every long flag a subcommand's parser accepts appears in that subcommand's focused
     /// `--help`. `preview --port <N>` was parsed, unit-tested, shell-completed and printed in
-    /// its own error line while appearing in **no** help text at all (PA-CLI1), and `read`'s
-    /// `--run` / `--format` were the same (PA-CLI2) — on the least discoverable surface there
-    /// is, the agent-facing JSON mode. One `--jobs`-shaped assertion per flag is what let that
-    /// happen; this compares the two lists mechanically instead.
+    /// its own error line while appearing in **no** help text at all (PA-CLI1), and the
+    /// since-retired `read` had two flags in the same state (PA-CLI2) — on the least
+    /// discoverable surface there is, the agent-facing JSON mode. One `--jobs`-shaped
+    /// assertion per flag is what let that happen; this compares the two lists mechanically.
     #[test]
     fn every_parsed_flag_is_documented_in_its_subcommand_help() {
         let lists = parser_flag_lists();
         // A scan that finds nothing would pass every assertion below it.
         assert!(
-            lists.len() >= 10,
+            lists.len() >= 7,
             "the flag-const scan collected only {} lists; the declaration shape moved",
             lists.len()
         );
@@ -1197,8 +1090,8 @@ mod cli_microcopy_tests {
         const LISTED_IN_PROSE: &[&str] = &["help"];
         // A command's entry opens its line: two spaces, the name, then a space. Matching the
         // bare name anywhere would pass on a mention inside another command's description
-        // (`preview`'s text names `--no-exec`, `read`'s names `--run`), which is exactly the
-        // false pass that let `skim` through.
+        // (`preview`'s text names `--no-exec`, `build`'s names `--stdout`), which is exactly
+        // the false pass that let `skim` through.
         let listed = |name: &str| COMMANDS_HELP.contains(&format!("\n  {name} "));
 
         for cmd in COMMANDS.iter().filter(|c| !LISTED_IN_PROSE.contains(c)) {

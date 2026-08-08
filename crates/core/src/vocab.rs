@@ -1,18 +1,22 @@
-//! Editor vocabulary dump for the VS Code companion's autocomplete.
+//! The language server's static vocabulary: every closed-set construct taliesin recognizes,
+//! with the human description its tooltip shows.
 //!
-//! Emits, as one JSON blob, every closed-set body construct taliesin recognizes:
-//! front-matter keys (top-level + nested), cell options, callout/theorem kinds,
-//! structural div classes, input types, and cross-reference prefixes. The lists are
-//! sourced from the SAME consts the validator and `check` use, so completions can never
-//! drift from what `check` enforces. Human descriptions are additive doc text authored
-//! here (the consts carry none). Golden-file-locked like `schema.rs`: regenerate ONLY via
-//! `TALIESIN_BLESS=1 cargo test -p taliesin-core --lib vocab`, never hand-edit.
+//! Front-matter keys (top-level + nested), cell options, callout/theorem kinds, structural
+//! div classes, input types, cross-reference prefixes, math commands. The lists are sourced
+//! from the SAME consts the validator uses, so a completion can never drift from what the
+//! validator enforces. Human descriptions are additive doc text authored here (the consts
+//! carry none), which `descriptions_present` requires for every name.
+//!
+//! [`vocab`] builds this as one `serde_json::Value` and `lsp.rs` reads keys out of it —
+//! `resolve_completion`, `xref_label`, `frontmatter_key_doc`, the math picker's table.
+//! It used to be dumped verbatim by a `taliesin vocab` verb and golden-locked against a
+//! committed `tali-vocab.json`; Wave 2 cut both. The JSON shape stays because it is what the
+//! wire carries, not because anything is written to disk.
+//!
+//! **This is the OFFERED subset, not the implemented set** — see `render::DIV_FEATURE_CLASSES`
+//! and the validator consts for what the tool actually supports.
 
 use serde_json::{Value, json};
-
-/// The committed vocabulary JSON, bundled so the `taliesin vocab` CLI can print it verbatim
-/// (no runtime generation), exactly as `schema.rs` bundles the schemas.
-pub const VOCAB_JSON: &str = include_str!("../assets/vocab/tali-vocab.json");
 
 /// `[{ "name", "description" }]` for each key in `names`, looking each description up in
 /// `desc` (missing -> empty string, which the `descriptions_present` test forbids).
@@ -378,20 +382,6 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
     ("rust", "Highlighted only; not executed."),
 ];
 
-/// The cell languages taliesin recognizes, for [`crate::features`]'s catalogue. Unlike the
-/// div classes there is no offered/implemented split here, so this really is the whole set.
-pub(crate) fn cell_language_names() -> Vec<&'static str> {
-    CELL_LANGUAGES.iter().map(|(n, _)| *n).collect()
-}
-
-/// The fenced-div `key=` attributes taliesin reads, for [`crate::features`]'s catalogue.
-/// Sourced from the same table that drives the editor's completions, whose
-/// `div_attribute_classes_are_real` test already pins every entry to a class the renderer
-/// dispatches on.
-pub(crate) fn div_attribute_names() -> Vec<&'static str> {
-    DIV_ATTRIBUTES.iter().map(|a| a.name).collect()
-}
-
 fn cell_languages() -> Value {
     Value::Array(
         CELL_LANGUAGES
@@ -490,14 +480,6 @@ pub fn vocab() -> Value {
     })
 }
 
-/// Deterministic pretty JSON with a trailing newline (so the committed file ends cleanly),
-/// matching `schema::generate::to_pretty_json`.
-pub fn to_pretty_json() -> String {
-    let mut s = serde_json::to_string_pretty(&vocab()).expect("vocab serializes");
-    s.push('\n');
-    s
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,26 +494,6 @@ mod tests {
                 crate::render::DIV_FEATURE_CLASSES.contains(name),
                 "`{name}` is offered by vocab::div_classes() but missing from \
                  render::DIV_FEATURE_CLASSES (typos of it won't get a did-you-mean)"
-            );
-        }
-    }
-
-    /// Assert the generated JSON equals the committed file, OR (under `TALIESIN_BLESS=1`)
-    /// rewrite the committed file from the generator. Mirrors `schema.rs`.
-    #[test]
-    fn vocab_matches_committed() {
-        let generated = to_pretty_json();
-        if std::env::var("TALIESIN_BLESS").is_ok() {
-            let path = format!(
-                "{}/assets/vocab/tali-vocab.json",
-                env!("CARGO_MANIFEST_DIR")
-            );
-            std::fs::write(&path, &generated).unwrap_or_else(|e| panic!("write {path}: {e}"));
-            eprintln!("blessed assets/vocab/tali-vocab.json");
-        } else {
-            assert_eq!(
-                generated, VOCAB_JSON,
-                "vocab drift; regenerate with `TALIESIN_BLESS=1 cargo test -p taliesin-core --lib vocab`"
             );
         }
     }
@@ -746,11 +708,5 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// The bundled string parses as JSON (catches an empty or corrupt committed file).
-    #[test]
-    fn bundled_vocab_is_valid_json() {
-        serde_json::from_str::<Value>(VOCAB_JSON).expect("bundled vocab is valid JSON");
     }
 }

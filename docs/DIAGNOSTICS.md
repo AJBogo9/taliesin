@@ -64,7 +64,7 @@ To fix: Change the kind to a supported one (a typo draws the nearest match; a re
 
 A `{python}`/`{r}` cell ran and threw, so its traceback is baked into the built page where its output should be. The build still writes the page (the traceback is real output, and hiding it would ship a silently wrong document), but the page is not publishable as it stands. `check` never reports this: it does not execute cells.
 
-To fix: Fix the cell's code and rebuild. To see the failure without a browser, `taliesin read --run <file>` prints a `[cell error: …]` line per cell.
+To fix: Fix the cell's code and rebuild. To see the failure without a browser, `taliesin build <file> --strict` fails the run and names the cell.
 
 ## TAL-CELL-OPTION
 

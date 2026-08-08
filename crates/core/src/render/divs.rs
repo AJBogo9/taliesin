@@ -242,61 +242,6 @@ pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<usize>) {
     (spans, unclosed)
 }
 
-/// Every class and every `key=` attribute written on a fenced div in `src`, in source
-/// order and with duplicates kept (the caller dedupes). For the feature-adoption report
-/// (`crate::features`), which asks what the AUTHOR wrote rather than which dispatch arm
-/// won: a div carrying a feature class alongside an attribute that outranks it reports
-/// both, though only one of them shaped the HTML.
-///
-/// Reuses [`scan_div_spans`] + [`parse_attrs`] rather than re-scanning, so a `:::` inside
-/// a fenced code block is not counted here either.
-pub(crate) fn scan_div_attrs(src: &str) -> (Vec<String>, Vec<String>) {
-    let (spans, _) = scan_div_spans(src);
-    let mut classes = Vec::new();
-    let mut keys = Vec::new();
-    for s in &spans {
-        let attrs = parse_attrs(&s.attrs);
-        classes.extend(attrs.classes);
-        keys.extend(attrs.kv.into_iter().map(|(k, _)| k));
-    }
-    (classes, keys)
-}
-
-/// Every fenced code block in `src` as `(info string, body)`, driven by the same
-/// [`next_code_state`] machine `preprocess` and [`scan_div_spans`] use, so the three
-/// always agree on where code starts and stops. An unterminated final fence still yields
-/// its block: the render treats it as code to end of file, and a report that dropped it
-/// would undercount exactly the document that is mid-edit.
-pub(crate) fn scan_code_fences(src: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let mut state: Option<(char, usize)> = None;
-    let mut info = String::new();
-    let mut body = String::new();
-    for line in src.lines() {
-        let was = state;
-        state = next_code_state(state, line);
-        match (was, state) {
-            // Opening fence. `ch` is '`' or '~', both ASCII, so the run length is a
-            // byte offset as well as a char count.
-            (None, Some((_, run))) => {
-                let trimmed = line.trim_start_matches(' ');
-                info = trimmed[run..].trim().to_string();
-                body.clear();
-            }
-            (Some(_), Some(_)) => {
-                body.push_str(line);
-                body.push('\n');
-            }
-            (Some(_), None) => out.push((std::mem::take(&mut info), std::mem::take(&mut body))),
-            (None, None) => {}
-        }
-    }
-    if state.is_some() {
-        out.push((info, body));
-    }
-    out
-}
-
 /// Parse a fenced-div attribute string: `.class`, `#id`, and `key=val`
 /// (value optionally quoted), whitespace-separated.
 pub(crate) fn parse_attrs(s: &str) -> DivAttrs {

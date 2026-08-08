@@ -18,38 +18,18 @@ use super::*;
 /// Project a document's block model to structured plain text. Blocks are separated by a
 /// blank line; the result ends with a single trailing newline.
 pub(crate) fn project(blocks: &[Block]) -> String {
-    project_with_js(blocks, &std::collections::HashMap::new())
-}
-
-/// Like [`project`], but appends a caller-supplied `[js: …]` observation line after each
-/// `{js}` cell whose block id is a key in `js_lines`. A `{js}` cell runs in the *browser*,
-/// so there is no server-side output block to project (unlike an executed python/r cell);
-/// the server observes it headlessly (DX17b) and hands the formatted line here, and core
-/// only interleaves it at the cell's position — the same place an executed python/r output
-/// block projects. Non-`{js}` cells and cells absent from the map project unchanged, so
-/// `project(blocks)` (empty map) is byte-identical to the pre-DX17b projection.
-pub(crate) fn project_with_js(
-    blocks: &[Block],
-    js_lines: &std::collections::HashMap<String, String>,
-) -> String {
     let mut out = String::new();
     for b in blocks {
         // Reader affordances are not document content. The code-download box (`tali-repro`)
-        // is generated chrome offering the reader a file — an agent reading this document
+        // is generated chrome offering the reader a file — someone reading this document
         // wants the cells themselves, which the projection already fences above, not a
         // sentence about downloading them.
         if b.id == super::repro::REPRO_BLOCK_ID {
             continue;
         }
-        let mut piece = project_block(b).trim_end_matches('\n').to_string();
+        let piece = project_block(b).trim_end_matches('\n').to_string();
         if piece.trim().is_empty() {
             continue;
-        }
-        if b.cell.as_ref().is_some_and(|c| c.lang == "js")
-            && let Some(line) = js_lines.get(&b.id)
-        {
-            piece.push('\n');
-            piece.push_str(line);
         }
         out.push_str(&piece);
         out.push_str("\n\n");
@@ -605,10 +585,12 @@ fn first_attr(html: &str, attr: &str) -> Option<String> {
 }
 
 /// The kind of output an executed code cell produced, classified from its rendered
-/// `tali-output` block. Shared by the text projection ([`project_block`]) and `read`'s
-/// `--format json`. Reads only the rendered HTML — it never reaches back into exec.
+/// `tali-output` block. Module-private: its one caller is the text projection
+/// ([`project_block`]), which is what `llms-full.txt` is built from. It was `pub` for
+/// `read --format json` until Wave 2 cut that verb. Reads only the rendered HTML — it
+/// never reaches back into exec.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExecOutput {
+enum ExecOutput {
     /// A produced image/plot. `fig_id`/`alt` are set for a labelled figure cell
     /// (`#| label: fig-x` + `#| fig-cap:`); an unlabelled plot has both `None`.
     Figure {
@@ -628,7 +610,7 @@ pub enum ExecOutput {
 
 /// Classify an executed output block's HTML (`output_block` in `crates/server/src/exec.rs`
 /// emits `<div class="tali-output" …>{inner}</div>`). `None` if it is not such a block.
-pub fn classify_exec_output(output_html: &str) -> Option<ExecOutput> {
+fn classify_exec_output(output_html: &str) -> Option<ExecOutput> {
     let at = output_html.find("class=\"tali-output\"")?;
     let start = output_html[at..].find('>')? + at + 1;
     let inner = output_html[start..]
@@ -872,45 +854,6 @@ mod tests {
             nested: Vec::new(),
         };
         assert_eq!(project_block(&err), "[cell error: ValueError: bad value]");
-    }
-
-    // --- DX17b: headless {js} observation line interleave ---
-
-    #[test]
-    fn project_with_js_appends_the_line_after_the_cell_and_is_a_no_op_when_empty() {
-        let doc = crate::render_document("Intro.\n\n```{js}\nreturn 1;\n```\n");
-        let js_id = doc
-            .blocks
-            .iter()
-            .find(|b| b.cell.as_ref().is_some_and(|c| c.lang == "js"))
-            .expect("a js cell block")
-            .id
-            .clone();
-
-        let mut lines = std::collections::HashMap::new();
-        lines.insert(js_id, "[js: produced, <svg 320×200>]".to_string());
-        let out = project_with_js(&doc.blocks, &lines);
-        assert!(
-            out.contains("```js\nreturn 1;\n```\n[js: produced, <svg 320×200>]"),
-            "the observation line sits directly under the cell fence:\n{out}"
-        );
-
-        // An empty map must reproduce the pre-DX17b projection exactly (no stray line).
-        let empty = std::collections::HashMap::new();
-        assert_eq!(project(&doc.blocks), project_with_js(&doc.blocks, &empty));
-        assert!(
-            !project(&doc.blocks).contains("[js:"),
-            "no observation line without a map entry"
-        );
-    }
-
-    #[test]
-    fn project_with_js_ignores_a_line_keyed_to_a_non_js_block() {
-        // A stray key that isn't a {js} cell id must not leak into the projection.
-        let doc = crate::render_document("# H\n\nbody\n");
-        let mut lines = std::collections::HashMap::new();
-        lines.insert(doc.blocks[0].id.clone(), "[js: produced]".to_string());
-        assert_eq!(project(&doc.blocks), project_with_js(&doc.blocks, &lines));
     }
 
     // --- item 19: structure-preserving projection (lists, steps, inputs) ---

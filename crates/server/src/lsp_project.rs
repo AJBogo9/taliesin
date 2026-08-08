@@ -196,6 +196,34 @@ impl SiteCache {
     }
 }
 
+/// Where each publishable page of the project rooted at `root` is served: `rel` (the source
+/// path, project-relative, POSIX) paired with `url`.
+///
+/// The companion's only structural question about a project — *where is this document
+/// served?* — asked so the preview webview opens at the chapter the author is editing rather
+/// than at the book's cover. It must be answered here and not in TypeScript: `.tmd`→`.html`,
+/// book chapter numbering, `index` handling and the draft/embedded-deck exclusions all live
+/// in Rust, and a second implementation over there is exactly what the LSP rewrite existed to
+/// delete. This was `taliesin map --format json`, spawned once per preview, until Wave 2 cut
+/// the verb; the same walk now answers in-process off [`SiteCache`].
+///
+/// `None` when `root` encloses no project, or a project with no pages — both of which the
+/// client reads as "fall back to the single-file preview".
+pub(crate) fn site_map(sites: &mut SiteCache, root: &Path) -> Option<serde_json::Value> {
+    // `_site.yml` rather than `root` itself: `SiteCache::get` is keyed on a *page* and walks
+    // up from its parent, the same idiom `workspace/symbol` uses at its call site.
+    let site = sites.get(&root.join("_site.yml"))?;
+    if site.pages.is_empty() {
+        return None;
+    }
+    let pages: Vec<serde_json::Value> = site
+        .pages
+        .iter()
+        .map(|p| serde_json::json!({ "rel": p.rel, "url": p.url }))
+        .collect();
+    Some(serde_json::json!({ "pages": pages }))
+}
+
 /// Every page of the project rooted at `root`, plus one number standing for the state of
 /// every input its diagnostics depend on.
 ///

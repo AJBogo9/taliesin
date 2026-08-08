@@ -266,13 +266,13 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
 | `frontmatter.rs` | Front-matter parsing + unknown-key linting (the `closest()` did-you-mean). |
 | `render/validate.rs` | Closed-vocabulary linting of cell `#|` options + callout kinds, each a located (click-to-source) `Warning`. |
-| `schema.rs` | Bundled Draft-2020-12 JSON Schemas for front matter + `_site.yml`, emitted by `taliesin schema`. |
+| `schema.rs` | The bundled Draft-2020-12 JSON Schema for `_site.yml`, written into `.taliesin/` by `init`. Front matter needs none: no YAML language server reads inside a `.tmd`, so `taliesin lsp` owns it. |
 
 `crates/server/src`, the binary (`taliesin`):
 
 | Path | Responsibility |
 |---|---|
-| `main.rs` | CLI: the `preview` / `build` / `check` / `map` / `schema` / `init` subcommands, plus the retired-verb register. |
+| `main.rs` | CLI: the `preview` / `build` / `check` / `lsp` / `init` subcommands, plus the retired-verb register. |
 | `protocol.rs` | The shared websocket message contract (both servers + the client), defined once so they can't drift. |
 | `serve/mod.rs` | Single-document websocket server + file watcher (incl. the `--host` LAN token guard). One `DocState` + one `Executor`. Its `rebuild` runs the re-render → execute → diff path. |
 | `serve_site/mod.rs` | Multi-page site/book server (per-page `PageState`, a per-page `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |

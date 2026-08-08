@@ -209,7 +209,7 @@ corpus must render and satisfy the invariants); the rest lock down one seam each
 | `config.rs` / `search.rs` / `theme_css.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |
 | `nested_validation.rs`, `cell_option_validation.rs`, `callout_kind_validation.rs`, `located_warnings.rs` | The validators and their click-to-source warnings (see [Validation & schemas](validation.tmd)). |
 | `stale_docs.rs` | Guards that deleted-machinery phrases never return to the docs. |
-| `crates/server/tests/` | The CLI surface: `--version`, `taliesin schema`, the dead-`{{< embed >}}` warning. |
+| `crates/server/tests/` | The CLI surface: `--version`, `taliesin init`, the dead-`{{< embed >}}` warning. |
 
 With the lay of the land in hand, [Architecture](architecture.tmd) goes from here
 into the engine's internals, and [Extending Taliesin](extending.tmd) covers the

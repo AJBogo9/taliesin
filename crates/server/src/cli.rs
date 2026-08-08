@@ -2,7 +2,7 @@
 //! and `preview` (launch the live preview server).
 //!
 //! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd` +
-//! `AGENTS.md`, the agent onramp); `cmd_serve` parses the preview flags
+//! the `.taliesin/` editor onramp); `cmd_serve` parses the preview flags
 //! (`--open`/`--host`/`--no-exec`/port) and starts the dev server.
 //!
 //! **How to use:** `main()` dispatches `init`, `new` and `preview` to `cmd_init` /
@@ -153,8 +153,8 @@ impl InitTemplate {
 /// The authored files a `taliesin init --template <t>` writes (config + pages), as
 /// `(project-relative path, contents)`. Pure, so the corpus pins can compare the bytes
 /// exactly (`corpus/scaffold-{site,book}/`) and the CLI stays a thin wrapper. The shared
-/// onramp (`AGENTS.md` + the `.taliesin/` schemas) is appended by [`scaffold_init`], not
-/// here, since those are generated constants already golden-locked in core.
+/// onramp (the `.taliesin/` schema) is appended by [`scaffold_init`], not
+/// here, since it is a generated constant already golden-locked in core.
 pub(crate) fn init_files(template: InitTemplate) -> Vec<(PathBuf, String)> {
     let files: &[(&str, &str)] = match template {
         InitTemplate::Basic => &[("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)],
@@ -180,7 +180,7 @@ pub(crate) fn init_files(template: InitTemplate) -> Vec<(PathBuf, String)> {
 const INIT_FLAGS: &[&str] = &["--json", "--format", "--template", "--yes"];
 
 /// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
-/// the current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent
+/// the current directory). Writes `_site.yml` + `index.tmd` + `.taliesin/` (the editor
 /// onramp), then prints the preview hint (or, with `--json`, a `{created, preview}` receipt).
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     let mut dir_arg: Option<&str> = None;
@@ -281,10 +281,10 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                     log::built(&f.display().to_string());
                 }
                 println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
-                // The onramp files are the two nobody asked for. They were listed above
-                // as bare paths like the rest, which is how a 5 KB `AGENTS.md` arrives in
-                // a new project with nothing anywhere saying what it is or that it can go.
-                // Naming them is the whole fix — they are good files, just unexplained.
+                // The onramp file is the one nobody asked for. It was listed above as a
+                // bare path like the rest, which is how a dot-directory arrives in a new
+                // project with nothing anywhere saying what it is or that it can go.
+                // Naming it is the whole fix — it is a good file, just unexplained.
                 println!("\n{ONRAMP_NOTE}");
             }
             ExitCode::SUCCESS
@@ -296,37 +296,30 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     }
 }
 
-/// The agent + editor onramp every scaffolded project gets regardless of template: the
-/// golden-locked `AGENTS.md` and the bundled config schemas wired via the `_site.yml`
-/// modeline. Kept out of [`init_files`] (and the corpus pins) because they're generated
-/// constants already locked in core, not authored template bytes.
-/// The one line that names the files `init` writes which the user did not ask for.
+/// The editor onramp every scaffolded project gets regardless of template: the bundled
+/// `_site.yml` schema, wired via the config's own modeline. Kept out of [`init_files`] (and
+/// the corpus pins) because it is a generated constant already locked in core, not authored
+/// template bytes.
+/// The one line that names the file `init` writes which the user did not ask for.
 ///
-/// Item 123: they were listed as bare paths beside `_site.yml` and `index.tmd`, so a
-/// scaffolded project acquired a 5 KB `AGENTS.md` and a dot-directory with nothing
-/// stating what either is for, or that deleting them costs nothing. Both are genuinely
-/// useful, which is exactly why the fix is a sentence rather than a flag: an `--onramp`
-/// knob would be a configuration answer to a documentation problem.
+/// Item 123: it was listed as a bare path beside `_site.yml` and `index.tmd`, so a
+/// scaffolded project acquired a dot-directory with nothing stating what it was for, or
+/// that deleting it costs nothing. It is genuinely useful, which is exactly why the fix is
+/// a sentence rather than a flag: an `--onramp` knob would be a configuration answer to a
+/// documentation problem.
 const ONRAMP_NOTE: &str = "\
-AGENTS.md tells a coding agent how to edit this project; .taliesin/ holds the config
-schemas your editor reads for `_site.yml` and front-matter completion. Neither is
-required — delete them and everything still builds.";
+.taliesin/ holds the schema your editor reads for `_site.yml` completion. It is not
+required — delete it and everything still builds.";
 
-fn onramp_files() -> [(&'static str, &'static str); 3] {
+fn onramp_files() -> [(&'static str, &'static str); 1] {
     [
-        // The agent onramp (edit `.tmd`/`check --format json`/dialect). Generated from the
-        // validator vocabulary and golden-locked in core, so it cannot drift from `check`.
-        ("AGENTS.md", taliesin_core::agents::AGENTS_MD),
-        // The bundled config schemas (the same constants `taliesin schema` emits, so they can't
-        // drift from the validator), wired into `_site.yml` via the modeline. In a walker-
-        // skipped dot-dir so they never become a page or ship into `_site/`.
+        // The bundled config schema, wired into `_site.yml` via the modeline. In a walker-
+        // skipped dot-dir so it never becomes a page or ships into `_site/`. `_site.yml` is
+        // the one YAML surface `taliesin lsp` does not serve, so this is the only editor
+        // intelligence an author gets while editing it.
         (
             ".taliesin/tali-site.schema.json",
             taliesin_core::schema::SITE_SCHEMA,
-        ),
-        (
-            ".taliesin/tali-frontmatter.schema.json",
-            taliesin_core::schema::FRONTMATTER_SCHEMA,
         ),
     ]
 }
@@ -1009,11 +1002,11 @@ mod tests {
 
     #[test]
     fn the_onramp_note_names_every_file_init_writes_unasked() {
-        // Item 123. `AGENTS.md` and `.taliesin/` are written by every template regardless
-        // of what the user asked for, so the note is the only place that says what they
-        // are. Derived from `onramp_files()` rather than hand-listed: add a fourth onramp
-        // file and this fails until the note mentions it, which is the drift that made
-        // the item worth filing in the first place.
+        // Item 123. `.taliesin/` is written by every template regardless of what the user
+        // asked for, so the note is the only place that says what it is. Derived from
+        // `onramp_files()` rather than hand-listed: add a second onramp file and this fails
+        // until the note mentions it, which is the drift that made the item worth filing in
+        // the first place.
         for (name, _) in onramp_files() {
             // `.taliesin/x.schema.json` is named by its directory, which is what a reader
             // sees in the file list and what the note can meaningfully talk about.
@@ -1042,29 +1035,16 @@ mod tests {
 
         let site_yml = dir.join("_site.yml");
         let index = dir.join("index.tmd");
-        let agents = dir.join("AGENTS.md");
         let site_schema = dir.join(".taliesin").join("tali-site.schema.json");
-        let fm_schema = dir.join(".taliesin").join("tali-frontmatter.schema.json");
         assert!(site_yml.exists(), "_site.yml written");
         assert!(index.exists(), "index.tmd written");
-        assert!(agents.exists(), "AGENTS.md written");
         assert!(
             site_schema.exists(),
             ".taliesin/tali-site.schema.json written"
         );
-        assert!(
-            fm_schema.exists(),
-            ".taliesin/tali-frontmatter.schema.json written"
-        );
         assert_eq!(
             written,
-            vec![
-                site_yml.clone(),
-                index.clone(),
-                agents.clone(),
-                site_schema.clone(),
-                fm_schema.clone(),
-            ]
+            vec![site_yml.clone(), index.clone(), site_schema.clone()]
         );
 
         // The scaffold is a real, parseable site whose one page previews.
@@ -1088,10 +1068,6 @@ mod tests {
             fs::read_to_string(&pointed).unwrap(),
             taliesin_core::schema::SITE_SCHEMA,
             "the wired schema is the bundled SITE_SCHEMA"
-        );
-        assert_eq!(
-            fs::read_to_string(&fm_schema).unwrap(),
-            taliesin_core::schema::FRONTMATTER_SCHEMA,
         );
         let page = fs::read_to_string(&index).unwrap();
         assert!(

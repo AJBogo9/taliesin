@@ -54,25 +54,25 @@ for arg in "$@"; do
     esac
 done
 
-# The four canary tests. Each one is the single test whose `... ok` proves that the
+# The canary tests. Each one is the single test whose `... ok` proves that the
 # interpreter behind its gate was really exercised: with the matching TALIESIN_REQUIRE_*
 # set, a missing interpreter makes the canary FAIL rather than skip, so "canary passed"
 # and "gate ran" are the same statement. Names are pinned by gate_script.rs.
 CANARY_KERNEL="kernel_executes_state_errors_and_interrupts_runaway_cell"
 CANARY_R="r_cells_execute_and_persist_state_across_cells"
 CANARY_NODE="only_a_textual_sink_becomes_a_live_region"
-CANARY_CHROME="read_run_js_reports_svg_produced_and_error_kinds"
-# A second browser-backed capability, independent of the first: the reactive client. It is the
-# only thing that runs a `{glsl}` shader, the `animate` pump, the `point` pad, `tali.state`
-# and the numerics bundle at all — every other test of those five features asserts what Rust
-# EMITTED, and would stay green with the whole client runtime broken.
+# The first browser-backed capability: the reactive client. It is the only thing that runs a
+# `{glsl}` shader, the `animate` pump, the `point` pad, `tali.state` and the numerics bundle
+# at all — every other test of those five features asserts what Rust EMITTED, and would stay
+# green with the whole client runtime broken. It is also, since Wave 2, the proof that Chrome
+# itself ran: `read --run`'s own browser canary went with the verb.
 CANARY_REACTIVE="a_glsl_cell_compiles_and_paints"
-# A third browser-backed capability, independent of the other two: the print track. It is
+# A second browser-backed capability, independent of the first: the print track. It is
 # the only thing that drives paged.js through CDP, and every other print test asserts what
 # Rust EMITTED into the stylesheet — all of which stays green with pagination entirely
 # broken, including the failure mode that produces a plausible but truncated PDF.
 CANARY_PRINT="pdf_paginates_a_real_document_into_more_than_one_page"
-# A seventh canary, independent of the python kernel canary above: the `#| trace: true`
+# A canary independent of the python kernel canary above: the `#| trace: true`
 # debug harness. `CANARY_KERNEL` only proves a Python kernel runs at all; this is the
 # only thing that proves the `sys.settrace` harness runs inside one, embeds a trace
 # blob, and derives its `reads` correctly, all of which stays green if the harness
@@ -229,10 +229,10 @@ run_gate "cargo clippy -D warnings" clippy.log \
 #
 # `--features taliesin-server/headless-js` because the browser driver is OFF by
 # default (it is 24% of a clean release build; see `crates/server/Cargo.toml`), and
-# `read_run_js` / `print_pdf` / `deck_browser` / `reactive_browser`
-# declare it in `required-features` — so without this
-# flag cargo would quietly skip building them and the chrome canary below would go
-# missing. That pairing is deliberate: forgetting the feature turns this gate RED
+# `print_pdf` / `deck_browser` / `reactive_browser` declare it in
+# `required-features` — so without this
+# flag cargo would quietly skip building them and the two chrome canaries below would
+# go missing. That pairing is deliberate: forgetting the feature turns this gate RED
 # rather than shrinking the suite silently.
 #
 # Between the two gates both configurations are covered: clippy (gate 2) runs with
@@ -279,7 +279,6 @@ else
             "python kernel:$CANARY_KERNEL" \
             "R kernel:$CANARY_R" \
             "node:$CANARY_NODE" \
-            "chrome:$CANARY_CHROME" \
             "chrome (reactive client):$CANARY_REACTIVE" \
             "chrome (print track):$CANARY_PRINT" \
             "debug trace:$CANARY_DEBUG_TRACE"; do

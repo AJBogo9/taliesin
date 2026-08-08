@@ -163,9 +163,8 @@ nothing. Validation only **warns**: the document still renders, and every warnin
 **located**, so in the live preview you can click it straight to the source line. The same
 closed-vocabulary check covers unknown cell `#|` options, unknown immediate children of
 `execute:` / `listing:` / `hero:`, and `format:` sub-keys (nothing reads those, so a
-green check must not certify them). (The Internals book covers the design,
-and the drift-locked Draft 2020-12 schemas behind the `taliesin schema` command, in its
-*Validation & schemas* chapter.)
+green check must not certify them). (The Internals book covers the design, and the
+drift-locked Draft 2020-12 `_site.yml` schema, in its *Validation & schemas* chapter.)
 
 ## Installing a site as an app
 
@@ -212,40 +211,24 @@ manifests do not accept SVG, which is why the app icons are their own files.
 
 ## Editor autocomplete (config schema)
 
-Taliesin ships JSON Schemas for both config surfaces so your editor's YAML
-language server can autocomplete keys, show hovers, and flag unknown keys as you
-type, before you render. There is no Taliesin language server to install: the
-schemas describe the same key sets Taliesin validates against at render time, so
-the editor and the renderer always agree.
+`_site.yml` is the one config surface no language server covers, so Taliesin ships a
+JSON Schema for it: your editor's YAML language server can then autocomplete keys, show
+hovers, and flag unknown keys as you type, before you render. The schema describes the
+same key set Taliesin validates against at render time, so the editor and the renderer
+always agree.
 
-Drop the schemas into your project:
-
-```sh
-taliesin schema --out .tmd
-```
-
-Then point the YAML language server at them with a modeline.
-
-For `_site.yml` (a plain YAML file, works out of the box), add at the very top:
+`taliesin init` writes it into `.taliesin/` and points the scaffolded `_site.yml` at it,
+so a project made that way needs nothing. To wire an existing one by hand, copy the
+schema out of a scaffolded project and add the modeline at the very top:
 
 ```yaml
-# yaml-language-server: $schema=.tmd/tali-site.schema.json
+# yaml-language-server: $schema=.taliesin/tali-site.schema.json
 title: My site
 ```
 
-For a document's front matter, put the modeline inside the `---` block:
-
-```yaml
----
-# yaml-language-server: $schema=.tmd/tali-frontmatter.schema.json
-title: My post
----
-```
-
-Front-matter validation needs an editor that treats a `.tmd` file's `---` block
-as embedded YAML (for example the VS Code YAML extension). A plain YAML language
-server does not parse a `.tmd` file as YAML, so the front-matter modeline only
-takes effect with that support; `_site.yml` needs no such setup.
+**Front matter needs no schema here.** It lives inside a `.tmd` file, where no YAML
+language server looks; `taliesin lsp` is what completes and validates it — the same key
+set, from the same validator — in any LSP editor. See [Preview](../using/preview.tmd).
 
 ### Page blocks (sites)
 

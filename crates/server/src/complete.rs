@@ -327,17 +327,11 @@ struct Completion {
 /// `every_command_has_a_description`).
 fn command_desc(cmd: &str) -> &'static str {
     match cmd {
-        "read" => "project the document to plain text",
         "build" => "build self-contained HTML (a dir builds the site)",
         "run" => "execute code cells in the terminal (warm session, no browser)",
         "pdf" => "typeset, paginated PDF rendered from the built HTML",
-        "schema" => "emit JSON Schemas for editor autocomplete",
-        "vocab" => "emit editor autocomplete vocabulary as JSON",
         "check" => "list located diagnostics (non-zero if any)",
         "doctor" => "audit the environment for running code cells",
-        "map" => "whole-project outline (pages, nav, xref)",
-        "features" => "which constructs are used, and which nothing uses",
-        "mcp" => "stdio MCP server",
         "lsp" => "stdio LSP server (live diagnostics in any editor)",
         "init" => "scaffold a starter site",
         "new" => "scaffold one document",
@@ -427,20 +421,6 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--json", false, "print a json receipt"),
             ("--format", true, "human | json (alias for --json)"),
             ("--yes", false, "skip the interactive prompt"),
-        ],
-        "schema" => &[("--out", true, "output dir")],
-        "map" => &[
-            ("--format", true, "human | json"),
-            ("--json", false, "shorthand for --format json"),
-        ],
-        "features" => &[
-            ("--format", true, "human | json"),
-            ("--json", false, "shorthand for --format json"),
-        ],
-        "read" => &[
-            ("--run", false, "execute cells + report produced output"),
-            ("--format", true, "human | json"),
-            ("--json", false, "shorthand for --format json"),
         ],
         "check" => &[
             ("--format", true, "human | json"),
@@ -534,11 +514,8 @@ impl PathKind {
 fn positional_kind(sub: &str) -> Option<PathKind> {
     match sub {
         "preview" | "build" | "check" => Some(PathKind::FileOrDir),
-        "read" | "run" => Some(PathKind::File),
+        "run" => Some(PathKind::File),
         "publish" | "init" => Some(PathKind::Dir),
-        // `features` and `map` take either: a directory is the whole project, a single file
-        // is that one document. Their shape follows the target, so both complete.
-        "features" | "map" => Some(PathKind::FileOrDir),
         _ => None,
     }
 }
@@ -895,9 +872,6 @@ mod brain_tests {
     #[test]
     fn each_subcommand_offers_its_own_flags() {
         for (sub, expected) in [
-            ("schema", &["--out"][..]),
-            ("map", &["--format", "--json"][..]),
-            ("features", &["--format", "--json"][..]),
             ("completions", &["--install"][..]),
             ("init", &["--template", "--yes"][..]),
         ] {
@@ -1136,7 +1110,7 @@ mod brain_tests {
     #[test]
     fn file_positional_subcommands_offer_documents() {
         let dir = fixture("filekind");
-        for sub in ["read", "run", "map", "features"] {
+        for sub in ["run", "build", "check"] {
             let got = path_values(&dir, &[sub, ""]);
             assert!(
                 got.contains(&"index.tmd".to_string()),

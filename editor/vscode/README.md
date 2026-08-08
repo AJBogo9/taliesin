@@ -46,7 +46,7 @@ from `taliesin lsp` — the offline, kernel-free LSP server built into the binar
 (`crates/server/src/lsp*.rs`) — over stdio. `src/client.ts` is the whole client.
 
 It used to be otherwise: every one of those was re-implemented here in TypeScript, shelling
-out to `taliesin vocab | symbols | check`, while the Rust server that already did all of it
+out to `taliesin`'s own CLI verbs, while the Rust server that already did all of it
 went unused. `lsp_complete.rs` still describes itself as "a Rust port of the companion's
 `complete.ts`". Nothing gated the two against each other and they had already drifted — the
 server had a `:` completion trigger and rename that the companion never gained. One

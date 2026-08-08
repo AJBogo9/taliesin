@@ -400,12 +400,6 @@
           "message": 4
         }
       }
-    ],
-    "mcpServerDefinitionProviders": [
-      {
-        "id": "taliesin",
-        "label": "Taliesin"
-      }
     ]
   },
   "capabilities": {

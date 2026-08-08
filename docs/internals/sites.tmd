@@ -132,13 +132,13 @@ and surface the problem instead of crashing.
 
 ::: {.callout-note}
 The closed set is the *whole* contract for `_site.yml`: there is no second tier that
-tolerates unknown keys. This is what lets `taliesin schema` generate a JSON Schema directly
+tolerates unknown keys. This is what lets `schema.rs` generate a JSON Schema directly
 from `NATIVE_KEYS`, the very same list `validate_keys` checks against, so the editor
 autocomplete and the runtime validator can never drift apart.
 :::
 
 Taliesin generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
-closed set the config validator uses), emitted by `taliesin schema`. See the
+closed set the config validator uses), written into `.taliesin/` by `init`. See the
 Configuration reference (`../guide/reference/configuration.html`) for the editor
 autocomplete on-ramp.
 

@@ -200,23 +200,32 @@ fn validate_xrefs_flags_only_unresolved_markers() {
 /// targets. The prefixes stay in [`XREF_LABELS`] on purpose, so a leftover `@prp-a` still
 /// resolves far enough to be reported broken rather than passing through as literal text
 /// (the silent fallthrough `RETIRED_DIV_CLASSES` exists to prevent). But they must not be
-/// *offered*: as catalogue entries they parked three permanent zeroes in `taliesin
-/// features` that no document could ever clear, and `AGENTS.md` told its reader to write a
-/// reference guaranteed to break.
+/// *offered*: completing `@prp-` invites the author to write a reference guaranteed to break.
+///
+/// "Offered" reads the editor vocabulary, which is where the offer is actually made —
+/// `vocab::vocab()["xrefPrefixes"]`, served to the LSP's completion. It used to read
+/// `cite::xref_prefixes`, a second filtered copy that existed for the feature catalogue and
+/// went with it in Wave 2.
 #[test]
 fn a_retired_xref_prefix_is_diagnosable_but_not_offered() {
+    let offered: Vec<String> = crate::vocab::vocab()["xrefPrefixes"]
+        .as_array()
+        .expect("the vocabulary offers cross-reference prefixes")
+        .iter()
+        .map(|p| p["prefix"].as_str().unwrap_or_default().to_owned())
+        .collect();
     for p in RETIRED_XREF_PREFIXES {
         assert!(
             XREF_LABELS.iter().any(|(k, _)| k == p),
             "`{p}` must stay in the label table, or a leftover `@{p}-x` goes silent"
         );
         assert!(
-            !xref_prefixes().contains(p),
+            !offered.iter().any(|o| o == p),
             "`{p}` must not be offered: no construct can define its target"
         );
     }
     // Positive control, so this cannot pass by both lists being empty.
-    assert!(xref_prefixes().contains(&"thm"));
+    assert!(offered.iter().any(|o| o == "thm"), "offered: {offered:?}");
     assert!(XREF_LABELS.iter().any(|(k, _)| *k == "thm"));
 
     // The anti-silence half is behaviour, not just table membership.

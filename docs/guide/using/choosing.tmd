@@ -42,13 +42,10 @@ fenced cells, `#|` options, `:::` divs, math, citations and cross-references acr
 unchanged. `taliesin check .` names the short list of vocabulary that differs, with a file
 and a line for each, which is a better migration assistant than any page could be.
 
-Three exits exist today, and this is the first place any of them is called one:
+Two exits exist today, and this is the first place either of them is called one:
 
 - **The Markdown itself.** Plain text, in your repository, under your version control. No
   database, no proprietary container, no export step.
-- **`taliesin read <file> --format json`** — the whole document projected to structured
-  text (headings, resolved figure numbers, prose, cell code and output) for any consumer
-  that wants the content without the HTML. See [Agents and automation](agents.tmd).
 - **The built HTML.** `taliesin build` writes a self-contained page with no runtime
   dependency on Taliesin — no CDN, no server, no build step to reproduce. It keeps working
   whether or not this project does.

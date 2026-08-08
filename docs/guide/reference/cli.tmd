@@ -1,6 +1,6 @@
 ---
 title: "CLI reference"
-description: "Every subcommand and flag: preview, build and publish, the check gate, and the machine-facing read, map, vocab, mcp and lsp."
+description: "Every subcommand and flag: preview, build and publish, the check gate, and the lsp editor server."
 ---
 
 *Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
@@ -16,14 +16,9 @@ description: "Every subcommand and flag: preview, build and publish, the check g
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run] [--init]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload. `--init` runs the one-time Cloudflare setup instead of deploying |
-| `read <file.tmd> [--run]` | Project the document to plain text (agent-readable). Static by default; `--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is available, observes each `{js}` chart (`[js: produced, <svg W×H>]`), reporting what every cell produced (`--format json` for structured per-cell results) |
-| `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
-| `vocab` | Emit the editor autocomplete vocabulary as JSON (the companion consumes it) |
 | `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
-| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, `AGENTS.md`, and a `.taliesin/` holding the editor JSON schemas. `--template site\|book` adds that starter's pages; refuses to overwrite |
+| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, and a `.taliesin/` holding the `_site.yml` JSON schema. `--template site\|book` adds that starter's pages; refuses to overwrite |
 | `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
-| `map <file.tmd\|dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning). A single file is a project of one page, so this also lists that document's cross-reference targets (what you can write after `@`) |
-| `mcp` | Run a stdio **MCP server** exposing check/read/symbols/map/vocab/build tools |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
@@ -374,7 +369,7 @@ Code cells run first, replaying from `_freeze` when nothing has changed, so figu
 real rather than empty. `{js}` cells print live: the browser genuinely executes them, so a
 Plot chart or a GLSL shader is captured as it painted. Video falls back to its poster frame.
 
-It needs a local Chrome for the page layout — the same one `read --run` uses. Without one
+It needs a local Chrome for the page layout. Without one
 it says so and exits non-zero.
 
 **Not yet supported:** whole-book output (point it at one `.tmd`, not a directory) and an
@@ -467,9 +462,9 @@ work-in-progress draft to a supervisor.
 
 ## Starting from something: `init` and `new`
 
-`init` scaffolds a whole project: `_site.yml`, a hello-world `index.tmd`, an `AGENTS.md`
-briefing for coding agents, and a `.taliesin/` directory holding the JSON schemas your
-editor completes `_site.yml` and front matter from. `--template site` adds an `about.tmd`;
+`init` scaffolds a whole project: `_site.yml`, a hello-world `index.tmd`, and a
+`.taliesin/` directory holding the JSON schema your editor completes `_site.yml` from.
+`--template site` adds an `about.tmd`;
 `--template book` adds the chapter files. `new` scaffolds a single document inside one:
 
 ```sh
@@ -485,9 +480,9 @@ any other document, so a front-matter key the validator would reject cannot surv
 scaffold. A slug must be lowercase letters, digits and hyphens (it becomes the page's URL),
 and like `init`, `new` refuses to overwrite an existing file.
 
-## Inspecting a document: `build --stdout` and `map`
+## Inspecting a document: `build --stdout`
 
-Two ways to look at a document in a terminal instead of a browser, which is handy for
+A way to look at a document in a terminal instead of a browser, which is handy for
 piping, diffing, and debugging.
 
 `build --stdout` writes one complete, self-contained HTML page to **stdout** instead of
@@ -513,29 +508,7 @@ click-to-source and incremental updates, so this is the way to confirm a block c
 the source map you expect (and, via `data-source-file`, which `{{< include >}}`d file it
 came from) without opening the browser dev tools.
 
-`map` describes a whole project — pages in order, nav, mounts, the cross-reference graph
-— and a single `.tmd` is a project of one page. So `map <file>` is how you list every
-cross-reference target a document defines: the anchors you can write after `@`, each with
-the number Taliesin resolved for it.
-
-```sh
-taliesin map post.tmd --format json | jq '.xref_targets | keys'
-```
-
-```text
-["fig-scree", "sec-why", "tbl-summary"]
-```
-
-The point is that it sees **both** ways an anchor can be written: the brace form
-(`## Why it works {#sec-why}`) and the cell form (`#| label: fig-scree`). A regex over
-the source can only find the first, which is why the VS Code companion asks the binary
-instead of guessing.
-
-It renders in memory and **never starts a kernel**, so an editor can call it while you
-type. A cell's `label:` is registered when the block model is built, long before the cell
-would run.
-
-`--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
+`preview --host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
 the printed LAN URL and QR (`?t=…`, then a `tali_token` cookie); a fresh token is
 minted each server start, and loopback (`127.0.0.1`) is exempt. See
 [Reading on any screen](../using/preview.tmd) for the full behaviour.
@@ -544,125 +517,7 @@ Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper scri
 that rebuilds it when the tool's sources change) so `taliesin preview <file>`
 works from anywhere.
 
-## `taliesin features`: what a document uses, and what nothing uses
-
-`features` answers two questions from one scan. Pointed at a single file it lists the
-constructs that document writes; pointed at a directory it lists **every construct
-Taliesin implements** against the documents that use it, zero rows included:
-
-```sh
-taliesin features post.tmd     # what does this document use
-taliesin features .            # the whole project, feature by feature
-taliesin features . --json     # the same table, for a script
-```
-
-The second half is the one worth having. Every front-matter key, div class, callout
-and theorem kind, cell language, cell option, shortcode, input type and
-cross-reference kind appears, so a capability nothing exercises shows up as a row
-reading `(no document)` rather than as an absence you would have to already suspect:
-
-```
-front-matter keys              23 known · 21 used · 2 unused
-  toc                            19
-  draft                           3  corpus/course/problems.tmd, corpus/demo-book/appendix.tmd, corpus/tech-blog/posts/draft-example/index.tmd
-  csl                             0  (no document)
-```
-
-A construct used by three or fewer documents names them inline, because that tail is
-usually what you are looking for. Above three you get the count, and `--json` always
-carries the full list.
-
-Two things it deliberately does not do. It **does not count a construct you merely
-wrote about**: a shortcode inside backticks or a fenced block is an example, and a
-front-matter key named in prose is not a key that page sets, so a reference page
-documenting thirty keys reports as using none of them. And it is a **report, not a
-gate**: it exits 0 whatever it finds, so it never fails a build.
-
-Unlike `map` and `read`, a plain directory is fine. When the directory is a
-project it uses that project's own page order; anywhere else it walks the tree in
-path order. Like `map` and `check` it is parse-only and **never starts
-a kernel** or runs a cell.
-
-## Machine-facing commands: `read`, `map`, `vocab`, `mcp`, `lsp`
-
-A second family of commands exists for *programs* rather than a human reader: an AI
-agent driving the write-check-read loop, an editor asking for autocomplete data, a
-CI job. They are all offline, and none of them writes to your source: the `.tmd`
-stays the single editing surface (the preview is a read-only view of it, and so are
-these). [Working with an agent](../using/agents.tmd) walks through the loop; this is
-the per-command reference.
-
-`read` projects the rendered document to structured **plain text**: headings, the
-resolved `Figure N` / cross-reference numbers, callouts, fenced code, and math as
-raw TeX. It is what an agent "sees" without a browser or any HTML, a *view* of the
-document, not a new output format. Static by default (it does not run
-code cells), so kernel cells show as source:
-
-```sh
-taliesin read post.tmd                 # the plain-text projection
-taliesin read post.tmd --run           # also execute cells, report what each produced
-taliesin read post.tmd --run --format json | jq   # structured per-cell results
-```
-
-`--run` executes `{python}`/`{r}` cells and, when a local headless Chrome is
-available, observes each `{js}` chart (`[js: produced, <svg W×H>]`) and reports what
-every cell produced, so an agent can confirm a figure actually rendered.
-
-The `{js}` half needs two things, and reports `[js: skipped, …]` with the reason when
-either is missing. It needs a **system Chrome** at runtime (Taliesin never downloads a
-browser), and it needs the binary to have been **built with the `headless-js` feature**.
-That feature is off by default because its browser driver is roughly a third of the whole
-build; the released binaries carry it, so a downloaded Taliesin is the complete tool, and
-a source build opts in with one cargo flag (the project README gives the exact command).
-Everything else about `read --run` is unaffected either way.
-
-`map` is the whole-project outline in one read-only call: every page in nav / chapter
-order (its path, URL, title, date, categories, layout), the nav and any `mounts:`, the
-cross-reference graph (each anchor and where it is defined), and any embedded decks.
-It reuses site discovery, so it never starts a kernel, and it is how an agent plans
-an edit across a site without opening each file:
-
-```sh
-taliesin map . --format json | jq '.pages[].url'
-```
-
-`vocab` emits the editor autocomplete vocabulary as one JSON blob (front-matter keys,
-cell options, callout and theorem kinds, div classes, cross-reference prefixes). It is
-generated from the validator's own lists, so it never drifts from what `check`
-enforces, and it is what feeds the VS Code companion's completions.
-
-`mcp` runs a local, offline **stdio MCP server** (Model Context Protocol) so an MCP
-host can drive the read / validate / build loop without shelling out. It exposes six
-tools, `check`, `read`, `symbols`, `map`, `vocab`, and `build`, and deliberately **no
-write, edit, or preview tool**, so the `.tmd` stays your direct edit surface.
-
-It also serves **resources** and **prompts**, which are the same answers off the tool
-path. A tool call is a request to *do* something and costs a round trip (and, for a host
-that shells out, a process); "give me the `_site.yml` schema" and "what does
-`TAL-FM-KEY` mean" are documents, not actions.
-
-| resource | what it is |
-|---|---|
-| `taliesin://schema/site` · `taliesin://schema/frontmatter` | the two JSON Schemas, the same files `taliesin schema` writes |
-| `taliesin://vocab` | the closed-set vocabulary — read it before inventing a front-matter key |
-| `taliesin://agents` | `AGENTS.md`: the whole authoring loop in one document |
-| `taliesin://diagnostics` | every `TAL-*` code with its cause and canonical fix |
-| `taliesin://diagnostic/{code}` | one of them — a **template**, so a code read out of a `check` result resolves without a process per lookup |
-
-The prompts are `new-post`, `new-page`, `new-deck` and `new-paper`, one per `taliesin
-new` kind and each taking a `slug`. They exist because the scaffolds already encode what
-this project thinks a post, a page, a deck and a paper *are*; without them an agent
-reverse-engineers that from the docs and produces something plausible that is not the
-idiom.
-
-::: {.callout-warning}
-## The MCP server is not a sandbox
-
-The no-write guarantee is about the `.tmd` edit surface, not containment. There is no
-project root: every tool reads any path you hand it (including outside the project),
-and `build` writes HTML beside that path and executes the document's code cells.
-Contain it with the host's own sandbox and working directory.
-:::
+## `taliesin lsp`: the editor server
 
 `lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
 editor gets live `.tmd` diagnostics as you type, the same validators as `check`, run on
@@ -756,7 +611,7 @@ See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 | `TALIESIN_CELL_SILENCE` | How long a cell may produce **no output at all** before it is interrupted, in seconds (default 600; `0` disables). This is the default liveness cap: the budget resets on every line a cell prints, so a long job that reports progress is never interrupted, while a genuinely wedged one still is |
 | `TALIESIN_CELL_TIMEOUT` | Optional per-cell **wall-clock** cap in seconds, **off by default**. Set it to bound a cell's total runtime regardless of how much it prints (`0` disables). A streaming runaway is already caught by the output caps, so this is for bounding cost, not for safety |
 | `TALIESIN_RENDER_TIMEOUT` | Per-render wall-clock cap in seconds (default 30; `0` disables it). Rendering is not execution: it never legitimately takes seconds, so this is a watchdog against a pathological document, not a budget to tune. A render that exceeds it is abandoned with a located diagnostic instead of hanging the preview |
-| `TALIESIN_JS_TIMEOUT` | How long `read --run` waits for a page's `{js}` cells to settle in headless Chrome, in seconds (default 10). Separate from `TALIESIN_CELL_TIMEOUT` so a long kernel budget doesn't also stretch the browser wait |
+| `TALIESIN_JS_TIMEOUT` | How long `pdf` waits for headless Chrome to lay a page out, in seconds (default 10). Separate from `TALIESIN_CELL_TIMEOUT` so a long kernel budget doesn't also stretch the browser wait |
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |

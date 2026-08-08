@@ -91,7 +91,7 @@ export function projectRootFor(
   }
 }
 
-/** One publishable page of a project, as `taliesin map <root> --format json` reports it. */
+/** One publishable page of a project, as `taliesin/siteMap` reports it. */
 export interface SitePage {
   /** Source path relative to the project root, POSIX separators. */
   rel: string;
@@ -100,20 +100,19 @@ export interface SitePage {
 }
 
 /**
- * The publishable pages in a `taliesin map … --format json` document.
+ * The publishable pages in a `taliesin/siteMap` answer.
  *
- * `null` means "unusable, fall back to a single-file preview": `map` failed, printed a
- * diagnostic instead of JSON, or answered about something that is not a project. None of
- * those may lose the preview, so every one of them is a `null` rather than a throw.
+ * `null` means "unusable, fall back to a single-file preview": the request failed, or it
+ * answered about something that is not a project. Neither may lose the preview, so both are
+ * a `null` rather than a throw.
+ *
+ * The parameter is the parsed answer, not a string: it used to be `taliesin map`'s stdout
+ * and had to survive a tool that printed a diagnostic where JSON was expected. Over the wire
+ * that failure mode does not exist, but the shape check does — the client must not assume a
+ * newer or older server sent what it wants.
  */
-export function sitePages(mapJson: string): SitePage[] | null {
-  let doc: unknown;
-  try {
-    doc = JSON.parse(mapJson);
-  } catch {
-    return null;
-  }
-  const pages = (doc as { pages?: unknown } | null)?.pages;
+export function sitePages(answer: unknown): SitePage[] | null {
+  const pages = (answer as { pages?: unknown } | null)?.pages;
   if (!Array.isArray(pages)) return null;
   return pages
     .filter(

@@ -1305,15 +1305,13 @@ mod tests {
 
         // This list is a SECOND copy of a set core already owns, and until now nothing
         // tied the two together: a new built-in would have shipped uncompletable, and a
-        // withdrawn one would have stayed on offer, both silently. Diff it against the
-        // feature catalogue's `shortcodes` group, which reads
-        // `render::extension::SHORTCODE_NAMES` (the dispatch itself).
-        let core: std::collections::BTreeSet<String> = taliesin_core::features::catalogue()
-            .into_iter()
-            .find(|g| g.slug == "shortcodes")
-            .expect("the catalogue has a shortcodes group")
-            .known
-            .into_iter()
+        // withdrawn one would have stayed on offer, both silently. Diff it against
+        // `render::extension::SHORTCODE_NAMES` — the dispatch itself — rather than against
+        // a report derived from it (the feature catalogue was the indirection until Wave 2
+        // cut `taliesin features`).
+        let core: std::collections::BTreeSet<String> = taliesin_core::SHORTCODE_NAMES
+            .iter()
+            .map(|n| (*n).to_owned())
             .collect();
         let offered: std::collections::BTreeSet<String> = shortcode_names()
             .iter()

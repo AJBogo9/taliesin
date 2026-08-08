@@ -204,3 +204,59 @@ fn editing_the_cell_spawns_a_kernel_again() {
         "edited cell did not produce its new output, or the stale one survived alongside it"
     );
 }
+
+/// Editing an **upstream** cell busts the cells below it, whose own source never changed.
+///
+/// This is the property the cumulative hash exists for, and the one a per-cell cache would
+/// get wrong: cell 2's code is byte-identical across both builds, so a key over that code
+/// alone hits, replays yesterday's number, and ships a document whose two cells disagree.
+/// `freeze.rs`'s unit tests pin it on `FreezeCache` directly; nothing drove it through a
+/// real build until Wave 2, which cut `read --run` — the third and last caller of the
+/// executor + `_freeze` pair from outside `build`/`serve_site`. Sixty lines here in exchange
+/// for that suite is the trade the cut's own dissent asked for.
+#[test]
+fn editing_an_upstream_cell_re_executes_the_cells_below_it() {
+    let Some(real_py) = python_or_skip() else {
+        return;
+    };
+    let dir = tmp_dir("upstream");
+    let log = dir.join("launches.log");
+    let py = recording_python(&dir, &real_py, &log);
+    let src = dir.join("doc.tmd");
+
+    // Two cells: the second prints a value the first defines and never mentions the literal
+    // itself, so its output can only be right if it really re-ran against the new upstream.
+    let doc = |seed: u32| {
+        format!(
+            "---\ntitle: U\n---\n\n```{{python}}\nx = {seed}\n```\n\n```{{python}}\nprint(x * 2)\n```\n"
+        )
+    };
+
+    fs::write(&src, doc(1729)).unwrap();
+    let first = build(&src, &dir.join("a.html"), &py);
+    assert!(
+        String::from_utf8_lossy(&first).contains("3458"),
+        "the downstream cell did not execute on the cold build, so this test cannot observe \
+         it going stale"
+    );
+    let after_first = launches(&log);
+    assert!(after_first >= 1, "no kernel launch on the cold build");
+
+    // Only the FIRST cell's source changes. The second is byte-identical.
+    fs::write(&src, doc(4104)).unwrap();
+    let edited = build(&src, &dir.join("b.html"), &py);
+    assert!(
+        launches(&log) > after_first,
+        "an edited upstream cell replayed from cache instead of re-executing"
+    );
+    let edited = String::from_utf8_lossy(&edited);
+    assert!(
+        edited.contains("8208"),
+        "the downstream cell replayed a hit keyed on its own unchanged source: the cumulative \
+         hash is not folding in the cells above it, and the build shipped stale output"
+    );
+    assert!(
+        !edited.contains("3458"),
+        "the stale downstream output survived alongside the new one"
+    );
+}

@@ -78,10 +78,6 @@ use deck::deck_theme_head;
 pub(crate) mod extension;
 pub use extension::embed_targets;
 mod divs;
-// The two source scanners `crate::features` reuses rather than re-implementing either
-// outside the renderer. Re-exported one by one instead of opening the whole module, whose
-// `group_divs` takes the private `FlatBlock`.
-pub(crate) use divs::{scan_code_fences, scan_div_attrs};
 /// The print/PDF track's page assembler (backlog 159): a SIBLING of `page`, so a normal
 /// page's bytes never move. Public because `taliesin pdf` in the server crate drives it.
 pub mod print;
@@ -90,15 +86,14 @@ pub(crate) use divs::parse_attrs;
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
 use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 
-// Re-exported for the editor vocabulary dump (crate::vocab), which sources completion
+// Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
 pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
-// `crate::features` reads a cell's option KEYS off the fence body, reusing the validator's
-// own scan so the report and the did-you-mean can never disagree about what an option is.
-pub(crate) use validate::cell_option_keys;
-// The validator uses this directly; outside `render` it is read by the `vocab.rs` drift
-// test and by `crate::features`, whose catalogue must be the IMPLEMENTED set rather than
-// `vocab::DIV_CLASS_NAMES` (the offered-completions subset, which is 12 classes shorter).
+// The IMPLEMENTED div classes. The validator uses this directly; outside `render` its only
+// reader is `vocab.rs`'s drift test, which pins the OFFERED subset (`vocab::DIV_CLASS_NAMES`,
+// several classes shorter) as a subset of it so a class the editor suggests always gets a
+// did-you-mean when it is typo'd. `#[cfg(test)]` because that is now the whole of it.
+#[cfg(test)]
 pub(crate) use validate::DIV_FEATURE_CLASSES;
 
 mod emit;
@@ -130,9 +125,6 @@ mod text;
 // The search index's text extraction, shared with the `read`/TOC/slug path above rather
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
 pub(crate) use text::indexable_text;
-// The executed-output classifier is public: `taliesin read`'s `--format json` (server crate)
-// classifies output blocks the same way the text projection does.
-pub use text::{ExecOutput, classify_exec_output};
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) use theme::theme_head;

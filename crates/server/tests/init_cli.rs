@@ -65,10 +65,6 @@ fn every_template_scaffolds_a_check_clean_project() {
             "{template}: _site.yml written"
         );
         assert!(
-            dir.join("AGENTS.md").exists(),
-            "{template}: AGENTS.md written"
-        );
-        assert!(
             dir.join(".taliesin/tali-site.schema.json").exists(),
             "{template}: schema wired"
         );

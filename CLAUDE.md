@@ -10,8 +10,8 @@ track would render *from* the built HTML, never as a parallel format).
 > ## ⚠ THE PROJECT IS IN SCOPE REDUCTION. READ THIS BEFORE PLANNING ANY WORK.
 >
 > **Ruled 2026-08-08: the tool is being cut by roughly 40%** (~69,000 lines), from 18
-> CLI verbs to 9 and 115 document features to ~55, to reach a surface small enough to
-> polish before release. **This supersedes the growth framing below.** Do not add
+> CLI verbs to 9 (**12 as of Wave 2**) and 115 document features to ~55, to reach a surface
+> small enough to polish before release. **This supersedes the growth framing below.** Do not add
 > features, do not "restore parity", and do not defend a feature on the grounds that a
 > corpus document pins it (that pinning is circular and is the very thing the audit
 > disproved).
@@ -39,10 +39,10 @@ completed `notes/native-rewrite.md`).
 
 **The corpus records; it does not lead.** The rule used to be "each new capability ships
 pinned by a target corpus document added in the same change". That is retired, because
-it made the corpus circular as evidence: `taliesin features corpus` reported 0 of 115
-features unused, which is guaranteed by construction and therefore says nothing. Pointed
-at the 79 documents written to be *read*, the same instrument reported 32 features used
-by nothing anywhere. **The keep rule now:** a corpus document earns its place by being
+it made the corpus circular as evidence: the `taliesin features` scan (cut in Wave 2)
+reported 0 of 115 features unused, which is guaranteed by construction and therefore says
+nothing. Pointed at the 79 documents written to be *read*, the same instrument reported 32
+features used by nothing anywhere. **The keep rule now:** a corpus document earns its place by being
 something a person wanted to read, or by being a golden no unit test can hold. A feature
 witness belongs in `crates/core/src/render/tests.rs`.
 
@@ -84,8 +84,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                      The old back-compat alias is deleted; `window.TaliesinDeck` is
                      the only name
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
-    divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, magic-move);
-                     also the fenced-div + fenced-code source scanners `features.rs` reuses
+    divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, magic-move)
     figure.rs        numbered figures + captions
     extension/       shortcode expansion, incl. the built-in `{{< embed deck.tmd >}}`
                      + `{{< video clip.mp4 dark= >}}`. NOT `_extensions/`, which is a
@@ -101,8 +100,6 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
-  src/features.rs  the feature catalogue (read from the validator consts) + the
-                   per-document scan behind `taliesin features`; OFF the render path
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
   src/highlight.rs server-side syntax highlighting (syntect → `tali-hl-` scope classes)
   src/cite/        citations ([@key]) + cross-references (@fig-, @sec-): a module dir
@@ -303,19 +300,20 @@ dependency change. Never call one of these verified without its output.
   included blocks also carry `data-source-file`. Source mapping, incremental
   re-render, and live-state preservation all key off this one block model, so
   preserve those invariants (`crates/core/tests/corpus.rs` enforces them).
-- **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** Measured
-  2026-08-02: `DIV_CLASS_NAMES` carries 11 classes where `render::DIV_FEATURE_CLASSES`
-  carries 16, and `SHORTCODE_SPECS` omits `input` (dispatched ahead of it).
-  Answer "what does the tool support" from the validator consts or from `taliesin
-  features`, never from `vocab` — it reports live features as missing.
-- **A new front-matter key trips FIVE drift gates; a RETIREMENT now costs ONE line.**
+- **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** Re-measured
+  2026-08-08: `DIV_CLASS_NAMES` carries **9** classes where `render::DIV_FEATURE_CLASSES`
+  carries **14**, and `SHORTCODE_SPECS` omits `input` (dispatched ahead of it).
+  Answer "what does the tool support" from the validator consts, never from `vocab` — it
+  reports live features as missing. (`taliesin features` was the other honest instrument;
+  Wave 2 cut it, so the consts are now the only one.)
+- **A new front-matter key trips FOUR drift gates; a RETIREMENT costs ONE line.**
   Adding a key still means `KNOWN_KEYS`, `the_reference_page_documents_every_known_key`
   (→ `docs/guide/reference/frontmatter.tmd`), `vocab.rs` + its `descriptions_present`,
-  the `agents_md` golden, and — for a `_site.yml` key — `editor/vscode/schema/
-  tali-site.schema.json`, a bundled COPY of the crate's schema gated only by the
-  companion's own `node --test`. **Two of those live outside `taliesin-core`** (that one,
-  and `crates/server/tests/agents_md_cli.rs`), so `cargo test --workspace` can be green
-  while both are stale: only `./tools/gates.sh` catches them.
+  and — for a `_site.yml` key — `editor/vscode/schema/tali-site.schema.json`, a bundled
+  COPY of the crate's schema gated only by the companion's own `node --test`. **That last
+  one lives outside `taliesin-core`**, so `cargo test --workspace` can be green while it is
+  stale: only `./tools/gates.sh` catches it. (The `agents_md` golden was the fifth until
+  Wave 2 deleted `AGENTS.md`.)
   **Retiring is the cheap direction, as of 2026-08-08.** It used to cost eight gates and a
   ~39-line hand-written tombstone. Both extras are gone: the migration page that had to
   name every retirement was deleted, and the three vocabulary tombstones collapsed into

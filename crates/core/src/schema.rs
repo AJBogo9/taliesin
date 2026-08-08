@@ -1,25 +1,24 @@
-//! JSON Schema for taliesin's YAML config surfaces (document front matter + `_site.yml`).
+//! JSON Schema for `_site.yml`, the one YAML config surface no language server covers.
 //!
-//! The committed `assets/schema/*.schema.json` files, bundled here as static strings, are
-//! generated from the SAME closed-set consts the validator uses (`frontmatter::KNOWN_KEYS`
-//! plus the nested `EXECUTE`/`LISTING`/`ABOUT`/`HERO` sets, and `site::NATIVE_KEYS`), so the
-//! schema cannot drift from what the validator enforces. They are regenerated ONLY via the
+//! The committed `assets/schema/tali-site.schema.json` file, bundled here as a static string,
+//! is generated from the SAME closed-set const the validator uses (`site::NATIVE_KEYS`), so
+//! the schema cannot drift from what the validator enforces. It is regenerated ONLY via the
 //! bless path in this module's tests (`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib
-//! schema`), never hand-edited. The `taliesin schema` CLI emits these strings so an editor's
-//! YAML language server can validate config: the in-scope single-editing-surface on-ramp,
-//! with no taliesin language server to build.
-
-/// The Draft-2020-12 JSON Schema for a document's YAML front matter.
-pub const FRONTMATTER_SCHEMA: &str = include_str!("../assets/schema/tali-frontmatter.schema.json");
+//! schema`), never hand-edited. `taliesin init` writes it into `.taliesin/` and points the
+//! scaffolded `_site.yml` at it with a `# yaml-language-server:` modeline; the companion
+//! wires the same file through `yamlValidation`.
+//!
+//! **Front matter has no schema here, and needs none.** It lives inside a `.tmd` file, where
+//! no YAML language server ever looks — `taliesin lsp` is what completes and validates it,
+//! from `vocab.rs` and `frontmatter::KNOWN_KEYS`. The generated front-matter schema was an
+//! on-ramp written before that server existed and was withdrawn with `taliesin schema` in
+//! Wave 2.
 
 /// The Draft-2020-12 JSON Schema for a project's `_site.yml`.
 pub const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.json");
 
 #[cfg(test)]
 mod generate {
-    use crate::frontmatter::{
-        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, THEOREM_KEYS,
-    };
     use crate::site::{NATIVE_KEYS, PUBLISH_KEYS};
     use serde_json::{Map, Value, json};
 
@@ -46,58 +45,8 @@ mod generate {
         })
     }
 
-    /// The `theorems:` config shape: `shared:` counter groups, and nothing else since the
-    /// `numbered:` mode was retired on 2026-08-02.
-    fn theorems_schema() -> Value {
-        closed_object(
-            THEOREM_KEYS,
-            &[(
-                "shared",
-                json!({ "type": "array", "items": { "type": "string" } }),
-            )],
-        )
-    }
-
     fn boolean() -> Value {
         json!({ "type": "boolean" })
-    }
-    fn integer() -> Value {
-        json!({ "type": "integer" })
-    }
-
-    pub fn front_matter_schema() -> Value {
-        // execute: every child is a boolean.
-        let execute_overrides: Vec<(&str, Value)> =
-            EXECUTE_KEYS.iter().map(|k| (*k, boolean())).collect();
-        let execute = closed_object(EXECUTE_KEYS, &execute_overrides);
-        let listing_item = closed_object(LISTING_KEYS, &[("max-items", integer())]);
-        // listing: a single mapping or a sequence of mappings (cv.tmd shape).
-        let listing = json!({
-            "oneOf": [listing_item.clone(), { "type": "array", "items": listing_item }]
-        });
-        // hero: text + a list of `{ text, href, primary }` action buttons.
-        let hero_action = closed_object(HERO_ACTION_KEYS, &[("primary", boolean())]);
-        let hero = closed_object(
-            HERO_KEYS,
-            &[("actions", json!({ "type": "array", "items": hero_action }))],
-        );
-        // theorems: `shared` is a list of kind names sharing one counter.
-        let overrides = [
-            ("toc", boolean()),
-            ("execute", execute),
-            ("listing", listing),
-            ("hero", hero),
-            ("theorems", theorems_schema()),
-            // An extension owns `format:`'s sub-keys, so leave it fully permissive.
-            ("format", json!({})),
-        ];
-        json!({
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Taliesin document front matter",
-            "type": "object",
-            "additionalProperties": false,
-            "properties": properties(KNOWN_KEYS, &overrides),
-        })
     }
 
     pub fn site_config_schema() -> Value {
@@ -166,8 +115,8 @@ mod generate {
 
 #[cfg(test)]
 mod tests {
-    use super::generate::{front_matter_schema, site_config_schema, to_pretty_json};
-    use super::{FRONTMATTER_SCHEMA, SITE_SCHEMA};
+    use super::SITE_SCHEMA;
+    use super::generate::{site_config_schema, to_pretty_json};
     use serde_json::Value;
 
     /// Assert the generated schema equals the committed file, OR (under `TALIESIN_BLESS=1`)
@@ -187,15 +136,6 @@ mod tests {
     }
 
     #[test]
-    fn frontmatter_schema_matches_committed() {
-        bless_or_assert(
-            to_pretty_json(&front_matter_schema()),
-            FRONTMATTER_SCHEMA,
-            "assets/schema/tali-frontmatter.schema.json",
-        );
-    }
-
-    #[test]
     fn site_schema_matches_committed() {
         bless_or_assert(
             to_pretty_json(&site_config_schema()),
@@ -205,42 +145,28 @@ mod tests {
     }
 
     #[test]
-    fn schemas_are_structurally_sane() {
-        for (name, v) in [
-            ("frontmatter", front_matter_schema()),
-            ("site", site_config_schema()),
-        ] {
-            assert_eq!(
-                v["$schema"], "https://json-schema.org/draft/2020-12/schema",
-                "{name}: draft id"
-            );
-            assert_eq!(v["type"], "object", "{name}: type");
-            assert_eq!(
-                v["additionalProperties"],
-                Value::Bool(false),
-                "{name}: closed"
-            );
-            assert!(v["properties"].is_object(), "{name}: has properties");
-        }
+    fn the_schema_is_structurally_sane() {
+        let site = site_config_schema();
+        assert_eq!(
+            site["$schema"], "https://json-schema.org/draft/2020-12/schema",
+            "draft id"
+        );
+        assert_eq!(site["type"], "object", "type");
+        assert_eq!(
+            site["additionalProperties"],
+            Value::Bool(false),
+            "the schema must be closed, or an unknown key validates"
+        );
+        assert!(site["properties"].is_object(), "has properties");
         // Every closed-set key appears as a property, so a future key the validator gains but
         // the schema forgets is caught here (not just by the golden file).
-        let fm = front_matter_schema();
-        for k in crate::frontmatter::KNOWN_KEYS {
-            assert!(
-                fm["properties"].get(k).is_some(),
-                "frontmatter schema missing `{k}`"
-            );
-        }
-        let site = site_config_schema();
         for k in crate::site::NATIVE_KEYS {
             assert!(
                 site["properties"].get(k).is_some(),
                 "site schema missing `{k}`"
             );
         }
-        // The committed bundles parse as JSON (catches an empty or corrupt committed file).
-        serde_json::from_str::<Value>(FRONTMATTER_SCHEMA)
-            .expect("frontmatter bundle is valid JSON");
+        // The committed bundle parses as JSON (catches an empty or corrupt committed file).
         serde_json::from_str::<Value>(SITE_SCHEMA).expect("site bundle is valid JSON");
     }
 }

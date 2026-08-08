@@ -134,44 +134,46 @@ Taliesin is its own tool with its own closed vocabulary, so there is no silent
 compatibility shim, where a setting appears to be accepted but quietly does nothing.
 The corpus was purged of legacy-only keys to hold this line.
 
-## Schemas: the same vocabulary, one step earlier
+## The `_site.yml` schema: the same vocabulary, one step earlier
 
 Validation at render time is the backstop. The **earlier** you learn a key is wrong, the
-better, so Taliesin also ships JSON Schemas that let your editor's YAML language server
-flag the same mistakes as you type, before you ever render.
+better, so Taliesin also ships a JSON Schema for `_site.yml` that lets your editor's YAML
+language server flag the same mistakes as you type, before you ever render.
 
 ```{mermaid}
-%%| fig-cap: "One source of truth (the closed-set consts) feeds both the render-time validator and the bundled JSON Schemas."
+%%| fig-cap: "One source of truth (the closed-set consts) feeds both the render-time validator and the bundled JSON Schema."
 flowchart LR
   consts["closed-set consts<br/>KNOWN_KEYS · EXECUTE/ABOUT/HERO · NATIVE_KEYS"]
   consts --> val["render-time validator<br/>(located warnings)"]
   consts --> bless["bless test<br/>(TALIESIN_BLESS=1)"]
-  bless --> schema["bundled Draft-2020-12 schemas<br/>FRONTMATTER_SCHEMA · SITE_SCHEMA"]
-  schema --> cli["taliesin schema --out .tmd"]
-  cli --> lsp["editor YAML language server"]
+  bless --> schema["bundled Draft-2020-12 schema<br/>SITE_SCHEMA"]
+  schema --> init["taliesin init → .taliesin/"]
+  init --> lsp["editor YAML language server"]
+  consts --> tlsp["taliesin lsp<br/>(front matter, in-buffer)"]
 ```
 
-The two schemas (`FRONTMATTER_SCHEMA`, `SITE_SCHEMA` in `schema.rs`) are committed as
-static strings, but they are **generated from the same closed-set consts** the validator
-uses, and **regenerated only** through a bless test (`TALIESIN_BLESS=1 cargo test -p
-taliesin-core --lib schema`). They are never hand-edited, so they **cannot drift** from
-what the renderer enforces: the editor and the renderer always agree on the vocabulary.
-A second test asserts each schema's structural shape, so a malformed bless can't slip
-through.
+`SITE_SCHEMA` (in `schema.rs`) is committed as a static string, but it is **generated from
+the same `site::NATIVE_KEYS`** the config validator uses, and **regenerated only** through a
+bless test (`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib schema`). It is never
+hand-edited, so it **cannot drift** from what the renderer enforces: the editor and the
+renderer always agree on the vocabulary. A second test asserts its structural shape, so a
+malformed bless can't slip through.
 
-`taliesin schema [--out <dir>]` writes both files out, and a one-line modeline points the
-language server at them:
+`taliesin init` writes it into `.taliesin/` and adds the one-line modeline that points the
+language server at it:
 
 ```yaml
-# yaml-language-server: $schema=.tmd/tali-site.schema.json
+# yaml-language-server: $schema=.taliesin/tali-site.schema.json
 title: My site
 ```
 
-This is the in-scope on-ramp to editor **autocomplete**: schema-driven front-matter
-completion needs **no Taliesin-specific language server**, just two schema files and the
-YAML support the editor already has. (Live **diagnostics** are a separate story:
-`taliesin lsp`, [below](#taliesin-lsp-live-diagnostics-in-any-editor), streams them to any
-LSP editor.) The authoring side is covered in the [Configuration
+**Front matter is deliberately not covered here.** It lives inside a `.tmd` file, where no
+YAML language server looks, so a generated schema for it was an on-ramp that never reached
+the surface it described. `taliesin lsp`
+([below](#taliesin-lsp-live-diagnostics-in-any-editor)) completes and validates front matter
+from the same `KNOWN_KEYS` in any LSP editor, which is the answer that actually works. The
+front-matter schema and the `taliesin schema` verb that emitted both were withdrawn in the
+Wave 2 scope cut. The authoring side is covered in the [Configuration
 reference](../guide/reference/configuration.html); the config validator's role in a
 multi-page project is in [the multi-page subsystem](sites.tmd).
 

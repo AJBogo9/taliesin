@@ -1,6 +1,7 @@
-//! PL16: the top-level `help` groups its 16 commands by purpose (Author / Preview & build /
-//! Inspect / Editor & agent), so the everyday three don't drown among the ten an author rarely
-//! types. This pins the grouping + that no command is dropped by a future edit.
+//! PL16: the top-level `help` groups its commands by purpose (Author / Preview & build /
+//! Inspect / Editor), so the everyday three don't drown among the rest. This pins the
+//! grouping + that no command is dropped by a future edit. The fourth section read
+//! "Editor & agent" until Wave 2 cut every machine-facing verb out of it.
 
 use std::process::Command;
 
@@ -16,7 +17,7 @@ fn help() -> String {
 fn help_groups_commands_by_purpose() {
     let h = help();
     // The four purpose sections are present, in order.
-    let sections = ["Author", "Preview & build", "Inspect", "Editor & agent"];
+    let sections = ["Author", "Preview & build", "Inspect", "Editor"];
     let mut last = 0;
     for s in sections {
         let at = h
@@ -36,8 +37,8 @@ fn help_groups_commands_by_purpose() {
     };
     assert!(under("  init", "Author") < h.find("Preview & build").unwrap());
     assert!(under("  preview", "Preview & build") < h.find("Inspect").unwrap());
-    assert!(under("  check", "Inspect") < h.find("Editor & agent").unwrap());
-    assert!(h.contains("Editor & agent") && under("  mcp", "Editor & agent") > 0);
+    assert!(under("  check", "Inspect") < h.find("Editor").unwrap());
+    assert!(h.contains("Editor") && under("  lsp", "Editor") > 0);
     // No command was dropped in the reorder.
     for cmd in [
         "init",
@@ -47,11 +48,7 @@ fn help_groups_commands_by_purpose() {
         "publish",
         "check",
         "doctor",
-        "map ",
-        "read ",
-        "schema",
-        "vocab",
-        "mcp",
+        "lsp",
         "completions",
         "help,",
     ] {

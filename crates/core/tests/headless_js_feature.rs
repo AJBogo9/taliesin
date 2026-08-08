@@ -82,9 +82,9 @@ fn the_headless_js_feature_is_not_on_by_default() {
 }
 
 #[test]
-fn both_browser_test_binaries_declare_the_feature_they_need() {
+fn every_browser_test_binary_declares_the_feature_it_needs() {
     let m = server_manifest_code();
-    for name in ["read_run_js", "deck_browser"] {
+    for name in ["print_pdf", "deck_browser", "reactive_browser"] {
         let decl = m
             .split("[[test]]")
             .find(|s| s.contains(&format!("name = \"{name}\"")))

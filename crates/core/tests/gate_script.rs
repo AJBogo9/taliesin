@@ -159,16 +159,19 @@ fn every_canary_the_gate_script_names_still_exists() {
 
     assert_eq!(
         canaries.len(),
-        7,
-        "expected one canary per interpreter gate (python, R, node, chrome), plus the \
-         reactive client's own browser render, the print track's, and the `#| trace: true` \
-         debug harness's own live-kernel proof. That last one is independent of the plain \
-         python-kernel canary: that canary only proves a kernel runs, this one proves the \
-         settrace harness runs inside it and embeds a trace blob. The math hover's browser \
-         render was the eleventh until Wave 4.1 cut the rasterizer, the figure lightbox's \
-         was the tenth until the visual minimalism pass deleted it, and the `{{pyodide}}` \
-         runtime's plus its two cargo-feature guards were the seventh through ninth until \
-         that language was withdrawn, got {canaries:?}"
+        6,
+        "expected one canary per interpreter gate (python, R, node), the two browser-backed \
+         capabilities that stand for chrome (the reactive client's render and the print \
+         track's pagination), and the `#| trace: true` debug harness's own live-kernel \
+         proof. That last one is independent of the plain python-kernel canary: that canary \
+         only proves a kernel runs, this one proves the settrace harness runs inside it and \
+         embeds a trace blob. `read --run`'s headless-`{{js}}` observation was chrome's own \
+         canary until Wave 2 cut the machine-facing verbs — the two that remain still fail \
+         when chrome is missing, so the gate is unchanged. The math hover's browser render \
+         was the eleventh until Wave 4.1 cut the rasterizer, the figure lightbox's was the \
+         tenth until the visual minimalism pass deleted it, and the `{{pyodide}}` runtime's \
+         plus its two cargo-feature guards were the seventh through ninth until that \
+         language was withdrawn, got {canaries:?}"
     );
 
     let sources: Vec<String> = rust_sources()

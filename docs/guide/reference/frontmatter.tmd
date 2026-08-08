@@ -291,25 +291,10 @@ Two deliberate exceptions:
 
 ## Editor autocomplete
 
-Taliesin ships a JSON Schema for front matter so your editor's YAML language server
-can autocomplete keys, show hovers, and flag unknown keys as you type. Drop the
-schemas into your project and point a modeline at the front-matter one:
-
-```sh
-taliesin schema --out .tmd
-```
-
-```yaml
----
-# yaml-language-server: $schema=.tmd/tali-frontmatter.schema.json
-title: My post
----
-```
-
-The schema describes the same key set Taliesin validates against at render time, so
-the editor and the renderer always agree. Front-matter validation needs an editor
-that treats a `.tmd` file's `---` block as embedded YAML (for example the VS Code
-YAML extension); see [Configuration](configuration.tmd) for the full setup.
+`taliesin lsp` completes every key on this page, shows its description on hover, and
+flags an unknown one as you type — the same closed set the validator enforces at render
+time, so the editor and the renderer always agree. Any LSP editor gets it; the VS Code
+companion starts the server for you. See [Preview](../using/preview.tmd).
 
 ## A fully annotated example
 

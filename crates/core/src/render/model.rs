@@ -410,24 +410,12 @@ impl RenderedDoc {
         s
     }
 
-    /// A deterministic, screen-reader-like plain-text projection of the document (the
-    /// `taliesin read` view): headings, resolved "Figure N"/xref numbers, callout kinds,
-    /// fenced code, display math as raw TeX. A VIEW, not an output format. See
-    /// [`super::text`].
+    /// A deterministic, screen-reader-like plain-text projection of the document: headings,
+    /// resolved "Figure N"/xref numbers, callout kinds, fenced code, display math as raw TeX.
+    /// A VIEW, not an output format. Read by `site/llms.rs` for `llms-full.txt`; the same
+    /// walk backs the Cmd-K search index (`text::indexable_text`). See [`super::text`].
     pub fn body_text(&self) -> String {
         super::text::project(&self.blocks)
-    }
-
-    /// Like [`body_text`], but appends the server's headless `{js}` observation line
-    /// (DX17b) after each matching `{js}` cell. `js_lines` maps a `{js}` cell's block id to
-    /// its preformatted `[js: …]` line (the server computes it — observing a browser-run
-    /// cell needs Chrome); core only interleaves it. An empty map yields exactly
-    /// [`body_text`].
-    pub fn body_text_with_js(
-        &self,
-        js_lines: &std::collections::HashMap<String, String>,
-    ) -> String {
-        super::text::project_with_js(&self.blocks, js_lines)
     }
 }
 

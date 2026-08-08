@@ -90,8 +90,8 @@ completion cannot suggest something the validator would reject.
 - **Insert Math Symbol** (`Ctrl+Alt+M`) searches the math vocabulary by name, glyph or
   category, for the symbols you cannot spell well enough to complete.
 - **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML
-  extension installed. Outside VS Code, `taliesin schema --out <dir>` writes the schema and
-  tells you the one comment line to add.
+  extension installed. Outside VS Code, `taliesin init` writes the same schema into
+  `.taliesin/` and wires the scaffolded `_site.yml` to it with one comment line.
 
 ### Restructuring without retyping
 
@@ -190,19 +190,6 @@ gets them.
 **Problems** panel with real, clickable locations for **every page**, including the ones
 you have never opened. A `suggestion` lands as information rather than as an error, because
 advice is not a defect.
-
-::: {.callout-note}
-## Taliesin's tools are available to AI in the editor
-
-The extension advertises the `taliesin mcp` server to VS Code, so a model working in your
-editor can run `check`, read what a page actually renders to, list a document's anchors,
-outline the project, look up the accepted vocabulary, or build. You do not have to find the
-binary or hand-edit a JSON file: point your agent at the Taliesin server and it is there.
-
-Pointing an agent at that server is a deliberate act, which is what makes offering `build`
-right: it writes files and runs your code cells, and that is a thing to opt into rather than
-something an editor should do on a hunch.
-:::
 
 ## The dev menu
 

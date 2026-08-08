@@ -1062,6 +1062,35 @@ fn handle_request(
             result: Some(answer.unwrap_or(serde_json::Value::Null)),
             error: None,
         }
+    } else if req.method == SITE_MAP_METHOD {
+        // The uri is a project ROOT, not a document: the companion has already walked up to
+        // the nearest `_site.yml` to decide *whether* to preview the project at all, and
+        // re-deriving the root here would be a second answer to a question it has settled.
+        #[derive(serde::Deserialize)]
+        struct RootParams {
+            uri: lsp_types::Url,
+        }
+        let params: RootParams = serde_json::from_value(req.params)?;
+        let answer = params
+            .uri
+            .to_file_path()
+            .ok()
+            .and_then(|root| crate::lsp_project::site_map(sites, &root));
+        lsp_server::Response {
+            id: req.id,
+            // `null` for anything that is not a project with pages. It must not be an error:
+            // the site-aware preview is an *upgrade* on the single-file one, so an
+            // unanswerable map costs the author nav and cross-page links, never the preview.
+            result: Some(answer.unwrap_or(serde_json::Value::Null)),
+            error: None,
+        }
+    } else if req.method == MATH_COMMANDS_METHOD {
+        // A static table, so there is nothing to key on and no params to parse.
+        lsp_server::Response {
+            id: req.id,
+            result: Some(taliesin_core::vocab::vocab()["mathCommands"].clone()),
+            error: None,
+        }
     } else if req.method == CELL_REGIONS_METHOD {
         // A Taliesin extension, not an LSP method: the protocol has no concept of "this
         // range is another language, go ask whoever owns it". A client that wants embedded
@@ -1444,6 +1473,22 @@ pub(crate) const PROJECT_OUTLINE_METHOD: &str = "taliesin/projectOutline";
 /// The custom request behind the sidebar's References view: every cross-reference target with
 /// the uses pointing at it, dangling ones included. Namespaced for the same reason.
 pub(crate) const PROJECT_REFS_METHOD: &str = "taliesin/projectRefs";
+
+/// Where each of a project's pages is served, so the companion can open the preview webview
+/// at the document the author is editing. Namespaced for the same reason as the two above.
+///
+/// This was `taliesin map <root> --format json`, spawned per preview, until Wave 2 cut the
+/// machine-facing verbs. The capability was never machine-facing — it is what makes
+/// "Preview" open chapter 7 instead of the book's cover — so it moved here rather than
+/// going with the verb, which is the doctrine anyway: editor intelligence lives in the LSP.
+pub(crate) const SITE_MAP_METHOD: &str = "taliesin/siteMap";
+
+/// The math-symbol picker's data: every KaTeX command the renderer supports, with the
+/// category and snippet the quick-pick shows. Namespaced for the same reason.
+///
+/// Also a Wave 2 re-homing — the companion used to spawn `taliesin vocab` and read one key
+/// out of the JSON dump. The dump is gone; the table it was generated from is not.
+pub(crate) const MATH_COMMANDS_METHOD: &str = "taliesin/mathCommands";
 
 /// The whole-book outline plus the numbered-float index, as the sidebar's TreeViews want it:
 /// grouped by page and in **reading order** — `book: chapters:` as the drawer and prev/next

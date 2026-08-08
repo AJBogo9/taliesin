@@ -1,5 +1,4 @@
 import * as vscode from "vscode";
-import { spawn } from "node:child_process";
 import * as path from "node:path";
 import { isSourceFile } from "./paths";
 import { languageClient } from "./client";
@@ -31,6 +30,9 @@ interface MathCommand {
 /** `taliesin/sectionEdit`: the structural transforms, computed server-side. */
 const SECTION_EDIT = "taliesin/sectionEdit";
 
+/** `taliesin/mathCommands`: the symbol picker's table, from the vocabulary Rust owns. */
+const MATH_COMMANDS = "taliesin/mathCommands";
+
 interface LspPosition {
   line: number;
   character: number;
@@ -56,24 +58,23 @@ function runInTerminal(name: string, args: string[], cwd: string): void {
   terminal.sendText([binaryPath(), ...args].map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" "));
 }
 
-/** `taliesin vocab`'s `mathCommands`, fetched once per session. */
-function fetchMathCommands(): Promise<MathCommand[]> {
-  return new Promise((resolve, reject) => {
-    let stdout = "";
-    // Inline literal args (not a computed array) so the manifest gate can statically check
-    // every spawned subcommand against main.rs's COMMANDS.
-    const child = spawn(binaryPath(), ["vocab"]);
-    child.on("error", (e) => reject(e));
-    child.stdout?.on("data", (b) => (stdout += b.toString()));
-    child.on("close", () => {
-      try {
-        const parsed = JSON.parse(stdout) as { mathCommands?: MathCommand[] };
-        resolve(parsed.mathCommands ?? []);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  });
+/**
+ * The picker's table, fetched once per session.
+ *
+ * This spawned `taliesin vocab` and read one key out of a whole-vocabulary JSON dump until
+ * Wave 2 cut that verb. The table it was generated from did not move: the server answers
+ * `taliesin/mathCommands` from the same `math_vocab` rows, over the connection the companion
+ * already holds. Which is the doctrine anyway — editor intelligence lives in the LSP, not in
+ * a TypeScript subprocess call.
+ */
+async function fetchMathCommands(): Promise<MathCommand[]> {
+  const client = languageClient();
+  if (!client) {
+    throw new Error(
+      "the language server is not running — run “Taliesin: Restart Language Server”"
+    );
+  }
+  return (await client.sendRequest<MathCommand[] | null>(MATH_COMMANDS)) ?? [];
 }
 
 /**

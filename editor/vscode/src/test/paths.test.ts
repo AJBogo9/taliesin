@@ -132,19 +132,16 @@ test("projectRootFor walks up to the nearest _site.yml and never to .git", () =>
 
 // Item 150 §2. The `.tmd`→`.html` mapping is Rust's: book chapter numbering, `index`
 // handling and output-dir conventions all live there, and a second implementation in TS is
-// exactly what the LSP rewrite existed to delete. So the companion asks `taliesin map` and
+// exactly what the LSP rewrite existed to delete. So the companion asks the server
+// (`taliesin/siteMap`, which was `taliesin map --format json` until Wave 2 cut the verb) and
 // looks its own document up in the answer.
-test("sitePages reads `rel`/`url` out of a map document", () => {
-  const pages = sitePages(
-    JSON.stringify({
-      title: "Guide",
-      is_book: true,
-      pages: [
-        { rel: "index.tmd", url: "index.html", words: 531 },
-        { rel: "using/preview.tmd", url: "using/preview.html" },
-      ],
-    })
-  );
+test("sitePages reads `rel`/`url` out of a site map", () => {
+  const pages = sitePages({
+    pages: [
+      { rel: "index.tmd", url: "index.html", words: 531 },
+      { rel: "using/preview.tmd", url: "using/preview.html" },
+    ],
+  });
   assert.deepEqual(pages, [
     { rel: "index.tmd", url: "index.html" },
     { rel: "using/preview.tmd", url: "using/preview.html" },
@@ -152,14 +149,15 @@ test("sitePages reads `rel`/`url` out of a map document", () => {
 });
 
 test("sitePages is null for anything it cannot use, so the caller can fall back", () => {
-  // `map` can fail outright, print a diagnostic, or answer about something that is not a
-  // project. None of those may lose the preview — the fallback is today's single-file one.
-  assert.strictEqual(sitePages(""), null);
-  assert.strictEqual(sitePages("taliesin: not a project"), null);
-  assert.strictEqual(sitePages("{}"), null);
-  assert.strictEqual(sitePages(JSON.stringify({ pages: "nope" })), null);
+  // The server answers `null` for anything that is not a project with pages, and a server
+  // older or newer than this client can answer a shape this does not know. Neither may lose
+  // the preview — the fallback is today's single-file one.
+  assert.strictEqual(sitePages(null), null);
+  assert.strictEqual(sitePages(undefined), null);
+  assert.strictEqual(sitePages({}), null);
+  assert.strictEqual(sitePages({ pages: "nope" }), null);
   // An entry without both halves is not a page this can open; it is dropped, not fatal.
-  assert.deepEqual(sitePages(JSON.stringify({ pages: [{ rel: "a.tmd" }] })), []);
+  assert.deepEqual(sitePages({ pages: [{ rel: "a.tmd" }] }), []);
 });
 
 test("pageUrlFor finds the URL of a document inside the project", () => {

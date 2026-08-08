@@ -22,7 +22,6 @@ import { registerTasks } from "./tasks";
 import { registerRunCell } from "./runcell";
 import { registerDecorations } from "./decorations";
 import { registerDoctorHint } from "./doctorhint";
-import { registerMcpProvider } from "./lmtools";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -104,10 +103,6 @@ export function activate(context: vscode.ExtensionContext) {
   // behind it. Offer that command, once per session, instead of leaving `doctor` reachable
   // only to whoever already knows it exists.
   registerDoctorHint(context);
-  // `taliesin mcp` advertised rather than hand-registered, which is the one surface an agent
-  // in this editor needs: pointing it at an MCP server is an explicit act, where an always-on
-  // editor tool is not.
-  registerMcpProvider(context);
 }
 
 /**
@@ -165,12 +160,12 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
 
   const binary = vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 
-  // Where the document is served inside its project. `taliesin map` owns this: `.tmd`→`.html`,
+  // Where the document is served inside its project. The server owns this: `.tmd`→`.html`,
   // book chapter numbering and `index` handling all live in Rust, and a second implementation
   // here is what the LSP rewrite existed to delete. Anything that leaves us without a URL —
-  // `map` unusable, or a document the project does not publish (a draft, an `{{< embed >}}`ed
-  // deck) — falls back to the single-file preview rather than losing the preview.
-  const pages = root ? await readSiteMap(binary, root) : null;
+  // `taliesin/siteMap` unanswerable, or a document the project does not publish (a draft, an
+  // `{{< embed >}}`ed deck) — falls back to the single-file preview rather than losing it.
+  const pages = root ? await readSiteMap(root) : null;
   const pageUrl = root && pages ? pageUrlFor(pages, root, docPath) : null;
   const site = root && pages && pageUrl ? { root, pages, pageUrl } : null;
 

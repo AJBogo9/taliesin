@@ -143,8 +143,10 @@ function cargoCommands(): string[] {
 test("every taliesin subcommand the extension spawns is a real command", () => {
   // The companion talks to the CLI by spawning it with a bare subcommand string. Rename or
   // remove a command in Rust and the extension keeps spawning the old name, failing exactly
-  // as silently as the `qmd-fast` default did: `fetchSymbols`/`fetchVocab` swallow the error
-  // and simply return no completions. Nothing else ties the two sides together.
+  // as silently as the `qmd-fast` default did: the callers swallow the error and simply
+  // return nothing. Nothing else ties the two sides together. Wave 2 left `preview` as the
+  // only spawn — `map` and `vocab` moved onto the language client's wire with their verbs —
+  // so the pairing this checks is now thin, and the test below covers the one that matters.
   const commands = cargoCommands();
   const spawned = new Set<string>();
   let parsed = 0;
@@ -248,14 +250,45 @@ test("every keybinding and menu entry points at a contributed command", () => {
 // cannot violate the single-editing-surface rule. The failure mode is quieter: a snippet
 // that offers `.callout-hint` or `#| fig-alt:` after that name was removed from Rust keeps
 // inserting text `check` will reject. The vocabulary is Rust-authoritative
-// (crates/core/assets/vocab/tali-vocab.json, itself golden-locked by vocab.rs), so every
-// name a snippet body mentions is checked against it here.
+// (the closed-set consts the validator itself reads), so every name a snippet body mentions
+// is checked against them here.
+//
+// It read `crates/core/assets/vocab/tali-vocab.json` until Wave 2, which cut the
+// `taliesin vocab` verb that dumped it and the golden file with it. The vocabulary did not
+// move — only the dump did — so the consts are read directly, exactly as `cargoCommands()`
+// above already reads `COMMANDS` out of `main.rs`. That is one indirection fewer, not one
+// more: the JSON was itself generated from these lists.
 
-interface VocabNamed { name: string }
-const vocab = JSON.parse(
-  fs.readFileSync(path.join(REPO_ROOT, "crates/core/assets/vocab/tali-vocab.json"), "utf8")
-);
-const names = (list: VocabNamed[]) => list.map((n) => n.name);
+/** A `const NAME: &[&str] = &[…]` string list, read out of a Rust source. */
+function rustStrList(relPath: string, constName: string): string[] {
+  const src = fs.readFileSync(path.join(REPO_ROOT, relPath), "utf8");
+  const m = new RegExp(`const ${constName}: &\\[&str\\] = &\\[([\\s\\S]*?)\\];`).exec(src);
+  assert.ok(m, `${relPath} declares ${constName}`);
+  const out = [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  assert.ok(out.length > 0, `${constName} parsed as empty, so this gate proves nothing`);
+  return out;
+}
+
+const VALIDATE_RS = "crates/core/src/render/validate.rs";
+const names = (list: string[]) => list;
+const vocab = {
+  calloutKinds: rustStrList(VALIDATE_RS, "CALLOUT_KINDS"),
+  theoremKinds: rustStrList(VALIDATE_RS, "THEOREM_KINDS"),
+  cellOptions: rustStrList(VALIDATE_RS, "CELL_OPTION_KEYS"),
+  divClasses: rustStrList("crates/core/src/vocab.rs", "DIV_CLASS_NAMES"),
+  // `XREF_LABELS` is `&[(prefix, label)]`, so the pair list is read whole and the retired
+  // prefixes subtracted — the same filter `vocab::xref_prefixes` applies.
+  xrefPrefixes: (() => {
+    const src = fs.readFileSync(path.join(REPO_ROOT, "crates/core/src/cite/render.rs"), "utf8");
+    const m = /const XREF_LABELS: &\[\(&str, &str\)\] = &\[([\s\S]*?)\];/.exec(src);
+    assert.ok(m, "cite/render.rs declares XREF_LABELS");
+    const pairs = [...m![1].matchAll(/\(\s*"([^"]+)"\s*,/g)].map((x) => x[1]);
+    const retired = new Set(rustStrList("crates/core/src/cite/render.rs", "RETIRED_XREF_PREFIXES"));
+    const live = pairs.filter((p) => !retired.has(p));
+    assert.ok(live.length > 0, "no live xref prefixes parsed, so this gate proves nothing");
+    return live.map((prefix) => ({ prefix }));
+  })(),
+};
 
 const snippetContributions: { language: string; path: string }[] = manifest.contributes?.snippets ?? [];
 
@@ -332,7 +365,7 @@ test("every cell option a snippet inserts is in the vocabulary", () => {
 });
 
 test("every cross-reference prefix a snippet inserts is in the vocabulary", () => {
-  const prefixes = new Set(vocab.xrefPrefixes.map((p: { prefix: string }) => p.prefix));
+  const prefixes = new Set(vocab.xrefPrefixes.map((p) => p.prefix));
   for (const { name, body } of snippetBodies()) {
     for (const m of body.matchAll(/[#@](fig|tbl|sec|eq|lst|thm|lem|cor|prp|def|exm|rem|[a-z]{2,4})-/g)) {
       assert.ok(prefixes.has(m[1]), `${name}: unknown xref prefix \`${m[1]}-\``);
@@ -354,7 +387,8 @@ test("the callout snippet offers exactly the vocabulary's kinds, in order", () =
 
 // The `_site.yml` schema is shipped as a COPY, because `contributes.yamlValidation` needs a
 // file inside the extension and the authoritative one lives in the Rust crate
-// (`crates/core/assets/schema/`, itself golden-file-locked against `schema.rs`). A copy with
+// (`crates/core/assets/schema/`, itself golden-file-locked against `schema.rs`). It is the
+// only schema left: front matter is served by `taliesin lsp`, not by a YAML language server. A copy with
 // nothing watching it is how a stale schema starts telling authors that a key the validator
 // rejects is fine.
 test("the bundled _site.yml schema matches the one the binary emits", () => {
